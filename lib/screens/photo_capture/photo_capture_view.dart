@@ -139,7 +139,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(CupertinoIcons.clear, size: 20),
+                  Icon(CupertinoIcons.xmark, size: 20),
                   SizedBox(width: 4),
                   Text('Retake'),
                 ],
@@ -163,7 +163,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(CupertinoIcons.check_mark, size: 20),
+                  Icon(CupertinoIcons.checkmark, size: 20),
                   SizedBox(width: 4),
                   Text('Continue'),
                 ],

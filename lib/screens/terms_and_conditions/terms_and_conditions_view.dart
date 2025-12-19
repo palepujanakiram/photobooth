@@ -382,12 +382,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           isTablet: isTablet,
         ),
         _buildActionButton(
-          icon: CupertinoIcons.sparkles,
+          icon: CupertinoIcons.star_fill,
           label: 'AI Transform',
           isTablet: isTablet,
         ),
         _buildActionButton(
-          icon: CupertinoIcons.printer,
+          icon: CupertinoIcons.printer_fill,
           label: 'Print & Keep',
           isTablet: isTablet,
         ),
@@ -483,7 +483,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             ),
             child: viewModel.isAgreed
                 ? const Icon(
-                    CupertinoIcons.check_mark,
+                    CupertinoIcons.checkmark,
                     color: CupertinoColors.white,
                     size: 18,
                   )
@@ -566,7 +566,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
-          CupertinoIcons.clock,
+          CupertinoIcons.time,
           size: isTablet ? 14 : 12,
           color: CupertinoColors.systemGrey,
         ),

@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import '../../screens/camera_selection/camera_info_model.dart';
 
 class CameraCard extends StatelessWidget {
@@ -57,8 +58,8 @@ class CameraCard extends StatelessWidget {
                 ),
                 child: Icon(
                   camera.isFrontFacing 
-                      ? CupertinoIcons.camera_fill 
-                      : CupertinoIcons.camera,
+                      ? Icons.camera_front 
+                      : Icons.camera_rear,
                   size: 32,
                   color: isSelected 
                       ? CupertinoColors.systemBlue 
@@ -88,7 +89,7 @@ class CameraCard extends StatelessWidget {
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
-                    CupertinoIcons.check_mark,
+                    Icons.check,
                     color: CupertinoColors.white,
                     size: 16,
                   ),

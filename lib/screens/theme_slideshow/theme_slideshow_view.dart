@@ -460,7 +460,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                                 ),
                                 const SizedBox(width: 8),
                                 const Icon(
-                                  CupertinoIcons.arrow_right,
+                                  CupertinoIcons.chevron_right,
                                   size: 20,
                                   color: CupertinoColors.black,
                                 ),

@@ -101,7 +101,7 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                           ),
                         AppButtonWithIcon(
                           text: 'Transform Photo',
-                          icon: CupertinoIcons.sparkles,
+                          icon: CupertinoIcons.star_fill,
                           onPressed: viewModel.isTransforming
                               ? null
                               : () async {
