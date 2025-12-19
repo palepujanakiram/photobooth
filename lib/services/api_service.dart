@@ -38,8 +38,8 @@ class ApiService {
   }) async {
     try {
       final imageBytes = await _apiClient.transformImage(
-        theme.prompt,
-        theme.negativePrompt,
+        theme.promptText,
+        theme.negativePrompt ?? '',
         image,
       );
 

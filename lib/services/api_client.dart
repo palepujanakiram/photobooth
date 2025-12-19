@@ -6,12 +6,17 @@ import '../utils/constants.dart';
 
 part 'api_client.g.dart';
 
+/// Error logger interface for retrofit generated code
+abstract class ParseErrorLogger {
+  void logError(Object error, StackTrace stackTrace, RequestOptions options, [dynamic response]);
+}
+
 @RestApi(baseUrl: AppConstants.kBaseUrl)
 abstract class ApiClient {
   factory ApiClient(Dio dio, {String baseUrl}) = _ApiClient;
 
   /// Fetches available themes from the API
-  @GET('/themes')
+  @GET('/api/themes')
   Future<List<ThemeModel>> getThemes();
 
   /// Transforms an image using AI with the selected theme

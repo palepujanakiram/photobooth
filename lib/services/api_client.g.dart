@@ -10,7 +10,7 @@ part of 'api_client.dart';
 
 class _ApiClient implements ApiClient {
   _ApiClient(this._dio, {this.baseUrl, this.errorLogger}) {
-    baseUrl ??= 'https://ai-photo-booth.replit.app';
+    baseUrl ??= 'https://zenai-labs.replit.app';
   }
 
   final Dio _dio;
@@ -29,7 +29,7 @@ class _ApiClient implements ApiClient {
       Options(method: 'GET', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
-            '/themes',
+            '/api/themes',
             queryParameters: queryParameters,
             data: _data,
           )
@@ -42,7 +42,7 @@ class _ApiClient implements ApiClient {
           .map((dynamic i) => ThemeModel.fromJson(i as Map<String, dynamic>))
           .toList();
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, _result);
+      errorLogger?.logError(e, s, _options, null);
       rethrow;
     }
     return _value;
@@ -90,7 +90,7 @@ class _ApiClient implements ApiClient {
     try {
       _value = _result.data!.cast<int>();
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, _result);
+      errorLogger?.logError(e, s, _options, null);
       rethrow;
     }
     return _value;

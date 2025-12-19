@@ -5,7 +5,7 @@
 class AppConfig {
   // API Configuration
   /// Base URL for the API endpoints
-  static const String baseUrl = 'https://zenai-labs.replit.app/';
+  static const String baseUrl = 'https://zenai-labs.replit.app';
 
   // Links
   /// Terms and Conditions page URL
