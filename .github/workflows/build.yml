@@ -16,7 +16,11 @@ jobs:
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
-          java-version: '17'         
+          java-version: '17'   
+      - name: Download Sonar build-wrapper
+        run: |
+          curl -L -o bw.zip https://sonarcloud.io/static/cpp/build-wrapper-macosx.zip
+          unzip bw.zip          
       - name: Setup Flutter SDK
         uses: flutter-actions/setup-flutter@v4
         with:
