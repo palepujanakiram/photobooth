@@ -10,11 +10,16 @@ jobs:
     name: SonarQube
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Flutter SDK
+        uses: flutter-actions/setup-flutter@v4
         with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-      # The analysis requires to retrieve dependencies and build successfully
-      - name: Build
+          channel: stable
+          version: 3.38.4
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Build App
         run: flutter build
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v6
