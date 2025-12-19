@@ -19,8 +19,9 @@ jobs:
           java-version: '17'   
       - name: Download Sonar build-wrapper
         run: |
-          curl -L -o bw.zip https://sonarcloud.io/static/cpp/build-wrapper-macosx.zip
-          unzip bw.zip          
+          curl -fL -o build-wrapper-macosx.zip https://sonarcloud.io/static/cpp/build-wrapper-macosx.zip
+          unzip build-wrapper-macosx.zip
+          chmod +x build-wrapper-macosx/build-wrapper-macosx
       - name: Setup Flutter SDK
         uses: flutter-actions/setup-flutter@v4
         with:
