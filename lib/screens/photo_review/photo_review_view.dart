@@ -1,9 +1,11 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../photo_capture/photo_model.dart';
 import '../theme_selection/theme_model.dart';
 import 'photo_review_viewmodel.dart';
 import '../../utils/constants.dart';
+import '../../views/widgets/app_theme.dart';
 
 class PhotoReviewScreen extends StatefulWidget {
   const PhotoReviewScreen({super.key});
@@ -50,12 +52,11 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
 
     return ChangeNotifierProvider.value(
       value: _reviewViewModel,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Review Photo'),
-          centerTitle: true,
+      child: CupertinoPageScaffold(
+        navigationBar: const AppTopBar(
+          title: 'Review Photo',
         ),
-        body: SafeArea(
+        child: SafeArea(
           child: Consumer<ReviewViewModel>(
             builder: (context, viewModel, child) {
               return Column(
@@ -92,39 +93,33 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                             child: Text(
                               viewModel.errorMessage ?? 'Unknown error',
                               style: const TextStyle(
-                                color: Colors.red,
+                                color: CupertinoColors.systemRed,
                                 fontSize: 14,
                               ),
                               textAlign: TextAlign.center,
                             ),
                           ),
-                        SizedBox(
-                          width: double.infinity,
-                          height: AppConstants.kButtonHeight,
-                          child: ElevatedButton(
-                            onPressed: viewModel.isTransforming
-                                ? null
-                                : () async {
-                                    final transformedImage =
-                                        await viewModel.transformPhoto();
-                                    if (transformedImage != null &&
-                                        mounted &&
-                                        context.mounted) {
-                                      Navigator.pushNamed(
-                                        context,
-                                        AppConstants.kRouteResult,
-                                        arguments: {
-                                          'transformedImage': transformedImage,
-                                        },
-                                      );
-                                    }
-                                  },
-                            child: viewModel.isTransforming
-                                ? const CircularProgressIndicator(
-                                    color: Colors.white,
-                                  )
-                                : const Text('Transform Photo'),
-                          ),
+                        AppButtonWithIcon(
+                          text: 'Transform Photo',
+                          icon: CupertinoIcons.sparkles,
+                          onPressed: viewModel.isTransforming
+                              ? null
+                              : () async {
+                                  final transformedImage =
+                                      await viewModel.transformPhoto();
+                                  if (transformedImage != null &&
+                                      mounted &&
+                                      context.mounted) {
+                                    Navigator.pushNamed(
+                                      context,
+                                      AppConstants.kRouteResult,
+                                      arguments: {
+                                        'transformedImage': transformedImage,
+                                      },
+                                    );
+                                  }
+                                },
+                          isLoading: viewModel.isTransforming,
                         ),
                       ],
                     ),

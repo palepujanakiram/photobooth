@@ -25,15 +25,19 @@ class ThemeViewModel extends ChangeNotifier {
     _errorMessage = null;
 
     try {
-      _themes = await _apiService.getThemes();
+      final themes = await _apiService.getThemes();
+      // Filter only active themes
+      _themes = themes.where((theme) => theme.isActive).toList();
       notifyListeners();
-    } on ApiException {
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      // Fallback to mock themes only if API fails
       _themes = _getMockThemes();
       notifyListeners();
     } catch (e) {
-      // If any other error, use mock themes for development
+      _errorMessage = 'Failed to load themes: $e';
+      // Fallback to mock themes for development
       _themes = _getMockThemes();
-      _errorMessage = null;
       notifyListeners();
     } finally {
       _setLoading(false);

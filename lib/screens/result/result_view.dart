@@ -1,8 +1,10 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'transformed_image_model.dart';
 import 'result_viewmodel.dart';
 import '../../utils/constants.dart';
+import '../../views/widgets/app_theme.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -45,13 +47,12 @@ class _ResultScreenState extends State<ResultScreen> {
 
     return ChangeNotifierProvider.value(
       value: _resultViewModel,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Result'),
-          centerTitle: true,
+      child: CupertinoPageScaffold(
+        navigationBar: AppTopBar(
+          title: 'Result',
           actions: [
-            IconButton(
-              icon: const Icon(Icons.home),
+            AppActionButton(
+              icon: CupertinoIcons.house,
               onPressed: () {
                 Navigator.pushNamedAndRemoveUntil(
                   context,
@@ -62,7 +63,7 @@ class _ResultScreenState extends State<ResultScreen> {
             ),
           ],
         ),
-        body: SafeArea(
+        child: SafeArea(
           child: Consumer<ResultViewModel>(
             builder: (context, viewModel, child) {
               final imageFile = viewModel.transformedImage?.imageFile;
@@ -80,16 +81,16 @@ class _ResultScreenState extends State<ResultScreen> {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     const Icon(
-                                      Icons.error_outline,
+                                      CupertinoIcons.exclamationmark_triangle,
                                       size: 64,
-                                      color: Colors.red,
+                                      color: CupertinoColors.systemRed,
                                     ),
                                     const SizedBox(height: 16),
                                     const Text(
                                       'Failed to load image',
                                       style: TextStyle(
                                         fontSize: 16,
-                                        color: Colors.red,
+                                        color: CupertinoColors.systemRed,
                                       ),
                                     ),
                                     const SizedBox(height: 8),
@@ -97,7 +98,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                       'Path: ${imageFile.path}',
                                       style: const TextStyle(
                                         fontSize: 12,
-                                        color: Colors.grey,
+                                        color: CupertinoColors.systemGrey,
                                       ),
                                       textAlign: TextAlign.center,
                                     ),
@@ -109,16 +110,16 @@ class _ResultScreenState extends State<ResultScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 const Icon(
-                                  Icons.image_not_supported,
+                                  CupertinoIcons.photo,
                                   size: 64,
-                                  color: Colors.grey,
+                                  color: CupertinoColors.systemGrey,
                                 ),
                                 const SizedBox(height: 16),
                                 const Text(
                                   'Image file not found',
                                   style: TextStyle(
                                     fontSize: 16,
-                                    color: Colors.grey,
+                                    color: CupertinoColors.systemGrey,
                                   ),
                                 ),
                                 if (imageFile != null) ...[
@@ -127,7 +128,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                     'Path: ${imageFile.path}',
                                     style: const TextStyle(
                                       fontSize: 12,
-                                      color: Colors.grey,
+                                      color: CupertinoColors.systemGrey,
                                     ),
                                     textAlign: TextAlign.center,
                                   ),
@@ -142,7 +143,7 @@ class _ResultScreenState extends State<ResultScreen> {
                       child: Text(
                         viewModel.errorMessage ?? 'Unknown error',
                         style: const TextStyle(
-                          color: Colors.red,
+                          color: CupertinoColors.systemRed,
                           fontSize: 14,
                         ),
                         textAlign: TextAlign.center,
@@ -152,66 +153,38 @@ class _ResultScreenState extends State<ResultScreen> {
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
                       children: [
-                        SizedBox(
-                          width: double.infinity,
-                          height: AppConstants.kButtonHeight,
-                          child: ElevatedButton.icon(
-                            onPressed: viewModel.isPrinting
-                                ? null
-                                : () async {
-                                    await viewModel.printImage();
-                                  },
-                            icon: viewModel.isPrinting
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Icon(Icons.print),
-                            label: const Text('Print'),
-                          ),
+                        AppButtonWithIcon(
+                          text: 'Print',
+                          icon: CupertinoIcons.printer,
+                          onPressed: viewModel.isPrinting
+                              ? null
+                              : () async {
+                                  await viewModel.printImage();
+                                },
+                          isLoading: viewModel.isPrinting,
                         ),
                         const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          height: AppConstants.kButtonHeight,
-                          child: ElevatedButton.icon(
-                            onPressed: viewModel.isSharing
-                                ? null
-                                : () async {
-                                    await viewModel.shareViaWhatsApp();
-                                  },
-                            icon: viewModel.isSharing
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Icon(Icons.share),
-                            label: const Text('Share via WhatsApp'),
-                          ),
+                        AppButtonWithIcon(
+                          text: 'Share via WhatsApp',
+                          icon: CupertinoIcons.share,
+                          onPressed: viewModel.isSharing
+                              ? null
+                              : () async {
+                                  await viewModel.shareViaWhatsApp();
+                                },
+                          isLoading: viewModel.isSharing,
                         ),
                         const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          height: AppConstants.kButtonHeight,
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              Navigator.pushNamedAndRemoveUntil(
-                                context,
-                                AppConstants.kRouteHome,
-                                (route) => false,
-                              );
-                            },
-                            icon: const Icon(Icons.home),
-                            label: const Text('Start Over'),
-                          ),
+                        AppOutlinedButton(
+                          text: 'Start Over',
+                          icon: CupertinoIcons.house,
+                          onPressed: () {
+                            Navigator.pushNamedAndRemoveUntil(
+                              context,
+                              AppConstants.kRouteHome,
+                              (route) => false,
+                            );
+                          },
                         ),
                       ],
                     ),

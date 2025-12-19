@@ -75,7 +75,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   void _openTermsLink() {
     Navigator.push(
       context,
-      MaterialPageRoute(
+      CupertinoPageRoute(
         builder: (context) => const WebViewScreen(
           url: AppConfig.termsAndConditionsUrl,
           title: 'Terms and Conditions',
@@ -87,9 +87,17 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   Future<void> _handleAccept() async {
     final kioskName = _kioskNameController.text.trim();
     if (kioskName.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('KIOSK name cannot be empty'),
+      showCupertinoDialog(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: const Text('Error'),
+          content: const Text('KIOSK name cannot be empty'),
+          actions: [
+            CupertinoDialogAction(
+              child: const Text('OK'),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ],
         ),
       );
       return;
@@ -99,10 +107,17 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     if (success && mounted) {
       Navigator.pushReplacementNamed(context, AppConstants.kRouteHome);
     } else if (mounted && _viewModel.hasError) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+      showCupertinoDialog(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: const Text('Error'),
           content: Text(_viewModel.errorMessage ?? 'Failed to accept terms'),
-          backgroundColor: Colors.red,
+          actions: [
+            CupertinoDialogAction(
+              child: const Text('OK'),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ],
         ),
       );
     }
@@ -140,22 +155,27 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
 
     return ChangeNotifierProvider.value(
       value: _viewModel,
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        body: SafeArea(
+      child: CupertinoPageScaffold(
+        backgroundColor: CupertinoColors.white,
+        child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              return Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isTablet ? 32.0 : 16.0,
-                  vertical: isTablet ? 16.0 : 8.0,
-                ),
-                child: Consumer<TermsAndConditionsViewModel>(
-                  builder: (context, viewModel, child) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
+              return SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight,
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isTablet ? 32.0 : 16.0,
+                      vertical: isTablet ? 16.0 : 8.0,
+                    ),
+                    child: Consumer<TermsAndConditionsViewModel>(
+                      builder: (context, viewModel, child) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
                         // Logo Section
                         _buildLogo(logoSize, logoIconSize),
                         SizedBox(height: logoSpacing),
@@ -167,7 +187,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                           'Snap. Transform. Take Home Magic.',
                           style: TextStyle(
                             fontSize: isTablet ? 18.0 : 14.0,
-                            color: Colors.grey[700],
+                            color: CupertinoColors.systemGrey,
                             fontWeight: FontWeight.w500,
                           ),
                           textAlign: TextAlign.center,
@@ -185,12 +205,14 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                         // Start Your Experience Button
                         _buildStartButton(viewModel, isTablet),
                         SizedBox(height: buttonSpacing),
-                        // Privacy Note
-                        _buildPrivacyNote(isTablet),
-                        SizedBox(height: privacyNoteSpacing),
-                      ],
-                    );
-                  },
+                            // Privacy Note
+                            _buildPrivacyNote(isTablet),
+                            SizedBox(height: privacyNoteSpacing),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
                 ),
               );
             },
@@ -216,14 +238,14 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
               style: TextStyle(
                 fontSize: logoSize * 0.35,
                 fontWeight: FontWeight.bold,
-                color: Colors.blue[900],
+                color: CupertinoColors.systemBlue,
               ),
             ),
             Text(
               'PHOTO BOOTH',
               style: TextStyle(
                 fontSize: logoSize * 0.15,
-                color: Colors.grey[600],
+                color: CupertinoColors.systemGrey,
                 letterSpacing: 2,
               ),
             ),
@@ -298,21 +320,21 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                     },
                     errorBuilder: (context, error, stackTrace) {
                       return Container(
-                        color: Colors.transparent,
+                        color: CupertinoColors.systemBackground,
                         child: Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                Icons.image_not_supported,
+                                CupertinoIcons.photo,
                                 size: 48,
-                                color: Colors.grey[400],
+                                color: CupertinoColors.systemGrey2,
                               ),
                               const SizedBox(height: 8),
                               Text(
                                 'Image unavailable',
                                 style: TextStyle(
-                                  color: Colors.grey[600],
+                                  color: CupertinoColors.systemGrey,
                                   fontSize: 12,
                                 ),
                               ),
@@ -339,8 +361,8 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: _currentPage == index
-                    ? Colors.blue
-                    : Colors.grey[300],
+                    ? CupertinoColors.systemBlue
+                    : CupertinoColors.systemGrey3,
               ),
             );
           }),
@@ -355,17 +377,17 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       mainAxisSize: MainAxisSize.min,
       children: [
         _buildActionButton(
-          icon: Icons.camera_alt,
+          icon: CupertinoIcons.camera,
           label: 'Take Photo',
           isTablet: isTablet,
         ),
         _buildActionButton(
-          icon: Icons.auto_awesome,
+          icon: CupertinoIcons.sparkles,
           label: 'AI Transform',
           isTablet: isTablet,
         ),
         _buildActionButton(
-          icon: Icons.print,
+          icon: CupertinoIcons.printer,
           label: 'Print & Keep',
           isTablet: isTablet,
         ),
@@ -386,7 +408,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           vertical: isTablet ? 16.0 : 14.0,
         ),
         decoration: BoxDecoration(
-          color: Colors.blue[50],
+          color: CupertinoColors.systemBlue.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -395,14 +417,14 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             Icon(
               icon,
               size: isTablet ? 28 : 24,
-              color: Colors.blue[700],
+              color: CupertinoColors.systemBlue,
             ),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
                 fontSize: isTablet ? 12 : 10,
-                color: Colors.blue[700],
+                color: CupertinoColors.systemBlue,
                 fontWeight: FontWeight.w500,
               ),
               textAlign: TextAlign.center,
@@ -416,22 +438,22 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Widget _buildKioskNameField(bool isTablet) {
-    return TextField(
-      controller: _kioskNameController,
-      decoration: InputDecoration(
-        labelText: 'KIOSK Name',
-        hintText: 'Enter KIOSK name',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
-        contentPadding: EdgeInsets.symmetric(
+    return Container(
+      decoration: BoxDecoration(
+        color: CupertinoColors.tertiarySystemFill,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: CupertinoTextField(
+        controller: _kioskNameController,
+        placeholder: 'Enter KIOSK name',
+        padding: EdgeInsets.symmetric(
           horizontal: 16,
           vertical: isTablet ? 14 : 10,
         ),
-        isDense: true,
+        style: TextStyle(fontSize: isTablet ? 16 : 14),
+        textCapitalization: TextCapitalization.words,
+        decoration: const BoxDecoration(),
       ),
-      textCapitalization: TextCapitalization.words,
-      style: TextStyle(fontSize: isTablet ? 16 : 14),
     );
   }
 
@@ -455,14 +477,14 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                     : CupertinoColors.systemGrey,
                 width: 2.5,
               ),
-              color: viewModel.isAgreed 
+                  color: viewModel.isAgreed 
                   ? CupertinoColors.systemBlue 
-                  : Colors.transparent,
+                  : CupertinoColors.systemBackground,
             ),
             child: viewModel.isAgreed
                 ? const Icon(
-                    Icons.check,
-                    color: Colors.white,
+                    CupertinoIcons.check_mark,
+                    color: CupertinoColors.white,
                     size: 18,
                   )
                 : null,
@@ -478,7 +500,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
               text: TextSpan(
                 style: TextStyle(
                   fontSize: isTablet ? 14 : 12,
-                  color: Colors.grey[700],
+                  color: CupertinoColors.systemGrey,
                   height: 1.3,
                 ),
                 children: [
@@ -489,7 +511,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                     text: 'Terms & Conditions',
                     style: TextStyle(
                       fontSize: isTablet ? 14 : 12,
-                      color: Colors.blue[700],
+                      color: CupertinoColors.systemBlue,
                       decoration: TextDecoration.underline,
                       fontWeight: FontWeight.w500,
                     ),
@@ -515,30 +537,25 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     return SizedBox(
       width: double.infinity,
       height: isTablet ? 64.0 : 58.0,
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blue[400],
-          foregroundColor: Colors.white,
-          textStyle: TextStyle(
-            fontSize: isTablet ? 18.0 : 16.0,
-            fontWeight: FontWeight.bold,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          elevation: 2,
-        ),
+      child: CupertinoButton(
+        padding: EdgeInsets.zero,
+        color: viewModel.canSubmit 
+            ? CupertinoColors.systemBlue 
+            : CupertinoColors.systemGrey3,
+        borderRadius: BorderRadius.circular(12),
         onPressed: viewModel.canSubmit ? _handleAccept : null,
         child: viewModel.isSubmitting
-            ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: Colors.white,
-                ),
+            ? const CupertinoActivityIndicator(
+                color: CupertinoColors.white,
               )
-            : const Text('Start Your Experience'),
+            : Text(
+                'Start Your Experience',
+                style: TextStyle(
+                  fontSize: isTablet ? 18.0 : 16.0,
+                  fontWeight: FontWeight.bold,
+                  color: CupertinoColors.white,
+                ),
+              ),
       ),
     );
   }
@@ -549,9 +566,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
-          Icons.access_time,
+          CupertinoIcons.clock,
           size: isTablet ? 14 : 12,
-          color: Colors.grey[600],
+          color: CupertinoColors.systemGrey,
         ),
         const SizedBox(width: 4),
         Flexible(
@@ -559,7 +576,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             'Sessions auto-delete after 24 hours for your privacy',
             style: TextStyle(
               fontSize: isTablet ? 11 : 10,
-              color: Colors.grey[600],
+              color: CupertinoColors.systemGrey,
             ),
             textAlign: TextAlign.center,
             maxLines: 2,

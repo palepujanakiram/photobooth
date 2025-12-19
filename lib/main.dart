@@ -1,5 +1,4 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
 import 'screens/camera_selection/camera_selection_viewmodel.dart';
@@ -26,36 +25,15 @@ class PhotoBoothApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ThemeViewModel()),
         ChangeNotifierProvider(create: (_) => CameraViewModel()),
       ],
-      child: MaterialApp(
+      child: CupertinoApp(
         title: 'Photo Booth',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          primarySwatch: Colors.blue,
-          useMaterial3: true,
-          // Cupertino-style theme
-          cupertinoOverrideTheme: const CupertinoThemeData(
-            primaryColor: CupertinoColors.systemBlue,
-          ),
-          // Use Cupertino-style components
-          checkboxTheme: CheckboxThemeData(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(4),
-            ),
-            fillColor: WidgetStateProperty.resolveWith<Color?>(
-              (Set<WidgetState> states) {
-                if (states.contains(WidgetState.selected)) {
-                  return CupertinoColors.systemBlue;
-                }
-                return null;
-              },
-            ),
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
+        theme: const CupertinoThemeData(
+          primaryColor: CupertinoColors.systemBlue,
+          barBackgroundColor: CupertinoColors.white,
+          scaffoldBackgroundColor: CupertinoColors.white,
+          textTheme: CupertinoTextThemeData(
+            primaryColor: CupertinoColors.black,
           ),
         ),
         initialRoute: AppConstants.kRouteSlideshow,

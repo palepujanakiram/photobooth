@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'theme_slideshow_viewmodel.dart';
@@ -276,7 +277,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 24),
-                        ElevatedButton(
+                        CupertinoButton(
                           onPressed: () {
                             if (!mounted) return;
                             // Capture context before async operation
@@ -430,38 +431,41 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                       _buildLogo(_isTablet ? 200.0 : 160.0),
                       SizedBox(height: _isTablet ? 24.0 : 16.0),
                       // Continue button
-                      Container(
-                        margin: EdgeInsets.symmetric(
+                      Padding(
+                        padding: EdgeInsets.symmetric(
                           horizontal: _isTablet ? 32.0 : 20.0,
                         ),
-                        child: ElevatedButton(
-                          onPressed: _onTap,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white.withValues(alpha: 0.9),
-                            foregroundColor: Colors.black,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: _isTablet ? 48.0 : 32.0,
-                              vertical: _isTablet ? 18.0 : 14.0,
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: _isTablet ? 56.0 : 50.0,
+                          child: CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            color: CupertinoColors.white.withValues(alpha: 0.9),
+                            onPressed: _onTap,
+                            borderRadius: BorderRadius.circular(
+                              _isTablet ? 16.0 : 12.0,
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                _isTablet ? 16.0 : 12.0,
-                              ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Continue',
+                                  style: TextStyle(
+                                    fontSize: _isTablet ? 20.0 : 18.0,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                    color: CupertinoColors.black,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Icon(
+                                  CupertinoIcons.arrow_right,
+                                  size: 20,
+                                  color: CupertinoColors.black,
+                                ),
+                              ],
                             ),
-                            elevation: 8,
-                            textStyle: TextStyle(
-                              fontSize: _isTablet ? 20.0 : 18.0,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('Continue'),
-                              SizedBox(width: 8),
-                              Icon(Icons.arrow_forward, size: 20),
-                            ],
                           ),
                         ),
                       ),

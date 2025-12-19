@@ -1,9 +1,11 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'camera_selection_viewmodel.dart';
 import '../theme_selection/theme_selection_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/camera_card.dart';
+import '../../views/widgets/app_theme.dart';
 
 class CameraSelectionScreen extends StatefulWidget {
   const CameraSelectionScreen({super.key});
@@ -26,95 +28,97 @@ class _CameraSelectionScreenState extends State<CameraSelectionScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isTablet = screenWidth > AppConstants.kTabletBreakpoint;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Select Camera'),
-        centerTitle: true,
+    return CupertinoPageScaffold(
+      navigationBar: const AppTopBar(
+        title: 'Select Camera',
       ),
-      body: Consumer<CameraViewModel>(
-        builder: (context, viewModel, child) {
-          if (viewModel.isLoading) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
+      child: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: Consumer<CameraViewModel>(
+                builder: (context, viewModel, child) {
+                  if (viewModel.isLoading) {
+                    return const Center(
+                      child: CupertinoActivityIndicator(),
+                    );
+                  }
 
-          if (viewModel.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.error_outline,
-                    size: 64,
-                    color: Colors.red,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    viewModel.errorMessage ?? 'Unknown error',
-                    style: const TextStyle(fontSize: 16),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: () => viewModel.loadCameras(),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          }
+                  if (viewModel.hasError) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            CupertinoIcons.exclamationmark_triangle,
+                            size: 64,
+                            color: CupertinoColors.systemRed,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            viewModel.errorMessage ?? 'Unknown error',
+                            style: const TextStyle(fontSize: 16),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 24),
+                          CupertinoButton(
+                            onPressed: () => viewModel.loadCameras(),
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
 
-          if (viewModel.availableCameras.isEmpty) {
-            return const Center(
-              child: Text('No cameras available'),
-            );
-          }
+                  if (viewModel.availableCameras.isEmpty) {
+                    return const Center(
+                      child: Text('No cameras available'),
+                    );
+                  }
 
-          return ListView.builder(
-            padding: EdgeInsets.all(isTablet ? 24.0 : 16.0),
-            itemCount: viewModel.availableCameras.length,
-            itemBuilder: (context, index) {
-              final camera = viewModel.availableCameras[index];
-              final isSelected = viewModel.selectedCamera?.camera.name ==
-                  camera.camera.name;
+                  return GridView.builder(
+                    padding: EdgeInsets.all(isTablet ? 24.0 : 16.0),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 1,
+                      mainAxisSpacing: 16.0,
+                      childAspectRatio: 4.0,
+                    ),
+                    itemCount: viewModel.availableCameras.length,
+                    itemBuilder: (context, index) {
+                      final camera = viewModel.availableCameras[index];
+                      final isSelected = viewModel.selectedCamera?.camera.name ==
+                          camera.camera.name;
 
-              return CameraCard(
-                camera: camera,
-                isSelected: isSelected,
-                onTap: () {
-                  viewModel.selectCamera(camera);
+                      return CameraCard(
+                        camera: camera,
+                        isSelected: isSelected,
+                        onTap: () {
+                          viewModel.selectCamera(camera);
+                        },
+                      );
+                    },
+                  );
                 },
-              );
-            },
-          );
-        },
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Consumer2<CameraViewModel, ThemeViewModel>(
-          builder: (context, cameraViewModel, themeViewModel, child) {
-            final canProceed = cameraViewModel.selectedCamera != null &&
-                themeViewModel.selectedTheme != null;
-
-            return Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: ElevatedButton(
-                onPressed: canProceed
-                    ? () {
-                        Navigator.pushNamed(
-                          context,
-                          AppConstants.kRouteCapture,
-                        );
-                      }
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity,
-                      AppConstants.kButtonHeight),
-                ),
-                child: const Text('Continue'),
               ),
-            );
-          },
+            ),
+            Consumer2<CameraViewModel, ThemeViewModel>(
+              builder: (context, cameraViewModel, themeViewModel, child) {
+                final canProceed = cameraViewModel.selectedCamera != null &&
+                    themeViewModel.selectedTheme != null;
+
+                return AppContinueButton(
+                  onPressed: canProceed
+                      ? () {
+                          Navigator.pushNamed(
+                            context,
+                            AppConstants.kRouteCapture,
+                          );
+                        }
+                      : null,
+                );
+              },
+            ),
+          ],
         ),
       ),
     );

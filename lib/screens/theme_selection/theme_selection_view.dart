@@ -1,8 +1,10 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'theme_selection_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/theme_card.dart';
+import '../../views/widgets/app_theme.dart';
 
 class ThemeSelectionScreen extends StatefulWidget {
   const ThemeSelectionScreen({super.key});
@@ -25,44 +27,44 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isTablet = screenWidth > AppConstants.kTabletBreakpoint;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Select Theme'),
-        centerTitle: true,
+    return CupertinoPageScaffold(
+      navigationBar: const AppTopBar(
+        title: 'Select Theme',
       ),
-      body: Consumer<ThemeViewModel>(
-        builder: (context, viewModel, child) {
-          if (viewModel.isLoading) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
+      child: SafeArea(
+        child: Consumer<ThemeViewModel>(
+          builder: (context, viewModel, child) {
+            if (viewModel.isLoading) {
+              return const Center(
+                child: CupertinoActivityIndicator(),
+              );
+            }
 
-          if (viewModel.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.error_outline,
-                    size: 64,
-                    color: Colors.red,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    viewModel.errorMessage ?? 'Unknown error',
-                    style: const TextStyle(fontSize: 16),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: () => viewModel.loadThemes(),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          }
+            if (viewModel.hasError) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      CupertinoIcons.exclamationmark_triangle,
+                      size: 64,
+                      color: CupertinoColors.systemRed,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      viewModel.errorMessage ?? 'Unknown error',
+                      style: const TextStyle(fontSize: 16),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    CupertinoButton(
+                      onPressed: () => viewModel.loadThemes(),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              );
+            }
 
           if (viewModel.themes.isEmpty) {
             return const Center(
@@ -70,33 +72,34 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
             );
           }
 
-          return GridView.builder(
-            padding: EdgeInsets.all(isTablet ? 24.0 : 16.0),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: isTablet ? 3 : 2,
-              crossAxisSpacing: 16.0,
-              mainAxisSpacing: 16.0,
-              childAspectRatio: 0.8,
-            ),
-            itemCount: viewModel.themes.length,
-            itemBuilder: (context, index) {
-              final theme = viewModel.themes[index];
-              final isSelected = viewModel.selectedTheme?.id == theme.id;
+            return GridView.builder(
+              padding: EdgeInsets.all(isTablet ? 24.0 : 16.0),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: isTablet ? 3 : 2,
+                crossAxisSpacing: 16.0,
+                mainAxisSpacing: 16.0,
+                childAspectRatio: isTablet ? 0.75 : 0.7,
+              ),
+              itemCount: viewModel.themes.length,
+              itemBuilder: (context, index) {
+                final theme = viewModel.themes[index];
+                final isSelected = viewModel.selectedTheme?.id == theme.id;
 
-              return ThemeCard(
-                theme: theme,
-                isSelected: isSelected,
-                onTap: () {
-                  viewModel.selectTheme(theme);
-                  Navigator.pushNamed(
-                    context,
-                    AppConstants.kRouteCameraSelection,
-                  );
-                },
-              );
-            },
-          );
-        },
+                return ThemeCard(
+                  theme: theme,
+                  isSelected: isSelected,
+                  onTap: () {
+                    viewModel.selectTheme(theme);
+                    Navigator.pushNamed(
+                      context,
+                      AppConstants.kRouteCameraSelection,
+                    );
+                  },
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

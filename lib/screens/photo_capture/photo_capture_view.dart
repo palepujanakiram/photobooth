@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
@@ -5,6 +6,7 @@ import 'photo_capture_viewmodel.dart';
 import '../camera_selection/camera_selection_viewmodel.dart';
 import '../theme_selection/theme_selection_viewmodel.dart';
 import '../../utils/constants.dart';
+import '../../views/widgets/app_theme.dart';
 
 class PhotoCaptureScreen extends StatefulWidget {
   const PhotoCaptureScreen({super.key});
@@ -43,44 +45,44 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
       value: _captureViewModel,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Capture Photo'),
-          centerTitle: true,
+      child: CupertinoPageScaffold(
+        navigationBar: const AppTopBar(
+          title: 'Capture Photo',
         ),
-        body: Consumer<CaptureViewModel>(
-          builder: (context, viewModel, child) {
-            if (viewModel.isInitializing) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
-            }
+        child: SafeArea(
+          child: Consumer<CaptureViewModel>(
+            builder: (context, viewModel, child) {
+              if (viewModel.isInitializing) {
+                return const Center(
+                  child: CupertinoActivityIndicator(),
+                );
+              }
 
-            if (viewModel.hasError) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.error_outline,
-                      size: 64,
-                      color: Colors.red,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      viewModel.errorMessage ?? 'Unknown error',
-                      style: const TextStyle(fontSize: 16),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton(
-                      onPressed: () => _initializeCamera(),
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              );
-            }
+              if (viewModel.hasError) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        CupertinoIcons.exclamationmark_triangle,
+                        size: 64,
+                        color: CupertinoColors.systemRed,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        viewModel.errorMessage ?? 'Unknown error',
+                        style: const TextStyle(fontSize: 16),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      CupertinoButton(
+                        onPressed: () => _initializeCamera(),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                );
+              }
 
             if (!viewModel.isReady || viewModel.cameraController == null) {
               return const Center(
@@ -88,33 +90,34 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               );
             }
 
-            final bottomPadding = MediaQuery.of(context).padding.bottom;
-            return Stack(
-              children: [
-                Positioned.fill(
-                  child: CameraPreview(viewModel.cameraController!),
-                ),
-                if (viewModel.capturedPhoto != null)
+              final bottomPadding = MediaQuery.of(context).padding.bottom;
+              return Stack(
+                children: [
                   Positioned.fill(
-                    child: Container(
-                      color: Colors.black,
-                      child: Center(
-                        child: Image.file(
-                          viewModel.capturedPhoto!.imageFile,
-                          fit: BoxFit.contain,
+                    child: CameraPreview(viewModel.cameraController!),
+                  ),
+                  if (viewModel.capturedPhoto != null)
+                    Positioned.fill(
+                      child: Container(
+                        color: CupertinoColors.black,
+                        child: Center(
+                          child: Image.file(
+                            viewModel.capturedPhoto!.imageFile,
+                            fit: BoxFit.contain,
+                          ),
                         ),
                       ),
                     ),
+                  Positioned(
+                    bottom: 32 + bottomPadding,
+                    left: 0,
+                    right: 0,
+                    child: _buildCaptureControls(context, viewModel),
                   ),
-                Positioned(
-                  bottom: 32 + bottomPadding,
-                  left: 0,
-                  right: 0,
-                  child: _buildCaptureControls(context, viewModel),
-                ),
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -128,18 +131,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            ElevatedButton.icon(
+            CupertinoButton(
               onPressed: () {
                 viewModel.clearCapturedPhoto();
               },
-              icon: const Icon(Icons.close),
-              label: const Text('Retake'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
+              color: CupertinoColors.systemRed,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(CupertinoIcons.clear, size: 20),
+                  SizedBox(width: 4),
+                  Text('Retake'),
+                ],
               ),
             ),
-            ElevatedButton.icon(
+            CupertinoButton(
               onPressed: viewModel.isCapturing
                   ? null
                   : () {
@@ -153,11 +159,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                         },
                       );
                     },
-              icon: const Icon(Icons.check),
-              label: const Text('Continue'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
+              color: CupertinoColors.systemGreen,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(CupertinoIcons.check_mark, size: 20),
+                  SizedBox(width: 4),
+                  Text('Continue'),
+                ],
               ),
             ),
           ],
@@ -166,16 +175,28 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     }
 
     return Center(
-      child: FloatingActionButton.large(
+      child: CupertinoButton(
         onPressed: viewModel.isCapturing
             ? null
             : () async {
                 await viewModel.capturePhoto();
               },
-        backgroundColor: Colors.white,
-        child: viewModel.isCapturing
-            ? const CircularProgressIndicator()
-            : const Icon(Icons.camera_alt, color: Colors.black),
+        padding: EdgeInsets.zero,
+        child: Container(
+          width: 80,
+          height: 80,
+          decoration: const BoxDecoration(
+            color: CupertinoColors.white,
+            shape: BoxShape.circle,
+          ),
+          child: viewModel.isCapturing
+              ? const CupertinoActivityIndicator()
+              : const Icon(
+                  CupertinoIcons.camera,
+                  color: CupertinoColors.black,
+                  size: 40,
+                ),
+        ),
       ),
     );
   }
