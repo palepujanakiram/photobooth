@@ -33,11 +33,17 @@ class ThemeViewModel extends ChangeNotifier {
   bool get hasError => _errorMessage != null;
 
   /// Called when ThemeManager updates themes
+  /// Made public so view can call it to use cached themes immediately
   void _onThemesUpdated() {
     _themes = _themeManager.getActiveThemes();
     _isLoading = _themeManager.isLoading;
     _errorMessage = _themeManager.errorMessage;
     notifyListeners();
+  }
+
+  /// Public method to update themes from ThemeManager cache
+  void updateFromCache() {
+    _onThemesUpdated();
   }
 
   /// Loads themes using ThemeManager

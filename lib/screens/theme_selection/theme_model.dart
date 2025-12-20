@@ -7,6 +7,8 @@ class ThemeModel {
   final String? negativePrompt;
   final String? sampleImageUrl;
   final bool isActive;
+  final String? backgroundColor; // Hex color for text background (e.g., "#FF0000" or "FF0000")
+  final String? textColor; // Hex color for text (e.g., "#FFFFFF" or "FFFFFF")
 
   const ThemeModel({
     required this.id,
@@ -17,6 +19,8 @@ class ThemeModel {
     this.negativePrompt,
     this.sampleImageUrl,
     required this.isActive,
+    this.backgroundColor,
+    this.textColor,
   });
 
   /// Getter for backward compatibility with code that uses .prompt
@@ -31,6 +35,8 @@ class ThemeModel {
     String? negativePrompt,
     String? sampleImageUrl,
     bool? isActive,
+    String? backgroundColor,
+    String? textColor,
   }) {
     return ThemeModel(
       id: id ?? this.id,
@@ -41,6 +47,8 @@ class ThemeModel {
       negativePrompt: negativePrompt ?? this.negativePrompt,
       sampleImageUrl: sampleImageUrl ?? this.sampleImageUrl,
       isActive: isActive ?? this.isActive,
+      backgroundColor: backgroundColor ?? this.backgroundColor,
+      textColor: textColor ?? this.textColor,
     );
   }
 
@@ -54,6 +62,8 @@ class ThemeModel {
       'negativePrompt': negativePrompt,
       'sampleImageUrl': sampleImageUrl,
       'isActive': isActive,
+      'backgroundColor': backgroundColor,
+      'textColor': textColor,
     };
   }
 
@@ -67,6 +77,8 @@ class ThemeModel {
       negativePrompt: json['negativePrompt'] as String?,
       sampleImageUrl: json['sampleImageUrl'] as String?,
       isActive: json['isActive'] as bool,
+      backgroundColor: json['backgroundColor'] as String?,
+      textColor: json['textColor'] as String?,
     );
   }
 

@@ -30,6 +30,8 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   int _currentPage = 0;
   Timer? _carouselTimer;
   List<String> _carouselImages = [];
+  bool _isFirstImageLoaded = false;
+  bool _areAllImagesLoaded = false;
 
   @override
   void initState() {
@@ -40,9 +42,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     });
     // Initialize carousel images
     _initializeCarouselImages();
-    // Start auto-scrolling carousel after a short delay
+    // Preload images (first first, then rest)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startCarouselAutoScroll();
+      _preloadCarouselImages();
     });
   }
 
@@ -75,8 +77,70 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     super.dispose();
   }
 
-  void _startCarouselAutoScroll() {
+  /// Preloads carousel images: first image first, then rest
+  Future<void> _preloadCarouselImages() async {
     if (_carouselImages.isEmpty) return;
+
+    // Step 1: Load first image immediately
+    if (_carouselImages.isNotEmpty) {
+      try {
+        await precacheImage(
+          NetworkImage(_carouselImages[0]),
+          context,
+        ).timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            // Continue anyway
+          },
+        );
+        if (mounted) {
+          setState(() {
+            _isFirstImageLoaded = true;
+          });
+        }
+      } catch (e) {
+        // Continue anyway - image might still load when displayed
+        if (mounted) {
+          setState(() {
+            _isFirstImageLoaded = true;
+          });
+        }
+      }
+    }
+
+    // Step 2: Load remaining images in parallel
+    if (_carouselImages.length > 1) {
+      final remainingUrls = _carouselImages.sublist(1);
+      try {
+        final preloadFutures = remainingUrls.map((url) {
+          return precacheImage(
+            NetworkImage(url),
+            context,
+          ).timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              // Continue anyway
+            },
+          );
+        }).toList();
+
+        await Future.wait(preloadFutures);
+      } catch (e) {
+        // Continue anyway
+      }
+    }
+
+    // Step 3: Start auto-scroll once all images are loaded
+    if (mounted) {
+      setState(() {
+        _areAllImagesLoaded = true;
+      });
+      _startCarouselAutoScroll();
+    }
+  }
+
+  void _startCarouselAutoScroll() {
+    if (_carouselImages.isEmpty || !_areAllImagesLoaded) return;
 
     _carouselTimer?.cancel();
     _carouselTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
@@ -285,6 +349,16 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       return const SizedBox.shrink();
     }
 
+    // Show loading indicator while first image is loading
+    if (!_isFirstImageLoaded) {
+      return SizedBox(
+        height: height,
+        child: const Center(
+          child: CupertinoActivityIndicator(),
+        ),
+      );
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -296,8 +370,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
               setState(() {
                 _currentPage = index;
               });
-              // Reset timer when page changes manually
-              _startCarouselAutoScroll();
+              // Reset timer when page changes manually (only if all images loaded)
+              if (_areAllImagesLoaded) {
+                _startCarouselAutoScroll();
+              }
             },
             itemCount: _carouselImages.length,
             itemBuilder: (context, index) {

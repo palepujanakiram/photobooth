@@ -4,6 +4,7 @@ import 'theme_selection_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/theme_card.dart';
 import '../../views/widgets/app_theme.dart';
+import '../../services/theme_manager.dart';
 
 class ThemeSelectionScreen extends StatefulWidget {
   const ThemeSelectionScreen({super.key});
@@ -17,7 +18,15 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ThemeViewModel>().loadThemes();
+      final viewModel = context.read<ThemeViewModel>();
+      // Use cached themes immediately if available (faster)
+      final themeManager = ThemeManager();
+      if (themeManager.hasThemes) {
+        // Update themes from cache immediately
+        viewModel.updateFromCache();
+      }
+      // Then fetch/refresh themes
+      viewModel.loadThemes();
     });
   }
 

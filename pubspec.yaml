@@ -54,10 +54,18 @@ dev_dependencies:
   retrofit_generator: ^9.1.4
   build_runner: ^2.4.7
   json_serializable: ^6.7.1
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
 
   assets:
     - lib/images/
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "lib/images/zen_ai_logo.jpeg"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "lib/images/zen_ai_logo.jpeg"
 

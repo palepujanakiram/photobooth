@@ -32,6 +32,26 @@ class ThemeCard extends StatelessWidget {
     return '$baseUrl$relativePath';
   }
 
+  /// Parses hex color string to Color
+  /// Supports formats: "#RRGGBB", "RRGGBB", "#AARRGGBB", "AARRGGBB"
+  Color? _parseColor(String? hexColor) {
+    if (hexColor == null || hexColor.isEmpty) return null;
+    
+    final String hex = hexColor.replaceAll('#', '');
+    
+    // Handle 6-digit hex (RRGGBB)
+    if (hex.length == 6) {
+      return Color(int.parse('FF$hex', radix: 16));
+    }
+    
+    // Handle 8-digit hex (AARRGGBB)
+    if (hex.length == 8) {
+      return Color(int.parse(hex, radix: 16));
+    }
+    
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final imageUrl = _getImageUrl();
@@ -99,31 +119,14 @@ class ThemeCard extends StatelessWidget {
                       ),
                     ),
                   ),
-            // Gradient overlay at bottom for text readability
+            // Background color overlay at bottom for text
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
               child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: 0.7),
-                      Colors.black.withValues(alpha: 0.9),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            // Name and description overlay at bottom
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Padding(
+                color: _parseColor(theme.backgroundColor) ?? 
+                    Colors.black.withValues(alpha: 0.8),
                 padding: const EdgeInsets.all(12.0),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -136,14 +139,7 @@ class ThemeCard extends StatelessWidget {
                         fontWeight: isSelected 
                             ? FontWeight.bold 
                             : FontWeight.w600,
-                        color: Colors.white,
-                        shadows: [
-                          Shadow(
-                            offset: const Offset(0, 1),
-                            blurRadius: 3,
-                            color: Colors.black.withValues(alpha: 0.8),
-                          ),
-                        ],
+                        color: _parseColor(theme.textColor) ?? Colors.white,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -153,14 +149,8 @@ class ThemeCard extends StatelessWidget {
                       theme.description,
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.9),
-                        shadows: [
-                          Shadow(
-                            offset: const Offset(0, 1),
-                            blurRadius: 3,
-                            color: Colors.black.withValues(alpha: 0.8),
-                          ),
-                        ],
+                        color: (_parseColor(theme.textColor) ?? Colors.white)
+                            .withValues(alpha: 0.9),
                       ),
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,

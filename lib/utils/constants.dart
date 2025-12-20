@@ -14,6 +14,7 @@ class AppConstants {
   static const double kButtonHeight = 48.0;
   static const double kTabletBreakpoint = 600.0;
   static const double kTouchTargetSize = 48.0;
+  static const String kContinueButtonText = 'Continue';
 
   // Routes
   static const String kRouteSlideshow = '/';

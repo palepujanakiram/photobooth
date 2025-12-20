@@ -67,27 +67,41 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
     _viewModel = ThemeSlideshowViewModel();
     // Capture context before async operation
     final currentContext = context;
+    
+    // Listen to ViewModel changes to start slideshow when all images are loaded
+    _viewModel.addListener(_onViewModelChanged);
+    
     _viewModel.fetchThemes().then((_) {
       if (mounted && currentContext.mounted) {
-        // Preload images before starting slideshow
-        _viewModel.preloadImages(currentContext).then((_) {
-          if (mounted) {
-            _startSlideshow();
-          }
-        });
+        final imageUrls = _viewModel.getSampleImageUrls();
+        if (imageUrls.isNotEmpty) {
+          // Start preloading images (first image first, then rest)
+          _viewModel.preloadImages(currentContext);
+        }
       }
     });
+  }
+
+  void _onViewModelChanged() {
+    // Start slideshow animation when all images are loaded
+    if (_viewModel.areAllImagesLoaded && _timer == null) {
+      _startSlideshow();
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _viewModel.removeListener(_onViewModelChanged);
     _viewModel.dispose();
     super.dispose();
   }
 
   void _startSlideshow() {
-    final imageUrls = _viewModel.preloadedImageUrls;
+    // Use preloaded image URLs
+    final imageUrls = _viewModel.preloadedImageUrls.isNotEmpty
+        ? _viewModel.preloadedImageUrls
+        : _viewModel.getSampleImageUrls();
     if (imageUrls.isEmpty) return;
 
     // Set initial random transition
@@ -96,13 +110,26 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
     // Cancel any existing timer
     _timer?.cancel();
 
+    // Only start animation timer if all images are loaded
+    if (!_viewModel.areAllImagesLoaded) {
+      return;
+    }
+
     _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
       if (!mounted) {
         timer.cancel();
         return;
       }
 
-      final imageUrls = _viewModel.preloadedImageUrls;
+      // Check if all images are still loaded
+      if (!_viewModel.areAllImagesLoaded) {
+        timer.cancel();
+        return;
+      }
+
+      final imageUrls = _viewModel.preloadedImageUrls.isNotEmpty
+          ? _viewModel.preloadedImageUrls
+          : _viewModel.getSampleImageUrls();
       if (imageUrls.isEmpty) {
         timer.cancel();
         return;
@@ -212,7 +239,10 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
   }
 
   void _onTap() {
-    final imageUrls = _viewModel.preloadedImageUrls;
+    // Use image URLs from themes, prefer preloaded if available
+    final imageUrls = _viewModel.preloadedImageUrls.isNotEmpty
+        ? _viewModel.preloadedImageUrls
+        : _viewModel.getSampleImageUrls();
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -324,29 +354,27 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
               );
             }
 
-            // Show loader while preloading images
-            if (viewModel.isPreloadingImages) {
+            // Get image URLs
+            final imageUrls = viewModel.getSampleImageUrls();
+            if (imageUrls.isEmpty) {
+              return const Center(
+                child: Text(
+                  'No images available',
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
+              );
+            }
+
+            // Show first image immediately if loaded, otherwise show loading
+            if (!viewModel.isFirstImageLoaded) {
               return Stack(
                 children: [
                   const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(
-                          color: Colors.white,
-                        ),
-                        SizedBox(height: 16),
-                        Text(
-                          'Loading images...',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
                     ),
                   ),
-                  // Logo at bottom during preloading
+                  // Logo at bottom during loading
                   Positioned(
                     bottom: 0,
                     left: 0,
@@ -366,15 +394,10 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
               );
             }
 
-            final imageUrls = viewModel.preloadedImageUrls;
-            if (imageUrls.isEmpty) {
-              return const Center(
-                child: Text(
-                  'No images available',
-                  style: TextStyle(color: Colors.white, fontSize: 16),
-                ),
-              );
-            }
+            // Use preloaded URLs if available, otherwise use all URLs
+            final displayUrls = viewModel.preloadedImageUrls.isNotEmpty
+                ? viewModel.preloadedImageUrls
+                : imageUrls;
 
             return Stack(
               children: [
@@ -382,9 +405,16 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                 GestureDetector(
                   onTap: _onTap,
                   child: AnimatedSwitcher(
-                    duration: TransitionSelector.getTransitionDuration(_isTablet),
+                    // Only animate if all images are loaded, otherwise just show first image
+                    duration: viewModel.areAllImagesLoaded
+                        ? TransitionSelector.getTransitionDuration(_isTablet)
+                        : Duration.zero,
                     transitionBuilder: (Widget child, Animation<double> animation) {
-                      return _buildTransition(child, animation);
+                      // Only show transitions if all images are loaded
+                      if (viewModel.areAllImagesLoaded) {
+                        return _buildTransition(child, animation);
+                      }
+                      return child; // No transition, just show the image
                     },
                     child: Container(
                       key: ValueKey<int>(_currentIndex),
@@ -394,7 +424,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                         color: Colors.black,
                       ),
                       child: Image.network(
-                        imageUrls[_currentIndex],
+                        displayUrls[_currentIndex % displayUrls.length],
                         fit: BoxFit.cover,
                         loadingBuilder: (context, child, loadingProgress) {
                           if (loadingProgress == null) return child;
@@ -471,26 +501,14 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                               borderRadius: BorderRadius.circular(
                                 _isTablet ? 16.0 : 12.0,
                               ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'Continue',
-                                    style: TextStyle(
-                                      fontSize: _isTablet ? 20.0 : 18.0,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 0.5,
-                                      color: CupertinoColors.black,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Icon(
-                                    CupertinoIcons.chevron_right,
-                                    size: 20,
-                                    color: CupertinoColors.black,
-                                  ),
-                                ],
+                              child: Text(
+                                AppConstants.kContinueButtonText,
+                                style: TextStyle(
+                                  fontSize: _isTablet ? 20.0 : 18.0,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                  color: CupertinoColors.black,
+                                ),
                               ),
                             ),
                           ),
