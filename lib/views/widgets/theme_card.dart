@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import '../../screens/theme_selection/theme_model.dart';
 import '../../utils/app_config.dart';
+import 'cached_network_image.dart';
 
 class ThemeCard extends StatelessWidget {
   final ThemeModel theme;
@@ -76,38 +77,29 @@ class ThemeCard extends StatelessWidget {
           children: [
             // Image fills the complete box
             imageUrl.isNotEmpty
-                ? Image.network(
-                    imageUrl,
+                ? CachedNetworkImage(
+                    imageUrl: imageUrl,
                     fit: BoxFit.cover,
                     width: double.infinity,
                     height: double.infinity,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Container(
-                        color: Colors.grey[200],
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded /
-                                    loadingProgress.expectedTotalBytes!
-                                : null,
-                            color: CupertinoColors.systemBlue,
-                          ),
+                    placeholder: Container(
+                      color: Colors.grey[200],
+                      child: const Center(
+                        child: CircularProgressIndicator(
+                          color: CupertinoColors.systemBlue,
                         ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: Colors.grey[200],
-                        child: const Center(
-                          child: Icon(
-                            Icons.image_not_supported,
-                            size: 48,
-                            color: Colors.grey,
-                          ),
+                      ),
+                    ),
+                    errorWidget: Container(
+                      color: Colors.grey[200],
+                      child: const Center(
+                        child: Icon(
+                          Icons.image_not_supported,
+                          size: 48,
+                          color: Colors.grey,
                         ),
-                      );
-                    },
+                      ),
+                    ),
                   )
                 : Container(
                     color: Colors.grey[200],

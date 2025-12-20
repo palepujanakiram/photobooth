@@ -394,26 +394,25 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                       color: CupertinoColors.systemBackground,
                       child: const Center(
                         child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                CupertinoIcons.photo,
-                                size: 48,
-                                color: CupertinoColors.systemGrey2,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              CupertinoIcons.photo,
+                              size: 48,
+                              color: CupertinoColors.systemGrey2,
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Image unavailable',
+                              style: TextStyle(
+                                color: CupertinoColors.systemGrey,
+                                fontSize: 12,
                               ),
-                              SizedBox(height: 8),
-                              Text(
-                                'Image unavailable',
-                                style: TextStyle(
-                                  color: CupertinoColors.systemGrey,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      );
-                    },
+                      ),
+                    ),
                   ),
                 ),
               );

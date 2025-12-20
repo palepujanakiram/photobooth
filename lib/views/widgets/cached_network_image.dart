@@ -56,7 +56,7 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
     });
 
     try {
-      // Try to get cached file first
+      // Try to get cached file first (fast check)
       final cachedFile = await _cacheService.getCachedFile(widget.imageUrl);
       
       if (cachedFile != null && await cachedFile.exists()) {
@@ -69,20 +69,31 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
         return;
       }
 
-      // If not cached, download and cache in background
-      // Show network image immediately while caching
+      // If not cached, show network image immediately
+      // Cache in background for next time (non-blocking)
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
       }
 
-      // Cache in background for next time
-      _cacheService.cacheImage(widget.imageUrl);
+      // Cache in background - don't block UI
+      _cacheService.cacheImage(widget.imageUrl).then((cachedFile) {
+        // If caching succeeded and we got a file, update state
+        if (mounted && cachedFile != null && cachedFile.existsSync()) {
+          setState(() {
+            _cachedFile = cachedFile;
+          });
+        }
+      }).catchError((e) {
+        // Silently fail - network image will be shown
+        debugPrint('Background cache failed for ${widget.imageUrl}: $e');
+      });
     } catch (e) {
+      debugPrint('Error loading cached image: $e');
       if (mounted) {
         setState(() {
-          _hasError = true;
+          _hasError = false; // Don't show error, just use network
           _isLoading = false;
         });
       }

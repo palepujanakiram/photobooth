@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -29,12 +30,21 @@ class ImageCacheService {
   }
 
   /// Get cache file path for a given image URL
+  /// Normalizes the URL to ensure consistent caching
   Future<String> _getCacheFilePath(String imageUrl) async {
     await _ensureCacheDir();
     
-    // Create a safe filename from URL (hash the URL)
+    // Normalize URL: remove query parameters, fragments, and normalize path
     final uri = Uri.parse(imageUrl);
-    final urlHash = imageUrl.hashCode.toRadixString(36);
+    final normalizedUrl = '${uri.scheme}://${uri.host}${uri.path}';
+    
+    // Create a safe filename from normalized URL
+    final bytes = utf8.encode(normalizedUrl);
+    final hash = bytes.fold<int>(0, (prev, byte) => prev + byte);
+    // Use a combination of hash and normalized URL length for better uniqueness
+    final urlHash = '${hash.toRadixString(36)}_${normalizedUrl.length}';
+    
+    // Get extension from URL path or default to jpg
     final extension = path.extension(uri.path).isEmpty 
         ? '.jpg' 
         : path.extension(uri.path);
