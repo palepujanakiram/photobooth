@@ -10,7 +10,7 @@ import 'webview_screen.dart';
 
 class TermsAndConditionsScreen extends StatefulWidget {
   final List<String>? carouselImages;
-  
+
   const TermsAndConditionsScreen({
     super.key,
     this.carouselImages,
@@ -128,12 +128,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     final isTablet = screenWidth > AppConstants.kTabletBreakpoint;
-    
+
     // Calculate responsive spacing based on screen height
-    final availableHeight = screenHeight - 
-        MediaQuery.of(context).padding.top - 
+    final availableHeight = screenHeight -
+        MediaQuery.of(context).padding.top -
         MediaQuery.of(context).padding.bottom;
-    
+
     // Adjust spacing based on device type and available height
     final double logoSpacing = isTablet ? 12.0 : 8.0;
     final double carouselSpacing = isTablet ? 16.0 : 12.0;
@@ -142,13 +142,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     final double kioskFieldSpacing = isTablet ? 16.0 : 12.0;
     final double checkboxSpacing = isTablet ? 16.0 : 12.0;
     final double buttonSpacing = isTablet ? 12.0 : 8.0;
-    final double privacyNoteSpacing = isTablet ? 8.0 : 4.0;
-    
+
     // Adjust carousel height based on available space - increased size
-    final double carouselHeight = isTablet 
+    final double carouselHeight = isTablet
         ? (availableHeight * 0.30).clamp(250.0, 350.0)
         : (availableHeight * 0.28).clamp(180.0, 250.0);
-    
+
     // Adjust logo size - tripled for better visibility
     final double logoSize = isTablet ? 240.0 : 180.0;
     final double logoIconSize = isTablet ? 40.0 : 30.0;
@@ -176,38 +175,40 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.center,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                        // Logo Section
-                        _buildLogo(logoSize, logoIconSize),
-                        SizedBox(height: logoSpacing),
-                        // Image Carousel
-                        _buildImageCarousel(isTablet, carouselHeight),
-                        SizedBox(height: carouselSpacing),
-                        // Tagline
-                        Text(
-                          'Snap. Transform. Take Home Magic.',
-                          style: TextStyle(
-                            fontSize: isTablet ? 18.0 : 14.0,
-                            color: CupertinoColors.systemGrey,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        SizedBox(height: taglineSpacing),
-                        // Action Buttons
-                        _buildActionButtons(isTablet),
-                        SizedBox(height: actionButtonsSpacing),
-                        // KIOSK Name Field
-                        _buildKioskNameField(isTablet),
-                        SizedBox(height: kioskFieldSpacing),
-                        // Checkbox
-                        _buildCheckbox(viewModel, isTablet),
-                        SizedBox(height: checkboxSpacing),
-                        // Start Your Experience Button
-                        _buildStartButton(viewModel, isTablet),
-                        SizedBox(height: buttonSpacing),
+                            // Logo Section
+                            _buildLogo(logoSize, logoIconSize),
+                            SizedBox(height: logoSpacing),
+                            // Image Carousel
+                            _buildImageCarousel(isTablet, carouselHeight),
+                            SizedBox(height: carouselSpacing),
+                            // Tagline
+                            Text(
+                              'Snap. Transform. Take Home Magic.',
+                              style: TextStyle(
+                                fontSize: isTablet ? 18.0 : 14.0,
+                                color: CupertinoColors.systemGrey,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            SizedBox(height: taglineSpacing),
+                            // Action Buttons
+                            _buildActionButtons(isTablet),
+                            SizedBox(height: actionButtonsSpacing),
+                            // KIOSK Name Field
+                            _buildKioskNameField(isTablet),
+                            SizedBox(height: kioskFieldSpacing),
+                            // Checkbox
+                            _buildCheckbox(viewModel, isTablet),
+                            SizedBox(height: checkboxSpacing),
+                            // Start Your Experience Button
+                            _buildStartButton(viewModel, isTablet),
+                            SizedBox(height: buttonSpacing),
                             // Privacy Note
                             _buildPrivacyNote(isTablet),
-                            SizedBox(height: privacyNoteSpacing),
+                            // Add bottom padding to ensure content is above system bar
+                            SizedBox(
+                                height: MediaQuery.of(context).padding.bottom),
                           ],
                         );
                       },
@@ -257,13 +258,14 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
 
   Widget _buildImageCarousel(bool isTablet, double height) {
     // Use theme images if provided, otherwise use default images
-    final List<String> carouselImages = widget.carouselImages ?? [
-      'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&h=600&fit=crop',
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&h=600&fit=crop',
-      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800&h=600&fit=crop',
-      'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=800&h=600&fit=crop',
-    ];
-    
+    final List<String> carouselImages = widget.carouselImages ??
+        [
+          'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&h=600&fit=crop',
+          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&h=600&fit=crop',
+          'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800&h=600&fit=crop',
+          'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=800&h=600&fit=crop',
+        ];
+
     if (carouselImages.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -296,13 +298,13 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                     ),
                   ],
                 ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      carouselImages[index],
-                      width: double.infinity,
-                      height: double.infinity,
-                      fit: BoxFit.contain,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    carouselImages[index],
+                    width: double.infinity,
+                    height: double.infinity,
+                    fit: BoxFit.contain,
                     loadingBuilder: (context, child, loadingProgress) {
                       if (loadingProgress == null) return child;
                       return Container(
@@ -321,7 +323,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                     errorBuilder: (context, error, stackTrace) {
                       return Container(
                         color: CupertinoColors.systemBackground,
-                        child: Center(
+                        child: const Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -330,7 +332,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                                 size: 48,
                                 color: CupertinoColors.systemGrey2,
                               ),
-                              const SizedBox(height: 8),
+                              SizedBox(height: 8),
                               Text(
                                 'Image unavailable',
                                 style: TextStyle(
@@ -472,13 +474,13 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
-                color: viewModel.isAgreed 
-                    ? CupertinoColors.systemBlue 
+                color: viewModel.isAgreed
+                    ? CupertinoColors.systemBlue
                     : CupertinoColors.systemGrey,
                 width: 2.5,
               ),
-                  color: viewModel.isAgreed 
-                  ? CupertinoColors.systemBlue 
+              color: viewModel.isAgreed
+                  ? CupertinoColors.systemBlue
                   : CupertinoColors.systemBackground,
             ),
             child: viewModel.isAgreed
@@ -539,8 +541,8 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       height: isTablet ? 64.0 : 58.0,
       child: CupertinoButton(
         padding: EdgeInsets.zero,
-        color: viewModel.canSubmit 
-            ? CupertinoColors.systemBlue 
+        color: viewModel.canSubmit
+            ? CupertinoColors.systemBlue
             : CupertinoColors.systemGrey3,
         borderRadius: BorderRadius.circular(12),
         onPressed: viewModel.canSubmit ? _handleAccept : null,

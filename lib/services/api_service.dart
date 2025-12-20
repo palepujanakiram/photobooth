@@ -109,9 +109,12 @@ class ApiService {
   }
 
   /// Fetches available themes from the API
+  /// Returns only themes where isActive is true
   Future<List<ThemeModel>> getThemes() async {
     try {
-      return await _apiClient.getThemes();
+      final themes = await _apiClient.getThemes();
+      // Filter themes where isActive is true
+      return themes.where((theme) => theme.isActive == true).toList();
     } on DioException catch (e) {
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout ||

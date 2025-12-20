@@ -244,11 +244,18 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                   ),
                   // Logo at bottom during loading
                   Positioned(
-                    bottom: _isTablet ? 40.0 : 24.0,
+                    bottom: 0,
                     left: 0,
                     right: 0,
-                    child: Center(
-                      child: _buildLogo(_isTablet ? 200.0 : 160.0),
+                    child: SafeArea(
+                      top: false,
+                      bottom: true,
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: _isTablet ? 40.0 : 24.0),
+                        child: Center(
+                          child: _buildLogo(_isTablet ? 200.0 : 160.0),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -299,11 +306,18 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                   ),
                   // Logo at bottom during error
                   Positioned(
-                    bottom: _isTablet ? 40.0 : 24.0,
+                    bottom: 0,
                     left: 0,
                     right: 0,
-                    child: Center(
-                      child: _buildLogo(_isTablet ? 200.0 : 160.0),
+                    child: SafeArea(
+                      top: false,
+                      bottom: true,
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: _isTablet ? 40.0 : 24.0),
+                        child: Center(
+                          child: _buildLogo(_isTablet ? 200.0 : 160.0),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -334,11 +348,18 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                   ),
                   // Logo at bottom during preloading
                   Positioned(
-                    bottom: _isTablet ? 40.0 : 24.0,
+                    bottom: 0,
                     left: 0,
                     right: 0,
-                    child: Center(
-                      child: _buildLogo(_isTablet ? 200.0 : 160.0),
+                    child: SafeArea(
+                      top: false,
+                      bottom: true,
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: _isTablet ? 40.0 : 24.0),
+                        child: Center(
+                          child: _buildLogo(_isTablet ? 200.0 : 160.0),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -421,55 +442,61 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                 ),
                 // Logo and Continue button overlay
                 Positioned(
-                  bottom: _isTablet ? 40.0 : 24.0,
+                  bottom: 0,
                   left: 0,
                   right: 0,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Logo above continue button (same size as loading state)
-                      _buildLogo(_isTablet ? 200.0 : 160.0),
-                      SizedBox(height: _isTablet ? 24.0 : 16.0),
-                      // Continue button
-                      Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: _isTablet ? 32.0 : 20.0,
-                        ),
-                        child: SizedBox(
-                          width: double.infinity,
-                          height: _isTablet ? 56.0 : 50.0,
-                          child: CupertinoButton(
-                            padding: EdgeInsets.zero,
-                            color: CupertinoColors.white.withValues(alpha: 0.9),
-                            onPressed: _onTap,
-                            borderRadius: BorderRadius.circular(
-                              _isTablet ? 16.0 : 12.0,
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Continue',
-                                  style: TextStyle(
-                                    fontSize: _isTablet ? 20.0 : 18.0,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 0.5,
+                  child: SafeArea(
+                    top: false,
+                    bottom: true,
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        bottom: _isTablet ? 24.0 : 16.0,
+                        left: _isTablet ? 32.0 : 20.0,
+                        right: _isTablet ? 32.0 : 20.0,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Logo above continue button (same size as loading state)
+                          _buildLogo(_isTablet ? 200.0 : 160.0),
+                          SizedBox(height: _isTablet ? 24.0 : 16.0),
+                          // Continue button
+                          SizedBox(
+                            width: double.infinity,
+                            height: _isTablet ? 56.0 : 50.0,
+                            child: CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              color: CupertinoColors.white.withValues(alpha: 0.9),
+                              onPressed: _onTap,
+                              borderRadius: BorderRadius.circular(
+                                _isTablet ? 16.0 : 12.0,
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Continue',
+                                    style: TextStyle(
+                                      fontSize: _isTablet ? 20.0 : 18.0,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
+                                      color: CupertinoColors.black,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Icon(
+                                    CupertinoIcons.chevron_right,
+                                    size: 20,
                                     color: CupertinoColors.black,
                                   ),
-                                ),
-                                const SizedBox(width: 8),
-                                const Icon(
-                                  CupertinoIcons.chevron_right,
-                                  size: 20,
-                                  color: CupertinoColors.black,
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ],

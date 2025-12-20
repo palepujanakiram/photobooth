@@ -69,59 +69,62 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                       ),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        Text(
-                          'Theme: ${viewModel.theme?.name ?? "Unknown"}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          viewModel.theme?.description ?? '',
-                          style: const TextStyle(fontSize: 14),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 24),
-                        if (viewModel.hasError)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 16.0),
-                            child: Text(
-                              viewModel.errorMessage ?? 'Unknown error',
-                              style: const TextStyle(
-                                color: CupertinoColors.systemRed,
-                                fontSize: 14,
-                              ),
-                              textAlign: TextAlign.center,
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          Text(
+                            'Theme: ${viewModel.theme?.name ?? "Unknown"}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                        AppButtonWithIcon(
-                          text: 'Transform Photo',
-                          icon: CupertinoIcons.star_fill,
-                          onPressed: viewModel.isTransforming
-                              ? null
-                              : () async {
-                                  final transformedImage =
-                                      await viewModel.transformPhoto();
-                                  if (transformedImage != null &&
-                                      mounted &&
-                                      context.mounted) {
-                                    Navigator.pushNamed(
-                                      context,
-                                      AppConstants.kRouteResult,
-                                      arguments: {
-                                        'transformedImage': transformedImage,
-                                      },
-                                    );
-                                  }
-                                },
-                          isLoading: viewModel.isTransforming,
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          Text(
+                            viewModel.theme?.description ?? '',
+                            style: const TextStyle(fontSize: 14),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 24),
+                          if (viewModel.hasError)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 16.0),
+                              child: Text(
+                                viewModel.errorMessage ?? 'Unknown error',
+                                style: const TextStyle(
+                                  color: CupertinoColors.systemRed,
+                                  fontSize: 14,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          AppButtonWithIcon(
+                            text: 'Transform Photo',
+                            icon: CupertinoIcons.star_fill,
+                            onPressed: viewModel.isTransforming
+                                ? null
+                                : () async {
+                                    final transformedImage =
+                                        await viewModel.transformPhoto();
+                                    if (transformedImage != null &&
+                                        mounted &&
+                                        context.mounted) {
+                                      Navigator.pushNamed(
+                                        context,
+                                        AppConstants.kRouteResult,
+                                        arguments: {
+                                          'transformedImage': transformedImage,
+                                        },
+                                      );
+                                    }
+                                  },
+                            isLoading: viewModel.isTransforming,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],

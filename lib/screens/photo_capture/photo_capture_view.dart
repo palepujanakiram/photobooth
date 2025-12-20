@@ -1,5 +1,4 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
 import 'photo_capture_viewmodel.dart';
@@ -84,13 +83,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                 );
               }
 
-            if (!viewModel.isReady || viewModel.cameraController == null) {
-              return const Center(
-                child: Text('Camera not ready'),
-              );
-            }
+              if (!viewModel.isReady || viewModel.cameraController == null) {
+                return const Center(
+                  child: Text('Camera not ready'),
+                );
+              }
 
-              final bottomPadding = MediaQuery.of(context).padding.bottom;
               return Stack(
                 children: [
                   Positioned.fill(
@@ -109,10 +107,17 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                       ),
                     ),
                   Positioned(
-                    bottom: 32 + bottomPadding,
+                    bottom: 0,
                     left: 0,
                     right: 0,
-                    child: _buildCaptureControls(context, viewModel),
+                    child: SafeArea(
+                      top: false,
+                      bottom: true,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 32.0),
+                        child: _buildCaptureControls(context, viewModel),
+                      ),
+                    ),
                   ),
                 ],
               );
@@ -201,4 +206,3 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 }
-

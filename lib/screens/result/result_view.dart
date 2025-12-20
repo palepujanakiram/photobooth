@@ -149,44 +149,47 @@ class _ResultScreenState extends State<ResultScreen> {
                         textAlign: TextAlign.center,
                       ),
                     ),
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        AppButtonWithIcon(
-                          text: 'Print',
-                          icon: CupertinoIcons.printer_fill,
-                          onPressed: viewModel.isPrinting
-                              ? null
-                              : () async {
-                                  await viewModel.printImage();
-                                },
-                          isLoading: viewModel.isPrinting,
-                        ),
-                        const SizedBox(height: 12),
-                        AppButtonWithIcon(
-                          text: 'Share via WhatsApp',
-                          icon: CupertinoIcons.share,
-                          onPressed: viewModel.isSharing
-                              ? null
-                              : () async {
-                                  await viewModel.shareViaWhatsApp();
-                                },
-                          isLoading: viewModel.isSharing,
-                        ),
-                        const SizedBox(height: 12),
-                        AppOutlinedButton(
-                          text: 'Start Over',
-                          icon: CupertinoIcons.house_fill,
-                          onPressed: () {
-                            Navigator.pushNamedAndRemoveUntil(
-                              context,
-                              AppConstants.kRouteHome,
-                              (route) => false,
-                            );
-                          },
-                        ),
-                      ],
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          AppButtonWithIcon(
+                            text: 'Print',
+                            icon: CupertinoIcons.printer_fill,
+                            onPressed: viewModel.isPrinting
+                                ? null
+                                : () async {
+                                    await viewModel.printImage();
+                                  },
+                            isLoading: viewModel.isPrinting,
+                          ),
+                          const SizedBox(height: 12),
+                          AppButtonWithIcon(
+                            text: 'Share via WhatsApp',
+                            icon: CupertinoIcons.share,
+                            onPressed: viewModel.isSharing
+                                ? null
+                                : () async {
+                                    await viewModel.shareViaWhatsApp();
+                                  },
+                            isLoading: viewModel.isSharing,
+                          ),
+                          const SizedBox(height: 12),
+                          AppOutlinedButton(
+                            text: 'Start Over',
+                            icon: CupertinoIcons.house_fill,
+                            onPressed: () {
+                              Navigator.pushNamedAndRemoveUntil(
+                                context,
+                                AppConstants.kRouteHome,
+                                (route) => false,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],

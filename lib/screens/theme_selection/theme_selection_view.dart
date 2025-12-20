@@ -1,5 +1,4 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'theme_selection_viewmodel.dart';
 import '../../utils/constants.dart';
@@ -66,11 +65,11 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
               );
             }
 
-          if (viewModel.themes.isEmpty) {
-            return const Center(
-              child: Text('No themes available'),
-            );
-          }
+            if (viewModel.themes.isEmpty) {
+              return const Center(
+                child: Text('No themes available'),
+              );
+            }
 
             return GridView.builder(
               padding: EdgeInsets.all(isTablet ? 24.0 : 16.0),
@@ -104,4 +103,3 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     );
   }
 }
-

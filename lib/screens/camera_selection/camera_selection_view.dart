@@ -1,5 +1,4 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'camera_selection_viewmodel.dart';
 import '../theme_selection/theme_selection_viewmodel.dart';
@@ -78,7 +77,8 @@ class _CameraSelectionScreenState extends State<CameraSelectionScreen> {
 
                   return GridView.builder(
                     padding: EdgeInsets.all(isTablet ? 24.0 : 16.0),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 1,
                       mainAxisSpacing: 16.0,
                       childAspectRatio: 4.0,
@@ -86,8 +86,9 @@ class _CameraSelectionScreenState extends State<CameraSelectionScreen> {
                     itemCount: viewModel.availableCameras.length,
                     itemBuilder: (context, index) {
                       final camera = viewModel.availableCameras[index];
-                      final isSelected = viewModel.selectedCamera?.camera.name ==
-                          camera.camera.name;
+                      final isSelected =
+                          viewModel.selectedCamera?.camera.name ==
+                              camera.camera.name;
 
                       return CameraCard(
                         camera: camera,
@@ -124,4 +125,3 @@ class _CameraSelectionScreenState extends State<CameraSelectionScreen> {
     );
   }
 }
-
