@@ -1,17 +1,30 @@
 import 'package:flutter/foundation.dart';
 import 'theme_model.dart';
-import '../../services/api_service.dart';
+import '../../services/theme_manager.dart';
 import '../../utils/exceptions.dart';
 
 class ThemeViewModel extends ChangeNotifier {
-  final ApiService _apiService;
+  final ThemeManager _themeManager;
   List<ThemeModel> _themes = [];
   ThemeModel? _selectedTheme;
   bool _isLoading = false;
   String? _errorMessage;
+  VoidCallback? _themeManagerListener;
 
-  ThemeViewModel({ApiService? apiService})
-      : _apiService = apiService ?? ApiService();
+  ThemeViewModel({ThemeManager? themeManager})
+      : _themeManager = themeManager ?? ThemeManager() {
+    // Listen to ThemeManager updates
+    _themeManagerListener = _themeManager.addListener(_onThemesUpdated);
+  }
+
+  @override
+  void dispose() {
+    // Remove listener when ViewModel is disposed
+    if (_themeManagerListener != null) {
+      _themeManager.removeListener(_themeManagerListener!);
+    }
+    super.dispose();
+  }
 
   List<ThemeModel> get themes => _themes;
   ThemeModel? get selectedTheme => _selectedTheme;
@@ -19,26 +32,46 @@ class ThemeViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
 
-  /// Loads themes from the API
-  Future<void> loadThemes() async {
+  /// Called when ThemeManager updates themes
+  void _onThemesUpdated() {
+    _themes = _themeManager.getActiveThemes();
+    _isLoading = _themeManager.isLoading;
+    _errorMessage = _themeManager.errorMessage;
+    notifyListeners();
+  }
+
+  /// Loads themes using ThemeManager
+  /// [forceRefresh] - If true, forces a fresh fetch from API
+  Future<void> loadThemes({bool forceRefresh = false}) async {
     _setLoading(true);
     _errorMessage = null;
+    notifyListeners();
 
     try {
-      final themes = await _apiService.getThemes();
-      // Filter only active themes
-      _themes = themes.where((theme) => theme.isActive).toList();
-      notifyListeners();
+      // Fetch themes from ThemeManager (will use cache if available)
+      await _themeManager.fetchThemes(forceRefresh: forceRefresh);
+      // Update local state from ThemeManager
+      _onThemesUpdated();
     } on ApiException catch (e) {
       _errorMessage = e.message;
-      // Fallback to mock themes only if API fails
-      _themes = _getMockThemes();
-      notifyListeners();
+      // If ThemeManager has cached themes, use them
+      if (_themeManager.hasThemes) {
+        _onThemesUpdated();
+      } else {
+        // Fallback to mock themes only if API fails and no cache
+        _themes = _getMockThemes();
+        notifyListeners();
+      }
     } catch (e) {
       _errorMessage = 'Failed to load themes: $e';
-      // Fallback to mock themes for development
-      _themes = _getMockThemes();
-      notifyListeners();
+      // If ThemeManager has cached themes, use them
+      if (_themeManager.hasThemes) {
+        _onThemesUpdated();
+      } else {
+        // Fallback to mock themes for development
+        _themes = _getMockThemes();
+        notifyListeners();
+      }
     } finally {
       _setLoading(false);
     }

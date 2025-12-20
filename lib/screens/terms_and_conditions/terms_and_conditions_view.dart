@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'terms_and_conditions_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../utils/app_config.dart';
+import '../../services/theme_manager.dart';
 import 'webview_screen.dart';
 
 class TermsAndConditionsScreen extends StatefulWidget {
@@ -25,8 +26,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   late TermsAndConditionsViewModel _viewModel;
   final TextEditingController _kioskNameController = TextEditingController();
   final PageController _pageController = PageController();
+  final ThemeManager _themeManager = ThemeManager();
   int _currentPage = 0;
   Timer? _carouselTimer;
+  List<String> _carouselImages = [];
 
   @override
   void initState() {
@@ -35,10 +38,32 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     _kioskNameController.addListener(() {
       _viewModel.updateKioskName(_kioskNameController.text);
     });
+    // Initialize carousel images
+    _initializeCarouselImages();
     // Start auto-scrolling carousel after a short delay
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startCarouselAutoScroll();
     });
+  }
+
+  /// Initializes carousel images from provided parameter or ThemeManager
+  void _initializeCarouselImages() {
+    if (widget.carouselImages != null && widget.carouselImages!.isNotEmpty) {
+      // Use provided images from slideshow
+      _carouselImages = widget.carouselImages!;
+    } else {
+      // Try to get images from ThemeManager
+      _carouselImages = _themeManager.getSampleImageUrls();
+      // If no images from ThemeManager, use default fallback
+      if (_carouselImages.isEmpty) {
+        _carouselImages = [
+          'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&h=600&fit=crop',
+          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&h=600&fit=crop',
+          'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800&h=600&fit=crop',
+          'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=800&h=600&fit=crop',
+        ];
+      }
+    }
   }
 
   @override
@@ -51,8 +76,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   void _startCarouselAutoScroll() {
-    final carouselImages = widget.carouselImages ?? [];
-    if (carouselImages.isEmpty) return;
+    if (_carouselImages.isEmpty) return;
 
     _carouselTimer?.cancel();
     _carouselTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
@@ -61,7 +85,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         return;
       }
 
-      final nextPage = (_currentPage + 1) % carouselImages.length;
+      final nextPage = (_currentPage + 1) % _carouselImages.length;
       if (_pageController.hasClients) {
         _pageController.animateToPage(
           nextPage,
@@ -257,16 +281,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Widget _buildImageCarousel(bool isTablet, double height) {
-    // Use theme images if provided, otherwise use default images
-    final List<String> carouselImages = widget.carouselImages ??
-        [
-          'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&h=600&fit=crop',
-          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&h=600&fit=crop',
-          'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800&h=600&fit=crop',
-          'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=800&h=600&fit=crop',
-        ];
-
-    if (carouselImages.isEmpty) {
+    if (_carouselImages.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -284,7 +299,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
               // Reset timer when page changes manually
               _startCarouselAutoScroll();
             },
-            itemCount: carouselImages.length,
+            itemCount: _carouselImages.length,
             itemBuilder: (context, index) {
               return Container(
                 margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -301,7 +316,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Image.network(
-                    carouselImages[index],
+                    _carouselImages[index],
                     width: double.infinity,
                     height: double.infinity,
                     fit: BoxFit.contain,
@@ -355,7 +370,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
-          children: List.generate(carouselImages.length, (index) {
+          children: List.generate(_carouselImages.length, (index) {
             return Container(
               width: 6,
               height: 6,
