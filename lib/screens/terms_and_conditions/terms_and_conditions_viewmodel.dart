@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../../services/api_service.dart';
+import '../../services/session_manager.dart';
 import '../../utils/exceptions.dart';
 
 class TermsAndConditionsViewModel extends ChangeNotifier {
@@ -33,16 +34,10 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Submits the terms acceptance
-  Future<bool> acceptTerms(String deviceType) async {
+  /// Submits the terms acceptance and creates a session
+  Future<bool> acceptTermsAndCreateSession(String? kioskCode) async {
     if (!_isAgreed) {
       _errorMessage = 'Please agree to the Terms and Conditions';
-      notifyListeners();
-      return false;
-    }
-
-    if (_kioskName.trim().isEmpty) {
-      _errorMessage = 'Please enter a KIOSK name';
       notifyListeners();
       return false;
     }
@@ -52,7 +47,14 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _apiService.acceptTerms(deviceType: deviceType);
+      final response = await _apiService.acceptTermsAndCreateSession(
+        kioskCode: kioskCode,
+      );
+      
+      // Store session data in SessionManager from API response
+      final sessionManager = SessionManager();
+      sessionManager.setSessionFromResponse(response);
+      
       return true;
     } on ApiException catch (e) {
       _errorMessage = e.message;
@@ -66,6 +68,11 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
       _isSubmitting = false;
       notifyListeners();
     }
+  }
+
+  /// Legacy method for backward compatibility
+  Future<bool> acceptTerms(String deviceType) async {
+    return acceptTermsAndCreateSession(null);
   }
 }
 

@@ -42,7 +42,7 @@ class _ApiClient implements ApiClient {
           .map((dynamic i) => ThemeModel.fromJson(i as Map<String, dynamic>))
           .toList();
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, null);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -90,7 +90,7 @@ class _ApiClient implements ApiClient {
     try {
       _value = _result.data!.cast<int>();
     } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options, null);
+      errorLogger?.logError(e, s, _options);
       rethrow;
     }
     return _value;
@@ -114,6 +114,29 @@ class _ApiClient implements ApiClient {
           .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
     );
     await _dio.fetch<void>(_options);
+  }
+
+  @override
+  Future<Map<String, dynamic>> acceptTermsAndCreateSession(
+    Map<String, dynamic> body,
+  ) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{};
+    final _headers = <String, dynamic>{};
+    final _data = <String, dynamic>{};
+    _data.addAll(body);
+    final _options = _setStreamType<Map<String, dynamic>>(
+      Options(method: 'POST', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            '/api/sessions/accept-terms',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, dynamic>>(_options);
+    return _result.data!;
   }
 
   RequestOptions _setStreamType<T>(RequestOptions requestOptions) {

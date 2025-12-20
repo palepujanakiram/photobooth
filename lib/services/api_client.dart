@@ -29,9 +29,15 @@ abstract class ApiClient {
     @Part(name: 'image') File image,
   );
 
-  /// Accepts terms and conditions
+  /// Accepts terms and conditions (legacy endpoint)
   @POST('/accept-terms')
   Future<void> acceptTerms(
+    @Body() Map<String, dynamic> body,
+  );
+
+  /// Accepts terms and creates a new session
+  @POST('/api/sessions/accept-terms')
+  Future<Map<String, dynamic>> acceptTermsAndCreateSession(
     @Body() Map<String, dynamic> body,
   );
 }

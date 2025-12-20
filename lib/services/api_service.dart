@@ -134,13 +134,58 @@ class ApiService {
     }
   }
 
-  /// Accepts terms and conditions
+  /// Accepts terms and conditions (legacy)
   Future<void> acceptTerms({required String deviceType}) async {
     try {
       await _apiClient.acceptTerms({
         'device_type': deviceType,
         'accepted': true,
       });
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
+
+      String errorMessage = AppConstants.kErrorApiCall;
+      if (e.response != null) {
+        final responseData = e.response?.data;
+        if (responseData is Map<String, dynamic>) {
+          errorMessage = responseData['message'] as String? ??
+              responseData['error'] as String? ??
+              'API Error: ${e.response?.statusCode}';
+        } else if (responseData is String) {
+          errorMessage = responseData;
+        } else {
+          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
+        }
+      } else {
+        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
+      }
+
+      throw ApiException(
+        errorMessage,
+        e.response?.statusCode,
+      );
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('${AppConstants.kErrorUnknown}: $e');
+    }
+  }
+
+  /// Accepts terms and creates a new session
+  /// Returns session data including sessionId
+  Future<Map<String, dynamic>> acceptTermsAndCreateSession({
+    String? kioskCode,
+  }) async {
+    try {
+      final response = await _apiClient.acceptTermsAndCreateSession({
+        if (kioskCode != null && kioskCode.isNotEmpty) 'kioskCode': kioskCode,
+      });
+      return response;
     } on DioException catch (e) {
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout ||

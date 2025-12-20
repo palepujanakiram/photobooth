@@ -7,6 +7,7 @@ import 'terms_and_conditions_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../utils/app_config.dart';
 import '../../services/theme_manager.dart';
+import '../../views/widgets/app_snackbar.dart';
 import 'webview_screen.dart';
 
 class TermsAndConditionsScreen extends StatefulWidget {
@@ -173,40 +174,19 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Future<void> _handleAccept() async {
-    final kioskName = _kioskNameController.text.trim();
-    if (kioskName.isEmpty) {
-      showCupertinoDialog(
-        context: context,
-        builder: (context) => CupertinoAlertDialog(
-          title: const Text('Error'),
-          content: const Text('KIOSK name cannot be empty'),
-          actions: [
-            CupertinoDialogAction(
-              child: const Text('OK'),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    final success = await _viewModel.acceptTerms(kioskName);
+    final kioskCode = _kioskNameController.text.trim();
+    
+    // Call the new API endpoint
+    final success = await _viewModel.acceptTermsAndCreateSession(kioskCode);
+    
     if (success && mounted) {
+      // Navigate to Select Theme screen on success
       Navigator.pushReplacementNamed(context, AppConstants.kRouteHome);
     } else if (mounted && _viewModel.hasError) {
-      showCupertinoDialog(
-        context: context,
-        builder: (context) => CupertinoAlertDialog(
-          title: const Text('Error'),
-          content: Text(_viewModel.errorMessage ?? 'Failed to accept terms'),
-          actions: [
-            CupertinoDialogAction(
-              child: const Text('OK'),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ],
-        ),
+      // Show error snackbar on failure
+      AppSnackBar.showError(
+        context,
+        _viewModel.errorMessage ?? 'Failed to accept terms',
       );
     }
   }
