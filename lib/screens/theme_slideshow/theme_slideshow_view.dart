@@ -83,6 +83,9 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
   }
 
   void _onViewModelChanged() {
+    // Only proceed if widget is still mounted
+    if (!mounted) return;
+    
     // Start slideshow animation when all images are loaded
     if (_viewModel.areAllImagesLoaded && _timer == null) {
       _startSlideshow();
@@ -121,31 +124,35 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
         return;
       }
 
-      // Check if all images are still loaded
-      if (!_viewModel.areAllImagesLoaded) {
+      // Check if ViewModel is still valid (not disposed)
+      try {
+        // Check if all images are still loaded
+        if (!_viewModel.areAllImagesLoaded) {
+          timer.cancel();
+          return;
+        }
+
+        final imageUrls = _viewModel.preloadedImageUrls.isNotEmpty
+            ? _viewModel.preloadedImageUrls
+            : _viewModel.getSampleImageUrls();
+        if (imageUrls.isEmpty) {
+          timer.cancel();
+          return;
+        }
+
+        final nextIndex = (_currentIndex + 1) % imageUrls.length;
+        // Select a new random transition for this change
+        if (mounted) {
+          setState(() {
+            _currentTransition = TransitionSelector.getRandomTransition();
+            _currentIndex = nextIndex;
+          });
+        }
+      } catch (e) {
+        // ViewModel might be disposed, cancel timer
+        debugPrint('Error in slideshow timer: $e');
         timer.cancel();
-        return;
       }
-
-      final imageUrls = _viewModel.preloadedImageUrls.isNotEmpty
-          ? _viewModel.preloadedImageUrls
-          : _viewModel.getSampleImageUrls();
-      if (imageUrls.isEmpty) {
-        timer.cancel();
-        return;
-      }
-
-      // Select a new random transition for this change
-      setState(() {
-        _currentTransition = TransitionSelector.getRandomTransition();
-      });
-
-      final nextIndex = (_currentIndex + 1) % imageUrls.length;
-      // Select a new random transition for this change
-      setState(() {
-        _currentTransition = TransitionSelector.getRandomTransition();
-        _currentIndex = nextIndex;
-      });
     });
   }
 

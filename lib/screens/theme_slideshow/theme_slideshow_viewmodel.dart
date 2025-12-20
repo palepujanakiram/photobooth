@@ -15,6 +15,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
   String? _errorMessage;
   List<String> _preloadedImageUrls = [];
   VoidCallback? _themeManagerListener;
+  bool _isDisposed = false;
 
   ThemeSlideshowViewModel({ThemeManager? themeManager})
       : _themeManager = themeManager ?? ThemeManager() {
@@ -24,11 +25,20 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true;
     // Remove listener when ViewModel is disposed
     if (_themeManagerListener != null) {
       _themeManager.removeListener(_themeManagerListener!);
     }
     super.dispose();
+  }
+
+  /// Safe notifyListeners that checks if disposed
+  @override
+  void notifyListeners() {
+    if (!_isDisposed) {
+      super.notifyListeners();
+    }
   }
 
   List<ThemeModel> get themes => _themes;
@@ -42,6 +52,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
 
   /// Called when ThemeManager updates themes
   void _onThemesUpdated() {
+    if (_isDisposed) return;
     _themes = _themeManager.themes;
     _isLoading = _themeManager.isLoading;
     _errorMessage = _themeManager.errorMessage;
@@ -123,8 +134,11 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
   /// Preloads images with priority: first image first, then rest
   /// Handles individual image failures gracefully
   Future<void> preloadImages(BuildContext context) async {
+    if (_isDisposed) return;
+    
     final imageUrls = getSampleImageUrls();
     if (imageUrls.isEmpty) {
+      if (_isDisposed) return;
       _preloadedImageUrls = [];
       _isFirstImageLoaded = false;
       _areAllImagesLoaded = false;
@@ -132,6 +146,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
       return;
     }
 
+    if (_isDisposed) return;
     _isPreloadingImages = true;
     _isFirstImageLoaded = false;
     _areAllImagesLoaded = false;
@@ -140,7 +155,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
 
     try {
       // Step 1: Load first image immediately
-      if (imageUrls.isNotEmpty) {
+      if (imageUrls.isNotEmpty && !_isDisposed) {
         try {
           await precacheImage(
             NetworkImage(imageUrls[0]),
@@ -152,10 +167,12 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
               throw TimeoutException('First image preload timeout', const Duration(seconds: 10));
             },
           );
+          if (_isDisposed) return;
           _isFirstImageLoaded = true;
           _preloadedImageUrls = [imageUrls[0]];
           notifyListeners();
         } catch (e) {
+          if (_isDisposed) return;
           debugPrint('Failed to preload first image: ${imageUrls[0]} - Error: $e');
           // Continue anyway - image might still load when displayed
           _isFirstImageLoaded = true;
@@ -165,9 +182,10 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
       }
 
       // Step 2: Load remaining images in parallel
-      if (imageUrls.length > 1) {
+      if (imageUrls.length > 1 && !_isDisposed) {
         final remainingUrls = imageUrls.sublist(1);
         final preloadFutures = remainingUrls.map((url) async {
+          if (_isDisposed) return null;
           try {
             await precacheImage(
               NetworkImage(url),
@@ -190,6 +208,8 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
         // Wait for all remaining images to preload
         final results = await Future.wait(preloadFutures);
         
+        if (_isDisposed) return;
+        
         // Add successfully preloaded images to the list
         final successfulUrls = results.whereType<String>().toList();
         _preloadedImageUrls = [imageUrls[0], ...successfulUrls];
@@ -201,10 +221,13 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
         }
       }
       
+      if (_isDisposed) return;
+      
       _areAllImagesLoaded = true;
       _isPreloadingImages = false;
       notifyListeners();
     } catch (e) {
+      if (_isDisposed) return;
       // Fallback: use all URLs even if preload failed
       debugPrint('Error during image preloading: $e');
       _preloadedImageUrls = imageUrls;

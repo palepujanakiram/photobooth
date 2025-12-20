@@ -12,6 +12,9 @@ class SessionData {
   final DateTime expiresAt;
   final String? kioskId;
   final String? kioskLocation;
+  final String? userImageUrl; // Base64 encoded image from PATCH /api/sessions/{sessionId}
+  final String? selectedThemeId; // Theme ID selected by user
+  final String? selectedCategoryId; // Category ID of selected theme
 
   SessionData({
     required this.id,
@@ -24,6 +27,9 @@ class SessionData {
     required this.expiresAt,
     this.kioskId,
     this.kioskLocation,
+    this.userImageUrl,
+    this.selectedThemeId,
+    this.selectedCategoryId,
   });
 
   /// Get sessionId (alias for id)
@@ -41,6 +47,9 @@ class SessionData {
       'expiresAt': expiresAt.toIso8601String(),
       'kioskId': kioskId,
       'kioskLocation': kioskLocation,
+      'userImageUrl': userImageUrl,
+      'selectedThemeId': selectedThemeId,
+      'selectedCategoryId': selectedCategoryId,
     };
   }
 
@@ -60,6 +69,9 @@ class SessionData {
           : DateTime.now().add(const Duration(days: 1)),
       kioskId: json['kioskId'] as String?,
       kioskLocation: json['kioskLocation'] as String?,
+      userImageUrl: json['userImageUrl'] as String?,
+      selectedThemeId: json['selectedThemeId'] as String?,
+      selectedCategoryId: json['selectedCategoryId'] as String?,
     );
   }
 }

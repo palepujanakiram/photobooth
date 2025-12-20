@@ -40,5 +40,18 @@ abstract class ApiClient {
   Future<Map<String, dynamic>> acceptTermsAndCreateSession(
     @Body() Map<String, dynamic> body,
   );
+
+  /// Updates session with user photo and selected theme
+  @PATCH('/api/sessions/{sessionId}')
+  Future<Map<String, dynamic>> updateSession(
+    @Path('sessionId') String sessionId,
+    @Body() Map<String, dynamic> body,
+  );
+
+  /// Generates transformed image using AI
+  @POST('/api/generate-image')
+  Future<Map<String, dynamic>> generateImage(
+    @Body() Map<String, dynamic> body,
+  );
 }
 
