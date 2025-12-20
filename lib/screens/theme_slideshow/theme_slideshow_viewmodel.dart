@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/theme_manager.dart';
+import '../../services/image_cache_service.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/app_config.dart';
 import '../theme_selection/theme_model.dart';
 
 class ThemeSlideshowViewModel extends ChangeNotifier {
   final ThemeManager _themeManager;
+  final ImageCacheService _imageCacheService;
   List<ThemeModel> _themes = [];
   bool _isLoading = true;
   bool _isPreloadingImages = false;
@@ -17,11 +19,13 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
   VoidCallback? _themeManagerListener;
   bool _isDisposed = false;
 
-  ThemeSlideshowViewModel({ThemeManager? themeManager})
-      : _themeManager = themeManager ?? ThemeManager() {
+  ThemeSlideshowViewModel({ThemeManager? themeManager, ImageCacheService? imageCacheService})
+      : _themeManager = themeManager ?? ThemeManager(),
+        _imageCacheService = imageCacheService ?? ImageCacheService() {
     // Listen to ThemeManager updates
     _themeManagerListener = _themeManager.addListener(_onThemesUpdated);
   }
+
 
   @override
   void dispose() {
@@ -154,26 +158,39 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Step 1: Load first image immediately
+      // Step 1: Load first image immediately (cache it)
       if (imageUrls.isNotEmpty && !_isDisposed) {
         try {
-          await precacheImage(
-            NetworkImage(imageUrls[0]),
-            context,
-          ).timeout(
+          // Cache the first image
+          final cachedFile = await _imageCacheService.cacheImage(imageUrls[0]).timeout(
             const Duration(seconds: 10),
             onTimeout: () {
-              debugPrint('First image preload timeout');
-              throw TimeoutException('First image preload timeout', const Duration(seconds: 10));
+              debugPrint('First image cache timeout');
+              throw TimeoutException('First image cache timeout', const Duration(seconds: 10));
             },
           );
+          
           if (_isDisposed) return;
+          
+          // Also precache for immediate display
+          final currentContext = context;
+          if (cachedFile == null) {
+            await precacheImage(NetworkImage(imageUrls[0]), currentContext).timeout(
+              const Duration(seconds: 10),
+            );
+          } else {
+            // Precache the cached file
+            await precacheImage(FileImage(cachedFile), currentContext).timeout(
+              const Duration(seconds: 10),
+            );
+          }
+          
           _isFirstImageLoaded = true;
           _preloadedImageUrls = [imageUrls[0]];
           notifyListeners();
         } catch (e) {
           if (_isDisposed) return;
-          debugPrint('Failed to preload first image: ${imageUrls[0]} - Error: $e');
+          debugPrint('Failed to cache/preload first image: ${imageUrls[0]} - Error: $e');
           // Continue anyway - image might still load when displayed
           _isFirstImageLoaded = true;
           _preloadedImageUrls = [imageUrls[0]];
@@ -181,26 +198,39 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
         }
       }
 
-      // Step 2: Load remaining images in parallel
+      // Step 2: Cache and preload remaining images in parallel
       if (imageUrls.length > 1 && !_isDisposed) {
+        // Capture context before async operations
+        final currentContext = context;
         final remainingUrls = imageUrls.sublist(1);
         final preloadFutures = remainingUrls.map((url) async {
           if (_isDisposed) return null;
           try {
-            await precacheImage(
-              NetworkImage(url),
-              context,
-            ).timeout(
+            // Cache the image first
+            final cachedFile = await _imageCacheService.cacheImage(url).timeout(
               const Duration(seconds: 10),
               onTimeout: () {
-                debugPrint('Image preload timeout for: $url');
-                throw TimeoutException('Image preload timeout', const Duration(seconds: 10));
+                debugPrint('Image cache timeout for: $url');
+                throw TimeoutException('Image cache timeout', const Duration(seconds: 10));
               },
             );
+            
+            // Precache for immediate display
+            if (cachedFile != null) {
+              await precacheImage(FileImage(cachedFile), currentContext).timeout(
+                const Duration(seconds: 10),
+              );
+            } else {
+              // Fallback to network precache
+              await precacheImage(NetworkImage(url), currentContext).timeout(
+                const Duration(seconds: 10),
+              );
+            }
+            
             return url; // Return URL if successful
           } catch (e) {
             // Log error but don't fail the entire preload
-            debugPrint('Failed to preload image: $url - Error: $e');
+            debugPrint('Failed to cache/preload image: $url - Error: $e');
             return null; // Return null for failed images
           }
         }).toList();

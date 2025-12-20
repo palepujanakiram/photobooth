@@ -7,7 +7,9 @@ import 'terms_and_conditions_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../utils/app_config.dart';
 import '../../services/theme_manager.dart';
+import '../../services/image_cache_service.dart';
 import '../../views/widgets/app_snackbar.dart';
+import '../../views/widgets/cached_network_image.dart';
 import 'webview_screen.dart';
 
 class TermsAndConditionsScreen extends StatefulWidget {
@@ -28,6 +30,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   final TextEditingController _kioskNameController = TextEditingController();
   final PageController _pageController = PageController();
   final ThemeManager _themeManager = ThemeManager();
+  final ImageCacheService _imageCacheService = ImageCacheService();
   int _currentPage = 0;
   Timer? _carouselTimer;
   List<String> _carouselImages = [];
@@ -109,20 +112,23 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       }
     }
 
-    // Step 2: Load remaining images in parallel
+    // Step 2: Cache and preload remaining images in parallel
     if (_carouselImages.length > 1) {
       final remainingUrls = _carouselImages.sublist(1);
       try {
-        final preloadFutures = remainingUrls.map((url) {
-          return precacheImage(
-            NetworkImage(url),
-            context,
-          ).timeout(
+        final preloadFutures = remainingUrls.map((url) async {
+          // Cache the image first
+          final cachedFile = await _imageCacheService.cacheImage(url).timeout(
             const Duration(seconds: 10),
-            onTimeout: () {
-              // Continue anyway
-            },
+            onTimeout: () => null,
           );
+          
+          // Precache for immediate display
+          if (cachedFile != null) {
+            return precacheImage(FileImage(cachedFile), context);
+          } else {
+            return precacheImage(NetworkImage(url), context);
+          }
         }).toList();
 
         await Future.wait(preloadFutures);
@@ -371,31 +377,23 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    _carouselImages[index],
+                  child: CachedNetworkImage(
+                    imageUrl: _carouselImages[index],
                     width: double.infinity,
                     height: double.infinity,
                     fit: BoxFit.contain,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Container(
-                        color: Colors.transparent,
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded /
-                                    loadingProgress.expectedTotalBytes!
-                                : null,
-                            color: Colors.blue,
-                          ),
+                    placeholder: Container(
+                      color: Colors.transparent,
+                      child: const Center(
+                        child: CircularProgressIndicator(
+                          color: Colors.blue,
                         ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: CupertinoColors.systemBackground,
-                        child: const Center(
-                          child: Column(
+                      ),
+                    ),
+                    errorWidget: Container(
+                      color: CupertinoColors.systemBackground,
+                      child: const Center(
+                        child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(

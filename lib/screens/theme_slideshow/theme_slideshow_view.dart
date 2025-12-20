@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'theme_slideshow_viewmodel.dart';
 import '../terms_and_conditions/terms_and_conditions_view.dart';
 import '../../utils/constants.dart';
+import '../../views/widgets/cached_network_image.dart';
 
 /// Enum for different slide transition types
 enum SlideTransitionType {
@@ -430,49 +431,40 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                       decoration: const BoxDecoration(
                         color: Colors.black,
                       ),
-                      child: Image.network(
-                        displayUrls[_currentIndex % displayUrls.length],
+                      child: CachedNetworkImage(
+                        imageUrl: displayUrls[_currentIndex % displayUrls.length],
                         fit: BoxFit.cover,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Container(
-                            color: Colors.black,
-                            child: Center(
-                              child: CircularProgressIndicator(
-                                value: loadingProgress.expectedTotalBytes != null
-                                    ? loadingProgress.cumulativeBytesLoaded /
-                                        loadingProgress.expectedTotalBytes!
-                                    : null,
-                                color: Colors.white,
-                              ),
+                        placeholder: Container(
+                          color: Colors.black,
+                          child: const Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
                             ),
-                          );
-                        },
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: Colors.black,
-                            child: const Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.image_not_supported,
-                                    size: 64,
+                          ),
+                        ),
+                        errorWidget: Container(
+                          color: Colors.black,
+                          child: const Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.image_not_supported,
+                                  size: 64,
+                                  color: Colors.white54,
+                                ),
+                                SizedBox(height: 16),
+                                Text(
+                                  'Image unavailable',
+                                  style: TextStyle(
                                     color: Colors.white54,
+                                    fontSize: 16,
                                   ),
-                                  SizedBox(height: 16),
-                                  Text(
-                                    'Image unavailable',
-                                    style: TextStyle(
-                                      color: Colors.white54,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                          );
-                        },
+                          ),
+                        ),
                       ),
                     ),
                   ),
