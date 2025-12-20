@@ -80,31 +80,52 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
               );
             }
 
-            return GridView.builder(
-              padding: EdgeInsets.all(isTablet ? 24.0 : 16.0),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: isTablet ? 3 : 2,
-                crossAxisSpacing: 16.0,
-                mainAxisSpacing: 16.0,
-                childAspectRatio: isTablet ? 0.75 : 0.7,
-              ),
-              itemCount: viewModel.themes.length,
-              itemBuilder: (context, index) {
-                final theme = viewModel.themes[index];
-                final isSelected = viewModel.selectedTheme?.id == theme.id;
+            return Column(
+              children: [
+                Expanded(
+                  child: GridView.builder(
+                    padding: EdgeInsets.all(isTablet ? 24.0 : 16.0),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: isTablet ? 3 : 2,
+                      crossAxisSpacing: 16.0,
+                      mainAxisSpacing: 16.0,
+                      childAspectRatio: isTablet ? 0.75 : 0.7,
+                    ),
+                    itemCount: viewModel.themes.length,
+                    itemBuilder: (context, index) {
+                      final theme = viewModel.themes[index];
+                      final isSelected = viewModel.selectedTheme?.id == theme.id;
 
-                return ThemeCard(
-                  theme: theme,
-                  isSelected: isSelected,
-                  onTap: () {
-                    viewModel.selectTheme(theme);
-                    Navigator.pushNamed(
-                      context,
-                      AppConstants.kRouteCameraSelection,
-                    );
-                  },
-                );
-              },
+                      return ThemeCard(
+                        theme: theme,
+                        isSelected: isSelected,
+                        onTap: () {
+                          viewModel.selectTheme(theme);
+                        },
+                      );
+                    },
+                  ),
+                ),
+                // Continue button at bottom
+                Padding(
+                  padding: EdgeInsets.only(
+                    left: isTablet ? 24.0 : 16.0,
+                    right: isTablet ? 24.0 : 16.0,
+                    bottom: isTablet ? 24.0 : 16.0,
+                  ),
+                  child: AppContinueButton(
+                    onPressed: viewModel.selectedTheme != null
+                        ? () {
+                            Navigator.pushNamed(
+                              context,
+                              AppConstants.kRouteCameraSelection,
+                            );
+                          }
+                        : null,
+                    padding: EdgeInsets.zero, // AppContinueButton has its own padding
+                  ),
+                ),
+              ],
             );
           },
         ),

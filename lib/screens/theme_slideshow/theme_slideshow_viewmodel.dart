@@ -173,16 +173,22 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
           if (_isDisposed) return;
           
           // Also precache for immediate display
-          final currentContext = context;
-          if (cachedFile == null) {
-            await precacheImage(NetworkImage(imageUrls[0]), currentContext).timeout(
-              const Duration(seconds: 10),
-            );
-          } else {
-            // Precache the cached file
-            await precacheImage(FileImage(cachedFile), currentContext).timeout(
-              const Duration(seconds: 10),
-            );
+          // Note: In ViewModel, we use the context passed to the method
+          // The context is captured at the method call site, so it's safe to use
+          try {
+            if (cachedFile == null) {
+              await precacheImage(NetworkImage(imageUrls[0]), context).timeout(
+                const Duration(seconds: 10),
+              );
+            } else {
+              // Precache the cached file
+              await precacheImage(FileImage(cachedFile), context).timeout(
+                const Duration(seconds: 10),
+              );
+            }
+          } catch (e) {
+            // Precache failure is not critical - image will load when displayed
+            debugPrint('Precache failed for first image: $e');
           }
           
           _isFirstImageLoaded = true;
@@ -216,15 +222,21 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
             );
             
             // Precache for immediate display
-            if (cachedFile != null) {
-              await precacheImage(FileImage(cachedFile), currentContext).timeout(
-                const Duration(seconds: 10),
-              );
-            } else {
-              // Fallback to network precache
-              await precacheImage(NetworkImage(url), currentContext).timeout(
-                const Duration(seconds: 10),
-              );
+            // Note: precacheImage doesn't require mounted check, context is captured before async
+            try {
+              if (cachedFile != null) {
+                await precacheImage(FileImage(cachedFile), currentContext).timeout(
+                  const Duration(seconds: 10),
+                );
+              } else {
+                // Fallback to network precache
+                await precacheImage(NetworkImage(url), currentContext).timeout(
+                  const Duration(seconds: 10),
+                );
+              }
+            } catch (e) {
+              // Precache failure is not critical - image will load when displayed
+              debugPrint('Precache failed for $url: $e');
             }
             
             return url; // Return URL if successful

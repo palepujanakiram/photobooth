@@ -85,19 +85,35 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   Future<void> _preloadCarouselImages() async {
     if (_carouselImages.isEmpty) return;
 
-    // Step 1: Load first image immediately
+    // Step 1: Cache and load first image immediately
     if (_carouselImages.isNotEmpty) {
       try {
-        await precacheImage(
-          NetworkImage(_carouselImages[0]),
-          context,
-        ).timeout(
+        // Cache the first image
+        final cachedFile = await _imageCacheService.cacheImage(_carouselImages[0]).timeout(
           const Duration(seconds: 10),
-          onTimeout: () {
-            // Continue anyway
-          },
+          onTimeout: () => null,
         );
+        
+        // Precache for immediate display
+        // Use context directly after checking mounted (StatefulWidget context is safe)
         if (mounted) {
+          try {
+            if (cachedFile != null) {
+              await precacheImage(FileImage(cachedFile), context).timeout(
+                const Duration(seconds: 10),
+                onTimeout: () {},
+              );
+            } else {
+              await precacheImage(NetworkImage(_carouselImages[0]), context).timeout(
+                const Duration(seconds: 10),
+                onTimeout: () {},
+              );
+            }
+          } catch (e) {
+            // Precache failure is not critical
+            debugPrint('Precache failed for first carousel image: $e');
+          }
+          
           setState(() {
             _isFirstImageLoaded = true;
           });
@@ -124,10 +140,19 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           );
           
           // Precache for immediate display
-          if (cachedFile != null) {
-            return precacheImage(FileImage(cachedFile), context);
-          } else {
-            return precacheImage(NetworkImage(url), context);
+          // Use context directly after checking mounted (StatefulWidget context is safe)
+          // Note: We're in a StatefulWidget, so we can check mounted and use context
+          if (!mounted) return null;
+          try {
+            if (cachedFile != null) {
+              return await precacheImage(FileImage(cachedFile), context);
+            } else {
+              return await precacheImage(NetworkImage(url), context);
+            }
+          } catch (e) {
+            // Precache failure is not critical
+            debugPrint('Precache failed for carousel image $url: $e');
+            return null;
           }
         }).toList();
 
