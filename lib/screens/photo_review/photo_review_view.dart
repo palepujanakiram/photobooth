@@ -116,8 +116,10 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                         final transformedImage =
                                             await viewModel.transformPhoto();
 
-                                        if (!mounted || !currentContext.mounted)
+                                        if (!mounted ||
+                                            !currentContext.mounted) {
                                           return;
+                                        }
 
                                         if (transformedImage != null) {
                                           // Navigate to result screen on success
