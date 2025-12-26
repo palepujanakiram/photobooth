@@ -226,41 +226,48 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         MediaQuery.of(context).padding.top -
         MediaQuery.of(context).padding.bottom;
 
-    // Adjust spacing based on device type and available height
-    final double logoSpacing = isTablet ? 12.0 : 8.0;
-    final double carouselSpacing = isTablet ? 16.0 : 12.0;
-    final double taglineSpacing = isTablet ? 16.0 : 12.0;
-    final double actionButtonsSpacing = isTablet ? 20.0 : 16.0;
-    final double checkboxSpacing = isTablet ? 16.0 : 12.0;
-    final double buttonSpacing = isTablet ? 12.0 : 8.0;
+    // Adjust logo size dynamically based on available height
+    // Reduced size to fit all content without scrolling
+    final double logoSize = isTablet 
+        ? (availableHeight * 0.15).clamp(150.0, 220.0)
+        : (availableHeight * 0.12).clamp(100.0, 160.0);
+    final double logoIconSize = logoSize * 0.18;
 
-    // Adjust carousel height based on available space - increased size
-    final double carouselHeight = isTablet
-        ? (availableHeight * 0.30).clamp(250.0, 350.0)
-        : (availableHeight * 0.28).clamp(180.0, 250.0);
+    // Calculate carousel height dynamically based on available space
+    // Reserve space for other elements (logo, buttons, etc.)
+    final double reservedSpace = isTablet 
+        ? (logoSize * 1.2 + 180) // Logo + buttons + spacing
+        : (logoSize * 1.2 + 160); // Logo + buttons + spacing
+    final double carouselHeight = (availableHeight - reservedSpace).clamp(120.0, availableHeight * 0.30);
 
-    // Adjust logo size - tripled for better visibility
-    final double logoSize = isTablet ? 240.0 : 180.0;
-    final double logoIconSize = isTablet ? 40.0 : 30.0;
+    // Calculate dynamic spacing based on available height to prevent overflow
+    // Reduced spacing to fit all content without scrolling
+    final double logoSpacing = availableHeight * 0.008;
+    final double carouselSpacing = availableHeight * 0.010;
+    final double taglineSpacing = availableHeight * 0.008;
+    final double actionButtonsSpacing = availableHeight * 0.010;
+    final double checkboxSpacing = availableHeight * 0.008;
+    final double buttonSpacing = availableHeight * 0.008;
 
     return ChangeNotifierProvider.value(
       value: _viewModel,
-      child: Stack(
-        children: [
-          CupertinoPageScaffold(
-            backgroundColor: CupertinoColors.white,
-            child: SafeArea(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: constraints.maxHeight,
-                      ),
+      child: Container(
+        color: CupertinoColors.white, // Ensure Stack background is white
+        child: Stack(
+          children: [
+            CupertinoPageScaffold(
+              backgroundColor: CupertinoColors.white,
+              child: SafeArea(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final content = Container(
+                      color: CupertinoColors.white, // Ensure content background is white
                       child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isTablet ? 32.0 : 16.0,
-                          vertical: isTablet ? 16.0 : 8.0,
+                        padding: EdgeInsets.only(
+                          left: isTablet ? 32.0 : 16.0,
+                          right: isTablet ? 32.0 : 16.0,
+                          top: isTablet ? 4.0 : 4.0, // Reduced top padding
+                          bottom: isTablet ? 8.0 : 4.0,
                         ),
                         child: Consumer<TermsAndConditionsViewModel>(
                           builder: (context, viewModel, child) {
@@ -268,21 +275,35 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                               crossAxisAlignment: CrossAxisAlignment.center,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // Logo Section
-                                _buildLogo(logoSize, logoIconSize),
+                                // Flexible spacer above logo to push content down (only for tablets)
+                                // Use SizedBox with calculated height instead of Spacer to avoid unbounded constraints
+                                if (isTablet) SizedBox(height: availableHeight * 0.05),
+                                // Logo Section - sized dynamically
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: _buildLogo(logoSize, logoIconSize),
+                                ),
                                 SizedBox(height: logoSpacing),
-                                // Image Carousel
-                                _buildImageCarousel(isTablet, carouselHeight),
+                                // Image Carousel - sized dynamically, constrained to prevent overflow
+                                ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxHeight: carouselHeight,
+                                  ),
+                                  child: _buildImageCarousel(isTablet, carouselHeight),
+                                ),
                                 SizedBox(height: carouselSpacing),
                                 // Tagline
-                                Text(
-                                  'Snap. Transform. Take Home Magic.',
-                                  style: TextStyle(
-                                    fontSize: isTablet ? 18.0 : 14.0,
-                                    color: CupertinoColors.systemGrey,
-                                    fontWeight: FontWeight.w500,
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'Snap. Transform. Take Home Magic.',
+                                    style: TextStyle(
+                                      fontSize: isTablet ? 18.0 : 14.0,
+                                      color: CupertinoColors.systemGrey,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    textAlign: TextAlign.center,
                                   ),
-                                  textAlign: TextAlign.center,
                                 ),
                                 SizedBox(height: taglineSpacing),
                                 // Action Buttons
@@ -297,19 +318,23 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                                 // Privacy Note
                                 _buildPrivacyNote(isTablet),
                                 // Add bottom padding to ensure content is above system bar
-                                SizedBox(
-                                    height: MediaQuery.of(context).padding.bottom),
+                                SizedBox(height: MediaQuery.of(context).padding.bottom),
                               ],
                             );
                           },
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+
+                    // No scrolling - content should fit within available space
+                    return SizedBox(
+                      height: constraints.maxHeight,
+                      child: content,
+                    );
+                  },
+                ),
               ),
             ),
-          ),
           // Full screen loader overlay - positioned to cover entire screen
           Consumer<TermsAndConditionsViewModel>(
             builder: (context, viewModel, child) {
@@ -325,6 +350,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             },
           ),
         ],
+        ),
       ),
     );
   }
@@ -377,92 +403,104 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       );
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          height: height,
-          child: Container(
-            color: Colors.transparent, // Make PageView container transparent
-            child: PageView.builder(
-              controller: _pageController,
-              onPageChanged: (index) {
-                setState(() {
-                  _currentPage = index;
-                });
-                // Reset timer when page changes manually (only if all images loaded)
-                if (_areAllImagesLoaded) {
-                  _startCarouselAutoScroll();
-                }
-              },
-              itemCount: _carouselImages.length,
-              itemBuilder: (context, index) {
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
-                  decoration: const BoxDecoration(
-                    color: Colors.transparent, // Make background transparent
-                  ),
-                  child: CachedNetworkImage(
-                    imageUrl: _carouselImages[index],
-                    width: double.infinity,
-                    height: double.infinity,
-                    fit: BoxFit.contain,
-                    placeholder: Container(
-                      color: Colors.transparent,
-                      child: const Center(
-                        child: CircularProgressIndicator(
-                          color: Colors.blue,
+    // Calculate available height for PageView (reserve space for dots indicator)
+    // Total space needed: PageView + spacing (4px) + dots (6px) = height
+    // So: pageViewHeight = height - 4 - 6 = height - 10
+    const double spacingHeight = 4.0; // Spacing between PageView and dots
+    const double dotsHeight = 6.0; // Height of dots indicator
+    final double pageViewHeight = (height - spacingHeight - dotsHeight).clamp(100.0, height - 10);
+    
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: height,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: pageViewHeight,
+            child: Container(
+              color: Colors.transparent, // Make PageView container transparent
+              child: PageView.builder(
+                controller: _pageController,
+                onPageChanged: (index) {
+                  setState(() {
+                    _currentPage = index;
+                  });
+                  // Reset timer when page changes manually (only if all images loaded)
+                  if (_areAllImagesLoaded) {
+                    _startCarouselAutoScroll();
+                  }
+                },
+                itemCount: _carouselImages.length,
+                itemBuilder: (context, index) {
+                  return Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: const BoxDecoration(
+                      color: Colors.transparent, // Make background transparent
+                    ),
+                    child: CachedNetworkImage(
+                      imageUrl: _carouselImages[index],
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.contain,
+                      placeholder: Container(
+                        color: Colors.transparent,
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            color: Colors.blue,
+                          ),
                         ),
                       ),
-                    ),
-                    errorWidget: Container(
-                      color: Colors.transparent, // Make error widget background transparent too
-                      child: const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              CupertinoIcons.photo,
-                              size: 48,
-                              color: CupertinoColors.systemGrey2,
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              'Image unavailable',
-                              style: TextStyle(
-                                color: CupertinoColors.systemGrey,
-                                fontSize: 12,
+                      errorWidget: Container(
+                        color: Colors.transparent, // Make error widget background transparent too
+                        child: const Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                CupertinoIcons.photo,
+                                size: 48,
+                                color: CupertinoColors.systemGrey2,
                               ),
-                            ),
-                          ],
+                              SizedBox(height: 8),
+                              Text(
+                                'Image unavailable',
+                                style: TextStyle(
+                                  color: CupertinoColors.systemGrey,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(_carouselImages.length, (index) {
-            return Container(
-              width: 6,
-              height: 6,
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _currentPage == index
-                    ? CupertinoColors.systemBlue
-                    : CupertinoColors.systemGrey3,
-              ),
-            );
-          }),
-        ),
-      ],
+          SizedBox(height: spacingHeight), // spacingHeight is not const, so SizedBox cannot be const
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(_carouselImages.length, (index) {
+              return Container(
+                width: 6,
+                height: 6,
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _currentPage == index
+                      ? CupertinoColors.systemBlue
+                      : CupertinoColors.systemGrey3,
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
     );
   }
 

@@ -270,8 +270,14 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
       value: _viewModel,
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: Consumer<ThemeSlideshowViewModel>(
-          builder: (context, viewModel, child) {
+        extendBody: true,
+        extendBodyBehindAppBar: true,
+        body: Container(
+          width: double.infinity,
+          height: double.infinity,
+          color: Colors.black,
+          child: Consumer<ThemeSlideshowViewModel>(
+            builder: (context, viewModel, child) {
             if (viewModel.isLoading) {
               return const Center(
                 child: CircularProgressIndicator(
@@ -353,124 +359,132 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
 
             return GestureDetector(
               onTap: _onTap,
-              child: Stack(
-                children: [
-                  // Slideshow images
-                  AnimatedSwitcher(
-                    // Only animate if all images are loaded, otherwise just show first image
-                    duration: viewModel.areAllImagesLoaded
-                        ? TransitionSelector.getTransitionDuration(_isTablet)
-                        : Duration.zero,
-                    transitionBuilder: (Widget child, Animation<double> animation) {
-                      // Only show transitions if all images are loaded
-                      if (viewModel.areAllImagesLoaded) {
-                        return _buildTransition(child, animation);
-                      }
-                      return child; // No transition, just show the image
-                    },
-                    child: Container(
-                      key: ValueKey<int>(_currentIndex),
-                      width: double.infinity,
-                      height: double.infinity,
-                      decoration: const BoxDecoration(
-                        color: Colors.black,
-                      ),
-                      child: CachedNetworkImage(
-                        imageUrl: displayUrls[_currentIndex % displayUrls.length],
-                        fit: BoxFit.cover,
-                        placeholder: Container(
-                          color: Colors.black,
-                          child: const Center(
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                            ),
+              child: SizedBox.expand(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Slideshow images - fills entire screen
+                    Positioned.fill(
+                      child: AnimatedSwitcher(
+                        // Only animate if all images are loaded, otherwise just show first image
+                        duration: viewModel.areAllImagesLoaded
+                            ? TransitionSelector.getTransitionDuration(_isTablet)
+                            : Duration.zero,
+                        transitionBuilder: (Widget child, Animation<double> animation) {
+                          // Only show transitions if all images are loaded
+                          if (viewModel.areAllImagesLoaded) {
+                            return _buildTransition(child, animation);
+                          }
+                          return child; // No transition, just show the image
+                        },
+                        child: Container(
+                          key: ValueKey<int>(_currentIndex),
+                          width: double.infinity,
+                          height: double.infinity,
+                          decoration: const BoxDecoration(
+                            color: Colors.black,
                           ),
-                        ),
-                        errorWidget: Container(
-                          color: Colors.black,
-                          child: const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.image_not_supported,
-                                  size: 64,
-                                  color: Colors.white54,
+                          child: CachedNetworkImage(
+                            imageUrl: displayUrls[_currentIndex % displayUrls.length],
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            placeholder: Container(
+                              color: Colors.black,
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
                                 ),
-                                SizedBox(height: 16),
-                                Text(
-                                  'Image unavailable',
-                                  style: TextStyle(
-                                    color: Colors.white54,
-                                    fontSize: 16,
-                                  ),
+                              ),
+                            ),
+                            errorWidget: Container(
+                              color: Colors.black,
+                              child: const Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.image_not_supported,
+                                      size: 64,
+                                      color: Colors.white54,
+                                    ),
+                                    SizedBox(height: 16),
+                                    Text(
+                                      'Image unavailable',
+                                      style: TextStyle(
+                                        color: Colors.white54,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                // Theme name on the left side
-                Positioned(
-                  left: 0,
-                  bottom: 0,
-                  child: SafeArea(
-                    top: false,
-                    bottom: true,
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                        left: _isTablet ? 32.0 : 20.0,
-                        bottom: _isTablet ? 40.0 : 24.0,
+                    // Theme name on the left side
+                    Positioned(
+                      left: 0,
+                      bottom: 0,
+                      child: SafeArea(
+                        top: false,
+                        bottom: true,
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            left: _isTablet ? 32.0 : 20.0,
+                            bottom: _isTablet ? 40.0 : 24.0,
+                          ),
+                          child: _buildThemeName(viewModel, displayUrls),
+                        ),
                       ),
-                      child: _buildThemeName(viewModel, displayUrls),
                     ),
-                  ),
+                    // Centered overlay button
+                    Center(
+                      child: IgnorePointer(
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: _isTablet ? 48.0 : 32.0,
+                            vertical: _isTablet ? 32.0 : 24.0,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(_isTablet ? 16.0 : 12.0),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'ZenAI Photo Booth',
+                                style: TextStyle(
+                                  fontSize: _isTablet ? 28.0 : 24.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              SizedBox(height: _isTablet ? 12.0 : 8.0),
+                              Text(
+                                'Touch anywhere to start',
+                                style: TextStyle(
+                                  fontSize: _isTablet ? 18.0 : 16.0,
+                                  fontWeight: FontWeight.normal,
+                                  color: Colors.white,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                  // Centered overlay button
-                  Center(
-                    child: IgnorePointer(
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: _isTablet ? 48.0 : 32.0,
-                          vertical: _isTablet ? 32.0 : 24.0,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(_isTablet ? 16.0 : 12.0),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'ZenAI Photo Booth',
-                              style: TextStyle(
-                                fontSize: _isTablet ? 28.0 : 24.0,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                            SizedBox(height: _isTablet ? 12.0 : 8.0),
-                            Text(
-                              'Touch anywhere to start',
-                              style: TextStyle(
-                                fontSize: _isTablet ? 18.0 : 16.0,
-                                fontWeight: FontWeight.normal,
-                                color: Colors.white,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
               ),
             );
-          },
+            },
+          ),
         ),
       ),
     );
