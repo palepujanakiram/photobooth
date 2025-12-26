@@ -113,64 +113,67 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
 
     // If we have a cached file, use it
     if (_cachedFile != null && _cachedFile!.existsSync()) {
-      return Container(
-        color: Colors.transparent, // Ensure transparent background
-        child: Image.file(
-          _cachedFile!,
-          fit: widget.fit,
-          width: widget.width,
-          height: widget.height,
-          errorBuilder: (context, error, stackTrace) {
-            // If cached file fails, fall back to network
-            return Container(
-              color: Colors.transparent,
-              child: Image.network(
-                widget.imageUrl,
-                fit: widget.fit,
-                width: widget.width,
-                height: widget.height,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return widget.placeholder ?? const Center(
-                    child: CupertinoActivityIndicator(),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  return widget.errorWidget ?? const Icon(
-                    CupertinoIcons.photo,
-                    size: 64,
-                    color: CupertinoColors.systemGrey,
-                  );
-                },
-              ),
-            );
-          },
-        ),
+      return Image.file(
+        _cachedFile!,
+        fit: widget.fit,
+        width: widget.width,
+        height: widget.height,
+        color: null, // Ensure no color tint
+        colorBlendMode: null, // Ensure no color blending
+        errorBuilder: (context, error, stackTrace) {
+          // If cached file fails, fall back to network
+          return Image.network(
+            widget.imageUrl,
+            fit: widget.fit,
+            width: widget.width,
+            height: widget.height,
+            color: null,
+            colorBlendMode: null,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return widget.placeholder ?? Container(
+                color: Colors.transparent,
+                child: const Center(
+                  child: CupertinoActivityIndicator(),
+                ),
+              );
+            },
+            errorBuilder: (context, error, stackTrace) {
+              return widget.errorWidget ?? const Icon(
+                CupertinoIcons.photo,
+                size: 64,
+                color: CupertinoColors.systemGrey,
+              );
+            },
+          );
+        },
       );
     }
 
     // Fall back to network image
-    return Container(
-      color: Colors.transparent, // Ensure transparent background
-      child: Image.network(
-        widget.imageUrl,
-        fit: widget.fit,
-        width: widget.width,
-        height: widget.height,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return widget.placeholder ?? const Center(
+    return Image.network(
+      widget.imageUrl,
+      fit: widget.fit,
+      width: widget.width,
+      height: widget.height,
+      color: null, // Ensure no color tint
+      colorBlendMode: null, // Ensure no color blending
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return widget.placeholder ?? Container(
+          color: Colors.transparent,
+          child: const Center(
             child: CupertinoActivityIndicator(),
-          );
-        },
-        errorBuilder: (context, error, stackTrace) {
-          return widget.errorWidget ?? const Icon(
-            CupertinoIcons.photo,
-            size: 64,
-            color: CupertinoColors.systemGrey,
-          );
-        },
-      ),
+          ),
+        );
+      },
+      errorBuilder: (context, error, stackTrace) {
+        return widget.errorWidget ?? const Icon(
+          CupertinoIcons.photo,
+          size: 64,
+          color: CupertinoColors.systemGrey,
+        );
+      },
     );
   }
 }

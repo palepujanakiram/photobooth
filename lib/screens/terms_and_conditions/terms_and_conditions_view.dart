@@ -380,53 +380,42 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
               itemBuilder: (context, index) {
                 return Container(
                   margin: const EdgeInsets.symmetric(horizontal: 8),
-                  decoration: BoxDecoration(
+                  decoration: const BoxDecoration(
                     color: Colors.transparent, // Make background transparent
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
-                      imageUrl: _carouselImages[index],
-                      width: double.infinity,
-                      height: double.infinity,
-                      fit: BoxFit.contain,
-                      placeholder: Container(
-                        color: Colors.transparent,
-                        child: const Center(
-                          child: CircularProgressIndicator(
-                            color: Colors.blue,
-                          ),
+                  child: CachedNetworkImage(
+                    imageUrl: _carouselImages[index],
+                    width: double.infinity,
+                    height: double.infinity,
+                    fit: BoxFit.contain,
+                    placeholder: Container(
+                      color: Colors.transparent,
+                      child: const Center(
+                        child: CircularProgressIndicator(
+                          color: Colors.blue,
                         ),
                       ),
-                      errorWidget: Container(
-                        color: Colors.transparent, // Make error widget background transparent too
-                        child: const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                CupertinoIcons.photo,
-                                size: 48,
-                                color: CupertinoColors.systemGrey2,
+                    ),
+                    errorWidget: Container(
+                      color: Colors.transparent, // Make error widget background transparent too
+                      child: const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              CupertinoIcons.photo,
+                              size: 48,
+                              color: CupertinoColors.systemGrey2,
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Image unavailable',
+                              style: TextStyle(
+                                color: CupertinoColors.systemGrey,
+                                fontSize: 12,
                               ),
-                              SizedBox(height: 8),
-                              Text(
-                                'Image unavailable',
-                                style: TextStyle(
-                                  color: CupertinoColors.systemGrey,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
