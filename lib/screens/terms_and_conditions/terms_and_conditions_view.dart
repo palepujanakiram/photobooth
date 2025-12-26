@@ -27,7 +27,6 @@ class TermsAndConditionsScreen extends StatefulWidget {
 
 class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   late TermsAndConditionsViewModel _viewModel;
-  final TextEditingController _kioskNameController = TextEditingController();
   final PageController _pageController = PageController();
   final ThemeManager _themeManager = ThemeManager();
   final ImageCacheService _imageCacheService = ImageCacheService();
@@ -41,9 +40,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   void initState() {
     super.initState();
     _viewModel = TermsAndConditionsViewModel();
-    _kioskNameController.addListener(() {
-      _viewModel.updateKioskName(_kioskNameController.text);
-    });
     // Initialize carousel images
     _initializeCarouselImages();
     // Preload images (first first, then rest)
@@ -75,7 +71,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   @override
   void dispose() {
     _carouselTimer?.cancel();
-    _kioskNameController.dispose();
     _pageController.dispose();
     _viewModel.dispose();
     super.dispose();
@@ -142,17 +137,16 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           // Precache for immediate display
           // Use context directly after checking mounted (StatefulWidget context is safe)
           // Note: We're in a StatefulWidget, so we can check mounted and use context
-          if (!mounted) return null;
+          if (!mounted) return;
           try {
             if (cachedFile != null) {
-              return await precacheImage(FileImage(cachedFile), context);
+              await precacheImage(FileImage(cachedFile), context);
             } else {
-              return await precacheImage(NetworkImage(url), context);
+              await precacheImage(NetworkImage(url), context);
             }
           } catch (e) {
             // Precache failure is not critical
             debugPrint('Precache failed for carousel image $url: $e');
-            return null;
           }
         }).toList();
 
@@ -205,14 +199,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Future<void> _handleAccept() async {
-    final kioskCode = _kioskNameController.text.trim();
-    
-    // Call the new API endpoint
-    final success = await _viewModel.acceptTermsAndCreateSession(kioskCode);
+    // Call the new API endpoint (kiosk code is optional, passing null)
+    final success = await _viewModel.acceptTermsAndCreateSession(null);
     
     if (success && mounted) {
-      // Navigate to Select Theme screen on success
-      Navigator.pushReplacementNamed(context, AppConstants.kRouteHome);
+      // Navigate to Select Camera screen on success
+      Navigator.pushReplacementNamed(context, AppConstants.kRouteCameraSelection);
     } else if (mounted && _viewModel.hasError) {
       // Show error snackbar on failure
       AppSnackBar.showError(
@@ -238,7 +230,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     final double carouselSpacing = isTablet ? 16.0 : 12.0;
     final double taglineSpacing = isTablet ? 16.0 : 12.0;
     final double actionButtonsSpacing = isTablet ? 20.0 : 16.0;
-    final double kioskFieldSpacing = isTablet ? 16.0 : 12.0;
     final double checkboxSpacing = isTablet ? 16.0 : 12.0;
     final double buttonSpacing = isTablet ? 12.0 : 8.0;
 
@@ -294,9 +285,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                             // Action Buttons
                             _buildActionButtons(isTablet),
                             SizedBox(height: actionButtonsSpacing),
-                            // KIOSK Name Field
-                            _buildKioskNameField(isTablet),
-                            SizedBox(height: kioskFieldSpacing),
                             // Checkbox
                             _buildCheckbox(viewModel, isTablet),
                             SizedBox(height: checkboxSpacing),
@@ -375,73 +363,77 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       children: [
         SizedBox(
           height: height,
-          child: PageView.builder(
-            controller: _pageController,
-            onPageChanged: (index) {
-              setState(() {
-                _currentPage = index;
-              });
-              // Reset timer when page changes manually (only if all images loaded)
-              if (_areAllImagesLoaded) {
-                _startCarouselAutoScroll();
-              }
-            },
-            itemCount: _carouselImages.length,
-            itemBuilder: (context, index) {
-              return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: CachedNetworkImage(
-                    imageUrl: _carouselImages[index],
-                    width: double.infinity,
-                    height: double.infinity,
-                    fit: BoxFit.contain,
-                    placeholder: Container(
-                      color: Colors.transparent,
-                      child: const Center(
-                        child: CircularProgressIndicator(
-                          color: Colors.blue,
+          child: Container(
+            color: Colors.transparent, // Make PageView container transparent
+            child: PageView.builder(
+              controller: _pageController,
+              onPageChanged: (index) {
+                setState(() {
+                  _currentPage = index;
+                });
+                // Reset timer when page changes manually (only if all images loaded)
+                if (_areAllImagesLoaded) {
+                  _startCarouselAutoScroll();
+                }
+              },
+              itemCount: _carouselImages.length,
+              itemBuilder: (context, index) {
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.transparent, // Make background transparent
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: CachedNetworkImage(
+                      imageUrl: _carouselImages[index],
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.contain,
+                      placeholder: Container(
+                        color: Colors.transparent,
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            color: Colors.blue,
+                          ),
                         ),
                       ),
-                    ),
-                    errorWidget: Container(
-                      color: CupertinoColors.systemBackground,
-                      child: const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              CupertinoIcons.photo,
-                              size: 48,
-                              color: CupertinoColors.systemGrey2,
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              'Image unavailable',
-                              style: TextStyle(
-                                color: CupertinoColors.systemGrey,
-                                fontSize: 12,
+                      errorWidget: Container(
+                        color: Colors.transparent, // Make error widget background transparent too
+                        child: const Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                CupertinoIcons.photo,
+                                size: 48,
+                                color: CupertinoColors.systemGrey2,
                               ),
-                            ),
-                          ],
+                              SizedBox(height: 8),
+                              Text(
+                                'Image unavailable',
+                                style: TextStyle(
+                                  color: CupertinoColors.systemGrey,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
         const SizedBox(height: 8),
@@ -528,26 +520,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildKioskNameField(bool isTablet) {
-    return Container(
-      decoration: BoxDecoration(
-        color: CupertinoColors.tertiarySystemFill,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: CupertinoTextField(
-        controller: _kioskNameController,
-        placeholder: 'Enter KIOSK name',
-        padding: EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: isTablet ? 14 : 10,
-        ),
-        style: TextStyle(fontSize: isTablet ? 16 : 14),
-        textCapitalization: TextCapitalization.words,
-        decoration: const BoxDecoration(),
       ),
     );
   }

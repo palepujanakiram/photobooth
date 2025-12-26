@@ -3,10 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
 import 'photo_capture_viewmodel.dart';
 import '../camera_selection/camera_selection_viewmodel.dart';
-import '../theme_selection/theme_selection_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_theme.dart';
-import '../../views/widgets/app_snackbar.dart';
 
 class PhotoCaptureScreen extends StatefulWidget {
   const PhotoCaptureScreen({super.key});
@@ -137,70 +135,66 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            CupertinoButton(
-              onPressed: () {
-                viewModel.clearCapturedPhoto();
-              },
-              color: CupertinoColors.systemRed,
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(CupertinoIcons.xmark, size: 20),
-                  SizedBox(width: 4),
-                  Text('Retake'),
-                ],
+            // Cancel/Retake button
+            SizedBox(
+              width: 120,
+              height: 50,
+              child: CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: () {
+                  viewModel.clearCapturedPhoto();
+                },
+                color: CupertinoColors.systemGrey,
+                borderRadius: BorderRadius.circular(12),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: CupertinoColors.white,
+                  ),
+                ),
               ),
             ),
-            CupertinoButton(
-              onPressed: (viewModel.isCapturing || viewModel.isUploading)
-                  ? null
-                  : () async {
-                      // Capture context before async operation
-                      final currentContext = context;
-                      final themeViewModel = currentContext.read<ThemeViewModel>();
-                      final selectedTheme = themeViewModel.selectedTheme;
-                      
-                      if (selectedTheme == null) {
-                        if (mounted && currentContext.mounted) {
-                          AppSnackBar.showError(
-                            currentContext,
-                            'Please select a theme first',
-                          );
-                        }
-                        return;
-                      }
+            // Continue button
+            SizedBox(
+              width: 120,
+              height: 50,
+              child: CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: (viewModel.isCapturing || viewModel.isUploading)
+                    ? null
+                    : () async {
+                        // Capture context before async operation
+                        final currentContext = context;
+                        
+                        if (!mounted || !currentContext.mounted) return;
 
-                      // Update session with photo and theme
-                      final success = await viewModel.updateSessionWithPhoto(
-                        selectedTheme.id,
-                      );
-
-                      if (!mounted || !currentContext.mounted) return;
-
-                      if (success) {
-                        // Navigate to review screen on success
+                        // Navigate to Theme Selection screen
                         Navigator.pushNamed(
                           currentContext,
-                          AppConstants.kRouteReview,
+                          AppConstants.kRouteHome,
                           arguments: {
                             'photo': viewModel.capturedPhoto,
-                            'theme': selectedTheme,
                           },
                         );
-                      } else if (viewModel.hasError) {
-                        // Show error snackbar on failure
-                        AppSnackBar.showError(
-                          currentContext,
-                          viewModel.errorMessage ?? 'Failed to upload photo',
-                        );
-                      }
-                    },
-              color: CupertinoColors.systemGreen,
-              child: viewModel.isUploading
-                  ? const CupertinoActivityIndicator(
-                      color: CupertinoColors.white,
-                    )
-                  : const Text('Continue'),
+                      },
+                color: CupertinoColors.systemBlue,
+                disabledColor: CupertinoColors.systemGrey3,
+                borderRadius: BorderRadius.circular(12),
+                child: viewModel.isUploading
+                    ? const CupertinoActivityIndicator(
+                        color: CupertinoColors.white,
+                      )
+                    : const Text(
+                        'Continue',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: CupertinoColors.white,
+                        ),
+                      ),
+              ),
             ),
           ],
         ),

@@ -67,7 +67,12 @@ class ReviewViewModel extends ChangeNotifier {
       notifyListeners();
       return _transformedImage;
     } on ApiException catch (e) {
-      _errorMessage = e.message;
+      // Include status code in error message if available
+      if (e.statusCode != null) {
+        _errorMessage = '${e.message} (Status: ${e.statusCode})';
+      } else {
+        _errorMessage = e.message;
+      }
       notifyListeners();
       return null;
     } catch (e) {

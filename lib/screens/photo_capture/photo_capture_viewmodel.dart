@@ -32,6 +32,10 @@ class CaptureViewModel extends ChangeNotifier {
 
   CameraController? get cameraController => _cameraController;
   PhotoModel? get capturedPhoto => _capturedPhoto;
+  set capturedPhoto(PhotoModel? photo) {
+    _capturedPhoto = photo;
+    notifyListeners();
+  }
   bool get isInitializing => _isInitializing;
   bool get isCapturing => _isCapturing;
   bool get isUploading => _isUploading;

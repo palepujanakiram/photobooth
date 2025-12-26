@@ -1,7 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'camera_selection_viewmodel.dart';
-import '../theme_selection/theme_selection_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/camera_card.dart';
 import '../../views/widgets/app_theme.dart';
@@ -102,10 +101,9 @@ class _CameraSelectionScreenState extends State<CameraSelectionScreen> {
                 },
               ),
             ),
-            Consumer2<CameraViewModel, ThemeViewModel>(
-              builder: (context, cameraViewModel, themeViewModel, child) {
-                final canProceed = cameraViewModel.selectedCamera != null &&
-                    themeViewModel.selectedTheme != null;
+            Consumer<CameraViewModel>(
+              builder: (context, cameraViewModel, child) {
+                final canProceed = cameraViewModel.selectedCamera != null;
 
                 return AppContinueButton(
                   onPressed: canProceed

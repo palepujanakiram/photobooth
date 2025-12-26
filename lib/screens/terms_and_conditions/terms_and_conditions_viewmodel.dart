@@ -18,7 +18,7 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
   String get kioskName => _kioskName;
-  bool get canSubmit => _isAgreed && !_isSubmitting && _kioskName.trim().isNotEmpty;
+  bool get canSubmit => _isAgreed && !_isSubmitting;
 
   /// Toggles the agreement checkbox
   void toggleAgreement(bool value) {

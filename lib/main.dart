@@ -11,7 +11,8 @@ import 'screens/photo_review/photo_review_view.dart';
 import 'screens/result/result_view.dart';
 import 'utils/constants.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const PhotoBoothApp());
 }
 
@@ -26,29 +27,30 @@ class PhotoBoothApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CameraViewModel()),
       ],
       child: CupertinoApp(
-        title: 'Photo Booth',
-        debugShowCheckedModeBanner: false,
-        theme: const CupertinoThemeData(
-          primaryColor: CupertinoColors.systemBlue,
-          barBackgroundColor: CupertinoColors.white,
-          scaffoldBackgroundColor: CupertinoColors.white,
-          textTheme: CupertinoTextThemeData(
-            primaryColor: CupertinoColors.black,
+          title: 'Photo Booth',
+          debugShowCheckedModeBanner: false,
+          theme: const CupertinoThemeData(
+            primaryColor: CupertinoColors.systemBlue,
+            barBackgroundColor: CupertinoColors.white,
+            scaffoldBackgroundColor: CupertinoColors.white,
+            textTheme: CupertinoTextThemeData(
+              primaryColor: CupertinoColors.black,
+            ),
           ),
+          initialRoute: AppConstants.kRouteSlideshow,
+          routes: {
+            AppConstants.kRouteSlideshow: (context) =>
+                const ThemeSlideshowScreen(),
+            AppConstants.kRouteTerms: (context) =>
+                const TermsAndConditionsScreen(),
+            AppConstants.kRouteHome: (context) => const ThemeSelectionScreen(),
+            AppConstants.kRouteCameraSelection: (context) =>
+                const CameraSelectionScreen(),
+            AppConstants.kRouteCapture: (context) => const PhotoCaptureScreen(),
+            AppConstants.kRouteReview: (context) => const PhotoReviewScreen(),
+            AppConstants.kRouteResult: (context) => const ResultScreen(),
+          },
         ),
-        initialRoute: AppConstants.kRouteSlideshow,
-        routes: {
-          AppConstants.kRouteSlideshow: (context) =>
-              const ThemeSlideshowScreen(),
-          AppConstants.kRouteTerms: (context) =>
-              const TermsAndConditionsScreen(),
-          AppConstants.kRouteHome: (context) => const ThemeSelectionScreen(),
-          AppConstants.kRouteCameraSelection: (context) =>
-              const CameraSelectionScreen(),
-          AppConstants.kRouteCapture: (context) => const PhotoCaptureScreen(),
-          AppConstants.kRouteReview: (context) => const PhotoReviewScreen(),
-          AppConstants.kRouteResult: (context) => const ResultScreen(),
-        },
       ),
     );
   }

@@ -273,30 +273,10 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
         body: Consumer<ThemeSlideshowViewModel>(
           builder: (context, viewModel, child) {
             if (viewModel.isLoading) {
-              return Stack(
-                children: [
-                  const Center(
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                    ),
-                  ),
-                  // Logo at bottom during loading
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: SafeArea(
-                      top: false,
-                      bottom: true,
-                      child: Padding(
-                        padding: EdgeInsets.only(bottom: _isTablet ? 40.0 : 24.0),
-                        child: Center(
-                          child: _buildLogo(_isTablet ? 200.0 : 160.0),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+              return const Center(
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                ),
               );
             }
 
@@ -342,22 +322,6 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                       ],
                     ),
                   ),
-                  // Logo at bottom during error
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: SafeArea(
-                      top: false,
-                      bottom: true,
-                      child: Padding(
-                        padding: EdgeInsets.only(bottom: _isTablet ? 40.0 : 24.0),
-                        child: Center(
-                          child: _buildLogo(_isTablet ? 200.0 : 160.0),
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               );
             }
@@ -375,30 +339,10 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
 
             // Show first image immediately if loaded, otherwise show loading
             if (!viewModel.isFirstImageLoaded) {
-              return Stack(
-                children: [
-                  const Center(
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                    ),
-                  ),
-                  // Logo at bottom during loading
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: SafeArea(
-                      top: false,
-                      bottom: true,
-                      child: Padding(
-                        padding: EdgeInsets.only(bottom: _isTablet ? 40.0 : 24.0),
-                        child: Center(
-                          child: _buildLogo(_isTablet ? 200.0 : 160.0),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+              return const Center(
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                ),
               );
             }
 
@@ -407,12 +351,12 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                 ? viewModel.preloadedImageUrls
                 : imageUrls;
 
-            return Stack(
-              children: [
-                // Slideshow images
-                GestureDetector(
-                  onTap: _onTap,
-                  child: AnimatedSwitcher(
+            return GestureDetector(
+              onTap: _onTap,
+              child: Stack(
+                children: [
+                  // Slideshow images
+                  AnimatedSwitcher(
                     // Only animate if all images are loaded, otherwise just show first image
                     duration: viewModel.areAllImagesLoaded
                         ? TransitionSelector.getTransitionDuration(_isTablet)
@@ -468,55 +412,63 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                       ),
                     ),
                   ),
-                ),
-                // Logo and Continue button overlay
+                // Theme name on the left side
                 Positioned(
-                  bottom: 0,
                   left: 0,
-                  right: 0,
+                  bottom: 0,
                   child: SafeArea(
                     top: false,
                     bottom: true,
                     child: Padding(
                       padding: EdgeInsets.only(
-                        bottom: _isTablet ? 24.0 : 16.0,
                         left: _isTablet ? 32.0 : 20.0,
-                        right: _isTablet ? 32.0 : 20.0,
+                        bottom: _isTablet ? 40.0 : 24.0,
                       ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Logo above continue button (same size as loading state)
-                          _buildLogo(_isTablet ? 200.0 : 160.0),
-                          SizedBox(height: _isTablet ? 24.0 : 16.0),
-                          // Continue button
-                          SizedBox(
-                            width: double.infinity,
-                            height: _isTablet ? 56.0 : 50.0,
-                            child: CupertinoButton(
-                              padding: EdgeInsets.zero,
-                              color: CupertinoColors.white.withValues(alpha: 0.9),
-                              onPressed: _onTap,
-                              borderRadius: BorderRadius.circular(
-                                _isTablet ? 16.0 : 12.0,
-                              ),
-                              child: Text(
-                                AppConstants.kContinueButtonText,
-                                style: TextStyle(
-                                  fontSize: _isTablet ? 20.0 : 18.0,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.5,
-                                  color: CupertinoColors.black,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      child: _buildThemeName(viewModel, displayUrls),
                     ),
                   ),
                 ),
-              ],
+                  // Centered overlay button
+                  Center(
+                    child: IgnorePointer(
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: _isTablet ? 48.0 : 32.0,
+                          vertical: _isTablet ? 32.0 : 24.0,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(_isTablet ? 16.0 : 12.0),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'ZenAI Photo Booth',
+                              style: TextStyle(
+                                fontSize: _isTablet ? 28.0 : 24.0,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            SizedBox(height: _isTablet ? 12.0 : 8.0),
+                            Text(
+                              'Touch anywhere to start',
+                              style: TextStyle(
+                                fontSize: _isTablet ? 18.0 : 16.0,
+                                fontWeight: FontWeight.normal,
+                                color: Colors.white,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         ),
@@ -524,28 +476,62 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
     );
   }
 
-  Widget _buildLogo(double size) {
-    return Image.asset(
-      'lib/images/zen_ai_logo.jpeg',
-      height: size,
-      width: size,
-      fit: BoxFit.contain,
-      errorBuilder: (context, error, stackTrace) {
-        // Return a placeholder if image fails to load
-        return Container(
-          height: size,
-          width: size,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
+  Widget _buildThemeName(ThemeSlideshowViewModel viewModel, List<String> displayUrls) {
+    if (displayUrls.isEmpty || viewModel.themes.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Get the current image URL
+    final currentImageUrl = displayUrls[_currentIndex % displayUrls.length];
+    
+    // Use ViewModel method to get the theme for this image URL
+    final currentTheme = viewModel.getThemeForImageUrl(currentImageUrl);
+
+    if (currentTheme == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          currentTheme.name,
+          style: TextStyle(
+            fontSize: _isTablet ? 32.0 : 28.0,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            letterSpacing: 0.5,
+            shadows: [
+              Shadow(
+                offset: const Offset(0, 2),
+                blurRadius: 4,
+                color: Colors.black.withValues(alpha: 0.5),
+              ),
+            ],
           ),
-          child: Icon(
-            Icons.image,
-            color: Colors.white54,
-            size: size * 0.5,
+        ),
+        if (currentTheme.description.isNotEmpty) ...[
+          SizedBox(height: _isTablet ? 8.0 : 4.0),
+          Text(
+            currentTheme.description,
+            style: TextStyle(
+              fontSize: _isTablet ? 18.0 : 16.0,
+              fontWeight: FontWeight.normal,
+              color: Colors.white.withValues(alpha: 0.9),
+              letterSpacing: 0.3,
+              shadows: [
+                Shadow(
+                  offset: const Offset(0, 2),
+                  blurRadius: 4,
+                  color: Colors.black.withValues(alpha: 0.5),
+                ),
+              ],
+            ),
           ),
-        );
-      },
+        ],
+      ],
     );
   }
+
 }

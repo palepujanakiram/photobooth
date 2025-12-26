@@ -6,6 +6,8 @@ import '../theme_selection/theme_model.dart';
 import 'photo_review_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_theme.dart';
+import '../../views/widgets/full_screen_loader.dart';
+import '../../views/widgets/app_snackbar.dart';
 
 class PhotoReviewScreen extends StatefulWidget {
   const PhotoReviewScreen({super.key});
@@ -52,88 +54,119 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
 
     return ChangeNotifierProvider.value(
       value: _reviewViewModel,
-      child: CupertinoPageScaffold(
-        navigationBar: const AppTopBar(
-          title: 'Review Photo',
-        ),
-        child: SafeArea(
-          child: Consumer<ReviewViewModel>(
-            builder: (context, viewModel, child) {
-              return Column(
-                children: [
-                  Expanded(
-                    child: Center(
-                      child: Image.file(
-                        viewModel.photo!.imageFile,
-                        fit: BoxFit.contain,
+      child: Stack(
+        children: [
+          CupertinoPageScaffold(
+            navigationBar: const AppTopBar(
+              title: 'Review Photo',
+            ),
+            child: SafeArea(
+              child: Consumer<ReviewViewModel>(
+                builder: (context, viewModel, child) {
+                  return Column(
+                    children: [
+                      Expanded(
+                        child: Center(
+                          child: Image.file(
+                            viewModel.photo!.imageFile,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        children: [
-                          Text(
-                            'Theme: ${viewModel.theme?.name ?? "Unknown"}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            viewModel.theme?.description ?? '',
-                            style: const TextStyle(fontSize: 14),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 24),
-                          if (viewModel.hasError)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 16.0),
-                              child: Text(
-                                viewModel.errorMessage ?? 'Unknown error',
+                      SafeArea(
+                        top: false,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            children: [
+                              Text(
+                                'Theme: ${viewModel.theme?.name ?? "Unknown"}',
                                 style: const TextStyle(
-                                  color: CupertinoColors.systemRed,
-                                  fontSize: 14,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
                                 ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                viewModel.theme?.description ?? '',
+                                style: const TextStyle(fontSize: 14),
                                 textAlign: TextAlign.center,
                               ),
-                            ),
-                          AppButtonWithIcon(
-                            text: 'Transform Photo',
-                            icon: CupertinoIcons.star_fill,
-                            onPressed: viewModel.isTransforming
-                                ? null
-                                : () async {
-                                    final transformedImage =
-                                        await viewModel.transformPhoto();
-                                    if (transformedImage != null &&
-                                        mounted &&
-                                        context.mounted) {
-                                      Navigator.pushNamed(
-                                        context,
-                                        AppConstants.kRouteResult,
-                                        arguments: {
-                                          'transformedImage': transformedImage,
-                                        },
-                                      );
-                                    }
-                                  },
-                            isLoading: viewModel.isTransforming,
+                              const SizedBox(height: 24),
+                              if (viewModel.hasError)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 16.0),
+                                  child: Text(
+                                    viewModel.errorMessage ?? 'Unknown error',
+                                    style: const TextStyle(
+                                      color: CupertinoColors.systemRed,
+                                      fontSize: 14,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              AppContinueButton(
+                                text: 'Transform Photo',
+                                onPressed: viewModel.isTransforming
+                                    ? null
+                                    : () async {
+                                        // Capture context before async operation
+                                        final currentContext = context;
+
+                                        final transformedImage =
+                                            await viewModel.transformPhoto();
+
+                                        if (!mounted || !currentContext.mounted)
+                                          return;
+
+                                        if (transformedImage != null) {
+                                          // Navigate to result screen on success
+                                          Navigator.pushNamed(
+                                            currentContext,
+                                            AppConstants.kRouteResult,
+                                            arguments: {
+                                              'transformedImage':
+                                                  transformedImage,
+                                            },
+                                          );
+                                        } else if (viewModel.hasError) {
+                                          // Show error with status code if available
+                                          final errorMessage =
+                                              viewModel.errorMessage ??
+                                                  'Unknown error';
+                                          AppSnackBar.showError(
+                                            currentContext,
+                                            errorMessage,
+                                          );
+                                        }
+                                      },
+                                isLoading: viewModel.isTransforming,
+                                padding: EdgeInsets.zero,
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                ],
-              );
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+          // Full screen loader overlay
+          Consumer<ReviewViewModel>(
+            builder: (context, viewModel, child) {
+              if (viewModel.isTransforming) {
+                return const FullScreenLoader(
+                  text: 'Generating AI Image',
+                  loaderColor: CupertinoColors.systemBlue,
+                );
+              }
+              return const SizedBox.shrink();
             },
           ),
-        ),
+        ],
       ),
     );
   }
 }
-

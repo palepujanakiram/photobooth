@@ -19,13 +19,13 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
   VoidCallback? _themeManagerListener;
   bool _isDisposed = false;
 
-  ThemeSlideshowViewModel({ThemeManager? themeManager, ImageCacheService? imageCacheService})
+  ThemeSlideshowViewModel(
+      {ThemeManager? themeManager, ImageCacheService? imageCacheService})
       : _themeManager = themeManager ?? ThemeManager(),
         _imageCacheService = imageCacheService ?? ImageCacheService() {
     // Listen to ThemeManager updates
     _themeManagerListener = _themeManager.addListener(_onThemesUpdated);
   }
-
 
   @override
   void dispose() {
@@ -53,6 +53,69 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
   List<String> get preloadedImageUrls => _preloadedImageUrls;
+
+  /// Gets the theme for a given image URL
+  /// Returns null if no matching theme is found
+  ThemeModel? getThemeForImageUrl(String imageUrl) {
+    if (imageUrl.isEmpty || _themes.isEmpty) {
+      return null;
+    }
+
+    // Get active themes with sample images
+    final activeThemes = _themes
+        .where((theme) =>
+            theme.isActive &&
+            theme.sampleImageUrl != null &&
+            theme.sampleImageUrl!.isNotEmpty)
+        .toList();
+
+    if (activeThemes.isEmpty) {
+      return null;
+    }
+
+    // Try to match by constructing the full URL from theme's sampleImageUrl
+    for (final theme in activeThemes) {
+      final themeImageUrl = theme.sampleImageUrl!.trim();
+      String fullThemeUrl;
+
+      // Construct full URL the same way getSampleImageUrls() does
+      if (themeImageUrl.startsWith('http://') ||
+          themeImageUrl.startsWith('https://')) {
+        fullThemeUrl = themeImageUrl;
+      } else {
+        // Prepend base URL if it's a relative path
+        final baseUrl = AppConfig.baseUrl.endsWith('/')
+            ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
+            : AppConfig.baseUrl;
+        final relativePath =
+            themeImageUrl.startsWith('/') ? themeImageUrl : '/$themeImageUrl';
+        fullThemeUrl = '$baseUrl$relativePath';
+      }
+
+      // Normalize both URLs for comparison (remove query params, fragments, etc.)
+      final normalizedThemeUrl = _normalizeUrl(fullThemeUrl);
+      final normalizedImageUrl = _normalizeUrl(imageUrl);
+
+      // Check if URLs match
+      if (normalizedImageUrl == normalizedThemeUrl ||
+          normalizedImageUrl.contains(normalizedThemeUrl) ||
+          normalizedThemeUrl.contains(normalizedImageUrl)) {
+        return theme;
+      }
+    }
+
+    return null;
+  }
+
+  /// Normalizes a URL by removing query parameters and fragments
+  String _normalizeUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      return '${uri.scheme}://${uri.host}${uri.path}';
+    } catch (e) {
+      return url;
+    }
+  }
 
   /// Called when ThemeManager updates themes
   void _onThemesUpdated() {
@@ -99,14 +162,15 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
   /// Gets all sample image URLs from active themes with base URL prepended
   List<String> getSampleImageUrls() {
     return _themes
-        .where((theme) => 
-            theme.isActive && 
-            theme.sampleImageUrl != null && 
+        .where((theme) =>
+            theme.isActive &&
+            theme.sampleImageUrl != null &&
             theme.sampleImageUrl!.isNotEmpty)
         .map((theme) {
           final imageUrl = theme.sampleImageUrl!.trim();
           // Check if URL is already absolute
-          if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+          if (imageUrl.startsWith('http://') ||
+              imageUrl.startsWith('https://')) {
             // Validate URL format
             try {
               Uri.parse(imageUrl);
@@ -120,7 +184,8 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
           final baseUrl = AppConfig.baseUrl.endsWith('/')
               ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
               : AppConfig.baseUrl;
-          final relativePath = imageUrl.startsWith('/') ? imageUrl : '/$imageUrl';
+          final relativePath =
+              imageUrl.startsWith('/') ? imageUrl : '/$imageUrl';
           final fullUrl = '$baseUrl$relativePath';
           // Validate constructed URL
           try {
@@ -139,7 +204,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
   /// Handles individual image failures gracefully
   Future<void> preloadImages(BuildContext context) async {
     if (_isDisposed) return;
-    
+
     final imageUrls = getSampleImageUrls();
     if (imageUrls.isEmpty) {
       if (_isDisposed) return;
@@ -162,19 +227,21 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
       if (imageUrls.isNotEmpty && !_isDisposed) {
         try {
           // Cache the first image
-          final cachedFile = await _imageCacheService.cacheImage(imageUrls[0]).timeout(
+          final cachedFile =
+              await _imageCacheService.cacheImage(imageUrls[0]).timeout(
             const Duration(seconds: 10),
             onTimeout: () {
               debugPrint('First image cache timeout');
-              throw TimeoutException('First image cache timeout', const Duration(seconds: 10));
+              throw TimeoutException(
+                  'First image cache timeout', const Duration(seconds: 10));
             },
           );
-          
+
           if (_isDisposed) return;
-          
+
           // Also precache for immediate display
-          // Note: In ViewModel, we use the context passed to the method
-          // The context is captured at the method call site, so it's safe to use
+          // Check if context is still mounted before using it after async operation
+          if (!context.mounted) return;
           try {
             if (cachedFile == null) {
               await precacheImage(NetworkImage(imageUrls[0]), context).timeout(
@@ -190,13 +257,14 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
             // Precache failure is not critical - image will load when displayed
             debugPrint('Precache failed for first image: $e');
           }
-          
+
           _isFirstImageLoaded = true;
           _preloadedImageUrls = [imageUrls[0]];
           notifyListeners();
         } catch (e) {
           if (_isDisposed) return;
-          debugPrint('Failed to cache/preload first image: ${imageUrls[0]} - Error: $e');
+          debugPrint(
+              'Failed to cache/preload first image: ${imageUrls[0]} - Error: $e');
           // Continue anyway - image might still load when displayed
           _isFirstImageLoaded = true;
           _preloadedImageUrls = [imageUrls[0]];
@@ -217,15 +285,18 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
               const Duration(seconds: 10),
               onTimeout: () {
                 debugPrint('Image cache timeout for: $url');
-                throw TimeoutException('Image cache timeout', const Duration(seconds: 10));
+                throw TimeoutException(
+                    'Image cache timeout', const Duration(seconds: 10));
               },
             );
-            
+
             // Precache for immediate display
-            // Note: precacheImage doesn't require mounted check, context is captured before async
+            // Check if context is still mounted before using it after async operation
+            if (!currentContext.mounted) return null;
             try {
               if (cachedFile != null) {
-                await precacheImage(FileImage(cachedFile), currentContext).timeout(
+                await precacheImage(FileImage(cachedFile), currentContext)
+                    .timeout(
                   const Duration(seconds: 10),
                 );
               } else {
@@ -238,7 +309,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
               // Precache failure is not critical - image will load when displayed
               debugPrint('Precache failed for $url: $e');
             }
-            
+
             return url; // Return URL if successful
           } catch (e) {
             // Log error but don't fail the entire preload
@@ -249,22 +320,24 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
 
         // Wait for all remaining images to preload
         final results = await Future.wait(preloadFutures);
-        
+
         if (_isDisposed) return;
-        
+
         // Add successfully preloaded images to the list
         final successfulUrls = results.whereType<String>().toList();
         _preloadedImageUrls = [imageUrls[0], ...successfulUrls];
-        
+
         // If some images failed, still include them (they might load when displayed)
         if (successfulUrls.length < remainingUrls.length) {
-          final failedUrls = remainingUrls.where((url) => !successfulUrls.contains(url)).toList();
+          final failedUrls = remainingUrls
+              .where((url) => !successfulUrls.contains(url))
+              .toList();
           _preloadedImageUrls = [..._preloadedImageUrls, ...failedUrls];
         }
       }
-      
+
       if (_isDisposed) return;
-      
+
       _areAllImagesLoaded = true;
       _isPreloadingImages = false;
       notifyListeners();
@@ -280,4 +353,3 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
     }
   }
 }
-

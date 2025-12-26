@@ -9,24 +9,25 @@ import '../utils/constants.dart';
 import 'api_client.dart';
 
 class ApiService {
-  final ApiClient _apiClient;
+  late final ApiClient _apiClient;
   final Uuid _uuid = const Uuid();
 
-  ApiService()
-      : _apiClient = ApiClient(
-          Dio(
-            BaseOptions(
-              baseUrl: AppConstants.kBaseUrl,
-              connectTimeout: AppConstants.kApiTimeout,
-              receiveTimeout: AppConstants.kApiTimeout,
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization':
-                    'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
-              },
-            ),
-          ),
-        );
+  ApiService() {
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: AppConstants.kBaseUrl,
+        connectTimeout: AppConstants.kApiTimeout,
+        receiveTimeout: AppConstants.kApiTimeout,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization':
+              'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
+        },
+      ),
+    );
+    
+    _apiClient = ApiClient(dio);
+  }
 
   /// Transforms an image using AI with the selected theme.
   ///
@@ -114,8 +115,9 @@ class ApiService {
   Future<List<ThemeModel>> getThemes() async {
     try {
       final themes = await _apiClient.getThemes();
+      return themes.toList();
       // Filter themes where isActive is true
-      return themes.where((theme) => theme.isActive == true).toList();
+      // return themes.where((theme) => theme.isActive == true).toList();
     } on DioException catch (e) {
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout ||
@@ -296,6 +298,7 @@ class ApiService {
         },
       ),
     );
+    
     final apiClientWithTimeout = ApiClient(dioWithTimeout);
 
     // Retry logic: try once, retry once on timeout
