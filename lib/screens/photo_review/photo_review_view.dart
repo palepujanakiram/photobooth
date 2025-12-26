@@ -155,13 +155,15 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
               ),
             ),
           ),
-          // Full screen loader overlay
+          // Full screen loader overlay - positioned to cover entire screen
           Consumer<ReviewViewModel>(
             builder: (context, viewModel, child) {
               if (viewModel.isTransforming) {
-                return const FullScreenLoader(
-                  text: 'Generating AI Image',
-                  loaderColor: CupertinoColors.systemBlue,
+                return const Positioned.fill(
+                  child: FullScreenLoader(
+                    text: 'Generating AI Image',
+                    loaderColor: CupertinoColors.systemBlue,
+                  ),
                 );
               }
               return const SizedBox.shrink();

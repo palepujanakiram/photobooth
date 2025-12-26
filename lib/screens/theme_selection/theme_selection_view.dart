@@ -228,11 +228,13 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
               ),
             ),
           ),
-          // Full screen loader overlay
+          // Full screen loader overlay - positioned to cover entire screen
           if (_isGenerating)
-            const FullScreenLoader(
-              text: 'Creating Session',
-              loaderColor: CupertinoColors.systemBlue,
+            const Positioned.fill(
+              child: FullScreenLoader(
+                text: 'Creating Session',
+                loaderColor: CupertinoColors.systemBlue,
+              ),
             ),
         ],
       ),

@@ -10,6 +10,7 @@ import '../../services/theme_manager.dart';
 import '../../services/image_cache_service.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/cached_network_image.dart';
+import '../../views/widgets/full_screen_loader.dart';
 import 'webview_screen.dart';
 
 class TermsAndConditionsScreen extends StatefulWidget {
@@ -244,68 +245,86 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
 
     return ChangeNotifierProvider.value(
       value: _viewModel,
-      child: CupertinoPageScaffold(
-        backgroundColor: CupertinoColors.white,
-        child: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight,
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isTablet ? 32.0 : 16.0,
-                      vertical: isTablet ? 16.0 : 8.0,
+      child: Stack(
+        children: [
+          CupertinoPageScaffold(
+            backgroundColor: CupertinoColors.white,
+            child: SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isTablet ? 32.0 : 16.0,
+                          vertical: isTablet ? 16.0 : 8.0,
+                        ),
+                        child: Consumer<TermsAndConditionsViewModel>(
+                          builder: (context, viewModel, child) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Logo Section
+                                _buildLogo(logoSize, logoIconSize),
+                                SizedBox(height: logoSpacing),
+                                // Image Carousel
+                                _buildImageCarousel(isTablet, carouselHeight),
+                                SizedBox(height: carouselSpacing),
+                                // Tagline
+                                Text(
+                                  'Snap. Transform. Take Home Magic.',
+                                  style: TextStyle(
+                                    fontSize: isTablet ? 18.0 : 14.0,
+                                    color: CupertinoColors.systemGrey,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                SizedBox(height: taglineSpacing),
+                                // Action Buttons
+                                _buildActionButtons(isTablet),
+                                SizedBox(height: actionButtonsSpacing),
+                                // Checkbox
+                                _buildCheckbox(viewModel, isTablet),
+                                SizedBox(height: checkboxSpacing),
+                                // Start Your Experience Button
+                                _buildStartButton(viewModel, isTablet),
+                                SizedBox(height: buttonSpacing),
+                                // Privacy Note
+                                _buildPrivacyNote(isTablet),
+                                // Add bottom padding to ensure content is above system bar
+                                SizedBox(
+                                    height: MediaQuery.of(context).padding.bottom),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
                     ),
-                    child: Consumer<TermsAndConditionsViewModel>(
-                      builder: (context, viewModel, child) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Logo Section
-                            _buildLogo(logoSize, logoIconSize),
-                            SizedBox(height: logoSpacing),
-                            // Image Carousel
-                            _buildImageCarousel(isTablet, carouselHeight),
-                            SizedBox(height: carouselSpacing),
-                            // Tagline
-                            Text(
-                              'Snap. Transform. Take Home Magic.',
-                              style: TextStyle(
-                                fontSize: isTablet ? 18.0 : 14.0,
-                                color: CupertinoColors.systemGrey,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            SizedBox(height: taglineSpacing),
-                            // Action Buttons
-                            _buildActionButtons(isTablet),
-                            SizedBox(height: actionButtonsSpacing),
-                            // Checkbox
-                            _buildCheckbox(viewModel, isTablet),
-                            SizedBox(height: checkboxSpacing),
-                            // Start Your Experience Button
-                            _buildStartButton(viewModel, isTablet),
-                            SizedBox(height: buttonSpacing),
-                            // Privacy Note
-                            _buildPrivacyNote(isTablet),
-                            // Add bottom padding to ensure content is above system bar
-                            SizedBox(
-                                height: MediaQuery.of(context).padding.bottom),
-                          ],
-                        );
-                      },
-                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          // Full screen loader overlay - positioned to cover entire screen
+          Consumer<TermsAndConditionsViewModel>(
+            builder: (context, viewModel, child) {
+              if (viewModel.isSubmitting) {
+                return const Positioned.fill(
+                  child: FullScreenLoader(
+                    text: 'Creating Session',
+                    loaderColor: CupertinoColors.systemBlue,
                   ),
-                ),
-              );
+                );
+              }
+              return const SizedBox.shrink();
             },
           ),
-        ),
+        ],
       ),
     );
   }
