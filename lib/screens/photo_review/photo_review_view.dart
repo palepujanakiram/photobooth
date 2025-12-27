@@ -59,62 +59,62 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
           CupertinoPageScaffold(
             navigationBar: const AppTopBar(
               title: 'Review Photo',
-            ),
+        ),
             child: SafeArea(
-              child: Consumer<ReviewViewModel>(
-                builder: (context, viewModel, child) {
-                  return Column(
-                    children: [
-                      Expanded(
-                        child: Center(
-                          child: Image.file(
-                            viewModel.photo!.imageFile,
-                            fit: BoxFit.contain,
-                          ),
-                        ),
+          child: Consumer<ReviewViewModel>(
+            builder: (context, viewModel, child) {
+              return Column(
+                children: [
+                  Expanded(
+                    child: Center(
+                      child: Image.file(
+                        viewModel.photo!.imageFile,
+                        fit: BoxFit.contain,
                       ),
+                    ),
+                  ),
                       SafeArea(
                         top: false,
                         child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            children: [
-                              Text(
-                                'Theme: ${viewModel.theme?.name ?? "Unknown"}',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                viewModel.theme?.description ?? '',
-                                style: const TextStyle(fontSize: 14),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 24),
-                              if (viewModel.hasError)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 16.0),
-                                  child: Text(
-                                    viewModel.errorMessage ?? 'Unknown error',
-                                    style: const TextStyle(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        Text(
+                          'Theme: ${viewModel.theme?.name ?? "Unknown"}',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          viewModel.theme?.description ?? '',
+                          style: const TextStyle(fontSize: 14),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 24),
+                        if (viewModel.hasError)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Text(
+                              viewModel.errorMessage ?? 'Unknown error',
+                              style: const TextStyle(
                                       color: CupertinoColors.systemRed,
-                                      fontSize: 14,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
+                                fontSize: 14,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
                               AppContinueButton(
                                 text: 'Transform Photo',
-                                onPressed: viewModel.isTransforming
-                                    ? null
-                                    : () async {
+                            onPressed: viewModel.isTransforming
+                                ? null
+                                : () async {
                                         // Capture context before async operation
                                         final currentContext = context;
 
-                                        final transformedImage =
-                                            await viewModel.transformPhoto();
+                                    final transformedImage =
+                                        await viewModel.transformPhoto();
 
                                         if (!mounted ||
                                             !currentContext.mounted) {
@@ -123,13 +123,13 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
 
                                         if (transformedImage != null) {
                                           // Navigate to result screen on success
-                                          Navigator.pushNamed(
+                                      Navigator.pushNamed(
                                             currentContext,
-                                            AppConstants.kRouteResult,
-                                            arguments: {
+                                        AppConstants.kRouteResult,
+                                        arguments: {
                                               'transformedImage':
                                                   transformedImage,
-                                            },
+                                        },
                                           );
                                         } else if (viewModel.hasError) {
                                           // Show error with status code if available
@@ -139,21 +139,21 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                           AppSnackBar.showError(
                                             currentContext,
                                             errorMessage,
-                                          );
-                                        }
-                                      },
+                                      );
+                                    }
+                                  },
                                 isLoading: viewModel.isTransforming,
                                 padding: EdgeInsets.zero,
-                              ),
-                            ],
-                          ),
                         ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
+                      ],
+                          ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
           ),
           // Full screen loader overlay - positioned to cover entire screen
           Consumer<ReviewViewModel>(

@@ -66,68 +66,68 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
             ),
             child: SafeArea(
               child: Consumer<ThemeViewModel>(
-                builder: (context, viewModel, child) {
-                  if (viewModel.isLoading) {
-                    return const Center(
+        builder: (context, viewModel, child) {
+          if (viewModel.isLoading) {
+            return const Center(
                       child: CupertinoActivityIndicator(),
-                    );
-                  }
+            );
+          }
 
-                  if (viewModel.hasError) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
+          if (viewModel.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
                             CupertinoIcons.exclamationmark_triangle,
-                            size: 64,
+                    size: 64,
                             color: CupertinoColors.systemRed,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            viewModel.errorMessage ?? 'Unknown error',
-                            style: const TextStyle(fontSize: 16),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 24),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    viewModel.errorMessage ?? 'Unknown error',
+                    style: const TextStyle(fontSize: 16),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
                           CupertinoButton(
-                            onPressed: () => viewModel.loadThemes(),
-                            child: const Text('Retry'),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
+                    onPressed: () => viewModel.loadThemes(),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
 
-                  if (viewModel.themes.isEmpty) {
-                    return const Center(
-                      child: Text('No themes available'),
-                    );
-                  }
+          if (viewModel.themes.isEmpty) {
+            return const Center(
+              child: Text('No themes available'),
+            );
+          }
 
                   return Column(
                     children: [
                       Expanded(
                         child: GridView.builder(
-                          padding: EdgeInsets.all(isTablet ? 24.0 : 16.0),
+            padding: EdgeInsets.all(isTablet ? 24.0 : 16.0),
                           gridDelegate:
                               SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: isTablet ? 3 : 2,
-                            crossAxisSpacing: 16.0,
-                            mainAxisSpacing: 16.0,
+              crossAxisCount: isTablet ? 3 : 2,
+              crossAxisSpacing: 16.0,
+              mainAxisSpacing: 16.0,
                             childAspectRatio: isTablet ? 0.75 : 0.7,
-                          ),
-                          itemCount: viewModel.themes.length,
-                          itemBuilder: (context, index) {
-                            final theme = viewModel.themes[index];
+            ),
+            itemCount: viewModel.themes.length,
+            itemBuilder: (context, index) {
+              final theme = viewModel.themes[index];
                             final isSelected =
                                 viewModel.selectedTheme?.id == theme.id;
 
-                            return ThemeCard(
-                              theme: theme,
-                              isSelected: isSelected,
-                              onTap: () {
-                                viewModel.selectTheme(theme);
+              return ThemeCard(
+                theme: theme,
+                isSelected: isSelected,
+                onTap: () {
+                  viewModel.selectTheme(theme);
                               },
                             );
                           },
@@ -211,10 +211,10 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                     }
                                   } else {
                                     // Normal flow: navigate to camera selection
-                                    Navigator.pushNamed(
+                  Navigator.pushNamed(
                                       currentContext,
-                                      AppConstants.kRouteCameraSelection,
-                                    );
+                    AppConstants.kRouteCameraSelection,
+                  );
                                   }
                                 }
                               : null,
@@ -223,8 +223,8 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                         ),
                       ),
                     ],
-                  );
-                },
+              );
+            },
               ),
             ),
           ),

@@ -241,19 +241,32 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     final horizontalPadding = 8.0 + (scaleFactor * 8.0);
     
     // Calculate screen dimensions
-    final screenHeight = MediaQuery.of(context).size.height;
-    final statusBarHeight = MediaQuery.of(context).padding.top;
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
-
+    final mediaQuery = MediaQuery.of(context);
+    final statusBarHeight = mediaQuery.padding.top;
+    final bottomPadding = mediaQuery.padding.bottom;
+    
     return ChangeNotifierProvider.value(
       value: _viewModel,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Carousel images as full screen background (ignoring safe areas)
-          Positioned.fill(
-            child: _buildImageCarousel(screenHeight),
-          ),
+      child: MediaQuery.removePadding(
+        context: context,
+        removeBottom: true,
+        removeTop: true,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Get full screen height ignoring safe areas (like SwiftUI's ignoresSafeArea)
+            final fullHeight = constraints.maxHeight;
+            
+            return Container(
+              width: double.infinity,
+              height: double.infinity,
+              color: Colors.transparent,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Carousel images as full screen background - ignores safe areas
+                  Positioned.fill(
+                    child: _buildImageCarousel(fullHeight),
+                  ),
           // Bottom controls positioned at bottom of screen
           Positioned(
             left: 0,
@@ -339,6 +352,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           ),
         ],
       ),
+              );
+          },
+        ),
+      ),
     );
   }
 
@@ -389,9 +406,11 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       );
     }
 
-    // PageView uses full height since dots are hidden
-    return SizedBox(
+    // PageView uses full height since dots are hidden - ensure it fills entire space
+    return Container(
+      width: double.infinity,
       height: height,
+      color: Colors.transparent,
       child: PageView.builder(
         controller: _pageController,
         onPageChanged: (index) {
@@ -405,46 +424,40 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         },
         itemCount: _carouselImages.length,
         itemBuilder: (context, index) {
-          return ClipRect(
-            child: Align(
-              alignment: Alignment.topCenter,
-              heightFactor: 1.0,
-              child: CachedNetworkImage(
-                imageUrl: _carouselImages[index],
-                width: double.infinity,
-                height: double.infinity,
-                fit: BoxFit.cover,
-                placeholder: Builder(
-                  builder: (context) => Container(
-                    color: AppColors.of(context).backgroundColor,
-                    child: const Center(
-                      child: CupertinoActivityIndicator(),
-                    ),
-                  ),
+          return CachedNetworkImage(
+            imageUrl: _carouselImages[index],
+            width: double.infinity,
+            height: double.infinity,
+            fit: BoxFit.cover,
+            placeholder: Builder(
+              builder: (context) => Container(
+                color: AppColors.of(context).backgroundColor,
+                child: const Center(
+                  child: CupertinoActivityIndicator(),
                 ),
-                errorWidget: Builder(
-                  builder: (context) => Container(
-                    color: AppColors.of(context).backgroundColor,
-                    child: const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            CupertinoIcons.photo,
-                            size: 48,
-                            color: CupertinoColors.systemGrey2,
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Image unavailable',
-                            style: TextStyle(
-                              color: CupertinoColors.systemGrey,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+              ),
+            ),
+            errorWidget: Builder(
+              builder: (context) => Container(
+                color: AppColors.of(context).backgroundColor,
+                child: const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        CupertinoIcons.photo,
+                        size: 48,
+                        color: CupertinoColors.systemGrey2,
                       ),
-                    ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Image unavailable',
+                        style: TextStyle(
+                          color: CupertinoColors.systemGrey,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
