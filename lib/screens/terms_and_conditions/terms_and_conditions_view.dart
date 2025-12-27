@@ -219,35 +219,40 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-    final isTablet = screenWidth > AppConstants.kTabletBreakpoint;
-
+    
     // Calculate responsive spacing based on screen height
     final availableHeight = screenHeight -
         MediaQuery.of(context).padding.top -
         MediaQuery.of(context).padding.bottom;
-
-    // Adjust logo size dynamically based on available height
-    // Reduced size to fit all content without scrolling
-    final double logoSize = isTablet 
-        ? (availableHeight * 0.15).clamp(150.0, 220.0)
-        : (availableHeight * 0.12).clamp(100.0, 160.0);
+    
+    // Calculate scale factor based on screen width (normalize to a base width of 400px)
+    // This provides smooth scaling across all device sizes
+    final double scaleFactor = (screenWidth / 400.0).clamp(0.8, 2.0);
+    
+    // Calculate base sizes that scale with screen dimensions
+    final double baseLogoSize = availableHeight * 0.10;
+    final double logoSize = baseLogoSize.clamp(80.0, 180.0);
     final double logoIconSize = logoSize * 0.18;
 
     // Calculate carousel height dynamically based on available space
-    // Reserve space for other elements (logo, buttons, etc.)
-    final double reservedSpace = isTablet 
-        ? (logoSize * 1.2 + 180) // Logo + buttons + spacing
-        : (logoSize * 1.2 + 160); // Logo + buttons + spacing
-    final double carouselHeight = (availableHeight - reservedSpace).clamp(120.0, availableHeight * 0.30);
+    // Reserve space for other elements (logo, buttons, spacing, etc.)
+    final double fixedElementsHeight = logoSize * 1.2 + (180 + scaleFactor * 20);
+    final double carouselHeight = (availableHeight - fixedElementsHeight).clamp(100.0, availableHeight * 0.28);
 
-    // Calculate dynamic spacing based on available height to prevent overflow
-    // Reduced spacing to fit all content without scrolling
-    final double logoSpacing = availableHeight * 0.008;
-    final double carouselSpacing = availableHeight * 0.010;
-    final double taglineSpacing = availableHeight * 0.008;
-    final double actionButtonsSpacing = availableHeight * 0.010;
-    final double checkboxSpacing = availableHeight * 0.008;
-    final double buttonSpacing = availableHeight * 0.008;
+    // Calculate dynamic spacing that scales with screen size
+    final double logoSpacing = 4.0 + (scaleFactor * 2.0);
+    final double carouselSpacing = 6.0 + (scaleFactor * 2.0);
+    final double taglineSpacing = 4.0 + (scaleFactor * 2.0);
+    final double actionButtonsSpacing = 6.0 + (scaleFactor * 2.0);
+    final double checkboxSpacing = 4.0 + (scaleFactor * 2.0);
+    final double buttonSpacing = 4.0 + (scaleFactor * 2.0);
+    
+    // Calculate padding that scales with screen size
+    final double horizontalPadding = 8.0 + (scaleFactor * 8.0);
+    final double verticalPadding = 2.0 + (scaleFactor * 3.0);
+    
+    // Calculate font sizes that scale with screen size
+    final double taglineFontSize = 12.0 + (scaleFactor * 3.0);
 
     return ChangeNotifierProvider.value(
       value: _viewModel,
@@ -260,24 +265,24 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
               child: SafeArea(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final content = Container(
+                    return Container(
+                      width: double.infinity,
+                      height: constraints.maxHeight,
                       color: CupertinoColors.white, // Ensure content background is white
                       child: Padding(
-                        padding: EdgeInsets.only(
-                          left: isTablet ? 32.0 : 16.0,
-                          right: isTablet ? 32.0 : 16.0,
-                          top: isTablet ? 4.0 : 4.0, // Reduced top padding
-                          bottom: isTablet ? 8.0 : 4.0,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: horizontalPadding,
+                          vertical: verticalPadding,
                         ),
                         child: Consumer<TermsAndConditionsViewModel>(
                           builder: (context, viewModel, child) {
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.center,
+                              mainAxisAlignment: screenWidth > 600 ? MainAxisAlignment.center : MainAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // Flexible spacer above logo to push content down (only for tablets)
-                                // Use SizedBox with calculated height instead of Spacer to avoid unbounded constraints
-                                if (isTablet) SizedBox(height: availableHeight * 0.05),
+                                // Flexible spacer above logo for larger screens
+                                if (screenWidth > 600) SizedBox(height: availableHeight * 0.03),
                                 // Logo Section - sized dynamically
                                 FittedBox(
                                   fit: BoxFit.scaleDown,
@@ -289,7 +294,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                                   constraints: BoxConstraints(
                                     maxHeight: carouselHeight,
                                   ),
-                                  child: _buildImageCarousel(isTablet, carouselHeight),
+                                  child: _buildImageCarousel(carouselHeight),
                                 ),
                                 SizedBox(height: carouselSpacing),
                                 // Tagline
@@ -298,7 +303,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                                   child: Text(
                                     'Snap. Transform. Take Home Magic.',
                                     style: TextStyle(
-                                      fontSize: isTablet ? 18.0 : 14.0,
+                                      fontSize: taglineFontSize,
                                       color: CupertinoColors.systemGrey,
                                       fontWeight: FontWeight.w500,
                                     ),
@@ -307,16 +312,16 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                                 ),
                                 SizedBox(height: taglineSpacing),
                                 // Action Buttons
-                                _buildActionButtons(isTablet),
+                                _buildActionButtons(scaleFactor),
                                 SizedBox(height: actionButtonsSpacing),
                                 // Checkbox
-                                _buildCheckbox(viewModel, isTablet),
+                                _buildCheckbox(viewModel, scaleFactor),
                                 SizedBox(height: checkboxSpacing),
                                 // Start Your Experience Button
-                                _buildStartButton(viewModel, isTablet),
+                                _buildStartButton(viewModel, scaleFactor),
                                 SizedBox(height: buttonSpacing),
                                 // Privacy Note
-                                _buildPrivacyNote(isTablet),
+                                _buildPrivacyNote(scaleFactor),
                                 // Add bottom padding to ensure content is above system bar
                                 SizedBox(height: MediaQuery.of(context).padding.bottom),
                               ],
@@ -324,12 +329,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                           },
                         ),
                       ),
-                    );
-
-                    // No scrolling - content should fit within available space
-                    return SizedBox(
-                      height: constraints.maxHeight,
-                      child: content,
                     );
                   },
                 ),
@@ -388,7 +387,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
-  Widget _buildImageCarousel(bool isTablet, double height) {
+  Widget _buildImageCarousel(double height) {
     if (_carouselImages.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -504,7 +503,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
-  Widget _buildActionButtons(bool isTablet) {
+  Widget _buildActionButtons(double scaleFactor) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       mainAxisSize: MainAxisSize.min,
@@ -512,17 +511,17 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         _buildActionButton(
           icon: CupertinoIcons.camera,
           label: 'Take Photo',
-          isTablet: isTablet,
+          scaleFactor: scaleFactor,
         ),
         _buildActionButton(
           icon: CupertinoIcons.star_fill,
           label: 'AI Transform',
-          isTablet: isTablet,
+          scaleFactor: scaleFactor,
         ),
         _buildActionButton(
           icon: CupertinoIcons.printer_fill,
           label: 'Print & Keep',
-          isTablet: isTablet,
+          scaleFactor: scaleFactor,
         ),
       ],
     );
@@ -531,14 +530,19 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   Widget _buildActionButton({
     required IconData icon,
     required String label,
-    required bool isTablet,
+    required double scaleFactor,
   }) {
+    final double iconSize = 20.0 + (scaleFactor * 4.0);
+    final double fontSize = 8.0 + (scaleFactor * 2.0);
+    final double horizontalPadding = 6.0 + (scaleFactor * 3.0);
+    final double verticalPadding = 12.0 + (scaleFactor * 2.0);
+    
     return Expanded(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 4),
         padding: EdgeInsets.symmetric(
-          horizontal: isTablet ? 12.0 : 8.0,
-          vertical: isTablet ? 16.0 : 14.0,
+          horizontal: horizontalPadding,
+          vertical: verticalPadding,
         ),
         decoration: BoxDecoration(
           color: CupertinoColors.systemBlue.withValues(alpha: 0.1),
@@ -549,14 +553,14 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           children: [
             Icon(
               icon,
-              size: isTablet ? 28 : 24,
+              size: iconSize,
               color: CupertinoColors.systemBlue,
             ),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
-                fontSize: isTablet ? 12 : 10,
+                fontSize: fontSize,
                 color: CupertinoColors.systemBlue,
                 fontWeight: FontWeight.w500,
               ),
@@ -570,7 +574,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
-  Widget _buildCheckbox(TermsAndConditionsViewModel viewModel, bool isTablet) {
+  Widget _buildCheckbox(TermsAndConditionsViewModel viewModel, double scaleFactor) {
+    final double checkboxSize = 20.0 + (scaleFactor * 4.0);
+    final double fontSize = 10.0 + (scaleFactor * 2.0);
+    
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
@@ -580,8 +587,8 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             viewModel.toggleAgreement(!viewModel.isAgreed);
           },
           child: Container(
-            width: isTablet ? 28 : 24,
-            height: isTablet ? 28 : 24,
+            width: checkboxSize,
+            height: checkboxSize,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
@@ -595,10 +602,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                   : CupertinoColors.systemBackground,
             ),
             child: viewModel.isAgreed
-                ? const Icon(
+                ? Icon(
                     CupertinoIcons.checkmark,
                     color: CupertinoColors.white,
-                    size: 18,
+                    size: checkboxSize * 0.65,
                   )
                 : null,
           ),
@@ -612,7 +619,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             child: RichText(
               text: TextSpan(
                 style: TextStyle(
-                  fontSize: isTablet ? 14 : 12,
+                  fontSize: fontSize,
                   color: CupertinoColors.systemGrey,
                   height: 1.3,
                 ),
@@ -623,7 +630,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                   TextSpan(
                     text: 'Terms & Conditions',
                     style: TextStyle(
-                      fontSize: isTablet ? 14 : 12,
+                      fontSize: fontSize,
                       color: CupertinoColors.systemBlue,
                       decoration: TextDecoration.underline,
                       fontWeight: FontWeight.w500,
@@ -646,10 +653,13 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Widget _buildStartButton(
-      TermsAndConditionsViewModel viewModel, bool isTablet) {
+      TermsAndConditionsViewModel viewModel, double scaleFactor) {
+    final double buttonHeight = 50.0 + (scaleFactor * 8.0);
+    final double fontSize = 14.0 + (scaleFactor * 2.0);
+    
     return SizedBox(
       width: double.infinity,
-      height: isTablet ? 64.0 : 58.0,
+      height: buttonHeight,
       child: CupertinoButton(
         padding: EdgeInsets.zero,
         color: viewModel.canSubmit
@@ -664,7 +674,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             : Text(
                 'Start Your Experience',
                 style: TextStyle(
-                  fontSize: isTablet ? 18.0 : 16.0,
+                  fontSize: fontSize,
                   fontWeight: FontWeight.bold,
                   color: CupertinoColors.white,
                 ),
@@ -673,14 +683,17 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
-  Widget _buildPrivacyNote(bool isTablet) {
+  Widget _buildPrivacyNote(double scaleFactor) {
+    final double iconSize = 10.0 + (scaleFactor * 2.0);
+    final double fontSize = 8.0 + (scaleFactor * 1.5);
+    
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
           CupertinoIcons.time,
-          size: isTablet ? 14 : 12,
+          size: iconSize,
           color: CupertinoColors.systemGrey,
         ),
         const SizedBox(width: 4),
@@ -688,7 +701,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           child: Text(
             'Sessions auto-delete after 24 hours for your privacy',
             style: TextStyle(
-              fontSize: isTablet ? 11 : 10,
+              fontSize: fontSize,
               color: CupertinoColors.systemGrey,
             ),
             textAlign: TextAlign.center,
