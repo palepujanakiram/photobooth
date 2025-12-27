@@ -11,6 +11,7 @@ import '../../services/image_cache_service.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/full_screen_loader.dart';
+import '../../views/widgets/app_colors.dart';
 import 'webview_screen.dart';
 
 class TermsAndConditionsScreen extends StatefulWidget {
@@ -221,180 +222,155 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-
-    // Calculate responsive spacing based on screen height
-    final availableHeight = screenHeight -
-        MediaQuery.of(context).padding.top -
-        MediaQuery.of(context).padding.bottom;
 
     // Calculate scale factor based on screen width (normalize to a base width of 400px)
     // This provides smooth scaling across all device sizes
     final double scaleFactor = (screenWidth / 400.0).clamp(0.8, 2.0);
 
-    // Calculate base sizes that scale with screen dimensions
-    final double baseLogoSize = availableHeight * 0.10;
-    final double logoSize = baseLogoSize.clamp(80.0, 180.0);
-    final double logoIconSize = logoSize * 0.18;
-
-    // Calculate carousel height dynamically based on available space
-    // Reserve space for other elements (logo, buttons, spacing, etc.)
-    final double fixedElementsHeight =
-        logoSize * 1.2 + (180 + scaleFactor * 20);
-    final double carouselHeight = (availableHeight - fixedElementsHeight)
-        .clamp(100.0, availableHeight * 0.28);
-
-    // Calculate dynamic spacing that scales with screen size
-    final double logoSpacing = 4.0 + (scaleFactor * 2.0);
-    final double carouselSpacing = 6.0 + (scaleFactor * 2.0);
-    final double taglineSpacing = 4.0 + (scaleFactor * 2.0);
-    final double actionButtonsSpacing = 6.0 + (scaleFactor * 2.0);
-    final double checkboxSpacing = 4.0 + (scaleFactor * 2.0);
-    final double buttonSpacing = 4.0 + (scaleFactor * 2.0);
-
-    // Calculate padding that scales with screen size
-    final double horizontalPadding = 8.0 + (scaleFactor * 8.0);
-    final double verticalPadding = 2.0 + (scaleFactor * 3.0);
+    // Calculate dynamic spacing that scales with screen size (minimal for better fit)
+    final double carouselSpacing = 1.0 + (scaleFactor * 0.2);
+    final double taglineSpacing = 1.0 + (scaleFactor * 0.2);
+    final double actionButtonsSpacing = 1.5 + (scaleFactor * 0.2);
+    final double checkboxSpacing = 1.0 + (scaleFactor * 0.2);
+    final double buttonSpacing = 1.0 + (scaleFactor * 0.2);
 
     // Calculate font sizes that scale with screen size
     final double taglineFontSize = 12.0 + (scaleFactor * 3.0);
 
+    // Calculate horizontal padding for bottom content
+    final horizontalPadding = 8.0 + (scaleFactor * 8.0);
+    
+    // Calculate screen dimensions
+    final screenHeight = MediaQuery.of(context).size.height;
+    final statusBarHeight = MediaQuery.of(context).padding.top;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
     return ChangeNotifierProvider.value(
       value: _viewModel,
-      child: Container(
-        color: CupertinoColors.white, // Ensure Stack background is white
-        child: Stack(
-          children: [
-            CupertinoPageScaffold(
-              backgroundColor: CupertinoColors.white,
-              child: SafeArea(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    return Container(
-                      width: double.infinity,
-                      height: constraints.maxHeight,
-                      color: CupertinoColors
-                          .white, // Ensure content background is white
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: horizontalPadding,
-                          vertical: verticalPadding,
-                        ),
-                        child: Consumer<TermsAndConditionsViewModel>(
-                          builder: (context, viewModel, child) {
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              mainAxisAlignment: screenWidth > 600
-                                  ? MainAxisAlignment.center
-                                  : MainAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Flexible spacer above logo for larger screens
-                                if (screenWidth > 600)
-                                  SizedBox(height: availableHeight * 0.03),
-                                // Logo Section - sized dynamically
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: _buildLogo(logoSize, logoIconSize),
-                                ),
-                                SizedBox(height: logoSpacing),
-                                // Image Carousel - sized dynamically, constrained to prevent overflow
-                                ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    maxHeight: carouselHeight,
-                                  ),
-                                  child: _buildImageCarousel(carouselHeight),
-                                ),
-                                SizedBox(height: carouselSpacing),
-                                // Tagline
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    'Snap. Transform. Take Home Magic.',
-                                    style: TextStyle(
-                                      fontSize: taglineFontSize,
-                                      color: CupertinoColors.systemGrey,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                                SizedBox(height: taglineSpacing),
-                                // Action Buttons
-                                _buildActionButtons(scaleFactor),
-                                SizedBox(height: actionButtonsSpacing),
-                                // Checkbox
-                                _buildCheckbox(viewModel, scaleFactor),
-                                SizedBox(height: checkboxSpacing),
-                                // Start Your Experience Button
-                                _buildStartButton(viewModel, scaleFactor),
-                                SizedBox(height: buttonSpacing),
-                                // Privacy Note
-                                _buildPrivacyNote(scaleFactor),
-                                // Add bottom padding to ensure content is above system bar
-                                SizedBox(
-                                    height:
-                                        MediaQuery.of(context).padding.bottom),
-                              ],
-                            );
-                          },
-                        ),
-                      ),
-                    );
-                  },
-                ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Carousel images as full screen background (ignoring safe areas)
+          Positioned.fill(
+            child: _buildImageCarousel(screenHeight),
+          ),
+          // Bottom controls positioned at bottom of screen
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              color: AppColors.of(context).backgroundColor,
+              padding: EdgeInsets.only(
+                left: horizontalPadding,
+                right: horizontalPadding,
+                top: 16,
+                bottom: bottomPadding,
               ),
-            ),
-            // Full screen loader overlay - positioned to cover entire screen
-            Consumer<TermsAndConditionsViewModel>(
-              builder: (context, viewModel, child) {
-                if (viewModel.isSubmitting) {
-                  return const Positioned.fill(
-                    child: FullScreenLoader(
-                      text: 'Creating Session',
-                      loaderColor: CupertinoColors.systemBlue,
+              child: Consumer<TermsAndConditionsViewModel>(
+                builder: (context, viewModel, child) {
+                  return SingleChildScrollView(
+                    physics: const NeverScrollableScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(height: carouselSpacing + 8), // Increased top padding
+                        // Tagline
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Snap. Transform. Take Home Magic.',
+                            style: TextStyle(
+                              fontSize: taglineFontSize,
+                              color: CupertinoColors.systemGrey,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        SizedBox(height: taglineSpacing + 8), // Increased bottom padding
+                        // Action Buttons
+                        _buildActionButtons(scaleFactor),
+                        SizedBox(height: actionButtonsSpacing),
+                        // Checkbox with extra padding below
+                        _buildCheckbox(viewModel, scaleFactor),
+                        SizedBox(height: checkboxSpacing + 4),
+                        // Start Your Experience Button
+                        _buildStartButton(viewModel, scaleFactor),
+                        SizedBox(height: buttonSpacing * 0.5), // Reduced spacing
+                        // Privacy Note
+                        _buildPrivacyNote(scaleFactor),
+                        SizedBox(height: 4), // Minimal bottom padding
+                      ],
                     ),
                   );
-                }
-                return const SizedBox.shrink();
-              },
+                },
+              ),
             ),
-          ],
-        ),
+          ),
+          // ZenAI Logo overlay on top of carousel
+          Positioned(
+            top: statusBarHeight + 8,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                color: Colors.transparent,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: _buildNavBarLogo(context),
+              ),
+            ),
+          ),
+          // Full screen loader overlay - positioned to cover entire screen
+          Consumer<TermsAndConditionsViewModel>(
+            builder: (context, viewModel, child) {
+              if (viewModel.isSubmitting) {
+                return const Positioned.fill(
+                  child: FullScreenLoader(
+                    text: 'Creating Session',
+                    loaderColor: CupertinoColors.systemBlue,
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildLogo(double logoSize, double iconSize) {
-    return Image.asset(
-      'lib/images/zen_ai_logo.jpeg',
-      height: logoSize * 1.2,
-      width: logoSize * 1.2,
-      fit: BoxFit.contain,
-      errorBuilder: (context, error, stackTrace) {
-        // Fallback to text if image fails to load
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Zen AI',
-              style: TextStyle(
-                fontSize: logoSize * 0.35,
-                fontWeight: FontWeight.bold,
-                color: CupertinoColors.systemBlue,
-              ),
+  Widget _buildNavBarLogo(BuildContext context) {
+    final appColors = AppColors.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.transparent,
+      ),
+      child: Image.asset(
+        'lib/images/zen_ai_logo.jpeg',
+        height: 60,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) {
+          // Fallback to text if image fails to load
+          return Text(
+            'Zen AI',
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: appColors.textColor,
+              shadows: [
+                Shadow(
+                  offset: const Offset(0, 2),
+                  blurRadius: 4,
+                  color: appColors.shadowColor,
+                ),
+              ],
             ),
-            Text(
-              'PHOTO BOOTH',
-              style: TextStyle(
-                fontSize: logoSize * 0.15,
-                color: CupertinoColors.systemGrey,
-                letterSpacing: 2,
-              ),
-            ),
-          ],
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -413,107 +389,68 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       );
     }
 
-    // Calculate available height for PageView (reserve space for dots indicator)
-    // Total space needed: PageView + spacing (4px) + dots (6px) = height
-    // So: pageViewHeight = height - 4 - 6 = height - 10
-    const double spacingHeight = 4.0; // Spacing between PageView and dots
-    const double dotsHeight = 6.0; // Height of dots indicator
-    final double pageViewHeight =
-        (height - spacingHeight - dotsHeight).clamp(100.0, height - 10);
-
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: height,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            height: pageViewHeight,
-            child: Container(
-              color: Colors.transparent, // Make PageView container transparent
-              child: PageView.builder(
-                controller: _pageController,
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentPage = index;
-                  });
-                  // Reset timer when page changes manually (only if all images loaded)
-                  if (_areAllImagesLoaded) {
-                    _startCarouselAutoScroll();
-                  }
-                },
-                itemCount: _carouselImages.length,
-                itemBuilder: (context, index) {
-                  return Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: const BoxDecoration(
-                      color: Colors.transparent, // Make background transparent
+    // PageView uses full height since dots are hidden
+    return SizedBox(
+      height: height,
+      child: PageView.builder(
+        controller: _pageController,
+        onPageChanged: (index) {
+          setState(() {
+            _currentPage = index;
+          });
+          // Reset timer when page changes manually (only if all images loaded)
+          if (_areAllImagesLoaded) {
+            _startCarouselAutoScroll();
+          }
+        },
+        itemCount: _carouselImages.length,
+        itemBuilder: (context, index) {
+          return ClipRect(
+            child: Align(
+              alignment: Alignment.topCenter,
+              heightFactor: 1.0,
+              child: CachedNetworkImage(
+                imageUrl: _carouselImages[index],
+                width: double.infinity,
+                height: double.infinity,
+                fit: BoxFit.cover,
+                placeholder: Builder(
+                  builder: (context) => Container(
+                    color: AppColors.of(context).backgroundColor,
+                    child: const Center(
+                      child: CupertinoActivityIndicator(),
                     ),
-                    child: CachedNetworkImage(
-                      imageUrl: _carouselImages[index],
-                      width: double.infinity,
-                      height: double.infinity,
-                      fit: BoxFit.contain,
-                      placeholder: Container(
-                        color: Colors.transparent,
-                        child: const Center(
-                          child: CircularProgressIndicator(
-                            color: Colors.blue,
+                  ),
+                ),
+                errorWidget: Builder(
+                  builder: (context) => Container(
+                    color: AppColors.of(context).backgroundColor,
+                    child: const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            CupertinoIcons.photo,
+                            size: 48,
+                            color: CupertinoColors.systemGrey2,
                           ),
-                        ),
-                      ),
-                      errorWidget: Container(
-                        color: Colors
-                            .transparent, // Make error widget background transparent too
-                        child: const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                CupertinoIcons.photo,
-                                size: 48,
-                                color: CupertinoColors.systemGrey2,
-                              ),
-                              SizedBox(height: 8),
-                              Text(
-                                'Image unavailable',
-                                style: TextStyle(
-                                  color: CupertinoColors.systemGrey,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
+                          SizedBox(height: 8),
+                          Text(
+                            'Image unavailable',
+                            style: TextStyle(
+                              color: CupertinoColors.systemGrey,
+                              fontSize: 12,
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                     ),
-                  );
-                },
+                  ),
+                ),
               ),
             ),
-          ),
-          const SizedBox(
-              height:
-                  spacingHeight), // spacingHeight is not const, so SizedBox cannot be const
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: List.generate(_carouselImages.length, (index) {
-              return Container(
-                width: 6,
-                height: 6,
-                margin: const EdgeInsets.symmetric(horizontal: 3),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _currentPage == index
-                      ? CupertinoColors.systemBlue
-                      : CupertinoColors.systemGrey3,
-                ),
-              );
-            }),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -618,10 +555,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                   : CupertinoColors.systemBackground,
             ),
             child: viewModel.isAgreed
-                ? Icon(
-                    CupertinoIcons.checkmark,
-                    color: CupertinoColors.white,
-                    size: checkboxSize * 0.65,
+                ? Builder(
+                    builder: (context) => Icon(
+                      CupertinoIcons.checkmark,
+                      color: AppColors.of(context).textColor,
+                      size: checkboxSize * 0.65,
+                    ),
                   )
                 : null,
           ),
@@ -632,34 +571,37 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             onTap: () {
               viewModel.toggleAgreement(!viewModel.isAgreed);
             },
-            child: RichText(
-              text: TextSpan(
-                style: TextStyle(
-                  fontSize: fontSize,
-                  color: CupertinoColors.systemGrey,
-                  height: 1.3,
-                ),
-                children: [
-                  const TextSpan(
-                    text: 'I have read and agree to the ',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 4.0),
+              child: RichText(
+                text: TextSpan(
+                  style: TextStyle(
+                    fontSize: fontSize,
+                    color: CupertinoColors.systemGrey,
+                    height: 1.3,
                   ),
-                  TextSpan(
-                    text: 'Terms & Conditions',
-                    style: TextStyle(
-                      fontSize: fontSize,
-                      color: CupertinoColors.systemBlue,
-                      decoration: TextDecoration.underline,
-                      fontWeight: FontWeight.w500,
+                  children: [
+                    const TextSpan(
+                      text: 'I have read and agree to the ',
                     ),
-                    recognizer: TapGestureRecognizer()
-                      ..onTap = () {
-                        _openTermsLink();
-                      },
-                  ),
-                  const TextSpan(
-                    text: ' and consent to AI processing of my photo',
-                  ),
-                ],
+                    TextSpan(
+                      text: 'Terms & Conditions',
+                      style: TextStyle(
+                        fontSize: fontSize,
+                        color: CupertinoColors.systemBlue,
+                        decoration: TextDecoration.underline,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      recognizer: TapGestureRecognizer()
+                        ..onTap = () {
+                          _openTermsLink();
+                        },
+                    ),
+                    const TextSpan(
+                      text: ' and consent to AI processing of my photo',
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -692,7 +634,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                 style: TextStyle(
                   fontSize: fontSize,
                   fontWeight: FontWeight.bold,
-                  color: CupertinoColors.white,
+                  color: AppColors.of(context).buttonTextColor,
                 ),
               ),
       ),

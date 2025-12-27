@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import '../../views/widgets/app_scaffold.dart';
 
 class WebViewScreen extends StatefulWidget {
   final String url;
@@ -83,58 +84,55 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.of(context).pop();
-          },
-        ),
-      ),
-      body: _buildBody(),
+    return AppScaffold(
+      title: widget.title,
+      showBackButton: true,
+      child: _buildBody(),
     );
   }
 
   Widget _buildBody() {
     if (!_isInitialized || _controller == null) {
       return const Center(
-        child: CircularProgressIndicator(),
+        child: CupertinoActivityIndicator(),
       );
     }
 
     if (_errorMessage != null && !_isLoading) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.error_outline,
-              size: 64,
-              color: Colors.red,
-            ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Text(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                CupertinoIcons.exclamationmark_triangle,
+                size: 64,
+                color: CupertinoColors.systemRed,
+              ),
+              const SizedBox(height: 16),
+              Text(
                 _errorMessage!,
-                style: const TextStyle(fontSize: 16),
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: CupertinoColors.black,
+                ),
                 textAlign: TextAlign.center,
               ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _errorMessage = null;
-                  _isLoading = true;
-                });
-                _controller?.reload();
-              },
-              child: const Text('Retry'),
-            ),
-          ],
+              const SizedBox(height: 24),
+              CupertinoButton(
+                color: CupertinoColors.systemBlue,
+                onPressed: () {
+                  setState(() {
+                    _errorMessage = null;
+                    _isLoading = true;
+                  });
+                  _controller?.reload();
+                },
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -146,14 +144,14 @@ class _WebViewScreenState extends State<WebViewScreen> {
           WebViewWidget(controller: _controller!),
           if (_isLoading)
             const Center(
-              child: CircularProgressIndicator(),
+              child: CupertinoActivityIndicator(),
             ),
         ],
       );
     }
 
     return const Center(
-      child: CircularProgressIndicator(),
+      child: CupertinoActivityIndicator(),
     );
   }
 }

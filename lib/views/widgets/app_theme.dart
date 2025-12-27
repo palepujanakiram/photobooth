@@ -34,14 +34,16 @@ class AppTheme {
 
 /// Common Cupertino-style top bar widget
 class AppTopBar extends StatelessWidget implements ObstructingPreferredSizeWidget {
-  final String title;
+  final String? title;
+  final Widget? middle;
   final List<Widget>? actions;
   final Widget? leading;
   final bool automaticallyImplyLeading;
   
   const AppTopBar({
     super.key,
-    required this.title,
+    this.title,
+    this.middle,
     this.actions,
     this.leading,
     this.automaticallyImplyLeading = true,
@@ -50,10 +52,10 @@ class AppTopBar extends StatelessWidget implements ObstructingPreferredSizeWidge
   @override
   Widget build(BuildContext context) {
     return CupertinoNavigationBar(
-      middle: Text(
-        title,
+      middle: middle ?? (title != null ? Text(
+        title!,
         style: AppTheme.titleTextStyle,
-      ),
+      ) : null),
       leading: leading,
       trailing: actions != null && actions!.isNotEmpty
           ? Row(

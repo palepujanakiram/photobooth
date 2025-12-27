@@ -4,6 +4,7 @@ import 'camera_selection_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/camera_card.dart';
 import '../../views/widgets/app_theme.dart';
+import '../../views/widgets/app_scaffold.dart';
 
 class CameraSelectionScreen extends StatefulWidget {
   const CameraSelectionScreen({super.key});
@@ -36,20 +37,15 @@ class _CameraSelectionScreenState extends State<CameraSelectionScreen> {
           );
         }
       },
-      child: CupertinoPageScaffold(
-        navigationBar: AppTopBar(
-          title: 'Select Camera',
-          leading: AppActionButton(
-            icon: CupertinoIcons.back,
-            onPressed: () {
-              Navigator.pushReplacementNamed(
-                context,
-                AppConstants.kRouteTerms,
-              );
-            },
-          ),
-        ),
-      child: SafeArea(
+      child: AppScaffold(
+        title: 'Select Camera',
+        showBackButton: true,
+        onBackPressed: () {
+          Navigator.pushReplacementNamed(
+            context,
+            AppConstants.kRouteTerms,
+          );
+        },
         child: Column(
           children: [
             Expanded(
@@ -138,7 +134,6 @@ class _CameraSelectionScreenState extends State<CameraSelectionScreen> {
             ),
           ],
         ),
-      ),
       ),
     );
   }
