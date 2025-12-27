@@ -26,10 +26,29 @@ class _CameraSelectionScreenState extends State<CameraSelectionScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isTablet = screenWidth > AppConstants.kTabletBreakpoint;
 
-    return CupertinoPageScaffold(
-      navigationBar: const AppTopBar(
-        title: 'Select Camera',
-      ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, dynamic result) {
+        if (!didPop) {
+          Navigator.pushReplacementNamed(
+            context,
+            AppConstants.kRouteTerms,
+          );
+        }
+      },
+      child: CupertinoPageScaffold(
+        navigationBar: AppTopBar(
+          title: 'Select Camera',
+          leading: AppActionButton(
+            icon: CupertinoIcons.back,
+            onPressed: () {
+              Navigator.pushReplacementNamed(
+                context,
+                AppConstants.kRouteTerms,
+              );
+            },
+          ),
+        ),
       child: SafeArea(
         child: Column(
           children: [
@@ -119,6 +138,7 @@ class _CameraSelectionScreenState extends State<CameraSelectionScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

@@ -85,11 +85,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     if (_carouselImages.isNotEmpty) {
       try {
         // Cache the first image
-        final cachedFile = await _imageCacheService.cacheImage(_carouselImages[0]).timeout(
-          const Duration(seconds: 10),
-          onTimeout: () => null,
-        );
-        
+        final cachedFile =
+            await _imageCacheService.cacheImage(_carouselImages[0]).timeout(
+                  const Duration(seconds: 10),
+                  onTimeout: () => null,
+                );
+
         // Precache for immediate display
         // Use context directly after checking mounted (StatefulWidget context is safe)
         if (mounted) {
@@ -100,7 +101,8 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                 onTimeout: () {},
               );
             } else {
-              await precacheImage(NetworkImage(_carouselImages[0]), context).timeout(
+              await precacheImage(NetworkImage(_carouselImages[0]), context)
+                  .timeout(
                 const Duration(seconds: 10),
                 onTimeout: () {},
               );
@@ -109,7 +111,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             // Precache failure is not critical
             debugPrint('Precache failed for first carousel image: $e');
           }
-          
+
           setState(() {
             _isFirstImageLoaded = true;
           });
@@ -131,10 +133,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         final preloadFutures = remainingUrls.map((url) async {
           // Cache the image first
           final cachedFile = await _imageCacheService.cacheImage(url).timeout(
-            const Duration(seconds: 10),
-            onTimeout: () => null,
-          );
-          
+                const Duration(seconds: 10),
+                onTimeout: () => null,
+              );
+
           // Precache for immediate display
           // Use context directly after checking mounted (StatefulWidget context is safe)
           // Note: We're in a StatefulWidget, so we can check mounted and use context
@@ -202,10 +204,11 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   Future<void> _handleAccept() async {
     // Call the new API endpoint (kiosk code is optional, passing null)
     final success = await _viewModel.acceptTermsAndCreateSession(null);
-    
+
     if (success && mounted) {
       // Navigate to Select Camera screen on success
-      Navigator.pushReplacementNamed(context, AppConstants.kRouteCameraSelection);
+      Navigator.pushReplacementNamed(
+          context, AppConstants.kRouteCameraSelection);
     } else if (mounted && _viewModel.hasError) {
       // Show error snackbar on failure
       AppSnackBar.showError(
@@ -219,16 +222,16 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-    
+
     // Calculate responsive spacing based on screen height
     final availableHeight = screenHeight -
         MediaQuery.of(context).padding.top -
         MediaQuery.of(context).padding.bottom;
-    
+
     // Calculate scale factor based on screen width (normalize to a base width of 400px)
     // This provides smooth scaling across all device sizes
     final double scaleFactor = (screenWidth / 400.0).clamp(0.8, 2.0);
-    
+
     // Calculate base sizes that scale with screen dimensions
     final double baseLogoSize = availableHeight * 0.10;
     final double logoSize = baseLogoSize.clamp(80.0, 180.0);
@@ -236,8 +239,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
 
     // Calculate carousel height dynamically based on available space
     // Reserve space for other elements (logo, buttons, spacing, etc.)
-    final double fixedElementsHeight = logoSize * 1.2 + (180 + scaleFactor * 20);
-    final double carouselHeight = (availableHeight - fixedElementsHeight).clamp(100.0, availableHeight * 0.28);
+    final double fixedElementsHeight =
+        logoSize * 1.2 + (180 + scaleFactor * 20);
+    final double carouselHeight = (availableHeight - fixedElementsHeight)
+        .clamp(100.0, availableHeight * 0.28);
 
     // Calculate dynamic spacing that scales with screen size
     final double logoSpacing = 4.0 + (scaleFactor * 2.0);
@@ -246,11 +251,11 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     final double actionButtonsSpacing = 6.0 + (scaleFactor * 2.0);
     final double checkboxSpacing = 4.0 + (scaleFactor * 2.0);
     final double buttonSpacing = 4.0 + (scaleFactor * 2.0);
-    
+
     // Calculate padding that scales with screen size
     final double horizontalPadding = 8.0 + (scaleFactor * 8.0);
     final double verticalPadding = 2.0 + (scaleFactor * 3.0);
-    
+
     // Calculate font sizes that scale with screen size
     final double taglineFontSize = 12.0 + (scaleFactor * 3.0);
 
@@ -268,7 +273,8 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                     return Container(
                       width: double.infinity,
                       height: constraints.maxHeight,
-                      color: CupertinoColors.white, // Ensure content background is white
+                      color: CupertinoColors
+                          .white, // Ensure content background is white
                       child: Padding(
                         padding: EdgeInsets.symmetric(
                           horizontal: horizontalPadding,
@@ -278,11 +284,14 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                           builder: (context, viewModel, child) {
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.center,
-                              mainAxisAlignment: screenWidth > 600 ? MainAxisAlignment.center : MainAxisAlignment.start,
+                              mainAxisAlignment: screenWidth > 600
+                                  ? MainAxisAlignment.center
+                                  : MainAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 // Flexible spacer above logo for larger screens
-                                if (screenWidth > 600) SizedBox(height: availableHeight * 0.03),
+                                if (screenWidth > 600)
+                                  SizedBox(height: availableHeight * 0.03),
                                 // Logo Section - sized dynamically
                                 FittedBox(
                                   fit: BoxFit.scaleDown,
@@ -323,7 +332,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                                 // Privacy Note
                                 _buildPrivacyNote(scaleFactor),
                                 // Add bottom padding to ensure content is above system bar
-                                SizedBox(height: MediaQuery.of(context).padding.bottom),
+                                SizedBox(
+                                    height:
+                                        MediaQuery.of(context).padding.bottom),
                               ],
                             );
                           },
@@ -334,21 +345,21 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                 ),
               ),
             ),
-          // Full screen loader overlay - positioned to cover entire screen
-          Consumer<TermsAndConditionsViewModel>(
-            builder: (context, viewModel, child) {
-              if (viewModel.isSubmitting) {
-                return const Positioned.fill(
-                  child: FullScreenLoader(
-                    text: 'Creating Session',
-                    loaderColor: CupertinoColors.systemBlue,
-                  ),
-                );
-              }
-              return const SizedBox.shrink();
-            },
-          ),
-        ],
+            // Full screen loader overlay - positioned to cover entire screen
+            Consumer<TermsAndConditionsViewModel>(
+              builder: (context, viewModel, child) {
+                if (viewModel.isSubmitting) {
+                  return const Positioned.fill(
+                    child: FullScreenLoader(
+                      text: 'Creating Session',
+                      loaderColor: CupertinoColors.systemBlue,
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -407,8 +418,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     // So: pageViewHeight = height - 4 - 6 = height - 10
     const double spacingHeight = 4.0; // Spacing between PageView and dots
     const double dotsHeight = 6.0; // Height of dots indicator
-    final double pageViewHeight = (height - spacingHeight - dotsHeight).clamp(100.0, height - 10);
-    
+    final double pageViewHeight =
+        (height - spacingHeight - dotsHeight).clamp(100.0, height - 10);
+
     return ConstrainedBox(
       constraints: BoxConstraints(
         maxHeight: height,
@@ -452,7 +464,8 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                         ),
                       ),
                       errorWidget: Container(
-                        color: Colors.transparent, // Make error widget background transparent too
+                        color: Colors
+                            .transparent, // Make error widget background transparent too
                         child: const Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -480,7 +493,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
               ),
             ),
           ),
-          SizedBox(height: spacingHeight), // spacingHeight is not const, so SizedBox cannot be const
+          const SizedBox(
+              height:
+                  spacingHeight), // spacingHeight is not const, so SizedBox cannot be const
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
@@ -536,7 +551,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     final double fontSize = 8.0 + (scaleFactor * 2.0);
     final double horizontalPadding = 6.0 + (scaleFactor * 3.0);
     final double verticalPadding = 12.0 + (scaleFactor * 2.0);
-    
+
     return Expanded(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -574,10 +589,11 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
-  Widget _buildCheckbox(TermsAndConditionsViewModel viewModel, double scaleFactor) {
+  Widget _buildCheckbox(
+      TermsAndConditionsViewModel viewModel, double scaleFactor) {
     final double checkboxSize = 20.0 + (scaleFactor * 4.0);
     final double fontSize = 10.0 + (scaleFactor * 2.0);
-    
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
@@ -656,7 +672,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       TermsAndConditionsViewModel viewModel, double scaleFactor) {
     final double buttonHeight = 50.0 + (scaleFactor * 8.0);
     final double fontSize = 14.0 + (scaleFactor * 2.0);
-    
+
     return SizedBox(
       width: double.infinity,
       height: buttonHeight,
@@ -686,7 +702,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   Widget _buildPrivacyNote(double scaleFactor) {
     final double iconSize = 10.0 + (scaleFactor * 2.0);
     final double fontSize = 8.0 + (scaleFactor * 1.5);
-    
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
