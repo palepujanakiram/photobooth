@@ -10,5 +10,5 @@ class AppConfig {
   // Links
   /// Terms and Conditions page URL
   static const String termsAndConditionsUrl =
-      'https://zenai-labs.replit.app/terms';
+      'https://fotozenai.com/';
 }
