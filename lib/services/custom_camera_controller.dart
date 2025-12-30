@@ -1,0 +1,130 @@
+import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' if (dart.library.html) 'dart:html' as io;
+
+/// Custom camera controller that uses platform channel to select cameras by device ID
+/// This bypasses the Flutter camera package's lensDirection limitation
+class CustomCameraController {
+  static const MethodChannel _channel = MethodChannel('com.photobooth/custom_camera');
+  
+  bool _isInitialized = false;
+  bool _isPreviewRunning = false;
+  String? _currentDeviceId;
+  
+  bool get isInitialized => _isInitialized;
+  bool get isPreviewRunning => _isPreviewRunning;
+  String? get currentDeviceId => _currentDeviceId;
+  
+  /// Initializes camera with specific device ID
+  /// This allows selecting external cameras even when they share the same lensDirection
+  Future<void> initialize(String deviceId) async {
+    if (kIsWeb) {
+      throw UnsupportedError('Custom camera controller not supported on web');
+    }
+    
+    if (!io.Platform.isIOS) {
+      throw UnsupportedError('Custom camera controller currently only supports iOS');
+    }
+    
+    try {
+      print('🎥 CustomCameraController: Initializing camera with device ID: $deviceId');
+      
+      final result = await _channel.invokeMethod('initializeCamera', {
+        'deviceId': deviceId,
+      });
+      
+      if (result is Map && result['success'] == true) {
+        _isInitialized = true;
+        _currentDeviceId = deviceId;
+        print('✅ CustomCameraController initialized: ${result['localizedName']}');
+      } else {
+        throw Exception('Failed to initialize camera: $result');
+      }
+    } catch (e) {
+      print('❌ Error initializing custom camera: $e');
+      _isInitialized = false;
+      rethrow;
+    }
+  }
+  
+  /// Starts camera preview
+  Future<void> startPreview() async {
+    if (!_isInitialized) {
+      throw StateError('Camera not initialized. Call initialize() first.');
+    }
+    
+    try {
+      final result = await _channel.invokeMethod('startPreview');
+      if (result is Map && result['success'] == true) {
+        _isPreviewRunning = true;
+        print('✅ Camera preview started');
+      }
+    } catch (e) {
+      print('❌ Error starting preview: $e');
+      rethrow;
+    }
+  }
+  
+  /// Stops camera preview
+  Future<void> stopPreview() async {
+    if (!_isInitialized) {
+      return;
+    }
+    
+    try {
+      final result = await _channel.invokeMethod('stopPreview');
+      if (result is Map && result['success'] == true) {
+        _isPreviewRunning = false;
+        print('✅ Camera preview stopped');
+      }
+    } catch (e) {
+      print('❌ Error stopping preview: $e');
+    }
+  }
+  
+  /// Takes a picture and returns the file path
+  Future<String> takePicture() async {
+    if (!_isInitialized) {
+      throw StateError('Camera not initialized. Call initialize() first.');
+    }
+    
+    if (!_isPreviewRunning) {
+      throw StateError('Preview not running. Call startPreview() first.');
+    }
+    
+    try {
+      print('📸 Taking picture...');
+      final result = await _channel.invokeMethod('takePicture');
+      
+      if (result is Map && result['success'] == true) {
+        final path = result['path'] as String;
+        print('✅ Picture captured: $path');
+        return path;
+      } else {
+        throw Exception('Failed to capture picture: $result');
+      }
+    } catch (e) {
+      print('❌ Error taking picture: $e');
+      rethrow;
+    }
+  }
+  
+  /// Disposes the camera controller
+  Future<void> dispose() async {
+    if (!_isInitialized) {
+      return;
+    }
+    
+    try {
+      await stopPreview();
+      await _channel.invokeMethod('dispose');
+      _isInitialized = false;
+      _isPreviewRunning = false;
+      _currentDeviceId = null;
+      print('✅ CustomCameraController disposed');
+    } catch (e) {
+      print('❌ Error disposing camera: $e');
+    }
+  }
+}
+
