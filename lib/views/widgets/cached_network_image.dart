@@ -1,6 +1,7 @@
-import 'dart:io';
+import 'dart:io' if (dart.library.html) 'dart:html' as io;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../services/image_cache_service.dart';
 
 /// Widget that displays a network image with disk caching
@@ -29,7 +30,7 @@ class CachedNetworkImage extends StatefulWidget {
 
 class _CachedNetworkImageState extends State<CachedNetworkImage> {
   final ImageCacheService _cacheService = ImageCacheService();
-  File? _cachedFile;
+  io.File? _cachedFile; // Only used on mobile platforms
   bool _isLoading = true;
   bool _hasError = false;
 
@@ -57,17 +58,33 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
     });
 
     try {
-      // Try to get cached file first (fast check)
-      final cachedFile = await _cacheService.getCachedFile(widget.imageUrl);
-      
-      if (cachedFile != null && await cachedFile.exists()) {
+      // On web, skip file caching and use network image directly
+      if (kIsWeb) {
         if (mounted) {
           setState(() {
-            _cachedFile = cachedFile;
             _isLoading = false;
           });
         }
         return;
+      }
+
+      // Try to get cached file first (fast check) - mobile only
+      // Note: getCachedFile returns dart:io.File, but we need to handle it carefully
+      final cachedFile = await _cacheService.getCachedFile(widget.imageUrl);
+      
+      if (cachedFile != null && !kIsWeb) {
+        // On mobile, check if file exists
+        // cachedFile is dart:io.File from the service
+        if (await cachedFile.exists()) {
+          if (mounted) {
+            setState(() {
+              // Store as dynamic to avoid type conflicts between dart:io and dart:html
+              _cachedFile = cachedFile as dynamic;
+              _isLoading = false;
+            });
+          }
+          return;
+        }
       }
 
       // If not cached, show network image immediately
@@ -78,18 +95,24 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
         });
       }
 
-      // Cache in background - don't block UI
-      _cacheService.cacheImage(widget.imageUrl).then((cachedFile) {
-        // If caching succeeded and we got a file, update state
-        if (mounted && cachedFile != null && cachedFile.existsSync()) {
-          setState(() {
-            _cachedFile = cachedFile;
-          });
-        }
-      }).catchError((e) {
-        // Silently fail - network image will be shown
-        debugPrint('Background cache failed for ${widget.imageUrl}: $e');
-      });
+      // Cache in background - don't block UI (mobile only)
+      if (!kIsWeb) {
+        _cacheService.cacheImage(widget.imageUrl).then((cachedFile) {
+          // If caching succeeded and we got a file, update state
+          if (mounted && cachedFile != null && !kIsWeb) {
+            // cachedFile is dart:io.File from the service
+            if (cachedFile.existsSync()) {
+              setState(() {
+                // Store as dynamic to avoid type conflicts between dart:io and dart:html
+                _cachedFile = cachedFile as dynamic;
+              });
+            }
+          }
+        }).catchError((e) {
+          // Silently fail - network image will be shown
+          debugPrint('Background cache failed for ${widget.imageUrl}: $e');
+        });
+      }
     } catch (e) {
       debugPrint('Error loading cached image: $e');
       if (mounted) {
@@ -111,43 +134,48 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
       return widget.errorWidget!;
     }
 
-    // If we have a cached file, use it
-    if (_cachedFile != null && _cachedFile!.existsSync()) {
-      return Image.file(
-        _cachedFile!,
-        fit: widget.fit,
-        width: widget.width,
-        height: widget.height,
-        color: null, // Ensure no color tint
-        colorBlendMode: null, // Ensure no color blending
-        errorBuilder: (context, error, stackTrace) {
-          // If cached file fails, fall back to network
-          return Image.network(
-            widget.imageUrl,
-            fit: widget.fit,
-            width: widget.width,
-            height: widget.height,
-            color: null,
-            colorBlendMode: null,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return widget.placeholder ?? Container(
-                color: Colors.transparent,
-                child: const Center(
-                  child: CupertinoActivityIndicator(),
-                ),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) {
-              return widget.errorWidget ?? const Icon(
-                CupertinoIcons.photo,
-                size: 64,
-                color: CupertinoColors.systemGrey,
-              );
-            },
-          );
-        },
-      );
+    // If we have a cached file, use it (mobile only)
+    if (!kIsWeb && _cachedFile != null) {
+      // _cachedFile is stored as dynamic to avoid type conflicts
+      // On mobile, it's actually dart:io.File
+      final file = _cachedFile as dynamic;
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          fit: widget.fit,
+          width: widget.width,
+          height: widget.height,
+          color: null, // Ensure no color tint
+          colorBlendMode: null, // Ensure no color blending
+          errorBuilder: (context, error, stackTrace) {
+            // If cached file fails, fall back to network
+            return Image.network(
+              widget.imageUrl,
+              fit: widget.fit,
+              width: widget.width,
+              height: widget.height,
+              color: null,
+              colorBlendMode: null,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return widget.placeholder ?? Container(
+                  color: Colors.transparent,
+                  child: const Center(
+                    child: CupertinoActivityIndicator(),
+                  ),
+                );
+              },
+              errorBuilder: (context, error, stackTrace) {
+                return widget.errorWidget ?? const Icon(
+                  CupertinoIcons.photo,
+                  size: 64,
+                  color: CupertinoColors.systemGrey,
+                );
+              },
+            );
+          },
+        );
+      }
     }
 
     // Fall back to network image

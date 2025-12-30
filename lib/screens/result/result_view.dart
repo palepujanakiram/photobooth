@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -72,67 +73,86 @@ class _ResultScreenState extends State<ResultScreen> {
                 children: [
                   Expanded(
                     child: Center(
-                      child: imageFile != null && imageFile.existsSync()
-                          ? Image.file(
-                              imageFile,
-                              fit: BoxFit.contain,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Icon(
-                                      CupertinoIcons.exclamationmark_triangle,
-                                      size: 64,
-                                      color: CupertinoColors.systemRed,
-                                    ),
-                                    const SizedBox(height: 16),
-                                    const Text(
-                                      'Failed to load image',
-                                      style: TextStyle(
-                                        fontSize: 16,
+                      child: imageFile != null
+                          ? FutureBuilder<List<int>>(
+                              future: imageFile.readAsBytes(),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return const CupertinoActivityIndicator();
+                                }
+                                if (snapshot.hasError || !snapshot.hasData) {
+                                  return Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(
+                                        CupertinoIcons.exclamationmark_triangle,
+                                        size: 64,
                                         color: CupertinoColors.systemRed,
                                       ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Path: ${imageFile.path}',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: CupertinoColors.systemGrey,
+                                      const SizedBox(height: 16),
+                                      const Text(
+                                        'Failed to load image',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: CupertinoColors.systemRed,
+                                        ),
                                       ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ],
+                                      if (snapshot.hasError) ...[
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Error: ${snapshot.error}',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: CupertinoColors.systemGrey,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
+                                    ],
+                                  );
+                                }
+                                return Image.memory(
+                                  Uint8List.fromList(snapshot.data!),
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return const Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          CupertinoIcons.exclamationmark_triangle,
+                                          size: 64,
+                                          color: CupertinoColors.systemRed,
+                                        ),
+                                        SizedBox(height: 16),
+                                        Text(
+                                          'Failed to load image',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            color: CupertinoColors.systemRed,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
                                 );
                               },
                             )
-                          : Column(
+                          : const Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(
+                                Icon(
                                   CupertinoIcons.photo,
                                   size: 64,
                                   color: CupertinoColors.systemGrey,
                                 ),
-                                const SizedBox(height: 16),
-                                const Text(
+                                SizedBox(height: 16),
+                                Text(
                                   'Image file not found',
                                   style: TextStyle(
                                     fontSize: 16,
                                     color: CupertinoColors.systemGrey,
                                   ),
                                 ),
-                                if (imageFile != null) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Path: ${imageFile.path}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: CupertinoColors.systemGrey,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
                               ],
                             ),
                     ),

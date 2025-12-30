@@ -1,8 +1,8 @@
-import 'dart:io';
+import 'package:camera/camera.dart';
 
 class TransformedImageModel {
   final String id;
-  final File imageFile;
+  final XFile imageFile;
   final String originalPhotoId;
   final String themeId;
   final DateTime transformedAt;
@@ -17,7 +17,7 @@ class TransformedImageModel {
 
   TransformedImageModel copyWith({
     String? id,
-    File? imageFile,
+    XFile? imageFile,
     String? originalPhotoId,
     String? themeId,
     DateTime? transformedAt,
@@ -42,9 +42,11 @@ class TransformedImageModel {
   }
 
   factory TransformedImageModel.fromJson(Map<String, dynamic> json) {
+    // Note: XFile.fromData() or similar may be needed for deserialization
+    // For now, this assumes path-based reconstruction
     return TransformedImageModel(
       id: json['id'] as String,
-      imageFile: File(json['imagePath'] as String),
+      imageFile: XFile(json['imagePath'] as String),
       originalPhotoId: json['originalPhotoId'] as String,
       themeId: json['themeId'] as String,
       transformedAt: DateTime.parse(json['transformedAt'] as String),

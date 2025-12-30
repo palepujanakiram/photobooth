@@ -1,12 +1,14 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:uuid/uuid.dart';
 import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/exceptions.dart';
 import '../utils/constants.dart';
 import 'api_client.dart';
+import 'file_helper.dart';
 
 class ApiService {
   late final ApiClient _apiClient;
@@ -29,51 +31,136 @@ class ApiService {
     _apiClient = ApiClient(dio);
   }
 
+  /// Helper method to check and handle CORS/network errors on web
+  void _handleWebNetworkError(DioException e) {
+    if (kIsWeb && (e.type == DioExceptionType.connectionError || 
+                   e.type == DioExceptionType.unknown)) {
+      final errorMsg = e.message ?? '';
+      if (errorMsg.contains('XMLHttpRequest') || 
+          errorMsg.contains('CORS') ||
+          errorMsg.contains('Failed to fetch') ||
+          errorMsg.contains('NetworkError') ||
+          errorMsg.contains('connection errored')) {
+        throw ApiException(
+          'CORS/Network Error: The API server at ${AppConstants.kBaseUrl} may not be configured to allow requests from this origin (${kIsWeb ? "web browser" : "app"}). '
+          'This is typically a CORS (Cross-Origin Resource Sharing) issue. '
+          'Please ensure the server allows requests from your domain, or contact the server administrator. '
+          'Error: ${e.message ?? "Unknown network error"}',
+        );
+      }
+    }
+  }
+
   /// Transforms an image using AI with the selected theme.
   ///
   /// Returns the transformed image as a [TransformedImageModel].
   /// Throws [ApiException] if the transformation fails.
   Future<TransformedImageModel> transformImage({
-    required File image,
+    required XFile image,
     required ThemeModel theme,
     required String originalPhotoId,
   }) async {
     try {
-      final imageBytes = await _apiClient.transformImage(
-        theme.promptText,
-        theme.negativePrompt ?? '',
-        image,
-      );
+      // Convert XFile to File for Retrofit (mobile) or use direct upload (web)
+      dynamic tempFile; // Use dynamic to avoid type conflicts between dart:io and dart:html
+      if (kIsWeb) {
+        // On web, we need to create a temporary file-like object
+        // Since Retrofit expects File, we'll use a workaround with Dio directly
+        final imageBytes = await image.readAsBytes();
+        final multipartFile = MultipartFile.fromBytes(
+          imageBytes,
+          filename: image.name,
+        );
+        
+        // Use Dio directly for web since Retrofit doesn't support web File
+        final dio = Dio(BaseOptions(
+          baseUrl: AppConstants.kBaseUrl,
+          headers: {
+            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
+          },
+        ));
+        
+        final formData = FormData.fromMap({
+          'prompt': theme.promptText,
+          'negative_prompt': theme.negativePrompt ?? '',
+          'image': multipartFile,
+        });
+        
+        final response = await dio.post<List<int>>(
+          '/ai-transform',
+          data: formData,
+          options: Options(responseType: ResponseType.bytes),
+        );
+        
+        final responseBytes = response.data ?? [];
+        
+        // Continue with responseBytes processing
+        if (responseBytes.isEmpty) {
+          throw ApiException('Received empty image data from API');
+        }
 
-      // Validate that we received image data
-      if (imageBytes.isEmpty) {
-        throw ApiException('Received empty image data from API');
+        // Save transformed image - use XFile for cross-platform support
+        XFile transformedImageFile;
+        final base64String = base64Encode(responseBytes);
+        final dataUrl = 'data:image/jpeg;base64,$base64String';
+        transformedImageFile = XFile(dataUrl, mimeType: 'image/jpeg', name: 'transformed_${_uuid.v4()}.jpg');
+
+        return TransformedImageModel(
+          id: _uuid.v4(),
+          imageFile: transformedImageFile,
+          originalPhotoId: originalPhotoId,
+          themeId: theme.id,
+          transformedAt: DateTime.now(),
+        );
+      } else {
+        // On mobile, convert XFile to File for Retrofit
+        final imageBytes = await image.readAsBytes();
+        final tempDirPath = await FileHelper.getTempDirectoryPath();
+        tempFile = FileHelper.createFile('$tempDirPath/upload_${_uuid.v4()}.jpg');
+        await (tempFile as dynamic).writeAsBytes(imageBytes);
+        
+        // Call Retrofit API (mobile only - this code never executes on web)
+        final responseBytes = await _apiClient.transformImage(
+          theme.promptText,
+          theme.negativePrompt ?? '',
+          tempFile as dynamic, // Cast to dynamic to avoid type conflicts
+        );
+        
+        // Clean up temp file (mobile only)
+        if ((tempFile as dynamic).existsSync()) {
+          await (tempFile as dynamic).delete();
+        }
+
+        // Validate that we received image data
+        if (responseBytes.isEmpty) {
+          throw ApiException('Received empty image data from API');
+        }
+
+        // Save transformed image - use XFile for cross-platform support
+        final tempDirPath2 = await FileHelper.getTempDirectoryPath();
+        final filePath = '$tempDirPath2/transformed_${_uuid.v4()}.jpg';
+        final file = FileHelper.createFile(filePath);
+        await (file as dynamic).writeAsBytes(responseBytes);
+        final transformedImageFile = XFile((file as dynamic).path);
+        
+        // Verify the file was written correctly
+        if (!(file as dynamic).existsSync()) {
+          throw ApiException('Failed to save transformed image file');
+        }
+
+        final fileSize = await (file as dynamic).length();
+        if (fileSize == 0) {
+          throw ApiException('Saved image file is empty');
+        }
+
+        return TransformedImageModel(
+          id: _uuid.v4(),
+          imageFile: transformedImageFile,
+          originalPhotoId: originalPhotoId,
+          themeId: theme.id,
+          transformedAt: DateTime.now(),
+        );
       }
-
-      // Save transformed image to temporary file
-      final tempDir = Directory.systemTemp;
-      final transformedImageFile = File(
-        '${tempDir.path}/transformed_${_uuid.v4()}.jpg',
-      );
-      await transformedImageFile.writeAsBytes(imageBytes);
-
-      // Verify the file was written correctly
-      if (!transformedImageFile.existsSync()) {
-        throw ApiException('Failed to save transformed image file');
-      }
-
-      final fileSize = await transformedImageFile.length();
-      if (fileSize == 0) {
-        throw ApiException('Saved image file is empty');
-      }
-
-      return TransformedImageModel(
-        id: _uuid.v4(),
-        imageFile: transformedImageFile,
-        originalPhotoId: originalPhotoId,
-        themeId: theme.id,
-        transformedAt: DateTime.now(),
-      );
     } on DioException catch (e) {
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout ||
@@ -119,6 +206,22 @@ class ApiService {
       // Filter themes where isActive is true
       // return themes.where((theme) => theme.isActive == true).toList();
     } on DioException catch (e) {
+      // Check for CORS or network errors (common on web)
+      if (kIsWeb && (e.type == DioExceptionType.connectionError || 
+                     e.type == DioExceptionType.unknown)) {
+        final errorMsg = e.message ?? '';
+        if (errorMsg.contains('XMLHttpRequest') || 
+            errorMsg.contains('CORS') ||
+            errorMsg.contains('Failed to fetch') ||
+            errorMsg.contains('NetworkError')) {
+          throw ApiException(
+            'CORS Error: The API server at ${AppConstants.kBaseUrl} is not configured to allow requests from this origin. '
+            'Please contact the server administrator to add CORS headers allowing requests from your domain. '
+            'Error details: ${e.message ?? "Unknown network error"}',
+          );
+        }
+      }
+      
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout ||
           e.type == DioExceptionType.connectionError) {
@@ -145,6 +248,8 @@ class ApiService {
         'accepted': true,
       });
     } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout ||
           e.type == DioExceptionType.connectionError) {
@@ -241,6 +346,8 @@ class ApiService {
       );
       return response;
     } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout ||
           e.type == DioExceptionType.connectionError) {
@@ -345,21 +452,28 @@ class ApiService {
         final mimeType = imageUrl.split(';')[0].split(':')[1];
         final extension = mimeType == 'image/png' ? 'png' : 'jpg';
 
-        // Save transformed image to temporary file
-        final tempDir = Directory.systemTemp;
-        final transformedImageFile = File(
-          '${tempDir.path}/transformed_${_uuid.v4()}.$extension',
-        );
-        await transformedImageFile.writeAsBytes(imageBytes);
+        // Save transformed image - use XFile for cross-platform support
+        XFile transformedImageFile;
+        if (kIsWeb) {
+          // On web, create XFile from data URL directly
+          transformedImageFile = XFile(imageUrl, mimeType: mimeType, name: 'transformed_${_uuid.v4()}.$extension');
+        } else {
+          // On mobile, save to temp file and create XFile
+          final tempDirPath = await FileHelper.getTempDirectoryPath();
+          final filePath = '$tempDirPath/transformed_${_uuid.v4()}.$extension';
+          final file = FileHelper.createFile(filePath);
+          await (file as dynamic).writeAsBytes(imageBytes);
+          transformedImageFile = XFile((file as dynamic).path);
+          
+          // Verify the file was written correctly
+          if (!(file as dynamic).existsSync()) {
+            throw ApiException('Failed to save transformed image file');
+          }
 
-        // Verify the file was written correctly
-        if (!transformedImageFile.existsSync()) {
-          throw ApiException('Failed to save transformed image file');
-        }
-
-        final fileSize = await transformedImageFile.length();
-        if (fileSize == 0) {
-          throw ApiException('Saved image file is empty');
+          final fileSize = await (file as dynamic).length();
+          if (fileSize == 0) {
+            throw ApiException('Saved image file is empty');
+          }
         }
 
         return TransformedImageModel(
@@ -370,6 +484,8 @@ class ApiService {
           transformedAt: DateTime.now(),
         );
       } on DioException catch (e) {
+        _handleWebNetworkError(e);
+        
         final isTimeout = e.type == DioExceptionType.connectionTimeout ||
             e.type == DioExceptionType.receiveTimeout ||
             e.type == DioExceptionType.sendTimeout;

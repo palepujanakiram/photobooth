@@ -1,4 +1,6 @@
-import 'dart:io';
+// Conditional import: use dart:io on mobile, create stub on web
+// The transformImage method is only called on mobile (ApiService uses Dio directly on web)
+import 'dart:io' if (dart.library.html) 'api_client_web_stub.dart' show File, Platform;
 import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
 import '../screens/theme_selection/theme_model.dart';
@@ -20,6 +22,8 @@ abstract class ApiClient {
   Future<List<ThemeModel>> getThemes();
 
   /// Transforms an image using AI with the selected theme
+  /// Note: This method is only used on mobile platforms.
+  /// On web, ApiService uses Dio directly to handle file uploads.
   @POST('/ai-transform')
   @MultiPart()
   @DioResponseType(ResponseType.bytes)

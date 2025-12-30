@@ -210,10 +210,10 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                       }
                                     }
                                   } else {
-                                    // Normal flow: navigate to camera selection
+                                    // Normal flow: navigate to capture photo
                   Navigator.pushNamed(
                                       currentContext,
-                    AppConstants.kRouteCameraSelection,
+                    AppConstants.kRouteCapture,
                   );
                                   }
                                 }

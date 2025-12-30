@@ -207,9 +207,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     final success = await _viewModel.acceptTermsAndCreateSession(null);
 
     if (success && mounted) {
-      // Navigate to Select Camera screen on success
+      // Navigate directly to Capture Photo screen on success
       Navigator.pushReplacementNamed(
-          context, AppConstants.kRouteCameraSelection);
+          context, AppConstants.kRouteCapture);
     } else if (mounted && _viewModel.hasError) {
       // Show error snackbar on failure
       AppSnackBar.showError(
@@ -315,7 +315,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                         SizedBox(height: buttonSpacing * 0.5), // Reduced spacing
                         // Privacy Note
                         _buildPrivacyNote(scaleFactor),
-                        SizedBox(height: 4), // Minimal bottom padding
+                        const SizedBox(height: 4), // Minimal bottom padding
                       ],
                     ),
                   );
@@ -362,7 +362,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   Widget _buildNavBarLogo(BuildContext context) {
     final appColors = AppColors.of(context);
     return Container(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.transparent,
       ),
       child: Image.asset(

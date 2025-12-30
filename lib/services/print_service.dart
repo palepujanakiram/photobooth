@@ -1,13 +1,15 @@
-import 'dart:io';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:camera/camera.dart';
 import '../utils/exceptions.dart';
 
 class PrintService {
   /// Prints an image file
-  Future<void> printImage(File imageFile) async {
+  /// Works with XFile on all platforms (iOS, Android, Web)
+  Future<void> printImage(XFile imageFile) async {
     try {
+      // Read bytes from XFile (works on all platforms)
       final imageBytes = await imageFile.readAsBytes();
       final doc = pw.Document();
 

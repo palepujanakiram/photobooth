@@ -5,6 +5,16 @@
 class AppConfig {
   // API Configuration
   /// Base URL for the API endpoints
+  /// 
+  /// For development with CORS issues, you can use:
+  /// - A CORS proxy: 'https://cors-anywhere.herokuapp.com/https://zenai-labs.replit.app'
+  /// - A local proxy server: 'http://localhost:8080/api'
+  /// 
+  /// For production, ensure the server has proper CORS headers configured.
+  /// 
+  /// Base URL for the API endpoints
+  /// NOTE: For web development, you MUST run Chrome with CORS disabled
+  /// See QUICK_CORS_FIX.md or run: ./run_chrome_dev.sh
   static const String baseUrl = 'https://zenai-labs.replit.app';
 
   // Links

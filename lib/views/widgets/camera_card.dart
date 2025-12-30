@@ -1,9 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import '../../screens/camera_selection/camera_info_model.dart';
+import 'package:camera/camera.dart';
 
 class CameraCard extends StatelessWidget {
-  final CameraInfoModel camera;
+  final CameraDescription camera;
   final bool isSelected;
   final VoidCallback onTap;
 
@@ -16,6 +16,8 @@ class CameraCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isFrontFacing = camera.lensDirection == CameraLensDirection.front;
+    
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -57,7 +59,7 @@ class CameraCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
-                  camera.isFrontFacing 
+                  isFrontFacing 
                       ? Icons.camera_front 
                       : Icons.camera_rear,
                   size: 32,

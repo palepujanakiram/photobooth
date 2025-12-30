@@ -1,11 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
-import 'screens/camera_selection/camera_selection_viewmodel.dart';
 import 'screens/theme_slideshow/theme_slideshow_view.dart';
 import 'screens/terms_and_conditions/terms_and_conditions_view.dart';
 import 'screens/theme_selection/theme_selection_view.dart';
-import 'screens/camera_selection/camera_selection_view.dart';
 import 'screens/photo_capture/photo_capture_view.dart';
 import 'screens/photo_review/photo_review_view.dart';
 import 'screens/result/result_view.dart';
@@ -24,7 +22,6 @@ class PhotoBoothApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeViewModel()),
-        ChangeNotifierProvider(create: (_) => CameraViewModel()),
       ],
       child: CupertinoApp(
         title: 'Photo Booth',
@@ -44,8 +41,6 @@ class PhotoBoothApp extends StatelessWidget {
           AppConstants.kRouteTerms: (context) =>
               const TermsAndConditionsScreen(),
           AppConstants.kRouteHome: (context) => const ThemeSelectionScreen(),
-          AppConstants.kRouteCameraSelection: (context) =>
-              const CameraSelectionScreen(),
           AppConstants.kRouteCapture: (context) => const PhotoCaptureScreen(),
           AppConstants.kRouteReview: (context) => const PhotoReviewScreen(),
           AppConstants.kRouteResult: (context) => const ResultScreen(),

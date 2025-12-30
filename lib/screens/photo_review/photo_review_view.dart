@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -67,9 +68,23 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                 children: [
                   Expanded(
                     child: Center(
-                      child: Image.file(
-                        viewModel.photo!.imageFile,
-                        fit: BoxFit.contain,
+                      child: FutureBuilder<List<int>>(
+                        future: viewModel.photo!.imageFile.readAsBytes(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const CupertinoActivityIndicator();
+                          }
+                          if (snapshot.hasError || !snapshot.hasData) {
+                            return const Icon(
+                              CupertinoIcons.exclamationmark_triangle,
+                              color: CupertinoColors.systemRed,
+                            );
+                          }
+                          return Image.memory(
+                            Uint8List.fromList(snapshot.data!),
+                            fit: BoxFit.contain,
+                          );
+                        },
                       ),
                     ),
                   ),

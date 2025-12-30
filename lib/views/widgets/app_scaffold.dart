@@ -117,7 +117,7 @@ class AppScaffold extends StatelessWidget {
 
   Widget _buildContentWithPadding(BuildContext context) {
     final statusBarHeight = MediaQuery.of(context).padding.top;
-    final navBarHeight = 44.0; // Standard CupertinoNavigationBar height
+    const navBarHeight = 44.0; // Standard CupertinoNavigationBar height
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     
     // Calculate device-aware padding
