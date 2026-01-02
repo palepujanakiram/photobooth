@@ -87,9 +87,13 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
-  /// Reloads cameras and selects the first one, then reinitializes
-  Future<void> reloadAndSelectFirstCamera() async {
-    print('🔄 Reloading cameras and selecting first camera...');
+  /// Resets the camera screen and initializes with the first available camera
+  /// This is a common function used both when entering the screen and when reloading
+  Future<void> resetAndInitializeCameras() async {
+    print('🔄 Resetting camera screen and initializing cameras...');
+    
+    // Clear any captured photo
+    _capturedPhoto = null;
     
     // Dispose current camera controller
     if (_cameraController != null) {
@@ -102,8 +106,20 @@ class CaptureViewModel extends ChangeNotifier {
       }
     }
     
+    // Also dispose custom controller if exists
+    if (_cameraService.isUsingCustomController) {
+      try {
+        await _cameraService.customController?.dispose();
+      } catch (e) {
+        print('   ⚠️ Warning: Error disposing custom controller: $e');
+      }
+    }
+    
     // Clear current camera selection
     _currentCamera = null;
+    
+    // Clear any previous errors
+    _errorMessage = null;
     
     // Reload cameras
     await loadCameras();
@@ -111,13 +127,19 @@ class CaptureViewModel extends ChangeNotifier {
     // Select and initialize the first camera
     if (_availableCameras.isNotEmpty) {
       _currentCamera = _availableCameras.first;
-      print('📷 Selected first camera after reload: ${_currentCamera!.name}');
+      print('📷 Selected first camera: ${_currentCamera!.name}');
       await initializeCamera(_currentCamera!);
     } else {
-      print('⚠️ No cameras available after reload');
+      print('⚠️ No cameras available');
       _errorMessage = 'No cameras available';
       notifyListeners();
     }
+  }
+
+  /// Reloads cameras and selects the first one, then reinitializes
+  /// @deprecated Use resetAndInitializeCameras() instead
+  Future<void> reloadAndSelectFirstCamera() async {
+    await resetAndInitializeCameras();
   }
 
   /// Switches to a different camera

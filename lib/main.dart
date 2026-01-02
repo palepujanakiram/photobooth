@@ -26,14 +26,8 @@ class PhotoBoothApp extends StatelessWidget {
       child: CupertinoApp(
         title: 'Photo Booth',
         debugShowCheckedModeBanner: false,
-        theme: const CupertinoThemeData(
-          primaryColor: CupertinoColors.systemBlue,
-          barBackgroundColor: CupertinoColors.white,
-          scaffoldBackgroundColor: CupertinoColors.white,
-          textTheme: CupertinoTextThemeData(
-            primaryColor: CupertinoColors.black,
-          ),
-        ),
+        // Remove hardcoded theme to allow dark mode support
+        // The app will automatically use system theme (light/dark)
         initialRoute: AppConstants.kRouteSlideshow,
         routes: {
           AppConstants.kRouteSlideshow: (context) =>

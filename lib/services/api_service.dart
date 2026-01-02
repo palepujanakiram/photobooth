@@ -10,9 +10,13 @@ import '../utils/constants.dart';
 import 'api_client.dart';
 import 'file_helper.dart';
 
+// Conditional import for web Dio configuration
+import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
+
 class ApiService {
   late final ApiClient _apiClient;
   final Uuid _uuid = const Uuid();
+
 
   ApiService() {
     final dio = Dio(
@@ -27,6 +31,42 @@ class ApiService {
         },
       ),
     );
+    
+    // Configure Dio to use browser HTTP adapter on web
+    // This prevents SocketException errors from native socket lookups
+    configureDioForWeb(dio);
+    
+    // Add error interceptor for web compatibility
+    dio.interceptors.add(InterceptorsWrapper(
+      onError: (error, handler) {
+        // Handle web-specific errors
+        if (kIsWeb) {
+          final dioError = error;
+          if (dioError.type == DioExceptionType.connectionError ||
+              dioError.type == DioExceptionType.unknown) {
+            final errorMsg = dioError.message ?? '';
+            if (errorMsg.contains('XMLHttpRequest') ||
+                errorMsg.contains('CORS') ||
+                errorMsg.contains('Failed to fetch') ||
+                errorMsg.contains('NetworkError') ||
+                errorMsg.contains('connection errored') ||
+                errorMsg.contains('assureDioException') ||
+                errorMsg.contains('SocketException') ||
+                errorMsg.contains('Failed host lookup')) {
+              // Convert to a more user-friendly error
+              final friendlyError = DioException(
+                requestOptions: dioError.requestOptions,
+                type: DioExceptionType.connectionError,
+                error: 'CORS/Network Error: The API server may not be configured to allow requests from this origin.',
+                message: 'CORS/Network Error: ${dioError.message ?? "Unknown network error"}',
+              );
+              return handler.next(friendlyError);
+            }
+          }
+        }
+        return handler.next(error);
+      },
+    ));
     
     _apiClient = ApiClient(dio);
   }
@@ -79,6 +119,9 @@ class ApiService {
             'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
           },
         ));
+        
+        // Configure browser adapter for web (critical for web platform)
+        configureDioForWeb(dio);
         
         final formData = FormData.fromMap({
           'prompt': theme.promptText,
@@ -405,6 +448,9 @@ class ApiService {
         },
       ),
     );
+    
+    // Configure browser adapter for web (important for all Dio instances)
+    configureDioForWeb(dioWithTimeout);
     
     final apiClientWithTimeout = ApiClient(dioWithTimeout);
 

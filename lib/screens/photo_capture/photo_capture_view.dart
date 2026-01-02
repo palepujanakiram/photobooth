@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'photo_capture_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_theme.dart';
+import '../../views/widgets/app_colors.dart';
 
 class PhotoCaptureScreen extends StatefulWidget {
   const PhotoCaptureScreen({super.key});
@@ -21,27 +22,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     super.initState();
     _captureViewModel = CaptureViewModel();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadAndInitializeCamera();
+      _resetAndInitializeCameras();
     });
   }
 
-  Future<void> _loadAndInitializeCamera() async {
-    // Load available cameras
-    await _captureViewModel.loadCameras();
-
-    // Initialize with the first camera (or current camera if already set)
-    if (_captureViewModel.availableCameras.isNotEmpty) {
-      final cameraToUse = _captureViewModel.currentCamera ??
-          _captureViewModel.availableCameras.first;
-      await _captureViewModel.initializeCamera(cameraToUse);
-    }
-  }
-
-  Future<void> _reloadCameras() async {
-    print('🔄 Reload button tapped - refreshing camera list...');
-
-    // Reload cameras and select the first one
-    await _captureViewModel.reloadAndSelectFirstCamera();
+  /// Common function to reset and initialize cameras
+  /// Used both when entering the screen and when tapping the reload button
+  Future<void> _resetAndInitializeCameras() async {
+    await _captureViewModel.resetAndInitializeCameras();
   }
 
   @override
@@ -72,7 +60,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                       viewModel.isLoadingCameras || viewModel.isInitializing
                           ? null
                           : () async {
-                              await _reloadCameras();
+                              await _resetAndInitializeCameras();
                             },
                   color:
                       (viewModel.isLoadingCameras || viewModel.isInitializing)
@@ -93,24 +81,28 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               }
 
               if (viewModel.hasError) {
+                final appColors = AppColors.of(context);
                 return Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(
+                      Icon(
                         CupertinoIcons.exclamationmark_triangle,
                         size: 64,
-                        color: CupertinoColors.systemRed,
+                        color: appColors.errorColor,
                       ),
                       const SizedBox(height: 16),
                       Text(
                         viewModel.errorMessage ?? 'Unknown error',
-                        style: const TextStyle(fontSize: 16),
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: appColors.textColor,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 24),
                       CupertinoButton(
-                        onPressed: () => _loadAndInitializeCamera(),
+                        onPressed: () => _resetAndInitializeCameras(),
                         child: const Text('Retry'),
                       ),
                     ],
@@ -119,8 +111,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               }
 
               if (!viewModel.isReady || viewModel.cameraController == null) {
-                return const Center(
-                  child: Text('Camera not ready'),
+                final appColors = AppColors.of(context);
+                return Center(
+                  child: Text(
+                    'Camera not ready',
+                    style: TextStyle(color: appColors.textColor),
+                  ),
                 );
               }
 
@@ -142,20 +138,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                   if (viewModel.capturedPhoto != null)
                     Positioned.fill(
                       child: Container(
-                        color: CupertinoColors.black,
+                        color: AppColors.of(context).backgroundColor,
                         child: Center(
                           child: FutureBuilder<List<int>>(
                             future: viewModel.capturedPhoto!.imageFile
                                 .readAsBytes(),
                             builder: (context, snapshot) {
+                              final appColors = AppColors.of(context);
                               if (snapshot.connectionState ==
                                   ConnectionState.waiting) {
-                                return const CupertinoActivityIndicator();
+                                return CupertinoActivityIndicator(
+                                  color: appColors.textColor,
+                                );
                               }
                               if (snapshot.hasError || !snapshot.hasData) {
-                                return const Icon(
+                                return Icon(
                                   CupertinoIcons.exclamationmark_triangle,
-                                  color: CupertinoColors.systemRed,
+                                  color: appColors.errorColor,
                                 );
                               }
                               return Image.memory(
@@ -191,6 +190,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
   Widget _buildCaptureControls(
       BuildContext context, CaptureViewModel viewModel) {
+    final appColors = AppColors.of(context);
+
     if (viewModel.capturedPhoto != null) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32.0),
@@ -208,12 +209,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                 },
                 color: CupertinoColors.systemGrey,
                 borderRadius: BorderRadius.circular(12),
-                child: const Text(
+                child: Text(
                   'Cancel',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: CupertinoColors.white,
+                    color: appColors.buttonTextColor,
                   ),
                 ),
               ),
@@ -241,19 +242,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           },
                         );
                       },
-                color: CupertinoColors.systemBlue,
+                color: appColors.primaryColor,
                 disabledColor: CupertinoColors.systemGrey3,
                 borderRadius: BorderRadius.circular(12),
                 child: viewModel.isUploading
-                    ? const CupertinoActivityIndicator(
-                        color: CupertinoColors.white,
+                    ? CupertinoActivityIndicator(
+                        color: appColors.buttonTextColor,
                       )
-                    : const Text(
+                    : Text(
                         'Continue',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: CupertinoColors.white,
+                          color: appColors.buttonTextColor,
                         ),
                       ),
               ),
@@ -274,15 +275,17 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         child: Container(
           width: 80,
           height: 80,
-          decoration: const BoxDecoration(
-            color: CupertinoColors.white,
+          decoration: BoxDecoration(
+            color: appColors.surfaceColor,
             shape: BoxShape.circle,
           ),
           child: viewModel.isCapturing
-              ? const CupertinoActivityIndicator()
-              : const Icon(
+              ? CupertinoActivityIndicator(
+                  color: appColors.textColor,
+                )
+              : Icon(
                   CupertinoIcons.camera,
-                  color: CupertinoColors.black,
+                  color: appColors.textColor,
                   size: 40,
                 ),
         ),
@@ -297,103 +300,135 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       return const SizedBox.shrink();
     }
 
+    // Filter out duplicate cameras - keep only unique cameras by lens direction
+    // For built-in cameras, we want max 2: front and back
+    final uniqueCameras = _getUniqueCameras(viewModel.availableCameras);
+
+    // Limit to max 4 cameras (2x2 grid)
+    final camerasToShow = uniqueCameras.take(4).toList();
+
+    if (camerasToShow.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final appColors = AppColors.of(context);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: viewModel.availableCameras.map((camera) {
-          final isActive = viewModel.currentCamera?.name == camera.name;
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Calculate button width based on available space
+          // Max 2 buttons per row, with spacing
+          final buttonWidth =
+              (constraints.maxWidth - 48) / 2; // 48 = padding + spacing
+          const buttonHeight = 40.0;
 
-          // Debug: Log camera direction for each button
-          print(
-              'Camera: ${camera.name}, Direction: ${camera.lensDirection}');
+          return Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8.0,
+            runSpacing: 8.0,
+            children: camerasToShow.map((camera) {
+              final isActive = viewModel.currentCamera?.name == camera.name;
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4.0),
-            child: CupertinoButton(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12.0,
-                vertical: 8.0,
-              ),
-              onPressed: viewModel.isInitializing
-                  ? null
-                  : () async {
-                      print(
-                          '🔘 Camera button tapped: ${camera.name} (${camera.lensDirection})');
-                      await viewModel.switchCamera(camera);
-                    },
-              color: isActive
-                  ? CupertinoColors.activeBlue
-                  : CupertinoColors.systemGrey.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(20),
-              child: Text(
-                _getCameraShortName(camera.name),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-                  color:
-                      isActive ? CupertinoColors.white : CupertinoColors.black,
+              return SizedBox(
+                width: buttonWidth,
+                height: buttonHeight,
+                child: CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: viewModel.isInitializing
+                      ? null
+                      : () async {
+                          print(
+                              '🔘 Camera button tapped: ${camera.name} (${camera.lensDirection})');
+                          await viewModel.switchCamera(camera);
+                        },
+                  color: isActive
+                      ? appColors.primaryColor
+                      : appColors.surfaceColor.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Text(
+                    _getCameraShortName(viewModel, camera),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight:
+                          isActive ? FontWeight.w600 : FontWeight.normal,
+                      color: isActive
+                          ? appColors.buttonTextColor
+                          : appColors.textColor,
+                    ),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
                 ),
-              ),
-            ),
+              );
+            }).toList(),
           );
-        }).toList(),
+        },
       ),
     );
   }
 
-  String _getCameraShortName(String fullName) {
-    // Extract device ID from raw camera name
-    // Format: "com.apple.avfoundation.avcapturedevice.built-in_video:8"
-    if (fullName.contains(':')) {
-      final deviceId = fullName.split(':').last.split(',').first;
-      // Use device ID as short name (e.g., "8", "0", "1")
-      return deviceId;
+  /// Filters cameras to remove duplicates
+  /// Keeps only one camera per lens direction for built-in cameras
+  /// Allows multiple external cameras
+  List<CameraDescription> _getUniqueCameras(List<CameraDescription> cameras) {
+    final uniqueCameras = <CameraDescription>[];
+    final seenDirections = <CameraLensDirection>{};
+
+    // First pass: Add built-in cameras (front and back) - one per direction
+    for (final camera in cameras) {
+      // Check if it's a built-in camera (device IDs 0 and 1 typically)
+      final isBuiltIn = _isBuiltInCamera(camera);
+
+      if (isBuiltIn) {
+        // For built-in cameras, only add one per lens direction
+        if (!seenDirections.contains(camera.lensDirection)) {
+          seenDirections.add(camera.lensDirection);
+          uniqueCameras.add(camera);
+        }
+      } else {
+        // External cameras - add all of them
+        uniqueCameras.add(camera);
+      }
     }
-    // Fallback: use last part of the name
-    final parts = fullName.split('.');
-    return parts.isNotEmpty ? parts.last : fullName;
+
+    return uniqueCameras;
   }
 
-  Widget _buildCameraPreview(CaptureViewModel viewModel) {
-    final cameraService = viewModel.cameraService;
-    
-    // Check if using custom controller
-    if (cameraService.isUsingCustomController) {
-      // For custom controller, we need a placeholder preview
-      // TODO: Implement texture-based preview for custom controller
-      return Container(
-        color: CupertinoColors.black,
-        child: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CupertinoActivityIndicator(),
-              SizedBox(height: 16),
-              Text(
-                'Camera Preview\n(Custom Controller Active)',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: CupertinoColors.white),
-              ),
-            ],
-          ),
-        ),
-      );
+  /// Checks if a camera is a built-in device camera
+  bool _isBuiltInCamera(CameraDescription camera) {
+    final name = camera.name;
+    // Built-in cameras typically have device IDs 0 (back) and 1 (front)
+    if (name.contains(':')) {
+      try {
+        final deviceIdStr = name.split(':').last.split(',').first;
+        final deviceId = int.tryParse(deviceIdStr);
+        // Device IDs 0 and 1 are typically built-in cameras
+        if (deviceId != null && deviceId <= 1) {
+          return true;
+        }
+      } catch (e) {
+        // If parsing fails, check by lens direction
+      }
     }
-    
-    // Use standard CameraPreview widget
-    if (viewModel.cameraController != null) {
-      return CameraPreview(viewModel.cameraController!);
+
+    // If we can't determine by device ID, check if it's front or back
+    // and we haven't seen this direction yet
+    return camera.lensDirection == CameraLensDirection.front ||
+        camera.lensDirection == CameraLensDirection.back;
+  }
+
+  String _getCameraShortName(
+      CaptureViewModel viewModel, CameraDescription camera) {
+    // Use the camera service to get the localized/display name
+    final displayName = viewModel.cameraService.getCameraDisplayName(camera);
+
+    // Truncate long names to fit in button (max 15 characters)
+    if (displayName.length > 15) {
+      return '${displayName.substring(0, 12)}...';
     }
-    
-    return Container(
-      color: CupertinoColors.black,
-      child: const Center(
-        child: Text(
-          'Camera not available',
-          style: TextStyle(color: CupertinoColors.white),
-        ),
-      ),
-    );
+
+    return displayName;
   }
 }

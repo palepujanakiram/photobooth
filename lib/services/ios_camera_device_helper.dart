@@ -1,6 +1,12 @@
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io' if (dart.library.html) 'dart:html' as io;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+
+/// Helper function to check if running on iOS
+/// Works on all platforms including web
+bool get _isIOS {
+  if (kIsWeb) return false;
+  return defaultTargetPlatform == TargetPlatform.iOS;
+}
 
 /// Helper class to communicate with native iOS code for camera device selection by device ID
 /// This bypasses the Flutter camera package's direction-based matching
@@ -18,12 +24,7 @@ class IOSCameraDeviceHelper {
     }
     
     // Skip on Android - only works on iOS
-    try {
-      if (!io.Platform.isIOS) {
-        return null;
-      }
-    } catch (e) {
-      // Platform check failed, likely not on mobile
+    if (!_isIOS) {
       return null;
     }
     
@@ -53,12 +54,7 @@ class IOSCameraDeviceHelper {
     }
     
     // Skip on Android - only works on iOS
-    try {
-      if (!io.Platform.isIOS) {
-        return null;
-      }
-    } catch (e) {
-      // Platform check failed, likely not on mobile
+    if (!_isIOS) {
       return null;
     }
     
@@ -74,6 +70,33 @@ class IOSCameraDeviceHelper {
       return null;
     } catch (e) {
       print('⚠️ Error initializing camera by device ID: $e');
+      return null;
+    }
+  }
+  
+  /// Gets all currently available camera devices from iOS
+  /// Returns a list of device info maps, or null if not on iOS
+  static Future<List<Map<String, dynamic>>?> getAllAvailableCameras() async {
+    // Skip on Web
+    if (kIsWeb) {
+      return null;
+    }
+    
+    // Skip on Android - only works on iOS
+    if (!_isIOS) {
+      return null;
+    }
+    
+    try {
+      final result = await _channel.invokeMethod('getAllAvailableCameras');
+      
+      if (result is List) {
+        return result.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+      }
+      
+      return null;
+    } catch (e) {
+      print('⚠️ Error getting available cameras: $e');
       return null;
     }
   }

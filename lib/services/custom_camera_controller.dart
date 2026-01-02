@@ -1,11 +1,18 @@
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io' if (dart.library.html) 'dart:html' as io;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+
+/// Helper function to check if running on iOS
+/// Works on all platforms including web
+bool get _isIOS {
+  if (kIsWeb) return false;
+  return defaultTargetPlatform == TargetPlatform.iOS;
+}
 
 /// Custom camera controller that uses platform channel to select cameras by device ID
 /// This bypasses the Flutter camera package's lensDirection limitation
+/// Now uses the consolidated camera_device channel
 class CustomCameraController {
-  static const MethodChannel _channel = MethodChannel('com.photobooth/custom_camera');
+  static const MethodChannel _channel = MethodChannel('com.photobooth/camera_device');
   
   bool _isInitialized = false;
   bool _isPreviewRunning = false;
@@ -22,7 +29,7 @@ class CustomCameraController {
       throw UnsupportedError('Custom camera controller not supported on web');
     }
     
-    if (!io.Platform.isIOS) {
+    if (!_isIOS) {
       throw UnsupportedError('Custom camera controller currently only supports iOS');
     }
     
@@ -117,7 +124,7 @@ class CustomCameraController {
     
     try {
       await stopPreview();
-      await _channel.invokeMethod('dispose');
+      await _channel.invokeMethod('disposeCamera');
       _isInitialized = false;
       _isPreviewRunning = false;
       _currentDeviceId = null;

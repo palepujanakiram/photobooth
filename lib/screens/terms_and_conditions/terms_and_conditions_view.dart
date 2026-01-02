@@ -208,8 +208,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
 
     if (success && mounted) {
       // Navigate directly to Capture Photo screen on success
-      Navigator.pushReplacementNamed(
-          context, AppConstants.kRouteCapture);
+      Navigator.pushReplacementNamed(context, AppConstants.kRouteCapture);
     } else if (mounted && _viewModel.hasError) {
       // Show error snackbar on failure
       AppSnackBar.showError(
@@ -239,12 +238,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
 
     // Calculate horizontal padding for bottom content
     final horizontalPadding = 8.0 + (scaleFactor * 8.0);
-    
+
     // Calculate screen dimensions
     final mediaQuery = MediaQuery.of(context);
     final statusBarHeight = mediaQuery.padding.top;
     final bottomPadding = mediaQuery.padding.bottom;
-    
+
     return ChangeNotifierProvider.value(
       value: _viewModel,
       child: MediaQuery.removePadding(
@@ -255,7 +254,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           builder: (context, constraints) {
             // Get full screen height ignoring safe areas (like SwiftUI's ignoresSafeArea)
             final fullHeight = constraints.maxHeight;
-            
+
             return Container(
               width: double.infinity,
               height: double.infinity,
@@ -267,92 +266,100 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                   Positioned.fill(
                     child: _buildImageCarousel(fullHeight),
                   ),
-          // Bottom controls positioned at bottom of screen
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              color: AppColors.of(context).backgroundColor,
-              padding: EdgeInsets.only(
-                left: horizontalPadding,
-                right: horizontalPadding,
-                top: 16,
-                bottom: bottomPadding,
-              ),
-              child: Consumer<TermsAndConditionsViewModel>(
-                builder: (context, viewModel, child) {
-                  return SingleChildScrollView(
-                    physics: const NeverScrollableScrollPhysics(),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(height: carouselSpacing + 8), // Increased top padding
-                        // Tagline
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            'Snap. Transform. Take Home Magic.',
-                            style: TextStyle(
-                              fontSize: taglineFontSize,
-                              color: CupertinoColors.systemGrey,
-                              fontWeight: FontWeight.w500,
+                  // Bottom controls positioned at bottom of screen
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      color: AppColors.of(context).backgroundColor,
+                      padding: EdgeInsets.only(
+                        left: horizontalPadding,
+                        right: horizontalPadding,
+                        top: 16,
+                        bottom: bottomPadding,
+                      ),
+                      child: Consumer<TermsAndConditionsViewModel>(
+                        builder: (context, viewModel, child) {
+                          return SingleChildScrollView(
+                            physics: const NeverScrollableScrollPhysics(),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                    height: carouselSpacing +
+                                        8), // Increased top padding
+                                // Tagline
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'Snap. Transform. Take Home Magic.',
+                                    style: TextStyle(
+                                      fontSize: taglineFontSize,
+                                      color: CupertinoColors.systemGrey,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                SizedBox(
+                                    height: taglineSpacing +
+                                        8), // Increased bottom padding
+                                // Action Buttons
+                                _buildActionButtons(scaleFactor),
+                                SizedBox(height: actionButtonsSpacing),
+                                // Checkbox with extra padding below
+                                _buildCheckbox(viewModel, scaleFactor),
+                                SizedBox(height: checkboxSpacing + 4),
+                                // Start Your Experience Button
+                                _buildStartButton(viewModel, scaleFactor),
+                                SizedBox(
+                                    height:
+                                        buttonSpacing * 0.5), // Reduced spacing
+                                // Privacy Note
+                                _buildPrivacyNote(scaleFactor),
+                                const SizedBox(
+                                    height: 4), // Minimal bottom padding
+                              ],
                             ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                        SizedBox(height: taglineSpacing + 8), // Increased bottom padding
-                        // Action Buttons
-                        _buildActionButtons(scaleFactor),
-                        SizedBox(height: actionButtonsSpacing),
-                        // Checkbox with extra padding below
-                        _buildCheckbox(viewModel, scaleFactor),
-                        SizedBox(height: checkboxSpacing + 4),
-                        // Start Your Experience Button
-                        _buildStartButton(viewModel, scaleFactor),
-                        SizedBox(height: buttonSpacing * 0.5), // Reduced spacing
-                        // Privacy Note
-                        _buildPrivacyNote(scaleFactor),
-                        const SizedBox(height: 4), // Minimal bottom padding
-                      ],
+                          );
+                        },
+                      ),
                     ),
-                  );
-                },
-              ),
-            ),
-          ),
-          // ZenAI Logo overlay on top of carousel
-          Positioned(
-            top: statusBarHeight + 8,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                color: Colors.transparent,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: _buildNavBarLogo(context),
-              ),
-            ),
-          ),
-          // Full screen loader overlay - positioned to cover entire screen
-          Consumer<TermsAndConditionsViewModel>(
-            builder: (context, viewModel, child) {
-              if (viewModel.isSubmitting) {
-                return const Positioned.fill(
-                  child: FullScreenLoader(
-                    text: 'Creating Session',
-                    loaderColor: CupertinoColors.systemBlue,
                   ),
-                );
-              }
-              return const SizedBox.shrink();
-            },
-          ),
-        ],
-      ),
-              );
+                  // ZenAI Logo overlay on top of carousel
+                  Positioned(
+                    top: statusBarHeight + 8,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        color: Colors.transparent,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        child: _buildNavBarLogo(context),
+                      ),
+                    ),
+                  ),
+                  // Full screen loader overlay - positioned to cover entire screen
+                  Consumer<TermsAndConditionsViewModel>(
+                    builder: (context, viewModel, child) {
+                      if (viewModel.isSubmitting) {
+                        return const Positioned.fill(
+                          child: FullScreenLoader(
+                            text: 'Creating Session',
+                            loaderColor: CupertinoColors.systemBlue,
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                ],
+              ),
+            );
           },
         ),
       ),
@@ -543,6 +550,8 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       TermsAndConditionsViewModel viewModel, double scaleFactor) {
     final double checkboxSize = 20.0 + (scaleFactor * 4.0);
     final double fontSize = 10.0 + (scaleFactor * 2.0);
+    // Get checkbox border color (same as unselected checkbox border)
+    const checkboxBorderColor = CupertinoColors.systemGrey;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -560,7 +569,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
               border: Border.all(
                 color: viewModel.isAgreed
                     ? CupertinoColors.systemBlue
-                    : CupertinoColors.systemGrey,
+                    : checkboxBorderColor,
                 width: 2.5,
               ),
               color: viewModel.isAgreed
@@ -568,12 +577,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                   : CupertinoColors.systemBackground,
             ),
             child: viewModel.isAgreed
-                ? Builder(
-                    builder: (context) => Icon(
-                      CupertinoIcons.checkmark,
-                      color: AppColors.of(context).textColor,
-                      size: checkboxSize * 0.65,
-                    ),
+                ? Icon(
+                    CupertinoIcons.checkmark,
+                    color: CupertinoColors.white, // White tick when selected
+                    size: checkboxSize * 0.65,
                   )
                 : null,
           ),
@@ -585,7 +592,8 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
               viewModel.toggleAgreement(!viewModel.isAgreed);
             },
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 4.0),
+              padding:
+                  const EdgeInsets.symmetric(vertical: 12.0, horizontal: 4.0),
               child: RichText(
                 text: TextSpan(
                   style: TextStyle(
@@ -627,6 +635,13 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       TermsAndConditionsViewModel viewModel, double scaleFactor) {
     final double buttonHeight = 50.0 + (scaleFactor * 8.0);
     final double fontSize = 14.0 + (scaleFactor * 2.0);
+    final appColors = AppColors.of(context);
+    // Use same color as checkbox border when unselected
+    const checkboxBorderColor = CupertinoColors.systemGrey;
+
+    // Text color for disabled state: black in light mode, white in dark mode for visibility
+    final disabledTextColor =
+        appColors.isDarkMode ? CupertinoColors.white : CupertinoColors.black;
 
     return SizedBox(
       width: double.infinity,
@@ -635,7 +650,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         padding: EdgeInsets.zero,
         color: viewModel.canSubmit
             ? CupertinoColors.systemBlue
-            : CupertinoColors.systemGrey3,
+            : checkboxBorderColor, // Same as checkbox border when unselected
         borderRadius: BorderRadius.circular(12),
         onPressed: viewModel.canSubmit ? _handleAccept : null,
         child: viewModel.isSubmitting
@@ -647,7 +662,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                 style: TextStyle(
                   fontSize: fontSize,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.of(context).buttonTextColor,
+                  color: viewModel.canSubmit
+                      ? appColors.buttonTextColor // White when enabled
+                      : disabledTextColor, // Black in light mode, white in dark mode when disabled
                 ),
               ),
       ),

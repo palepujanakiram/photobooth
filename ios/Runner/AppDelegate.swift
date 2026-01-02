@@ -7,11 +7,9 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // Register camera device helper for device ID selection
+    // Register consolidated camera device helper
+    // This handles both device discovery and camera control
     CameraDeviceHelper.register(with: registrar(forPlugin: "CameraDeviceHelper")!)
-    
-    // Register custom camera controller
-    CustomCameraController.register(with: registrar(forPlugin: "CustomCameraController")!)
     
     GeneratedPluginRegistrant.register(with: self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
