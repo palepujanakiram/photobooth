@@ -24,16 +24,6 @@ class CameraDeviceHelper(private val context: Context) {
                 try {
                     val characteristics = cameraManager.getCameraCharacteristics(cameraId)
                     val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
-                    val facingString = when (facing) {
-                        CameraCharacteristics.LENS_FACING_BACK -> "back"
-                        CameraCharacteristics.LENS_FACING_FRONT -> "front"
-                        CameraCharacteristics.LENS_FACING_EXTERNAL -> "external"
-                        else -> "unknown"
-                    }
-
-                    // Check if camera is available (not in use)
-                    val capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
-                    val isAvailable = capabilities != null
 
                     // Generate camera name based on facing direction and camera ID
                     val cameraName = when (facing) {
@@ -42,25 +32,17 @@ class CameraDeviceHelper(private val context: Context) {
                         CameraCharacteristics.LENS_FACING_EXTERNAL -> "External Camera $cameraId"
                         else -> "Camera $cameraId"
                     }
-                    
-                    // Check if it's an external camera
-                    val isExternal = facing == CameraCharacteristics.LENS_FACING_EXTERNAL
 
+                    // Return only uniqueID (cameraId) and localizedName (cameraName)
                     val cameraInfo = mapOf(
-                        "cameraId" to cameraId,
-                        "name" to cameraName,
-                        "facing" to facingString,
-                        "isExternal" to isExternal,
-                        "isAvailable" to isAvailable
+                        "uniqueID" to cameraId,
+                        "localizedName" to cameraName
                     )
 
                     cameras.add(cameraInfo)
 
                     Log.d(TAG, "Camera: $cameraId")
                     Log.d(TAG, "  Name: $cameraName")
-                    Log.d(TAG, "  Facing: $facingString")
-                    Log.d(TAG, "  External: $isExternal")
-                    Log.d(TAG, "  Available: $isAvailable")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error getting camera info for $cameraId: ${e.message}")
                 }

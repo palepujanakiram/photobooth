@@ -51,10 +51,13 @@ class CameraService {
         final event = arguments['event'] as String;
         final cameraInfo = Map<String, dynamic>.from(arguments);
 
-        print('📱 Camera $event: ${cameraInfo['localizedName']}');
-        print('   UniqueID: ${cameraInfo['uniqueID']}');
-        print('   Device ID: ${cameraInfo['deviceId']}');
-        print('   External: ${cameraInfo['isExternal']}');
+        final uniqueID = cameraInfo['uniqueID'] as String? ?? 'unknown';
+        final localizedName = cameraInfo['localizedName'] as String? ?? 'unknown';
+        final isExternal = uniqueID.length > 30 || !uniqueID.contains(':');
+        
+        print('📱 Camera $event: $localizedName');
+        print('   UniqueID: $uniqueID');
+        print('   External: $isExternal');
 
         // Notify callback if set
         onCameraChanged?.call(event, cameraInfo);
@@ -205,57 +208,68 @@ class CameraService {
 
             for (int i = 0; i < androidCameras.length; i++) {
               final androidCamera = androidCameras[i];
-              final cameraId =
-                  androidCamera['cameraId'] as String? ?? 'unknown';
-              final name = androidCamera['name'] as String? ?? 'unknown';
-              final facing = androidCamera['facing'] as String? ?? 'unknown';
-              final isExternal = androidCamera['isExternal'] as bool? ?? false;
-              final isAvailable = androidCamera['isAvailable'] as bool? ?? true;
+              final uniqueID = androidCamera['uniqueID'] as String? ?? 'unknown';
+              final localizedName =
+                  androidCamera['localizedName'] as String? ?? 'unknown';
+
+              // Check if this camera is external by matching with Flutter's camera list
+              // External cameras on Android have CameraLensDirection.external
+              final matchingFlutterCamera = _cameras!.where(
+                (c) => c.name == uniqueID,
+              ).firstOrNull;
+              
+              final isExternal = matchingFlutterCamera?.lensDirection ==
+                  CameraLensDirection.external;
 
               print('  📷 Camera #${i + 1} Details:');
-              print('     Camera ID: $cameraId');
-              print('     Name: "$name"');
-              print('     Facing: $facing');
+              print('     Unique ID: $uniqueID');
+              print('     Name: "$localizedName"');
               print('     External: $isExternal');
-              print('     Available: $isAvailable');
               print('');
 
-              // Store mapping for external cameras
-              if (isExternal && name != 'unknown' && name.isNotEmpty) {
+              // Store mapping for all cameras (not just external)
+              if (localizedName != 'unknown' && localizedName.isNotEmpty) {
                 // Try to match with Flutter camera by camera ID
-                final matchingFlutterCamera = _cameras!.firstWhere(
-                  (c) => c.name == cameraId,
-                  orElse: () => _cameras!.first,
-                );
-                if (matchingFlutterCamera.name == cameraId) {
-                  _cameraLocalizedNames[cameraId] = name;
-                  print('     💾 Stored mapping: $cameraId -> "$name"');
+                if (matchingFlutterCamera != null) {
+                  _cameraLocalizedNames[uniqueID] = localizedName;
+                  print('     💾 Stored mapping: $uniqueID -> "$localizedName"');
                 } else {
                   // Camera not found in Flutter list - might be USB camera
                   print(
-                      '     ⚠️ Camera $cameraId not found in Flutter camera list');
+                      '     ⚠️ Camera $uniqueID not found in Flutter camera list');
                   print(
                       '     This might be a USB camera not detected by Flutter');
+                  
+                  // Still store the mapping in case it's added later
+                  if (isExternal) {
+                    _cameraLocalizedNames[uniqueID] = localizedName;
+                  }
                 }
               }
             }
             print('');
 
             // Check if there are external cameras in Android that aren't in Flutter list
-            final externalAndroidCameras = androidCameras.where((c) {
-              return c['isExternal'] == true;
+            final externalAndroidCameras = androidCameras.where((camera) {
+              final uniqueID = camera['uniqueID'] as String? ?? 'unknown';
+              final matchingFlutterCamera = _cameras!.where(
+                (c) => c.name == uniqueID,
+              ).firstOrNull;
+              return matchingFlutterCamera?.lensDirection ==
+                  CameraLensDirection.external;
             }).toList();
 
             if (externalAndroidCameras.isNotEmpty) {
               print(
                   '🔍 Found ${externalAndroidCameras.length} external camera(s) in Android:');
               for (final extCamera in externalAndroidCameras) {
-                final cameraId = extCamera['cameraId'] as String? ?? 'unknown';
-                final name = extCamera['name'] as String? ?? 'unknown';
+                final uniqueID = extCamera['uniqueID'] as String? ?? 'unknown';
+                final localizedName =
+                    extCamera['localizedName'] as String? ?? 'unknown';
                 final isInFlutterList =
-                    _cameras!.any((c) => c.name == cameraId);
+                    _cameras!.any((c) => c.name == uniqueID);
                 print(
-                    '   ${isInFlutterList ? "✅" : "❌"} $name (ID: $cameraId)');
+                    '   ${isInFlutterList ? "✅" : "❌"} $localizedName (ID: $uniqueID)');
                 if (!isInFlutterList) {
                   print(
                       '      ⚠️ This USB camera is not detected by Flutter camera package');
@@ -286,29 +300,32 @@ class CameraService {
 
             for (int i = 0; i < iosCameras.length; i++) {
               final iosCamera = iosCameras[i];
-              final deviceId = iosCamera['deviceId'] as String? ?? 'unknown';
               final uniqueID = iosCamera['uniqueID'] as String? ?? 'unknown';
               final localizedName =
                   iosCamera['localizedName'] as String? ?? 'unknown';
-              final modelID = iosCamera['modelID'] as String? ?? 'unknown';
-              final position = (iosCamera['position'] as int?) ?? -1;
-              final isConnected = iosCamera['isConnected'] as bool? ?? true;
-              final isExternal = iosCamera['isExternal'] as bool? ?? false;
+
+              // Derive isExternal from uniqueID format
+              // External cameras have UUID format (length > 30), built-in cameras have device ID format
+              final isExternal = uniqueID.length > 30 || !uniqueID.contains(':');
+              
+              // Extract deviceId from uniqueID for built-in cameras
+              String deviceId = 'unknown';
+              if (!isExternal && uniqueID.contains(':')) {
+                deviceId = uniqueID.split(':').last;
+              }
 
               print('  📷 Camera #${i + 1} Details:');
-              print('     Device ID: $deviceId');
-              print(
-                  '     Name: "$localizedName" (length: ${localizedName.length})');
+              print('     Name: "$localizedName" (length: ${localizedName.length})');
               if (localizedName == 'unknown') {
                 print(
                     '     ⚠️  WARNING: localizedName not found in iOS response!');
                 print('     Available keys: ${iosCamera.keys.join(", ")}');
               }
               print('     Unique ID: $uniqueID');
-              print('     Model ID: $modelID');
-              print('     Position: ${_getPositionString(position)}');
-              print('     Connected: $isConnected');
               print('     External: $isExternal');
+              if (!isExternal) {
+                print('     Device ID: $deviceId');
+              }
               print('');
 
               // Store mapping from camera name to localized name
@@ -317,37 +334,76 @@ class CameraService {
               // or for external: UUID format
 
               // For external cameras with UUID uniqueID
-              if (isExternal && uniqueID.length > 30) {
+              if (isExternal) {
                 _cameraLocalizedNames[uniqueID] = localizedName;
                 print(
                     '     💾 Stored mapping (external): $uniqueID -> "$localizedName"');
               }
 
               // Try to match with Flutter cameras
-              final matchingFlutterCamera = _cameras!.firstWhere(
+              final matchingFlutterCameraIndex = _cameras!.indexWhere(
                 (c) {
-                  // For external cameras, check if uniqueID matches
+                  // For external cameras with UUID uniqueID, check if uniqueID matches
                   if (isExternal && c.name == uniqueID) {
                     return true;
                   }
-                  // For built-in cameras, check device ID
-                  if (c.name.contains(':$deviceId')) {
-                    return true;
+                  // For built-in cameras, check if uniqueID matches or device ID matches
+                  if (!isExternal) {
+                    // Check if Flutter camera name matches uniqueID
+                    if (c.name == uniqueID) {
+                      return true;
+                    }
+                    // Or check if device ID matches
+                    if (c.name.contains(':')) {
+                      final flutterDeviceId = c.name.split(':').last.split(',').first.trim();
+                      if (flutterDeviceId == deviceId) {
+                        return true;
+                      }
+                    }
                   }
                   return false;
                 },
-                orElse: () => CameraDescription(
-                  name: '',
-                  lensDirection: CameraLensDirection.external,
-                  sensorOrientation: 0,
-                ),
               );
 
-              if (matchingFlutterCamera.name.isNotEmpty) {
-                _cameraLocalizedNames[matchingFlutterCamera.name] =
-                    localizedName;
-                print(
-                    '     💾 Stored mapping: ${matchingFlutterCamera.name} -> "$localizedName"');
+              if (matchingFlutterCameraIndex >= 0) {
+                final matchingFlutterCamera = _cameras![matchingFlutterCameraIndex];
+                
+                // Check if Flutter's camera has the wrong direction
+                // For external cameras, must be external
+                // For built-in cameras, use Flutter's existing direction (it's usually correct)
+                final correctDirection = isExternal
+                    ? CameraLensDirection.external
+                    : matchingFlutterCamera.lensDirection; // Trust Flutter's direction for built-in
+                
+                if (matchingFlutterCamera.lensDirection != correctDirection) {
+                  // Flutter has the wrong direction - replace with correct one
+                  print(
+                      '     ⚠️ Flutter camera has wrong direction: ${matchingFlutterCamera.lensDirection}');
+                  print('     ✅ Correcting to: $correctDirection');
+                  
+                  // Remove the incorrectly classified camera
+                  _cameras!.removeAt(matchingFlutterCameraIndex);
+                  
+                  // Add the correctly classified camera
+                  final correctedCamera = CameraDescription(
+                    name: isExternal
+                        ? uniqueID
+                        : matchingFlutterCamera.name,
+                    lensDirection: correctDirection,
+                    sensorOrientation: matchingFlutterCamera.sensorOrientation,
+                  );
+                  
+                  _cameras!.add(correctedCamera);
+                  _cameraLocalizedNames[correctedCamera.name] = localizedName;
+                  print(
+                      '     ✅ Corrected camera: ${correctedCamera.name} -> "$localizedName" (${correctedCamera.lensDirection})');
+                } else {
+                  // Direction is correct, just store the mapping
+                  _cameraLocalizedNames[matchingFlutterCamera.name] =
+                      localizedName;
+                  print(
+                      '     💾 Stored mapping: ${matchingFlutterCamera.name} -> "$localizedName"');
+                }
               } else {
                 // Camera not found in Flutter's list
                 if (isExternal) {
@@ -370,7 +426,7 @@ class CameraService {
                       '     ✅ Added external camera: $uniqueID -> "$localizedName"');
                 } else {
                   print(
-                      '     ⚠️ Camera with device ID $deviceId not found in Flutter camera list');
+                      '     ⚠️ Camera with uniqueID $uniqueID not found in Flutter camera list');
                 }
               }
             }
@@ -679,17 +735,4 @@ class CameraService {
     _useCustomController = false;
   }
 
-  /// Helper to convert position integer to string
-  String _getPositionString(int position) {
-    switch (position) {
-      case 0:
-        return 'Unspecified';
-      case 1:
-        return 'Back';
-      case 2:
-        return 'Front';
-      default:
-        return 'Unknown ($position)';
-    }
-  }
 }

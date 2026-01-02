@@ -68,19 +68,10 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   }
   
   private func notifyCameraChange(event: String, device: AVCaptureDevice) {
-    let isExternal = device.deviceType == .external
-    // For external cameras, deviceId will be empty since they use UUID format
-    // The Flutter side should use uniqueID to identify external cameras
-    let deviceId = isExternal ? "" : extractDeviceId(from: device.uniqueID)
-    
     let eventData: [String: Any] = [
       "event": event,
       "uniqueID": device.uniqueID,
-      "localizedName": device.localizedName,
-      "deviceId": deviceId,
-      "isExternal": isExternal,
-      "modelID": device.modelID,
-      "isConnected": isDeviceConnected(device)
+      "localizedName": device.localizedName
     ]
     
     methodChannel?.invokeMethod("onCameraChange", arguments: eventData)
@@ -252,6 +243,7 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   }
   
   /// Creates a camera info dictionary for Flutter
+  /// Returns only essential fields: uniqueID and localizedName
   private func createCameraInfo(
     device: AVCaptureDevice,
     deviceId: String,
@@ -262,12 +254,7 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
     
     return [
       "uniqueID": device.uniqueID,
-      "localizedName": localizedName,
-      "deviceId": deviceId,
-      "position": device.position.rawValue,
-      "modelID": device.modelID,
-      "isConnected": isDeviceConnected(device),
-      "isExternal": isExternal
+      "localizedName": localizedName
     ]
   }
   
@@ -361,7 +348,6 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
           "deviceId": deviceId,
           "uniqueID": device.uniqueID,
           "localizedName": device.localizedName,
-          "modelID": device.modelID,
           "position": device.position.rawValue
         ]
         print("✅ Returning device info for device ID: \(deviceId)")
@@ -470,7 +456,6 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
           "deviceId": deviceId,
           "uniqueID": device.uniqueID,
           "localizedName": device.localizedName,
-          "modelID": device.modelID,
           "position": device.position.rawValue
         ]
         print("✅ Returning device info for device ID: \(deviceId)")
@@ -554,9 +539,8 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
       )
       cameras.append(cameraInfo)
       
-      let isConnected = cameraInfo["isConnected"] as? Bool ?? false
       let localizedName = cameraInfo["localizedName"] as? String ?? ""
-      let statusIcon = isExternal ? (isConnected ? "✅" : "❌") : "✅"
+      let statusIcon = "✅"
       let cameraType = isExternal ? "External" : "Built-in"
       
       print("   \(statusIcon) \(cameraType) - Device ID: \(deviceId), uniqueID: \(device.uniqueID), name: \(localizedName)")
