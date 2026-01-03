@@ -52,9 +52,10 @@ class CameraService {
         final cameraInfo = Map<String, dynamic>.from(arguments);
 
         final uniqueID = cameraInfo['uniqueID'] as String? ?? 'unknown';
-        final localizedName = cameraInfo['localizedName'] as String? ?? 'unknown';
+        final localizedName =
+            cameraInfo['localizedName'] as String? ?? 'unknown';
         final isExternal = uniqueID.length > 30 || !uniqueID.contains(':');
-        
+
         print('📱 Camera $event: $localizedName');
         print('   UniqueID: $uniqueID');
         print('   External: $isExternal');
@@ -208,16 +209,19 @@ class CameraService {
 
             for (int i = 0; i < androidCameras.length; i++) {
               final androidCamera = androidCameras[i];
-              final uniqueID = androidCamera['uniqueID'] as String? ?? 'unknown';
+              final uniqueID =
+                  androidCamera['uniqueID'] as String? ?? 'unknown';
               final localizedName =
                   androidCamera['localizedName'] as String? ?? 'unknown';
 
               // Check if this camera is external by matching with Flutter's camera list
               // External cameras on Android have CameraLensDirection.external
-              final matchingFlutterCamera = _cameras!.where(
-                (c) => c.name == uniqueID,
-              ).firstOrNull;
-              
+              final matchingFlutterCamera = _cameras!
+                  .where(
+                    (c) => c.name == uniqueID,
+                  )
+                  .firstOrNull;
+
               final isExternal = matchingFlutterCamera?.lensDirection ==
                   CameraLensDirection.external;
 
@@ -232,14 +236,15 @@ class CameraService {
                 // Try to match with Flutter camera by camera ID
                 if (matchingFlutterCamera != null) {
                   _cameraLocalizedNames[uniqueID] = localizedName;
-                  print('     💾 Stored mapping: $uniqueID -> "$localizedName"');
+                  print(
+                      '     💾 Stored mapping: $uniqueID -> "$localizedName"');
                 } else {
                   // Camera not found in Flutter list - might be USB camera
                   print(
                       '     ⚠️ Camera $uniqueID not found in Flutter camera list');
                   print(
                       '     This might be a USB camera not detected by Flutter');
-                  
+
                   // Still store the mapping in case it's added later
                   if (isExternal) {
                     _cameraLocalizedNames[uniqueID] = localizedName;
@@ -252,9 +257,11 @@ class CameraService {
             // Check if there are external cameras in Android that aren't in Flutter list
             final externalAndroidCameras = androidCameras.where((camera) {
               final uniqueID = camera['uniqueID'] as String? ?? 'unknown';
-              final matchingFlutterCamera = _cameras!.where(
-                (c) => c.name == uniqueID,
-              ).firstOrNull;
+              final matchingFlutterCamera = _cameras!
+                  .where(
+                    (c) => c.name == uniqueID,
+                  )
+                  .firstOrNull;
               return matchingFlutterCamera?.lensDirection ==
                   CameraLensDirection.external;
             }).toList();
@@ -306,8 +313,9 @@ class CameraService {
 
               // Derive isExternal from uniqueID format
               // External cameras have UUID format (length > 30), built-in cameras have device ID format
-              final isExternal = uniqueID.length > 30 || !uniqueID.contains(':');
-              
+              final isExternal =
+                  uniqueID.length > 30 || !uniqueID.contains(':');
+
               // Extract deviceId from uniqueID for built-in cameras
               String deviceId = 'unknown';
               if (!isExternal && uniqueID.contains(':')) {
@@ -315,7 +323,8 @@ class CameraService {
               }
 
               print('  📷 Camera #${i + 1} Details:');
-              print('     Name: "$localizedName" (length: ${localizedName.length})');
+              print(
+                  '     Name: "$localizedName" (length: ${localizedName.length})');
               if (localizedName == 'unknown') {
                 print(
                     '     ⚠️  WARNING: localizedName not found in iOS response!');
@@ -355,7 +364,8 @@ class CameraService {
                     }
                     // Or check if device ID matches
                     if (c.name.contains(':')) {
-                      final flutterDeviceId = c.name.split(':').last.split(',').first.trim();
+                      final flutterDeviceId =
+                          c.name.split(':').last.split(',').first.trim();
                       if (flutterDeviceId == deviceId) {
                         return true;
                       }
@@ -366,33 +376,33 @@ class CameraService {
               );
 
               if (matchingFlutterCameraIndex >= 0) {
-                final matchingFlutterCamera = _cameras![matchingFlutterCameraIndex];
-                
+                final matchingFlutterCamera =
+                    _cameras![matchingFlutterCameraIndex];
+
                 // Check if Flutter's camera has the wrong direction
                 // For external cameras, must be external
                 // For built-in cameras, use Flutter's existing direction (it's usually correct)
                 final correctDirection = isExternal
                     ? CameraLensDirection.external
-                    : matchingFlutterCamera.lensDirection; // Trust Flutter's direction for built-in
-                
+                    : matchingFlutterCamera
+                        .lensDirection; // Trust Flutter's direction for built-in
+
                 if (matchingFlutterCamera.lensDirection != correctDirection) {
                   // Flutter has the wrong direction - replace with correct one
                   print(
                       '     ⚠️ Flutter camera has wrong direction: ${matchingFlutterCamera.lensDirection}');
                   print('     ✅ Correcting to: $correctDirection');
-                  
+
                   // Remove the incorrectly classified camera
                   _cameras!.removeAt(matchingFlutterCameraIndex);
-                  
+
                   // Add the correctly classified camera
                   final correctedCamera = CameraDescription(
-                    name: isExternal
-                        ? uniqueID
-                        : matchingFlutterCamera.name,
+                    name: isExternal ? uniqueID : matchingFlutterCamera.name,
                     lensDirection: correctDirection,
                     sensorOrientation: matchingFlutterCamera.sensorOrientation,
                   );
-                  
+
                   _cameras!.add(correctedCamera);
                   _cameraLocalizedNames[correctedCamera.name] = localizedName;
                   print(
@@ -413,13 +423,14 @@ class CameraService {
                       '     ➕ Adding external camera to list (not in Flutter availableCameras):');
                   print('        UniqueID: $uniqueID');
                   print('        Name: $localizedName');
-                  
+
                   final externalCamera = CameraDescription(
-                    name: uniqueID, // Use uniqueID as the name for external cameras
+                    name:
+                        uniqueID, // Use uniqueID as the name for external cameras
                     lensDirection: CameraLensDirection.external,
                     sensorOrientation: 0, // Default orientation
                   );
-                  
+
                   _cameras!.add(externalCamera);
                   _cameraLocalizedNames[uniqueID] = localizedName;
                   print(
@@ -542,7 +553,7 @@ class CameraService {
       // Strategy 1: Try exact name match first
       cameraToUse = _cameras!.firstWhere(
         (c) => c.name == camera.name,
-        orElse: () => CameraDescription(
+        orElse: () => const CameraDescription(
           name: '',
           lensDirection: CameraLensDirection.external,
           sensorOrientation: 0,
@@ -734,5 +745,4 @@ class CameraService {
     _customController = null;
     _useCustomController = false;
   }
-
 }

@@ -57,5 +57,12 @@ abstract class ApiClient {
   Future<Map<String, dynamic>> generateImage(
     @Body() Map<String, dynamic> body,
   );
+
+  /// Preprocesses image (validation, compression, person detection)
+  /// This is a fire-and-forget call - don't wait for completion
+  @POST('/api/preprocess-image')
+  Future<Map<String, dynamic>> preprocessImage(
+    @Body() Map<String, dynamic> body,
+  );
 }
 

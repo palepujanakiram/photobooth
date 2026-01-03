@@ -2,7 +2,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'theme_selection_viewmodel.dart';
 import '../photo_capture/photo_model.dart';
-import '../photo_capture/photo_capture_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/theme_card.dart';
 import '../../views/widgets/app_theme.dart';
@@ -142,7 +141,8 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                         ),
                         child: AppContinueButton(
                           onPressed: viewModel.selectedTheme != null &&
-                                  !_isGenerating
+                                  !_isGenerating &&
+                                  !viewModel.isUpdatingSession
                               ? () async {
                                   final selectedTheme = viewModel.selectedTheme;
                                   if (selectedTheme == null) return;
@@ -150,7 +150,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                   // Capture context before async operation
                                   final currentContext = context;
 
-                                  // If we have a photo from capture, show loader and update session
+                                  // If we have a photo from capture, update session with theme
                                   if (_photoFromCapture != null) {
                                     // Show full screen loader
                                     setState(() {
@@ -158,17 +158,9 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                     });
 
                                     try {
-                                      // Update session with photo and theme
-                                      final captureViewModel =
-                                          CaptureViewModel();
-                                      // Set the captured photo in the view model
-                                      captureViewModel.capturedPhoto =
-                                          _photoFromCapture;
-
-                                      final success = await captureViewModel
-                                          .updateSessionWithPhoto(
-                                        selectedTheme.id,
-                                      );
+                                      // Step 4: Update session with selected theme
+                                      // PATCH /api/sessions/{sessionId} with only selectedThemeId
+                                      final success = await viewModel.updateSessionWithTheme();
 
                                       if (!mounted || !currentContext.mounted) {
                                         setState(() {
@@ -182,6 +174,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                       });
 
                                       if (success) {
+                                        // Navigate to Review Photo screen
                                         Navigator.pushNamed(
                                           currentContext,
                                           AppConstants.kRouteReview,
@@ -194,8 +187,8 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                         // Show animated error if update fails
                                         AppSnackBar.showError(
                                           currentContext,
-                                          captureViewModel.errorMessage ??
-                                              'Failed to update session',
+                                          viewModel.errorMessage ??
+                                              'Failed to update session with theme',
                                         );
                                       }
                                     } catch (e) {
@@ -211,10 +204,10 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                     }
                                   } else {
                                     // Normal flow: navigate to capture photo
-                  Navigator.pushNamed(
+                                    Navigator.pushNamed(
                                       currentContext,
-                    AppConstants.kRouteCapture,
-                  );
+                                      AppConstants.kRouteCapture,
+                                    );
                                   }
                                 }
                               : null,

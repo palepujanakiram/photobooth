@@ -63,7 +63,7 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
             backgroundColor: CupertinoColors.systemBackground,
             navigationBar: const AppTopBar(
               title: 'Review Photo',
-        ),
+            ),
             child: SafeArea(
               top: true,
               bottom: false,
@@ -76,7 +76,8 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                         width: double.infinity,
                         height: constraints.maxHeight,
                         color: CupertinoColors.systemBackground,
-                        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 0.0),
+                        padding:
+                            const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 0.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           mainAxisSize: MainAxisSize.max,
@@ -89,7 +90,8 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                   // Left side: Captured Photo
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         const Text(
                                           'Captured Photo',
@@ -102,30 +104,42 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                         Expanded(
                                           child: Container(
                                             decoration: BoxDecoration(
-                                              color: CupertinoColors.systemGrey6,
-                                              borderRadius: BorderRadius.circular(12),
+                                              color:
+                                                  CupertinoColors.systemGrey6,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
                                             ),
                                             child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(12),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
                                               child: FutureBuilder<List<int>>(
-                                                future: viewModel.photo!.imageFile.readAsBytes(),
+                                                future: viewModel
+                                                    .photo!.imageFile
+                                                    .readAsBytes(),
                                                 builder: (context, snapshot) {
-                                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                                  if (snapshot
+                                                          .connectionState ==
+                                                      ConnectionState.waiting) {
                                                     return const Center(
-                                                      child: CupertinoActivityIndicator(),
+                                                      child:
+                                                          CupertinoActivityIndicator(),
                                                     );
                                                   }
-                                                  if (snapshot.hasError || !snapshot.hasData) {
+                                                  if (snapshot.hasError ||
+                                                      !snapshot.hasData) {
                                                     return const Center(
                                                       child: Icon(
-                                                        CupertinoIcons.exclamationmark_triangle,
-                                                        color: CupertinoColors.systemRed,
+                                                        CupertinoIcons
+                                                            .exclamationmark_triangle,
+                                                        color: CupertinoColors
+                                                            .systemRed,
                                                         size: 48,
                                                       ),
                                                     );
                                                   }
                                                   return Image.memory(
-                                                    Uint8List.fromList(snapshot.data!),
+                                                    Uint8List.fromList(
+                                                        snapshot.data!),
                                                     fit: BoxFit.cover,
                                                     width: double.infinity,
                                                   );
@@ -141,7 +155,8 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                   // Right side: Selected Theme
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         const Text(
                                           'Selected Theme',
@@ -154,41 +169,74 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                         Expanded(
                                           child: Container(
                                             decoration: BoxDecoration(
-                                              color: CupertinoColors.systemGrey6,
-                                              borderRadius: BorderRadius.circular(12),
+                                              color:
+                                                  CupertinoColors.systemGrey6,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
                                             ),
                                             child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(12),
-                                              child: viewModel.theme?.sampleImageUrl != null &&
-                                                      viewModel.theme!.sampleImageUrl!.isNotEmpty
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              child: viewModel.theme
+                                                              ?.sampleImageUrl !=
+                                                          null &&
+                                                      viewModel
+                                                          .theme!
+                                                          .sampleImageUrl!
+                                                          .isNotEmpty
                                                   ? _buildThemeImage(
-                                                      viewModel.theme!.sampleImageUrl!,
+                                                      viewModel.theme!
+                                                          .sampleImageUrl!,
                                                     )
                                                   : Container(
-                                                      color: CupertinoColors.systemGrey5,
+                                                      color: CupertinoColors
+                                                          .systemGrey5,
                                                       child: Column(
-                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment
+                                                                .center,
                                                         children: [
-                                                          Icon(
-                                                            CupertinoIcons.paintbrush,
+                                                          const Icon(
+                                                            CupertinoIcons
+                                                                .paintbrush,
                                                             size: 64,
-                                                            color: CupertinoColors.systemGrey,
+                                                            color:
+                                                                CupertinoColors
+                                                                    .systemGrey,
                                                           ),
-                                                          const SizedBox(height: 16),
+                                                          const SizedBox(
+                                                              height: 16),
                                                           Text(
-                                                            viewModel.theme?.name ?? 'Unknown',
-                                                            style: const TextStyle(
+                                                            viewModel.theme
+                                                                    ?.name ??
+                                                                'Unknown',
+                                                            style:
+                                                                const TextStyle(
                                                               fontSize: 18,
-                                                              fontWeight: FontWeight.bold,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
                                                             ),
                                                           ),
-                                                          const SizedBox(height: 8),
+                                                          const SizedBox(
+                                                              height: 8),
                                                           Padding(
-                                                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .symmetric(
+                                                                    horizontal:
+                                                                        16.0),
                                                             child: Text(
-                                                              viewModel.theme?.description ?? '',
-                                                              style: const TextStyle(fontSize: 14),
-                                                              textAlign: TextAlign.center,
+                                                              viewModel.theme
+                                                                      ?.description ??
+                                                                  '',
+                                                              style:
+                                                                  const TextStyle(
+                                                                      fontSize:
+                                                                          14),
+                                                              textAlign:
+                                                                  TextAlign
+                                                                      .center,
                                                             ),
                                                           ),
                                                         ],

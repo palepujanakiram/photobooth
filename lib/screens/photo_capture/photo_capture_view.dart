@@ -233,14 +233,24 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
                         if (!mounted || !currentContext.mounted) return;
 
-                        // Navigate to Theme Selection screen
-                        Navigator.pushNamed(
-                          currentContext,
-                          AppConstants.kRouteHome,
-                          arguments: {
-                            'photo': viewModel.capturedPhoto,
-                          },
-                        );
+                        // Upload photo to session and trigger preprocessing
+                        final success = await viewModel.uploadPhotoToSession();
+
+                        if (!mounted || !currentContext.mounted) return;
+
+                        if (success) {
+                          // Navigate to Theme Selection screen
+                          Navigator.pushNamed(
+                            currentContext,
+                            AppConstants.kRouteHome,
+                            arguments: {
+                              'photo': viewModel.capturedPhoto,
+                            },
+                          );
+                        } else {
+                          // Show error message (error is already set in viewModel)
+                          // The error will be displayed in the error UI
+                        }
                       },
                 color: appColors.primaryColor,
                 disabledColor: CupertinoColors.systemGrey3,

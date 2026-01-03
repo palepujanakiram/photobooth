@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 import 'package:camera/camera.dart';
 import 'package:uuid/uuid.dart';
@@ -7,6 +6,7 @@ import '../../services/camera_service.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
+import '../../utils/image_helper.dart';
 
 class CaptureViewModel extends ChangeNotifier {
   final CameraService _cameraService;
@@ -304,35 +304,72 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Converts image file to base64 data URL
-  /// Works with XFile on all platforms (mobile and web)
-  Future<String> _convertImageToBase64(XFile imageFile) async {
+  /// Uploads photo to session (Step 3)
+  /// Called when user taps "Continue" button in Capture Photo screen
+  /// This uploads the photo and triggers preprocessing in the background
+  Future<bool> uploadPhotoToSession() async {
+    if (_capturedPhoto == null) {
+      _errorMessage = 'No photo captured. Please capture a photo first.';
+      notifyListeners();
+      return false;
+    }
+
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null) {
+      _errorMessage = 'No active session found. Please accept terms first.';
+      notifyListeners();
+      return false;
+    }
+
+    _isUploading = true;
+    _errorMessage = null;
+    notifyListeners();
+
     try {
-      // Read image bytes from XFile (works on all platforms)
-      final bytes = await imageFile.readAsBytes();
+      // Get the image file from the captured photo
+      final imageFile = _capturedPhoto!.imageFile;
       
-      // Check if file is not empty
-      if (bytes.isEmpty) {
-        throw Exception('Image file is empty: ${imageFile.path}');
-      }
+      // Resize and encode image to meet API requirements:
+      // - Size: 512x512 to 1024x1024 pixels
+      // - Max size: ~2MB after base64 encoding
+      // - Format: JPEG
+      final base64Image = await ImageHelper.resizeAndEncodeImage(imageFile);
       
-      // Encode to base64
-      final base64String = base64Encode(bytes);
+      // Step 3: Update session with photo (PATCH /api/sessions/{sessionId})
+      // Note: selectedThemeId is not included here - it will be set later in theme selection
+      final response = await _apiService.updateSession(
+        sessionId: sessionId,
+        userImageUrl: base64Image,
+        selectedThemeId: null, // Theme will be selected later
+      );
       
-      // Determine image format from file extension or mime type
-      final extension = imageFile.path.toLowerCase().split('.').last;
-      final mimeType = imageFile.mimeType ?? 
-          (extension == 'png' ? 'image/png' : 'image/jpeg');
+      // Save the response to SessionManager
+      _sessionManager.setSessionFromResponse(response);
       
-      // Return data URL format: data:image/jpeg;base64,...
-      return 'data:$mimeType;base64,$base64String';
+      // Step 3b: Preprocess image in background (fire-and-forget)
+      // This runs validation, compression, and person detection ahead of time
+      // Don't wait for it to complete - it's an optimization
+      _apiService.preprocessImage(sessionId: sessionId);
+      
+      _isUploading = false;
+      notifyListeners();
+      return true;
+    } on app_exceptions.ApiException catch (e) {
+      _errorMessage = e.message;
+      _isUploading = false;
+      notifyListeners();
+      return false;
     } catch (e) {
-      throw Exception('Failed to convert image to base64: $e');
+      _errorMessage = 'Failed to upload photo: ${e.toString()}';
+      _isUploading = false;
+      notifyListeners();
+      return false;
     }
   }
 
   /// Updates session with captured photo and selected theme
   /// Gets the image from the camera file and uploads it via API
+  /// @deprecated Use uploadPhotoToSession() instead when uploading just the photo
   Future<bool> updateSessionWithPhoto(String selectedThemeId) async {
     if (_capturedPhoto == null) {
       _errorMessage = 'No photo captured. Please capture a photo first.';
@@ -355,10 +392,8 @@ class CaptureViewModel extends ChangeNotifier {
       // Get the image file from the captured photo
       final imageFile = _capturedPhoto!.imageFile;
       
-      // Convert image from XFile to base64 data URL
-      // Format: data:image/jpeg;base64,/9j/4AAQSkZJRg...
-      // XFile.readAsBytes() works on all platforms (mobile and web)
-      final base64Image = await _convertImageToBase64(imageFile);
+      // Resize and encode image to meet API requirements
+      final base64Image = await ImageHelper.resizeAndEncodeImage(imageFile);
       
       // Update session via API: PATCH /api/sessions/{sessionId}
       final response = await _apiService.updateSession(
@@ -368,7 +403,6 @@ class CaptureViewModel extends ChangeNotifier {
       );
       
       // Save the response to SessionManager
-      // Response includes: id, userImageUrl, selectedThemeId, selectedCategoryId, attemptsUsed, generatedImages
       _sessionManager.setSessionFromResponse(response);
       
       _isUploading = false;

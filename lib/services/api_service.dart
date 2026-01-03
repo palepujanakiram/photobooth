@@ -372,20 +372,32 @@ class ApiService {
     }
   }
 
-  /// Updates session with user photo and selected theme
+  /// Updates session with user photo and/or selected theme
   /// Returns updated session data
+  /// Either userImageUrl or selectedThemeId (or both) must be provided
   Future<Map<String, dynamic>> updateSession({
     required String sessionId,
-    required String userImageUrl, // Base64 data URL
-    required String selectedThemeId,
+    String? userImageUrl, // Base64 data URL (optional)
+    String? selectedThemeId, // Optional - can be set later
   }) async {
     try {
+      final body = <String, dynamic>{};
+      
+      if (userImageUrl != null) {
+        body['userImageUrl'] = userImageUrl;
+      }
+      if (selectedThemeId != null) {
+        body['selectedThemeId'] = selectedThemeId;
+      }
+      
+      // Ensure at least one field is provided
+      if (body.isEmpty) {
+        throw ApiException('Either userImageUrl or selectedThemeId must be provided');
+      }
+      
       final response = await _apiClient.updateSession(
         sessionId,
-        {
-          'userImageUrl': userImageUrl,
-          'selectedThemeId': selectedThemeId,
-        },
+        body,
       );
       return response;
     } on DioException catch (e) {
@@ -474,6 +486,33 @@ class ApiService {
         final imageUrl = response['imageUrl'] as String?;
         if (imageUrl == null || imageUrl.isEmpty) {
           throw ApiException('No image URL in response');
+        }
+
+        // Log additional response metadata (optional, for debugging/analytics)
+        final framing = response['framing'] as Map<String, dynamic>?;
+        final generationDurationMs = response['generationDurationMs'] as int?;
+        final upscaleDurationMs = response['upscaleDurationMs'] as int?;
+        final totalDurationMs = response['totalDurationMs'] as int?;
+        final upscaleMethod = response['upscaleMethod'] as String?;
+        final finalResolution = response['finalResolution'] as String?;
+        
+        if (framing != null || totalDurationMs != null) {
+          print('📊 Generation metadata:');
+          if (framing != null) {
+            print('   Framing: ${framing['personCount']} person(s), ${framing['orientation']}, ${framing['aspectRatio']}');
+          }
+          if (totalDurationMs != null) {
+            print('   Total duration: ${totalDurationMs}ms');
+            if (generationDurationMs != null) {
+              print('   Generation: ${generationDurationMs}ms');
+            }
+            if (upscaleDurationMs != null && upscaleDurationMs > 0) {
+              print('   Upscale: ${upscaleDurationMs}ms (${upscaleMethod ?? "unknown"})');
+            }
+          }
+          if (finalResolution != null) {
+            print('   Final resolution: $finalResolution');
+          }
         }
 
         // Parse base64 data URL: data:image/png;base64,iVBORw0KGgo...
@@ -577,5 +616,24 @@ class ApiService {
 
     // This should never be reached, but just in case
     throw ApiException('Failed to generate image after retries');
+  }
+
+  /// Preprocesses image (validation, compression, person detection)
+  /// This is a fire-and-forget call - errors are silently ignored
+  /// Should be called immediately after uploading photo to save 2-3 seconds during AI generation
+  void preprocessImage({
+    required String sessionId,
+  }) {
+    // Fire-and-forget: don't await, don't handle errors
+    // If preprocessing fails, the generate endpoint will handle it automatically
+    _apiClient.preprocessImage({
+      'sessionId': sessionId,
+    }).then((_) {
+      // Success - preprocessing completed
+      print('✅ Preprocess image completed');
+    }).catchError((error) {
+      // Silently ignore errors - this is a background optimization
+      print('⚠️ Preprocess image failed (non-critical): $error');
+    });
   }
 }

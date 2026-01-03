@@ -708,15 +708,8 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
       self.photoOutput = photoOutput
       self.videoDataOutput = videoOutput
       
-      // Setup Rotation Coordination (iOS 17+)
-      if #available(iOS 17.0, *) {
-        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
-        self.rotationCoordinator = coordinator
-        rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: .new) { [weak self] coord, change in
-          if let angle = change.newValue { self?.applyRotation(angle: angle) }
-        }
-        applyRotation(angle: coordinator.videoRotationAngleForHorizonLevelPreview)
-      }
+      // Configure connections to ensure photo matches preview orientation
+      configureConnections(device: device)
       
       result(["success": true, "textureId": self.textureId])
     } catch {
@@ -726,14 +719,87 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
     }
   }
   
-  /// Applies rotation angle to video and photo connections
-  private func applyRotation(angle: CGFloat) {
-    if let connection = videoDataOutput?.connection(with: .video), connection.isVideoRotationAngleSupported(angle) {
-      connection.videoRotationAngle = angle
+  /// Configures video and photo connections to match orientation
+  /// Ensures captured photos match what's shown in the preview
+  private func configureConnections(device: AVCaptureDevice) {
+    // Get the current device orientation
+    let deviceOrientation = UIDevice.current.orientation
+    let videoOrientation: AVCaptureVideoOrientation
+    
+    // Map device orientation to video orientation
+    switch deviceOrientation {
+    case .portrait:
+      videoOrientation = .portrait
+    case .portraitUpsideDown:
+      videoOrientation = .portraitUpsideDown
+    case .landscapeLeft:
+      videoOrientation = .landscapeRight
+    case .landscapeRight:
+      videoOrientation = .landscapeLeft
+    default:
+      // Default to portrait if orientation is unknown
+      videoOrientation = .portrait
     }
-    if let photoConnection = photoOutput?.connection(with: .video), photoConnection.isVideoRotationAngleSupported(angle) {
-      photoConnection.videoRotationAngle = angle
+    
+    // Configure video output connection (for preview)
+    if let videoConnection = videoDataOutput?.connection(with: .video) {
+      if videoConnection.isVideoOrientationSupported {
+        videoConnection.videoOrientation = videoOrientation
+      }
+      // Mirror front-facing cameras for preview (users expect mirror-like view)
+      if device.position == .front && videoConnection.isVideoMirroringSupported {
+        videoConnection.isVideoMirrored = false
+      } else {
+        videoConnection.isVideoMirrored = false
+      }
     }
+    
+    // Configure photo output connection (for capture)
+    // IMPORTANT: Photos should NOT be mirrored - they should show actual orientation
+    // Preview is mirrored for user comfort, but photos should be correct
+    if let photoConnection = photoOutput?.connection(with: .video) {
+      if photoConnection.isVideoOrientationSupported {
+        photoConnection.videoOrientation = videoOrientation
+      }
+      // Never mirror photos - they should show the actual scene orientation
+      photoConnection.isVideoMirrored = false
+    }
+    
+    // Setup Rotation Coordination (iOS 17+) for dynamic rotation updates
+    if #available(iOS 17.0, *) {
+      let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
+      self.rotationCoordinator = coordinator
+      rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: .new) { [weak self] coord, change in
+        guard let self = self else { return }
+        if let angle = change.newValue {
+          // Apply rotation angle to both connections
+          if let videoConnection = self.videoDataOutput?.connection(with: .video),
+             videoConnection.isVideoRotationAngleSupported(angle) {
+            videoConnection.videoRotationAngle = angle
+          }
+          if let photoConnection = self.photoOutput?.connection(with: .video),
+             photoConnection.isVideoRotationAngleSupported(angle) {
+            photoConnection.videoRotationAngle = angle
+          }
+        }
+      }
+      // Apply initial rotation
+      let initialAngle = coordinator.videoRotationAngleForHorizonLevelPreview
+      if let videoConnection = videoDataOutput?.connection(with: .video),
+         videoConnection.isVideoRotationAngleSupported(initialAngle) {
+        videoConnection.videoRotationAngle = initialAngle
+      }
+      if let photoConnection = photoOutput?.connection(with: .video),
+         photoConnection.isVideoRotationAngleSupported(initialAngle) {
+        photoConnection.videoRotationAngle = initialAngle
+      }
+    }
+    
+    let previewMirrored = device.position == .front
+    print("📸 Configured connections:")
+    print("   Video orientation: \(videoOrientation.rawValue)")
+    print("   Preview mirrored: \(previewMirrored) (for user comfort)")
+    print("   Photo mirrored: false (actual scene orientation)")
   }
   
   /// Finds device for camera control by device ID
