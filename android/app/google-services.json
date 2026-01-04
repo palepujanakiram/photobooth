@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "76160113818",
+    "project_id": "fotozenai",
+    "storage_bucket": "fotozenai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:76160113818:android:196bb713e591f09c0bd323",
+        "android_client_info": {
+          "package_name": "com.example.photobooth"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDVjw-tszA2iT41spHMULf6avNar3mxyFI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

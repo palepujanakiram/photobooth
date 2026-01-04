@@ -43,4 +43,3 @@ class PhotoBoothApp extends StatelessWidget {
     );
   }
 }
-
