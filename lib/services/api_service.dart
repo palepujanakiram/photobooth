@@ -545,19 +545,34 @@ class ApiService {
         } else {
           // On mobile, save to temp file and create XFile
           final tempDirPath = await FileHelper.getTempDirectoryPath();
-          final filePath = '$tempDirPath/transformed_${_uuid.v4()}.$extension';
+          final fileName = 'transformed_${_uuid.v4()}.$extension';
+          final filePath = '$tempDirPath/$fileName';
           final file = FileHelper.createFile(filePath);
           await (file as dynamic).writeAsBytes(imageBytes);
-          transformedImageFile = XFile((file as dynamic).path);
           
           // Verify the file was written correctly
           if (!(file as dynamic).existsSync()) {
-            throw ApiException('Failed to save transformed image file');
+            throw ApiException('Failed to save transformed image file at: $filePath');
           }
 
           final fileSize = await (file as dynamic).length();
           if (fileSize == 0) {
-            throw ApiException('Saved image file is empty');
+            throw ApiException('Saved image file is empty at: $filePath');
+          }
+          
+          final savedPath = (file as dynamic).path;
+          print('✅ Saved transformed image: $savedPath (${fileSize} bytes)');
+          transformedImageFile = XFile(savedPath);
+          
+          // Verify XFile can be read
+          try {
+            final testBytes = await transformedImageFile.readAsBytes();
+            if (testBytes.isEmpty) {
+              throw ApiException('XFile created but cannot read bytes from: $savedPath');
+            }
+            print('✅ Verified XFile is readable (${testBytes.length} bytes)');
+          } catch (e) {
+            throw ApiException('XFile created but read failed: $e (path: $savedPath)');
           }
         }
 

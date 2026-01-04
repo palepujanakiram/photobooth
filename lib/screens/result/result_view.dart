@@ -57,7 +57,7 @@ class _ResultScreenState extends State<ResultScreen> {
               onPressed: () {
                 Navigator.pushNamedAndRemoveUntil(
                   context,
-                  AppConstants.kRouteHome,
+                  AppConstants.kRouteCapture,
                   (route) => false,
                 );
               },
@@ -74,13 +74,30 @@ class _ResultScreenState extends State<ResultScreen> {
                   Expanded(
                     child: Center(
                       child: imageFile != null
-                          ? FutureBuilder<List<int>>(
-                              future: imageFile.readAsBytes(),
+                          ? FutureBuilder<Uint8List>(
+                              future: imageFile.readAsBytes().catchError((error) {
+                                print('❌ Error reading image file: $error');
+                                print('   File path: ${imageFile.path}');
+                                return Uint8List(0);
+                              }),
                               builder: (context, snapshot) {
                                 if (snapshot.connectionState == ConnectionState.waiting) {
-                                  return const CupertinoActivityIndicator();
+                                  return const Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      CupertinoActivityIndicator(),
+                                      SizedBox(height: 16),
+                                      Text(
+                                        'Loading image...',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: CupertinoColors.systemGrey,
+                                        ),
+                                      ),
+                                    ],
+                                  );
                                 }
-                                if (snapshot.hasError || !snapshot.hasData) {
+                                if (snapshot.hasError || !snapshot.hasData || (snapshot.data?.isEmpty ?? true)) {
                                   return Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
@@ -99,8 +116,57 @@ class _ResultScreenState extends State<ResultScreen> {
                                       ),
                                       if (snapshot.hasError) ...[
                                         const SizedBox(height: 8),
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                                          child: Text(
+                                            'Error: ${snapshot.error}',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: CupertinoColors.systemGrey,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 8),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                                        child: Text(
+                                          'Path: ${imageFile.path}',
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            color: CupertinoColors.systemGrey2,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }
+                                return Image.memory(
+                                  snapshot.data!,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    print('❌ Image.memory error: $error');
+                                    return Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(
+                                          CupertinoIcons.exclamationmark_triangle,
+                                          size: 64,
+                                          color: CupertinoColors.systemRed,
+                                        ),
+                                        const SizedBox(height: 16),
+                                        const Text(
+                                          'Failed to display image',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            color: CupertinoColors.systemRed,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
                                         Text(
-                                          'Error: ${snapshot.error}',
+                                          'Error: $error',
                                           style: const TextStyle(
                                             fontSize: 12,
                                             color: CupertinoColors.systemGrey,
@@ -108,51 +174,37 @@ class _ResultScreenState extends State<ResultScreen> {
                                           textAlign: TextAlign.center,
                                         ),
                                       ],
-                                    ],
-                                  );
-                                }
-                                return Image.memory(
-                                  Uint8List.fromList(snapshot.data!),
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          CupertinoIcons.exclamationmark_triangle,
-                                          size: 64,
-                                          color: CupertinoColors.systemRed,
-                                        ),
-                                        SizedBox(height: 16),
-                                        Text(
-                                          'Failed to load image',
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            color: CupertinoColors.systemRed,
-                                          ),
-                                        ),
-                                      ],
                                     );
                                   },
                                 );
                               },
                             )
-                          : const Column(
+                          : Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(
+                                const Icon(
                                   CupertinoIcons.photo,
                                   size: 64,
                                   color: CupertinoColors.systemGrey,
                                 ),
-                                SizedBox(height: 16),
-                                Text(
+                                const SizedBox(height: 16),
+                                const Text(
                                   'Image file not found',
                                   style: TextStyle(
                                     fontSize: 16,
                                     color: CupertinoColors.systemGrey,
                                   ),
                                 ),
+                                if (viewModel.transformedImage != null) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Image ID: ${viewModel.transformedImage!.id}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: CupertinoColors.systemGrey2,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                     ),
@@ -203,7 +255,7 @@ class _ResultScreenState extends State<ResultScreen> {
                             onPressed: () {
                               Navigator.pushNamedAndRemoveUntil(
                                 context,
-                                AppConstants.kRouteHome,
+                                AppConstants.kRouteCapture,
                                 (route) => false,
                               );
                             },

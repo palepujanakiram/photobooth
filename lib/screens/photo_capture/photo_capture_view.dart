@@ -42,19 +42,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
       value: _captureViewModel,
-      child: CupertinoPageScaffold(
-        navigationBar: AppTopBar(
-          title: 'Capture Photo',
-          leading: AppActionButton(
-            icon: CupertinoIcons.back,
-            onPressed: () {
-              Navigator.pop(context);
-            },
-          ),
-          actions: [
-            Consumer<CaptureViewModel>(
-              builder: (context, viewModel, child) {
-                return AppActionButton(
+      child: Consumer<CaptureViewModel>(
+        builder: (context, viewModel, child) {
+          return CupertinoPageScaffold(
+            navigationBar: AppTopBar(
+              title: 'Capture Photo',
+              leading: AppActionButton(
+                icon: CupertinoIcons.back,
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+              ),
+              actions: [
+                AppActionButton(
                   icon: CupertinoIcons.arrow_clockwise,
                   onPressed:
                       viewModel.isLoadingCameras || viewModel.isInitializing
@@ -66,14 +66,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                       (viewModel.isLoadingCameras || viewModel.isInitializing)
                           ? CupertinoColors.systemGrey
                           : CupertinoColors.activeBlue,
-                );
-              },
+                ),
+              ],
             ),
-          ],
-        ),
         child: SafeArea(
-          child: Consumer<CaptureViewModel>(
-            builder: (context, viewModel, child) {
+          child: Builder(
+            builder: (context) {
+              final viewModel = Provider.of<CaptureViewModel>(context, listen: true);
               if (viewModel.isInitializing) {
                 return const Center(
                   child: CupertinoActivityIndicator(),
@@ -110,7 +109,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                 );
               }
 
-              if (!viewModel.isReady || viewModel.cameraController == null) {
+              // Check if using custom controller (for external cameras)
+              final isUsingCustomController = viewModel.cameraService.isUsingCustomController;
+              final textureId = viewModel.cameraService.textureId;
+              
+              if (!viewModel.isReady) {
                 final appColors = AppColors.of(context);
                 return Center(
                   child: Text(
@@ -120,10 +123,42 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                 );
               }
 
+              // For custom controller, we need textureId
+              if (isUsingCustomController && textureId == null) {
+                final appColors = AppColors.of(context);
+                return Center(
+                  child: Text(
+                    'Camera preview not available',
+                    style: TextStyle(color: appColors.textColor),
+                  ),
+                );
+              }
+
+              // Build preview widget
+              Widget previewWidget;
+              if (isUsingCustomController && textureId != null) {
+                final textureIdValue = textureId; // Local variable to avoid null check warning
+                previewWidget = Texture(textureId: textureIdValue);
+              } else if (viewModel.cameraController != null) {
+                previewWidget = CameraPreview(viewModel.cameraController!);
+              } else {
+                previewWidget = Container(
+                  color: AppColors.of(context).backgroundColor,
+                  child: Center(
+                    child: Text(
+                      'Camera preview not available',
+                      style: TextStyle(
+                        color: AppColors.of(context).textColor,
+                      ),
+                    ),
+                  ),
+                );
+              }
+
               return Stack(
                 children: [
                   Positioned.fill(
-                    child: CameraPreview(viewModel.cameraController!),
+                    child: previewWidget,
                   ),
                   // Camera switch buttons at the top
                   Positioned(
@@ -184,6 +219,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             },
           ),
         ),
+          );
+        },
       ),
     );
   }
@@ -383,23 +420,55 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   /// Keeps only one camera per lens direction for built-in cameras
   /// Allows multiple external cameras
   List<CameraDescription> _getUniqueCameras(List<CameraDescription> cameras) {
+    // Show: 1 front camera, 1 back camera, and all external cameras
     final uniqueCameras = <CameraDescription>[];
     final seenDirections = <CameraLensDirection>{};
+    bool hasFront = false;
+    bool hasBack = false;
 
-    // First pass: Add built-in cameras (front and back) - one per direction
+    // First pass: Add one front and one back camera (built-in)
     for (final camera in cameras) {
-      // Check if it's a built-in camera (device IDs 0 and 1 typically)
       final isBuiltIn = _isBuiltInCamera(camera);
+      final isExternal = camera.lensDirection == CameraLensDirection.external;
 
-      if (isBuiltIn) {
-        // For built-in cameras, only add one per lens direction
-        if (!seenDirections.contains(camera.lensDirection)) {
-          seenDirections.add(camera.lensDirection);
+      if (isBuiltIn && !isExternal) {
+        // For built-in cameras, add one front and one back
+        if (camera.lensDirection == CameraLensDirection.front && !hasFront) {
           uniqueCameras.add(camera);
+          hasFront = true;
+          seenDirections.add(camera.lensDirection);
+        } else if (camera.lensDirection == CameraLensDirection.back && !hasBack) {
+          uniqueCameras.add(camera);
+          hasBack = true;
+          seenDirections.add(camera.lensDirection);
         }
-      } else {
-        // External cameras - add all of them
-        uniqueCameras.add(camera);
+      }
+    }
+
+    // Second pass: Add all external cameras (deduplicate by camera ID, not name)
+    // External cameras might have names like "Camera 5" or "5" - we need to deduplicate by ID
+    final seenExternalIds = <String>{};
+    for (final camera in cameras) {
+      final isExternal = camera.lensDirection == CameraLensDirection.external;
+      if (isExternal) {
+        // Extract camera ID from name (handles both "Camera 5" and "5" formats)
+        String cameraId;
+        final nameMatch = RegExp(r'Camera\s*(\d+)').firstMatch(camera.name);
+        if (nameMatch != null) {
+          cameraId = nameMatch.group(1)!;
+        } else {
+          // Assume it's already a direct ID
+          cameraId = camera.name;
+        }
+        
+        // Only add if we haven't seen this camera ID before
+        if (!seenExternalIds.contains(cameraId)) {
+          uniqueCameras.add(camera);
+          seenExternalIds.add(cameraId);
+          print('   ✅ Added external camera: ${camera.name} (ID: $cameraId)');
+        } else {
+          print('   ⏭️ Skipped duplicate external camera: ${camera.name} (ID: $cameraId already seen)');
+        }
       }
     }
 
@@ -409,7 +478,27 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   /// Checks if a camera is a built-in device camera
   bool _isBuiltInCamera(CameraDescription camera) {
     final name = camera.name;
-    // Built-in cameras typically have device IDs 0 (back) and 1 (front)
+    
+    // On Android, Flutter camera names are like "Camera 0", "Camera 1", etc.
+    // On iOS, camera names contain device IDs like "device:0"
+    
+    // Try to extract camera ID from Android format: "Camera 0" -> 0
+    final androidMatch = RegExp(r'Camera\s*(\d+)').firstMatch(name);
+    if (androidMatch != null) {
+      final deviceId = int.tryParse(androidMatch.group(1)!);
+      // Device IDs 0 and 1 are typically built-in cameras
+      // IDs 2+ might be additional built-in cameras or external
+      // External cameras should have lensDirection.external
+      if (deviceId != null && deviceId <= 1) {
+        return true;
+      }
+      // If it's external, it's not built-in
+      if (camera.lensDirection == CameraLensDirection.external) {
+        return false;
+      }
+    }
+    
+    // Try iOS format: "device:0" or similar
     if (name.contains(':')) {
       try {
         final deviceIdStr = name.split(':').last.split(',').first;

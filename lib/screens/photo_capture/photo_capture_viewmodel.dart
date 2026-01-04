@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show ChangeNotifier;
+import 'package:flutter/foundation.dart' show ChangeNotifier, kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:camera/camera.dart';
 import 'package:uuid/uuid.dart';
 import 'photo_model.dart';
@@ -7,6 +7,12 @@ import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
+
+/// Helper function to check if running on iOS
+bool get _isIOS {
+  if (kIsWeb) return false;
+  return defaultTargetPlatform == TargetPlatform.iOS;
+}
 
 class CaptureViewModel extends ChangeNotifier {
   final CameraService _cameraService;
@@ -151,10 +157,16 @@ class CaptureViewModel extends ChangeNotifier {
     }
 
     print('🔄 Switching camera:');
-    print('   From: ${_currentCamera?.name ?? "none"}');
-    print('   To: ${camera.name}');
-    print('   Camera direction: ${camera.lensDirection}');
+    print('   From: ${_currentCamera?.name ?? "none"} (${_currentCamera?.lensDirection ?? "unknown"})');
+    print('   To: ${camera.name} (${camera.lensDirection})');
     print('   Camera sensor orientation: ${camera.sensorOrientation}');
+    
+    // Extract camera ID for logging (Android)
+    if (!_isIOS) {
+      final nameMatch = RegExp(r'Camera\s*(\d+)').firstMatch(camera.name);
+      final cameraId = nameMatch != null ? nameMatch.group(1)! : camera.name;
+      print('   📋 Extracted camera ID: $cameraId');
+    }
     
     // CRITICAL: Reload cameras to get fresh CameraDescription objects from the system
     // This ensures we're using the exact objects that iOS recognizes
@@ -175,6 +187,7 @@ class CaptureViewModel extends ChangeNotifier {
     } else {
       print('✅ Found matching camera in available list');
       print('   Using fresh CameraDescription: ${matchingCamera.name}');
+      print('   Camera direction: ${matchingCamera.lensDirection}');
     }
     
     _currentCamera = matchingCamera;
@@ -213,40 +226,63 @@ class CaptureViewModel extends ChangeNotifier {
       final cameraToUse = camera;
       
       await _cameraService.initializeCamera(cameraToUse);
-      _cameraController = _cameraService.controller;
       
-      // Debug: Verify which camera was actually initialized
-      if (_cameraController != null) {
-        final activeCamera = _cameraController!.description;
-        print('✅ CaptureViewModel - Camera controller obtained:');
-        print('   Active camera name: ${activeCamera.name}');
-        print('   Active camera direction: ${activeCamera.lensDirection}');
-        print('   Active camera sensor orientation: ${activeCamera.sensorOrientation}');
-        
-        // Verify it's the correct camera - check both name AND lensDirection
-        // External cameras on iPadOS should report CameraLensDirection.external
-        final nameMatches = activeCamera.name == cameraToUse.name;
-        final directionMatches = activeCamera.lensDirection == cameraToUse.lensDirection;
-        
-        if (!nameMatches || !directionMatches) {
-          print('❌ ERROR: Wrong camera is active!');
-          print('   Expected name: ${cameraToUse.name}');
-          print('   Got name: ${activeCamera.name}');
-          print('   Expected direction: ${cameraToUse.lensDirection}');
-          print('   Got direction: ${activeCamera.lensDirection}');
-          _errorMessage = 'Wrong camera initialized. Expected ${cameraToUse.name} (${cameraToUse.lensDirection}), but got ${activeCamera.name} (${activeCamera.lensDirection}).';
+      // Check if using custom controller (for external cameras)
+      if (_cameraService.isUsingCustomController) {
+        final customController = _cameraService.customController;
+        if (customController != null) {
+          print('✅ CaptureViewModel - Custom camera controller obtained');
+          print('   Device ID: ${customController.currentDeviceId}');
+          print('   Texture ID: ${customController.textureId}');
+          
+          // Start preview
+          await customController.startPreview();
+          print('✅ Preview started for custom controller');
+          
+          _currentCamera = camera;
+        } else {
+          print('❌ ERROR: Custom controller is null after initialization!');
+          _errorMessage = 'Custom camera controller is null after initialization';
           notifyListeners();
           return;
         }
-        
-        print('✅ Camera verification passed in CaptureViewModel');
-        print('   ✅ Active direction: ${activeCamera.lensDirection}');
-        _currentCamera = camera;
       } else {
-        print('❌ ERROR: Camera controller is null after initialization!');
-        _errorMessage = 'Camera controller is null after initialization';
-        notifyListeners();
-        return;
+        // Standard controller
+        _cameraController = _cameraService.controller;
+        
+        // Debug: Verify which camera was actually initialized
+        if (_cameraController != null) {
+          final activeCamera = _cameraController!.description;
+          print('✅ CaptureViewModel - Camera controller obtained:');
+          print('   Active camera name: ${activeCamera.name}');
+          print('   Active camera direction: ${activeCamera.lensDirection}');
+          print('   Active camera sensor orientation: ${activeCamera.sensorOrientation}');
+          
+          // Verify it's the correct camera - check both name AND lensDirection
+          // External cameras on iPadOS should report CameraLensDirection.external
+          final nameMatches = activeCamera.name == cameraToUse.name;
+          final directionMatches = activeCamera.lensDirection == cameraToUse.lensDirection;
+          
+          if (!nameMatches || !directionMatches) {
+            print('❌ ERROR: Wrong camera is active!');
+            print('   Expected name: ${cameraToUse.name}');
+            print('   Got name: ${activeCamera.name}');
+            print('   Expected direction: ${cameraToUse.lensDirection}');
+            print('   Got direction: ${activeCamera.lensDirection}');
+            _errorMessage = 'Wrong camera initialized. Expected ${cameraToUse.name} (${cameraToUse.lensDirection}), but got ${activeCamera.name} (${activeCamera.lensDirection}).';
+            notifyListeners();
+            return;
+          }
+          
+          print('✅ Camera verification passed in CaptureViewModel');
+          print('   ✅ Active direction: ${activeCamera.lensDirection}');
+          _currentCamera = camera;
+        } else {
+          print('❌ ERROR: Camera controller is null after initialization!');
+          _errorMessage = 'Camera controller is null after initialization';
+          notifyListeners();
+          return;
+        }
       }
       
       notifyListeners();

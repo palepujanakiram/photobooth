@@ -8,6 +8,13 @@ bool get _isIOS {
   return defaultTargetPlatform == TargetPlatform.iOS;
 }
 
+/// Helper function to check if running on Android
+/// Works on all platforms including web
+bool get _isAndroid {
+  if (kIsWeb) return false;
+  return defaultTargetPlatform == TargetPlatform.android;
+}
+
 /// Custom camera controller that uses platform channel to select cameras by device ID
 /// This bypasses the Flutter camera package's lensDirection limitation
 /// Now uses the consolidated camera_device channel
@@ -17,24 +24,28 @@ class CustomCameraController {
   bool _isInitialized = false;
   bool _isPreviewRunning = false;
   String? _currentDeviceId;
+  int? _textureId;
   
   bool get isInitialized => _isInitialized;
   bool get isPreviewRunning => _isPreviewRunning;
   String? get currentDeviceId => _currentDeviceId;
+  int? get textureId => _textureId;
   
   /// Initializes camera with specific device ID
   /// This allows selecting external cameras even when they share the same lensDirection
+  /// Supports both iOS and Android
   Future<void> initialize(String deviceId) async {
     if (kIsWeb) {
       throw UnsupportedError('Custom camera controller not supported on web');
     }
     
-    if (!_isIOS) {
-      throw UnsupportedError('Custom camera controller currently only supports iOS');
+    if (!_isIOS && !_isAndroid) {
+      throw UnsupportedError('Custom camera controller only supports iOS and Android');
     }
     
     try {
       print('🎥 CustomCameraController: Initializing camera with device ID: $deviceId');
+      print('   Platform: ${_isIOS ? "iOS" : "Android"}');
       
       final result = await _channel.invokeMethod('initializeCamera', {
         'deviceId': deviceId,
@@ -43,7 +54,12 @@ class CustomCameraController {
       if (result is Map && result['success'] == true) {
         _isInitialized = true;
         _currentDeviceId = deviceId;
-        print('✅ CustomCameraController initialized: ${result['localizedName']}');
+        _textureId = result['textureId'] as int?;
+        final localizedName = result['localizedName'] ?? 'Camera';
+        print('✅ CustomCameraController initialized: $localizedName');
+        if (_textureId != null) {
+          print('   Texture ID: $_textureId');
+        }
       } else {
         throw Exception('Failed to initialize camera: $result');
       }
@@ -128,6 +144,7 @@ class CustomCameraController {
       _isInitialized = false;
       _isPreviewRunning = false;
       _currentDeviceId = null;
+      _textureId = null;
       print('✅ CustomCameraController disposed');
     } catch (e) {
       print('❌ Error disposing camera: $e');

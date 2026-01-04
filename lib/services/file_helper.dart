@@ -19,7 +19,8 @@ class FileHelper {
       throw UnsupportedError('createFile is not available on web');
     }
     // On mobile, io refers to dart:io
-    return (io.File as dynamic)(path);
+    // Create File instance using constructor
+    return io.File(path);
   }
 }
 

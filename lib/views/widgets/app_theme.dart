@@ -60,7 +60,13 @@ class AppTopBar extends StatelessWidget implements ObstructingPreferredSizeWidge
       trailing: actions != null && actions!.isNotEmpty
           ? Row(
               mainAxisSize: MainAxisSize.min,
-              children: actions!,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: actions!.map((action) => 
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 48),
+                  child: action,
+                )
+              ).toList(),
             )
           : null,
       automaticallyImplyLeading: automaticallyImplyLeading,
