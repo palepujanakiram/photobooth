@@ -7,6 +7,7 @@ import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/exceptions.dart';
 import '../utils/constants.dart';
+import '../utils/logger.dart';
 import 'api_client.dart';
 import 'file_helper.dart';
 
@@ -16,7 +17,6 @@ import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
 class ApiService {
   late final ApiClient _apiClient;
   final Uuid _uuid = const Uuid();
-
 
   ApiService() {
     final dio = Dio(
@@ -31,11 +31,11 @@ class ApiService {
         },
       ),
     );
-    
+
     // Configure Dio to use browser HTTP adapter on web
     // This prevents SocketException errors from native socket lookups
     configureDioForWeb(dio);
-    
+
     // Add error interceptor for web compatibility
     dio.interceptors.add(InterceptorsWrapper(
       onError: (error, handler) {
@@ -57,8 +57,10 @@ class ApiService {
               final friendlyError = DioException(
                 requestOptions: dioError.requestOptions,
                 type: DioExceptionType.connectionError,
-                error: 'CORS/Network Error: The API server may not be configured to allow requests from this origin.',
-                message: 'CORS/Network Error: ${dioError.message ?? "Unknown network error"}',
+                error:
+                    'CORS/Network Error: The API server may not be configured to allow requests from this origin.',
+                message:
+                    'CORS/Network Error: ${dioError.message ?? "Unknown network error"}',
               );
               return handler.next(friendlyError);
             }
@@ -67,16 +69,17 @@ class ApiService {
         return handler.next(error);
       },
     ));
-    
+
     _apiClient = ApiClient(dio);
   }
 
   /// Helper method to check and handle CORS/network errors on web
   void _handleWebNetworkError(DioException e) {
-    if (kIsWeb && (e.type == DioExceptionType.connectionError || 
-                   e.type == DioExceptionType.unknown)) {
+    if (kIsWeb &&
+        (e.type == DioExceptionType.connectionError ||
+            e.type == DioExceptionType.unknown)) {
       final errorMsg = e.message ?? '';
-      if (errorMsg.contains('XMLHttpRequest') || 
+      if (errorMsg.contains('XMLHttpRequest') ||
           errorMsg.contains('CORS') ||
           errorMsg.contains('Failed to fetch') ||
           errorMsg.contains('NetworkError') ||
@@ -102,7 +105,8 @@ class ApiService {
   }) async {
     try {
       // Convert XFile to File for Retrofit (mobile) or use direct upload (web)
-      dynamic tempFile; // Use dynamic to avoid type conflicts between dart:io and dart:html
+      dynamic
+          tempFile; // Use dynamic to avoid type conflicts between dart:io and dart:html
       if (kIsWeb) {
         // On web, we need to create a temporary file-like object
         // Since Retrofit expects File, we'll use a workaround with Dio directly
@@ -111,32 +115,33 @@ class ApiService {
           imageBytes,
           filename: image.name,
         );
-        
+
         // Use Dio directly for web since Retrofit doesn't support web File
         final dio = Dio(BaseOptions(
           baseUrl: AppConstants.kBaseUrl,
           headers: {
-            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
+            'Authorization':
+                'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
           },
         ));
-        
+
         // Configure browser adapter for web (critical for web platform)
         configureDioForWeb(dio);
-        
+
         final formData = FormData.fromMap({
           'prompt': theme.promptText,
           'negative_prompt': theme.negativePrompt ?? '',
           'image': multipartFile,
         });
-        
+
         final response = await dio.post<List<int>>(
           '/ai-transform',
           data: formData,
           options: Options(responseType: ResponseType.bytes),
         );
-        
+
         final responseBytes = response.data ?? [];
-        
+
         // Continue with responseBytes processing
         if (responseBytes.isEmpty) {
           throw ApiException('Received empty image data from API');
@@ -146,7 +151,7 @@ class ApiService {
         XFile transformedImageFile;
         final base64String = base64Encode(responseBytes);
         final dataUrl = 'data:image/jpeg;base64,$base64String';
-        transformedImageFile = XFile(dataUrl, mimeType: 'image/jpeg', name: 'transformed_${_uuid.v4()}.jpg');
+        transformedImageFile = XFile(dataUrl, mimeType: 'image/jpeg');
 
         return TransformedImageModel(
           id: _uuid.v4(),
@@ -159,16 +164,17 @@ class ApiService {
         // On mobile, convert XFile to File for Retrofit
         final imageBytes = await image.readAsBytes();
         final tempDirPath = await FileHelper.getTempDirectoryPath();
-        tempFile = FileHelper.createFile('$tempDirPath/upload_${_uuid.v4()}.jpg');
+        tempFile =
+            FileHelper.createFile('$tempDirPath/upload_${_uuid.v4()}.jpg');
         await (tempFile as dynamic).writeAsBytes(imageBytes);
-        
+
         // Call Retrofit API (mobile only - this code never executes on web)
         final responseBytes = await _apiClient.transformImage(
           theme.promptText,
           theme.negativePrompt ?? '',
           tempFile as dynamic, // Cast to dynamic to avoid type conflicts
         );
-        
+
         // Clean up temp file (mobile only)
         if ((tempFile as dynamic).existsSync()) {
           await (tempFile as dynamic).delete();
@@ -185,7 +191,7 @@ class ApiService {
         final file = FileHelper.createFile(filePath);
         await (file as dynamic).writeAsBytes(responseBytes);
         final transformedImageFile = XFile((file as dynamic).path);
-        
+
         // Verify the file was written correctly
         if (!(file as dynamic).existsSync()) {
           throw ApiException('Failed to save transformed image file');
@@ -250,10 +256,11 @@ class ApiService {
       // return themes.where((theme) => theme.isActive == true).toList();
     } on DioException catch (e) {
       // Check for CORS or network errors (common on web)
-      if (kIsWeb && (e.type == DioExceptionType.connectionError || 
-                     e.type == DioExceptionType.unknown)) {
+      if (kIsWeb &&
+          (e.type == DioExceptionType.connectionError ||
+              e.type == DioExceptionType.unknown)) {
         final errorMsg = e.message ?? '';
-        if (errorMsg.contains('XMLHttpRequest') || 
+        if (errorMsg.contains('XMLHttpRequest') ||
             errorMsg.contains('CORS') ||
             errorMsg.contains('Failed to fetch') ||
             errorMsg.contains('NetworkError')) {
@@ -264,7 +271,7 @@ class ApiService {
           );
         }
       }
-      
+
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout ||
           e.type == DioExceptionType.connectionError) {
@@ -292,7 +299,7 @@ class ApiService {
       });
     } on DioException catch (e) {
       _handleWebNetworkError(e);
-      
+
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout ||
           e.type == DioExceptionType.connectionError) {
@@ -382,19 +389,20 @@ class ApiService {
   }) async {
     try {
       final body = <String, dynamic>{};
-      
+
       if (userImageUrl != null) {
         body['userImageUrl'] = userImageUrl;
       }
       if (selectedThemeId != null) {
         body['selectedThemeId'] = selectedThemeId;
       }
-      
+
       // Ensure at least one field is provided
       if (body.isEmpty) {
-        throw ApiException('Either userImageUrl or selectedThemeId must be provided');
+        throw ApiException(
+            'Either userImageUrl or selectedThemeId must be provided');
       }
-      
+
       final response = await _apiClient.updateSession(
         sessionId,
         body,
@@ -402,7 +410,7 @@ class ApiService {
       return response;
     } on DioException catch (e) {
       _handleWebNetworkError(e);
-      
+
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout ||
           e.type == DioExceptionType.connectionError) {
@@ -460,10 +468,10 @@ class ApiService {
         },
       ),
     );
-    
+
     // Configure browser adapter for web (important for all Dio instances)
     configureDioForWeb(dioWithTimeout);
-    
+
     final apiClientWithTimeout = ApiClient(dioWithTimeout);
 
     // Retry logic: try once, retry once on timeout
@@ -495,23 +503,25 @@ class ApiService {
         final totalDurationMs = response['totalDurationMs'] as int?;
         final upscaleMethod = response['upscaleMethod'] as String?;
         final finalResolution = response['finalResolution'] as String?;
-        
+
         if (framing != null || totalDurationMs != null) {
-          print('📊 Generation metadata:');
+          AppLogger.debug('📊 Generation metadata:');
           if (framing != null) {
-            print('   Framing: ${framing['personCount']} person(s), ${framing['orientation']}, ${framing['aspectRatio']}');
+            AppLogger.debug(
+                '   Framing: ${framing['personCount']} person(s), ${framing['orientation']}, ${framing['aspectRatio']}');
           }
           if (totalDurationMs != null) {
-            print('   Total duration: ${totalDurationMs}ms');
+            AppLogger.debug('   Total duration: ${totalDurationMs}ms');
             if (generationDurationMs != null) {
-              print('   Generation: ${generationDurationMs}ms');
+              AppLogger.debug('   Generation: ${generationDurationMs}ms');
             }
             if (upscaleDurationMs != null && upscaleDurationMs > 0) {
-              print('   Upscale: ${upscaleDurationMs}ms (${upscaleMethod ?? "unknown"})');
+              AppLogger.debug(
+                  '   Upscale: ${upscaleDurationMs}ms (${upscaleMethod ?? "unknown"})');
             }
           }
           if (finalResolution != null) {
-            print('   Final resolution: $finalResolution');
+            AppLogger.debug('   Final resolution: $finalResolution');
           }
         }
 
@@ -541,7 +551,7 @@ class ApiService {
         XFile transformedImageFile;
         if (kIsWeb) {
           // On web, create XFile from data URL directly
-          transformedImageFile = XFile(imageUrl, mimeType: mimeType, name: 'transformed_${_uuid.v4()}.$extension');
+          transformedImageFile = XFile(imageUrl, mimeType: mimeType);
         } else {
           // On mobile, save to temp file and create XFile
           final tempDirPath = await FileHelper.getTempDirectoryPath();
@@ -549,30 +559,35 @@ class ApiService {
           final filePath = '$tempDirPath/$fileName';
           final file = FileHelper.createFile(filePath);
           await (file as dynamic).writeAsBytes(imageBytes);
-          
+
           // Verify the file was written correctly
           if (!(file as dynamic).existsSync()) {
-            throw ApiException('Failed to save transformed image file at: $filePath');
+            throw ApiException(
+                'Failed to save transformed image file at: $filePath');
           }
 
           final fileSize = await (file as dynamic).length();
           if (fileSize == 0) {
             throw ApiException('Saved image file is empty at: $filePath');
           }
-          
+
           final savedPath = (file as dynamic).path;
-          print('✅ Saved transformed image: $savedPath (${fileSize} bytes)');
+          AppLogger.debug(
+              '✅ Saved transformed image: $savedPath ($fileSize bytes)');
           transformedImageFile = XFile(savedPath);
-          
+
           // Verify XFile can be read
           try {
             final testBytes = await transformedImageFile.readAsBytes();
             if (testBytes.isEmpty) {
-              throw ApiException('XFile created but cannot read bytes from: $savedPath');
+              throw ApiException(
+                  'XFile created but cannot read bytes from: $savedPath');
             }
-            print('✅ Verified XFile is readable (${testBytes.length} bytes)');
+            AppLogger.debug(
+                '✅ Verified XFile is readable (${testBytes.length} bytes)');
           } catch (e) {
-            throw ApiException('XFile created but read failed: $e (path: $savedPath)');
+            throw ApiException(
+                'XFile created but read failed: $e (path: $savedPath)');
           }
         }
 
@@ -585,7 +600,7 @@ class ApiService {
         );
       } on DioException catch (e) {
         _handleWebNetworkError(e);
-        
+
         final isTimeout = e.type == DioExceptionType.connectionTimeout ||
             e.type == DioExceptionType.receiveTimeout ||
             e.type == DioExceptionType.sendTimeout;
@@ -645,10 +660,10 @@ class ApiService {
       'sessionId': sessionId,
     }).then((_) {
       // Success - preprocessing completed
-      print('✅ Preprocess image completed');
+      AppLogger.debug('✅ Preprocess image completed');
     }).catchError((error) {
       // Silently ignore errors - this is a background optimization
-      print('⚠️ Preprocess image failed (non-critical): $error');
+      AppLogger.debug('⚠️ Preprocess image failed (non-critical): $error');
     });
   }
 }

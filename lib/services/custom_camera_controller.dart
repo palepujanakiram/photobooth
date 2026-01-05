@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import '../utils/logger.dart';
 
 /// Helper function to check if running on iOS
 /// Works on all platforms including web
@@ -44,8 +45,8 @@ class CustomCameraController {
     }
     
     try {
-      print('🎥 CustomCameraController: Initializing camera with device ID: $deviceId');
-      print('   Platform: ${_isIOS ? "iOS" : "Android"}');
+      AppLogger.debug('🎥 CustomCameraController: Initializing camera with device ID: $deviceId');
+      AppLogger.debug('   Platform: ${_isIOS ? "iOS" : "Android"}');
       
       final result = await _channel.invokeMethod('initializeCamera', {
         'deviceId': deviceId,
@@ -56,15 +57,15 @@ class CustomCameraController {
         _currentDeviceId = deviceId;
         _textureId = result['textureId'] as int?;
         final localizedName = result['localizedName'] ?? 'Camera';
-        print('✅ CustomCameraController initialized: $localizedName');
+        AppLogger.debug('✅ CustomCameraController initialized: $localizedName');
         if (_textureId != null) {
-          print('   Texture ID: $_textureId');
+          AppLogger.debug('   Texture ID: $_textureId');
         }
       } else {
         throw Exception('Failed to initialize camera: $result');
       }
     } catch (e) {
-      print('❌ Error initializing custom camera: $e');
+      AppLogger.debug('❌ Error initializing custom camera: $e');
       _isInitialized = false;
       rethrow;
     }
@@ -80,10 +81,10 @@ class CustomCameraController {
       final result = await _channel.invokeMethod('startPreview');
       if (result is Map && result['success'] == true) {
         _isPreviewRunning = true;
-        print('✅ Camera preview started');
+        AppLogger.debug('✅ Camera preview started');
       }
     } catch (e) {
-      print('❌ Error starting preview: $e');
+      AppLogger.debug('❌ Error starting preview: $e');
       rethrow;
     }
   }
@@ -98,10 +99,10 @@ class CustomCameraController {
       final result = await _channel.invokeMethod('stopPreview');
       if (result is Map && result['success'] == true) {
         _isPreviewRunning = false;
-        print('✅ Camera preview stopped');
+        AppLogger.debug('✅ Camera preview stopped');
       }
     } catch (e) {
-      print('❌ Error stopping preview: $e');
+      AppLogger.debug('❌ Error stopping preview: $e');
     }
   }
   
@@ -116,18 +117,18 @@ class CustomCameraController {
     }
     
     try {
-      print('📸 Taking picture...');
+      AppLogger.debug('📸 Taking picture...');
       final result = await _channel.invokeMethod('takePicture');
       
       if (result is Map && result['success'] == true) {
         final path = result['path'] as String;
-        print('✅ Picture captured: $path');
+        AppLogger.debug('✅ Picture captured: $path');
         return path;
       } else {
         throw Exception('Failed to capture picture: $result');
       }
     } catch (e) {
-      print('❌ Error taking picture: $e');
+      AppLogger.debug('❌ Error taking picture: $e');
       rethrow;
     }
   }
@@ -145,9 +146,9 @@ class CustomCameraController {
       _isPreviewRunning = false;
       _currentDeviceId = null;
       _textureId = null;
-      print('✅ CustomCameraController disposed');
+      AppLogger.debug('✅ CustomCameraController disposed');
     } catch (e) {
-      print('❌ Error disposing camera: $e');
+      AppLogger.debug('❌ Error disposing camera: $e');
     }
   }
 }

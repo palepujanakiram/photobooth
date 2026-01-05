@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'transformed_image_model.dart';
 import 'result_viewmodel.dart';
 import '../../utils/constants.dart';
+import '../../utils/logger.dart';
 import '../../views/widgets/app_theme.dart';
 
 class ResultScreen extends StatefulWidget {
@@ -76,8 +77,8 @@ class _ResultScreenState extends State<ResultScreen> {
                       child: imageFile != null
                           ? FutureBuilder<Uint8List>(
                               future: imageFile.readAsBytes().catchError((error) {
-                                print('❌ Error reading image file: $error');
-                                print('   File path: ${imageFile.path}');
+                                AppLogger.debug('❌ Error reading image file: $error');
+                                AppLogger.debug('   File path: ${imageFile.path}');
                                 return Uint8List(0);
                               }),
                               builder: (context, snapshot) {
@@ -147,7 +148,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                   snapshot.data!,
                                   fit: BoxFit.contain,
                                   errorBuilder: (context, error, stackTrace) {
-                                    print('❌ Image.memory error: $error');
+                                    AppLogger.debug('❌ Image.memory error: $error');
                                     return Column(
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
 import 'photo_capture_viewmodel.dart';
 import '../../utils/constants.dart';
+import '../../utils/logger.dart';
 import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/app_colors.dart';
 
@@ -385,7 +386,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                   onPressed: viewModel.isInitializing
                       ? null
                       : () async {
-                          print(
+                          AppLogger.debug(
                               '🔘 Camera button tapped: ${camera.name} (${camera.lensDirection})');
                           await viewModel.switchCamera(camera);
                         },
@@ -465,9 +466,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         if (!seenExternalIds.contains(cameraId)) {
           uniqueCameras.add(camera);
           seenExternalIds.add(cameraId);
-          print('   ✅ Added external camera: ${camera.name} (ID: $cameraId)');
+          AppLogger.debug('   ✅ Added external camera: ${camera.name} (ID: $cameraId)');
         } else {
-          print('   ⏭️ Skipped duplicate external camera: ${camera.name} (ID: $cameraId already seen)');
+          AppLogger.debug('   ⏭️ Skipped duplicate external camera: ${camera.name} (ID: $cameraId already seen)');
         }
       }
     }

@@ -7,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
+import '../../utils/logger.dart';
 
 /// Helper function to check if running on iOS
 bool get _isIOS {
@@ -72,15 +73,15 @@ class CaptureViewModel extends ChangeNotifier {
     try {
       _availableCameras = await _cameraService.getAvailableCameras();
       
-      print('📋 CaptureViewModel.loadCameras - Found ${_availableCameras.length} cameras:');
+      AppLogger.debug('📋 CaptureViewModel.loadCameras - Found ${_availableCameras.length} cameras:');
       for (var camera in _availableCameras) {
-        print('   - ${camera.name} (Direction: ${camera.lensDirection})');
+        AppLogger.debug('   - ${camera.name} (Direction: ${camera.lensDirection})');
       }
       
       // If no camera is currently selected and cameras are available, select the first one
       if (_currentCamera == null && _availableCameras.isNotEmpty) {
         _currentCamera = _availableCameras.first;
-        print('📷 Auto-selected first camera: ${_currentCamera!.name}');
+        AppLogger.debug('📷 Auto-selected first camera: ${_currentCamera!.name}');
       }
       
       notifyListeners();
@@ -96,19 +97,19 @@ class CaptureViewModel extends ChangeNotifier {
   /// Resets the camera screen and initializes with the first available camera
   /// This is a common function used both when entering the screen and when reloading
   Future<void> resetAndInitializeCameras() async {
-    print('🔄 Resetting camera screen and initializing cameras...');
+    AppLogger.debug('🔄 Resetting camera screen and initializing cameras...');
     
     // Clear any captured photo
     _capturedPhoto = null;
     
     // Dispose current camera controller
     if (_cameraController != null) {
-      print('   Disposing current camera controller...');
+        AppLogger.debug('   Disposing current camera controller...');
       try {
         await _cameraController!.dispose();
         _cameraController = null;
       } catch (e) {
-        print('   ⚠️ Warning: Error disposing camera: $e');
+          AppLogger.debug('   ⚠️ Warning: Error disposing camera: $e');
       }
     }
     
@@ -117,7 +118,7 @@ class CaptureViewModel extends ChangeNotifier {
       try {
         await _cameraService.customController?.dispose();
       } catch (e) {
-        print('   ⚠️ Warning: Error disposing custom controller: $e');
+          AppLogger.debug('   ⚠️ Warning: Error disposing custom controller: $e');
       }
     }
     
@@ -133,10 +134,10 @@ class CaptureViewModel extends ChangeNotifier {
     // Select and initialize the first camera
     if (_availableCameras.isNotEmpty) {
       _currentCamera = _availableCameras.first;
-      print('📷 Selected first camera: ${_currentCamera!.name}');
+      AppLogger.debug('📷 Selected first camera: ${_currentCamera!.name}');
       await initializeCamera(_currentCamera!);
     } else {
-      print('⚠️ No cameras available');
+      AppLogger.debug('⚠️ No cameras available');
       _errorMessage = 'No cameras available';
       notifyListeners();
     }
@@ -152,42 +153,42 @@ class CaptureViewModel extends ChangeNotifier {
   Future<void> switchCamera(CameraDescription camera) async {
     // Don't switch if it's the same camera
     if (_currentCamera?.name == camera.name) {
-      print('⚠️ Already using camera: ${camera.name}');
+      AppLogger.debug('⚠️ Already using camera: ${camera.name}');
       return;
     }
 
-    print('🔄 Switching camera:');
-    print('   From: ${_currentCamera?.name ?? "none"} (${_currentCamera?.lensDirection ?? "unknown"})');
-    print('   To: ${camera.name} (${camera.lensDirection})');
-    print('   Camera sensor orientation: ${camera.sensorOrientation}');
+    AppLogger.debug('🔄 Switching camera:');
+    AppLogger.debug('   From: ${_currentCamera?.name ?? "none"} (${_currentCamera?.lensDirection ?? "unknown"})');
+    AppLogger.debug('   To: ${camera.name} (${camera.lensDirection})');
+    AppLogger.debug('   Camera sensor orientation: ${camera.sensorOrientation}');
     
     // Extract camera ID for logging (Android)
     if (!_isIOS) {
       final nameMatch = RegExp(r'Camera\s*(\d+)').firstMatch(camera.name);
       final cameraId = nameMatch != null ? nameMatch.group(1)! : camera.name;
-      print('   📋 Extracted camera ID: $cameraId');
+      AppLogger.debug('   📋 Extracted camera ID: $cameraId');
     }
     
     // CRITICAL: Reload cameras to get fresh CameraDescription objects from the system
     // This ensures we're using the exact objects that iOS recognizes
-    print('   Reloading camera list to get fresh CameraDescription objects...');
+    AppLogger.debug('   Reloading camera list to get fresh CameraDescription objects...');
     await loadCameras();
     
     // Find the exact match in the freshly loaded list
     final matchingCamera = _availableCameras.firstWhere(
       (c) => c.name == camera.name,
       orElse: () {
-        print('⚠️ WARNING: Camera not found in available list, using provided camera');
+        AppLogger.debug('⚠️ WARNING: Camera not found in available list, using provided camera');
         return camera;
       },
     );
     
     if (matchingCamera.name != camera.name) {
-      print('❌ ERROR: Camera mismatch in switch!');
+      AppLogger.debug('❌ ERROR: Camera mismatch in switch!');
     } else {
-      print('✅ Found matching camera in available list');
-      print('   Using fresh CameraDescription: ${matchingCamera.name}');
-      print('   Camera direction: ${matchingCamera.lensDirection}');
+      AppLogger.debug('✅ Found matching camera in available list');
+      AppLogger.debug('   Using fresh CameraDescription: ${matchingCamera.name}');
+      AppLogger.debug('   Camera direction: ${matchingCamera.lensDirection}');
     }
     
     _currentCamera = matchingCamera;
@@ -204,12 +205,12 @@ class CaptureViewModel extends ChangeNotifier {
       // CRITICAL: Dispose the old controller completely before starting a new one
       // This forces iPadOS to release the hardware lock on the previous camera
       if (_cameraController != null) {
-        print('🔄 Disposing existing camera controller before switch...');
+        AppLogger.debug('🔄 Disposing existing camera controller before switch...');
         try {
           await _cameraController!.dispose();
-          print('   ✅ Existing controller disposed successfully');
+          AppLogger.debug('   ✅ Existing controller disposed successfully');
         } catch (e) {
-          print('   ⚠️ Warning: Error disposing existing controller: $e');
+          AppLogger.debug('   ⚠️ Warning: Error disposing existing controller: $e');
         }
         _cameraController = null;
         // Small delay to ensure disposal is complete
@@ -217,10 +218,10 @@ class CaptureViewModel extends ChangeNotifier {
       }
 
       // Debug: Log which camera is being initialized
-      print('📸 CaptureViewModel.initializeCamera called:');
-      print('   Camera name: ${camera.name}');
-      print('   Camera direction: ${camera.lensDirection}');
-      print('   Camera sensor orientation: ${camera.sensorOrientation}');
+      AppLogger.debug('📸 CaptureViewModel.initializeCamera called:');
+      AppLogger.debug('   Camera name: ${camera.name}');
+      AppLogger.debug('   Camera direction: ${camera.lensDirection}');
+      AppLogger.debug('   Camera sensor orientation: ${camera.sensorOrientation}');
       
       // Use the camera directly
       final cameraToUse = camera;
@@ -231,17 +232,17 @@ class CaptureViewModel extends ChangeNotifier {
       if (_cameraService.isUsingCustomController) {
         final customController = _cameraService.customController;
         if (customController != null) {
-          print('✅ CaptureViewModel - Custom camera controller obtained');
-          print('   Device ID: ${customController.currentDeviceId}');
-          print('   Texture ID: ${customController.textureId}');
+          AppLogger.debug('✅ CaptureViewModel - Custom camera controller obtained');
+          AppLogger.debug('   Device ID: ${customController.currentDeviceId}');
+          AppLogger.debug('   Texture ID: ${customController.textureId}');
           
           // Start preview
           await customController.startPreview();
-          print('✅ Preview started for custom controller');
+          AppLogger.debug('✅ Preview started for custom controller');
           
           _currentCamera = camera;
         } else {
-          print('❌ ERROR: Custom controller is null after initialization!');
+          AppLogger.debug('❌ ERROR: Custom controller is null after initialization!');
           _errorMessage = 'Custom camera controller is null after initialization';
           notifyListeners();
           return;
@@ -253,10 +254,10 @@ class CaptureViewModel extends ChangeNotifier {
         // Debug: Verify which camera was actually initialized
         if (_cameraController != null) {
           final activeCamera = _cameraController!.description;
-          print('✅ CaptureViewModel - Camera controller obtained:');
-          print('   Active camera name: ${activeCamera.name}');
-          print('   Active camera direction: ${activeCamera.lensDirection}');
-          print('   Active camera sensor orientation: ${activeCamera.sensorOrientation}');
+          AppLogger.debug('✅ CaptureViewModel - Camera controller obtained:');
+          AppLogger.debug('   Active camera name: ${activeCamera.name}');
+          AppLogger.debug('   Active camera direction: ${activeCamera.lensDirection}');
+          AppLogger.debug('   Active camera sensor orientation: ${activeCamera.sensorOrientation}');
           
           // Verify it's the correct camera - check both name AND lensDirection
           // External cameras on iPadOS should report CameraLensDirection.external
@@ -264,21 +265,21 @@ class CaptureViewModel extends ChangeNotifier {
           final directionMatches = activeCamera.lensDirection == cameraToUse.lensDirection;
           
           if (!nameMatches || !directionMatches) {
-            print('❌ ERROR: Wrong camera is active!');
-            print('   Expected name: ${cameraToUse.name}');
-            print('   Got name: ${activeCamera.name}');
-            print('   Expected direction: ${cameraToUse.lensDirection}');
-            print('   Got direction: ${activeCamera.lensDirection}');
+            AppLogger.debug('❌ ERROR: Wrong camera is active!');
+            AppLogger.debug('   Expected name: ${cameraToUse.name}');
+            AppLogger.debug('   Got name: ${activeCamera.name}');
+            AppLogger.debug('   Expected direction: ${cameraToUse.lensDirection}');
+            AppLogger.debug('   Got direction: ${activeCamera.lensDirection}');
             _errorMessage = 'Wrong camera initialized. Expected ${cameraToUse.name} (${cameraToUse.lensDirection}), but got ${activeCamera.name} (${activeCamera.lensDirection}).';
             notifyListeners();
             return;
           }
           
-          print('✅ Camera verification passed in CaptureViewModel');
-          print('   ✅ Active direction: ${activeCamera.lensDirection}');
+          AppLogger.debug('✅ Camera verification passed in CaptureViewModel');
+          AppLogger.debug('   ✅ Active direction: ${activeCamera.lensDirection}');
           _currentCamera = camera;
         } else {
-          print('❌ ERROR: Camera controller is null after initialization!');
+          AppLogger.debug('❌ ERROR: Camera controller is null after initialization!');
           _errorMessage = 'Camera controller is null after initialization';
           notifyListeners();
           return;

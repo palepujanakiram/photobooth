@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, TargetPlatform, kIsWeb;
+import '../utils/logger.dart';
 
 /// Helper function to check if running on Android
 bool get _isAndroid {
@@ -16,7 +17,7 @@ class AndroidCameraDeviceHelper {
   /// Returns a list of camera info maps, or null if not on Android or error occurs
   static Future<List<Map<String, dynamic>>?> getAllAvailableCameras() async {
     if (!_isAndroid) {
-      print('⚠️ getAllAvailableCameras called on non-Android platform');
+      AppLogger.debug('⚠️ getAllAvailableCameras called on non-Android platform');
       return null;
     }
 
@@ -29,10 +30,10 @@ class AndroidCameraDeviceHelper {
       }
       return null;
     } on PlatformException catch (e) {
-      print('❌ Error getting Android cameras: ${e.message}');
+      AppLogger.debug('❌ Error getting Android cameras: ${e.message}');
       return null;
     } catch (e) {
-      print('❌ Unexpected error getting Android cameras: $e');
+      AppLogger.debug('❌ Unexpected error getting Android cameras: $e');
       return null;
     }
   }

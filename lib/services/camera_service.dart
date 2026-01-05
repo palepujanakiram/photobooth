@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/services.dart';
 import '../utils/exceptions.dart' as app_exceptions;
 import '../utils/constants.dart';
+import '../utils/logger.dart';
 import 'custom_camera_controller.dart';
 import 'ios_camera_device_helper.dart';
 import 'android_camera_device_helper.dart';
@@ -56,9 +57,9 @@ class CameraService {
             cameraInfo['localizedName'] as String? ?? 'unknown';
         final isExternal = uniqueID.length > 30 || !uniqueID.contains(':');
 
-        print('📱 Camera $event: $localizedName');
-        print('   UniqueID: $uniqueID');
-        print('   External: $isExternal');
+        AppLogger.debug('📱 Camera $event: $localizedName');
+        AppLogger.debug('   UniqueID: $uniqueID');
+        AppLogger.debug('   External: $isExternal');
 
         // Notify callback if set
         onCameraChanged?.call(event, cameraInfo);
@@ -68,7 +69,7 @@ class CameraService {
       }
     });
 
-    print('✅ Camera change listener set up');
+    AppLogger.debug('✅ Camera change listener set up');
   }
 
   /// Request camera permission (iOS)
@@ -83,11 +84,11 @@ class CameraService {
       final result = await _iosChannel.invokeMethod('requestCameraPermission');
       final status = result['status'] as String;
 
-      print('📱 Camera permission status: $status');
+      AppLogger.debug('📱 Camera permission status: $status');
 
       return status == 'authorized';
     } catch (e) {
-      print('❌ Error requesting camera permission: $e');
+      AppLogger.debug('❌ Error requesting camera permission: $e');
       return false;
     }
   }
@@ -95,7 +96,7 @@ class CameraService {
   /// Test external camera detection (iOS only)
   Future<Map<String, dynamic>?> testExternalCameras() async {
     if (!_isIOS) {
-      print('⚠️ testExternalCameras is only available on iOS');
+      AppLogger.debug('⚠️ testExternalCameras is only available on iOS');
       return null;
     }
 
@@ -103,34 +104,34 @@ class CameraService {
       final result = await _iosChannel.invokeMethod('testExternalCameras');
       final testInfo = Map<String, dynamic>.from(result);
 
-      print('🔍 External Camera Test Results:');
-      print('   Total devices: ${testInfo['totalDevices']}');
-      print('   Built-in devices: ${testInfo['builtInDevices']}');
-      print('   External devices: ${testInfo['externalDevices']}');
+      AppLogger.debug('🔍 External Camera Test Results:');
+      AppLogger.debug('   Total devices: ${testInfo['totalDevices']}');
+      AppLogger.debug('   Built-in devices: ${testInfo['builtInDevices']}');
+      AppLogger.debug('   External devices: ${testInfo['externalDevices']}');
 
       final externalNames = testInfo['externalNames'] as List<dynamic>;
       if (externalNames.isNotEmpty) {
-        print('   External camera names:');
+        AppLogger.debug('   External camera names:');
         for (final name in externalNames) {
-          print('     - $name');
+          AppLogger.debug('     - $name');
         }
       }
 
       return testInfo;
     } catch (e) {
-      print('❌ Error testing external cameras: $e');
+      AppLogger.debug('❌ Error testing external cameras: $e');
       return null;
     }
   }
 
   /// Refresh the camera list (useful after connection/disconnection)
   Future<void> refreshCameraList() async {
-    print('🔄 Refreshing camera list...');
+    AppLogger.debug('🔄 Refreshing camera list...');
     try {
       await getAvailableCameras();
-      print('✅ Camera list refreshed');
+      AppLogger.debug('✅ Camera list refreshed');
     } catch (e) {
-      print('❌ Error refreshing camera list: $e');
+      AppLogger.debug('❌ Error refreshing camera list: $e');
     }
   }
 
@@ -180,25 +181,25 @@ class CameraService {
       final flutterOriginalCameras = List<CameraDescription>.from(_cameras!);
 
       // Debug: Log all detected cameras
-      print('📷 Detected ${_cameras!.length} camera(s) from Flutter:');
+      AppLogger.debug('📷 Detected ${_cameras!.length} camera(s) from Flutter:');
       for (final camera in _cameras!) {
-        print('  - Name: "${camera.name}", Direction: ${camera.lensDirection}');
+        AppLogger.debug('  - Name: "${camera.name}", Direction: ${camera.lensDirection}');
       }
-      print('');
+      AppLogger.debug('');
 
       // On Android, get cameras from native Camera2 API to detect USB cameras
       if (!_isIOS && !kIsWeb) {
-        print('🤖 Android platform detected');
-        print('📱 Flutter detected ${_cameras!.length} camera(s):');
+        AppLogger.debug('🤖 Android platform detected');
+        AppLogger.debug('📱 Flutter detected ${_cameras!.length} camera(s):');
         for (int i = 0; i < _cameras!.length; i++) {
           final camera = _cameras![i];
           final isExternal =
               camera.lensDirection == CameraLensDirection.external;
-          print('   ${i + 1}. Name: "${camera.name}"');
-          print('      Direction: ${camera.lensDirection}');
-          print('      External: $isExternal');
-          print('      Sensor Orientation: ${camera.sensorOrientation}');
-          print('');
+          AppLogger.debug('   ${i + 1}. Name: "${camera.name}"');
+          AppLogger.debug('      Direction: ${camera.lensDirection}');
+          AppLogger.debug('      External: $isExternal');
+          AppLogger.debug('      Sensor Orientation: ${camera.sensorOrientation}');
+          AppLogger.debug('');
         }
 
         // Get cameras from Android Camera2 API (includes USB cameras)
@@ -206,9 +207,9 @@ class CameraService {
           final androidCameras =
               await AndroidCameraDeviceHelper.getAllAvailableCameras();
           if (androidCameras != null && androidCameras.isNotEmpty) {
-            print(
+            AppLogger.debug(
                 '📱 Android Camera2 API reports ${androidCameras.length} camera(s):');
-            print('');
+            AppLogger.debug('');
 
             for (int i = 0; i < androidCameras.length; i++) {
               final androidCamera = androidCameras[i];
@@ -250,11 +251,11 @@ class CameraService {
               final isExternalByName = localizedName.toLowerCase().contains('external');
               final isExternal = isExternalByFlutter || isExternalByName;
 
-              print('  📷 Camera #${i + 1} Details:');
-              print('     Unique ID: $uniqueID');
-              print('     Name: "$localizedName"');
-              print('     External: $isExternal (by Flutter: $isExternalByFlutter, by name: $isExternalByName)');
-              print('');
+              AppLogger.debug('  📷 Camera #${i + 1} Details:');
+              AppLogger.debug('     Unique ID: $uniqueID');
+              AppLogger.debug('     Name: "$localizedName"');
+              AppLogger.debug('     External: $isExternal (by Flutter: $isExternalByFlutter, by name: $isExternalByName)');
+              AppLogger.debug('');
 
               // Store mapping for all cameras (not just external)
               if (localizedName != 'unknown' && localizedName.isNotEmpty) {
@@ -262,13 +263,13 @@ class CameraService {
                 if (hasMatch) {
                   // Store mapping using Flutter's camera name as key
                   _cameraLocalizedNames[matchingFlutterCamera.name] = localizedName;
-                  print(
+                  AppLogger.debug(
                       '     💾 Stored mapping: ${matchingFlutterCamera.name} -> "$localizedName"');
                 } else {
                   // Camera not found in Flutter list - might be USB camera
-                  print(
+                  AppLogger.debug(
                       '     ⚠️ Camera $uniqueID not found in Flutter camera list');
-                  print(
+                  AppLogger.debug(
                       '     This might be a USB camera not detected by Flutter');
 
                   // If it's an external camera (detected by name), add it to the list
@@ -288,15 +289,15 @@ class CameraService {
                     });
                     
                     if (alreadyAdded) {
-                      print('     ℹ️ External camera $uniqueID already in list, skipping duplicate');
+                      AppLogger.debug('     ℹ️ External camera $uniqueID already in list, skipping duplicate');
                       _cameraLocalizedNames[uniqueID] = localizedName;
                       continue;
                     }
                     
-                    print(
+                    AppLogger.debug(
                         '     ➕ External camera detected (not in Flutter availableCameras):');
-                    print('        UniqueID: $uniqueID');
-                    print('        Name: $localizedName');
+                    AppLogger.debug('        UniqueID: $uniqueID');
+                    AppLogger.debug('        Name: $localizedName');
                     
                     // Check if camera exists in Flutter's list
                     final cameraExistsInFlutter = flutterOriginalCameras.any((c) {
@@ -312,8 +313,8 @@ class CameraService {
                     
                     if (cameraExistsInFlutter) {
                       // Camera exists in Flutter's list - it's already in _cameras from availableCameras()
-                      print('     ✅ External camera $uniqueID EXISTS in Flutter camera package');
-                      print('     ✅ Camera is already in the list from availableCameras()');
+                      AppLogger.debug('     ✅ External camera $uniqueID EXISTS in Flutter camera package');
+                      AppLogger.debug('     ✅ Camera is already in the list from availableCameras()');
                       // Update the localized name for the existing camera
                       final existingCamera = _cameras!.firstWhere(
                         (c) {
@@ -336,8 +337,8 @@ class CameraService {
                     } else {
                       // Camera doesn't exist in Flutter's list, but add it anyway
                       // We'll show it in the UI and handle the error when user tries to use it
-                      print('     ⚠️ External camera $uniqueID NOT in Flutter camera package');
-                      print('     ➕ Adding to list - will use native controller');
+                      AppLogger.debug('     ⚠️ External camera $uniqueID NOT in Flutter camera package');
+                      AppLogger.debug('     ➕ Adding to list - will use native controller');
                       
                       // Always use external direction for external cameras
                       // Use uniqueID directly as name (e.g., "5", "6") for native controller
@@ -349,8 +350,8 @@ class CameraService {
 
                       _cameras!.add(externalCamera);
                       _cameraLocalizedNames[uniqueID] = localizedName;
-                      print('     ✅ Added external camera to list: $uniqueID -> "$localizedName"');
-                      print('     ℹ️ Will use native Android camera controller for this camera');
+                      AppLogger.debug('     ✅ Added external camera to list: $uniqueID -> "$localizedName"');
+                      AppLogger.debug('     ℹ️ Will use native Android camera controller for this camera');
                     }
                   } else {
                     // Still store the mapping in case it's added later
@@ -359,7 +360,7 @@ class CameraService {
                 }
               }
             }
-            print('');
+            AppLogger.debug('');
 
             // Check if there are external cameras in Android that aren't in Flutter list
             final externalAndroidCameras = androidCameras.where((camera) {
@@ -374,7 +375,7 @@ class CameraService {
             }).toList();
 
             if (externalAndroidCameras.isNotEmpty) {
-              print(
+              AppLogger.debug(
                   '🔍 Found ${externalAndroidCameras.length} external camera(s) in Android:');
               for (final extCamera in externalAndroidCameras) {
                 final uniqueID = extCamera['uniqueID'] as String? ?? 'unknown';
@@ -382,20 +383,20 @@ class CameraService {
                     extCamera['localizedName'] as String? ?? 'unknown';
                 final isInFlutterList =
                     _cameras!.any((c) => c.name == uniqueID);
-                print(
+                AppLogger.debug(
                     '   ${isInFlutterList ? "✅" : "❌"} $localizedName (ID: $uniqueID)');
                 if (!isInFlutterList) {
-                  print(
+                  AppLogger.debug(
                       '      ⚠️ This USB camera is not detected by Flutter camera package');
                 }
               }
-              print('');
+              AppLogger.debug('');
             }
           } else {
-            print('⚠️ Could not get Android camera list from Camera2 API');
+            AppLogger.debug('⚠️ Could not get Android camera list from Camera2 API');
           }
         } catch (e) {
-          print('⚠️ Error getting Android cameras: $e');
+          AppLogger.debug('⚠️ Error getting Android cameras: $e');
         }
       }
 
@@ -405,9 +406,9 @@ class CameraService {
           final iosCameras =
               await IOSCameraDeviceHelper.getAllAvailableCameras();
           if (iosCameras != null && iosCameras.isNotEmpty) {
-            print(
+            AppLogger.debug(
                 '📱 iOS reports ${iosCameras.length} actually available camera(s):');
-            print('');
+            AppLogger.debug('');
 
             // Clear previous mappings
             _cameraLocalizedNames.clear();
@@ -429,20 +430,20 @@ class CameraService {
                 deviceId = uniqueID.split(':').last;
               }
 
-              print('  📷 Camera #${i + 1} Details:');
-              print(
+              AppLogger.debug('  📷 Camera #${i + 1} Details:');
+              AppLogger.debug(
                   '     Name: "$localizedName" (length: ${localizedName.length})');
               if (localizedName == 'unknown') {
-                print(
+                AppLogger.debug(
                     '     ⚠️  WARNING: localizedName not found in iOS response!');
-                print('     Available keys: ${iosCamera.keys.join(", ")}');
+                AppLogger.debug('     Available keys: ${iosCamera.keys.join(", ")}');
               }
-              print('     Unique ID: $uniqueID');
-              print('     External: $isExternal');
+              AppLogger.debug('     Unique ID: $uniqueID');
+              AppLogger.debug('     External: $isExternal');
               if (!isExternal) {
-                print('     Device ID: $deviceId');
+                AppLogger.debug('     Device ID: $deviceId');
               }
-              print('');
+              AppLogger.debug('');
 
               // Store mapping from camera name to localized name
               // Flutter camera package uses a name format like:
@@ -452,7 +453,7 @@ class CameraService {
               // For external cameras with UUID uniqueID
               if (isExternal) {
                 _cameraLocalizedNames[uniqueID] = localizedName;
-                print(
+                AppLogger.debug(
                     '     💾 Stored mapping (external): $uniqueID -> "$localizedName"');
               }
 
@@ -496,9 +497,9 @@ class CameraService {
 
                 if (matchingFlutterCamera.lensDirection != correctDirection) {
                   // Flutter has the wrong direction - replace with correct one
-                  print(
+                  AppLogger.debug(
                       '     ⚠️ Flutter camera has wrong direction: ${matchingFlutterCamera.lensDirection}');
-                  print('     ✅ Correcting to: $correctDirection');
+                  AppLogger.debug('     ✅ Correcting to: $correctDirection');
 
                   // Remove the incorrectly classified camera
                   _cameras!.removeAt(matchingFlutterCameraIndex);
@@ -512,13 +513,13 @@ class CameraService {
 
                   _cameras!.add(correctedCamera);
                   _cameraLocalizedNames[correctedCamera.name] = localizedName;
-                  print(
+                  AppLogger.debug(
                       '     ✅ Corrected camera: ${correctedCamera.name} -> "$localizedName" (${correctedCamera.lensDirection})');
                 } else {
                   // Direction is correct, just store the mapping
                   _cameraLocalizedNames[matchingFlutterCamera.name] =
                       localizedName;
-                  print(
+                  AppLogger.debug(
                       '     💾 Stored mapping: ${matchingFlutterCamera.name} -> "$localizedName"');
                 }
               } else {
@@ -526,10 +527,10 @@ class CameraService {
                 if (isExternal) {
                   // For external cameras detected by iOS but not in Flutter's list,
                   // add them manually to the cameras list
-                  print(
+                  AppLogger.debug(
                       '     ➕ Adding external camera to list (not in Flutter availableCameras):');
-                  print('        UniqueID: $uniqueID');
-                  print('        Name: $localizedName');
+                  AppLogger.debug('        UniqueID: $uniqueID');
+                  AppLogger.debug('        Name: $localizedName');
 
                   final externalCamera = CameraDescription(
                     name:
@@ -540,36 +541,36 @@ class CameraService {
 
                   _cameras!.add(externalCamera);
                   _cameraLocalizedNames[uniqueID] = localizedName;
-                  print(
+                  AppLogger.debug(
                       '     ✅ Added external camera: $uniqueID -> "$localizedName"');
                 } else {
-                  print(
+                  AppLogger.debug(
                       '     ⚠️ Camera with uniqueID $uniqueID not found in Flutter camera list');
                 }
               }
             }
-            print('');
+            AppLogger.debug('');
           } else {
-            print('⚠️ Could not get iOS camera list');
+            AppLogger.debug('⚠️ Could not get iOS camera list');
           }
         } catch (e) {
-          print('⚠️ Error getting iOS cameras: $e');
+          AppLogger.debug('⚠️ Error getting iOS cameras: $e');
         }
       }
 
-      print('✅ Final camera list: ${_cameras!.length} camera(s)');
+      AppLogger.debug('✅ Final camera list: ${_cameras!.length} camera(s)');
       for (int i = 0; i < _cameras!.length; i++) {
         final camera = _cameras![i];
         final displayName = getCameraDisplayName(camera);
         final isExternal = camera.lensDirection == CameraLensDirection.external;
-        print(
+        AppLogger.debug(
             '   ${i + 1}. ${isExternal ? "🔌" : "📷"} $displayName (${camera.lensDirection})');
       }
-      print('');
+      AppLogger.debug('');
 
       return _cameras!;
     } catch (e) {
-      print('❌ Error getting available cameras: $e');
+      AppLogger.debug('❌ Error getting available cameras: $e');
       rethrow;
     }
   }
@@ -585,20 +586,20 @@ class CameraService {
     try {
       final status = await Permission.camera.request();
       if (status.isGranted) {
-        print('✅ Camera permission granted');
+        AppLogger.debug('✅ Camera permission granted');
         return true;
       } else if (status.isDenied) {
-        print('❌ Camera permission denied');
+        AppLogger.debug('❌ Camera permission denied');
         return false;
       } else if (status.isPermanentlyDenied) {
-        print('❌ Camera permission permanently denied');
+        AppLogger.debug('❌ Camera permission permanently denied');
         // You might want to open app settings here
         await openAppSettings();
         return false;
       }
       return false;
     } catch (e) {
-      print('❌ Error requesting camera permission: $e');
+      AppLogger.debug('❌ Error requesting camera permission: $e');
       return false;
     }
   }
@@ -606,8 +607,8 @@ class CameraService {
   /// Initializes the camera with the selected camera
   Future<void> initializeCamera(CameraDescription camera) async {
     try {
-      print('🎥 Initializing camera: ${camera.name}');
-      print('   Direction: ${camera.lensDirection}');
+      AppLogger.debug('🎥 Initializing camera: ${camera.name}');
+      AppLogger.debug('   Direction: ${camera.lensDirection}');
 
       // Dispose any existing controller
       if (_controller != null) {
@@ -623,8 +624,8 @@ class CameraService {
       // For external cameras, use native controller (iOS or Android)
       // This bypasses Flutter's camera package limitations
       if (camera.lensDirection == CameraLensDirection.external) {
-        print('   🔌 External camera detected');
-        print('   🔍 Using native camera controller for direct Camera2/AVFoundation access...');
+        AppLogger.debug('   🔌 External camera detected');
+        AppLogger.debug('   🔍 Using native camera controller for direct Camera2/AVFoundation access...');
 
         // Extract device ID from camera name and try native controller
         if (_isIOS) {
@@ -638,21 +639,21 @@ class CameraService {
           }
 
           if (deviceId.isEmpty) {
-            print('   ⚠️ Could not extract device ID from camera name: ${camera.name}');
-            print('   Falling back to standard CameraController...');
+            AppLogger.debug('   ⚠️ Could not extract device ID from camera name: ${camera.name}');
+            AppLogger.debug('   Falling back to standard CameraController...');
           } else {
             try {
-              print('   Attempting to use native camera controller...');
-              print('   Device ID: $deviceId');
+              AppLogger.debug('   Attempting to use native camera controller...');
+              AppLogger.debug('   Device ID: $deviceId');
               _customController = CustomCameraController();
               await _customController!.initialize(deviceId);
               _useCustomController = true;
-              print('   ✅ Native camera controller initialized successfully');
-              print('   Active device: ${_customController!.currentDeviceId}');
+              AppLogger.debug('   ✅ Native camera controller initialized successfully');
+              AppLogger.debug('   Active device: ${_customController!.currentDeviceId}');
               return;
             } catch (e) {
-              print('   ⚠️ Native camera controller failed: $e');
-              print('   Falling back to standard CameraController...');
+              AppLogger.debug('   ⚠️ Native camera controller failed: $e');
+              AppLogger.debug('   Falling back to standard CameraController...');
               _customController = null;
               _useCustomController = false;
             }
@@ -667,34 +668,34 @@ class CameraService {
           if (nameMatch != null) {
             // Extract ID from "Camera X" format
             deviceId = nameMatch.group(1)!;
-            print('   📋 Extracted device ID from "Camera X" format: $deviceId');
+            AppLogger.debug('   📋 Extracted device ID from "Camera X" format: $deviceId');
           } else {
             // Assume it's already a direct ID (e.g., "5", "6")
             deviceId = camera.name;
-            print('   📋 Using camera name directly as device ID: $deviceId');
+            AppLogger.debug('   📋 Using camera name directly as device ID: $deviceId');
           }
           
-          print('   🤖 Android external camera detected');
-          print('   📋 Camera name: ${camera.name}');
-          print('   🔢 Device ID to use: $deviceId');
-          print('   📝 Localized name: ${getCameraDisplayName(camera)}');
+          AppLogger.debug('   🤖 Android external camera detected');
+          AppLogger.debug('   📋 Camera name: ${camera.name}');
+          AppLogger.debug('   🔢 Device ID to use: $deviceId');
+          AppLogger.debug('   📝 Localized name: ${getCameraDisplayName(camera)}');
           
           try {
-            print('   🚀 Attempting to use native Android camera controller...');
-            print('   🎯 Will initialize with device ID: "$deviceId"');
+            AppLogger.debug('   🚀 Attempting to use native Android camera controller...');
+            AppLogger.debug('   🎯 Will initialize with device ID: "$deviceId"');
             _customController = CustomCameraController();
             await _customController!.initialize(deviceId);
             _useCustomController = true;
-            print('   ✅ Native Android camera controller initialized successfully');
-            print('   ✅ Active device ID: ${_customController!.currentDeviceId}');
-            print('   ✅ Texture ID: ${_customController!.textureId}');
-            print('   ✅ Preview will use Texture widget with ID: ${_customController!.textureId}');
+            AppLogger.debug('   ✅ Native Android camera controller initialized successfully');
+            AppLogger.debug('   ✅ Active device ID: ${_customController!.currentDeviceId}');
+            AppLogger.debug('   ✅ Texture ID: ${_customController!.textureId}');
+            AppLogger.debug('   ✅ Preview will use Texture widget with ID: ${_customController!.textureId}');
             return;
           } catch (e, stackTrace) {
-            print('   ❌ Native camera controller failed: $e');
-            print('   📚 Stack trace: $stackTrace');
-            print('   ⚠️ Falling back to standard CameraController...');
-            print('   ⚠️ WARNING: Standard controller may not work for external cameras!');
+            AppLogger.debug('   ❌ Native camera controller failed: $e');
+            AppLogger.debug('   📚 Stack trace: $stackTrace');
+            AppLogger.debug('   ⚠️ Falling back to standard CameraController...');
+            AppLogger.debug('   ⚠️ WARNING: Standard controller may not work for external cameras!');
             _customController?.dispose();
             _customController = null;
             _useCustomController = false;
@@ -731,25 +732,25 @@ class CameraService {
       }
 
       // Log all available cameras for debugging
-      print('   Available cameras in system:');
+      AppLogger.debug('   Available cameras in system:');
       for (var cam in _cameras!) {
         final isTarget = cam.name == camera.name;
         final deviceId = cam.name.contains(':')
             ? cam.name.split(':').last.split(',').first
             : 'unknown';
-        print(
+        AppLogger.debug(
             '     ${isTarget ? ">>> " : "    "}Device ID: $deviceId, Name: ${cam.name}, Direction: ${cam.lensDirection}${isTarget ? " <-- TARGET" : ""}');
       }
 
       // Create new controller with the specified camera
-      print('   Creating new controller for: ${cameraToUse.name}');
-      print('   Camera direction: ${cameraToUse.lensDirection}');
-      print('   Camera sensor orientation: ${cameraToUse.sensorOrientation}');
+      AppLogger.debug('   Creating new controller for: ${cameraToUse.name}');
+      AppLogger.debug('   Camera direction: ${cameraToUse.lensDirection}');
+      AppLogger.debug('   Camera sensor orientation: ${cameraToUse.sensorOrientation}');
 
-      print('   Creating CameraController with:');
-      print('     - Camera name: ${cameraToUse.name}');
-      print('     - Direction: ${cameraToUse.lensDirection}');
-      print('     - Sensor orientation: ${cameraToUse.sensorOrientation}');
+      AppLogger.debug('   Creating CameraController with:');
+      AppLogger.debug('     - Camera name: ${cameraToUse.name}');
+      AppLogger.debug('     - Direction: ${cameraToUse.lensDirection}');
+      AppLogger.debug('     - Sensor orientation: ${cameraToUse.sensorOrientation}');
 
       _controller = CameraController(
         cameraToUse, // Use the exact match from system list
@@ -757,8 +758,8 @@ class CameraService {
         enableAudio: false,
       );
 
-      print('   Initializing CameraController...');
-      print('   This may take longer for external cameras...');
+      AppLogger.debug('   Initializing CameraController...');
+      AppLogger.debug('   This may take longer for external cameras...');
 
       // Initialize with timeout to catch any issues
       await _controller!.initialize().timeout(
@@ -768,7 +769,7 @@ class CameraService {
         },
       );
 
-      print('   ✅ CameraController initialized');
+      AppLogger.debug('   ✅ CameraController initialized');
 
       // Additional small delay after initialization to ensure camera is ready
       await Future.delayed(const Duration(milliseconds: 300));
@@ -776,10 +777,10 @@ class CameraService {
       // Verify the controller is using the correct camera
       if (_controller != null) {
         final activeCamera = _controller!.description;
-        print('✅ Controller initialized successfully:');
-        print('   Active camera name: ${activeCamera.name}');
-        print('   Active camera direction: ${activeCamera.lensDirection}');
-        print(
+        AppLogger.debug('✅ Controller initialized successfully:');
+        AppLogger.debug('   Active camera name: ${activeCamera.name}');
+        AppLogger.debug('   Active camera direction: ${activeCamera.lensDirection}');
+        AppLogger.debug(
             '   Active camera sensor orientation: ${activeCamera.sensorOrientation}');
 
         // CRITICAL: For external cameras, we MUST verify by device ID (name), not just direction
@@ -798,49 +799,49 @@ class CameraService {
           activeDeviceId = activeCamera.name.split(':').last.split(',').first;
         }
 
-        print('   Device ID comparison:');
-        print('     Requested device ID: $requestedDeviceId');
-        print('     Active device ID: $activeDeviceId');
+        AppLogger.debug('   Device ID comparison:');
+        AppLogger.debug('     Requested device ID: $requestedDeviceId');
+        AppLogger.debug('     Active device ID: $activeDeviceId');
 
         // The name (device ID) MUST match exactly - this is the only reliable identifier
         if (!nameMatches) {
-          print('');
-          print('❌❌❌ CRITICAL ERROR: iOS selected the wrong camera! ❌❌❌');
-          print('');
-          print('   Requested:');
-          print('     Device ID: $requestedDeviceId');
-          print('     Name: ${cameraToUse.name}');
-          print('     Direction: ${cameraToUse.lensDirection}');
-          print('');
-          print('   Actually Selected:');
-          print('     Device ID: $activeDeviceId');
-          print('     Name: ${activeCamera.name}');
-          print('     Direction: ${activeCamera.lensDirection}');
-          print('');
-          print('   ⚠️ ROOT CAUSE:');
-          print(
+          AppLogger.debug('');
+          AppLogger.debug('❌❌❌ CRITICAL ERROR: iOS selected the wrong camera! ❌❌❌');
+          AppLogger.debug('');
+          AppLogger.debug('   Requested:');
+          AppLogger.debug('     Device ID: $requestedDeviceId');
+          AppLogger.debug('     Name: ${cameraToUse.name}');
+          AppLogger.debug('     Direction: ${cameraToUse.lensDirection}');
+          AppLogger.debug('');
+          AppLogger.debug('   Actually Selected:');
+          AppLogger.debug('     Device ID: $activeDeviceId');
+          AppLogger.debug('     Name: ${activeCamera.name}');
+          AppLogger.debug('     Direction: ${activeCamera.lensDirection}');
+          AppLogger.debug('');
+          AppLogger.debug('   ⚠️ ROOT CAUSE:');
+          AppLogger.debug(
               '   The Flutter camera package uses lensDirection to match cameras.');
-          print(
+          AppLogger.debug(
               '   When multiple cameras have the same lensDirection (front),');
-          print(
+          AppLogger.debug(
               '   iOS selects the first one it finds, not the one we requested.');
-          print('');
-          print(
+          AppLogger.debug('');
+          AppLogger.debug(
               '   This is a FUNDAMENTAL LIMITATION of the Flutter camera package.');
-          print(
+          AppLogger.debug(
               '   It cannot force iOS to use a specific device ID when cameras');
-          print('   share the same lensDirection.');
-          print('');
-          print('   💡 POSSIBLE SOLUTIONS:');
-          print(
+          AppLogger.debug('   share the same lensDirection.');
+          AppLogger.debug('');
+          AppLogger.debug('   💡 POSSIBLE SOLUTIONS:');
+          AppLogger.debug(
               '   1. Create a custom camera controller using platform channel');
-          print(
+          AppLogger.debug(
               '   2. Fork the Flutter camera package to support device ID selection');
-          print(
+          AppLogger.debug(
               '   3. Wait for Flutter camera package to add device ID support');
-          print(
+          AppLogger.debug(
               '   4. Use a different camera library that supports device ID selection');
-          print('');
+          AppLogger.debug('');
 
           // Dispose the wrong camera
           await _controller!.dispose();
@@ -853,16 +854,16 @@ class CameraService {
               'This is a known Flutter camera package limitation when external cameras '
               'report the same lensDirection as built-in cameras.');
         } else {
-          print(
+          AppLogger.debug(
               '✅ Camera device ID verification passed - correct camera is active');
           if (!directionMatches) {
-            print(
+            AppLogger.debug(
                 '   ⚠️ Note: Direction mismatch (${cameraToUse.lensDirection} vs ${activeCamera.lensDirection}), but device ID matches');
           }
         }
       }
     } catch (e) {
-      print('❌ Error initializing camera: $e');
+      AppLogger.debug('❌ Error initializing camera: $e');
       throw app_exceptions.CameraException(
           '${AppConstants.kErrorCameraInitialization}: $e');
     }

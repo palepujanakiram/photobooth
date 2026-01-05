@@ -4,19 +4,20 @@
 import 'package:dio/dio.dart';
 import 'package:dio/browser.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import '../utils/logger.dart';
 
 /// Configures Dio to use browser HTTP adapter on web
 void configureDioForWeb(Dio dio) {
   if (kIsWeb) {
     try {
       dio.httpClientAdapter = BrowserHttpClientAdapter();
-      print('✅ Configured Dio with BrowserHttpClientAdapter for web');
+      AppLogger.debug('✅ Configured Dio with BrowserHttpClientAdapter for web');
     } catch (e) {
-      print('❌ Failed to configure BrowserHttpClientAdapter: $e');
+      AppLogger.debug('❌ Failed to configure BrowserHttpClientAdapter: $e');
       rethrow;
     }
   } else {
-    print('ℹ️ Skipping browser adapter configuration (not on web)');
+    AppLogger.debug('ℹ️ Skipping browser adapter configuration (not on web)');
   }
 }
 

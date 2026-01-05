@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import '../utils/logger.dart';
 
 /// Helper function to check if running on iOS
 /// Works on all platforms including web
@@ -39,7 +40,7 @@ class IOSCameraDeviceHelper {
       
       return null;
     } catch (e) {
-      print('⚠️ Error verifying camera device: $e');
+      AppLogger.debug('⚠️ Error verifying camera device: $e');
       return null;
     }
   }
@@ -69,7 +70,7 @@ class IOSCameraDeviceHelper {
       
       return null;
     } catch (e) {
-      print('⚠️ Error initializing camera by device ID: $e');
+      AppLogger.debug('⚠️ Error initializing camera by device ID: $e');
       return null;
     }
   }
@@ -96,7 +97,7 @@ class IOSCameraDeviceHelper {
       
       return null;
     } catch (e) {
-      print('⚠️ Error getting available cameras: $e');
+      AppLogger.debug('⚠️ Error getting available cameras: $e');
       return null;
     }
   }
