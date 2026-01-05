@@ -19,8 +19,8 @@ package_name("com.example.photobooth")
 # Format: 1:123456789:android:abcdef123456 or 1:123456789:ios:abcdef123456
 
 # Android Firebase App ID (from Android Firebase project)
-def firebase_android_app_id
-  "1:123456789:android:abcdef123456" # Replace with your Android Firebase App ID
+def firebase_android_app_id 
+  "1:76160113818:android:196bb713e591f09c0bd323" # Replace with your Android Firebase App ID
 end
 
 # iOS Firebase App ID (from iOS Firebase project)

@@ -16,8 +16,16 @@
 
 # Helper method to get app version from pubspec.yaml
 def get_app_version
-  pubspec_path = File.join(Dir.pwd, "pubspec.yaml")
-  if File.exist?(pubspec_path)
+  # Try multiple paths since Fastlane might run from different directories
+  possible_paths = [
+    File.join(Dir.pwd, "pubspec.yaml"),
+    File.join(Dir.pwd, "..", "pubspec.yaml"),
+    File.expand_path("pubspec.yaml", File.dirname(__FILE__) + "/..")
+  ]
+  
+  pubspec_path = possible_paths.find { |path| File.exist?(path) }
+  
+  if pubspec_path && File.exist?(pubspec_path)
     version_line = File.readlines(pubspec_path).find { |line| line.strip.start_with?("version:") }
     if version_line
       version_match = version_line.match(/version:\s*(.+)/)
@@ -26,8 +34,8 @@ def get_app_version
         # Format is "0.1.0+2" where 0.1.0 is version name and 2 is build number
         if version_string.include?("+")
           parts = version_string.split("+")
-          version_name = parts[0]
-          version_code = parts[1]
+          version_name = parts[0].strip
+          version_code = parts[1].strip
           return { version_name: version_name, version_code: version_code }
         end
       end

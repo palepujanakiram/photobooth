@@ -58,6 +58,10 @@ fastlane/test_output
 *.aab
 *.ipa
 *.dSYM.zip
+
+# Ruby/Bundler
+vendor/bundle/
+.bundle/
 android/.gradle/file-system.probe
 android/.gradle/8.13/gc.properties
 android/.gradle/8.13/checksums/checksums.lock
