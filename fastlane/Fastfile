@@ -1,0 +1,94 @@
+# This file contains the fastlane.tools configuration
+# You can find the documentation at https://docs.fastlane.tools
+#
+# For a list of all available actions, check out
+#
+#     https://docs.fastlane.tools/actions
+#
+# For a list of all available plugins, check out
+#
+#     https://docs.fastlane.tools/plugins/available-plugins
+#
+
+# Firebase configuration is now in Appfile
+# Edit fastlane/Appfile to set Firebase tokens, test groups, and release notes
+# Separate configuration for iOS and Android Firebase accounts
+
+default_platform(:android)
+
+platform :android do
+  desc "Build Android APK"
+  lane :build_apk do
+    sh("flutter build apk --release")
+  end
+
+  desc "Build Android App Bundle (AAB)"
+  lane :build_aab do
+    sh("flutter build appbundle --release")
+  end
+
+  desc "Build and upload Android APK to Firebase App Distribution"
+  lane :firebase_android do
+    # Build the APK
+    build_apk
+
+    # Upload to Firebase App Distribution
+    # Uses Firebase configuration from Appfile (Android Firebase account)
+    firebase_app_distribution(
+      app: firebase_android_app_id,
+      apk_path: "build/app/outputs/flutter-apk/app-release.apk",
+      firebase_cli_token: firebase_android_token,
+      groups: firebase_android_test_groups,
+      release_notes: firebase_android_release_notes
+    )
+  end
+
+  desc "Build and upload Android App Bundle to Firebase App Distribution"
+  lane :firebase_android_aab do
+    # Build the AAB
+    build_aab
+
+    # Upload to Firebase App Distribution
+    # Uses Firebase configuration from Appfile (Android Firebase account)
+    firebase_app_distribution(
+      app: firebase_android_app_id,
+      aab_path: "build/app/outputs/bundle/release/app-release.aab",
+      firebase_cli_token: firebase_android_token,
+      groups: firebase_android_test_groups,
+      release_notes: firebase_android_release_notes
+    )
+  end
+end
+
+platform :ios do
+  desc "Build iOS IPA"
+  lane :build_ipa do
+    # Build using Flutter
+    sh("flutter build ipa --release")
+  end
+
+  desc "Build and upload iOS IPA to Firebase App Distribution"
+  lane :firebase_ios do
+    # Build the IPA
+    build_ipa
+
+    # Upload to Firebase App Distribution
+    # Uses Firebase configuration from Appfile (iOS Firebase account)
+    # Flutter builds IPA to build/ios/ipa/Runner.ipa
+    firebase_app_distribution(
+      app: firebase_ios_app_id,
+      ipa_path: "./build/ios/ipa/Runner.ipa",
+      firebase_cli_token: firebase_ios_token,
+      groups: firebase_ios_test_groups,
+      release_notes: firebase_ios_release_notes
+    )
+  end
+end
+
+# Combined lane for both platforms
+desc "Build and upload both Android and iOS to Firebase"
+lane :firebase_all do
+  firebase_android
+  firebase_ios
+end
+

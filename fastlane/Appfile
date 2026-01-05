@@ -1,0 +1,59 @@
+# Appfile for Fastlane configuration
+
+# Android configuration
+app_identifier("com.example.photobooth") # The package name of your app
+package_name("com.example.photobooth")
+
+# iOS configuration
+# Uncomment and update if you have different bundle IDs
+# app_identifier("com.example.photobooth") # The bundle identifier of your app
+
+# Optional: Specify the Apple ID for App Store Connect
+# apple_id("your-apple-id@example.com")
+
+# Optional: Specify the team ID for App Store Connect
+# team_id("YOUR_TEAM_ID")
+
+# Firebase App IDs - Separate accounts for iOS and Android
+# Get these from Firebase Console > Project Settings > Your Apps
+# Format: 1:123456789:android:abcdef123456 or 1:123456789:ios:abcdef123456
+
+# Android Firebase App ID (from Android Firebase project)
+def firebase_android_app_id
+  "1:123456789:android:abcdef123456" # Replace with your Android Firebase App ID
+end
+
+# iOS Firebase App ID (from iOS Firebase project)
+def firebase_ios_app_id
+  "1:123456789:ios:abcdef123456" # Replace with your iOS Firebase App ID
+end
+
+# Firebase Configuration - Separate for iOS and Android
+# Since you have separate Firebase accounts, configure each separately
+
+# Android Firebase Configuration
+def firebase_android_token
+  "your_android_firebase_token_here" # Get from: firebase login:ci (Android Firebase account)
+end
+
+def firebase_android_test_groups
+  "testers,qa-team" # Comma-separated list of test groups for Android
+end
+
+def firebase_android_release_notes
+  "Version 0.1.0 - Android build" # Release notes for Android builds
+end
+
+# iOS Firebase Configuration
+def firebase_ios_token
+  "your_ios_firebase_token_here" # Get from: firebase login:ci (iOS Firebase account)
+end
+
+def firebase_ios_test_groups
+  "testers,qa-team" # Comma-separated list of test groups for iOS
+end
+
+def firebase_ios_release_notes
+  "Version 0.1.0 - iOS build" # Release notes for iOS builds
+end
+
