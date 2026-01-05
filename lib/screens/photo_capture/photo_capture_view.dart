@@ -114,8 +114,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               final isUsingCustomController = viewModel.cameraService.isUsingCustomController;
               final textureId = viewModel.cameraService.textureId;
               
+              // Debug logging
+              AppLogger.debug('📺 Preview widget state:');
+              AppLogger.debug('   isUsingCustomController: $isUsingCustomController');
+              AppLogger.debug('   textureId: $textureId');
+              AppLogger.debug('   viewModel.isReady: ${viewModel.isReady}');
+              AppLogger.debug('   viewModel.cameraController: ${viewModel.cameraController != null}');
+              
               if (!viewModel.isReady) {
                 final appColors = AppColors.of(context);
+                AppLogger.debug('📺 Camera not ready - showing placeholder');
                 return Center(
                   child: Text(
                     'Camera not ready',
@@ -124,25 +132,34 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                 );
               }
 
-              // For custom controller, we need textureId
-              if (isUsingCustomController && textureId == null) {
-                final appColors = AppColors.of(context);
-                return Center(
-                  child: Text(
-                    'Camera preview not available',
-                    style: TextStyle(color: appColors.textColor),
-                  ),
-                );
-              }
-
               // Build preview widget
               Widget previewWidget;
               if (isUsingCustomController && textureId != null) {
+                // Use Texture widget for custom controller
                 final textureIdValue = textureId; // Local variable to avoid null check warning
-                previewWidget = Texture(textureId: textureIdValue);
+                AppLogger.debug('📺 Building Texture preview widget with texture ID: $textureIdValue');
+                // Texture widget must explicitly fill its parent
+                // Use LayoutBuilder to get available size and ensure proper rendering
+                previewWidget = LayoutBuilder(
+                  builder: (context, constraints) {
+                    AppLogger.debug('📺 Texture widget constraints: ${constraints.maxWidth}x${constraints.maxHeight}');
+                    return SizedBox(
+                      width: constraints.maxWidth,
+                      height: constraints.maxHeight,
+                      child: Texture(
+                        textureId: textureIdValue,
+                        key: ValueKey('texture_$textureIdValue'),
+                        filterQuality: FilterQuality.medium,
+                      ),
+                    );
+                  },
+                );
               } else if (viewModel.cameraController != null) {
+                // Use standard CameraPreview
+                AppLogger.debug('📺 Building standard CameraPreview widget');
                 previewWidget = CameraPreview(viewModel.cameraController!);
               } else {
+                AppLogger.debug('📺 No camera controller available - showing placeholder');
                 previewWidget = Container(
                   color: AppColors.of(context).backgroundColor,
                   child: Center(
@@ -158,6 +175,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
               return Stack(
                 children: [
+                  // Preview widget - must fill the entire stack
                   Positioned.fill(
                     child: previewWidget,
                   ),
@@ -419,105 +437,67 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
   /// Filters cameras to remove duplicates
   /// Keeps only one camera per lens direction for built-in cameras
-  /// Allows multiple external cameras
+  /// Allows multiple external cameras, but deduplicates them properly
   List<CameraDescription> _getUniqueCameras(List<CameraDescription> cameras) {
-    // Show: 1 front camera, 1 back camera, and all external cameras
+    // Show: 1 front camera, 1 back camera, and all unique external cameras
     final uniqueCameras = <CameraDescription>[];
-    final seenDirections = <CameraLensDirection>{};
     bool hasFront = false;
     bool hasBack = false;
 
-    // First pass: Add one front and one back camera (built-in)
-    for (final camera in cameras) {
-      final isBuiltIn = _isBuiltInCamera(camera);
-      final isExternal = camera.lensDirection == CameraLensDirection.external;
-
-      if (isBuiltIn && !isExternal) {
-        // For built-in cameras, add one front and one back
-        if (camera.lensDirection == CameraLensDirection.front && !hasFront) {
-          uniqueCameras.add(camera);
-          hasFront = true;
-          seenDirections.add(camera.lensDirection);
-        } else if (camera.lensDirection == CameraLensDirection.back && !hasBack) {
-          uniqueCameras.add(camera);
-          hasBack = true;
-          seenDirections.add(camera.lensDirection);
-        }
+    // Normalize camera name to extract unique ID for comparison
+    String normalizeCameraId(CameraDescription camera) {
+      // For Android: "Camera 5" -> "5", "5" -> "5"
+      final nameMatch = RegExp(r'Camera\s*(\d+)').firstMatch(camera.name);
+      if (nameMatch != null) {
+        return nameMatch.group(1)!;
       }
+      // For iOS: might be UUID or device ID format
+      // If it contains ":", extract the device ID part
+      if (camera.name.contains(':')) {
+        return camera.name.split(':').last.split(',').first.trim();
+      }
+      // Otherwise use the name as-is
+      return camera.name;
     }
 
-    // Second pass: Add all external cameras (deduplicate by camera ID, not name)
-    // External cameras might have names like "Camera 5" or "5" - we need to deduplicate by ID
-    final seenExternalIds = <String>{};
+    // Track seen cameras by normalized ID and direction
+    final seenCameraKeys = <String>{};
+
     for (final camera in cameras) {
       final isExternal = camera.lensDirection == CameraLensDirection.external;
+      final isFront = camera.lensDirection == CameraLensDirection.front;
+      final isBack = camera.lensDirection == CameraLensDirection.back;
+
       if (isExternal) {
-        // Extract camera ID from name (handles both "Camera 5" and "5" formats)
-        String cameraId;
-        final nameMatch = RegExp(r'Camera\s*(\d+)').firstMatch(camera.name);
-        if (nameMatch != null) {
-          cameraId = nameMatch.group(1)!;
-        } else {
-          // Assume it's already a direct ID
-          cameraId = camera.name;
-        }
+        // For external cameras, use normalized ID to deduplicate
+        final normalizedId = normalizeCameraId(camera);
+        final cameraKey = 'external:$normalizedId';
         
-        // Only add if we haven't seen this camera ID before
-        if (!seenExternalIds.contains(cameraId)) {
+        if (!seenCameraKeys.contains(cameraKey)) {
           uniqueCameras.add(camera);
-          seenExternalIds.add(cameraId);
-          AppLogger.debug('   ✅ Added external camera: ${camera.name} (ID: $cameraId)');
+          seenCameraKeys.add(cameraKey);
+          AppLogger.debug('   ✅ Added external camera: ${camera.name} (normalized ID: $normalizedId)');
         } else {
-          AppLogger.debug('   ⏭️ Skipped duplicate external camera: ${camera.name} (ID: $cameraId already seen)');
+          AppLogger.debug('   ⏭️ Skipped duplicate external camera: ${camera.name} (normalized ID: $normalizedId already seen)');
         }
+      } else if (isFront && !hasFront) {
+        // Add first front camera
+        uniqueCameras.add(camera);
+        hasFront = true;
+        seenCameraKeys.add('front');
+        AppLogger.debug('   ✅ Added front camera: ${camera.name}');
+      } else if (isBack && !hasBack) {
+        // Add first back camera
+        uniqueCameras.add(camera);
+        hasBack = true;
+        seenCameraKeys.add('back');
+        AppLogger.debug('   ✅ Added back camera: ${camera.name}');
       }
     }
 
     return uniqueCameras;
   }
 
-  /// Checks if a camera is a built-in device camera
-  bool _isBuiltInCamera(CameraDescription camera) {
-    final name = camera.name;
-    
-    // On Android, Flutter camera names are like "Camera 0", "Camera 1", etc.
-    // On iOS, camera names contain device IDs like "device:0"
-    
-    // Try to extract camera ID from Android format: "Camera 0" -> 0
-    final androidMatch = RegExp(r'Camera\s*(\d+)').firstMatch(name);
-    if (androidMatch != null) {
-      final deviceId = int.tryParse(androidMatch.group(1)!);
-      // Device IDs 0 and 1 are typically built-in cameras
-      // IDs 2+ might be additional built-in cameras or external
-      // External cameras should have lensDirection.external
-      if (deviceId != null && deviceId <= 1) {
-        return true;
-      }
-      // If it's external, it's not built-in
-      if (camera.lensDirection == CameraLensDirection.external) {
-        return false;
-      }
-    }
-    
-    // Try iOS format: "device:0" or similar
-    if (name.contains(':')) {
-      try {
-        final deviceIdStr = name.split(':').last.split(',').first;
-        final deviceId = int.tryParse(deviceIdStr);
-        // Device IDs 0 and 1 are typically built-in cameras
-        if (deviceId != null && deviceId <= 1) {
-          return true;
-        }
-      } catch (e) {
-        // If parsing fails, check by lens direction
-      }
-    }
-
-    // If we can't determine by device ID, check if it's front or back
-    // and we haven't seen this direction yet
-    return camera.lensDirection == CameraLensDirection.front ||
-        camera.lensDirection == CameraLensDirection.back;
-  }
 
   String _getCameraShortName(
       CaptureViewModel viewModel, CameraDescription camera) {

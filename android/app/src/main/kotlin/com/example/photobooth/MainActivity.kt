@@ -5,7 +5,6 @@ import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import io.flutter.plugin.common.PluginRegistry
 import io.flutter.view.TextureRegistry
 
 class MainActivity: FlutterActivity() {
@@ -88,19 +87,21 @@ class MainActivity: FlutterActivity() {
         }
         
         cameraDeviceHelper = CameraDeviceHelper(this)
-        
-        // Register camera availability callback to detect external USB cameras
-        cameraDeviceHelper.registerAvailabilityCallback()
+
+        // Log device capabilities on startup for debugging
+        cameraDeviceHelper.logDeviceCapabilities()
 
         // Channel for camera discovery
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "getAllAvailableCameras" -> {
+                    Log.d("MainActivity", "📸 getAllAvailableCameras called from Flutter")
                     cameraDeviceHelper.getAllAvailableCameras(result)
                 }
-                "refreshCameraList" -> {
-                    val delayMs = (call.arguments as? Number)?.toLong() ?: 2000L
-                    cameraDeviceHelper.refreshCameraList(result, delayMs)
+                "logDiagnostics" -> {
+                    Log.d("MainActivity", "🔍 Logging diagnostics")
+                    cameraDeviceHelper.logDeviceCapabilities()
+                    result.success(mapOf("success" to true))
                 }
                 else -> {
                     result.notImplemented()
@@ -226,11 +227,8 @@ class MainActivity: FlutterActivity() {
     
     override fun onDestroy() {
         super.onDestroy()
-        // Unregister callback when activity is destroyed
-        cameraDeviceHelper.unregisterAvailabilityCallback()
         // Dispose camera controller
         androidCameraController?.dispose()
         androidCameraController = null
     }
 }
-

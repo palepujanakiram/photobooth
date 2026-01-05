@@ -241,9 +241,13 @@ class CaptureViewModel extends ChangeNotifier {
           AppLogger.debug('✅ Preview started for custom controller');
           
           _currentCamera = camera;
+          _isInitializing = false;
+          _errorMessage = null;
+          notifyListeners(); // CRITICAL: Notify listeners so UI rebuilds with new preview
         } else {
           AppLogger.debug('❌ ERROR: Custom controller is null after initialization!');
           _errorMessage = 'Custom camera controller is null after initialization';
+          _isInitializing = false;
           notifyListeners();
           return;
         }

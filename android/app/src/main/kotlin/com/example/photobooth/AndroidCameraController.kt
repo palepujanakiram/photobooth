@@ -41,6 +41,7 @@ class AndroidCameraController(
     private var captureSession: CameraCaptureSession? = null
     private var imageReader: ImageReader? = null
     private var textureEntry: TextureRegistry.SurfaceTextureEntry? = null
+    private var previewSurface: Surface? = null // Store preview surface to reuse
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
     private var currentCameraId: String? = null
@@ -80,17 +81,27 @@ class AndroidCameraController(
         }
     }
 
+    private var pendingPreviewResult: MethodChannel.Result? = null
+    
     private val captureStateCallback = object : CameraCaptureSession.StateCallback() {
         override fun onConfigured(session: CameraCaptureSession) {
             Log.d(TAG, "✅ Capture session configured")
             captureSession = session
-            // Preview will be started when startPreview() is called from Flutter
+            
+            // If there's a pending preview request, start it now
+            pendingPreviewResult?.let { result ->
+                Log.d(TAG, "🎬 Starting preview (pending request from before session was ready)")
+                startPreviewInternal(result)
+                pendingPreviewResult = null
+            }
         }
 
         override fun onConfigureFailed(session: CameraCaptureSession) {
             Log.e(TAG, "❌ Capture session configuration failed")
             pendingPhotoResult?.error("SESSION_ERROR", "Failed to configure capture session", null)
             pendingPhotoResult = null
+            pendingPreviewResult?.error("SESSION_ERROR", "Failed to configure capture session", null)
+            pendingPreviewResult = null
         }
     }
 
@@ -100,7 +111,11 @@ class AndroidCameraController(
             request: CaptureRequest,
             result: TotalCaptureResult
         ) {
-            Log.d(TAG, "✅ Photo capture completed")
+            // This is called for both preview frames and photo captures
+            // Only log occasionally to avoid spam
+            if (System.currentTimeMillis() % 1000 < 100) {
+                Log.d(TAG, "✅ Frame captured (preview or photo)")
+            }
         }
 
         override fun onCaptureFailed(
@@ -241,11 +256,21 @@ class AndroidCameraController(
 
         try {
             val surfaceTexture = textureEntry.surfaceTexture()
-            surfaceTexture.setDefaultBufferSize(1920, 1080)
-            val previewSurface = Surface(surfaceTexture)
+            // Buffer size was already set during initialization, but ensure it's set correctly
+            // Use optimal preview size instead of hardcoded 1920x1080
+            val map = cameraManager?.getCameraCharacteristics(currentCameraId ?: "")?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            val previewSizes = map?.getOutputSizes(SurfaceTexture::class.java)?.toList() ?: emptyList()
+            val optimalSize = chooseOptimalSize(previewSizes)
+            surfaceTexture.setDefaultBufferSize(optimalSize.width, optimalSize.height)
+            Log.d(TAG, "   Preview buffer size set to: ${optimalSize.width}x${optimalSize.height}")
+            
+            // Create Surface from the SurfaceTexture - this is the preview surface
+            // Store it so we can reuse the same instance in startPreviewInternal
+            previewSurface = Surface(surfaceTexture)
             val imageSurface = imageReader.surface
 
-            val surfaces = listOf(previewSurface, imageSurface)
+            val surfaces = listOf(previewSurface!!, imageSurface)
+            Log.d(TAG, "   Creating capture session with ${surfaces.size} surfaces (preview + image)")
 
             device.createCaptureSession(
                 surfaces,
@@ -261,8 +286,28 @@ class AndroidCameraController(
 
     /**
      * Starts the camera preview
+     * Handles race condition where preview might be requested before capture session is ready
      */
     fun startPreview(result: MethodChannel.Result) {
+        if (captureSession != null) {
+            // Session is ready, start preview immediately
+            startPreviewInternal(result)
+        } else {
+            // Session not ready yet, store the result and start when session is configured
+            Log.d(TAG, "⏳ Capture session not ready yet, storing preview request")
+            if (pendingPreviewResult != null) {
+                // Already have a pending request, cancel it
+                pendingPreviewResult?.error("CANCELLED", "New preview request received", null)
+            }
+            pendingPreviewResult = result
+        }
+    }
+    
+    /**
+     * Internal method to actually start the preview
+     * Called either immediately if session is ready, or from onConfigured callback
+     */
+    private fun startPreviewInternal(result: MethodChannel.Result) {
         if (captureSession == null) {
             result.error("NOT_INITIALIZED", "Camera not initialized", null)
             return
@@ -287,10 +332,15 @@ class AndroidCameraController(
             
             val builder = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
 
-            // Add preview surface
-            textureEntry?.surfaceTexture()?.let {
-                val surface = Surface(it)
+            // Add preview surface - MUST use the same Surface instance that was added to capture session
+            previewSurface?.let { surface ->
                 builder.addTarget(surface)
+                Log.d(TAG, "   ✅ Preview surface added to capture request")
+                Log.d(TAG, "   Using stored preview surface: $surface")
+            } ?: run {
+                Log.e(TAG, "❌ ERROR: Preview surface is null, cannot add to capture request")
+                result.error("PREVIEW_ERROR", "Preview surface is null", null)
+                return
             }
 
             // Set auto-focus and auto-exposure
@@ -301,10 +351,13 @@ class AndroidCameraController(
             captureSession?.setRepeatingRequest(builder.build(), captureCallback, backgroundHandler)
             
             result.success(mapOf("success" to true))
-            Log.d(TAG, "✅ Preview started")
+            Log.d(TAG, "✅ Preview started successfully")
         } catch (e: CameraAccessException) {
             Log.e(TAG, "Error starting preview: ${e.message}", e)
             result.error("PREVIEW_ERROR", "Failed to start preview: ${e.message}", null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Unexpected error starting preview: ${e.message}", e)
+            result.error("PREVIEW_ERROR", "Unexpected error: ${e.message}", null)
         }
     }
 
@@ -429,6 +482,13 @@ class AndroidCameraController(
      * Closes camera resources
      */
     private fun closeCamera() {
+        // Clean up preview surface
+        previewSurface?.release()
+        previewSurface = null
+        // Cancel any pending preview requests
+        pendingPreviewResult?.error("CANCELLED", "Camera closed", null)
+        pendingPreviewResult = null
+        
         captureSession?.close()
         captureSession = null
 
@@ -455,4 +515,3 @@ class AndroidCameraController(
      */
     fun isInitialized(): Boolean = cameraDevice != null && captureSession != null
 }
-
