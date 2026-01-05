@@ -14,16 +14,50 @@
 # Edit fastlane/Appfile to set Firebase tokens, test groups, and release notes
 # Separate configuration for iOS and Android Firebase accounts
 
+# Helper method to get app version from pubspec.yaml
+def get_app_version
+  pubspec_path = File.join(Dir.pwd, "pubspec.yaml")
+  if File.exist?(pubspec_path)
+    version_line = File.readlines(pubspec_path).find { |line| line.strip.start_with?("version:") }
+    if version_line
+      version_match = version_line.match(/version:\s*(.+)/)
+      if version_match
+        version_string = version_match[1].strip
+        # Format is "0.1.0+2" where 0.1.0 is version name and 2 is build number
+        if version_string.include?("+")
+          parts = version_string.split("+")
+          version_name = parts[0]
+          version_code = parts[1]
+          return { version_name: version_name, version_code: version_code }
+        end
+      end
+    end
+  end
+  return { version_name: "unknown", version_code: "unknown" }
+end
+
 default_platform(:android)
 
 platform :android do
   desc "Build Android APK"
   lane :build_apk do
+    # Print app version and version code before building
+    version_info = get_app_version
+    UI.message("📱 App Version: #{version_info[:version_name]}")
+    UI.message("🔢 Version Code (Build Number): #{version_info[:version_code]}")
+    UI.message("🚀 Starting Android APK build...")
+    
     sh("flutter build apk --release")
   end
 
   desc "Build Android App Bundle (AAB)"
   lane :build_aab do
+    # Print app version and version code before building
+    version_info = get_app_version
+    UI.message("📱 App Version: #{version_info[:version_name]}")
+    UI.message("🔢 Version Code (Build Number): #{version_info[:version_code]}")
+    UI.message("🚀 Starting Android App Bundle (AAB) build...")
+    
     sh("flutter build appbundle --release")
   end
 
@@ -63,6 +97,12 @@ end
 platform :ios do
   desc "Build iOS IPA"
   lane :build_ipa do
+    # Print app version and version code before building
+    version_info = get_app_version
+    UI.message("📱 App Version: #{version_info[:version_name]}")
+    UI.message("🔢 Version Code (Build Number): #{version_info[:version_code]}")
+    UI.message("🚀 Starting iOS IPA build...")
+    
     # Build using Flutter
     sh("flutter build ipa --release")
   end
