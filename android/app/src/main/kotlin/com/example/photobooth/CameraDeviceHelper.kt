@@ -190,7 +190,7 @@ class CameraDeviceHelper(private val context: Context) {
      * Probes for a Camera2 ID that corresponds to a USB camera device
      * Checks cameras in cameraIdList and also probes additional IDs
      */
-    private fun probeForCamera2Id(
+    fun probeForCamera2Id(
         usbDevice: UsbDevice,
         knownCamera2Ids: Set<String>,
         cameraManager: CameraManager?

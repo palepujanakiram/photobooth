@@ -5,8 +5,10 @@ import 'screens/theme_slideshow/theme_slideshow_view.dart';
 import 'screens/terms_and_conditions/terms_and_conditions_view.dart';
 import 'screens/theme_selection/theme_selection_view.dart';
 import 'screens/photo_capture/photo_capture_view.dart';
+import 'screens/take_photo/take_photo_view.dart';
 import 'screens/photo_review/photo_review_view.dart';
 import 'screens/result/result_view.dart';
+import 'screens/permissions/permissions_view.dart';
 import 'utils/constants.dart';
 
 void main() async {
@@ -28,14 +30,16 @@ class PhotoBoothApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         // Remove hardcoded theme to allow dark mode support
         // The app will automatically use system theme (light/dark)
-        initialRoute: AppConstants.kRouteSlideshow,
+        initialRoute: AppConstants.kRoutePermissions,
         routes: {
+          AppConstants.kRoutePermissions: (context) => const PermissionsScreen(),
           AppConstants.kRouteSlideshow: (context) =>
               const ThemeSlideshowScreen(),
           AppConstants.kRouteTerms: (context) =>
               const TermsAndConditionsScreen(),
           AppConstants.kRouteHome: (context) => const ThemeSelectionScreen(),
           AppConstants.kRouteCapture: (context) => const PhotoCaptureScreen(),
+          AppConstants.kRouteTakePhoto: (context) => const TakePhotoScreen(),
           AppConstants.kRouteReview: (context) => const PhotoReviewScreen(),
           AppConstants.kRouteResult: (context) => const ResultScreen(),
         },

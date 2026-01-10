@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'photo_capture_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../utils/logger.dart';
@@ -68,178 +69,227 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           ? CupertinoColors.systemGrey
                           : CupertinoColors.activeBlue,
                 ),
+                AppActionButton(
+                  icon: CupertinoIcons.settings,
+                  onPressed: () async {
+                    // Open app settings screen
+                    await openAppSettings();
+                  },
+                  color: CupertinoColors.activeBlue,
+                ),
               ],
             ),
         child: SafeArea(
           child: Builder(
             builder: (context) {
               final viewModel = Provider.of<CaptureViewModel>(context, listen: true);
-              if (viewModel.isInitializing) {
-                return const Center(
-                  child: CupertinoActivityIndicator(),
-                );
-              }
-
-              if (viewModel.hasError) {
-                final appColors = AppColors.of(context);
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        CupertinoIcons.exclamationmark_triangle,
-                        size: 64,
-                        color: appColors.errorColor,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        viewModel.errorMessage ?? 'Unknown error',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: appColors.textColor,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 24),
-                      CupertinoButton(
-                        onPressed: () => _resetAndInitializeCameras(),
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              // Check if using custom controller (for external cameras)
-              final isUsingCustomController = viewModel.cameraService.isUsingCustomController;
-              final textureId = viewModel.cameraService.textureId;
-              
-              // Debug logging
-              AppLogger.debug('📺 Preview widget state:');
-              AppLogger.debug('   isUsingCustomController: $isUsingCustomController');
-              AppLogger.debug('   textureId: $textureId');
-              AppLogger.debug('   viewModel.isReady: ${viewModel.isReady}');
-              AppLogger.debug('   viewModel.cameraController: ${viewModel.cameraController != null}');
-              
-              if (!viewModel.isReady) {
-                final appColors = AppColors.of(context);
-                AppLogger.debug('📺 Camera not ready - showing placeholder');
-                return Center(
-                  child: Text(
-                    'Camera not ready',
-                    style: TextStyle(color: appColors.textColor),
-                  ),
-                );
-              }
-
-              // Build preview widget
-              Widget previewWidget;
-              if (isUsingCustomController && textureId != null) {
-                // Use Texture widget for custom controller
-                final textureIdValue = textureId; // Local variable to avoid null check warning
-                AppLogger.debug('📺 Building Texture preview widget with texture ID: $textureIdValue');
-                // Texture widget must explicitly fill its parent
-                // Use LayoutBuilder to get available size and ensure proper rendering
-                previewWidget = LayoutBuilder(
-                  builder: (context, constraints) {
-                    AppLogger.debug('📺 Texture widget constraints: ${constraints.maxWidth}x${constraints.maxHeight}');
-                    return SizedBox(
-                      width: constraints.maxWidth,
-                      height: constraints.maxHeight,
-                      child: Texture(
-                        textureId: textureIdValue,
-                        key: ValueKey('texture_$textureIdValue'),
-                        filterQuality: FilterQuality.medium,
-                      ),
-                    );
-                  },
-                );
-              } else if (viewModel.cameraController != null) {
-                // Use standard CameraPreview
-                AppLogger.debug('📺 Building standard CameraPreview widget');
-                previewWidget = CameraPreview(viewModel.cameraController!);
-              } else {
-                AppLogger.debug('📺 No camera controller available - showing placeholder');
-                previewWidget = Container(
-                  color: AppColors.of(context).backgroundColor,
-                  child: Center(
-                    child: Text(
-                      'Camera preview not available',
-                      style: TextStyle(
-                        color: AppColors.of(context).textColor,
-                      ),
-                    ),
-                  ),
-                );
-              }
-
-              return Stack(
-                children: [
-                  // Preview widget - must fill the entire stack
-                  Positioned.fill(
-                    child: previewWidget,
-                  ),
-                  // Camera switch buttons at the top
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: SafeArea(
-                      bottom: false,
-                      child: _buildCameraSwitchButtons(context, viewModel),
-                    ),
-                  ),
-                  if (viewModel.capturedPhoto != null)
-                    Positioned.fill(
-                      child: Container(
-                        color: AppColors.of(context).backgroundColor,
-                        child: Center(
-                          child: FutureBuilder<List<int>>(
-                            future: viewModel.capturedPhoto!.imageFile
-                                .readAsBytes(),
-                            builder: (context, snapshot) {
-                              final appColors = AppColors.of(context);
-                              if (snapshot.connectionState ==
-                                  ConnectionState.waiting) {
-                                return CupertinoActivityIndicator(
-                                  color: appColors.textColor,
-                                );
-                              }
-                              if (snapshot.hasError || !snapshot.hasData) {
-                                return Icon(
-                                  CupertinoIcons.exclamationmark_triangle,
-                                  color: appColors.errorColor,
-                                );
-                              }
-                              return Image.memory(
-                                Uint8List.fromList(snapshot.data!),
-                                fit: BoxFit.contain,
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: SafeArea(
-                      top: false,
-                      bottom: true,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 32.0),
-                        child: _buildCaptureControls(context, viewModel),
-                      ),
-                    ),
-                  ),
-                ],
-              );
+              return _buildBody(context, viewModel);
             },
           ),
         ),
           );
         },
+      ),
+    );
+  }
+
+  /// Builds the main body content based on view model state
+  Widget _buildBody(BuildContext context, CaptureViewModel viewModel) {
+    if (viewModel.isInitializing) {
+      return _buildLoadingView();
+    }
+
+    if (viewModel.hasError) {
+      return _buildErrorView(context, viewModel);
+    }
+
+    if (!viewModel.isReady) {
+      return _buildCameraNotReadyView(context);
+    }
+
+    return _buildCameraPreviewStack(context, viewModel);
+  }
+
+  /// Builds the loading indicator view
+  Widget _buildLoadingView() {
+    return const Center(
+      child: CupertinoActivityIndicator(),
+    );
+  }
+
+  /// Builds the error view with retry button
+  Widget _buildErrorView(BuildContext context, CaptureViewModel viewModel) {
+    final appColors = AppColors.of(context);
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            CupertinoIcons.exclamationmark_triangle,
+            size: 64,
+            color: appColors.errorColor,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            viewModel.errorMessage ?? 'Unknown error',
+            style: TextStyle(
+              fontSize: 16,
+              color: appColors.textColor,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          CupertinoButton(
+            onPressed: () => _resetAndInitializeCameras(),
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Builds the camera not ready placeholder view
+  Widget _buildCameraNotReadyView(BuildContext context) {
+    final appColors = AppColors.of(context);
+    AppLogger.debug('📺 Camera not ready - showing placeholder');
+    return Center(
+      child: Text(
+        'Camera not ready',
+        style: TextStyle(color: appColors.textColor),
+      ),
+    );
+  }
+
+  /// Builds the main camera preview stack with all overlays
+  Widget _buildCameraPreviewStack(BuildContext context, CaptureViewModel viewModel) {
+    return Stack(
+      children: [
+        // Camera preview - must fill the entire stack
+        Positioned.fill(
+          child: _buildCameraPreview(context, viewModel),
+        ),
+        // Camera switch buttons at the top
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            bottom: false,
+            child: _buildCameraSwitchButtons(context, viewModel),
+          ),
+        ),
+        // Captured photo overlay (if photo was taken)
+        if (viewModel.capturedPhoto != null)
+          _buildCapturedPhotoOverlay(context, viewModel),
+        // Capture controls at the bottom
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            top: false,
+            bottom: true,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 32.0),
+              child: _buildCaptureControls(context, viewModel),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Builds the camera preview widget (Texture, CameraPreview, or placeholder)
+  Widget _buildCameraPreview(BuildContext context, CaptureViewModel viewModel) {
+    final isUsingCustomController = viewModel.cameraService.isUsingCustomController;
+    final textureId = viewModel.cameraService.textureId;
+    
+    // Debug logging
+    AppLogger.debug('📺 Preview widget state:');
+    AppLogger.debug('   isUsingCustomController: $isUsingCustomController');
+    AppLogger.debug('   textureId: $textureId');
+    AppLogger.debug('   viewModel.isReady: ${viewModel.isReady}');
+    AppLogger.debug('   viewModel.cameraController: ${viewModel.cameraController != null}');
+
+    if (isUsingCustomController && textureId != null) {
+      return _buildTexturePreview(textureId);
+    } else if (viewModel.cameraController != null) {
+      return _buildStandardCameraPreview(viewModel);
+    } else {
+      return _buildPreviewPlaceholder(context);
+    }
+  }
+
+  /// Builds Texture widget for custom controller preview
+  Widget _buildTexturePreview(int textureId) {
+    AppLogger.debug('📺 Building Texture preview widget with texture ID: $textureId');
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        AppLogger.debug('📺 Texture widget constraints: ${constraints.maxWidth}x${constraints.maxHeight}');
+        return SizedBox(
+          width: constraints.maxWidth,
+          height: constraints.maxHeight,
+          child: Texture(
+            textureId: textureId,
+            key: ValueKey('texture_$textureId'),
+            filterQuality: FilterQuality.medium,
+          ),
+        );
+      },
+    );
+  }
+
+  /// Builds standard CameraPreview widget
+  Widget _buildStandardCameraPreview(CaptureViewModel viewModel) {
+    AppLogger.debug('📺 Building standard CameraPreview widget');
+    return CameraPreview(viewModel.cameraController!);
+  }
+
+  /// Builds placeholder when no camera preview is available
+  Widget _buildPreviewPlaceholder(BuildContext context) {
+    AppLogger.debug('📺 No camera controller available - showing placeholder');
+    final appColors = AppColors.of(context);
+    return Container(
+      color: appColors.backgroundColor,
+      child: Center(
+        child: Text(
+          'Camera preview not available',
+          style: TextStyle(
+            color: appColors.textColor,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Builds the captured photo overlay that shows the taken photo
+  Widget _buildCapturedPhotoOverlay(BuildContext context, CaptureViewModel viewModel) {
+    final appColors = AppColors.of(context);
+    return Positioned.fill(
+      child: Container(
+        color: appColors.backgroundColor,
+        child: Center(
+          child: FutureBuilder<List<int>>(
+            future: viewModel.capturedPhoto!.imageFile.readAsBytes(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return CupertinoActivityIndicator(
+                  color: appColors.textColor,
+                );
+              }
+              if (snapshot.hasError || !snapshot.hasData) {
+                return Icon(
+                  CupertinoIcons.exclamationmark_triangle,
+                  color: appColors.errorColor,
+                );
+              }
+              return Image.memory(
+                Uint8List.fromList(snapshot.data!),
+                fit: BoxFit.contain,
+              );
+            },
+          ),
+        ),
       ),
     );
   }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- HP 4K Streaming Webcam (Vendor ID: 1008, Product ID: 1888) -->
+    <usb-device vendor-id="1008" product-id="1888" />
+    
+    <!-- USB Video Class (UVC) cameras - generic filter for all UVC devices -->
+    <!-- Class 14 = USB Video Class, Subclass 1 = Video Control, Protocol 0 = Any -->
+    <!-- This allows the plugin to detect any UVC camera -->
+    <usb-device class="14" subclass="1" protocol="0" />
+</resources>

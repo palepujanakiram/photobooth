@@ -9,6 +9,7 @@ import '../utils/logger.dart';
 import 'custom_camera_controller.dart';
 import 'ios_camera_device_helper.dart';
 import 'android_camera_device_helper.dart';
+import 'uvc_camera_wrapper.dart';
 
 /// Helper function to check if running on iOS
 /// Works on all platforms including web
@@ -21,10 +22,15 @@ class CameraService {
   List<CameraDescription>? _cameras;
   CameraController? _controller;
   CustomCameraController? _customController;
+  UvcCameraWrapper? _uvcCameraWrapper;
   bool _useCustomController = false;
+  bool _useUvcCamera = false;
 
   // Map camera names (unique IDs) to their localized names from iOS
   final Map<String, String> _cameraLocalizedNames = {};
+  
+  // Map camera names to USB vendor/product IDs for UVC support
+  final Map<String, Map<String, int>> _cameraUsbIds = {};
 
   // Camera change callback
   Function(String event, Map<String, dynamic> cameraInfo)? onCameraChanged;
@@ -35,6 +41,12 @@ class CameraService {
   bool _listenerSetup = false;
 
   List<CameraDescription>? get cameras => _cameras;
+
+  /// Check if using UVC camera
+  bool get isUsingUvcCamera => _useUvcCamera;
+  
+  /// Get UVC camera wrapper
+  UvcCameraWrapper? get uvcCameraWrapper => _uvcCameraWrapper;
 
   /// Initialize the camera service and set up listeners
   Future<void> initialize() async {
@@ -285,6 +297,13 @@ class CameraService {
 
               // Store mapping for all cameras (not just external)
               if (localizedName != 'unknown' && localizedName.isNotEmpty) {
+                // Store USB IDs if available
+                final usbVendorId = androidCamera['usbVendorId'] as int?;
+                final usbProductId = androidCamera['usbProductId'] as int?;
+                if (usbVendorId != null && usbProductId != null) {
+                  AppLogger.debug('     💾 Storing USB IDs: vendor=$usbVendorId, product=$usbProductId');
+                }
+                
                 // Try to match with Flutter camera by camera ID
                 if (hasMatch) {
                   // Store mapping using Flutter's camera name as key
@@ -292,6 +311,14 @@ class CameraService {
                       localizedName;
                   AppLogger.debug(
                       '     💾 Stored mapping: ${matchingFlutterCamera.name} -> "$localizedName"');
+                  
+                  // Store USB IDs for this camera
+                  if (usbVendorId != null && usbProductId != null) {
+                    _cameraUsbIds[matchingFlutterCamera.name] = {
+                      'vendorId': usbVendorId,
+                      'productId': usbProductId,
+                    };
+                  }
 
                   // If this camera is detected as external but Flutter has wrong lensDirection, correct it
                   if (isExternal &&
@@ -320,6 +347,21 @@ class CameraService {
                           localizedName;
                       _cameraLocalizedNames[uniqueID] =
                           localizedName; // Also store Camera2 ID mapping
+                      
+                      // Store USB IDs if available
+                      final usbVendorId = androidCamera['usbVendorId'] as int?;
+                      final usbProductId = androidCamera['usbProductId'] as int?;
+                      if (usbVendorId != null && usbProductId != null) {
+                        _cameraUsbIds[matchingFlutterCamera.name] = {
+                          'vendorId': usbVendorId,
+                          'productId': usbProductId,
+                        };
+                        _cameraUsbIds[uniqueID] = {
+                          'vendorId': usbVendorId,
+                          'productId': usbProductId,
+                        };
+                      }
+                      
                       AppLogger.debug(
                           '     ✅ Corrected camera: ${matchingFlutterCamera.name} -> external (Camera2 ID: $uniqueID)');
                       AppLogger.debug(
@@ -418,6 +460,21 @@ class CameraService {
                             localizedName;
                         _cameraLocalizedNames[uniqueID] =
                             localizedName; // Also store Camera2 ID mapping
+                        
+                        // Store USB IDs if available
+                        final usbVendorId = androidCamera['usbVendorId'] as int?;
+                        final usbProductId = androidCamera['usbProductId'] as int?;
+                        if (usbVendorId != null && usbProductId != null) {
+                          _cameraUsbIds[existingCamera.name] = {
+                            'vendorId': usbVendorId,
+                            'productId': usbProductId,
+                          };
+                          _cameraUsbIds[uniqueID] = {
+                            'vendorId': usbVendorId,
+                            'productId': usbProductId,
+                          };
+                        }
+                        
                         AppLogger.debug(
                             '     ✅ Replaced with corrected camera: ${existingCamera.name} -> external (Camera2 ID: $uniqueID)');
                         AppLogger.debug(
@@ -432,6 +489,16 @@ class CameraService {
                         );
                         _cameras!.add(externalCamera);
                         _cameraLocalizedNames[uniqueID] = localizedName;
+                        
+                        // Store USB IDs if available
+                        final usbVendorId = androidCamera['usbVendorId'] as int?;
+                        final usbProductId = androidCamera['usbProductId'] as int?;
+                        if (usbVendorId != null && usbProductId != null) {
+                          _cameraUsbIds[uniqueID] = {
+                            'vendorId': usbVendorId,
+                            'productId': usbProductId,
+                          };
+                        }
                       }
                     } else {
                       // Camera doesn't exist in Flutter's list, but add it anyway
@@ -453,6 +520,17 @@ class CameraService {
 
                       _cameras!.add(externalCamera);
                       _cameraLocalizedNames[uniqueID] = localizedName;
+                      
+                      // Store USB IDs if available
+                      final usbVendorId = androidCamera['usbVendorId'] as int?;
+                      final usbProductId = androidCamera['usbProductId'] as int?;
+                      if (usbVendorId != null && usbProductId != null) {
+                        _cameraUsbIds[uniqueID] = {
+                          'vendorId': usbVendorId,
+                          'productId': usbProductId,
+                        };
+                      }
+                      
                       AppLogger.debug(
                           '     ✅ Added external camera to list: $uniqueID -> "$localizedName"');
                       AppLogger.debug(
@@ -582,7 +660,7 @@ class CameraService {
                       final flutterDeviceId =
                           c.name.split(':').last.split(',').first.trim();
                       if (flutterDeviceId == deviceId) {
-                        return true;
+      return true;
                       }
                     }
                   }
@@ -727,6 +805,11 @@ class CameraService {
         _customController = null;
         _useCustomController = false;
       }
+      if (_uvcCameraWrapper != null) {
+        await _uvcCameraWrapper!.dispose();
+        _uvcCameraWrapper = null;
+        _useUvcCamera = false;
+      }
 
       // For external cameras, use native controller (iOS or Android)
       // This bypasses Flutter's camera package limitations
@@ -816,6 +899,63 @@ class CameraService {
             AppLogger.debug('   ❌ Native camera controller failed: $e');
             AppLogger.debug('   📚 Stack trace: $stackTrace');
 
+            // Check if the error is about USB camera not having Camera2 ID
+            final errorString = e.toString();
+            if (errorString.contains('USB_CAMERA_NO_CAMERA2_ID') || 
+                errorString.contains('does not have a Camera2 API ID')) {
+              AppLogger.debug(
+                  '   ❌ USB camera does not have Camera2 API support');
+              AppLogger.debug(
+                  '   💡 Attempting to use UVC (USB Video Class) support...');
+              
+              // Try UVC camera support
+              String? uvcDeviceId;
+              
+              // Check if camera name is already in USB format
+              if (camera.name.startsWith('usb_')) {
+                uvcDeviceId = camera.name;
+              } else {
+                // Look up USB IDs from stored map
+                final usbIds = _cameraUsbIds[camera.name];
+                if (usbIds != null) {
+                  final vendorId = usbIds['vendorId'];
+                  final productId = usbIds['productId'];
+                  uvcDeviceId = 'usb_${vendorId}_$productId';
+                  AppLogger.debug('   📋 Found USB IDs: vendor=$vendorId, product=$productId');
+                  AppLogger.debug('   📋 UVC device ID: $uvcDeviceId');
+                } else {
+                  AppLogger.debug('   ⚠️ No USB IDs found for camera: ${camera.name}');
+                }
+              }
+              
+              if (uvcDeviceId != null) {
+                try {
+                  AppLogger.debug('   🚀 Initializing UVC camera with device ID: $uvcDeviceId');
+                  _uvcCameraWrapper = UvcCameraWrapper();
+                  await _uvcCameraWrapper!.initialize(uvcDeviceId);
+                  _useUvcCamera = true;
+                  _useCustomController = false;
+                  AppLogger.debug(
+                      '   ✅ UVC camera initialized successfully');
+                  return;
+                } catch (uvcError) {
+                  AppLogger.debug('   ❌ UVC camera initialization failed: $uvcError');
+                  _uvcCameraWrapper?.dispose();
+                  _uvcCameraWrapper = null;
+                  _useUvcCamera = false;
+                  throw app_exceptions.CameraException(
+                      'External USB camera "${getCameraDisplayName(camera)}" does not have Camera2 API support and UVC initialization failed. '
+                      'Error: $uvcError. '
+                      'Please ensure the camera is connected and USB permissions are granted.');
+                }
+              } else {
+                throw app_exceptions.CameraException(
+                    'External USB camera "${getCameraDisplayName(camera)}" does not have Camera2 API support and USB IDs are not available for UVC initialization. '
+                    'This camera may require UVC (USB Video Class) support or may need time to be enumerated by the system. '
+                    'Please try disconnecting and reconnecting the camera, or use a different camera.');
+              }
+            }
+
             AppLogger.debug(
                 '   ⚠️ Falling back to standard CameraController...');
             AppLogger.debug(
@@ -825,6 +965,19 @@ class CameraService {
             _useCustomController = false;
             // Don't return - let it try standard controller (will likely fail)
           }
+        }
+      }
+
+      // For external cameras with USB format (usb_vendorId_productId), 
+      // if they're not in the available cameras list, they likely don't have Camera2 support
+      if (camera.lensDirection == CameraLensDirection.external && 
+          camera.name.startsWith('usb_')) {
+        final isInAvailableCameras = _cameras!.any((c) => c.name == camera.name);
+        if (!isInAvailableCameras) {
+          throw app_exceptions.CameraException(
+              'External USB camera "${getCameraDisplayName(camera)}" is not available in the system camera list. '
+              'This camera may not have Camera2 API support or may require UVC (USB Video Class) support. '
+              'Please try disconnecting and reconnecting the camera, or use a different camera.');
         }
       }
 
@@ -848,6 +1001,13 @@ class CameraService {
           (c) => c.name.contains(':$deviceId'),
           orElse: () => camera, // Use the provided camera as fallback
         );
+      }
+
+      // If still no match and it's a USB camera, throw error instead of using invalid camera
+      if (cameraToUse.name.isEmpty && camera.name.startsWith('usb_')) {
+        throw app_exceptions.CameraException(
+            'External USB camera "${getCameraDisplayName(camera)}" could not be matched with any available camera. '
+            'This camera may not have Camera2 API support. Please try disconnecting and reconnecting the camera.');
       }
 
       // If still no match, use the provided camera
@@ -998,7 +1158,8 @@ class CameraService {
   }
 
   /// Gets the current camera controller
-  CameraController? get controller => _useCustomController ? null : _controller;
+  CameraController? get controller => 
+      (_useCustomController || _useUvcCamera) ? null : _controller;
 
   /// Gets the custom camera controller (when using device ID selection)
   CustomCameraController? get customController =>
@@ -1012,6 +1173,21 @@ class CameraService {
 
   /// Takes a picture and returns the XFile (works on all platforms including web)
   Future<XFile> takePicture() async {
+    // If using UVC camera, use it for photo capture
+    if (_useUvcCamera && _uvcCameraWrapper != null) {
+      if (!_uvcCameraWrapper!.isPreviewRunning) {
+        throw app_exceptions.CameraException('UVC camera preview not running');
+      }
+
+      try {
+        final imagePath = await _uvcCameraWrapper!.takePicture();
+        return XFile(imagePath);
+      } catch (e) {
+        throw app_exceptions.CameraException(
+            '${AppConstants.kErrorPhotoCapture}: $e');
+      }
+    }
+
     // If using custom controller, use it for photo capture
     if (_useCustomController && _customController != null) {
       if (!_customController!.isPreviewRunning) {
@@ -1048,5 +1224,8 @@ class CameraService {
     await _customController?.dispose();
     _customController = null;
     _useCustomController = false;
+    await _uvcCameraWrapper?.dispose();
+    _uvcCameraWrapper = null;
+    _useUvcCamera = false;
   }
 }

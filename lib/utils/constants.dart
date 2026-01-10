@@ -21,9 +21,11 @@ class AppConstants {
   static const String kRouteTerms = '/terms';
   static const String kRouteHome = '/theme-selection';
   static const String kRouteCapture = '/capture';
+  static const String kRouteTakePhoto = '/take-photo';
   static const String kRouteReview = '/review';
   static const String kRouteResult = '/result';
   static const String kRouteWebView = '/webview';
+  static const String kRoutePermissions = '/permissions';
 
   // Error Messages
   static const String kErrorCameraPermission = 'Camera permission denied';
