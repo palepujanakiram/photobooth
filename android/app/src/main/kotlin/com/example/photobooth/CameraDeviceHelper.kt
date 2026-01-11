@@ -1,6 +1,10 @@
 package com.example.photobooth
 
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCharacteristics
@@ -37,6 +41,103 @@ class CameraDeviceHelper(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to list cameras", e)
             result.error("CAMERA_ERROR", e.message, null)
+        }
+    }
+    
+    /**
+     * Gets USB vendor/product IDs for a given Camera2 ID
+     * Returns null if not found or not a USB camera
+     */
+    fun getUsbIdsForCameraId(cameraId: String, result: MethodChannel.Result) {
+        try {
+            val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager
+            if (usbManager == null) {
+                result.success(null)
+                return
+            }
+
+            val devices = usbManager.deviceList
+            val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
+
+            // Try to match camera ID with USB devices
+            for (device in devices.values) {
+                if (isUsbCamera(device)) {
+                    // Check if this USB device corresponds to the given camera ID
+                    val camera2Id = probeForCamera2Id(device, emptySet(), cameraManager)
+                    if (camera2Id == cameraId) {
+                        Log.d(TAG, "✅ Found USB device for camera ID $cameraId: vendor=${device.vendorId}, product=${device.productId}")
+                        result.success(mapOf(
+                            "vendorId" to device.vendorId,
+                            "productId" to device.productId
+                        ))
+                        return
+                    }
+                }
+            }
+
+            Log.d(TAG, "⚠️ No USB device found for camera ID $cameraId")
+            result.success(null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting USB IDs for camera ID: ${e.message}", e)
+            result.success(null)
+        }
+    }
+
+    /**
+     * Forces Camera2 enumeration by waiting and checking repeatedly
+     * This can help when USB cameras take time to be enumerated
+     */
+    fun forceCamera2Enumeration(vendorId: Int, productId: Int, result: MethodChannel.Result) {
+        try {
+            val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val maxWaitTime = 30 // seconds
+            val checkInterval = 2 // seconds
+            val maxAttempts = maxWaitTime / checkInterval
+            
+            Log.d(TAG, "🔄 Forcing Camera2 enumeration for USB camera (vendor=$vendorId, product=$productId)")
+            Log.d(TAG, "   Will check every $checkInterval seconds for up to $maxWaitTime seconds")
+            
+            for (attempt in 1..maxAttempts) {
+                Thread.sleep(checkInterval * 1000L)
+                
+                try {
+                    val cameraIds = cameraManager.cameraIdList
+                    Log.d(TAG, "   Attempt $attempt/$maxAttempts: Checking ${cameraIds.size} cameras")
+                    
+                    // Check all cameras for external facing
+                    for (cameraId in cameraIds) {
+                        try {
+                            val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+                            val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+                            
+                            if (facing == CameraCharacteristics.LENS_FACING_EXTERNAL) {
+                                Log.d(TAG, "   ✅ Found external camera with Camera2 ID: $cameraId")
+                                result.success(mapOf(
+                                    "camera2Id" to cameraId,
+                                    "attempt" to attempt,
+                                    "found" to true
+                                ))
+                                return
+                            }
+                        } catch (e: Exception) {
+                            // Skip cameras we can't access
+                            continue
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, "   ⚠️ Error checking cameras (attempt $attempt): ${e.message}")
+                }
+            }
+            
+            Log.d(TAG, "   ❌ Camera2 ID not found after $maxWaitTime seconds")
+            result.success(mapOf(
+                "camera2Id" to null,
+                "attempt" to maxAttempts,
+                "found" to false
+            ))
+        } catch (e: Exception) {
+            Log.e(TAG, "Error forcing Camera2 enumeration: ${e.message}", e)
+            result.error("ENUM_ERROR", e.message, null)
         }
     }
 
@@ -123,14 +224,27 @@ class CameraDeviceHelper(private val context: Context) {
      * If a Camera2 ID is found, uses that instead of the USB ID
      */
     private fun getUsbCameras(knownCamera2Cameras: List<Map<String, Any>>): List<Map<String, Any>> {
-        val usbManager =
-            context.getSystemService(Context.USB_SERVICE) as UsbManager
         val cameraManager =
             context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
         val result = mutableListOf<Map<String, Any>>()
 
-        val devices = usbManager.deviceList.values
+        // Try to enumerate USB devices
+        // Note: On Android 10+ (API 29+), this may require USB permissions
+        // If it fails, we'll continue without USB enumeration - Camera2 API should still work
+        val devices = try {
+            val usbManager =
+                context.getSystemService(Context.USB_SERVICE) as UsbManager
+            usbManager.deviceList.values.toList()
+        } catch (e: SecurityException) {
+            Log.d(TAG, "⚠️ USB enumeration requires permissions on this Android version (${android.os.Build.VERSION.SDK_INT})")
+            Log.d(TAG, "   This is normal on Android 10+. Camera2 API should still work if camera is enumerated.")
+            emptyList()  // Continue without USB enumeration
+        } catch (e: Exception) {
+            Log.e(TAG, "Error accessing USB devices: ${e.message}")
+            emptyList()  // Continue without USB enumeration
+        }
+        
         Log.d(TAG, "USB devices connected: ${devices.size}")
 
         // Get list of Camera2 IDs that are already known
@@ -233,7 +347,10 @@ class CameraDeviceHelper(private val context: Context) {
             // USB cameras often get IDs like 2, 3, 4, etc. when they're enumerated
             Log.d(TAG, "   🔍 Probing additional Camera2 IDs beyond official list...")
             val probeStart = maxKnownId + 1
-            val probeEnd = maxKnownId + 10 // Probe up to 10 additional IDs
+            val probeEnd = maxKnownId + 20 // Probe up to 20 additional IDs (increased from 10)
+            
+            // Track cameras that exist but are "system only" - might be our USB camera
+            var systemOnlyCameraIds = mutableListOf<String>()
             
             for (testId in probeStart..probeEnd) {
                 val testIdStr = testId.toString()
@@ -258,12 +375,32 @@ class CameraDeviceHelper(private val context: Context) {
                 } catch (e: IllegalArgumentException) {
                     // Camera doesn't exist at this ID - continue probing
                 } catch (e: CameraAccessException) {
-                    // Access denied - might need permissions, but continue
-                    Log.d(TAG, "   ⚠️ Access denied for camera $testIdStr: ${e.message}")
+                    // Access denied - camera exists but is "system only" or needs permissions
+                    val errorCode = e.reason
+                    if (errorCode == CameraAccessException.CAMERA_ERROR) {
+                        // This might be our USB camera that's not yet accessible
+                        Log.d(TAG, "   ⚠️ Camera $testIdStr exists but access denied (system only device) - may be USB camera")
+                        systemOnlyCameraIds.add(testIdStr)
+                    } else {
+                        Log.d(TAG, "   ⚠️ Access denied for camera $testIdStr: ${e.message} (code: $errorCode)")
+                    }
                 } catch (e: Exception) {
                     // Other error - continue
                     Log.d(TAG, "   ⚠️ Error probing camera $testIdStr: ${e.message}")
                 }
+            }
+            
+            // If we found system-only cameras, try using them directly
+            // Even though they're marked as "system only", the native controller might be able to access them
+            if (systemOnlyCameraIds.isNotEmpty()) {
+                Log.d(TAG, "   💡 Found ${systemOnlyCameraIds.size} system-only camera(s): ${systemOnlyCameraIds.joinToString()}")
+                Log.d(TAG, "   💡 These may be USB cameras - will try to use them directly")
+                
+                // Try the first system-only camera ID (usually "2" for first external camera)
+                val candidateId = systemOnlyCameraIds.first()
+                Log.d(TAG, "   🎯 Attempting to use system-only camera ID: $candidateId")
+                Log.d(TAG, "   ⚠️ This camera is marked as 'system only' but we'll try to access it anyway")
+                return candidateId
             }
             
             // No Camera2 ID found with LENS_FACING_EXTERNAL

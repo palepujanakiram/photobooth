@@ -110,13 +110,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                 );
               }
 
-              // Check if using custom controller (for external cameras)
+              // Check if using custom controller or UVC controller (for external cameras)
               final isUsingCustomController = viewModel.cameraService.isUsingCustomController;
+              final isUsingUvcController = viewModel.cameraService.isUsingUvcController;
               final textureId = viewModel.cameraService.textureId;
               
               // Debug logging
               AppLogger.debug('📺 Preview widget state:');
               AppLogger.debug('   isUsingCustomController: $isUsingCustomController');
+              AppLogger.debug('   isUsingUvcController: $isUsingUvcController');
               AppLogger.debug('   textureId: $textureId');
               AppLogger.debug('   viewModel.isReady: ${viewModel.isReady}');
               AppLogger.debug('   viewModel.cameraController: ${viewModel.cameraController != null}');
@@ -134,25 +136,35 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
               // Build preview widget
               Widget previewWidget;
-              if (isUsingCustomController && textureId != null) {
-                // Use Texture widget for custom controller
+              if (isUsingUvcController && textureId != null) {
+                // Use Texture widget for UVC controller
                 final textureIdValue = textureId; // Local variable to avoid null check warning
-                AppLogger.debug('📺 Building Texture preview widget with texture ID: $textureIdValue');
-                // Texture widget must explicitly fill its parent
-                // Use LayoutBuilder to get available size and ensure proper rendering
-                previewWidget = LayoutBuilder(
-                  builder: (context, constraints) {
-                    AppLogger.debug('📺 Texture widget constraints: ${constraints.maxWidth}x${constraints.maxHeight}');
-                    return SizedBox(
-                      width: constraints.maxWidth,
-                      height: constraints.maxHeight,
+                AppLogger.debug('📺 Building UVC Texture preview widget with texture ID: $textureIdValue');
+                // For UVC cameras, use 16:9 aspect ratio (1280x720)
+                // Use AspectRatio to maintain correct aspect ratio and prevent distortion
+                previewWidget = AspectRatio(
+                  aspectRatio: 16.0 / 9.0, // UVC cameras use 1280x720 (16:9)
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: 1280,
+                      height: 720,
                       child: Texture(
                         textureId: textureIdValue,
-                        key: ValueKey('texture_$textureIdValue'),
+                        key: ValueKey('uvc_texture_$textureIdValue'),
                         filterQuality: FilterQuality.medium,
                       ),
-                    );
-                  },
+                    ),
+                  ),
+                );
+              } else if (isUsingCustomController && textureId != null) {
+                // Use Texture widget for custom controller (Camera2)
+                final textureIdValue = textureId; // Local variable to avoid null check warning
+                AppLogger.debug('📺 Building Custom Texture preview widget with texture ID: $textureIdValue');
+                previewWidget = Texture(
+                  textureId: textureIdValue,
+                  key: ValueKey('custom_texture_$textureIdValue'),
+                  filterQuality: FilterQuality.medium,
                 );
               } else if (viewModel.cameraController != null) {
                 // Use standard CameraPreview
@@ -370,34 +382,33 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     // For built-in cameras, we want max 2: front and back
     final uniqueCameras = _getUniqueCameras(viewModel.availableCameras);
 
-    // Limit to max 4 cameras (2x2 grid)
-    final camerasToShow = uniqueCameras.take(4).toList();
+    // Separate external cameras from built-in cameras
+    final externalCameras = uniqueCameras
+        .where((c) => c.lensDirection == CameraLensDirection.external)
+        .toList();
+    final builtInCameras = uniqueCameras
+        .where((c) => c.lensDirection != CameraLensDirection.external)
+        .toList();
 
-    if (camerasToShow.isEmpty) {
+    if (uniqueCameras.isEmpty) {
       return const SizedBox.shrink();
     }
 
     final appColors = AppColors.of(context);
+    const buttonHeight = 40.0;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // Calculate button width based on available space
-          // Max 2 buttons per row, with spacing
-          final buttonWidth =
-              (constraints.maxWidth - 48) / 2; // 48 = padding + spacing
-          const buttonHeight = 40.0;
-
-          return Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 8.0,
-            runSpacing: 8.0,
-            children: camerasToShow.map((camera) {
-              final isActive = viewModel.currentCamera?.name == camera.name;
-
-              return SizedBox(
-                width: buttonWidth,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // External cameras - one per line
+          ...externalCameras.map((camera) {
+            final isActive = viewModel.currentCamera?.name == camera.name;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: SizedBox(
+                width: double.infinity,
                 height: buttonHeight,
                 child: CupertinoButton(
                   padding: EdgeInsets.zero,
@@ -427,10 +438,63 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                     maxLines: 1,
                   ),
                 ),
-              );
-            }).toList(),
-          );
-        },
+              ),
+            );
+          }),
+          // Built-in cameras (Front and Back) - on same line
+          if (builtInCameras.isNotEmpty)
+            LayoutBuilder(
+              builder: (context, constraints) {
+                // Account for padding: 4px left + 4px right per button = 8px per button
+                // Total padding = 8px * number of buttons
+                final totalPadding = 8.0 * builtInCameras.length;
+                final buttonWidth =
+                    (constraints.maxWidth - totalPadding) / builtInCameras.length;
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: builtInCameras.map((camera) {
+                    final isActive = viewModel.currentCamera?.name == camera.name;
+                    return Padding(
+                      padding: const EdgeInsets.only(left: 4.0, right: 4.0),
+                      child: SizedBox(
+                        width: buttonWidth,
+                        height: buttonHeight,
+                        child: CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          onPressed: viewModel.isInitializing
+                              ? null
+                              : () async {
+                                  AppLogger.debug(
+                                      '🔘 Camera button tapped: ${camera.name} (${camera.lensDirection})');
+                                  await viewModel.switchCamera(camera);
+                                },
+                          color: isActive
+                              ? appColors.primaryColor
+                              : appColors.surfaceColor.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Text(
+                            _getCameraShortName(viewModel, camera),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: isActive
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                              color: isActive
+                                  ? appColors.buttonTextColor
+                                  : appColors.textColor,
+                            ),
+                            textAlign: TextAlign.center,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+        ],
       ),
     );
   }

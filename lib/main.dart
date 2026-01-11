@@ -4,6 +4,7 @@ import 'screens/theme_selection/theme_selection_viewmodel.dart';
 import 'screens/theme_slideshow/theme_slideshow_view.dart';
 import 'screens/terms_and_conditions/terms_and_conditions_view.dart';
 import 'screens/theme_selection/theme_selection_view.dart';
+import 'screens/permissions/permissions_view.dart';
 import 'screens/photo_capture/photo_capture_view.dart';
 import 'screens/photo_review/photo_review_view.dart';
 import 'screens/result/result_view.dart';
@@ -35,6 +36,7 @@ class PhotoBoothApp extends StatelessWidget {
           AppConstants.kRouteTerms: (context) =>
               const TermsAndConditionsScreen(),
           AppConstants.kRouteHome: (context) => const ThemeSelectionScreen(),
+          AppConstants.kRoutePermissions: (context) => const PermissionsScreen(),
           AppConstants.kRouteCapture: (context) => const PhotoCaptureScreen(),
           AppConstants.kRouteReview: (context) => const PhotoReviewScreen(),
           AppConstants.kRouteResult: (context) => const ResultScreen(),

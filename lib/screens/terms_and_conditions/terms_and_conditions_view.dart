@@ -207,9 +207,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     final success = await _viewModel.acceptTermsAndCreateSession(null);
 
     if (success && mounted) {
-      // Navigate to Capture Photo screen on success
+      // Navigate to Permissions screen first, then to Capture Photo screen
       // Use pushNamed instead of pushReplacementNamed to allow back navigation
-      Navigator.pushNamed(context, AppConstants.kRouteCapture);
+      Navigator.pushNamed(context, AppConstants.kRoutePermissions);
     } else if (mounted && _viewModel.hasError) {
       // Show error snackbar on failure
       AppSnackBar.showError(

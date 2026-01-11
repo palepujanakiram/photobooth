@@ -203,10 +203,10 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                       }
                                     }
                                   } else {
-                                    // Normal flow: navigate to capture photo
+                                    // Normal flow: navigate to permissions screen first
                                     Navigator.pushNamed(
                                       currentContext,
-                                      AppConstants.kRouteCapture,
+                                      AppConstants.kRoutePermissions,
                                     );
                                   }
                                 }

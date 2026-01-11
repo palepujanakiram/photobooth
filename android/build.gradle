@@ -15,6 +15,10 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // UVCCamera library repository (JitPack)
+        maven { url 'https://jitpack.io' }
+        // UVCCamera common library repository (raw GitHub)
+        maven { url 'https://raw.githubusercontent.com/saki4510t/libcommon/master/repository/' }
     }
 }
 

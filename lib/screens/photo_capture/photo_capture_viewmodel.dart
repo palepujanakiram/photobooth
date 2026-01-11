@@ -5,6 +5,7 @@ import 'photo_model.dart';
 import '../../services/camera_service.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
+import '../../services/android_uvc_camera_helper.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
@@ -36,7 +37,17 @@ class CaptureViewModel extends ChangeNotifier {
     SessionManager? sessionManager,
   })  : _cameraService = cameraService ?? CameraService(),
         _apiService = apiService ?? ApiService(),
-        _sessionManager = sessionManager ?? SessionManager();
+        _sessionManager = sessionManager ?? SessionManager() {
+    _cameraService.onUvcDisconnected = _handleUvcDisconnected;
+  }
+  
+  void _handleUvcDisconnected(String deviceName) {
+    AppLogger.debug('📎 UVC camera disconnected: $deviceName');
+    _errorMessage = 'USB camera disconnected. Please reconnect the camera and try again.';
+    _isInitializing = false;
+    _currentCamera = null;
+    notifyListeners();
+  }
 
   CameraController? get cameraController => _cameraController;
   PhotoModel? get capturedPhoto => _capturedPhoto;
@@ -53,6 +64,11 @@ class CaptureViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
   bool get isReady {
+    // Check if using UVC controller
+    if (_cameraService.isUsingUvcController) {
+      // UVC camera is ready if texture ID is available
+      return _cameraService.textureId != null;
+    }
     // Check if using custom controller
     if (_cameraService.isUsingCustomController) {
       return _cameraService.customController?.isPreviewRunning ?? false;
@@ -78,10 +94,16 @@ class CaptureViewModel extends ChangeNotifier {
         AppLogger.debug('   - ${camera.name} (Direction: ${camera.lensDirection})');
       }
       
-      // If no camera is currently selected and cameras are available, select the first one
+      // If no camera is currently selected and cameras are available, 
+      // select the first external camera if available, otherwise the first camera
       if (_currentCamera == null && _availableCameras.isNotEmpty) {
-        _currentCamera = _availableCameras.first;
-        AppLogger.debug('📷 Auto-selected first camera: ${_currentCamera!.name}');
+        // Try to find an external camera first
+        final externalCamera = _availableCameras.firstWhere(
+          (camera) => camera.lensDirection == CameraLensDirection.external,
+          orElse: () => _availableCameras.first,
+        );
+        _currentCamera = externalCamera;
+        AppLogger.debug('📷 Auto-selected camera: ${_currentCamera!.name} (${_currentCamera!.lensDirection})');
       }
       
       notifyListeners();
@@ -98,6 +120,17 @@ class CaptureViewModel extends ChangeNotifier {
   /// This is a common function used both when entering the screen and when reloading
   Future<void> resetAndInitializeCameras() async {
     AppLogger.debug('🔄 Resetting camera screen and initializing cameras...');
+    
+    // Check and request camera permission first
+    AppLogger.debug('🔐 Checking camera permission...');
+    final hasPermission = await _cameraService.requestPermission();
+    if (!hasPermission) {
+      AppLogger.debug('❌ Camera permission denied');
+      _errorMessage = 'Camera permission is required to use the camera. Please enable it in Settings.';
+      notifyListeners();
+      return;
+    }
+    AppLogger.debug('✅ Camera permission granted');
     
     // Clear any captured photo
     _capturedPhoto = null;
@@ -131,10 +164,15 @@ class CaptureViewModel extends ChangeNotifier {
     // Reload cameras
     await loadCameras();
     
-    // Select and initialize the first camera
+    // Select and initialize the first external camera if available, otherwise the first camera
     if (_availableCameras.isNotEmpty) {
-      _currentCamera = _availableCameras.first;
-      AppLogger.debug('📷 Selected first camera: ${_currentCamera!.name}');
+      // Try to find an external camera first
+      final externalCamera = _availableCameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.external,
+        orElse: () => _availableCameras.first,
+      );
+      _currentCamera = externalCamera;
+      AppLogger.debug('📷 Selected camera: ${_currentCamera!.name} (${_currentCamera!.lensDirection})');
       await initializeCamera(_currentCamera!);
     } else {
       AppLogger.debug('⚠️ No cameras available');
@@ -161,6 +199,16 @@ class CaptureViewModel extends ChangeNotifier {
     AppLogger.debug('   From: ${_currentCamera?.name ?? "none"} (${_currentCamera?.lensDirection ?? "unknown"})');
     AppLogger.debug('   To: ${camera.name} (${camera.lensDirection})');
     AppLogger.debug('   Camera sensor orientation: ${camera.sensorOrientation}');
+    
+    // Check camera permission before switching (especially important for external cameras)
+    AppLogger.debug('🔐 Checking camera permission before switch...');
+    final hasPermission = await _cameraService.requestPermission();
+    if (!hasPermission) {
+      AppLogger.debug('❌ Camera permission denied');
+      _errorMessage = 'Camera permission is required. Please enable it in Settings.';
+      notifyListeners();
+      return;
+    }
     
     // Extract camera ID for logging (Android)
     if (!_isIOS) {
@@ -202,6 +250,18 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Check camera permission before initializing (critical for external cameras)
+      AppLogger.debug('🔐 Verifying camera permission before initialization...');
+      final hasPermission = await _cameraService.requestPermission();
+      if (!hasPermission) {
+        AppLogger.debug('❌ Camera permission denied');
+        _errorMessage = 'Camera permission is required. Please enable it in Settings.';
+        _isInitializing = false;
+        notifyListeners();
+        return;
+      }
+      AppLogger.debug('✅ Camera permission verified');
+      
       // CRITICAL: Dispose the old controller completely before starting a new one
       // This forces iPadOS to release the hardware lock on the previous camera
       if (_cameraController != null) {
@@ -213,9 +273,26 @@ class CaptureViewModel extends ChangeNotifier {
           AppLogger.debug('   ⚠️ Warning: Error disposing existing controller: $e');
         }
         _cameraController = null;
-        // Small delay to ensure disposal is complete
-        await Future.delayed(const Duration(milliseconds: 200));
       }
+      
+      // Also dispose UVC and custom controllers if they exist
+      if (_cameraService.isUsingUvcController || _cameraService.isUsingCustomController) {
+        AppLogger.debug('🔄 Disposing existing UVC/Custom controller before switch...');
+        try {
+          if (_cameraService.isUsingUvcController) {
+            await AndroidUvcCameraHelper.disposeUvcCamera();
+          }
+          if (_cameraService.isUsingCustomController) {
+            await _cameraService.customController?.dispose();
+          }
+          AppLogger.debug('   ✅ UVC/Custom controller disposed successfully');
+        } catch (e) {
+          AppLogger.debug('   ⚠️ Warning: Error disposing UVC/Custom controller: $e');
+        }
+      }
+      
+      // Small delay to ensure disposal is complete
+      await Future.delayed(const Duration(milliseconds: 200));
 
       // Debug: Log which camera is being initialized
       AppLogger.debug('📸 CaptureViewModel.initializeCamera called:');
@@ -228,8 +305,29 @@ class CaptureViewModel extends ChangeNotifier {
       
       await _cameraService.initializeCamera(cameraToUse);
       
-      // Check if using custom controller (for external cameras)
-      if (_cameraService.isUsingCustomController) {
+      // Check if using UVC controller (for external USB cameras)
+      if (_cameraService.isUsingUvcController) {
+        final textureId = _cameraService.textureId;
+        if (textureId != null) {
+          AppLogger.debug('✅ CaptureViewModel - UVC camera controller obtained');
+          AppLogger.debug('   Texture ID: $textureId');
+          
+          // UVC preview is already started in initializeCamera
+          AppLogger.debug('✅ UVC preview already started');
+          
+          _currentCamera = camera;
+          _isInitializing = false;
+          _errorMessage = null;
+          notifyListeners(); // CRITICAL: Notify listeners so UI rebuilds with new preview
+        } else {
+          AppLogger.debug('❌ ERROR: UVC texture ID is null after initialization!');
+          _errorMessage = 'UVC camera texture ID is null after initialization';
+          _isInitializing = false;
+          notifyListeners();
+          return;
+        }
+      } else if (_cameraService.isUsingCustomController) {
+        // Check if using custom controller (for external cameras via Camera2)
         final customController = _cameraService.customController;
         if (customController != null) {
           AppLogger.debug('✅ CaptureViewModel - Custom camera controller obtained');

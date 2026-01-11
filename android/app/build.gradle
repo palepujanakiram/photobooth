@@ -59,5 +59,13 @@ flutter {
     source '../..'
 }
 
-dependencies {}
+dependencies {
+    // UVCCamera library for direct UVC camera access
+    // Common library (required by UVCCamera)
+    // Using version 1.5.20 which is known to work with UVCCamera
+    implementation 'com.serenegiant:common:1.5.20'
+    
+    // UVCCamera library - included as local module
+    implementation project(':app:libs:UVCCamera:libuvccamera')
+}
 

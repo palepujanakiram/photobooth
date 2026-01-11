@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import '../utils/logger.dart';
+import '../utils/exceptions.dart' as app_exceptions;
 
 /// Helper function to check if running on iOS
 /// Works on all platforms including web
@@ -62,8 +63,27 @@ class CustomCameraController {
           AppLogger.debug('   Texture ID: $_textureId');
         }
       } else {
+        // Check for permission errors
+        if (result is Map) {
+          final errorCode = result['code'] as String?;
+          if (errorCode == 'PERMISSION_DENIED' || errorCode == 'PERMISSION_ERROR') {
+            final errorMessage = result['message'] as String? ?? 'Camera permission denied';
+            AppLogger.debug('❌ Permission error: $errorMessage');
+            throw app_exceptions.PermissionException(errorMessage);
+          }
+        }
         throw Exception('Failed to initialize camera: $result');
       }
+    } on app_exceptions.PermissionException {
+      rethrow;
+    } on PlatformException catch (e) {
+      AppLogger.debug('❌ Platform error initializing custom camera: ${e.code} - ${e.message}');
+      // Check if it's a permission error
+      if (e.code == 'PERMISSION_DENIED' || e.code == 'PERMISSION_ERROR') {
+        throw app_exceptions.PermissionException(e.message ?? 'Camera permission denied');
+      }
+      _isInitialized = false;
+      rethrow;
     } catch (e) {
       AppLogger.debug('❌ Error initializing custom camera: $e');
       _isInitialized = false;

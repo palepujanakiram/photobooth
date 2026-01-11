@@ -20,6 +20,7 @@ class AppConstants {
   static const String kRouteSlideshow = '/';
   static const String kRouteTerms = '/terms';
   static const String kRouteHome = '/theme-selection';
+  static const String kRoutePermissions = '/permissions';
   static const String kRouteCapture = '/capture';
   static const String kRouteReview = '/review';
   static const String kRouteResult = '/result';

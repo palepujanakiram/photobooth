@@ -9,6 +9,7 @@ import '../utils/logger.dart';
 import 'custom_camera_controller.dart';
 import 'ios_camera_device_helper.dart';
 import 'android_camera_device_helper.dart';
+import 'android_uvc_camera_helper.dart';
 
 /// Helper function to check if running on iOS
 /// Works on all platforms including web
@@ -22,12 +23,15 @@ class CameraService {
   CameraController? _controller;
   CustomCameraController? _customController;
   bool _useCustomController = false;
+  bool _useUvcController = false;
+  int? _uvcTextureId;
 
   // Map camera names (unique IDs) to their localized names from iOS
   final Map<String, String> _cameraLocalizedNames = {};
 
   // Camera change callback
   Function(String event, Map<String, dynamic> cameraInfo)? onCameraChanged;
+  Function(String deviceName)? onUvcDisconnected;
 
   // Method channel for iOS camera device operations
   static const _iosChannel = MethodChannel('com.photobooth/camera_device');
@@ -665,7 +669,28 @@ class CameraService {
         }
       }
 
-      AppLogger.debug('✅ Final camera list: ${_cameras!.length} camera(s)');
+      // Sort cameras: external cameras first, then built-in cameras (front, back)
+      _cameras!.sort((a, b) {
+        final aIsExternal = a.lensDirection == CameraLensDirection.external;
+        final bIsExternal = b.lensDirection == CameraLensDirection.external;
+        
+        // External cameras come first
+        if (aIsExternal && !bIsExternal) return -1;
+        if (!aIsExternal && bIsExternal) return 1;
+        
+        // If both are external or both are built-in, maintain original order
+        // For built-in cameras, prefer back then front
+        if (!aIsExternal && !bIsExternal) {
+          if (a.lensDirection == CameraLensDirection.back && 
+              b.lensDirection == CameraLensDirection.front) return -1;
+          if (a.lensDirection == CameraLensDirection.front && 
+              b.lensDirection == CameraLensDirection.back) return 1;
+        }
+        
+        return 0;
+      });
+
+      AppLogger.debug('✅ Final camera list (sorted - external first): ${_cameras!.length} camera(s)');
       for (int i = 0; i < _cameras!.length; i++) {
         final camera = _cameras![i];
         final displayName = getCameraDisplayName(camera);
@@ -727,6 +752,12 @@ class CameraService {
         _customController = null;
         _useCustomController = false;
       }
+      // Dispose UVC controller if exists
+      if (_useUvcController) {
+        await AndroidUvcCameraHelper.disposeUvcCamera();
+        _useUvcController = false;
+        _uvcTextureId = null;
+      }
 
       // For external cameras, use native controller (iOS or Android)
       // This bypasses Flutter's camera package limitations
@@ -763,6 +794,10 @@ class CameraService {
               AppLogger.debug(
                   '   Active device: ${_customController!.currentDeviceId}');
               return;
+            } on app_exceptions.PermissionException catch (e) {
+              // Permission errors should be rethrown, not fallback
+              AppLogger.debug('   ❌ Permission error: $e');
+              rethrow;
             } catch (e) {
               AppLogger.debug('   ⚠️ Native camera controller failed: $e');
               AppLogger.debug(
@@ -776,7 +811,8 @@ class CameraService {
           // Camera name could be:
           // 1. Direct ID: "5", "6" (for manually added external cameras)
           // 2. Flutter format: "Camera 5", "Camera 6" (from Flutter's availableCameras)
-          String deviceId;
+          // 3. USB identifier: "usb_1008_1888" (USB cameras without Camera2 ID)
+          String? deviceId;
           final nameMatch = RegExp(r'Camera\s*(\d+)').firstMatch(camera.name);
           if (nameMatch != null) {
             // Extract ID from "Camera X" format
@@ -784,10 +820,163 @@ class CameraService {
             AppLogger.debug(
                 '   📋 Extracted device ID from "Camera X" format: $deviceId');
           } else {
-            // Assume it's already a direct ID (e.g., "2", "5")
+            // Check if it's a USB identifier (starts with "usb_")
+            if (camera.name.startsWith('usb_')) {
+              AppLogger.debug(
+                  '   ⚠️ USB camera detected without Camera2 ID: ${camera.name}');
+              AppLogger.debug(
+                  '   🔍 Attempting to probe for Camera2 ID at initialization time...');
+              
+              // Extract USB vendor/product IDs from camera name (format: usb_vendorId_productId)
+              final usbIdMatch = RegExp(r'usb_(\d+)_(\d+)').firstMatch(camera.name);
+              final usbVendorId = usbIdMatch?.group(1);
+              final usbProductId = usbIdMatch?.group(2);
+              
+              // Try multiple times with delays (camera may need time to enumerate)
+              bool foundCamera2Id = false;
+              
+              // First, try forcing Camera2 enumeration (waits up to 30 seconds)
+              if (usbVendorId != null && usbProductId != null) {
+                try {
+                  AppLogger.debug('   🔄 Attempting to force Camera2 enumeration...');
+                  final forceResult = await AndroidCameraDeviceHelper.forceCamera2Enumeration(
+                    int.parse(usbVendorId),
+                    int.parse(usbProductId),
+                  );
+                  
+                  if (forceResult != null && forceResult['found'] == true) {
+                    final camera2Id = forceResult['camera2Id'] as String?;
+                    if (camera2Id != null && camera2Id.isNotEmpty) {
+                      deviceId = camera2Id;
+                      foundCamera2Id = true;
+                      AppLogger.debug('   ✅ Found Camera2 ID via forced enumeration: $camera2Id');
+                    }
+                  }
+                } catch (e) {
+                  AppLogger.debug('   ⚠️ Error forcing enumeration: $e');
+                }
+              }
+              
+              // If forced enumeration didn't work, try regular probing
+              if (!foundCamera2Id) {
+                for (int attempt = 1; attempt <= 3; attempt++) {
+                  AppLogger.debug('   🔄 Probe attempt $attempt/3...');
+                  
+                  if (attempt > 1) {
+                    // Wait before retrying (give Android time to enumerate)
+                    await Future.delayed(Duration(seconds: attempt * 2));
+                  }
+                  
+                  try {
+                    final androidCameras =
+                        await AndroidCameraDeviceHelper.getAllAvailableCameras();
+                    if (androidCameras != null) {
+                      // Look for the USB camera and check if it now has a Camera2 ID
+                      for (final androidCamera in androidCameras) {
+                        final uniqueID = androidCamera['uniqueID'] as String? ?? '';
+                        final source = androidCamera['source'] as String? ?? 'camera2';
+                        final cameraVendorId = androidCamera['usbVendorId'];
+                        final cameraProductId = androidCamera['usbProductId'];
+                        final localizedName = androidCamera['localizedName'] as String? ?? '';
+                        
+                        // Check if this is our USB camera:
+                        // 1. By Camera2 ID (not 0, 1, and not the USB identifier)
+                        // 2. By USB vendor/product IDs if available
+                        bool isOurCamera = false;
+                        
+                        if (source == 'camera2' && 
+                            uniqueID != '0' && 
+                            uniqueID != '1' &&
+                            uniqueID != camera.name &&
+                            !uniqueID.startsWith('usb_')) {
+                          // Check if USB IDs match (if available)
+                          if (usbVendorId != null && usbProductId != null &&
+                              cameraVendorId != null && cameraProductId != null) {
+                            if (cameraVendorId.toString() == usbVendorId &&
+                                cameraProductId.toString() == usbProductId) {
+                              isOurCamera = true;
+                              AppLogger.debug(
+                                  '   ✅ Found Camera2 ID by USB ID match: $uniqueID (vendor=$usbVendorId, product=$usbProductId)');
+                            }
+                          } else {
+                            // No USB ID matching available, but it's an external camera with Camera2 ID
+                            // This might be our camera - accept it if it's the only external one
+                            final externalCameras = androidCameras.where((c) => 
+                              c['source'] == 'camera2' && 
+                              c['uniqueID'] != '0' && 
+                              c['uniqueID'] != '1' &&
+                              !(c['uniqueID'] as String).startsWith('usb_')
+                            ).toList();
+                            
+                            if (externalCameras.length == 1) {
+                              // Only one external camera - likely ours
+                              isOurCamera = true;
+                              AppLogger.debug(
+                                  '   ✅ Found Camera2 ID (only external camera): $uniqueID for camera: $localizedName');
+                            } else if (externalCameras.length > 1) {
+                              // Multiple external cameras - try to match by checking if any have USB IDs that match
+                              // Or use the first one if we can't match (better than nothing)
+                              AppLogger.debug(
+                                  '   💡 Found ${externalCameras.length} external cameras - will try first one: $uniqueID');
+                              // Accept the first external camera as a candidate
+                              isOurCamera = true;
+                            }
+                          }
+                          
+                          if (isOurCamera) {
+                            deviceId = uniqueID;
+                            foundCamera2Id = true;
+                            break;
+                          }
+                        }
+                      }
+                    }
+                    
+                    if (foundCamera2Id) {
+                      break; // Found it, exit retry loop
+                    }
+                  } catch (e) {
+                    AppLogger.debug('   ⚠️ Error probing for Camera2 ID (attempt $attempt): $e');
+                  }
+                }
+              }
+              
+              // If still no Camera2 ID found, try using system-only camera ID "2" directly
+              // Even though it's marked as "system only", the native controller might be able to access it
+              if (!foundCamera2Id) {
+                AppLogger.debug('   💡 No Camera2 ID found via enumeration, trying system-only camera ID "2" directly...');
+                // Try to use camera ID "2" directly - it exists but is marked as "system only"
+                // The native controller might be able to access it even though we can't probe it
+                deviceId = '2';
+                foundCamera2Id = true;
+                AppLogger.debug('   🎯 Will attempt to use camera ID "2" directly (system-only device)');
+                AppLogger.debug('   ⚠️ This camera is marked as "system only" but we will try to access it');
+              }
+              
+              // If still no Camera2 ID found, we can't use this camera
+              // Note: deviceId might be "2" which is valid, so we only fail if it's still the USB identifier
+              if (!foundCamera2Id || deviceId == null || deviceId.isEmpty || deviceId == camera.name || deviceId.startsWith('usb_')) {
+                AppLogger.debug(
+                    '   ❌ USB camera does not have a Camera2 ID and cannot be accessed');
+                AppLogger.debug(
+                    '   💡 The camera may need time to enumerate, or may not be supported');
+                AppLogger.debug(
+                    '   💡 Try: 1) Disconnect and reconnect the camera');
+                AppLogger.debug(
+                    '   💡      2) Wait a few seconds after connecting');
+                AppLogger.debug(
+                    '   💡      3) Check if the camera is UVC-compliant');
+                throw app_exceptions.CameraException(
+                    'External camera "${getCameraDisplayName(camera)}" is not accessible. '
+                    'The camera may need time to initialize or may require additional setup. '
+                    'Please try: 1) Disconnect and reconnect the camera, 2) Wait a few seconds, then try again.');
+              }
+            } else {
+              // Assume it's already a direct Camera2 ID (e.g., "2", "5")
             deviceId = camera.name;
             AppLogger.debug(
                 '   📋 Using camera name directly as device ID: $deviceId');
+            }
           }
 
           AppLogger.debug('   🤖 Android external camera detected');
@@ -812,9 +1001,142 @@ class CameraService {
             AppLogger.debug(
                 '   ✅ Preview will use Texture widget with ID: ${_customController!.textureId}');
             return;
+          } on app_exceptions.PermissionException catch (e) {
+            // Permission errors should be rethrown, not fallback
+            AppLogger.debug('   ❌ Permission error: $e');
+            rethrow;
           } catch (e, stackTrace) {
             AppLogger.debug('   ❌ Native camera controller failed: $e');
             AppLogger.debug('   📚 Stack trace: $stackTrace');
+
+            // If it's an external camera, try UVC direct access as fallback
+            if (camera.lensDirection == CameraLensDirection.external) {
+              AppLogger.debug(
+                  '   ❌ External camera cannot be accessed via Camera2 API');
+              AppLogger.debug(
+                  '   🔄 Attempting UVC direct access as fallback...');
+              
+              int? usbVendorId;
+              int? usbProductId;
+              
+              // Try to extract vendor/product IDs from camera name (format: usb_vendorId_productId)
+              if (camera.name.startsWith('usb_')) {
+                final usbIdMatch = RegExp(r'usb_(\d+)_(\d+)').firstMatch(camera.name);
+                usbVendorId = usbIdMatch?.group(1) != null ? int.tryParse(usbIdMatch!.group(1)!) : null;
+                usbProductId = usbIdMatch?.group(2) != null ? int.tryParse(usbIdMatch!.group(2)!) : null;
+                AppLogger.debug('   📋 Extracted USB IDs from camera name: vendor=$usbVendorId, product=$usbProductId');
+              }
+              
+              // If not found in name, try to get USB IDs from camera ID
+              if (usbVendorId == null || usbProductId == null) {
+                AppLogger.debug('   🔍 Camera name does not contain USB IDs, querying native side...');
+                // Extract camera ID from name (could be "2", "Camera 2", etc.)
+                String? cameraId;
+                final nameMatch = RegExp(r'Camera\s*(\d+)').firstMatch(camera.name);
+                if (nameMatch != null) {
+                  cameraId = nameMatch.group(1);
+                } else if (RegExp(r'^\d+$').hasMatch(camera.name)) {
+                  cameraId = camera.name;
+                } else if (RegExp(r'^\d+$').hasMatch(deviceId)) {
+                  cameraId = deviceId;
+                }
+                
+                if (cameraId != null) {
+                  AppLogger.debug('   🔍 Querying USB IDs for camera ID: $cameraId');
+                  final usbIds = await AndroidCameraDeviceHelper.getUsbIdsForCameraId(cameraId);
+                  if (usbIds != null && usbIds['vendorId'] != null && usbIds['productId'] != null) {
+                    usbVendorId = usbIds['vendorId'] as int?;
+                    usbProductId = usbIds['productId'] as int?;
+                    AppLogger.debug('   ✅ Found USB IDs from native side: vendor=$usbVendorId, product=$usbProductId');
+                  } else {
+                    AppLogger.debug('   ⚠️ No USB IDs found for camera ID: $cameraId');
+                  }
+                }
+              }
+              
+              if (usbVendorId != null && usbProductId != null) {
+                try {
+                  AppLogger.debug('   🎯 Trying UVC direct access...');
+                  AppLogger.debug('      Vendor ID: $usbVendorId, Product ID: $usbProductId');
+                  
+                  final uvcResult = await AndroidUvcCameraHelper.initializeUvcCamera(
+                    usbVendorId,
+                    usbProductId,
+                  );
+                  
+                  AppLogger.debug('   📥 UVC initialization result received: $uvcResult');
+                  
+                  if (uvcResult != null && uvcResult['success'] == true) {
+                    final textureId = uvcResult['textureId'] as int?;
+                    AppLogger.debug('   📥 Texture ID from result: $textureId');
+                    if (textureId != null) {
+                      AppLogger.debug('   ✅ UVC camera initialized successfully!');
+                      AppLogger.debug('   ✅ Texture ID: $textureId');
+                      
+                      // Store UVC texture ID and mark as using UVC
+                      _uvcTextureId = textureId;
+                      _useUvcController = true;
+                      // Don't set _useCustomController = true for UVC - UVC has its own texture
+                      
+                      // Set up USB disconnection event listener
+                      AndroidUvcCameraHelper.setEventListener((deviceName) {
+                        AppLogger.debug('📎 USB camera disconnected: $deviceName');
+                        // Clear UVC state
+                        _useUvcController = false;
+                        _uvcTextureId = null;
+                        _useCustomController = false;
+                        // Cancel event listener
+                        AndroidUvcCameraHelper.cancelEventListener();
+                        // Notify callback
+                        onUvcDisconnected?.call(deviceName);
+                      });
+                      
+                      // Start UVC preview
+                      AppLogger.debug('   🎬 Starting UVC preview...');
+                      final previewStarted = await AndroidUvcCameraHelper.startUvcPreview();
+                      if (previewStarted) {
+                        AppLogger.debug('   ✅ UVC preview started');
+                        // Longer delay to ensure preview surface is fully ready and USB transfers are set up
+                        // This matches the native delay (1500ms) to ensure the USB event thread is ready
+                        // The USB event thread needs time to initialize all transfer buffers before processing
+                        await Future.delayed(const Duration(milliseconds: 2000));
+                        AppLogger.debug('   ✅ UVC preview ready (texture ID: $_uvcTextureId)');
+                      } else {
+                        AppLogger.debug('   ⚠️ UVC preview start returned false');
+                        // Even if preview start returned false, the texture might still be valid
+                        // Continue and let the UI check if textureId is available
+                      }
+                      
+                      AppLogger.debug('   ✅ Using UVC camera for preview');
+                      AppLogger.debug('   📋 Texture ID: $_uvcTextureId');
+                      AppLogger.debug('   📋 Using UVC controller: $_useUvcController');
+                      AppLogger.debug('   📋 _useCustomController: $_useCustomController');
+                      return;
+                    } else {
+                      AppLogger.debug('   ⚠️ UVC initialization succeeded but textureId is null');
+                    }
+                  } else {
+                    AppLogger.debug('   ⚠️ UVC initialization failed or returned null');
+                    AppLogger.debug('   ⚠️ Result: $uvcResult');
+                  }
+                  
+                  AppLogger.debug('   ⚠️ UVC initialization returned: $uvcResult');
+                } catch (uvcError, uvcStackTrace) {
+                  AppLogger.debug('   ❌ UVC direct access also failed: $uvcError');
+                  AppLogger.debug('   📚 UVC Stack trace: $uvcStackTrace');
+                }
+              } else {
+                AppLogger.debug('   ⚠️ Could not determine USB vendor/product IDs for external camera');
+              }
+              
+              // If UVC also fails, throw error
+              AppLogger.debug(
+                  '   ❌ External camera cannot be accessed via Camera2 or UVC');
+              throw app_exceptions.CameraException(
+                  'External camera "${getCameraDisplayName(camera)}" is not accessible. '
+                  'The camera may need a few moments to initialize or may require additional setup. '
+                  'Please disconnect and reconnect the camera, then try again.');
+            }
 
             AppLogger.debug(
                 '   ⚠️ Falling back to standard CameraController...');
@@ -1007,11 +1329,35 @@ class CameraService {
   /// Checks if using custom controller
   bool get isUsingCustomController => _useCustomController;
 
+  /// Checks if using UVC controller
+  bool get isUsingUvcController => _useUvcController;
+
   /// Gets the texture ID for custom controller preview
-  int? get textureId => _customController?.textureId;
+  /// Returns UVC texture ID if using UVC, otherwise custom controller texture ID
+  int? get textureId {
+    if (_useUvcController && _uvcTextureId != null) {
+      return _uvcTextureId;
+    }
+    return _customController?.textureId;
+  }
 
   /// Takes a picture and returns the XFile (works on all platforms including web)
   Future<XFile> takePicture() async {
+    // Use UVC controller if available
+    if (_useUvcController) {
+      try {
+        AppLogger.debug('📸 Capturing photo from UVC camera...');
+        final photoPath = await AndroidUvcCameraHelper.captureUvcPhoto();
+        if (photoPath != null) {
+          return XFile(photoPath);
+        } else {
+          throw app_exceptions.CameraException('Failed to capture photo from UVC camera');
+        }
+      } catch (e) {
+        throw app_exceptions.CameraException('UVC photo capture error: $e');
+      }
+    }
+    
     // If using custom controller, use it for photo capture
     if (_useCustomController && _customController != null) {
       if (!_customController!.isPreviewRunning) {
@@ -1047,6 +1393,15 @@ class CameraService {
     _controller = null;
     await _customController?.dispose();
     _customController = null;
+    
+    // Dispose UVC camera if active
+    if (_useUvcController) {
+      await AndroidUvcCameraHelper.disposeUvcCamera();
+      AndroidUvcCameraHelper.cancelEventListener();
+      _useUvcController = false;
+      _uvcTextureId = null;
+    }
+    
     _useCustomController = false;
   }
 }
