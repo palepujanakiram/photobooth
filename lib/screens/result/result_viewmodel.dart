@@ -11,6 +11,7 @@ class ResultViewModel extends ChangeNotifier {
   bool _isPrinting = false;
   bool _isSharing = false;
   String? _errorMessage;
+  String _printerIp = '192.168.2.108'; // Default printer IP
 
   ResultViewModel({
     required TransformedImageModel transformedImage,
@@ -25,8 +26,15 @@ class ResultViewModel extends ChangeNotifier {
   bool get isSharing => _isSharing;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
+  String get printerIp => _printerIp;
 
-  /// Prints the transformed image
+  /// Updates the printer IP address
+  void setPrinterIp(String ip) {
+    _printerIp = ip.trim();
+    notifyListeners();
+  }
+
+  /// Prints the transformed image using system print dialog
   Future<void> printImage() async {
     if (_transformedImage == null) {
       _errorMessage = 'No image to print';
@@ -39,7 +47,42 @@ class ResultViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _printService.printImage(_transformedImage!.imageFile);
+      await _printService.printImageWithDialog(_transformedImage!.imageFile);
+    } on PrintException catch (e) {
+      _errorMessage = e.message;
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to print: $e';
+      notifyListeners();
+    } finally {
+      _isPrinting = false;
+      notifyListeners();
+    }
+  }
+
+  /// Silently prints the transformed image to network printer
+  Future<void> silentPrintToNetwork() async {
+    if (_transformedImage == null) {
+      _errorMessage = 'No image to print';
+      notifyListeners();
+      return;
+    }
+
+    if (_printerIp.isEmpty) {
+      _errorMessage = 'Please enter a printer IP address';
+      notifyListeners();
+      return;
+    }
+
+    _isPrinting = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      await _printService.printImageToNetworkPrinter(
+        _transformedImage!.imageFile,
+        printerIp: _printerIp,
+      );
     } on PrintException catch (e) {
       _errorMessage = e.message;
       notifyListeners();

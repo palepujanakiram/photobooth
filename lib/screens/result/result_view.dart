@@ -16,18 +16,12 @@ class ResultScreen extends StatefulWidget {
 }
 
 class _ResultScreenState extends State<ResultScreen> {
-  late ResultViewModel _resultViewModel;
+  TextEditingController? _printerIpController;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final args = ModalRoute.of(context)?.settings.arguments as Map?;
-    if (args != null) {
-      final transformedImage = args['transformedImage'] as TransformedImageModel?;
-      if (transformedImage != null) {
-        _resultViewModel = ResultViewModel(transformedImage: transformedImage);
-      }
-    }
+  void dispose() {
+    _printerIpController?.dispose();
+    super.dispose();
   }
 
   @override
@@ -45,10 +39,17 @@ class _ResultScreenState extends State<ResultScreen> {
       );
     }
 
-    _resultViewModel = ResultViewModel(transformedImage: transformedImage);
+    final resultViewModel = ResultViewModel(transformedImage: transformedImage);
+    
+    // Initialize controller if not already initialized
+    _printerIpController ??= TextEditingController(text: resultViewModel.printerIp);
+    // Update controller text if view model IP changed
+    if (_printerIpController!.text != resultViewModel.printerIp) {
+      _printerIpController!.text = resultViewModel.printerIp;
+    }
 
     return ChangeNotifierProvider.value(
-      value: _resultViewModel,
+      value: resultViewModel,
       child: CupertinoPageScaffold(
         navigationBar: AppTopBar(
           title: 'Result',
@@ -228,6 +229,51 @@ class _ResultScreenState extends State<ResultScreen> {
                       padding: const EdgeInsets.all(16.0),
                       child: Column(
                         children: [
+                          // Printer IP input field and silent print button row
+                          Row(
+                            children: [
+                              Expanded(
+                                child: CupertinoTextField(
+                                  placeholder: 'Printer IP',
+                                  controller: _printerIpController,
+                                  onChanged: (value) {
+                                    viewModel.setPrinterIp(value);
+                                  },
+                                  keyboardType: TextInputType.number,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: CupertinoColors.systemGrey6,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: 50,
+                                height: 44,
+                                child: CupertinoButton(
+                                  padding: EdgeInsets.zero,
+                                  color: CupertinoColors.systemBlue,
+                                  borderRadius: BorderRadius.circular(8),
+                                  onPressed: viewModel.isPrinting
+                                      ? null
+                                      : () async {
+                                          await viewModel.silentPrintToNetwork();
+                                        },
+                                  child: viewModel.isPrinting
+                                      ? const CupertinoActivityIndicator(
+                                          color: CupertinoColors.white,
+                                        )
+                                      : const Icon(
+                                          CupertinoIcons.printer_fill,
+                                          color: CupertinoColors.white,
+                                          size: 20,
+                                        ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
                           AppButtonWithIcon(
                             text: 'Print',
                             icon: CupertinoIcons.printer_fill,

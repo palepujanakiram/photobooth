@@ -10,6 +10,7 @@ import '../utils/constants.dart';
 import '../utils/logger.dart';
 import 'api_client.dart';
 import 'file_helper.dart';
+import 'api_logging_interceptor.dart';
 
 // Conditional import for web Dio configuration
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
@@ -35,6 +36,9 @@ class ApiService {
     // Configure Dio to use browser HTTP adapter on web
     // This prevents SocketException errors from native socket lookups
     configureDioForWeb(dio);
+
+    // Add logging interceptor to log all API calls
+    dio.interceptors.add(ApiLoggingInterceptor());
 
     // Add error interceptor for web compatibility
     dio.interceptors.add(InterceptorsWrapper(
@@ -127,6 +131,9 @@ class ApiService {
 
         // Configure browser adapter for web (critical for web platform)
         configureDioForWeb(dio);
+        
+        // Add logging interceptor
+        dio.interceptors.add(ApiLoggingInterceptor());
 
         final formData = FormData.fromMap({
           'prompt': theme.promptText,
@@ -471,6 +478,9 @@ class ApiService {
 
     // Configure browser adapter for web (important for all Dio instances)
     configureDioForWeb(dioWithTimeout);
+    
+    // Add logging interceptor
+    dioWithTimeout.interceptors.add(ApiLoggingInterceptor());
 
     final apiClientWithTimeout = ApiClient(dioWithTimeout);
 
@@ -483,6 +493,7 @@ class ApiService {
         final response = await apiClientWithTimeout.generateImage({
           'sessionId': sessionId,
           'attempt': attempt,
+          'trackDetails': true, // Enable detailed tracking
         });
 
         // Validate response
@@ -497,98 +508,168 @@ class ApiService {
         }
 
         // Log additional response metadata (optional, for debugging/analytics)
+        final runId = response['runId'] as String?;
         final framing = response['framing'] as Map<String, dynamic>?;
-        final generationDurationMs = response['generationDurationMs'] as int?;
-        final upscaleDurationMs = response['upscaleDurationMs'] as int?;
-        final totalDurationMs = response['totalDurationMs'] as int?;
-        final upscaleMethod = response['upscaleMethod'] as String?;
-        final finalResolution = response['finalResolution'] as String?;
+        final timing = response['timing'] as Map<String, dynamic>?;
+        final faceVerification = response['faceVerification'] as Map<String, dynamic>?;
+        final evaluation = response['evaluation'] as Map<String, dynamic>?;
 
-        if (framing != null || totalDurationMs != null) {
+        if (runId != null || framing != null || timing != null) {
           AppLogger.debug('📊 Generation metadata:');
+          if (runId != null) {
+            AppLogger.debug('   Run ID: $runId');
+          }
           if (framing != null) {
             AppLogger.debug(
-                '   Framing: ${framing['personCount']} person(s), ${framing['orientation']}, ${framing['aspectRatio']}');
+                '   Framing: ${framing['personCount']} person(s), ${framing['orientation']}, ${framing['zoomLevel']}, ${framing['aspectRatio']}');
           }
-          if (totalDurationMs != null) {
-            AppLogger.debug('   Total duration: ${totalDurationMs}ms');
-            if (generationDurationMs != null) {
-              AppLogger.debug('   Generation: ${generationDurationMs}ms');
+          if (timing != null) {
+            final totalMs = timing['totalMs'] as int?;
+            final generationMs = timing['generationMs'] as int?;
+            final upscaleMs = timing['upscaleMs'] as int?;
+            if (totalMs != null) {
+              AppLogger.debug('   Total duration: ${totalMs}ms');
+              if (generationMs != null) {
+                AppLogger.debug('   Generation: ${generationMs}ms');
+              }
+              if (upscaleMs != null && upscaleMs > 0) {
+                AppLogger.debug('   Upscale: ${upscaleMs}ms');
+              }
             }
-            if (upscaleDurationMs != null && upscaleDurationMs > 0) {
-              AppLogger.debug(
-                  '   Upscale: ${upscaleDurationMs}ms (${upscaleMethod ?? "unknown"})');
-            }
           }
-          if (finalResolution != null) {
-            AppLogger.debug('   Final resolution: $finalResolution');
-          }
-        }
-
-        // Parse base64 data URL: data:image/png;base64,iVBORw0KGgo...
-        if (!imageUrl.startsWith('data:image/')) {
-          throw ApiException('Invalid image format in response');
-        }
-
-        // Extract base64 data
-        final base64Data = imageUrl.split(',');
-        if (base64Data.length != 2) {
-          throw ApiException('Invalid base64 data URL format');
-        }
-
-        final base64String = base64Data[1];
-        final imageBytes = base64Decode(base64String);
-
-        if (imageBytes.isEmpty) {
-          throw ApiException('Decoded image is empty');
-        }
-
-        // Determine file extension from MIME type
-        final mimeType = imageUrl.split(';')[0].split(':')[1];
-        final extension = mimeType == 'image/png' ? 'png' : 'jpg';
-
-        // Save transformed image - use XFile for cross-platform support
-        XFile transformedImageFile;
-        if (kIsWeb) {
-          // On web, create XFile from data URL directly
-          transformedImageFile = XFile(imageUrl, mimeType: mimeType);
-        } else {
-          // On mobile, save to temp file and create XFile
-          final tempDirPath = await FileHelper.getTempDirectoryPath();
-          final fileName = 'transformed_${_uuid.v4()}.$extension';
-          final filePath = '$tempDirPath/$fileName';
-          final file = FileHelper.createFile(filePath);
-          await (file as dynamic).writeAsBytes(imageBytes);
-
-          // Verify the file was written correctly
-          if (!(file as dynamic).existsSync()) {
-            throw ApiException(
-                'Failed to save transformed image file at: $filePath');
-          }
-
-          final fileSize = await (file as dynamic).length();
-          if (fileSize == 0) {
-            throw ApiException('Saved image file is empty at: $filePath');
-          }
-
-          final savedPath = (file as dynamic).path;
-          AppLogger.debug(
-              '✅ Saved transformed image: $savedPath ($fileSize bytes)');
-          transformedImageFile = XFile(savedPath);
-
-          // Verify XFile can be read
-          try {
-            final testBytes = await transformedImageFile.readAsBytes();
-            if (testBytes.isEmpty) {
-              throw ApiException(
-                  'XFile created but cannot read bytes from: $savedPath');
-            }
+          if (faceVerification != null) {
             AppLogger.debug(
-                '✅ Verified XFile is readable (${testBytes.length} bytes)');
-          } catch (e) {
-            throw ApiException(
-                'XFile created but read failed: $e (path: $savedPath)');
+                '   Face verification: ${faceVerification['originalCount']} original, ${faceVerification['generatedCount']} generated, match: ${faceVerification['match']}');
           }
+          if (evaluation != null) {
+            AppLogger.debug(
+                '   Evaluation: composite=${evaluation['compositeScore']}, identity=${evaluation['identityScore']}, prompt=${evaluation['promptScore']}');
+          }
+        }
+
+        // Handle HTTP URL (new format): https://storage.example.com/generated/image.jpg
+        // Or legacy base64 data URL: data:image/png;base64,iVBORw0KGgo...
+        XFile transformedImageFile;
+        
+        if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+          // HTTP URL - download the image
+          if (kIsWeb) {
+            // On web, XFile can accept URLs directly
+            transformedImageFile = XFile(imageUrl);
+          } else {
+            // On mobile, download the image and save to temp file
+            AppLogger.debug('📥 Downloading image from: $imageUrl');
+            final imageResponse = await dioWithTimeout.get<List<int>>(
+              imageUrl,
+              options: Options(responseType: ResponseType.bytes),
+            );
+            
+            final imageBytes = imageResponse.data ?? [];
+            if (imageBytes.isEmpty) {
+              throw ApiException('Downloaded image is empty');
+            }
+
+            // Determine file extension from URL
+            final extension = imageUrl.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+            
+            final tempDirPath = await FileHelper.getTempDirectoryPath();
+            final fileName = 'transformed_${_uuid.v4()}.$extension';
+            final filePath = '$tempDirPath/$fileName';
+            final file = FileHelper.createFile(filePath);
+            await (file as dynamic).writeAsBytes(imageBytes);
+
+            // Verify the file was written correctly
+            if (!(file as dynamic).existsSync()) {
+              throw ApiException(
+                  'Failed to save transformed image file at: $filePath');
+            }
+
+            final fileSize = await (file as dynamic).length();
+            if (fileSize == 0) {
+              throw ApiException('Saved image file is empty at: $filePath');
+            }
+
+            final savedPath = (file as dynamic).path;
+            AppLogger.debug(
+                '✅ Saved transformed image: $savedPath ($fileSize bytes)');
+            transformedImageFile = XFile(savedPath);
+
+            // Verify XFile can be read
+            try {
+              final testBytes = await transformedImageFile.readAsBytes();
+              if (testBytes.isEmpty) {
+                throw ApiException(
+                    'XFile created but cannot read bytes from: $savedPath');
+              }
+              AppLogger.debug(
+                  '✅ Verified XFile is readable (${testBytes.length} bytes)');
+            } catch (e) {
+              throw ApiException(
+                  'XFile created but read failed: $e (path: $savedPath)');
+            }
+          }
+        } else if (imageUrl.startsWith('data:image/')) {
+          // Legacy base64 data URL support
+          // Extract base64 data
+          final base64Data = imageUrl.split(',');
+          if (base64Data.length != 2) {
+            throw ApiException('Invalid base64 data URL format');
+          }
+
+          final base64String = base64Data[1];
+          final imageBytes = base64Decode(base64String);
+
+          if (imageBytes.isEmpty) {
+            throw ApiException('Decoded image is empty');
+          }
+
+          // Determine file extension from MIME type
+          final mimeType = imageUrl.split(';')[0].split(':')[1];
+          final extension = mimeType == 'image/png' ? 'png' : 'jpg';
+
+          if (kIsWeb) {
+            // On web, create XFile from data URL directly
+            transformedImageFile = XFile(imageUrl, mimeType: mimeType);
+          } else {
+            // On mobile, save to temp file and create XFile
+            final tempDirPath = await FileHelper.getTempDirectoryPath();
+            final fileName = 'transformed_${_uuid.v4()}.$extension';
+            final filePath = '$tempDirPath/$fileName';
+            final file = FileHelper.createFile(filePath);
+            await (file as dynamic).writeAsBytes(imageBytes);
+
+            // Verify the file was written correctly
+            if (!(file as dynamic).existsSync()) {
+              throw ApiException(
+                  'Failed to save transformed image file at: $filePath');
+            }
+
+            final fileSize = await (file as dynamic).length();
+            if (fileSize == 0) {
+              throw ApiException('Saved image file is empty at: $filePath');
+            }
+
+            final savedPath = (file as dynamic).path;
+            AppLogger.debug(
+                '✅ Saved transformed image: $savedPath ($fileSize bytes)');
+            transformedImageFile = XFile(savedPath);
+
+            // Verify XFile can be read
+            try {
+              final testBytes = await transformedImageFile.readAsBytes();
+              if (testBytes.isEmpty) {
+                throw ApiException(
+                    'XFile created but cannot read bytes from: $savedPath');
+              }
+              AppLogger.debug(
+                  '✅ Verified XFile is readable (${testBytes.length} bytes)');
+            } catch (e) {
+              throw ApiException(
+                  'XFile created but read failed: $e (path: $savedPath)');
+            }
+          }
+        } else {
+          throw ApiException('Invalid image URL format: must be HTTP URL or base64 data URL');
         }
 
         return TransformedImageModel(
@@ -611,20 +692,38 @@ class ApiService {
           continue; // Retry the request
         }
 
-        // Handle error response
+        // Handle error response according to new API spec
         String errorMessage = AppConstants.kErrorApiCall;
+        String? errorDetails;
+        String? runId;
+        
         if (e.response != null) {
+          final statusCode = e.response?.statusCode;
           final responseData = e.response?.data;
+          
           if (responseData is Map<String, dynamic>) {
+            // New API error format: { "error": "...", "details": "...", "runId": "..." }
             errorMessage = responseData['error'] as String? ??
                 responseData['message'] as String? ??
-                'API Error: ${e.response?.statusCode}';
+                'API Error: $statusCode';
+            errorDetails = responseData['details'] as String?;
+            runId = responseData['runId'] as String?;
+            
+            // Build error message with details if available
+            if (errorDetails != null && errorDetails.isNotEmpty) {
+              errorMessage = '$errorMessage: $errorDetails';
+            }
+            
+            // Include runId in debug logs for tracking
+            if (runId != null) {
+              AppLogger.debug('❌ Generation failed (Run ID: $runId): $errorMessage');
+            }
           } else if (responseData is String) {
             errorMessage = responseData;
           } else {
             errorMessage = isTimeout
                 ? 'Request timed out. Please try again.'
-                : 'API Error: ${e.response?.statusCode} - ${e.message}';
+                : 'API Error: $statusCode - ${e.message}';
           }
         } else {
           errorMessage = isTimeout
