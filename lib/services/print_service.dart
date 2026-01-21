@@ -3,10 +3,13 @@ import 'package:camera/camera.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../utils/exceptions.dart';
 import '../utils/logger.dart';
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
 import 'api_logging_interceptor.dart';
+import 'printer_api_client.dart';
+import 'file_helper.dart';
 
 class PrintService {
   /// Prints an image file using the system print dialog
@@ -118,29 +121,57 @@ class PrintService {
       // Add logging interceptor
       dio.interceptors.add(ApiLoggingInterceptor());
 
-      // Create multipart form data
-      final formData = FormData.fromMap({
-        'name_of_file_field': MultipartFile.fromBytes(
-          imageBytes,
-          filename: 'image.jpg',
-        ),
-      });
+      // Create Retrofit client for printer API
+      final printerClient = PrinterApiClient(dio, baseUrl: 'http://$printerIp', errorLogger: null);
 
-      AppLogger.debug('🖨️ Sending print request to http://$printerIp/api/PrintImage');
+      // Save image bytes to temp file for Retrofit (which expects File type)
+      // On web, we'll use a workaround
+      dynamic tempFile;
+      if (kIsWeb) {
+        // On web, we need to use Dio directly since Retrofit doesn't support web File well
+        // But we'll still use the same Dio instance with logging
+        final formData = FormData.fromMap({
+          'ImageFile': MultipartFile.fromBytes(
+            imageBytes,
+            filename: 'image.jpg',
+          ),
+          'PrintSize': '4x6',
+        });
 
-      // Make POST request to printer API
-      final response = await dio.post(
-        '/api/PrintImage',
-        data: formData,
-        options: Options(
-          contentType: 'multipart/form-data',
-        ),
-      );
+        AppLogger.debug('🖨️ Sending print request to http://$printerIp/api/PrintImage');
 
-      if (response.statusCode == 200) {
+        await dio.post(
+          '/api/PrintImage',
+          data: formData,
+          options: Options(contentType: 'multipart/form-data'),
+        );
+
         AppLogger.debug('✅ Print request sent successfully');
+        return;
       } else {
-        throw PrintException('Print request failed with status: ${response.statusCode}');
+        // On mobile, save to temp file and use Retrofit
+        final tempDirPath = await FileHelper.getTempDirectoryPath();
+        final fileName = 'print_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final filePath = '$tempDirPath/$fileName';
+        tempFile = FileHelper.createFile(filePath);
+        await (tempFile as dynamic).writeAsBytes(imageBytes);
+
+        AppLogger.debug('🖨️ Sending print request to http://$printerIp/api/PrintImage');
+
+        try {
+          // Use Retrofit to make the print request
+          await printerClient.printImage(
+            tempFile as dynamic,
+            '4x6',
+          );
+
+          AppLogger.debug('✅ Print request sent successfully');
+        } finally {
+          // Clean up temp file
+          if ((tempFile as dynamic).existsSync()) {
+            await (tempFile as dynamic).delete();
+          }
+        }
       }
     } on DioException catch (e) {
       String errorMessage = 'Failed to print image';
