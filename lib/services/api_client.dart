@@ -41,27 +41,27 @@ abstract class ApiClient {
 
   /// Accepts terms and creates a new session
   @POST('/api/sessions/accept-terms')
-  Future<Map<String, dynamic>> acceptTermsAndCreateSession(
+  Future<dynamic> acceptTermsAndCreateSession(
     @Body() Map<String, dynamic> body,
   );
 
   /// Updates session with user photo and selected theme
   @PATCH('/api/sessions/{sessionId}')
-  Future<Map<String, dynamic>> updateSession(
+  Future<dynamic> updateSession(
     @Path('sessionId') String sessionId,
     @Body() Map<String, dynamic> body,
   );
 
   /// Generates transformed image using AI
   @POST('/api/generate-image')
-  Future<Map<String, dynamic>> generateImage(
+  Future<dynamic> generateImage(
     @Body() Map<String, dynamic> body,
   );
 
   /// Preprocesses image (validation, compression, person detection)
   /// This is a fire-and-forget call - don't wait for completion
   @POST('/api/preprocess-image')
-  Future<Map<String, dynamic>> preprocessImage(
+  Future<dynamic> preprocessImage(
     @Body() Map<String, dynamic> body,
   );
 }

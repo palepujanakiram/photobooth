@@ -18,7 +18,7 @@ class _PrinterApiClient implements PrinterApiClient {
   final ParseErrorLogger? errorLogger;
 
   @override
-  Future<Map<String, dynamic>> printImage(
+  Future<void> printImage(
     File imageFile,
     String printSize,
     int quantity,
@@ -42,7 +42,7 @@ class _PrinterApiClient implements PrinterApiClient {
     _data.fields.add(MapEntry('quantity', quantity.toString()));
     _data.fields.add(MapEntry('imageEdited', imageEdited.toString()));
     _data.fields.add(MapEntry('DeviceId', deviceId));
-    final _options = _setStreamType<Map<String, dynamic>>(
+    final _options = _setStreamType<void>(
       Options(
         method: 'POST',
         headers: _headers,
@@ -57,18 +57,7 @@ class _PrinterApiClient implements PrinterApiClient {
           )
           .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
     );
-    final _result = await _dio.fetch<Map<String, dynamic>>(_options);
-    late Map<String, dynamic> _value;
-    try {
-      _value = _result.data!.map(
-        (k, dynamic v) =>
-            MapEntry(k, dynamic.fromJson(v as Map<String, dynamic>)),
-      );
-    } on Object catch (e, s) {
-      errorLogger?.logError(e, s, _options);
-      rethrow;
-    }
-    return _value;
+    await _dio.fetch<void>(_options);
   }
 
   RequestOptions _setStreamType<T>(RequestOptions requestOptions) {
