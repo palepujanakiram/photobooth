@@ -179,6 +179,50 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                   Positioned.fill(
                     child: previewWidget,
                   ),
+                  // Debug info overlay (top-left corner)
+                  if (viewModel.isReady)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.of(context).backgroundColor.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '📷 Camera Ready',
+                              style: TextStyle(
+                                color: AppColors.of(context).primaryColor,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              'Custom: ${viewModel.cameraService.isUsingCustomController}',
+                              style: TextStyle(
+                                color: AppColors.of(context).textColor,
+                                fontSize: 9,
+                              ),
+                            ),
+                            if (viewModel.cameraService.isUsingCustomController)
+                              Text(
+                                'Preview: ${viewModel.cameraService.customController?.isPreviewRunning ?? false}',
+                                style: TextStyle(
+                                  color: (viewModel.cameraService.customController?.isPreviewRunning ?? false)
+                                      ? AppColors.of(context).primaryColor
+                                      : AppColors.of(context).errorColor,
+                                  fontSize: 9,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
                   // Camera switch buttons at the top
                   Positioned(
                     top: 0,
@@ -330,32 +374,136 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       );
     }
 
-    return Center(
-      child: CupertinoButton(
-        onPressed: viewModel.isCapturing
-            ? null
-            : () async {
-                await viewModel.capturePhoto();
-              },
-        padding: EdgeInsets.zero,
-        child: Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            color: appColors.surfaceColor,
-            shape: BoxShape.circle,
-          ),
-          child: viewModel.isCapturing
-              ? CupertinoActivityIndicator(
-                  color: appColors.textColor,
-                )
-              : Icon(
-                  CupertinoIcons.camera,
-                  color: appColors.textColor,
-                  size: 40,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Error message display above button
+        if (viewModel.hasError && viewModel.errorMessage != null)
+          Container(
+            margin: const EdgeInsets.only(bottom: 16, left: 16, right: 16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: appColors.errorColor.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      CupertinoIcons.exclamationmark_triangle_fill,
+                      color: CupertinoColors.white,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Error',
+                      style: TextStyle(
+                        color: CupertinoColors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 8),
+                Text(
+                  viewModel.errorMessage!,
+                  style: const TextStyle(
+                    color: CupertinoColors.white,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  color: CupertinoColors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  minSize: 0,
+                  onPressed: () {
+                    viewModel.clearCapturedPhoto(); // This also clears error
+                  },
+                  child: Text(
+                    'Dismiss',
+                    style: TextStyle(
+                      color: appColors.errorColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        // Capture and Gallery buttons
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Gallery button
+            CupertinoButton(
+              onPressed: viewModel.isCapturing
+                  ? null
+                  : () async {
+                      await viewModel.selectFromGallery();
+                    },
+              padding: EdgeInsets.zero,
+              child: Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: appColors.surfaceColor.withValues(alpha: 0.8),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: appColors.primaryColor.withValues(alpha: 0.3),
+                    width: 2,
+                  ),
+                ),
+                child: viewModel.isCapturing
+                    ? CupertinoActivityIndicator(
+                        color: appColors.textColor,
+                      )
+                    : Icon(
+                        CupertinoIcons.photo,
+                        color: appColors.textColor,
+                        size: 28,
+                      ),
+              ),
+            ),
+            
+            const SizedBox(width: 24),
+            
+            // Capture button (main)
+            CupertinoButton(
+              onPressed: viewModel.isCapturing
+                  ? null
+                  : () async {
+                      await viewModel.capturePhoto();
+                    },
+              padding: EdgeInsets.zero,
+              child: Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: appColors.surfaceColor,
+                  shape: BoxShape.circle,
+                ),
+                child: viewModel.isCapturing
+                    ? CupertinoActivityIndicator(
+                        color: appColors.textColor,
+                      )
+                    : Icon(
+                        CupertinoIcons.camera,
+                        color: appColors.textColor,
+                        size: 40,
+                      ),
+              ),
+            ),
+            
+            const SizedBox(width: 84), // Balance the layout (60 + 24)
+          ],
         ),
-      ),
+      ],
     );
   }
 

@@ -51,6 +51,8 @@ class AndroidCameraController(
     private var currentCameraId: String? = null
     private var textureId: Long = -1
     private var pendingPhotoResult: MethodChannel.Result? = null
+    private var captureTimeoutHandler: android.os.Handler? = null
+    private var captureTimeoutRunnable: Runnable? = null
 
     private val cameraStateCallback =
         object : CameraDevice.StateCallback() {
@@ -146,15 +148,32 @@ class AndroidCameraController(
 
     private val imageAvailableListener =
         ImageReader.OnImageAvailableListener { reader ->
-        val image = reader.acquireLatestImage() ?: return@OnImageAvailableListener
+        Log.d(TAG, "📸 imageAvailableListener triggered")
+        
+        // Cancel timeout since we received the image
+        captureTimeoutRunnable?.let { runnable ->
+            captureTimeoutHandler?.removeCallbacks(runnable)
+            Log.d(TAG, "   ✅ Cancelled capture timeout")
+        }
+        
+        val image = reader.acquireLatestImage()
+        if (image == null) {
+            Log.e(TAG, "❌ acquireLatestImage returned null")
+            pendingPhotoResult?.error("CAPTURE_ERROR", "Failed to acquire image from reader", null)
+            pendingPhotoResult = null
+            return@OnImageAvailableListener
+        }
+        
         try {
+            Log.d(TAG, "   Processing captured image...")
             saveImageToFile(image)
         } catch (e: Exception) {
-            Log.e(TAG, "Error saving image: ${e.message}", e)
+            Log.e(TAG, "❌ Error saving image: ${e.message}", e)
             pendingPhotoResult?.error("SAVE_ERROR", "Failed to save image: ${e.message}", null)
             pendingPhotoResult = null
         } finally {
             image.close()
+            Log.d(TAG, "   Image closed")
         }
     }
 
@@ -395,8 +414,15 @@ class AndroidCameraController(
      * Takes a picture
      */
     fun takePicture(result: MethodChannel.Result) {
+        Log.d(TAG, "📸 takePicture() called")
+        Log.d(TAG, "   captureSession: ${captureSession != null}")
+        Log.d(TAG, "   imageReader: ${imageReader != null}")
+        Log.d(TAG, "   cameraDevice: ${cameraDevice != null}")
+        
         if (captureSession == null || imageReader == null) {
-            result.error("NOT_INITIALIZED", "Camera not initialized", null)
+            val error = "Camera not initialized - captureSession or imageReader is null"
+            Log.e(TAG, "❌ $error")
+            result.error("NOT_INITIALIZED", error, null)
             return
         }
 
@@ -404,7 +430,9 @@ class AndroidCameraController(
 
         try {
             val device = cameraDevice ?: run {
-                result.error("NOT_INITIALIZED", "Camera device not available", null)
+                val error = "Camera device not available"
+                Log.e(TAG, "❌ $error")
+                result.error("NOT_INITIALIZED", error, null)
                 return
             }
 
@@ -430,12 +458,46 @@ class AndroidCameraController(
             val sensorOrientation = characteristics?.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
             builder.set(CaptureRequest.JPEG_ORIENTATION, sensorOrientation)
 
+            // Set up timeout for capture (8 seconds)
+            // If ImageReader doesn't receive the image within this time, we'll return an error
+            captureTimeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
+            captureTimeoutRunnable = Runnable {
+                Log.e(TAG, "❌ TIMEOUT: Photo capture timed out after 8 seconds")
+                Log.e(TAG, "   ImageReader never received the image data")
+                Log.e(TAG, "   This may indicate the external camera doesn't support JPEG capture properly")
+                
+                pendingPhotoResult?.error(
+                    "CAPTURE_TIMEOUT",
+                    "Photo capture timed out after 8 seconds. The camera may not support still image capture or is not responding.",
+                    null
+                )
+                pendingPhotoResult = null
+            }
+            captureTimeoutHandler?.postDelayed(captureTimeoutRunnable!!, 8000)
+            
             // Capture
             captureSession?.capture(builder.build(), captureCallback, backgroundHandler)
-            Log.d(TAG, "📸 Capture request sent")
+            Log.d(TAG, "📸 Capture request sent to camera")
+            Log.d(TAG, "   Waiting for ImageReader callback (timeout: 8s)...")
         } catch (e: CameraAccessException) {
-            Log.e(TAG, "Error taking picture: ${e.message}", e)
+            Log.e(TAG, "❌ Error taking picture: ${e.message}", e)
+            
+            // Cancel timeout on error
+            captureTimeoutRunnable?.let { runnable ->
+                captureTimeoutHandler?.removeCallbacks(runnable)
+            }
+            
             result.error("CAPTURE_ERROR", "Failed to capture photo: ${e.message}", null)
+            pendingPhotoResult = null
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Unexpected error taking picture: ${e.message}", e)
+            
+            // Cancel timeout on error
+            captureTimeoutRunnable?.let { runnable ->
+                captureTimeoutHandler?.removeCallbacks(runnable)
+            }
+            
+            result.error("CAPTURE_ERROR", "Unexpected error: ${e.message}", null)
             pendingPhotoResult = null
         }
     }
@@ -512,6 +574,13 @@ class AndroidCameraController(
      * Closes camera resources
      */
     private fun closeCamera() {
+        // Cancel any pending capture timeout
+        captureTimeoutRunnable?.let { runnable ->
+            captureTimeoutHandler?.removeCallbacks(runnable)
+        }
+        captureTimeoutHandler = null
+        captureTimeoutRunnable = null
+        
         // Clean up preview surface
         previewSurface?.release()
         previewSurface = null

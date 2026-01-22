@@ -10,12 +10,16 @@ import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
 import 'api_logging_interceptor.dart';
 import 'printer_api_client.dart';
 import 'file_helper.dart';
+import 'error_reporting/error_reporting_manager.dart';
 
 class PrintService {
   /// Prints an image file using the system print dialog
   /// Works with XFile on all platforms (iOS, Android, Web)
   Future<void> printImageWithDialog(XFile imageFile) async {
     try {
+      AppLogger.debug('🖨️ Starting print dialog...');
+      ErrorReportingManager.log('🖨️ Print dialog initiated');
+      
       // Read bytes from XFile (works on all platforms)
       final imageBytes = await imageFile.readAsBytes();
       final doc = pw.Document();
@@ -36,7 +40,23 @@ class PrintService {
       await Printing.layoutPdf(
         onLayout: (PdfPageFormat format) async => doc.save(),
       );
-    } catch (e) {
+      
+      AppLogger.debug('✅ Print dialog completed successfully');
+      ErrorReportingManager.log('✅ Print dialog completed');
+    } catch (e, stackTrace) {
+      AppLogger.debug('❌ Print dialog error: $e');
+      ErrorReportingManager.log('❌ Print dialog failed: $e');
+      
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'Print dialog failed',
+        extraInfo: {
+          'error': e.toString(),
+          'image_path': imageFile.path,
+        },
+      );
+      
       throw PrintException('Failed to print image: $e');
     }
   }
@@ -44,8 +64,22 @@ class PrintService {
   /// Checks if printing is available
   Future<bool> canPrint() async {
     try {
-      return await Printing.info().then((info) => info.canPrint);
-    } catch (e) {
+      final canPrint = await Printing.info().then((info) => info.canPrint);
+      AppLogger.debug('🖨️ Can print: $canPrint');
+      return canPrint;
+    } catch (e, stackTrace) {
+      AppLogger.debug('⚠️ Error checking print availability: $e');
+      ErrorReportingManager.log('⚠️ Error checking print availability: $e');
+      
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'Failed to check print availability',
+        extraInfo: {
+          'error': e.toString(),
+        },
+      );
+      
       return false;
     }
   }
@@ -54,8 +88,18 @@ class PrintService {
   /// Handles both local files and HTTP/HTTPS URLs
   Future<void> printImageToNetworkPrinter(XFile imageFile, {required String printerIp}) async {
     try {
+      AppLogger.debug('🖨️ Starting network print to $printerIp...');
+      ErrorReportingManager.log('🖨️ Network print initiated to $printerIp');
+      
+      await ErrorReportingManager.setCustomKeys({
+        'print_method': 'network',
+        'printer_ip': printerIp,
+        'image_path': imageFile.path,
+      });
+      
       // Validate printer IP
       if (printerIp.isEmpty) {
+        ErrorReportingManager.log('❌ Printer IP is empty');
         throw PrintException('Printer IP address is required');
       }
 
@@ -146,7 +190,8 @@ class PrintService {
           options: Options(contentType: 'multipart/form-data'),
         );
 
-        AppLogger.debug('✅ Print request sent successfully');
+        AppLogger.debug('✅ Print request sent successfully (web)');
+        ErrorReportingManager.log('✅ Network print completed successfully (web)');
         return;
       } else {
         // On mobile, save to temp file and use Retrofit
@@ -165,7 +210,8 @@ class PrintService {
             '4x6',
           );
 
-          AppLogger.debug('✅ Print request sent successfully');
+          AppLogger.debug('✅ Print request sent successfully (mobile)');
+          ErrorReportingManager.log('✅ Network print completed successfully (mobile)');
         } finally {
           // Clean up temp file
           if ((tempFile as dynamic).existsSync()) {
@@ -173,30 +219,65 @@ class PrintService {
           }
         }
       }
-    } on DioException catch (e) {
+    } on DioException catch (e, stackTrace) {
       String errorMessage = 'Failed to print image';
+      String errorType = 'unknown';
       
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout) {
+        errorType = 'timeout';
         errorMessage = 'Connection to printer timed out. Please check the printer IP address.';
       } else if (e.type == DioExceptionType.connectionError) {
+        errorType = 'connection_error';
         errorMessage = 'Cannot connect to printer at $printerIp. Please check the IP address and network connection.';
       } else if (e.response != null) {
+        errorType = 'http_error';
         errorMessage = 'Print request failed: ${e.response?.statusCode}';
         if (e.response?.data != null) {
           AppLogger.debug('Print error response: ${e.response?.data}');
         }
       } else {
+        errorType = 'dio_error';
         errorMessage = 'Print request failed: ${e.message ?? "Unknown error"}';
       }
       
       AppLogger.debug('❌ Print error: $errorMessage');
+      ErrorReportingManager.log('❌ Network print failed: $errorType - $errorMessage');
+      
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'Network print failed: $errorType',
+        extraInfo: {
+          'error_type': errorType,
+          'error_message': errorMessage,
+          'printer_ip': printerIp,
+          'dio_error_type': e.type.toString(),
+          'status_code': e.response?.statusCode?.toString() ?? 'none',
+          'response_data': e.response?.data?.toString() ?? 'none',
+        },
+      );
+      
       throw PrintException(errorMessage);
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (e is PrintException) {
         rethrow;
       }
+      
       AppLogger.debug('❌ Unexpected print error: $e');
+      ErrorReportingManager.log('❌ Unexpected network print error: $e');
+      
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'Unexpected print error',
+        extraInfo: {
+          'error': e.toString(),
+          'printer_ip': printerIp,
+          'image_path': imageFile.path,
+        },
+      );
+      
       throw PrintException('Failed to print image: $e');
     }
   }

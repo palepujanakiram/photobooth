@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import '../utils/logger.dart';
+import 'error_reporting/error_reporting_manager.dart';
 
 /// Helper function to check if running on iOS
 /// Works on all platforms including web
@@ -108,27 +110,106 @@ class CustomCameraController {
   
   /// Takes a picture and returns the file path
   Future<String> takePicture() async {
+    AppLogger.debug('📸 CustomCameraController.takePicture() called');
+    AppLogger.debug('   _isInitialized: $_isInitialized');
+    AppLogger.debug('   _isPreviewRunning: $_isPreviewRunning');
+    AppLogger.debug('   _currentDeviceId: $_currentDeviceId');
+    AppLogger.debug('   _textureId: $_textureId');
+    
     if (!_isInitialized) {
-      throw StateError('Camera not initialized. Call initialize() first.');
+      final error = 'Camera not initialized. Call initialize() first.';
+      AppLogger.debug('❌ $error');
+      throw StateError(error);
     }
     
     if (!_isPreviewRunning) {
-      throw StateError('Preview not running. Call startPreview() first.');
+      final error = 'Preview not running. Call startPreview() first.';
+      AppLogger.debug('❌ $error');
+      throw StateError(error);
     }
     
     try {
-      AppLogger.debug('📸 Taking picture...');
-      final result = await _channel.invokeMethod('takePicture');
+      AppLogger.debug('📸 Invoking native takePicture method...');
+      ErrorReportingManager.log('📸 Native takePicture invoked');
+      
+      // Set custom keys for debugging
+      await ErrorReportingManager.setCustomKeys({
+        'native_takePicture_deviceId': _currentDeviceId ?? 'none',
+        'native_takePicture_textureId': _textureId,
+        'native_takePicture_isInitialized': _isInitialized,
+        'native_takePicture_isPreviewRunning': _isPreviewRunning,
+      });
+      
+      // Add timeout to prevent infinite hang
+      final result = await _channel.invokeMethod('takePicture').timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          AppLogger.debug('❌ takePicture timed out after 10 seconds');
+          ErrorReportingManager.log('⏱️ TIMEOUT: Native takePicture timed out after 10 seconds');
+          
+          // Record timeout to error reporting
+          ErrorReportingManager.recordError(
+            TimeoutException('Photo capture timed out after 10 seconds'),
+            StackTrace.current,
+            reason: 'Flutter-level timeout waiting for native takePicture',
+            extraInfo: {
+              'device_id': _currentDeviceId ?? 'unknown',
+              'texture_id': _textureId,
+              'is_initialized': _isInitialized,
+              'is_preview_running': _isPreviewRunning,
+              'platform': defaultTargetPlatform.name,
+            },
+          );
+          
+          throw TimeoutException('Photo capture timed out after 10 seconds. The camera may not be responding.');
+        },
+      );
+      
+      AppLogger.debug('📸 Native method returned: $result');
+      ErrorReportingManager.log('✅ Native takePicture returned result');
       
       if (result is Map && result['success'] == true) {
         final path = result['path'] as String;
-        AppLogger.debug('✅ Picture captured: $path');
+        AppLogger.debug('✅ Picture captured successfully: $path');
+        ErrorReportingManager.log('✅ Photo captured successfully at: $path');
         return path;
       } else {
-        throw Exception('Failed to capture picture: $result');
+        final errorMsg = 'Failed to capture picture. Native result: $result';
+        AppLogger.debug('❌ $errorMsg');
+        ErrorReportingManager.log('❌ Native takePicture returned failure: $result');
+        
+        // Record to error reporting
+        await ErrorReportingManager.recordError(
+          Exception(errorMsg),
+          StackTrace.current,
+          reason: 'Native takePicture returned failure',
+          extraInfo: {
+            'result': result.toString(),
+            'device_id': _currentDeviceId ?? 'unknown',
+          },
+        );
+        
+        throw Exception(errorMsg);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       AppLogger.debug('❌ Error taking picture: $e');
+      AppLogger.debug('Stack trace: $stackTrace');
+      
+      // Log to error reporting (only if not already a timeout we logged)
+      if (e is! TimeoutException) {
+        ErrorReportingManager.log('❌ Error in native takePicture: $e');
+        await ErrorReportingManager.recordError(
+          e,
+          stackTrace,
+          reason: 'Exception in CustomCameraController.takePicture',
+          extraInfo: {
+            'error': e.toString(),
+            'device_id': _currentDeviceId ?? 'unknown',
+            'platform': defaultTargetPlatform.name,
+          },
+        );
+      }
+      
       rethrow;
     }
   }

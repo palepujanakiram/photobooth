@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../utils/exceptions.dart' as app_exceptions;
 import '../utils/constants.dart';
 import '../utils/logger.dart';
+import 'error_reporting/error_reporting_manager.dart';
 import 'custom_camera_controller.dart';
 import 'ios_camera_device_helper.dart';
 import 'android_camera_device_helper.dart';
@@ -1012,30 +1013,77 @@ class CameraService {
 
   /// Takes a picture and returns the XFile (works on all platforms including web)
   Future<XFile> takePicture() async {
+    AppLogger.debug('📸 CameraService.takePicture() called');
+    AppLogger.debug('   _useCustomController: $_useCustomController');
+    AppLogger.debug('   _customController != null: ${_customController != null}');
+    
+    ErrorReportingManager.log('📸 CameraService.takePicture() called');
+    await ErrorReportingManager.setCustomKeys({
+      'service_useCustomController': _useCustomController,
+      'service_hasCustomController': _customController != null,
+      'service_hasStandardController': _controller != null,
+    });
+    
     // If using custom controller, use it for photo capture
     if (_useCustomController && _customController != null) {
+      AppLogger.debug('   Using custom controller for photo capture');
+      AppLogger.debug('   isPreviewRunning: ${_customController!.isPreviewRunning}');
+      
+      ErrorReportingManager.log('Using custom controller for photo capture');
+      
       if (!_customController!.isPreviewRunning) {
-        throw app_exceptions.CameraException('Camera preview not running');
+        final error = 'Camera preview not running';
+        AppLogger.debug('❌ $error');
+        ErrorReportingManager.log('❌ Preview not running');
+        
+        await ErrorReportingManager.recordError(
+          Exception(error),
+          StackTrace.current,
+          reason: 'Custom controller preview not running',
+        );
+        
+        throw app_exceptions.CameraException(error);
       }
 
       try {
+        AppLogger.debug('📸 Calling customController.takePicture()...');
+        ErrorReportingManager.log('Calling customController.takePicture()');
         final imagePath = await _customController!.takePicture();
+        AppLogger.debug('✅ Photo captured at: $imagePath');
+        ErrorReportingManager.log('✅ CameraService: Photo captured successfully');
         return XFile(imagePath);
-      } catch (e) {
-        throw app_exceptions.CameraException(
-            '${AppConstants.kErrorPhotoCapture}: $e');
+      } catch (e, stackTrace) {
+        final error = '${AppConstants.kErrorPhotoCapture}: $e';
+        AppLogger.debug('❌ $error');
+        AppLogger.debug('Stack trace: $stackTrace');
+        
+        ErrorReportingManager.log('❌ CameraService: Custom controller takePicture failed');
+        await ErrorReportingManager.recordError(
+          e,
+          stackTrace,
+          reason: 'Custom controller takePicture failed',
+          extraInfo: {'original_error': e.toString()},
+        );
+        
+        throw app_exceptions.CameraException(error);
       }
     }
+    
+    AppLogger.debug('   Using standard controller for photo capture');
+    ErrorReportingManager.log('Using standard controller for photo capture');
 
     // Use standard controller
     if (_controller == null || !_controller!.value.isInitialized) {
+      ErrorReportingManager.log('❌ Standard controller not initialized');
       throw app_exceptions.CameraException('Camera not initialized');
     }
 
     try {
       final XFile image = await _controller!.takePicture();
+      ErrorReportingManager.log('✅ CameraService: Standard controller photo captured');
       return image;
     } catch (e) {
+      ErrorReportingManager.log('❌ CameraService: Standard controller takePicture failed');
       throw app_exceptions.CameraException(
           '${AppConstants.kErrorPhotoCapture}: $e');
     }

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier, kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:camera/camera.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'photo_model.dart';
 import '../../services/camera_service.dart';
@@ -8,7 +9,7 @@ import '../../services/session_manager.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
-import '../../utils/crashlytics_helper.dart';
+import '../../services/error_reporting/error_reporting_manager.dart';
 
 /// Helper function to check if running on iOS
 bool get _isIOS {
@@ -224,13 +225,13 @@ class CaptureViewModel extends ChangeNotifier {
       AppLogger.debug('   Camera direction: ${camera.lensDirection}');
       AppLogger.debug('   Camera sensor orientation: ${camera.sensorOrientation}');
       
-      // Set Crashlytics context for better error tracking
-      await CrashlyticsHelper.setCameraContext(
+      // Set error reporting context for better error tracking
+      await ErrorReportingManager.setCameraContext(
         cameraId: camera.name,
         cameraDirection: camera.lensDirection.toString(),
         isExternal: camera.lensDirection == CameraLensDirection.external,
       );
-      CrashlyticsHelper.log('Initializing camera: ${camera.name}');
+      ErrorReportingManager.log('Initializing camera: ${camera.name}');
       
       // Use the camera directly
       final cameraToUse = camera;
@@ -249,6 +250,10 @@ class CaptureViewModel extends ChangeNotifier {
           try {
             await customController.startPreview();
             AppLogger.debug('✅ Preview started for custom controller');
+            
+            // Small delay to ensure preview is fully running before allowing capture
+            await Future.delayed(const Duration(milliseconds: 500));
+            AppLogger.debug('✅ Preview stabilization delay complete');
           } catch (e) {
             AppLogger.debug('❌ ERROR: Failed to start preview: $e');
             _errorMessage = 'Failed to start camera preview: $e';
@@ -330,8 +335,58 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Captures a photo
   Future<void> capturePhoto() async {
+    AppLogger.debug('📸 capturePhoto() called');
+    AppLogger.debug('   isReady: $isReady');
+    AppLogger.debug('   isUsingCustomController: ${_cameraService.isUsingCustomController}');
+    if (_cameraService.isUsingCustomController) {
+      AppLogger.debug('   customController: ${_cameraService.customController != null}');
+      AppLogger.debug('   isPreviewRunning: ${_cameraService.customController?.isPreviewRunning}');
+    }
+    
+    // Log to error reporting
+    ErrorReportingManager.log('📸 Photo capture attempt started');
+    await ErrorReportingManager.setCustomKeys({
+      'capture_isReady': isReady,
+      'capture_useCustomController': _cameraService.isUsingCustomController,
+      'capture_hasCustomController': _cameraService.customController != null,
+      'capture_isPreviewRunning': _cameraService.customController?.isPreviewRunning ?? false,
+      'capture_deviceId': _cameraService.customController?.currentDeviceId ?? 'none',
+      'capture_textureId': _cameraService.customController?.textureId ?? -1,
+    });
+    
+    // Detailed error message for debugging
     if (!isReady) {
-      _errorMessage = 'Camera not ready';
+      String debugInfo = 'Camera not ready.\n\n';
+      debugInfo += 'Debug Info:\n';
+      debugInfo += '- Using Custom Controller: ${_cameraService.isUsingCustomController}\n';
+      
+      if (_cameraService.isUsingCustomController) {
+        debugInfo += '- Custom Controller Exists: ${_cameraService.customController != null}\n';
+        if (_cameraService.customController != null) {
+          debugInfo += '- Preview Running: ${_cameraService.customController!.isPreviewRunning}\n';
+          debugInfo += '- Initialized: ${_cameraService.customController!.isInitialized}\n';
+          debugInfo += '- Device ID: ${_cameraService.customController!.currentDeviceId}\n';
+          debugInfo += '- Texture ID: ${_cameraService.customController!.textureId}\n';
+        }
+      } else {
+        debugInfo += '- Standard Controller Exists: ${_cameraController != null}\n';
+        if (_cameraController != null) {
+          debugInfo += '- Controller Initialized: ${_cameraController!.value.isInitialized}\n';
+        }
+      }
+      
+      _errorMessage = debugInfo;
+      AppLogger.debug('❌ Camera not ready, cannot capture photo');
+      
+      // Log to error reporting
+      ErrorReportingManager.log('❌ Camera not ready for capture');
+      await ErrorReportingManager.recordError(
+        Exception('Camera not ready for photo capture'),
+        StackTrace.current,
+        reason: 'Camera not ready',
+        extraInfo: {'debug_info': debugInfo},
+      );
+      
       notifyListeners();
       return;
     }
@@ -341,7 +396,9 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
+      AppLogger.debug('📸 Calling _cameraService.takePicture()...');
       final imageFile = await _cameraService.takePicture();
+      AppLogger.debug('✅ Photo captured successfully');
       // Get camera ID from either standard controller or current camera
       final cameraId = _cameraController?.description.name ?? _currentCamera?.name;
       final photoId = _uuid.v4();
@@ -352,19 +409,63 @@ class CaptureViewModel extends ChangeNotifier {
         cameraId: cameraId,
       );
       
-      // Track successful photo capture in Crashlytics
-      await CrashlyticsHelper.setPhotoCaptureContext(
+      // Track successful photo capture
+      await ErrorReportingManager.setPhotoCaptureContext(
         photoId: photoId,
         sessionId: _sessionManager.sessionId,
       );
-      CrashlyticsHelper.log('Photo captured successfully: $photoId');
+      ErrorReportingManager.log('Photo captured successfully: $photoId');
       
       notifyListeners();
-    } on app_exceptions.CameraException catch (e) {
-      _errorMessage = e.message;
+    } on app_exceptions.CameraException catch (e, stackTrace) {
+      _errorMessage = 'Camera Error:\n${e.message}';
+      
+      // Log to error reporting
+      ErrorReportingManager.log('❌ CameraException during photo capture: ${e.message}');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'CameraException during photo capture',
+        extraInfo: {
+          'message': e.message,
+          'camera': _currentCamera?.name ?? 'unknown',
+          'custom_controller': _cameraService.isUsingCustomController,
+        },
+      );
+      
       notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to capture photo: $e';
+    } catch (e, stackTrace) {
+      // Check if this is a timeout exception
+      final isTimeout = e.toString().contains('TimeoutException') || 
+                        e.toString().contains('timed out') ||
+                        e.toString().contains('CAPTURE_TIMEOUT');
+      
+      _errorMessage = 'Capture Failed:\n$e';
+      
+      // Log to error reporting with extra details for timeouts
+      if (isTimeout) {
+        ErrorReportingManager.log('⏱️ TIMEOUT during photo capture');
+        await ErrorReportingManager.setCustomKeys({
+          'timeout_occurred': true,
+          'timeout_error': e.toString(),
+        });
+      } else {
+        ErrorReportingManager.log('❌ Unexpected error during photo capture: $e');
+      }
+      
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: isTimeout ? 'Photo capture timeout' : 'Photo capture failed',
+        extraInfo: {
+          'error': e.toString(),
+          'is_timeout': isTimeout,
+          'camera': _currentCamera?.name ?? 'unknown',
+          'custom_controller': _cameraService.isUsingCustomController,
+          'preview_running': _cameraService.customController?.isPreviewRunning ?? false,
+        },
+      );
+      
       notifyListeners();
     } finally {
       _isCapturing = false;
@@ -372,9 +473,98 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
-  /// Clears the captured photo
+  /// Selects a photo from the device gallery
+  /// This is a fallback option when camera is not working properly
+  Future<void> selectFromGallery() async {
+    AppLogger.debug('📂 selectFromGallery() called');
+    ErrorReportingManager.log('📂 Gallery selection started');
+    
+    _isCapturing = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final ImagePicker picker = ImagePicker();
+      
+      AppLogger.debug('📂 Opening image picker...');
+      final XFile? imageFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 95,
+      );
+
+      if (imageFile == null) {
+        AppLogger.debug('⚠️ No image selected from gallery');
+        ErrorReportingManager.log('Gallery selection cancelled by user');
+        _isCapturing = false;
+        notifyListeners();
+        return;
+      }
+
+      AppLogger.debug('✅ Image selected from gallery: ${imageFile.path}');
+      ErrorReportingManager.log('✅ Photo selected from gallery');
+      
+      // Get camera ID (use current camera if available, otherwise use 'gallery')
+      final cameraId = _cameraController?.description.name ?? 
+                       _currentCamera?.name ?? 
+                       'gallery';
+      final photoId = _uuid.v4();
+      
+      _capturedPhoto = PhotoModel(
+        id: photoId,
+        imageFile: imageFile,
+        capturedAt: DateTime.now(),
+        cameraId: cameraId,
+      );
+      
+      // Track successful photo selection
+      await ErrorReportingManager.setPhotoCaptureContext(
+        photoId: photoId,
+        sessionId: _sessionManager.sessionId,
+      );
+      await ErrorReportingManager.setCustomKey('photo_source', 'gallery');
+      ErrorReportingManager.log('Photo selected from gallery: $photoId');
+
+      notifyListeners();
+    } on app_exceptions.CameraException catch (e, stackTrace) {
+      _errorMessage = 'Gallery Error:\n${e.message}';
+      
+      ErrorReportingManager.log('❌ CameraException during gallery selection: ${e.message}');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'CameraException during gallery selection',
+        extraInfo: {
+          'message': e.message,
+        },
+      );
+      
+      notifyListeners();
+    } catch (e, stackTrace) {
+      _errorMessage = 'Gallery Selection Failed:\n$e';
+      
+      ErrorReportingManager.log('❌ Error during gallery selection: $e');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'Gallery selection failed',
+        extraInfo: {
+          'error': e.toString(),
+        },
+      );
+      
+      notifyListeners();
+    } finally {
+      _isCapturing = false;
+      notifyListeners();
+    }
+  }
+
+  /// Clears the captured photo and any error messages
   void clearCapturedPhoto() {
     _capturedPhoto = null;
+    _errorMessage = null;
     notifyListeners();
   }
 

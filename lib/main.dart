@@ -2,7 +2,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
 import 'screens/theme_slideshow/theme_slideshow_view.dart';
 import 'screens/terms_and_conditions/terms_and_conditions_view.dart';
@@ -12,6 +11,7 @@ import 'screens/photo_review/photo_review_view.dart';
 import 'screens/result/result_view.dart';
 import 'utils/constants.dart';
 import 'utils/logger.dart';
+import 'services/error_reporting/error_reporting_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,9 +20,18 @@ void main() async {
   try {
     await Firebase.initializeApp();
     
-    // Enable Crashlytics collection
+    // Initialize ErrorReportingManager (currently uses Crashlytics)
+    await ErrorReportingManager.initialize(enableCrashlytics: true);
+    
+    // Set up Flutter error handler
     FlutterError.onError = (errorDetails) {
-      FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
+      ErrorReportingManager.recordError(
+        errorDetails.exception,
+        errorDetails.stack,
+        reason: 'Flutter Fatal Error',
+        fatal: true,
+      );
+      
       // Also log to console in debug mode
       if (kDebugMode) {
         AppLogger.error(
@@ -33,9 +42,15 @@ void main() async {
       }
     };
     
-    // Pass all uncaught asynchronous errors to Crashlytics
+    // Pass all uncaught asynchronous errors to ErrorReportingManager
     PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      ErrorReportingManager.recordError(
+        error,
+        stack,
+        reason: 'Uncaught Async Error',
+        fatal: true,
+      );
+      
       // Also log to console in debug mode
       if (kDebugMode) {
         AppLogger.error(
@@ -48,17 +63,18 @@ void main() async {
     };
     
     if (kDebugMode) {
-      print('✅ Firebase Crashlytics initialized successfully');
+      print('✅ Error reporting initialized successfully');
+      print('   Active services: ${ErrorReportingManager.serviceCount}');
     }
   } catch (e) {
-    // Firebase initialization failed - app will still work without Crashlytics
+    // Firebase initialization failed - app will still work without error reporting
     if (kDebugMode) {
       print('⚠️ Firebase initialization failed: $e');
-      print('⚠️ App will continue without Crashlytics');
+      print('⚠️ App will continue without error reporting');
       print('💡 To fix: Run "flutter pub global activate flutterfire_cli && flutterfire configure"');
     }
     
-    // Set up basic error logging without Crashlytics
+    // Set up basic error logging without error reporting
     FlutterError.onError = (errorDetails) {
       if (kDebugMode) {
         AppLogger.error(
