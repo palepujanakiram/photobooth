@@ -50,6 +50,7 @@ dependencies:
   pdf: ^3.11.3
   url_launcher: ^6.2.2
   webview_flutter: ^4.4.2
+  bugsnag_flutter: ^4.2.0
 
 dev_dependencies:
   flutter_test:

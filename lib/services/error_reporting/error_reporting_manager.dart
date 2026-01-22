@@ -1,5 +1,6 @@
 import 'error_reporting_service.dart';
 import 'crashlytics_error_reporter.dart';
+import 'bugsnag_error_reporter.dart';
 
 /// Central manager for error reporting
 /// This is the main interface that the app code should use for logging and error reporting
@@ -36,13 +37,14 @@ class ErrorReportingManager {
   /// 
   /// Parameters:
   /// - [enableCrashlytics]: Whether to enable Crashlytics service (default: true)
+  /// - [enableBugsnag]: Whether to enable Bugsnag service (default: true)
   /// - [enabled]: Whether error reporting should be active initially (default: true)
   ///   This can be controlled by user preferences/consent
   static Future<void> initialize({
     bool enableCrashlytics = true,
+    bool enableBugsnag = true,  // Enabled by default
     bool enabled = true,
     // Add more parameters for other services as needed
-    // bool enableBugsnag = false,
     // bool enableSentry = false,
   }) async {
     if (_isInitialized) return;
@@ -55,10 +57,12 @@ class ErrorReportingManager {
       _services.add(CrashlyticsErrorReporter());
     }
 
+    // Add Bugsnag if enabled
+    if (enableBugsnag) {
+      _services.add(BugsnagErrorReporter());
+    }
+
     // Add more services here in the future
-    // if (enableBugsnag) {
-    //   _services.add(BugsnagErrorReporter());
-    // }
     // if (enableSentry) {
     //   _services.add(SentryErrorReporter());
     // }

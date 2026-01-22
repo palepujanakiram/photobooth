@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'dart:convert';
 import '../utils/logger.dart';
+import 'error_reporting/error_reporting_manager.dart';
 
 /// Interceptor that logs all API requests and responses
 /// Logs request method, URL, headers, body, and response details
@@ -77,6 +78,14 @@ class ApiLoggingInterceptor extends Interceptor {
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     AppLogger.debug(buffer.toString());
     
+    // Track API request in Bugsnag
+    ErrorReportingManager.log('API Request: ${options.method} ${options.uri}');
+    ErrorReportingManager.setCustomKeys({
+      'last_api_method': options.method,
+      'last_api_url': options.uri.toString(),
+      'last_api_timestamp': DateTime.now().toIso8601String(),
+    });
+    
     handler.next(options);
   }
 
@@ -148,6 +157,9 @@ class ApiLoggingInterceptor extends Interceptor {
     
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     AppLogger.debug(buffer.toString());
+    
+    // Track successful API response in Bugsnag
+    ErrorReportingManager.log('API Success: ${response.requestOptions.method} ${response.requestOptions.uri} - ${response.statusCode}');
     
     handler.next(response);
   }
@@ -251,6 +263,26 @@ class ApiLoggingInterceptor extends Interceptor {
     
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     AppLogger.error(buffer.toString(), error: err);
+    
+    // Log API failure to Bugsnag with detailed context
+    ErrorReportingManager.log('❌ API Error: ${err.requestOptions.method} ${err.requestOptions.uri} - ${err.type}');
+    
+    // Record the error with full context
+    ErrorReportingManager.recordError(
+      err,
+      err.stackTrace,
+      reason: 'API Call Failed: ${err.requestOptions.method} ${err.requestOptions.uri}',
+      extraInfo: {
+        'api_method': err.requestOptions.method,
+        'api_url': err.requestOptions.uri.toString(),
+        'error_type': err.type.toString(),
+        'error_message': err.message ?? 'No message',
+        'status_code': err.response?.statusCode?.toString() ?? 'none',
+        'status_message': err.response?.statusMessage ?? 'none',
+        'response_data': err.response?.data?.toString() ?? 'none',
+        'timestamp': DateTime.now().toIso8601String(),
+      },
+    );
     
     handler.next(err);
   }

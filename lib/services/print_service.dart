@@ -8,6 +8,7 @@ import '../utils/exceptions.dart';
 import '../utils/logger.dart';
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
 import 'api_logging_interceptor.dart';
+import 'bugsnag_dio_interceptor.dart';
 import 'printer_api_client.dart';
 import 'file_helper.dart';
 import 'error_reporting/error_reporting_manager.dart';
@@ -118,6 +119,7 @@ class PrintService {
           ),
         );
         configureDioForWeb(downloadDio);
+        downloadDio.interceptors.add(BugsnagDioInterceptor());
         downloadDio.interceptors.add(ApiLoggingInterceptor());
         
         final response = await downloadDio.get<List<int>>(
@@ -162,6 +164,9 @@ class PrintService {
       // Configure browser adapter for web
       configureDioForWeb(dio);
       
+      // Add Bugsnag breadcrumbs interceptor
+      dio.interceptors.add(BugsnagDioInterceptor());
+      
       // Add logging interceptor
       dio.interceptors.add(ApiLoggingInterceptor());
 
@@ -175,11 +180,14 @@ class PrintService {
         // On web, we need to use Dio directly since Retrofit doesn't support web File well
         // But we'll still use the same Dio instance with logging
         final formData = FormData.fromMap({
-          'ImageFile': MultipartFile.fromBytes(
+          'imageFile': MultipartFile.fromBytes(
             imageBytes,
             filename: 'image.jpg',
           ),
-          'PrintSize': '4x6',
+          'printSize': 's4x6',
+          'quantity': 1,
+          'imageEdited': false,
+          'DeviceId': 'flutter-photobooth-web',
         });
 
         AppLogger.debug('🖨️ Sending print request to http://$printerIp/api/PrintImage');
@@ -207,7 +215,10 @@ class PrintService {
           // Use Retrofit to make the print request
           await printerClient.printImage(
             tempFile as dynamic,
-            '4x6',
+            's4x6',
+            1,
+            false,
+            'flutter-photobooth-mobile',
           );
 
           AppLogger.debug('✅ Print request sent successfully (mobile)');

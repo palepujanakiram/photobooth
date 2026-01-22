@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:bugsnag_flutter/bugsnag_flutter.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
 import 'screens/theme_slideshow/theme_slideshow_view.dart';
 import 'screens/terms_and_conditions/terms_and_conditions_view.dart';
@@ -13,15 +14,21 @@ import 'utils/constants.dart';
 import 'utils/logger.dart';
 import 'services/error_reporting/error_reporting_manager.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+Future<void> main() async {
+  await bugsnag.start(apiKey: '73ebb791c48ae8c4821b511fb286ca23');
   
-  // Initialize Firebase with error handling
-  try {
-    await Firebase.initializeApp();
+  WidgetsFlutterBinding.ensureInitialized();
     
-    // Initialize ErrorReportingManager (currently uses Crashlytics)
-    await ErrorReportingManager.initialize(enableCrashlytics: true);
+    // Initialize Firebase with error handling
+    try {
+      await Firebase.initializeApp();
+      
+      // Initialize ErrorReportingManager (uses both Crashlytics and Bugsnag)
+      // Bugsnag is enabled by default for all environments
+      await ErrorReportingManager.initialize(
+        enableCrashlytics: true,
+        enableBugsnag: true,  // Always enabled by default
+      );
     
     // Set up Flutter error handler
     FlutterError.onError = (errorDetails) {
@@ -62,40 +69,42 @@ void main() async {
       return true;
     };
     
-    if (kDebugMode) {
-      print('✅ Error reporting initialized successfully');
-      print('   Active services: ${ErrorReportingManager.serviceCount}');
-    }
-  } catch (e) {
-    // Firebase initialization failed - app will still work without error reporting
-    if (kDebugMode) {
-      print('⚠️ Firebase initialization failed: $e');
-      print('⚠️ App will continue without error reporting');
-      print('💡 To fix: Run "flutter pub global activate flutterfire_cli && flutterfire configure"');
-    }
-    
-    // Set up basic error logging without error reporting
-    FlutterError.onError = (errorDetails) {
       if (kDebugMode) {
-        AppLogger.error(
-          'Flutter Fatal Error: ${errorDetails.exception}',
-          error: errorDetails.exception,
-          stackTrace: errorDetails.stack,
-        );
+        print('✅ Error reporting initialized successfully');
+        print('   Active services: ${ErrorReportingManager.serviceCount}');
+        print('   - Crashlytics: enabled');
+        print('   - Bugsnag: enabled');
       }
-    };
-    
-    PlatformDispatcher.instance.onError = (error, stack) {
+    } catch (e) {
+      // Firebase initialization failed - app will still work without error reporting
       if (kDebugMode) {
-        AppLogger.error(
-          'Uncaught Error: $error',
-          error: error,
-          stackTrace: stack,
-        );
+        print('⚠️ Firebase initialization failed: $e');
+        print('⚠️ App will continue with Bugsnag only');
+        print('💡 To fix: Run "flutter pub global activate flutterfire_cli && flutterfire configure"');
       }
-      return true;
-    };
-  }
+      
+      // Set up basic error logging without error reporting
+      FlutterError.onError = (errorDetails) {
+        if (kDebugMode) {
+          AppLogger.error(
+            'Flutter Fatal Error: ${errorDetails.exception}',
+            error: errorDetails.exception,
+            stackTrace: errorDetails.stack,
+          );
+        }
+      };
+      
+      PlatformDispatcher.instance.onError = (error, stack) {
+        if (kDebugMode) {
+          AppLogger.error(
+            'Uncaught Error: $error',
+            error: error,
+            stackTrace: stack,
+          );
+        }
+        return true;
+      };
+    }
   
   runApp(const PhotoBoothApp());
 }

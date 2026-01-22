@@ -21,6 +21,9 @@ class _PrinterApiClient implements PrinterApiClient {
   Future<Map<String, dynamic>> printImage(
     File imageFile,
     String printSize,
+    int quantity,
+    bool imageEdited,
+    String deviceId,
   ) async {
     final _extra = <String, dynamic>{};
     final queryParameters = <String, dynamic>{};
@@ -28,14 +31,17 @@ class _PrinterApiClient implements PrinterApiClient {
     final _data = FormData();
     _data.files.add(
       MapEntry(
-        'ImageFile',
+        'imageFile',
         MultipartFile.fromFileSync(
           imageFile.path,
           filename: imageFile.path.split(Platform.pathSeparator).last,
         ),
       ),
     );
-    _data.fields.add(MapEntry('PrintSize', printSize));
+    _data.fields.add(MapEntry('printSize', printSize));
+    _data.fields.add(MapEntry('quantity', quantity.toString()));
+    _data.fields.add(MapEntry('imageEdited', imageEdited.toString()));
+    _data.fields.add(MapEntry('DeviceId', deviceId));
     final _options = _setStreamType<Map<String, dynamic>>(
       Options(
         method: 'POST',
@@ -54,7 +60,10 @@ class _PrinterApiClient implements PrinterApiClient {
     final _result = await _dio.fetch<Map<String, dynamic>>(_options);
     late Map<String, dynamic> _value;
     try {
-      _value = _result.data! as Map<String, dynamic>;
+      _value = _result.data!.map(
+        (k, dynamic v) =>
+            MapEntry(k, dynamic.fromJson(v as Map<String, dynamic>)),
+      );
     } on Object catch (e, s) {
       errorLogger?.logError(e, s, _options);
       rethrow;

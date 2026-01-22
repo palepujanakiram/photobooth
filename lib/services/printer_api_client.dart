@@ -20,7 +20,10 @@ abstract class PrinterApiClient {
   @POST('/api/PrintImage')
   @MultiPart()
   Future<Map<String, dynamic>> printImage(
-    @Part(name: 'ImageFile') File imageFile,
-    @Part(name: 'PrintSize') String printSize,
+    @Part(name: 'imageFile') File imageFile,
+    @Part(name: 'printSize') String printSize,
+    @Part(name: 'quantity') int quantity,
+    @Part(name: 'imageEdited') bool imageEdited,
+    @Part(name: 'DeviceId') String deviceId,
   );
 }
