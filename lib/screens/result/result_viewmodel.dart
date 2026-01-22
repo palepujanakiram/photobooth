@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'transformed_image_model.dart';
 import '../../services/print_service.dart';
@@ -125,7 +126,11 @@ class ResultViewModel extends ChangeNotifier {
   }
 
   /// Shares the transformed image via WhatsApp
-  Future<void> shareViaWhatsApp({String? text}) async {
+  /// For iOS: Pass [sharePositionOrigin] to position the share sheet
+  Future<void> shareViaWhatsApp({
+    String? text,
+    Rect? sharePositionOrigin,
+  }) async {
     if (_transformedImage == null) {
       _errorMessage = 'No image to share';
       notifyListeners();
@@ -140,6 +145,7 @@ class ResultViewModel extends ChangeNotifier {
       await _shareService.shareViaWhatsApp(
         _transformedImage!.imageFile,
         text: text,
+        sharePositionOrigin: sharePositionOrigin,
       );
     } on ShareException catch (e) {
       _errorMessage = e.message;

@@ -8,6 +8,7 @@ import '../../services/session_manager.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
+import '../../utils/crashlytics_helper.dart';
 
 /// Helper function to check if running on iOS
 bool get _isIOS {
@@ -223,6 +224,14 @@ class CaptureViewModel extends ChangeNotifier {
       AppLogger.debug('   Camera direction: ${camera.lensDirection}');
       AppLogger.debug('   Camera sensor orientation: ${camera.sensorOrientation}');
       
+      // Set Crashlytics context for better error tracking
+      await CrashlyticsHelper.setCameraContext(
+        cameraId: camera.name,
+        cameraDirection: camera.lensDirection.toString(),
+        isExternal: camera.lensDirection == CameraLensDirection.external,
+      );
+      CrashlyticsHelper.log('Initializing camera: ${camera.name}');
+      
       // Use the camera directly
       final cameraToUse = camera;
       
@@ -236,14 +245,23 @@ class CaptureViewModel extends ChangeNotifier {
           AppLogger.debug('   Device ID: ${customController.currentDeviceId}');
           AppLogger.debug('   Texture ID: ${customController.textureId}');
           
-          // Start preview
-          await customController.startPreview();
-          AppLogger.debug('✅ Preview started for custom controller');
+          // Start preview with error handling
+          try {
+            await customController.startPreview();
+            AppLogger.debug('✅ Preview started for custom controller');
+          } catch (e) {
+            AppLogger.debug('❌ ERROR: Failed to start preview: $e');
+            _errorMessage = 'Failed to start camera preview: $e';
+            _isInitializing = false;
+            notifyListeners();
+            return;
+          }
           
           _currentCamera = camera;
           _isInitializing = false;
           _errorMessage = null;
           notifyListeners(); // CRITICAL: Notify listeners so UI rebuilds with new preview
+          return; // CRITICAL: Return to avoid calling notifyListeners() again
         } else {
           AppLogger.debug('❌ ERROR: Custom controller is null after initialization!');
           _errorMessage = 'Custom camera controller is null after initialization';
@@ -275,6 +293,7 @@ class CaptureViewModel extends ChangeNotifier {
             AppLogger.debug('   Expected direction: ${cameraToUse.lensDirection}');
             AppLogger.debug('   Got direction: ${activeCamera.lensDirection}');
             _errorMessage = 'Wrong camera initialized. Expected ${cameraToUse.name} (${cameraToUse.lensDirection}), but got ${activeCamera.name} (${activeCamera.lensDirection}).';
+            _isInitializing = false;
             notifyListeners();
             return;
           }
@@ -282,15 +301,18 @@ class CaptureViewModel extends ChangeNotifier {
           AppLogger.debug('✅ Camera verification passed in CaptureViewModel');
           AppLogger.debug('   ✅ Active direction: ${activeCamera.lensDirection}');
           _currentCamera = camera;
+          _isInitializing = false;
+          _errorMessage = null;
+          notifyListeners();
+          return; // CRITICAL: Return to avoid calling notifyListeners() again in finally block
         } else {
           AppLogger.debug('❌ ERROR: Camera controller is null after initialization!');
           _errorMessage = 'Camera controller is null after initialization';
+          _isInitializing = false;
           notifyListeners();
           return;
         }
       }
-      
-      notifyListeners();
     } on app_exceptions.PermissionException catch (e) {
       _errorMessage = e.message;
       notifyListeners();
@@ -320,12 +342,23 @@ class CaptureViewModel extends ChangeNotifier {
 
     try {
       final imageFile = await _cameraService.takePicture();
+      // Get camera ID from either standard controller or current camera
+      final cameraId = _cameraController?.description.name ?? _currentCamera?.name;
+      final photoId = _uuid.v4();
       _capturedPhoto = PhotoModel(
-        id: _uuid.v4(),
+        id: photoId,
         imageFile: imageFile,
         capturedAt: DateTime.now(),
-        cameraId: _cameraController?.description.name,
+        cameraId: cameraId,
       );
+      
+      // Track successful photo capture in Crashlytics
+      await CrashlyticsHelper.setPhotoCaptureContext(
+        photoId: photoId,
+        sessionId: _sessionManager.sessionId,
+      );
+      CrashlyticsHelper.log('Photo captured successfully: $photoId');
+      
       notifyListeners();
     } on app_exceptions.CameraException catch (e) {
       _errorMessage = e.message;

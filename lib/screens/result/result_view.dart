@@ -17,11 +17,33 @@ class ResultScreen extends StatefulWidget {
 
 class _ResultScreenState extends State<ResultScreen> {
   TextEditingController? _printerIpController;
+  final GlobalKey _shareButtonKey = GlobalKey();
 
   @override
   void dispose() {
     _printerIpController?.dispose();
     super.dispose();
+  }
+
+  /// Get the position of the share button for iOS share sheet positioning
+  Rect? _getShareButtonPosition() {
+    try {
+      final RenderBox? renderBox =
+          _shareButtonKey.currentContext?.findRenderObject() as RenderBox?;
+      if (renderBox != null) {
+        final position = renderBox.localToGlobal(Offset.zero);
+        final size = renderBox.size;
+        return Rect.fromLTWH(
+          position.dx,
+          position.dy,
+          size.width,
+          size.height,
+        );
+      }
+    } catch (e) {
+      AppLogger.warning('Failed to get share button position: $e');
+    }
+    return null;
   }
 
   @override
@@ -286,12 +308,16 @@ class _ResultScreenState extends State<ResultScreen> {
                           ),
                           const SizedBox(height: 12),
                           AppButtonWithIcon(
+                            key: _shareButtonKey,
                             text: 'Share via WhatsApp',
                             icon: CupertinoIcons.share,
                             onPressed: viewModel.isSharing
                                 ? null
                                 : () async {
-                                    await viewModel.shareViaWhatsApp();
+                                    final sharePosition = _getShareButtonPosition();
+                                    await viewModel.shareViaWhatsApp(
+                                      sharePositionOrigin: sharePosition,
+                                    );
                                   },
                             isLoading: viewModel.isSharing,
                           ),

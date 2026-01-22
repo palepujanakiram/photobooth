@@ -1,13 +1,32 @@
 {
   "project_info": {
-    "project_number": "76160113818",
-    "project_id": "fotozenai",
-    "storage_bucket": "fotozenai.firebasestorage.app"
+    "project_number": "957084044258",
+    "project_id": "aiphotobooth-3b5e2",
+    "storage_bucket": "aiphotobooth-3b5e2.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:76160113818:android:196bb713e591f09c0bd323",
+        "mobilesdk_app_id": "1:957084044258:android:4cf3e7da718bcf024787bb",
+        "android_client_info": {
+          "package_name": "com.example.aiphotobooth"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAkrkxsu-h-3X3dx-4Ct56baAKJP--F4zY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:957084044258:android:4c1f8c8f5180a0a54787bb",
         "android_client_info": {
           "package_name": "com.example.photobooth"
         }
@@ -15,7 +34,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDVjw-tszA2iT41spHMULf6avNar3mxyFI"
+          "current_key": "AIzaSyAkrkxsu-h-3X3dx-4Ct56baAKJP--F4zY"
         }
       ],
       "services": {
