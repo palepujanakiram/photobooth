@@ -246,32 +246,86 @@ class AndroidCameraController(
             startBackgroundThread()
 
             // Create texture for preview
-            textureEntry = textureRegistry.createSurfaceTexture()
-            textureId = textureEntry!!.id()
+            try {
+                textureEntry = textureRegistry.createSurfaceTexture()
+                textureId = textureEntry!!.id()
+                Log.d(TAG, "   ✅ Texture created with ID: $textureId")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Failed to create texture: ${e.message}")
+                result.error(
+                    "INIT_ERROR",
+                    "Texture registry not available. Please ensure Flutter engine is properly initialized.",
+                    null,
+                )
+                return
+            }
+            
             val surfaceTexture = textureEntry!!.surfaceTexture()
 
-            // Set preview size
+            // Get available sizes from camera
             val map = characteristics?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-            val previewSize =
-                chooseOptimalSize(
-                    map?.getOutputSizes(SurfaceTexture::class.java)?.toList() ?: emptyList(),
+            val availablePreviewSizes = map?.getOutputSizes(SurfaceTexture::class.java)?.toList() ?: emptyList()
+            val availableCaptureSizes = map?.getOutputSizes(ImageFormat.JPEG)?.toList() ?: emptyList()
+            
+            // Log available sizes for debugging 4K camera issues
+            Log.d(TAG, "   📐 Available preview sizes (${availablePreviewSizes.size}):")
+            availablePreviewSizes.take(5).forEach { size ->
+                Log.d(TAG, "      - ${size.width}×${size.height}")
+            }
+            if (availablePreviewSizes.size > 5) {
+                Log.d(TAG, "      ... and ${availablePreviewSizes.size - 5} more")
+            }
+            
+            Log.d(TAG, "   📐 Available JPEG capture sizes (${availableCaptureSizes.size}):")
+            availableCaptureSizes.take(5).forEach { size ->
+                Log.d(TAG, "      - ${size.width}×${size.height}")
+            }
+            if (availableCaptureSizes.size > 5) {
+                Log.d(TAG, "      ... and ${availableCaptureSizes.size - 5} more")
+            }
+            
+            // Set preview size (with hard limit enforcement)
+            val previewSize = chooseOptimalSize(availablePreviewSizes)
+            Log.d(TAG, "   🎯 Selected preview size: ${previewSize.width}×${previewSize.height}")
+            
+            try {
+                surfaceTexture.setDefaultBufferSize(previewSize.width, previewSize.height)
+                Log.d(TAG, "   ✅ Preview buffer size set successfully")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Failed to set preview buffer size: ${e.message}")
+                result.error(
+                    "INIT_ERROR",
+                    "Failed to set preview buffer size: ${e.message}",
+                    null,
                 )
-            surfaceTexture.setDefaultBufferSize(previewSize.width, previewSize.height)
+                return
+            }
+            
             val surface = Surface(surfaceTexture)
 
-            // Create ImageReader for photo capture
-            val imageReaderSize =
-                chooseOptimalSize(
-                    map?.getOutputSizes(ImageFormat.JPEG)?.toList() ?: emptyList(),
+            // Create ImageReader for photo capture (with hard limit enforcement)
+            val imageReaderSize = chooseOptimalSize(availableCaptureSizes)
+            Log.d(TAG, "   🎯 Selected capture size: ${imageReaderSize.width}×${imageReaderSize.height}")
+            
+            try {
+                imageReader =
+                    ImageReader.newInstance(
+                        imageReaderSize.width,
+                        imageReaderSize.height,
+                        ImageFormat.JPEG,
+                        1,
+                    )
+                Log.d(TAG, "   ✅ ImageReader created successfully")
+                imageReader?.setOnImageAvailableListener(imageAvailableListener, backgroundHandler)
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Failed to create ImageReader: ${e.message}")
+                result.error(
+                    "INIT_ERROR",
+                    "Failed to create ImageReader for photo capture: ${e.message}",
+                    null,
                 )
-            imageReader =
-                ImageReader.newInstance(
-                    imageReaderSize.width,
-                    imageReaderSize.height,
-                    ImageFormat.JPEG,
-                    1,
-                )
-            imageReader?.setOnImageAvailableListener(imageAvailableListener, backgroundHandler)
+                return
+            }
 
             // Open camera
             cameraManager?.openCamera(cameraId, cameraStateCallback, backgroundHandler)
@@ -532,11 +586,40 @@ class AndroidCameraController(
 
     /**
      * Chooses optimal size from available sizes
+     * CRITICAL: Ensures size never exceeds MAX_PREVIEW_WIDTH x MAX_PREVIEW_HEIGHT
+     * This prevents texture registry failures with 4K cameras
      */
     private fun chooseOptimalSize(choices: List<Size>): Size {
-        return choices.firstOrNull { size ->
-            size.width <= MAX_PREVIEW_WIDTH && size.height <= MAX_PREVIEW_HEIGHT
-        } ?: choices.maxByOrNull { it.width * it.height } ?: Size(1920, 1080)
+        if (choices.isEmpty()) {
+            Log.d(TAG, "⚠️ No camera sizes available, using fallback: 1920×1080")
+            return Size(1920, 1080)
+        }
+        
+        // Log all available sizes for debugging
+        Log.d(TAG, "   Available sizes: ${choices.size} options")
+        
+        // First, try to find the largest size that fits within our max limits
+        // Sort by resolution (descending) and find first that fits
+        val sizesWithinLimits = choices
+            .filter { size ->
+                size.width <= MAX_PREVIEW_WIDTH && size.height <= MAX_PREVIEW_HEIGHT
+            }
+            .sortedByDescending { it.width * it.height }
+        
+        if (sizesWithinLimits.isNotEmpty()) {
+            val selectedSize = sizesWithinLimits.first()
+            Log.d(TAG, "   ✅ Selected size within limits: ${selectedSize.width}×${selectedSize.height}")
+            return selectedSize
+        }
+        
+        // If NO size fits (e.g., 4K camera only reports 3840×2160, 2560×1440, etc.),
+        // we MUST enforce our limits to prevent texture registry failures
+        Log.w(TAG, "   ⚠️ WARNING: All camera sizes exceed maximum limits!")
+        Log.w(TAG, "   Camera appears to be 4K or higher resolution")
+        Log.w(TAG, "   Will use maximum supported size: $MAX_PREVIEW_WIDTH×$MAX_PREVIEW_HEIGHT")
+        
+        // Return our max supported size - the camera will downscale automatically
+        return Size(MAX_PREVIEW_WIDTH, MAX_PREVIEW_HEIGHT)
     }
 
     /**
