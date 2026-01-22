@@ -66,9 +66,23 @@ class CustomCameraController {
       } else {
         throw Exception('Failed to initialize camera: $result');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       AppLogger.debug('❌ Error initializing custom camera: $e');
       _isInitialized = false;
+      
+      // Log to Bugsnag
+      ErrorReportingManager.log('❌ Error initializing custom camera');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'CustomCameraController initialization failed',
+        extraInfo: {
+          'device_id': deviceId,
+          'platform': defaultTargetPlatform.name,
+          'error': e.toString(),
+        },
+      );
+      
       rethrow;
     }
   }
@@ -85,8 +99,22 @@ class CustomCameraController {
         _isPreviewRunning = true;
         AppLogger.debug('✅ Camera preview started');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       AppLogger.debug('❌ Error starting preview: $e');
+      
+      // Log to Bugsnag
+      ErrorReportingManager.log('❌ Error starting camera preview');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'CustomCameraController startPreview failed',
+        extraInfo: {
+          'device_id': _currentDeviceId ?? 'unknown',
+          'is_initialized': _isInitialized,
+          'error': e.toString(),
+        },
+      );
+      
       rethrow;
     }
   }
@@ -103,8 +131,21 @@ class CustomCameraController {
         _isPreviewRunning = false;
         AppLogger.debug('✅ Camera preview stopped');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       AppLogger.debug('❌ Error stopping preview: $e');
+      
+      // Log to Bugsnag (non-fatal)
+      ErrorReportingManager.log('⚠️ Error stopping camera preview');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'CustomCameraController stopPreview failed',
+        extraInfo: {
+          'device_id': _currentDeviceId ?? 'unknown',
+          'error': e.toString(),
+        },
+        fatal: false,
+      );
     }
   }
   
@@ -228,8 +269,21 @@ class CustomCameraController {
       _currentDeviceId = null;
       _textureId = null;
       AppLogger.debug('✅ CustomCameraController disposed');
-    } catch (e) {
+    } catch (e, stackTrace) {
       AppLogger.debug('❌ Error disposing camera: $e');
+      
+      // Log to Bugsnag (non-fatal)
+      ErrorReportingManager.log('⚠️ Error disposing camera');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'CustomCameraController dispose failed',
+        extraInfo: {
+          'device_id': _currentDeviceId ?? 'unknown',
+          'error': e.toString(),
+        },
+        fatal: false,
+      );
     }
   }
 }

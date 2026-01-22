@@ -88,8 +88,20 @@ class CameraService {
       AppLogger.debug('📱 Camera permission status: $status');
 
       return status == 'authorized';
-    } catch (e) {
+    } catch (e, stackTrace) {
       AppLogger.debug('❌ Error requesting camera permission: $e');
+      
+      // Log to Bugsnag
+      ErrorReportingManager.log('❌ Error requesting camera permission (iOS)');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'iOS camera permission request failed',
+        extraInfo: {
+          'error': e.toString(),
+        },
+      );
+      
       return false;
     }
   }
@@ -119,8 +131,21 @@ class CameraService {
       }
 
       return testInfo;
-    } catch (e) {
+    } catch (e, stackTrace) {
       AppLogger.debug('❌ Error testing external cameras: $e');
+      
+      // Log to Bugsnag (non-fatal)
+      ErrorReportingManager.log('⚠️ Error testing external cameras');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'testExternalCameras failed',
+        extraInfo: {
+          'error': e.toString(),
+        },
+        fatal: false,
+      );
+      
       return null;
     }
   }
@@ -131,8 +156,20 @@ class CameraService {
     try {
       await getAvailableCameras();
       AppLogger.debug('✅ Camera list refreshed');
-    } catch (e) {
+    } catch (e, stackTrace) {
       AppLogger.debug('❌ Error refreshing camera list: $e');
+      
+      // Log to Bugsnag (non-fatal)
+      ErrorReportingManager.log('⚠️ Error refreshing camera list');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'refreshCameraList failed',
+        extraInfo: {
+          'error': e.toString(),
+        },
+        fatal: false,
+      );
     }
   }
 
@@ -677,8 +714,21 @@ class CameraService {
       AppLogger.debug('');
 
       return _cameras!;
-    } catch (e) {
+    } catch (e, stackTrace) {
       AppLogger.debug('❌ Error getting available cameras: $e');
+      
+      // Log to Bugsnag
+      ErrorReportingManager.log('❌ Error getting available cameras');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'getAvailableCameras failed',
+        extraInfo: {
+          'error': e.toString(),
+          'platform': defaultTargetPlatform.name,
+        },
+      );
+      
       rethrow;
     }
   }
@@ -706,8 +756,20 @@ class CameraService {
         return false;
       }
       return false;
-    } catch (e) {
+    } catch (e, stackTrace) {
       AppLogger.debug('❌ Error requesting camera permission: $e');
+      
+      // Log to Bugsnag
+      ErrorReportingManager.log('❌ Error requesting camera permission (Android)');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'Android camera permission request failed',
+        extraInfo: {
+          'error': e.toString(),
+        },
+      );
+      
       return false;
     }
   }
@@ -821,6 +883,22 @@ class CameraService {
                 '   ⚠️ Falling back to standard CameraController...');
             AppLogger.debug(
                 '   ⚠️ WARNING: Standard controller may not work for external cameras!');
+            
+            // Log to Bugsnag
+            ErrorReportingManager.log('❌ Native Android camera controller initialization failed');
+            await ErrorReportingManager.recordError(
+              e,
+              stackTrace,
+              reason: 'Android CustomCameraController initialization failed',
+              extraInfo: {
+                'device_id': deviceId,
+                'camera_name': camera.name,
+                'localized_name': getCameraDisplayName(camera),
+                'error': e.toString(),
+                'will_fallback': 'true',
+              },
+            );
+            
             _customController?.dispose();
             _customController = null;
             _useCustomController = false;
@@ -991,8 +1069,23 @@ class CameraService {
           }
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       AppLogger.debug('❌ Error initializing camera: $e');
+      
+      // Log to Bugsnag
+      ErrorReportingManager.log('❌ Camera initialization failed in CameraService');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'CameraService initializeCamera failed',
+        extraInfo: {
+          'camera_name': camera.name,
+          'camera_direction': camera.lensDirection.toString(),
+          'use_custom_controller': _useCustomController,
+          'error': e.toString(),
+        },
+      );
+      
       throw app_exceptions.CameraException(
           '${AppConstants.kErrorCameraInitialization}: $e');
     }
@@ -1082,8 +1175,17 @@ class CameraService {
       final XFile image = await _controller!.takePicture();
       ErrorReportingManager.log('✅ CameraService: Standard controller photo captured');
       return image;
-    } catch (e) {
+    } catch (e, stackTrace) {
       ErrorReportingManager.log('❌ CameraService: Standard controller takePicture failed');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'Standard CameraController takePicture failed',
+        extraInfo: {
+          'error': e.toString(),
+        },
+      );
+      
       throw app_exceptions.CameraException(
           '${AppConstants.kErrorPhotoCapture}: $e');
     }

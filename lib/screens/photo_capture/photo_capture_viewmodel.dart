@@ -87,8 +87,20 @@ class CaptureViewModel extends ChangeNotifier {
       }
       
       notifyListeners();
-    } catch (e) {
+    } catch (e, stackTrace) {
       _errorMessage = 'Failed to load cameras: $e';
+      
+      // Log to Bugsnag
+      ErrorReportingManager.log('❌ Failed to load cameras');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'Failed to load available cameras',
+        extraInfo: {
+          'error': e.toString(),
+        },
+      );
+      
       notifyListeners();
     } finally {
       _isLoadingCameras = false;
@@ -110,8 +122,20 @@ class CaptureViewModel extends ChangeNotifier {
       try {
         await _cameraController!.dispose();
         _cameraController = null;
-      } catch (e) {
+      } catch (e, stackTrace) {
           AppLogger.debug('   ⚠️ Warning: Error disposing camera: $e');
+          
+          // Log to Bugsnag (non-fatal)
+          ErrorReportingManager.log('⚠️ Warning: Error disposing camera controller');
+          await ErrorReportingManager.recordError(
+            e,
+            stackTrace,
+            reason: 'Error disposing camera controller during reset',
+            extraInfo: {
+              'error': e.toString(),
+            },
+            fatal: false,
+          );
       }
     }
     
@@ -119,8 +143,20 @@ class CaptureViewModel extends ChangeNotifier {
     if (_cameraService.isUsingCustomController) {
       try {
         await _cameraService.customController?.dispose();
-      } catch (e) {
+      } catch (e, stackTrace) {
           AppLogger.debug('   ⚠️ Warning: Error disposing custom controller: $e');
+          
+          // Log to Bugsnag (non-fatal)
+          ErrorReportingManager.log('⚠️ Warning: Error disposing custom controller');
+          await ErrorReportingManager.recordError(
+            e,
+            stackTrace,
+            reason: 'Error disposing custom controller during reset',
+            extraInfo: {
+              'error': e.toString(),
+            },
+            fatal: false,
+          );
       }
     }
     
@@ -254,9 +290,24 @@ class CaptureViewModel extends ChangeNotifier {
             // Small delay to ensure preview is fully running before allowing capture
             await Future.delayed(const Duration(milliseconds: 500));
             AppLogger.debug('✅ Preview stabilization delay complete');
-          } catch (e) {
+          } catch (e, stackTrace) {
             AppLogger.debug('❌ ERROR: Failed to start preview: $e');
             _errorMessage = 'Failed to start camera preview: $e';
+            
+            // Log to Bugsnag
+            ErrorReportingManager.log('❌ Failed to start camera preview');
+            await ErrorReportingManager.recordError(
+              e,
+              stackTrace,
+              reason: 'Failed to start preview for custom controller',
+              extraInfo: {
+                'camera_name': camera.name,
+                'camera_direction': camera.lensDirection.toString(),
+                'device_id': customController.currentDeviceId ?? 'unknown',
+                'error': e.toString(),
+              },
+            );
+            
             _isInitializing = false;
             notifyListeners();
             return;
@@ -318,14 +369,54 @@ class CaptureViewModel extends ChangeNotifier {
           return;
         }
       }
-    } on app_exceptions.PermissionException catch (e) {
+    } on app_exceptions.PermissionException catch (e, stackTrace) {
       _errorMessage = e.message;
+      
+      // Log to Bugsnag
+      ErrorReportingManager.log('❌ Permission exception during camera initialization');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'Permission exception',
+        extraInfo: {
+          'message': e.message,
+          'camera_name': camera.name,
+        },
+      );
+      
       notifyListeners();
-    } on app_exceptions.CameraException catch (e) {
+    } on app_exceptions.CameraException catch (e, stackTrace) {
       _errorMessage = e.message;
+      
+      // Log to Bugsnag
+      ErrorReportingManager.log('❌ Camera exception during initialization');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'Camera exception',
+        extraInfo: {
+          'message': e.message,
+          'camera_name': camera.name,
+          'camera_direction': camera.lensDirection.toString(),
+        },
+      );
+      
       notifyListeners();
-    } catch (e) {
+    } catch (e, stackTrace) {
       _errorMessage = 'Failed to initialize camera: $e';
+      
+      // Log to Bugsnag
+      ErrorReportingManager.log('❌ Unexpected error during camera initialization');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'Unexpected camera initialization error',
+        extraInfo: {
+          'error': e.toString(),
+          'camera_name': camera.name,
+        },
+      );
+      
       notifyListeners();
     } finally {
       _isInitializing = false;
