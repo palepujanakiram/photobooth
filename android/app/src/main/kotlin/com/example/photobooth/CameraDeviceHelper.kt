@@ -11,7 +11,6 @@ import android.util.Log
 import io.flutter.plugin.common.MethodChannel
 
 class CameraDeviceHelper(private val context: Context) {
-
     companion object {
         private const val TAG = "CameraDeviceHelper"
         private const val USB_VIDEO_CLASS = 14 // UVC
@@ -44,9 +43,7 @@ class CameraDeviceHelper(private val context: Context) {
      * Built-in cameras (Camera2) + external cameras
      */
     private fun getCamera2Cameras(): List<Map<String, Any>> {
-        val cameraManager =
-            context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-
+        val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val result = mutableListOf<Map<String, Any>>()
 
         val cameraIds = try {
@@ -123,11 +120,8 @@ class CameraDeviceHelper(private val context: Context) {
      * If a Camera2 ID is found, uses that instead of the USB ID
      */
     private fun getUsbCameras(knownCamera2Cameras: List<Map<String, Any>>): List<Map<String, Any>> {
-        val usbManager =
-            context.getSystemService(Context.USB_SERVICE) as UsbManager
-        val cameraManager =
-            context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-
+        val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+        val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val result = mutableListOf<Map<String, Any>>()
 
         val devices = usbManager.deviceList.values
@@ -139,43 +133,7 @@ class CameraDeviceHelper(private val context: Context) {
 
         for (device in devices) {
             if (isUsbCamera(device)) {
-                Log.d(
-                    TAG,
-                    "USB Camera detected → vendor=${device.vendorId}, product=${device.productId}, name=${device.deviceName}"
-                )
-
-                // Try to find corresponding Camera2 ID
-                val camera2Id = probeForCamera2Id(device, knownCamera2Ids, cameraManager)
-                
-                if (camera2Id != null) {
-                    // Found Camera2 ID - use it instead of USB ID
-                    Log.d(TAG, "   ✅ Found Camera2 ID for USB camera: $camera2Id")
-                    result.add(
-                        mapOf(
-                            "uniqueID" to camera2Id,
-                            "localizedName" to (device.productName ?: "External USB Camera"),
-                            "vendorId" to device.vendorId,
-                            "productId" to device.productId,
-                            "deviceName" to device.deviceName,
-                            "source" to "camera2", // Mark as Camera2 since we found the ID
-                            "usbVendorId" to device.vendorId,
-                            "usbProductId" to device.productId
-                        )
-                    )
-                } else {
-                    // No Camera2 ID found - use USB ID (camera may not be enumerated yet)
-                    Log.d(TAG, "   ⚠️ No Camera2 ID found for USB camera - may need time to enumerate")
-                    result.add(
-                        mapOf(
-                            "uniqueID" to "usb_${device.vendorId}_${device.productId}",
-                            "localizedName" to (device.productName ?: "USB Camera"),
-                            "vendorId" to device.vendorId,
-                            "productId" to device.productId,
-                            "deviceName" to device.deviceName,
-                            "source" to "usb"
-                        )
-                    )
-                }
+                processUsbCamera(device, knownCamera2Ids, cameraManager, result)
             }
         }
 
@@ -184,6 +142,57 @@ class CameraDeviceHelper(private val context: Context) {
         }
 
         return result
+    }
+
+    private fun processUsbCamera(
+        device: UsbDevice,
+        knownCamera2Ids: Set<String>,
+        cameraManager: CameraManager,
+        result: MutableList<Map<String, Any>>
+    ) {
+        Log.d(
+            TAG,
+            "USB Camera detected → vendor=${device.vendorId}, product=${device.productId}, name=${device.deviceName}"
+        )
+
+        // Try to find corresponding Camera2 ID
+        val camera2Id = probeForCamera2Id(device, knownCamera2Ids, cameraManager)
+
+        if (camera2Id != null) {
+            addCamera2UsbCamera(device, camera2Id, result)
+        } else {
+            addUsbOnlyCamera(device, result)
+        }
+    }
+
+    private fun addCamera2UsbCamera(device: UsbDevice, camera2Id: String, result: MutableList<Map<String, Any>>) {
+        Log.d(TAG, "   ✅ Found Camera2 ID for USB camera: $camera2Id")
+        result.add(
+            mapOf(
+                "uniqueID" to camera2Id,
+                "localizedName" to (device.productName ?: "External USB Camera"),
+                "vendorId" to device.vendorId,
+                "productId" to device.productId,
+                "deviceName" to device.deviceName,
+                "source" to "camera2",
+                "usbVendorId" to device.vendorId,
+                "usbProductId" to device.productId
+            )
+        )
+    }
+
+    private fun addUsbOnlyCamera(device: UsbDevice, result: MutableList<Map<String, Any>>) {
+        Log.d(TAG, "   ⚠️ No Camera2 ID found for USB camera - may need time to enumerate")
+        result.add(
+            mapOf(
+                "uniqueID" to "usb_${device.vendorId}_${device.productId}",
+                "localizedName" to (device.productName ?: "USB Camera"),
+                "vendorId" to device.vendorId,
+                "productId" to device.productId,
+                "deviceName" to device.deviceName,
+                "source" to "usb"
+            )
+        )
     }
 
     /**
@@ -198,85 +207,124 @@ class CameraDeviceHelper(private val context: Context) {
         if (cameraManager == null) return null
 
         try {
-            // First, check cameras already in cameraIdList that we haven't accounted for
             val cameraIds = cameraManager.cameraIdList
             val maxKnownId = knownCamera2Ids.mapNotNull { it.toIntOrNull() }.maxOrNull() ?: 1
-            
-            Log.d(TAG, "   🔍 Probing for Camera2 ID for USB camera (vendor=${usbDevice.vendorId}, product=${usbDevice.productId})")
-            Log.d(TAG, "   📋 Known Camera2 IDs: ${knownCamera2Ids.joinToString()}")
-            Log.d(TAG, "   📋 All Camera2 IDs in list: ${cameraIds.joinToString()}")
-            
+
+            logProbeStart(usbDevice, knownCamera2Ids, cameraIds)
+
             // Check cameras in the official list that aren't in our known list
-            // ONLY accept cameras explicitly marked as EXTERNAL
-            for (cameraId in cameraIds) {
-                if (knownCamera2Ids.contains(cameraId)) {
-                    continue // Already accounted for
-                }
-                
-                try {
-                    val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-                    val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
-                    
-                    // ONLY accept cameras that are explicitly marked as EXTERNAL
-                    if (facing == CameraCharacteristics.LENS_FACING_EXTERNAL) {
-                        Log.d(TAG, "   ✅ Found Camera2 match: ID=$cameraId, LENS_FACING=EXTERNAL")
-                        return cameraId
-                    } else {
-                        Log.d(TAG, "   ⏭️ Camera $cameraId has LENS_FACING=$facing (not EXTERNAL), skipping")
-                    }
-                } catch (e: Exception) {
-                    Log.d(TAG, "   ⚠️ Error checking camera $cameraId: ${e.message}")
-                }
-            }
-            
+            val officialListResult = checkOfficialCameraList(cameraIds, knownCamera2Ids, cameraManager)
+            if (officialListResult != null) return officialListResult
+
             // If not found in official list, probe additional IDs
-            // USB cameras often get IDs like 2, 3, 4, etc. when they're enumerated
-            Log.d(TAG, "   🔍 Probing additional Camera2 IDs beyond official list...")
-            val probeStart = maxKnownId + 1
-            val probeEnd = maxKnownId + 10 // Probe up to 10 additional IDs
-            
-            for (testId in probeStart..probeEnd) {
-                val testIdStr = testId.toString()
-                
-                // Skip if already in known list or official list
-                if (knownCamera2Ids.contains(testIdStr) || cameraIds.contains(testIdStr)) {
-                    continue
-                }
-                
-                try {
-                    // Try to get characteristics - this will throw if camera doesn't exist
-                    val characteristics = cameraManager.getCameraCharacteristics(testIdStr)
-                    val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
-                    
-                    // ONLY accept cameras that are explicitly marked as EXTERNAL
-                    if (facing == CameraCharacteristics.LENS_FACING_EXTERNAL) {
-                        Log.d(TAG, "   ✅ Found Camera2 ID via probing: $testIdStr (LENS_FACING_EXTERNAL)")
-                        return testIdStr
-                    } else {
-                        Log.d(TAG, "   ⏭️ Camera $testIdStr has LENS_FACING=$facing (not EXTERNAL), skipping")
-                    }
-                } catch (e: IllegalArgumentException) {
-                    // Camera doesn't exist at this ID - continue probing
-                } catch (e: CameraAccessException) {
-                    // Access denied - might need permissions, but continue
-                    Log.d(TAG, "   ⚠️ Access denied for camera $testIdStr: ${e.message}")
-                } catch (e: Exception) {
-                    // Other error - continue
-                    Log.d(TAG, "   ⚠️ Error probing camera $testIdStr: ${e.message}")
-                }
-            }
-            
-            // No Camera2 ID found with LENS_FACING_EXTERNAL
-            // Return null so the USB camera will use the UVC path instead
-            Log.d(TAG, "   ❌ No Camera2 ID found with LENS_FACING_EXTERNAL for USB camera")
-            Log.d(TAG, "   💡 USB camera will use UVC path (usb_vendorId_productId format)")
-            
-            Log.d(TAG, "   ❌ No Camera2 ID found for USB camera")
+            val probeResult = probeAdditionalCameraIds(maxKnownId, knownCamera2Ids, cameraIds, cameraManager)
+            if (probeResult != null) return probeResult
+
+            logNoCamera2IdFound()
             return null
         } catch (e: Exception) {
             Log.e(TAG, "   ❌ Error probing for Camera2 ID: ${e.message}")
             return null
         }
+    }
+
+    private fun logProbeStart(usbDevice: UsbDevice, knownCamera2Ids: Set<String>, cameraIds: Array<String>) {
+        Log.d(
+            TAG,
+            "   🔍 Probing for Camera2 ID for USB camera (vendor=${usbDevice.vendorId}, " +
+                "product=${usbDevice.productId})"
+        )
+        Log.d(TAG, "   📋 Known Camera2 IDs: ${knownCamera2Ids.joinToString()}")
+        Log.d(TAG, "   📋 All Camera2 IDs in list: ${cameraIds.joinToString()}")
+    }
+
+    private fun checkOfficialCameraList(
+        cameraIds: Array<String>,
+        knownCamera2Ids: Set<String>,
+        cameraManager: CameraManager
+    ): String? {
+        for (cameraId in cameraIds) {
+            if (knownCamera2Ids.contains(cameraId)) {
+                continue // Already accounted for
+            }
+
+            val result = checkIfExternalCamera(cameraId, cameraManager)
+            if (result != null) return result
+        }
+        return null
+    }
+
+    private fun checkIfExternalCamera(cameraId: String, cameraManager: CameraManager): String? {
+        try {
+            val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+            val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+
+            // ONLY accept cameras that are explicitly marked as EXTERNAL
+            if (facing == CameraCharacteristics.LENS_FACING_EXTERNAL) {
+                Log.d(TAG, "   ✅ Found Camera2 match: ID=$cameraId, LENS_FACING=EXTERNAL")
+                return cameraId
+            } else {
+                Log.d(TAG, "   ⏭️ Camera $cameraId has LENS_FACING=$facing (not EXTERNAL), skipping")
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "   ⚠️ Error checking camera $cameraId: ${e.message}")
+        }
+        return null
+    }
+
+    private fun probeAdditionalCameraIds(
+        maxKnownId: Int,
+        knownCamera2Ids: Set<String>,
+        cameraIds: Array<String>,
+        cameraManager: CameraManager
+    ): String? {
+        Log.d(TAG, "   🔍 Probing additional Camera2 IDs beyond official list...")
+        val probeStart = maxKnownId + 1
+        val probeEnd = maxKnownId + 10 // Probe up to 10 additional IDs
+
+        for (testId in probeStart..probeEnd) {
+            val testIdStr = testId.toString()
+
+            // Skip if already in known list or official list
+            if (knownCamera2Ids.contains(testIdStr) || cameraIds.contains(testIdStr)) {
+                continue
+            }
+
+            val result = tryProbeCamera(testIdStr, cameraManager)
+            if (result != null) return result
+        }
+        return null
+    }
+
+    private fun tryProbeCamera(testIdStr: String, cameraManager: CameraManager): String? {
+        try {
+            // Try to get characteristics - this will throw if camera doesn't exist
+            val characteristics = cameraManager.getCameraCharacteristics(testIdStr)
+            val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+
+            // ONLY accept cameras that are explicitly marked as EXTERNAL
+            if (facing == CameraCharacteristics.LENS_FACING_EXTERNAL) {
+                Log.d(TAG, "   ✅ Found Camera2 ID via probing: $testIdStr (LENS_FACING_EXTERNAL)")
+                return testIdStr
+            } else {
+                Log.d(TAG, "   ⏭️ Camera $testIdStr has LENS_FACING=$facing (not EXTERNAL), skipping")
+            }
+        } catch (e: IllegalArgumentException) {
+            // Camera doesn't exist at this ID - continue probing
+        } catch (e: CameraAccessException) {
+            // Access denied - might need permissions, but continue
+            Log.d(TAG, "   ⚠️ Access denied for camera $testIdStr: ${e.message}")
+        } catch (e: Exception) {
+            // Other error - continue
+            Log.d(TAG, "   ⚠️ Error probing camera $testIdStr: ${e.message}")
+        }
+        return null
+    }
+
+    private fun logNoCamera2IdFound() {
+        Log.d(TAG, "   ❌ No Camera2 ID found with LENS_FACING_EXTERNAL for USB camera")
+        Log.d(TAG, "   💡 USB camera will use UVC path (usb_vendorId_productId format)")
+        Log.d(TAG, "   ❌ No Camera2 ID found for USB camera")
     }
 
     /**

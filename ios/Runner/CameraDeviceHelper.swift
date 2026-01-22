@@ -79,27 +79,49 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   }
 
   func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    if handleDeviceDiscoveryMethod(call, result: result) { return }
+    if handleCameraControlMethod(call, result: result) { return }
+    result(FlutterMethodNotImplemented)
+  }
+  
+  private func handleDeviceDiscoveryMethod(_ call: FlutterMethodCall, result: @escaping FlutterResult) -> Bool {
     switch call.method {
     case "initializeCameraByDeviceId":
       handleInitializeCameraByDeviceId(call: call, result: result)
+      return true
     case "getCameraDeviceId":
       handleGetCameraDeviceId(call: call, result: result)
+      return true
     case "getAllAvailableCameras":
       getAllAvailableCameras(result: result)
+      return true
     case "testExternalCameras":
       testExternalCameras(result: result)
+      return true
     case "requestCameraPermission":
       requestCameraPermission(result: result)
+      return true
+    default:
+      return false
+    }
+  }
+  
+  private func handleCameraControlMethod(_ call: FlutterMethodCall, result: @escaping FlutterResult) -> Bool {
+    switch call.method {
     case "initializeCamera":
       handleInitializeCamera(call: call, result: result)
+      return true
     case "startPreview":
       startPreview(result: result)
+      return true
     case "takePicture":
       takePicture(result: result)
+      return true
     case "disposeCamera":
       disposeCamera(result: result)
+      return true
     default:
-      result(FlutterMethodNotImplemented)
+      return false
     }
   }
   
@@ -378,11 +400,9 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   }
   
   private func findDeviceByDeviceId(_ deviceId: String, in devices: [AVCaptureDevice]) -> AVCaptureDevice? {
-    for device in devices {
-      if device.uniqueID.hasSuffix(":\(deviceId)") {
-        print("✅ Found device by device ID suffix: \(device.uniqueID)")
-        return device
-      }
+    if let device = devices.first(where: { $0.uniqueID.hasSuffix(":\(deviceId)") }) {
+      print("✅ Found device by device ID suffix: \(device.uniqueID)")
+      return device
     }
     return nil
   }
@@ -449,38 +469,28 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   }
   
   private func searchForDevice(cameraName: String, deviceId: String, discoverySession: AVCaptureDevice.DiscoverySession) -> AVCaptureDevice? {
-    // Strategy 1: Try exact match
-    if let device = findDeviceByExactName(cameraName, in: discoverySession.devices) {
-      return device
+    let searchStrategies: [(String, () -> AVCaptureDevice?)] = [
+      ("exact name match", { self.findDeviceByExactName(cameraName, in: discoverySession.devices) }),
+      ("device ID suffix match", { self.findDeviceByDeviceIdSuffix(deviceId, in: discoverySession.devices) }),
+      ("external camera match", { self.findExternalDevice(deviceId: deviceId, discoverySession: discoverySession) })
+    ]
+    
+    for (strategyName, strategy) in searchStrategies {
+      if let device = strategy() {
+        print("✅ Found device using \(strategyName)")
+        return device
+      }
     }
     
-    // Strategy 2: Try device ID suffix match
-    if let device = findDeviceByDeviceIdSuffix(deviceId, in: discoverySession.devices) {
-      return device
-    }
-    
-    // Strategy 3: Try external camera match
-    return findExternalDevice(deviceId: deviceId, discoverySession: discoverySession)
+    return nil
   }
   
   private func findDeviceByExactName(_ cameraName: String, in devices: [AVCaptureDevice]) -> AVCaptureDevice? {
-    for device in devices {
-      if device.uniqueID == cameraName {
-        print("✅ Found device by exact name match: \(device.uniqueID)")
-        return device
-      }
-    }
-    return nil
+    return devices.first { $0.uniqueID == cameraName }
   }
   
   private func findDeviceByDeviceIdSuffix(_ deviceId: String, in devices: [AVCaptureDevice]) -> AVCaptureDevice? {
-    for device in devices {
-      if device.uniqueID.hasSuffix(":\(deviceId)") {
-        print("✅ Found device by device ID suffix match: \(device.uniqueID)")
-        return device
-      }
-    }
-    return nil
+    return devices.first { $0.uniqueID.hasSuffix(":\(deviceId)") }
   }
   
   private func findExternalDevice(deviceId: String, discoverySession: AVCaptureDevice.DiscoverySession) -> AVCaptureDevice? {
@@ -952,12 +962,7 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   }
   
   private func findBuiltInDevice(deviceId: String, in devices: [AVCaptureDevice]) -> AVCaptureDevice? {
-    for device in devices {
-      if device.uniqueID.hasSuffix(":\(deviceId)") {
-        return device
-      }
-    }
-    return nil
+    return devices.first { $0.uniqueID.hasSuffix(":\(deviceId)") }
   }
   
   private func findExternalDeviceForControl(deviceId: String, discoverySession: AVCaptureDevice.DiscoverySession) -> AVCaptureDevice? {
