@@ -3,7 +3,14 @@ package com.example.photobooth
 import android.content.Context
 import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
-import android.hardware.camera2.*
+import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.CameraDevice
+import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraAccessException
+import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.CaptureFailure
+import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.StreamConfigurationMap
 import android.media.Image
 import android.media.ImageReader
@@ -16,9 +23,6 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
 import java.io.File
 import java.io.FileOutputStream
-import java.nio.ByteBuffer
-import java.util.concurrent.Semaphore
-import java.util.concurrent.TimeUnit
 
 /**
  * Native Android camera controller using Camera2 API
@@ -27,7 +31,7 @@ import java.util.concurrent.TimeUnit
  */
 class AndroidCameraController(
     private val context: Context,
-    private val textureRegistry: TextureRegistry
+    private val textureRegistry: TextureRegistry,
 ) {
     // TextureRegistry is provided via constructor
     companion object {
@@ -48,7 +52,8 @@ class AndroidCameraController(
     private var textureId: Long = -1
     private var pendingPhotoResult: MethodChannel.Result? = null
 
-    private val cameraStateCallback = object : CameraDevice.StateCallback() {
+    private val cameraStateCallback =
+        object : CameraDevice.StateCallback() {
         override fun onOpened(camera: CameraDevice) {
             Log.d(TAG, "✅ Camera opened: ${camera.id}")
             Log.d(TAG, "   Expected camera ID: $currentCameraId")
@@ -66,15 +71,23 @@ class AndroidCameraController(
             closeCamera()
         }
 
-        override fun onError(camera: CameraDevice, error: Int) {
+        override fun onError(
+            camera: CameraDevice,
+            error: Int,
+        ) {
             Log.e(TAG, "❌ Camera error: $error")
-            val errorMsg = when (error) {
-                1 -> "Camera device error" // STATE_ERROR_CAMERA_DEVICE
-                2 -> "Camera disabled" // STATE_ERROR_CAMERA_DISABLED
-                3 -> "Camera in use" // STATE_ERROR_CAMERA_IN_USE
-                4 -> "Max cameras in use" // STATE_ERROR_MAX_CAMERAS_IN_USE
-                else -> "Unknown camera error"
-            }
+            val errorMsg =
+                when (error) {
+                    1 -> "Camera device error" // STATE_ERROR_CAMERA_DEVICE
+
+                    2 -> "Camera disabled" // STATE_ERROR_CAMERA_DISABLED
+
+                    3 -> "Camera in use" // STATE_ERROR_CAMERA_IN_USE
+
+                    4 -> "Max cameras in use" // STATE_ERROR_MAX_CAMERAS_IN_USE
+
+                    else -> "Unknown camera error"
+                }
             pendingPhotoResult?.error("CAMERA_ERROR", errorMsg, null)
             pendingPhotoResult = null
             closeCamera()
@@ -82,12 +95,13 @@ class AndroidCameraController(
     }
 
     private var pendingPreviewResult: MethodChannel.Result? = null
-    
-    private val captureStateCallback = object : CameraCaptureSession.StateCallback() {
+
+    private val captureStateCallback =
+        object : CameraCaptureSession.StateCallback() {
         override fun onConfigured(session: CameraCaptureSession) {
             Log.d(TAG, "✅ Capture session configured")
             captureSession = session
-            
+
             // If there's a pending preview request, start it now
             pendingPreviewResult?.let { result ->
                 Log.d(TAG, "🎬 Starting preview (pending request from before session was ready)")
@@ -105,12 +119,13 @@ class AndroidCameraController(
         }
     }
 
-    private val captureCallback = object : CameraCaptureSession.CaptureCallback() {
-        override fun onCaptureCompleted(
-            session: CameraCaptureSession,
-            request: CaptureRequest,
-            result: TotalCaptureResult
-        ) {
+    private val captureCallback =
+        object : CameraCaptureSession.CaptureCallback() {
+            override fun onCaptureCompleted(
+                session: CameraCaptureSession,
+                request: CaptureRequest,
+                result: TotalCaptureResult,
+            ) {
             // This is called for both preview frames and photo captures
             // Only log occasionally to avoid spam
             if (System.currentTimeMillis() % 1000 < 100) {
@@ -118,18 +133,19 @@ class AndroidCameraController(
             }
         }
 
-        override fun onCaptureFailed(
-            session: CameraCaptureSession,
-            request: CaptureRequest,
-            failure: CaptureFailure
-        ) {
-            Log.e(TAG, "❌ Photo capture failed: ${failure.reason}")
-            pendingPhotoResult?.error("CAPTURE_ERROR", "Photo capture failed: ${failure.reason}", null)
-            pendingPhotoResult = null
+            override fun onCaptureFailed(
+                session: CameraCaptureSession,
+                request: CaptureRequest,
+                failure: CaptureFailure,
+            ) {
+                Log.e(TAG, "❌ Photo capture failed: ${failure.reason}")
+                pendingPhotoResult?.error("CAPTURE_ERROR", "Photo capture failed: ${failure.reason}", null)
+                pendingPhotoResult = null
+            }
         }
-    }
 
-    private val imageAvailableListener = ImageReader.OnImageAvailableListener { reader ->
+    private val imageAvailableListener =
+        ImageReader.OnImageAvailableListener { reader ->
         val image = reader.acquireLatestImage() ?: return@OnImageAvailableListener
         try {
             saveImageToFile(image)
@@ -150,15 +166,15 @@ class AndroidCameraController(
             Log.d(TAG, "🎥 Initializing camera: $cameraId")
             Log.d(TAG, "   Camera ID type: ${cameraId::class.java.simpleName}")
             Log.d(TAG, "   Camera ID value: \"$cameraId\"")
-            
+
             cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-            
+
             // Verify camera exists by trying to get its characteristics
             // Note: Some external cameras (like USB cameras) may not be in the initial cameraIdList
             // but can still be accessed directly by their ID
             val cameraIds = cameraManager?.cameraIdList
             Log.d(TAG, "   Available camera IDs in initial list: ${cameraIds?.joinToString(", ") ?: "null"}")
-            
+
             // Try to get camera characteristics directly
             // This will work even if the camera is not in the initial cameraIdList
             val characteristics = try {
@@ -167,14 +183,19 @@ class AndroidCameraController(
                 Log.e(TAG, "❌ Camera $cameraId does not exist or cannot be accessed")
                 Log.e(TAG, "   Error: ${e.message}")
                 Log.e(TAG, "   Available cameras in initial list: ${cameraIds?.joinToString(", ") ?: "none"}")
-                result.error("CAMERA_NOT_FOUND", "Camera $cameraId not found or cannot be accessed. Available cameras: ${cameraIds?.joinToString(", ") ?: "none"}", null)
+                result.error(
+                    "CAMERA_NOT_FOUND",
+                    "Camera $cameraId not found or cannot be accessed. " +
+                        "Available cameras: ${cameraIds?.joinToString(", ") ?: "none"}",
+                    null,
+                )
                 return
             } catch (e: CameraAccessException) {
                 Log.e(TAG, "❌ Camera access exception for camera $cameraId: ${e.message}")
                 result.error("CAMERA_ACCESS_ERROR", "Cannot access camera $cameraId: ${e.message}", null)
                 return
             }
-            
+
             if (characteristics == null) {
                 Log.e(TAG, "❌ Camera $cameraId characteristics are null")
                 result.error("CAMERA_NOT_FOUND", "Camera $cameraId characteristics are null", null)
@@ -187,13 +208,14 @@ class AndroidCameraController(
                 Log.d(TAG, "✅ Camera $cameraId found (not in initial cameraIdList - likely external USB camera)")
             }
             val facing = characteristics?.get(CameraCharacteristics.LENS_FACING)
-            val cameraName = when (facing) {
-                CameraCharacteristics.LENS_FACING_BACK -> "Back Camera"
-                CameraCharacteristics.LENS_FACING_FRONT -> "Front Camera"
-                CameraCharacteristics.LENS_FACING_EXTERNAL -> "External Camera"
-                else -> "Camera $cameraId"
-            }
-            
+            val cameraName =
+                when (facing) {
+                    CameraCharacteristics.LENS_FACING_BACK -> "Back Camera"
+                    CameraCharacteristics.LENS_FACING_FRONT -> "Front Camera"
+                    CameraCharacteristics.LENS_FACING_EXTERNAL -> "External Camera"
+                    else -> "Camera $cameraId"
+                }
+
             Log.d(TAG, "   Camera characteristics:")
             Log.d(TAG, "     LENS_FACING: $facing")
             Log.d(TAG, "     Camera name: $cameraName")
@@ -211,32 +233,37 @@ class AndroidCameraController(
 
             // Set preview size
             val map = characteristics?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-            val previewSize = chooseOptimalSize(
-                map?.getOutputSizes(SurfaceTexture::class.java)?.toList() ?: emptyList()
-            )
+            val previewSize =
+                chooseOptimalSize(
+                    map?.getOutputSizes(SurfaceTexture::class.java)?.toList() ?: emptyList(),
+                )
             surfaceTexture.setDefaultBufferSize(previewSize.width, previewSize.height)
             val surface = Surface(surfaceTexture)
 
             // Create ImageReader for photo capture
-            val imageReaderSize = chooseOptimalSize(
-                map?.getOutputSizes(ImageFormat.JPEG)?.toList() ?: emptyList()
-            )
-            imageReader = ImageReader.newInstance(
-                imageReaderSize.width,
-                imageReaderSize.height,
-                ImageFormat.JPEG,
-                1
-            )
+            val imageReaderSize =
+                chooseOptimalSize(
+                    map?.getOutputSizes(ImageFormat.JPEG)?.toList() ?: emptyList(),
+                )
+            imageReader =
+                ImageReader.newInstance(
+                    imageReaderSize.width,
+                    imageReaderSize.height,
+                    ImageFormat.JPEG,
+                    1,
+                )
             imageReader?.setOnImageAvailableListener(imageAvailableListener, backgroundHandler)
 
             // Open camera
             cameraManager?.openCamera(cameraId, cameraStateCallback, backgroundHandler)
-            
-            result.success(mapOf(
-                "success" to true,
-                "textureId" to textureId,
-                "localizedName" to cameraName
-            ))
+
+            result.success(
+                mapOf(
+                    "success" to true,
+                    "textureId" to textureId,
+                    "localizedName" to cameraName,
+                ),
+            )
         } catch (e: SecurityException) {
             Log.e(TAG, "Security exception: ${e.message}", e)
             result.error("PERMISSION_ERROR", "Camera permission not granted", null)
@@ -258,12 +285,15 @@ class AndroidCameraController(
             val surfaceTexture = textureEntry.surfaceTexture()
             // Buffer size was already set during initialization, but ensure it's set correctly
             // Use optimal preview size instead of hardcoded 1920x1080
-            val map = cameraManager?.getCameraCharacteristics(currentCameraId ?: "")?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            val map =
+                cameraManager
+                    ?.getCameraCharacteristics(currentCameraId ?: "")
+                    ?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             val previewSizes = map?.getOutputSizes(SurfaceTexture::class.java)?.toList() ?: emptyList()
             val optimalSize = chooseOptimalSize(previewSizes)
             surfaceTexture.setDefaultBufferSize(optimalSize.width, optimalSize.height)
             Log.d(TAG, "   Preview buffer size set to: ${optimalSize.width}x${optimalSize.height}")
-            
+
             // Create Surface from the SurfaceTexture - this is the preview surface
             // Store it so we can reuse the same instance in startPreviewInternal
             previewSurface = Surface(surfaceTexture)
@@ -275,7 +305,7 @@ class AndroidCameraController(
             device.createCaptureSession(
                 surfaces,
                 captureStateCallback,
-                backgroundHandler
+                backgroundHandler,
             )
         } catch (e: CameraAccessException) {
             Log.e(TAG, "Error creating capture session: ${e.message}", e)
@@ -302,7 +332,7 @@ class AndroidCameraController(
             pendingPreviewResult = result
         }
     }
-    
+
     /**
      * Internal method to actually start the preview
      * Called either immediately if session is ready, or from onConfigured callback
@@ -329,7 +359,7 @@ class AndroidCameraController(
             val characteristics = cameraManager?.getCameraCharacteristics(device.id)
             val facing = characteristics?.get(CameraCharacteristics.LENS_FACING)
             Log.d(TAG, "   Camera LENS_FACING: $facing")
-            
+
             val builder = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
 
             // Add preview surface - MUST use the same Surface instance that was added to capture session
@@ -349,7 +379,7 @@ class AndroidCameraController(
 
             // Set repeating request for preview
             captureSession?.setRepeatingRequest(builder.build(), captureCallback, backgroundHandler)
-            
+
             result.success(mapOf("success" to true))
             Log.d(TAG, "✅ Preview started successfully")
         } catch (e: CameraAccessException) {
@@ -488,7 +518,7 @@ class AndroidCameraController(
         // Cancel any pending preview requests
         pendingPreviewResult?.error("CANCELLED", "Camera closed", null)
         pendingPreviewResult = null
-        
+
         captureSession?.close()
         captureSession = null
 

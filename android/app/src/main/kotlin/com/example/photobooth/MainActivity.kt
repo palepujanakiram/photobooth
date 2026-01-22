@@ -7,9 +7,9 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
 
-class MainActivity: FlutterActivity() {
-    private val CHANNEL = "com.example.photobooth/camera_device_helper"
-    private val CAMERA_CONTROL_CHANNEL = "com.photobooth/camera_device"
+class MainActivity : FlutterActivity() {
+    private val channel = "com.example.photobooth/camera_device_helper"
+    private val cameraControlChannel = "com.photobooth/camera_device"
     private lateinit var cameraDeviceHelper: CameraDeviceHelper
     private var androidCameraController: AndroidCameraController? = null
     private var flutterEngineInstance: FlutterEngine? = null
@@ -18,7 +18,7 @@ class MainActivity: FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         flutterEngineInstance = flutterEngine
-        
+
         // Get TextureRegistry - try multiple approaches
         // Approach 1: Try via platformViewsController (recommended way)
         try {
@@ -41,7 +41,11 @@ class MainActivity: FlutterActivity() {
                         @Suppress("UNCHECKED_CAST")
                         textureRegistry = field.get(platformViewsController) as? TextureRegistry
                         if (textureRegistry != null) {
-                            Log.d("MainActivity", "✅ Successfully obtained TextureRegistry via platformViewsController.textureRegistry field")
+                            Log.d(
+                                "MainActivity",
+                                "✅ Successfully obtained TextureRegistry via " +
+                                    "platformViewsController.textureRegistry field",
+                            )
                         }
                     } catch (e2: Exception) {
                         Log.d("MainActivity", "platformViewsController.textureRegistry field failed: ${e2.message}")
@@ -51,7 +55,7 @@ class MainActivity: FlutterActivity() {
         } catch (e: Exception) {
             Log.d("MainActivity", "platformViewsController approach failed: ${e.message}")
         }
-        
+
         // Approach 2: Try via getRenderer() -> access textureRegistry field in renderer
         if (textureRegistry == null) {
             try {
@@ -79,30 +83,32 @@ class MainActivity: FlutterActivity() {
                 Log.d("MainActivity", "getRenderer() approach failed: ${e.message}")
             }
         }
-        
+
         if (textureRegistry == null) {
             Log.w("MainActivity", "⚠️ Could not obtain TextureRegistry - external cameras may not work")
             Log.w("MainActivity", "   This means native camera controller cannot be used")
             Log.w("MainActivity", "   External cameras will fall back to standard CameraController (may not work)")
         }
-        
+
         cameraDeviceHelper = CameraDeviceHelper(this)
 
         // Log device capabilities on startup for debugging
         cameraDeviceHelper.logDeviceCapabilities()
 
         // Channel for camera discovery
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channel).setMethodCallHandler { call, result ->
             when (call.method) {
                 "getAllAvailableCameras" -> {
                     Log.d("MainActivity", "📸 getAllAvailableCameras called from Flutter")
                     cameraDeviceHelper.getAllAvailableCameras(result)
                 }
+
                 "logDiagnostics" -> {
                     Log.d("MainActivity", "🔍 Logging diagnostics")
                     cameraDeviceHelper.logDeviceCapabilities()
                     result.success(mapOf("success" to true))
                 }
+
                 else -> {
                     result.notImplemented()
                 }
@@ -110,7 +116,10 @@ class MainActivity: FlutterActivity() {
         }
 
         // Channel for camera control (same as iOS for consistency)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CAMERA_CONTROL_CHANNEL).setMethodCallHandler { call, result ->
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            cameraControlChannel,
+        ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "initializeCamera" -> {
                     val args = call.arguments as? Map<*, *>
@@ -121,15 +130,19 @@ class MainActivity: FlutterActivity() {
                     }
                     initializeCamera(deviceId, result)
                 }
+
                 "startPreview" -> {
                     startPreview(result)
                 }
+
                 "takePicture" -> {
                     takePicture(result)
                 }
+
                 "disposeCamera" -> {
                     disposeCamera(result)
                 }
+
                 else -> {
                     result.notImplemented()
                 }
@@ -137,11 +150,14 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun initializeCamera(deviceId: String, result: MethodChannel.Result) {
+    private fun initializeCamera(
+        deviceId: String,
+        result: MethodChannel.Result,
+    ) {
         try {
             // Dispose existing controller if any
             androidCameraController?.dispose()
-            
+
             // Use stored TextureRegistry or try to get it via reflection as fallback
             val registry = textureRegistry ?: run {
                 val engine = flutterEngineInstance ?: flutterEngine
@@ -149,7 +165,7 @@ class MainActivity: FlutterActivity() {
                     result.error("INIT_ERROR", "Flutter engine not available", null)
                     return
                 }
-                
+
                 // Fallback: Try reflection if stored approach didn't work
                 // Method 1: Try to get it via getRenderer() -> getTextureRegistry()
                 try {
@@ -160,14 +176,17 @@ class MainActivity: FlutterActivity() {
                         @Suppress("UNCHECKED_CAST")
                         val reg = textureRegistryMethod.invoke(renderer) as? TextureRegistry
                         if (reg != null) {
-                            Log.d("MainActivity", "✅ Successfully accessed textureRegistry via getRenderer().getTextureRegistry()")
+                            Log.d(
+                                "MainActivity",
+                                "✅ Successfully accessed textureRegistry via getRenderer().getTextureRegistry()",
+                            )
                             return@run reg
                         }
                     }
                 } catch (e: Exception) {
                     Log.d("MainActivity", "Method 1 (getRenderer) failed: ${e.message}")
                 }
-                
+
                 // Method 2: Try direct field access with different possible field names
                 val fieldNames = listOf("textureRegistry", "mTextureRegistry", "_textureRegistry")
                 for (fieldName in fieldNames) {
@@ -185,15 +204,19 @@ class MainActivity: FlutterActivity() {
                         Log.d("MainActivity", "Field $fieldName not found: ${e.message}")
                     }
                 }
-                
+
                 null
             }
-            
+
             if (registry == null) {
-                result.error("INIT_ERROR", "Texture registry not available. Please ensure Flutter engine is properly initialized.", null)
+                result.error(
+                    "INIT_ERROR",
+                    "Texture registry not available. Please ensure Flutter engine is properly initialized.",
+                    null,
+                )
                 return
             }
-            
+
             androidCameraController = AndroidCameraController(this, registry)
             androidCameraController?.initialize(deviceId, result)
         } catch (e: Exception) {
@@ -224,7 +247,7 @@ class MainActivity: FlutterActivity() {
         androidCameraController = null
         result.success(mapOf("success" to true))
     }
-    
+
     override fun onDestroy() {
         super.onDestroy()
         // Dispose camera controller
