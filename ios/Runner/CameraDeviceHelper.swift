@@ -80,51 +80,55 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {
     case "initializeCameraByDeviceId":
-      guard let args = call.arguments as? [String: Any],
-            let deviceId = args["deviceId"] as? String else {
-        result(FlutterError(code: "INVALID_ARGS", message: "Invalid arguments", details: nil))
-        return
-      }
-      initializeCameraByDeviceId(deviceId: deviceId, result: result)
-      
+      handleInitializeCameraByDeviceId(call: call, result: result)
     case "getCameraDeviceId":
-      guard let args = call.arguments as? [String: Any],
-            let cameraName = args["cameraName"] as? String else {
-        result(FlutterError(code: "INVALID_ARGS", message: "Invalid arguments", details: nil))
-        return
-      }
-      getCameraDeviceId(cameraName: cameraName, result: result)
-      
+      handleGetCameraDeviceId(call: call, result: result)
     case "getAllAvailableCameras":
       getAllAvailableCameras(result: result)
-      
     case "testExternalCameras":
       testExternalCameras(result: result)
-      
     case "requestCameraPermission":
       requestCameraPermission(result: result)
-      
-    // MARK: - Camera Control Methods
     case "initializeCamera":
-      guard let args = call.arguments as? [String: Any],
-            let deviceId = args["deviceId"] as? String else {
-        result(FlutterError(code: "INVALID_ARGS", message: "Invalid arguments", details: nil))
-        return
-      }
-      initializeCameraControl(deviceId: deviceId, result: result)
-      
+      handleInitializeCamera(call: call, result: result)
     case "startPreview":
       startPreview(result: result)
-      
     case "takePicture":
       takePicture(result: result)
-      
     case "disposeCamera":
       disposeCamera(result: result)
-      
     default:
       result(FlutterMethodNotImplemented)
     }
+  }
+  
+  // MARK: - Method Call Handlers
+  
+  private func handleInitializeCameraByDeviceId(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let args = call.arguments as? [String: Any],
+          let deviceId = args["deviceId"] as? String else {
+      result(FlutterError(code: "INVALID_ARGS", message: "Invalid arguments", details: nil))
+      return
+    }
+    initializeCameraByDeviceId(deviceId: deviceId, result: result)
+  }
+  
+  private func handleGetCameraDeviceId(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let args = call.arguments as? [String: Any],
+          let cameraName = args["cameraName"] as? String else {
+      result(FlutterError(code: "INVALID_ARGS", message: "Invalid arguments", details: nil))
+      return
+    }
+    getCameraDeviceId(cameraName: cameraName, result: result)
+  }
+  
+  private func handleInitializeCamera(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let args = call.arguments as? [String: Any],
+          let deviceId = args["deviceId"] as? String else {
+      result(FlutterError(code: "INVALID_ARGS", message: "Invalid arguments", details: nil))
+      return
+    }
+    initializeCameraControl(deviceId: deviceId, result: result)
   }
   
   // MARK: - FlutterTexture Protocol
@@ -156,7 +160,10 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
       return
     }
     
-    // Save to temporary directory
+    savePhotoToFile(imageData: imageData)
+  }
+  
+  private func savePhotoToFile(imageData: Data) {
     let tempDir = FileManager.default.temporaryDirectory
     let fileName = "photo_\(UUID().uuidString).jpg"
     let fileURL = tempDir.appendingPathComponent(fileName)
@@ -175,22 +182,29 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   
   private func requestCameraPermission(result: @escaping FlutterResult) {
     let authStatus = AVCaptureDevice.authorizationStatus(for: .video)
-    
-    switch authStatus {
+    handleAuthorizationStatus(authStatus, result: result)
+  }
+  
+  private func handleAuthorizationStatus(_ status: AVAuthorizationStatus, result: @escaping FlutterResult) {
+    switch status {
     case .authorized:
       result(["status": "authorized"])
     case .notDetermined:
-      AVCaptureDevice.requestAccess(for: .video) { granted in
-        DispatchQueue.main.async {
-          result(["status": granted ? "authorized" : "denied"])
-        }
-      }
+      requestCameraAccess(result: result)
     case .denied:
       result(["status": "denied"])
     case .restricted:
       result(["status": "restricted"])
     @unknown default:
       result(["status": "unknown"])
+    }
+  }
+  
+  private func requestCameraAccess(result: @escaping FlutterResult) {
+    AVCaptureDevice.requestAccess(for: .video) { granted in
+      DispatchQueue.main.async {
+        result(["status": granted ? "authorized" : "denied"])
+      }
     }
   }
   
@@ -214,7 +228,6 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   // MARK: - Helper Methods
   
   /// Creates a discovery session for all available camera devices
-  /// Includes both built-in and external cameras (iOS 17.0+ deployment target)
   private func createDiscoverySession() -> AVCaptureDevice.DiscoverySession {
     let deviceTypes: [AVCaptureDevice.DeviceType] = [
       .builtInWideAngleCamera,
@@ -233,7 +246,7 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
     if #available(iOS 13.0, *) {
       return device.isConnected
     }
-    return true // Assume connected on older iOS
+    return true
   }
   
   /// Extracts device ID from uniqueID (e.g., ":8" -> "8")
@@ -243,7 +256,6 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   }
   
   /// Creates a camera info dictionary for Flutter
-  /// Returns only essential fields: uniqueID and localizedName
   private func createCameraInfo(
     device: AVCaptureDevice,
     deviceId: String,
@@ -259,39 +271,46 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   }
   
   /// Logs detailed information about a camera device
-  ///
-  /// Shows all relevant properties including:
-  /// - deviceType: The type of device (iOS 10.2+)
-  ///   - .external: Explicitly marks external cameras (iOS 17.0+)
-  ///   - .builtIn*: Various built-in camera types
-  /// - uniqueID: Device identifier (used for heuristics on older iOS)
-  /// - isConnected: Whether device is currently connected (iOS 13.0+)
-  /// - position: Camera position (back, front, unspecified)
   private func logDeviceDetails(_ device: AVCaptureDevice, index: Int) {
     print("")
     print("Camera #\(index):")
-    
+    logDeviceName(device)
+    logDeviceIdentifiers(device)
+    logDeviceType(device)
+    logDeviceState(device)
+    logDeviceCapabilities(device)
+    print(String(repeating: "-", count: 78))
+  }
+  
+  private func logDeviceName(_ device: AVCaptureDevice) {
     let rawLocalizedName = device.localizedName
     let localizedName = rawLocalizedName.isEmpty ? "(No name)" : rawLocalizedName
     print("  📷 Localized Name: \(localizedName)")
     if rawLocalizedName.isEmpty {
       print("     ⚠️  WARNING: localizedName is empty!")
     }
-    
+  }
+  
+  private func logDeviceIdentifiers(_ device: AVCaptureDevice) {
     print("  🆔 Unique ID: \(device.uniqueID)")
     print("  🏷️  Model ID: \(device.modelID)")
     print("  📍 Position: \(device.position.rawValue)")
-    
-    // Show device type with external detection info
+  }
+  
+  private func logDeviceType(_ device: AVCaptureDevice) {
     let isExternal = device.deviceType == .external
     print("  🔧 Device Type: \(isExternal ? "External" : "Built-in")")
-    
+  }
+  
+  private func logDeviceState(_ device: AVCaptureDevice) {
     print("  ✅ Connected: \(isDeviceConnected(device))")
-    
     if #available(iOS 13.0, *) {
       print("  ⏸️  Suspended: \(device.isSuspended)")
     }
-    
+  }
+  
+  private func logDeviceCapabilities(_ device: AVCaptureDevice) {
+    let isExternal = device.deviceType == .external
     print("  💡 Has Flash: \(device.hasFlash)")
     print("  🔦 Has Torch: \(device.hasTorch)")
     print("  🏠 Is Built-in: \(!isExternal)")
@@ -300,11 +319,9 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
     if #available(iOS 13.0, *) {
       print("  📐 Active Format: \(device.activeFormat.description)")
     }
-    
-    print(String(repeating: "-", count: 78))
   }
   
-  // MARK: - Public Methods
+  // MARK: - Device Discovery Methods
   
   private func initializeCameraByDeviceId(deviceId: String, result: @escaping FlutterResult) {
     print("🔍 Looking for camera with device ID: \(deviceId)")
@@ -312,177 +329,226 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
     checkCameraPermission { [weak self] granted in
       guard let self = self else { return }
       
-      if !granted {
-        result(FlutterError(
-          code: "PERMISSION_DENIED",
-          message: "Camera permission not granted",
-          details: nil
-        ))
+      guard granted else {
+        self.handlePermissionDenied(result: result)
         return
       }
       
-      let discoverySession = self.createDiscoverySession()
-      
-      print("🔍 Found \(discoverySession.devices.count) devices in discovery session")
-      
-      // Log all devices for debugging
-      for device in discoverySession.devices {
-        print("   - Device uniqueID: \(device.uniqueID), localizedName: \(device.localizedName)")
-      }
-      
-      // Find device by matching the device ID in the uniqueID
-      var foundDevice: AVCaptureDevice?
-      for device in discoverySession.devices {
-        let deviceUniqueId = device.uniqueID
-        // Match by device ID suffix (e.g., ":8")
-        if deviceUniqueId.hasSuffix(":\(deviceId)") {
-          foundDevice = device
-          print("✅ Found device by device ID suffix: \(deviceUniqueId)")
-          break
-        }
-      }
-      
-      if let device = foundDevice {
-        let deviceInfo: [String: Any] = [
-          "success": true,
-          "deviceId": deviceId,
-          "uniqueID": device.uniqueID,
-          "localizedName": device.localizedName,
-          "position": device.position.rawValue
-        ]
-        print("✅ Returning device info for device ID: \(deviceId)")
-        result(deviceInfo)
-      } else {
-        print("❌ Device not found for device ID: \(deviceId)")
-        result(FlutterError(
-          code: "DEVICE_NOT_FOUND",
-          message: "Camera device with ID \(deviceId) not found",
-          details: nil
-        ))
+      self.findAndReturnDevice(deviceId: deviceId, result: result)
+    }
+  }
+  
+  private func handlePermissionDenied(result: @escaping FlutterResult) {
+    result(FlutterError(
+      code: "PERMISSION_DENIED",
+      message: "Camera permission not granted",
+      details: nil
+    ))
+  }
+  
+  private func findAndReturnDevice(deviceId: String, result: @escaping FlutterResult) {
+    let discoverySession = createDiscoverySession()
+    print("🔍 Found \(discoverySession.devices.count) devices in discovery session")
+    
+    logAllDevices(discoverySession.devices)
+    
+    guard let device = findDeviceByDeviceId(deviceId, in: discoverySession.devices) else {
+      handleDeviceNotFound(deviceId: deviceId, result: result)
+      return
+    }
+    
+    returnDeviceInfo(device: device, deviceId: deviceId, result: result)
+  }
+  
+  private func logAllDevices(_ devices: [AVCaptureDevice]) {
+    for device in devices {
+      print("   - Device uniqueID: \(device.uniqueID), localizedName: \(device.localizedName)")
+    }
+  }
+  
+  private func findDeviceByDeviceId(_ deviceId: String, in devices: [AVCaptureDevice]) -> AVCaptureDevice? {
+    for device in devices {
+      if device.uniqueID.hasSuffix(":\(deviceId)") {
+        print("✅ Found device by device ID suffix: \(device.uniqueID)")
+        return device
       }
     }
+    return nil
+  }
+  
+  private func handleDeviceNotFound(deviceId: String, result: @escaping FlutterResult) {
+    print("❌ Device not found for device ID: \(deviceId)")
+    result(FlutterError(
+      code: "DEVICE_NOT_FOUND",
+      message: "Camera device with ID \(deviceId) not found",
+      details: nil
+    ))
+  }
+  
+  private func returnDeviceInfo(device: AVCaptureDevice, deviceId: String, result: @escaping FlutterResult) {
+    let deviceInfo: [String: Any] = [
+      "success": true,
+      "deviceId": deviceId,
+      "uniqueID": device.uniqueID,
+      "localizedName": device.localizedName,
+      "position": device.position.rawValue
+    ]
+    print("✅ Returning device info for device ID: \(deviceId)")
+    result(deviceInfo)
   }
   
   private func getCameraDeviceId(cameraName: String, result: @escaping FlutterResult) {
     checkCameraPermission { [weak self] granted in
       guard let self = self else { return }
       
-      if !granted {
-        result(FlutterError(
-          code: "PERMISSION_DENIED",
-          message: "Camera permission not granted",
-          details: nil
-        ))
+      guard granted else {
+        self.handlePermissionDenied(result: result)
         return
       }
       
-      // Extract device ID from camera name
-      // Format: "com.apple.avfoundation.avcapturedevice.built-in_video:8"
-      let deviceId = cameraName.components(separatedBy: ":").last?.components(separatedBy: ",").first ?? ""
-      
-      print("🔍 Looking for camera with device ID: \(deviceId)")
-      print("🔍 Camera name: \(cameraName)")
-      
-      let discoverySession = self.createDiscoverySession()
-      
-      print("🔍 Found \(discoverySession.devices.count) devices in discovery session")
-      
-      // Log all devices for debugging
-      var deviceIndex = 0
-      for device in discoverySession.devices {
-        print("   [\(deviceIndex)] Device uniqueID: \(device.uniqueID), localizedName: \(device.localizedName)")
-        deviceIndex += 1
-      }
-      
-      var foundDevice: AVCaptureDevice?
-      
-      // Strategy 1: Try exact match first (for built-in cameras)
-      for device in discoverySession.devices {
-        if device.uniqueID == cameraName {
-          foundDevice = device
-          print("✅ Found device by exact name match: \(device.uniqueID)")
-          break
-        }
-      }
-      
-      // Strategy 2: If not found, try matching by device ID suffix (for built-in cameras)
-      // Built-in cameras have format: "com.apple.avfoundation.avcapturedevice.built-in_video:X"
-      if foundDevice == nil {
-        for device in discoverySession.devices {
-          let deviceUniqueId = device.uniqueID
-          if deviceUniqueId.hasSuffix(":\(deviceId)") {
-            foundDevice = device
-            print("✅ Found device by device ID suffix match: \(deviceUniqueId)")
-            break
-          }
-        }
-      }
-      
-      // Strategy 3: For external cameras, Flutter reports them as "built-in_video:8"
-      // but iOS uses UUID format. External cameras have device ID >= 2
-      if foundDevice == nil, let deviceIdInt = Int(deviceId), deviceIdInt >= 2 {
-        print("🔍 Device ID \(deviceId) is external (>= 2), looking for UUID format device...")
-        
-        // Find all external cameras
-        let externalDevices = discoverySession.devices.filter { $0.deviceType == .external }
-        
-        print("🔍 Found \(externalDevices.count) external device(s)")
-        for (index, device) in externalDevices.enumerated() {
-          print("   External [\(index)]: \(device.uniqueID) - \(device.localizedName)")
-        }
-        
-        if externalDevices.count == 1 {
-          // Only one external camera - that must be it
-          foundDevice = externalDevices.first
-          print("✅ Found external device (only one): \(foundDevice!.uniqueID) - \(foundDevice!.localizedName)")
-        } else if externalDevices.count > 1 {
-          // Multiple external cameras - try to match by index
-          // Device ID 8 means it's the 3rd camera (0=back, 1=front, 2+=external)
-          // So external index would be deviceId - 2
-          let externalIndex = deviceIdInt - 2
-          if externalIndex < externalDevices.count {
-            foundDevice = externalDevices[externalIndex]
-            print("✅ Found external device at index \(externalIndex): \(foundDevice!.uniqueID) - \(foundDevice!.localizedName)")
-          } else {
-            // Fallback: use the first external camera
-            foundDevice = externalDevices.first
-            print("⚠️ Using first external device (index out of range): \(foundDevice!.uniqueID) - \(foundDevice!.localizedName)")
-          }
-        }
-      }
-      
-      if let device = foundDevice {
-        let deviceInfo: [String: Any] = [
-          "deviceId": deviceId,
-          "uniqueID": device.uniqueID,
-          "localizedName": device.localizedName,
-          "position": device.position.rawValue
-        ]
-        print("✅ Returning device info for device ID: \(deviceId)")
-        print("   Matched device: \(device.uniqueID) -> \(device.localizedName)")
-        result(deviceInfo)
-      } else {
-        print("❌ Device not found for camera name: \(cameraName), device ID: \(deviceId)")
-        print("   Available devices:")
-        for (index, device) in discoverySession.devices.enumerated() {
-          print("     [\(index)] \(device.uniqueID) - \(device.localizedName)")
-        }
-        result(FlutterError(
-          code: "DEVICE_NOT_FOUND",
-          message: "Camera device not found: \(cameraName) (device ID: \(deviceId))",
-          details: nil
-        ))
-      }
+      self.findDeviceByCameraName(cameraName: cameraName, result: result)
     }
   }
   
+  private func findDeviceByCameraName(cameraName: String, result: @escaping FlutterResult) {
+    let deviceId = extractDeviceIdFromCameraName(cameraName)
+    print("🔍 Looking for camera with device ID: \(deviceId)")
+    print("🔍 Camera name: \(cameraName)")
+    
+    let discoverySession = createDiscoverySession()
+    logDiscoverySessionDevices(discoverySession)
+    
+    guard let device = searchForDevice(cameraName: cameraName, deviceId: deviceId, discoverySession: discoverySession) else {
+      handleCameraNotFound(cameraName: cameraName, deviceId: deviceId, discoverySession: discoverySession, result: result)
+      return
+    }
+    
+    returnCameraDeviceInfo(device: device, deviceId: deviceId, result: result)
+  }
+  
+  private func extractDeviceIdFromCameraName(_ cameraName: String) -> String {
+    return cameraName.components(separatedBy: ":").last?.components(separatedBy: ",").first ?? ""
+  }
+  
+  private func logDiscoverySessionDevices(_ discoverySession: AVCaptureDevice.DiscoverySession) {
+    print("🔍 Found \(discoverySession.devices.count) devices in discovery session")
+    for (index, device) in discoverySession.devices.enumerated() {
+      print("   [\(index)] Device uniqueID: \(device.uniqueID), localizedName: \(device.localizedName)")
+    }
+  }
+  
+  private func searchForDevice(cameraName: String, deviceId: String, discoverySession: AVCaptureDevice.DiscoverySession) -> AVCaptureDevice? {
+    // Strategy 1: Try exact match
+    if let device = findDeviceByExactName(cameraName, in: discoverySession.devices) {
+      return device
+    }
+    
+    // Strategy 2: Try device ID suffix match
+    if let device = findDeviceByDeviceIdSuffix(deviceId, in: discoverySession.devices) {
+      return device
+    }
+    
+    // Strategy 3: Try external camera match
+    return findExternalDevice(deviceId: deviceId, discoverySession: discoverySession)
+  }
+  
+  private func findDeviceByExactName(_ cameraName: String, in devices: [AVCaptureDevice]) -> AVCaptureDevice? {
+    for device in devices {
+      if device.uniqueID == cameraName {
+        print("✅ Found device by exact name match: \(device.uniqueID)")
+        return device
+      }
+    }
+    return nil
+  }
+  
+  private func findDeviceByDeviceIdSuffix(_ deviceId: String, in devices: [AVCaptureDevice]) -> AVCaptureDevice? {
+    for device in devices {
+      if device.uniqueID.hasSuffix(":\(deviceId)") {
+        print("✅ Found device by device ID suffix match: \(device.uniqueID)")
+        return device
+      }
+    }
+    return nil
+  }
+  
+  private func findExternalDevice(deviceId: String, discoverySession: AVCaptureDevice.DiscoverySession) -> AVCaptureDevice? {
+    guard let deviceIdInt = Int(deviceId), deviceIdInt >= 2 else {
+      return nil
+    }
+    
+    print("🔍 Device ID \(deviceId) is external (>= 2), looking for UUID format device...")
+    let externalDevices = discoverySession.devices.filter { $0.deviceType == .external }
+    
+    logExternalDevices(externalDevices)
+    return selectExternalDevice(externalDevices: externalDevices, deviceIdInt: deviceIdInt)
+  }
+  
+  private func logExternalDevices(_ externalDevices: [AVCaptureDevice]) {
+    print("🔍 Found \(externalDevices.count) external device(s)")
+    for (index, device) in externalDevices.enumerated() {
+      print("   External [\(index)]: \(device.uniqueID) - \(device.localizedName)")
+    }
+  }
+  
+  private func selectExternalDevice(externalDevices: [AVCaptureDevice], deviceIdInt: Int) -> AVCaptureDevice? {
+    guard !externalDevices.isEmpty else { return nil }
+    
+    if externalDevices.count == 1 {
+      print("✅ Found external device (only one): \(externalDevices[0].uniqueID) - \(externalDevices[0].localizedName)")
+      return externalDevices.first
+    }
+    
+    return selectFromMultipleExternalDevices(externalDevices: externalDevices, deviceIdInt: deviceIdInt)
+  }
+  
+  private func selectFromMultipleExternalDevices(externalDevices: [AVCaptureDevice], deviceIdInt: Int) -> AVCaptureDevice? {
+    let externalIndex = deviceIdInt - 2
+    
+    if externalIndex < externalDevices.count {
+      let device = externalDevices[externalIndex]
+      print("✅ Found external device at index \(externalIndex): \(device.uniqueID) - \(device.localizedName)")
+      return device
+    }
+    
+    // Fallback: use the first external camera
+    let device = externalDevices.first!
+    print("⚠️ Using first external device (index out of range): \(device.uniqueID) - \(device.localizedName)")
+    return device
+  }
+  
+  private func handleCameraNotFound(cameraName: String, deviceId: String, discoverySession: AVCaptureDevice.DiscoverySession, result: @escaping FlutterResult) {
+    print("❌ Device not found for camera name: \(cameraName), device ID: \(deviceId)")
+    print("   Available devices:")
+    for (index, device) in discoverySession.devices.enumerated() {
+      print("     [\(index)] \(device.uniqueID) - \(device.localizedName)")
+    }
+    
+    result(FlutterError(
+      code: "DEVICE_NOT_FOUND",
+      message: "Camera device not found: \(cameraName) (device ID: \(deviceId))",
+      details: nil
+    ))
+  }
+  
+  private func returnCameraDeviceInfo(device: AVCaptureDevice, deviceId: String, result: @escaping FlutterResult) {
+    let deviceInfo: [String: Any] = [
+      "deviceId": deviceId,
+      "uniqueID": device.uniqueID,
+      "localizedName": device.localizedName,
+      "position": device.position.rawValue
+    ]
+    print("✅ Returning device info for device ID: \(deviceId)")
+    print("   Matched device: \(device.uniqueID) -> \(device.localizedName)")
+    result(deviceInfo)
+  }
+  
   /// Returns all currently available camera devices
-  /// This is used to filter out cameras that aren't actually connected
   private func getAllAvailableCameras(result: @escaping FlutterResult) {
     checkCameraPermission { [weak self] granted in
       guard let self = self else { return }
       
-      if !granted {
+      guard granted else {
         result(FlutterError(
           code: "PERMISSION_DENIED",
           message: "Camera permission not granted. Please enable camera access in Settings.",
@@ -501,58 +567,81 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
     print("🔍 getAllAvailableCameras: Found \(discoverySession.devices.count) devices")
     print("")
     
-    // Log detailed information about ALL devices
+    logDetailedCameraInfo(discoverySession.devices)
+    
+    let cameras = buildCameraList(from: discoverySession.devices)
+    printCameraSummary(cameras: cameras, devices: discoverySession.devices)
+    
+    result(cameras)
+  }
+  
+  private func logDetailedCameraInfo(_ devices: [AVCaptureDevice]) {
     print("📸 DETAILED CAMERA INFORMATION:")
     print(String(repeating: "=", count: 80))
-    for (index, device) in discoverySession.devices.enumerated() {
+    for (index, device) in devices.enumerated() {
       logDeviceDetails(device, index: index + 1)
     }
     print(String(repeating: "=", count: 80))
     print("")
-    
+  }
+  
+  private func buildCameraList(from devices: [AVCaptureDevice]) -> [[String: Any]] {
     var cameras: [[String: Any]] = []
     var builtInCount = 0
     var externalCount = 0
     
-    // Process all devices in a single loop
-    for device in discoverySession.devices {
+    for device in devices {
       let isExternal = device.deviceType == .external
-      let deviceId: String
+      let deviceId = calculateDeviceId(isExternal: isExternal, builtInCount: builtInCount, externalCount: externalCount, device: device)
       
       if isExternal {
-        // External cameras: device IDs start after built-in cameras
-        // Use sequential numbering based on external camera index
-        deviceId = String(builtInCount + externalCount)
         externalCount += 1
       } else {
-        // Built-in cameras: use device ID from uniqueID (0, 1, etc.)
-        deviceId = extractDeviceId(from: device.uniqueID)
         builtInCount += 1
       }
       
-      let fallbackName = isExternal ? "External Camera \(deviceId)" : "Camera \(deviceId)"
-      let cameraInfo = createCameraInfo(
-        device: device,
-        deviceId: deviceId,
-        isExternal: isExternal,
-        fallbackName: fallbackName
-      )
+      let cameraInfo = buildCameraInfo(device: device, deviceId: deviceId, isExternal: isExternal)
       cameras.append(cameraInfo)
       
-      let localizedName = cameraInfo["localizedName"] as? String ?? ""
-      let statusIcon = "✅"
-      let cameraType = isExternal ? "External" : "Built-in"
-      
-      print("   \(statusIcon) \(cameraType) - Device ID: \(deviceId), uniqueID: \(device.uniqueID), name: \(localizedName)")
+      logCameraInfo(cameraInfo: cameraInfo, device: device, isExternal: isExternal, deviceId: deviceId)
     }
+    
+    return cameras
+  }
+  
+  private func calculateDeviceId(isExternal: Bool, builtInCount: Int, externalCount: Int, device: AVCaptureDevice) -> String {
+    if isExternal {
+      return String(builtInCount + externalCount)
+    } else {
+      return extractDeviceId(from: device.uniqueID)
+    }
+  }
+  
+  private func buildCameraInfo(device: AVCaptureDevice, deviceId: String, isExternal: Bool) -> [String: Any] {
+    let fallbackName = isExternal ? "External Camera \(deviceId)" : "Camera \(deviceId)"
+    return createCameraInfo(
+      device: device,
+      deviceId: deviceId,
+      isExternal: isExternal,
+      fallbackName: fallbackName
+    )
+  }
+  
+  private func logCameraInfo(cameraInfo: [String: Any], device: AVCaptureDevice, isExternal: Bool, deviceId: String) {
+    let localizedName = cameraInfo["localizedName"] as? String ?? ""
+    let cameraType = isExternal ? "External" : "Built-in"
+    print("   ✅ \(cameraType) - Device ID: \(deviceId), uniqueID: \(device.uniqueID), name: \(localizedName)")
+  }
+  
+  private func printCameraSummary(cameras: [[String: Any]], devices: [AVCaptureDevice]) {
+    let builtInCount = devices.filter { $0.deviceType != .external }.count
+    let externalCount = devices.filter { $0.deviceType == .external }.count
     
     print("")
     print("📊 Summary:")
     print("   Built-in cameras: \(builtInCount)")
     print("   External cameras: \(externalCount)")
     print("")
-        
-    result(cameras)
   }
   
   /// Test method to specifically check external camera detection
@@ -560,83 +649,107 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
     checkCameraPermission { [weak self] granted in
       guard let self = self else { return }
       
-      if !granted {
-        result(FlutterError(
-          code: "PERMISSION_DENIED",
-          message: "Camera permission not granted",
-          details: nil
-        ))
+      guard granted else {
+        self.handlePermissionDenied(result: result)
         return
       }
       
-      print("🔍 Testing External Camera Detection")
-      print(String(repeating: "=", count: 80))
-      
-      let discoverySession = self.createDiscoverySession()
-      let allDevices = discoverySession.devices
-      let builtInDevices = allDevices.filter { $0.deviceType == .builtInWideAngleCamera }
-      let externalDevices = allDevices.filter { $0.deviceType == .external }
-      
-      print("📊 Device Summary:")
-      print("   Total devices: \(allDevices.count)")
-      print("   Built-in devices: \(builtInDevices.count)")
-      print("   External devices: \(externalDevices.count)")
-      print("")
-      
-      print("🏠 Built-in Cameras:")
-      for (index, device) in builtInDevices.enumerated() {
-        print("   [\(index)] \(device.localizedName)")
-        print("       UniqueID: \(device.uniqueID)")
-        print("       Connected: \(self.isDeviceConnected(device))")
-      }
-      print("")
-      
-      print("🔌 External Cameras:")
-      if externalDevices.isEmpty {
-        print("   ❌ No external cameras detected")
-        print("")
-        print("💡 Troubleshooting tips:")
-        print("   1. Check Settings > Privacy & Security > Camera")
-        print("   2. Try unplugging and replugging the camera")
-        print("   3. Ensure camera works in the built-in Camera app")
-        print("   4. Some cameras may require a powered USB hub")
-        print("   5. Check iOS version (iOS 17.0+ required for .external)")
-      } else {
-        for (index, device) in externalDevices.enumerated() {
-          print("   ✅ [\(index)] \(device.localizedName)")
-          print("       UniqueID: \(device.uniqueID)")
-          print("       Connected: \(self.isDeviceConnected(device))")
-          print("       ModelID: \(device.modelID)")
-          
-          if #available(iOS 13.0, *) {
-            print("       Suspended: \(device.isSuspended)")
-          }
-        }
-      }
-      
-      print(String(repeating: "=", count: 80))
-      
-      let info: [String: Any] = [
-        "totalDevices": allDevices.count,
-        "builtInDevices": builtInDevices.count,
-        "externalDevices": externalDevices.count,
-        "externalNames": externalDevices.map { $0.localizedName },
-        "externalUniqueIDs": externalDevices.map { $0.uniqueID }
-      ]
-      
-      result(info)
+      self.performExternalCameraTest(result: result)
     }
+  }
+  
+  private func performExternalCameraTest(result: @escaping FlutterResult) {
+    print("🔍 Testing External Camera Detection")
+    print(String(repeating: "=", count: 80))
+    
+    let discoverySession = createDiscoverySession()
+    let categorizedDevices = categorizeDevices(discoverySession.devices)
+    
+    printDeviceSummary(categorizedDevices: categorizedDevices)
+    logBuiltInCameras(categorizedDevices.builtIn)
+    logExternalCamerasForTest(categorizedDevices.external)
+    
+    print(String(repeating: "=", count: 80))
+    
+    let info = buildExternalCameraTestInfo(categorizedDevices: categorizedDevices)
+    result(info)
+  }
+  
+  private typealias CategorizedDevices = (all: [AVCaptureDevice], builtIn: [AVCaptureDevice], external: [AVCaptureDevice])
+  
+  private func categorizeDevices(_ devices: [AVCaptureDevice]) -> CategorizedDevices {
+    let builtIn = devices.filter { $0.deviceType == .builtInWideAngleCamera }
+    let external = devices.filter { $0.deviceType == .external }
+    return (devices, builtIn, external)
+  }
+  
+  private func printDeviceSummary(categorizedDevices: CategorizedDevices) {
+    print("📊 Device Summary:")
+    print("   Total devices: \(categorizedDevices.all.count)")
+    print("   Built-in devices: \(categorizedDevices.builtIn.count)")
+    print("   External devices: \(categorizedDevices.external.count)")
+    print("")
+  }
+  
+  private func logBuiltInCameras(_ devices: [AVCaptureDevice]) {
+    print("🏠 Built-in Cameras:")
+    for (index, device) in devices.enumerated() {
+      print("   [\(index)] \(device.localizedName)")
+      print("       UniqueID: \(device.uniqueID)")
+      print("       Connected: \(isDeviceConnected(device))")
+    }
+    print("")
+  }
+  
+  private func logExternalCamerasForTest(_ devices: [AVCaptureDevice]) {
+    print("🔌 External Cameras:")
+    if devices.isEmpty {
+      printExternalCameraTroubleshooting()
+    } else {
+      for (index, device) in devices.enumerated() {
+        logExternalCameraDetails(device: device, index: index)
+      }
+    }
+  }
+  
+  private func printExternalCameraTroubleshooting() {
+    print("   ❌ No external cameras detected")
+    print("")
+    print("💡 Troubleshooting tips:")
+    print("   1. Check Settings > Privacy & Security > Camera")
+    print("   2. Try unplugging and replugging the camera")
+    print("   3. Ensure camera works in the built-in Camera app")
+    print("   4. Some cameras may require a powered USB hub")
+    print("   5. Check iOS version (iOS 17.0+ required for .external)")
+  }
+  
+  private func logExternalCameraDetails(device: AVCaptureDevice, index: Int) {
+    print("   ✅ [\(index)] \(device.localizedName)")
+    print("       UniqueID: \(device.uniqueID)")
+    print("       Connected: \(isDeviceConnected(device))")
+    print("       ModelID: \(device.modelID)")
+    
+    if #available(iOS 13.0, *) {
+      print("       Suspended: \(device.isSuspended)")
+    }
+  }
+  
+  private func buildExternalCameraTestInfo(categorizedDevices: CategorizedDevices) -> [String: Any] {
+    return [
+      "totalDevices": categorizedDevices.all.count,
+      "builtInDevices": categorizedDevices.builtIn.count,
+      "externalDevices": categorizedDevices.external.count,
+      "externalNames": categorizedDevices.external.map { $0.localizedName },
+      "externalUniqueIDs": categorizedDevices.external.map { $0.uniqueID }
+    ]
   }
   
   // MARK: - Camera Control Methods
   
   /// Initializes camera control with specific device ID
-  /// Returns texture ID for Flutter preview
   private func initializeCameraControl(deviceId: String, result: @escaping FlutterResult) {
-    // Clean up any existing session first
     cleanupCameraSession()
     
-    // Small delay to ensure previous session is fully released
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
       guard let self = self else {
         result(FlutterError(code: "INIT_ERROR", message: "Helper deallocated", details: nil))
@@ -654,147 +767,159 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   
   /// Performs the actual camera initialization
   private func performCameraInitialization(device: AVCaptureDevice, result: @escaping FlutterResult) {
-    // Check if device is available
     guard device.isConnected else {
       result(FlutterError(code: "DEVICE_NOT_CONNECTED", message: "Camera device is not connected", details: nil))
       return
     }
     
-    // Register texture to get ID for Flutter
     self.textureId = registrar.textures().register(self)
     
     let session = AVCaptureSession()
     session.beginConfiguration()
     
-    // Set session preset
     if session.canSetSessionPreset(.high) {
       session.sessionPreset = .high
     }
     
     do {
-      // Input - lock device for configuration
-      try device.lockForConfiguration()
-      defer { device.unlockForConfiguration() }
-      
-      let videoInput = try AVCaptureDeviceInput(device: device)
-      guard session.canAddInput(videoInput) else {
-        result(FlutterError(code: "INIT_ERROR", message: "Cannot add video input to session", details: nil))
-        return
-      }
-      session.addInput(videoInput)
-      
-      // Photo Output
-      let photoOutput = AVCapturePhotoOutput()
-      guard session.canAddOutput(photoOutput) else {
-        result(FlutterError(code: "INIT_ERROR", message: "Cannot add photo output to session", details: nil))
-        return
-      }
-      session.addOutput(photoOutput)
-      
-      // Video Data Output (for Texture Preview)
-      let videoOutput = AVCaptureVideoDataOutput()
-      videoOutput.alwaysDiscardsLateVideoFrames = true
-      videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
-      videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue.main)
-      guard session.canAddOutput(videoOutput) else {
-        result(FlutterError(code: "INIT_ERROR", message: "Cannot add video output to session", details: nil))
-        return
-      }
-      session.addOutput(videoOutput)
-
-      session.commitConfiguration()
-      
-      self.captureSession = session
-      self.photoOutput = photoOutput
-      self.videoDataOutput = videoOutput
-      
-      // Configure connections to ensure photo matches preview orientation
-      configureConnections(device: device)
-      
-      result(["success": true, "textureId": self.textureId])
+      try configureCameraSession(session: session, device: device, result: result)
     } catch {
-      // Clean up on error
       cleanupCameraSession()
       result(FlutterError(code: "INIT_ERROR", message: error.localizedDescription, details: nil))
     }
   }
   
-  /// Configures video and photo connections to match orientation
-  /// Ensures captured photos match what's shown in the preview
-  private func configureConnections(device: AVCaptureDevice) {
-    // Get the current device orientation
-    let deviceOrientation = UIDevice.current.orientation
-    let videoOrientation: AVCaptureVideoOrientation
+  private func configureCameraSession(session: AVCaptureSession, device: AVCaptureDevice, result: @escaping FlutterResult) throws {
+    try device.lockForConfiguration()
+    defer { device.unlockForConfiguration() }
     
-    // Map device orientation to video orientation
+    try addVideoInput(to: session, device: device, result: result)
+    try addPhotoOutput(to: session, result: result)
+    try addVideoDataOutput(to: session, result: result)
+    
+    session.commitConfiguration()
+    
+    self.captureSession = session
+    configureConnections(device: device)
+    
+    result(["success": true, "textureId": self.textureId])
+  }
+  
+  private func addVideoInput(to session: AVCaptureSession, device: AVCaptureDevice, result: @escaping FlutterResult) throws {
+    let videoInput = try AVCaptureDeviceInput(device: device)
+    guard session.canAddInput(videoInput) else {
+      throw NSError(domain: "CameraError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Cannot add video input to session"])
+    }
+    session.addInput(videoInput)
+  }
+  
+  private func addPhotoOutput(to session: AVCaptureSession, result: @escaping FlutterResult) throws {
+    let photoOutput = AVCapturePhotoOutput()
+    guard session.canAddOutput(photoOutput) else {
+      throw NSError(domain: "CameraError", code: 2, userInfo: [NSLocalizedDescriptionKey: "Cannot add photo output to session"])
+    }
+    session.addOutput(photoOutput)
+    self.photoOutput = photoOutput
+  }
+  
+  private func addVideoDataOutput(to session: AVCaptureSession, result: @escaping FlutterResult) throws {
+    let videoOutput = AVCaptureVideoDataOutput()
+    videoOutput.alwaysDiscardsLateVideoFrames = true
+    videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+    videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue.main)
+    
+    guard session.canAddOutput(videoOutput) else {
+      throw NSError(domain: "CameraError", code: 3, userInfo: [NSLocalizedDescriptionKey: "Cannot add video output to session"])
+    }
+    session.addOutput(videoOutput)
+    self.videoDataOutput = videoOutput
+  }
+  
+  /// Configures video and photo connections to match orientation
+  private func configureConnections(device: AVCaptureDevice) {
+    let videoOrientation = getVideoOrientation()
+    
+    configureVideoConnection(device: device, videoOrientation: videoOrientation)
+    configurePhotoConnection(videoOrientation: videoOrientation)
+    setupRotationCoordination(device: device)
+    
+    logConnectionConfiguration(device: device, videoOrientation: videoOrientation)
+  }
+  
+  private func getVideoOrientation() -> AVCaptureVideoOrientation {
+    let deviceOrientation = UIDevice.current.orientation
+    
     switch deviceOrientation {
     case .portrait:
-      videoOrientation = .portrait
+      return .portrait
     case .portraitUpsideDown:
-      videoOrientation = .portraitUpsideDown
+      return .portraitUpsideDown
     case .landscapeLeft:
-      videoOrientation = .landscapeRight
+      return .landscapeRight
     case .landscapeRight:
-      videoOrientation = .landscapeLeft
+      return .landscapeLeft
     default:
-      // Default to portrait if orientation is unknown
-      videoOrientation = .portrait
+      return .portrait
+    }
+  }
+  
+  private func configureVideoConnection(device: AVCaptureDevice, videoOrientation: AVCaptureVideoOrientation) {
+    guard let videoConnection = videoDataOutput?.connection(with: .video) else { return }
+    
+    if videoConnection.isVideoOrientationSupported {
+      videoConnection.videoOrientation = videoOrientation
     }
     
-    // Configure video output connection (for preview)
-    if let videoConnection = videoDataOutput?.connection(with: .video) {
-      if videoConnection.isVideoOrientationSupported {
-        videoConnection.videoOrientation = videoOrientation
-      }
-      // Mirror front-facing cameras for preview (users expect mirror-like view)
-      if device.position == .front && videoConnection.isVideoMirroringSupported {
-        videoConnection.isVideoMirrored = false
-      } else {
-        videoConnection.isVideoMirrored = false
-      }
+    videoConnection.isVideoMirrored = false
+  }
+  
+  private func configurePhotoConnection(videoOrientation: AVCaptureVideoOrientation) {
+    guard let photoConnection = photoOutput?.connection(with: .video) else { return }
+    
+    if photoConnection.isVideoOrientationSupported {
+      photoConnection.videoOrientation = videoOrientation
     }
     
-    // Configure photo output connection (for capture)
-    // IMPORTANT: Photos should NOT be mirrored - they should show actual orientation
-    // Preview is mirrored for user comfort, but photos should be correct
-    if let photoConnection = photoOutput?.connection(with: .video) {
-      if photoConnection.isVideoOrientationSupported {
-        photoConnection.videoOrientation = videoOrientation
-      }
-      // Never mirror photos - they should show the actual scene orientation
-      photoConnection.isVideoMirrored = false
+    photoConnection.isVideoMirrored = false
+  }
+  
+  private func setupRotationCoordination(device: AVCaptureDevice) {
+    guard #available(iOS 17.0, *) else { return }
+    
+    let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
+    self.rotationCoordinator = coordinator
+    
+    setupRotationObserver(coordinator: coordinator)
+    applyInitialRotation(coordinator: coordinator)
+  }
+  
+  @available(iOS 17.0, *)
+  private func setupRotationObserver(coordinator: AVCaptureDevice.RotationCoordinator) {
+    rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: .new) { [weak self] coord, change in
+      guard let self = self, let angle = change.newValue else { return }
+      self.applyRotationAngle(angle)
+    }
+  }
+  
+  @available(iOS 17.0, *)
+  private func applyInitialRotation(coordinator: AVCaptureDevice.RotationCoordinator) {
+    let initialAngle = coordinator.videoRotationAngleForHorizonLevelPreview
+    applyRotationAngle(initialAngle)
+  }
+  
+  private func applyRotationAngle(_ angle: CGFloat) {
+    if let videoConnection = videoDataOutput?.connection(with: .video),
+       videoConnection.isVideoRotationAngleSupported(angle) {
+      videoConnection.videoRotationAngle = angle
     }
     
-    // Setup Rotation Coordination (iOS 17+) for dynamic rotation updates
-    if #available(iOS 17.0, *) {
-      let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
-      self.rotationCoordinator = coordinator
-      rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: .new) { [weak self] coord, change in
-        guard let self = self else { return }
-        if let angle = change.newValue {
-          // Apply rotation angle to both connections
-          if let videoConnection = self.videoDataOutput?.connection(with: .video),
-             videoConnection.isVideoRotationAngleSupported(angle) {
-            videoConnection.videoRotationAngle = angle
-          }
-          if let photoConnection = self.photoOutput?.connection(with: .video),
-             photoConnection.isVideoRotationAngleSupported(angle) {
-            photoConnection.videoRotationAngle = angle
-          }
-        }
-      }
-      // Apply initial rotation
-      let initialAngle = coordinator.videoRotationAngleForHorizonLevelPreview
-      if let videoConnection = videoDataOutput?.connection(with: .video),
-         videoConnection.isVideoRotationAngleSupported(initialAngle) {
-        videoConnection.videoRotationAngle = initialAngle
-      }
-      if let photoConnection = photoOutput?.connection(with: .video),
-         photoConnection.isVideoRotationAngleSupported(initialAngle) {
-        photoConnection.videoRotationAngle = initialAngle
-      }
+    if let photoConnection = photoOutput?.connection(with: .video),
+       photoConnection.isVideoRotationAngleSupported(angle) {
+      photoConnection.videoRotationAngle = angle
     }
-    
+  }
+  
+  private func logConnectionConfiguration(device: AVCaptureDevice, videoOrientation: AVCaptureVideoOrientation) {
     let previewMirrored = device.position == .front
     print("📸 Configured connections:")
     print("   Video orientation: \(videoOrientation.rawValue)")
@@ -807,24 +932,36 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
     let discoverySession = createDiscoverySession()
     
     // Try to find by device ID suffix (for built-in cameras)
-    for device in discoverySession.devices {
+    if let device = findBuiltInDevice(deviceId: deviceId, in: discoverySession.devices) {
+      return device
+    }
+    
+    // For external cameras, try to match by index
+    return findExternalDeviceForControl(deviceId: deviceId, discoverySession: discoverySession)
+  }
+  
+  private func findBuiltInDevice(deviceId: String, in devices: [AVCaptureDevice]) -> AVCaptureDevice? {
+    for device in devices {
       if device.uniqueID.hasSuffix(":\(deviceId)") {
         return device
       }
     }
-    
-    // For external cameras, try to match by index
+    return nil
+  }
+  
+  private func findExternalDeviceForControl(deviceId: String, discoverySession: AVCaptureDevice.DiscoverySession) -> AVCaptureDevice? {
     let builtInCameras = discoverySession.devices.filter { $0.deviceType != .external }
     let externalCameras = discoverySession.devices.filter { $0.deviceType == .external }
     
-    if let deviceIdInt = Int(deviceId), deviceIdInt >= builtInCameras.count {
-      let externalIndex = deviceIdInt - builtInCameras.count
-      if externalIndex < externalCameras.count {
-        return externalCameras[externalIndex]
-      }
+    guard let deviceIdInt = Int(deviceId), deviceIdInt >= builtInCameras.count else {
+      return discoverySession.devices.first
     }
     
-    // Fallback: return first device
+    let externalIndex = deviceIdInt - builtInCameras.count
+    if externalIndex < externalCameras.count {
+      return externalCameras[externalIndex]
+    }
+    
     return discoverySession.devices.first
   }
   
@@ -855,33 +992,38 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   
   /// Cleans up camera session
   private func cleanupCameraSession() {
-    // Stop session first
-    if let session = captureSession {
-      if session.isRunning {
-        session.stopRunning()
-      }
-      // Remove all inputs and outputs
-      session.beginConfiguration()
-      for input in session.inputs {
-        session.removeInput(input)
-      }
-      for output in session.outputs {
-        session.removeOutput(output)
-      }
-      session.commitConfiguration()
+    stopAndCleanSession()
+    unregisterTexture()
+    cleanupObservations()
+    clearReferences()
+  }
+  
+  private func stopAndCleanSession() {
+    guard let session = captureSession else { return }
+    
+    if session.isRunning {
+      session.stopRunning()
     }
     
-    // Unregister texture
+    session.beginConfiguration()
+    session.inputs.forEach { session.removeInput($0) }
+    session.outputs.forEach { session.removeOutput($0) }
+    session.commitConfiguration()
+  }
+  
+  private func unregisterTexture() {
     if textureId != -1 {
       registrar.textures().unregisterTexture(textureId)
       textureId = -1
     }
-    
-    // Clean up observations
+  }
+  
+  private func cleanupObservations() {
     rotationObservation?.invalidate()
     rotationObservation = nil
-    
-    // Clear all references
+  }
+  
+  private func clearReferences() {
     captureSession = nil
     photoOutput = nil
     videoDataOutput = nil
@@ -896,4 +1038,3 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
     result(["success": true])
   }
 }
-
