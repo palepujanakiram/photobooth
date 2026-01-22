@@ -150,6 +150,19 @@ class AndroidCameraController(
         ImageReader.OnImageAvailableListener { reader ->
         Log.d(TAG, "📸 imageAvailableListener triggered")
         
+        // CRITICAL: Check if camera is still active/initialized
+        // Prevents "FlutterJNI not attached" errors when callback fires after disposal
+        if (cameraDevice == null || textureEntry == null) {
+            Log.w(TAG, "⚠️ imageAvailableListener called but camera already disposed. Ignoring.")
+            // Acquire and immediately close any pending image to clear the queue
+            try {
+                reader.acquireLatestImage()?.close()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error closing orphaned image: ${e.message}")
+            }
+            return@OnImageAvailableListener
+        }
+        
         // Cancel timeout since we received the image
         captureTimeoutRunnable?.let { runnable ->
             captureTimeoutHandler?.removeCallbacks(runnable)
@@ -677,6 +690,9 @@ class AndroidCameraController(
         cameraDevice?.close()
         cameraDevice = null
 
+        // CRITICAL: Remove ImageReader listener BEFORE closing to prevent callbacks
+        // on detached Flutter engine (FlutterJNI not attached error)
+        imageReader?.setOnImageAvailableListener(null, null)
         imageReader?.close()
         imageReader = null
 

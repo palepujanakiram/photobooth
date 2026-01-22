@@ -1172,17 +1172,44 @@ class CameraService {
     }
 
     try {
+      // Double-check camera is still initialized right before capture
+      // This catches race conditions where camera was closed mid-flight
+      if (!_controller!.value.isInitialized) {
+        ErrorReportingManager.log('❌ Camera was closed before capture');
+        await ErrorReportingManager.recordError(
+          Exception('Camera closed before capture'),
+          StackTrace.current,
+          reason: 'Camera state changed to uninitialized before takePicture',
+          extraInfo: {
+            'controller_null': _controller == null,
+            'value_initialized': _controller?.value.isInitialized ?? false,
+          },
+        );
+        throw app_exceptions.CameraException('Camera was closed before capture could complete');
+      }
+      
       final XFile image = await _controller!.takePicture();
       ErrorReportingManager.log('✅ CameraService: Standard controller photo captured');
       return image;
     } catch (e, stackTrace) {
+      final errorString = e.toString();
+      final isCameraClosedError = errorString.contains('Camera is closed') || 
+                                    errorString.contains('camera is closed') ||
+                                    errorString.contains('CameraDeviceImpl.close');
+      
       ErrorReportingManager.log('❌ CameraService: Standard controller takePicture failed');
       await ErrorReportingManager.recordError(
         e,
         stackTrace,
-        reason: 'Standard CameraController takePicture failed',
+        reason: isCameraClosedError 
+            ? 'Camera was closed during capture (race condition)'
+            : 'Standard CameraController takePicture failed',
         extraInfo: {
-          'error': e.toString(),
+          'error': errorString,
+          'error_type': e.runtimeType.toString(),
+          'is_camera_closed_error': isCameraClosedError,
+          'controller_null': _controller == null,
+          'controller_initialized': _controller?.value.isInitialized ?? false,
         },
       );
       

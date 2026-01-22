@@ -30,8 +30,22 @@ Future<void> main() async {
         enableBugsnag: true,  // Always enabled by default
       );
     
-    // Set up Flutter error handler
+    // Set up Flutter error handler with filtering
     FlutterError.onError = (errorDetails) {
+      // Filter out non-fatal image decoding errors
+      // These are handled by Image.errorBuilder widgets
+      final errorString = errorDetails.exception.toString().toLowerCase();
+      if (errorString.contains('image decoding') ||
+          errorString.contains('failed to submit image decoding command buffer') ||
+          errorString.contains('codec failed to produce an image') ||
+          errorString.contains('failed to load network image')) {
+        // Log to console in debug mode but don't report to Bugsnag
+        if (kDebugMode) {
+          AppLogger.debug('Image loading error (non-fatal, handled by UI): ${errorDetails.exception}');
+        }
+        return;
+      }
+      
       ErrorReportingManager.recordError(
         errorDetails.exception,
         errorDetails.stack,
@@ -49,8 +63,22 @@ Future<void> main() async {
       }
     };
     
-    // Pass all uncaught asynchronous errors to ErrorReportingManager
+    // Pass all uncaught asynchronous errors to ErrorReportingManager with filtering
     PlatformDispatcher.instance.onError = (error, stack) {
+      // Filter out non-fatal image decoding errors
+      // These are handled by Image.errorBuilder widgets
+      final errorString = error.toString().toLowerCase();
+      if (errorString.contains('image decoding') ||
+          errorString.contains('failed to submit image decoding command buffer') ||
+          errorString.contains('codec failed to produce an image') ||
+          errorString.contains('failed to load network image')) {
+        // Log to console in debug mode but don't report to Bugsnag
+        if (kDebugMode) {
+          AppLogger.debug('Image loading error (non-fatal, handled by UI): $error');
+        }
+        return true; // Mark as handled
+      }
+      
       ErrorReportingManager.recordError(
         error,
         stack,

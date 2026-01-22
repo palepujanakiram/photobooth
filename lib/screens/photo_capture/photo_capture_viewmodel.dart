@@ -113,6 +113,13 @@ class CaptureViewModel extends ChangeNotifier {
   Future<void> resetAndInitializeCameras() async {
     AppLogger.debug('🔄 Resetting camera screen and initializing cameras...');
     
+    // CRITICAL: Prevent reset while capture is in progress
+    if (_isCapturing) {
+      AppLogger.debug('⚠️ Cannot reset cameras - capture in progress');
+      ErrorReportingManager.log('⚠️ Reset blocked - capture in progress');
+      return;
+    }
+    
     // Clear any captured photo
     _capturedPhoto = null;
     
@@ -189,6 +196,13 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Switches to a different camera
   Future<void> switchCamera(CameraDescription camera) async {
+    // CRITICAL: Prevent camera switch while capture is in progress
+    if (_isCapturing) {
+      AppLogger.debug('⚠️ Cannot switch cameras - capture in progress');
+      ErrorReportingManager.log('⚠️ Camera switch blocked - capture in progress');
+      return;
+    }
+    
     // Don't switch if it's the same camera
     if (_currentCamera?.name == camera.name) {
       AppLogger.debug('⚠️ Already using camera: ${camera.name}');
