@@ -21,6 +21,7 @@ import android.util.Size
 import android.view.Surface
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
+import com.bugsnag.android.Bugsnag
 import java.io.File
 import java.io.FileOutputStream
 
@@ -53,14 +54,17 @@ class AndroidCameraController(
     private var pendingPhotoResult: MethodChannel.Result? = null
     private var captureTimeoutHandler: android.os.Handler? = null
     private var captureTimeoutRunnable: Runnable? = null
+    private var isDisposing: Boolean = false
 
     private val cameraStateCallback =
         object : CameraDevice.StateCallback() {
         override fun onOpened(camera: CameraDevice) {
             Log.d(TAG, "✅ Camera opened: ${camera.id}")
+            Bugsnag.leaveBreadcrumb("Camera opened successfully: ${camera.id}")
             Log.d(TAG, "   Expected camera ID: $currentCameraId")
             if (camera.id != currentCameraId) {
                 Log.e(TAG, "❌ ERROR: Opened camera ID (${camera.id}) does not match requested ID ($currentCameraId)!")
+                Bugsnag.leaveBreadcrumb("Camera ID mismatch: expected $currentCameraId, got ${camera.id}")
             } else {
                 Log.d(TAG, "✅ Camera ID matches requested ID")
             }
@@ -70,6 +74,7 @@ class AndroidCameraController(
 
         override fun onDisconnected(camera: CameraDevice) {
             Log.d(TAG, "⚠️ Camera disconnected: ${camera.id}")
+            Bugsnag.leaveBreadcrumb("Camera disconnected: ${camera.id}")
             closeCamera()
         }
 
@@ -90,6 +95,7 @@ class AndroidCameraController(
 
                     else -> "Unknown camera error"
                 }
+            Bugsnag.leaveBreadcrumb("Camera error: $errorMsg (code: $error)")
             pendingPhotoResult?.error("CAMERA_ERROR", errorMsg, null)
             pendingPhotoResult = null
             closeCamera()
@@ -102,11 +108,13 @@ class AndroidCameraController(
         object : CameraCaptureSession.StateCallback() {
         override fun onConfigured(session: CameraCaptureSession) {
             Log.d(TAG, "✅ Capture session configured")
+            Bugsnag.leaveBreadcrumb("Capture session configured successfully")
             captureSession = session
 
             // If there's a pending preview request, start it now
             pendingPreviewResult?.let { result ->
                 Log.d(TAG, "🎬 Starting preview (pending request from before session was ready)")
+                Bugsnag.leaveBreadcrumb("Starting preview from pending request")
                 startPreviewInternal(result)
                 pendingPreviewResult = null
             }
@@ -114,6 +122,7 @@ class AndroidCameraController(
 
         override fun onConfigureFailed(session: CameraCaptureSession) {
             Log.e(TAG, "❌ Capture session configuration failed")
+            Bugsnag.leaveBreadcrumb("Capture session configuration failed")
             pendingPhotoResult?.error("SESSION_ERROR", "Failed to configure capture session", null)
             pendingPhotoResult = null
             pendingPreviewResult?.error("SESSION_ERROR", "Failed to configure capture session", null)
@@ -141,6 +150,7 @@ class AndroidCameraController(
                 failure: CaptureFailure,
             ) {
                 Log.e(TAG, "❌ Photo capture failed: ${failure.reason}")
+                Bugsnag.leaveBreadcrumb("Photo capture failed: ${failure.reason}")
                 pendingPhotoResult?.error("CAPTURE_ERROR", "Photo capture failed: ${failure.reason}", null)
                 pendingPhotoResult = null
             }
@@ -149,12 +159,14 @@ class AndroidCameraController(
     private val imageAvailableListener =
         ImageReader.OnImageAvailableListener { reader ->
         Log.d(TAG, "📸 imageAvailableListener triggered")
+        Bugsnag.leaveBreadcrumb("Image data received from camera")
         
         // CRITICAL: Check if camera is still active/initialized
         // Prevents "FlutterJNI not attached" errors when callback fires after disposal
         if (cameraDevice == null || textureEntry == null) {
             Log.w(TAG, "⚠️ imageAvailableListener called but camera already disposed. Ignoring.")
-            // Acquire and immediately close any pending image to clear the queue
+            Bugsnag.leaveBreadcrumb("Image received but camera already disposed")
+            // Acquire/close any pending image to clear the queue
             try {
                 reader.acquireLatestImage()?.close()
             } catch (e: Exception) {
@@ -172,6 +184,7 @@ class AndroidCameraController(
         val image = reader.acquireLatestImage()
         if (image == null) {
             Log.e(TAG, "❌ acquireLatestImage returned null")
+            Bugsnag.leaveBreadcrumb("Failed to acquire image from ImageReader")
             pendingPhotoResult?.error("CAPTURE_ERROR", "Failed to acquire image from reader", null)
             pendingPhotoResult = null
             return@OnImageAvailableListener
@@ -180,8 +193,10 @@ class AndroidCameraController(
         try {
             Log.d(TAG, "   Processing captured image...")
             saveImageToFile(image)
+            Bugsnag.leaveBreadcrumb("Photo captured and saved successfully")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error saving image: ${e.message}", e)
+            Bugsnag.leaveBreadcrumb("Failed to save image: ${e.message}")
             pendingPhotoResult?.error("SAVE_ERROR", "Failed to save image: ${e.message}", null)
             pendingPhotoResult = null
         } finally {
@@ -196,6 +211,7 @@ class AndroidCameraController(
     fun initialize(cameraId: String, result: MethodChannel.Result) {
         try {
             Log.d(TAG, "🎥 Initializing camera: $cameraId")
+            Bugsnag.leaveBreadcrumb("Camera initialization started: $cameraId")
             Log.d(TAG, "   Camera ID type: ${cameraId::class.java.simpleName}")
             Log.d(TAG, "   Camera ID value: \"$cameraId\"")
 
@@ -213,6 +229,7 @@ class AndroidCameraController(
                 cameraManager?.getCameraCharacteristics(cameraId)
             } catch (e: IllegalArgumentException) {
                 Log.e(TAG, "❌ Camera $cameraId does not exist or cannot be accessed")
+                Bugsnag.leaveBreadcrumb("Camera not found: $cameraId")
                 Log.e(TAG, "   Error: ${e.message}")
                 Log.e(TAG, "   Available cameras in initial list: ${cameraIds?.joinToString(", ") ?: "none"}")
                 result.error(
@@ -343,6 +360,7 @@ class AndroidCameraController(
             // Open camera
             cameraManager?.openCamera(cameraId, cameraStateCallback, backgroundHandler)
 
+            Bugsnag.leaveBreadcrumb("Camera initialization completed: $cameraName (ID: $cameraId)")
             result.success(
                 mapOf(
                     "success" to true,
@@ -352,9 +370,11 @@ class AndroidCameraController(
             )
         } catch (e: SecurityException) {
             Log.e(TAG, "Security exception: ${e.message}", e)
+            Bugsnag.leaveBreadcrumb("Camera initialization failed: SecurityException")
             result.error("PERMISSION_ERROR", "Camera permission not granted", null)
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing camera: ${e.message}", e)
+            Bugsnag.leaveBreadcrumb("Camera initialization failed: ${e.javaClass.simpleName}")
             result.error("INIT_ERROR", e.message, null)
         }
     }
@@ -436,10 +456,12 @@ class AndroidCameraController(
             }
 
             Log.d(TAG, "🎬 Starting preview")
+            Bugsnag.leaveBreadcrumb("Preview start requested for camera ${device.id}")
             Log.d(TAG, "   Active camera device ID: ${device.id}")
             Log.d(TAG, "   Expected camera ID: $currentCameraId")
             if (device.id != currentCameraId) {
                 Log.e(TAG, "❌ ERROR: Preview is using wrong camera! Expected $currentCameraId, got ${device.id}")
+                Bugsnag.leaveBreadcrumb("Preview camera ID mismatch: expected $currentCameraId, got ${device.id}")
             }
 
             val characteristics = cameraManager?.getCameraCharacteristics(device.id)
@@ -467,6 +489,7 @@ class AndroidCameraController(
             captureSession?.setRepeatingRequest(builder.build(), captureCallback, backgroundHandler)
 
             result.success(mapOf("success" to true))
+            Bugsnag.leaveBreadcrumb("Preview started successfully")
             Log.d(TAG, "✅ Preview started successfully")
         } catch (e: CameraAccessException) {
             Log.e(TAG, "Error starting preview: ${e.message}", e)
@@ -482,18 +505,41 @@ class AndroidCameraController(
      */
     fun takePicture(result: MethodChannel.Result) {
         Log.d(TAG, "📸 takePicture() called")
+        Bugsnag.leaveBreadcrumb("Photo capture requested")
         Log.d(TAG, "   captureSession: ${captureSession != null}")
         Log.d(TAG, "   imageReader: ${imageReader != null}")
         Log.d(TAG, "   cameraDevice: ${cameraDevice != null}")
+        Log.d(TAG, "   pendingPhotoResult: ${pendingPhotoResult != null}")
+        Log.d(TAG, "   isDisposing: $isDisposing")
+        
+        // Check if camera is being disposed
+        if (isDisposing) {
+            val error = "Camera is being disposed, cannot capture photo"
+            Log.e(TAG, "❌ $error")
+            Bugsnag.leaveBreadcrumb("Capture blocked: camera disposing")
+            result.error("CAMERA_CLOSING", error, null)
+            return
+        }
+        
+        // Check if another capture is in progress
+        if (pendingPhotoResult != null) {
+            val error = "Another photo capture is already in progress"
+            Log.e(TAG, "❌ $error")
+            Bugsnag.leaveBreadcrumb("Capture blocked: capture already in progress")
+            result.error("CAPTURE_IN_PROGRESS", error, null)
+            return
+        }
         
         if (captureSession == null || imageReader == null) {
             val error = "Camera not initialized - captureSession or imageReader is null"
             Log.e(TAG, "❌ $error")
+            Bugsnag.leaveBreadcrumb("Capture blocked: camera not initialized")
             result.error("NOT_INITIALIZED", error, null)
             return
         }
 
         pendingPhotoResult = result
+        Bugsnag.leaveBreadcrumb("Photo capture started")
 
         try {
             val device = cameraDevice ?: run {
@@ -530,6 +576,7 @@ class AndroidCameraController(
             captureTimeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
             captureTimeoutRunnable = Runnable {
                 Log.e(TAG, "❌ TIMEOUT: Photo capture timed out after 8 seconds")
+                Bugsnag.leaveBreadcrumb("Photo capture timeout after 8 seconds")
                 Log.e(TAG, "   ImageReader never received the image data")
                 Log.e(TAG, "   This may indicate the external camera doesn't support JPEG capture properly")
                 
@@ -548,6 +595,7 @@ class AndroidCameraController(
             Log.d(TAG, "   Waiting for ImageReader callback (timeout: 8s)...")
         } catch (e: CameraAccessException) {
             Log.e(TAG, "❌ Error taking picture: ${e.message}", e)
+            Bugsnag.leaveBreadcrumb("Capture error: CameraAccessException - ${e.message}")
             
             // Cancel timeout on error
             captureTimeoutRunnable?.let { runnable ->
@@ -558,6 +606,7 @@ class AndroidCameraController(
             pendingPhotoResult = null
         } catch (e: Exception) {
             Log.e(TAG, "❌ Unexpected error taking picture: ${e.message}", e)
+            Bugsnag.leaveBreadcrumb("Capture error: ${e.javaClass.simpleName} - ${e.message}")
             
             // Cancel timeout on error
             captureTimeoutRunnable?.let { runnable ->
@@ -662,8 +711,43 @@ class AndroidCameraController(
      */
     fun dispose() {
         Log.d(TAG, "🔄 Disposing camera controller")
+        Bugsnag.leaveBreadcrumb("Camera disposal started")
+        Log.d(TAG, "   pendingPhotoResult: ${pendingPhotoResult != null}")
+        
+        // Set disposing flag to prevent new captures
+        isDisposing = true
+        
+        // Wait for any in-progress capture to complete (max 2 seconds)
+        if (pendingPhotoResult != null) {
+            Log.w(TAG, "⚠️ Capture in progress, waiting up to 2 seconds for it to complete...")
+            Bugsnag.leaveBreadcrumb("Waiting for in-progress capture before disposal")
+            var waitTime = 0
+            while (pendingPhotoResult != null && waitTime < 2000) {
+                try {
+                    Thread.sleep(100)
+                    waitTime += 100
+                } catch (e: InterruptedException) {
+                    Log.e(TAG, "Wait interrupted: ${e.message}")
+                    break
+                }
+            }
+            
+            if (pendingPhotoResult != null) {
+                Log.e(TAG, "❌ Capture still in progress after 2 seconds, forcing disposal")
+                Bugsnag.leaveBreadcrumb("Forced disposal: capture still in progress after 2s")
+                Log.e(TAG, "   Capture may fail with 'Camera is closed' error")
+            } else {
+                Log.d(TAG, "   ✅ Capture completed, safe to dispose")
+                Bugsnag.leaveBreadcrumb("Capture completed, proceeding with disposal")
+            }
+        }
+        
         closeCamera()
         stopBackgroundThread()
+        
+        // Reset flag
+        isDisposing = false
+        Bugsnag.leaveBreadcrumb("Camera disposal completed")
     }
 
     /**
@@ -676,6 +760,13 @@ class AndroidCameraController(
         }
         captureTimeoutHandler = null
         captureTimeoutRunnable = null
+        
+        // Cancel any pending photo capture
+        if (pendingPhotoResult != null) {
+            Log.w(TAG, "   ⚠️ Cancelling pending photo capture due to camera closure")
+            pendingPhotoResult?.error("CANCELLED", "Camera closed during capture", null)
+            pendingPhotoResult = null
+        }
         
         // Clean up preview surface
         previewSurface?.release()
