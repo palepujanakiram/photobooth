@@ -12,6 +12,8 @@ import 'api_client.dart';
 import 'file_helper.dart';
 import 'api_logging_interceptor.dart';
 import 'bugsnag_dio_interceptor.dart';
+import '../utils/alice_inspector.dart';
+import 'package:alice_dio/alice_dio_adapter.dart';
 
 // Conditional import for web Dio configuration
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
@@ -37,6 +39,15 @@ class ApiService {
     // Configure Dio to use browser HTTP adapter on web
     // This prevents SocketException errors from native socket lookups
     configureDioForWeb(dio);
+
+    // Add Alice interceptor for in-app network inspection
+    // This must be added FIRST to capture all requests
+    if (!kIsWeb) {
+      // Alice doesn't work well on web, only add for mobile
+      final aliceDioAdapter = AliceDioAdapter();
+      AliceInspector.instance.addAdapter(aliceDioAdapter);
+      dio.interceptors.add(aliceDioAdapter);
+    }
 
     // Add Bugsnag breadcrumbs interceptor to automatically capture network requests
     dio.interceptors.add(BugsnagDioInterceptor());
@@ -459,7 +470,7 @@ class ApiService {
   }
 
   /// Generates transformed image using AI
-  /// This call can take 10-30 seconds, with a 60-second timeout
+  /// This call can take 10-60+ seconds, with a 180-second (3 minute) timeout
   /// Retries once on timeout before showing error
   /// Returns TransformedImageModel with the generated image
   Future<TransformedImageModel> generateImage({
@@ -468,12 +479,13 @@ class ApiService {
     required String originalPhotoId,
     required String themeId,
   }) async {
-    // Create a Dio instance with 60-second timeout for this specific call
+    // Create a Dio instance with extended timeout for AI generation
+    // AI generation can take 10-60+ seconds depending on server load
     final dioWithTimeout = Dio(
       BaseOptions(
         baseUrl: AppConstants.kBaseUrl,
-        connectTimeout: const Duration(seconds: 60),
-        receiveTimeout: const Duration(seconds: 60),
+        connectTimeout: AppConstants.kAiGenerationTimeout,
+        receiveTimeout: AppConstants.kAiGenerationTimeout,
         headers: {
           'Content-Type': 'application/json',
           'Authorization':

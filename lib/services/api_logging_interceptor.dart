@@ -3,15 +3,19 @@ import 'dart:convert';
 import '../utils/logger.dart';
 import 'error_reporting/error_reporting_manager.dart';
 
-/// Interceptor that logs all API requests and responses
-/// Logs request method, URL, headers, body, and response details
+/// Interceptor that logs all API requests and responses with detailed timing
+/// Logs request method, URL, headers, body, response details, and performance metrics
 class ApiLoggingInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    // Store request start time for duration calculation
+    options.extra['request_start_time'] = DateTime.now();
+    
     final buffer = StringBuffer();
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('📤 API REQUEST');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln('⏱️  Time: ${DateTime.now().toIso8601String()}');
     buffer.writeln('Method: ${options.method}');
     buffer.writeln('URL: ${options.uri}');
     
@@ -29,9 +33,25 @@ class ApiLoggingInterceptor extends Interceptor {
       });
     }
     
-    // Log request data
+    // Log request data and size
     if (options.data != null) {
       buffer.writeln('\nRequest Body:');
+      
+      // Calculate request size
+      int requestSize = 0;
+      try {
+        if (options.data is String) {
+          requestSize = (options.data as String).length;
+        } else if (options.data is Map || options.data is List) {
+          requestSize = jsonEncode(options.data).length;
+        }
+        if (requestSize > 0) {
+          buffer.writeln('📦 Request Size: ${_formatBytes(requestSize)}');
+        }
+      } catch (_) {
+        // Ignore size calculation errors
+      }
+      
       try {
         if (options.data is FormData) {
           // Handle FormData (multipart)
@@ -91,10 +111,20 @@ class ApiLoggingInterceptor extends Interceptor {
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
+    // Calculate request duration
+    final startTime = response.requestOptions.extra['request_start_time'] as DateTime?;
+    final duration = startTime != null 
+        ? DateTime.now().difference(startTime) 
+        : null;
+    
     final buffer = StringBuffer();
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('📥 API RESPONSE');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln('⏱️  Time: ${DateTime.now().toIso8601String()}');
+    if (duration != null) {
+      buffer.writeln('⏱️  Duration: ${duration.inMilliseconds}ms (${_formatDuration(duration)})');
+    }
     buffer.writeln('Method: ${response.requestOptions.method}');
     buffer.writeln('URL: ${response.requestOptions.uri}');
     buffer.writeln('Status Code: ${response.statusCode}');
@@ -108,9 +138,33 @@ class ApiLoggingInterceptor extends Interceptor {
       });
     }
     
-    // Log response data
+    // Log response data and size
     if (response.data != null) {
       buffer.writeln('\nResponse Body:');
+      
+      // Calculate response size
+      int responseSize = 0;
+      try {
+        if (response.data is String) {
+          responseSize = (response.data as String).length;
+        } else if (response.data is List<int>) {
+          responseSize = (response.data as List<int>).length;
+        } else if (response.data is Map || response.data is List) {
+          responseSize = jsonEncode(response.data).length;
+        }
+        if (responseSize > 0) {
+          buffer.writeln('📦 Response Size: ${_formatBytes(responseSize)}');
+          
+          // Calculate throughput if duration is available
+          if (duration != null && duration.inMilliseconds > 0) {
+            final throughputKBps = (responseSize / 1024) / (duration.inMilliseconds / 1000);
+            buffer.writeln('📊 Throughput: ${throughputKBps.toStringAsFixed(2)} KB/s');
+          }
+        }
+      } catch (_) {
+        // Ignore size calculation errors
+      }
+      
       try {
         if (response.data is List<int>) {
           // Binary data (e.g., image bytes)
@@ -158,18 +212,37 @@ class ApiLoggingInterceptor extends Interceptor {
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     AppLogger.debug(buffer.toString());
     
-    // Track successful API response in Bugsnag
-    ErrorReportingManager.log('API Success: ${response.requestOptions.method} ${response.requestOptions.uri} - ${response.statusCode}');
+    // Track successful API response in Bugsnag with timing
+    final durationStr = duration != null ? ' (${duration.inMilliseconds}ms)' : '';
+    ErrorReportingManager.log('API Success: ${response.requestOptions.method} ${response.requestOptions.uri} - ${response.statusCode}$durationStr');
+    
+    // Add detailed performance metrics to Bugsnag
+    if (duration != null) {
+      ErrorReportingManager.setCustomKeys({
+        'last_api_duration_ms': duration.inMilliseconds.toString(),
+        'last_api_status': response.statusCode?.toString() ?? 'unknown',
+      });
+    }
     
     handler.next(response);
   }
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
+    // Calculate request duration
+    final startTime = err.requestOptions.extra['request_start_time'] as DateTime?;
+    final duration = startTime != null 
+        ? DateTime.now().difference(startTime) 
+        : null;
+    
     final buffer = StringBuffer();
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('❌ API ERROR');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln('⏱️  Time: ${DateTime.now().toIso8601String()}');
+    if (duration != null) {
+      buffer.writeln('⏱️  Duration: ${duration.inMilliseconds}ms (${_formatDuration(duration)})');
+    }
     buffer.writeln('Method: ${err.requestOptions.method}');
     buffer.writeln('URL: ${err.requestOptions.uri}');
     buffer.writeln('Error Type: ${err.type}');
@@ -264,10 +337,11 @@ class ApiLoggingInterceptor extends Interceptor {
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     AppLogger.error(buffer.toString(), error: err);
     
-    // Log API failure to Bugsnag with detailed context
-    ErrorReportingManager.log('❌ API Error: ${err.requestOptions.method} ${err.requestOptions.uri} - ${err.type}');
+    // Log API failure to Bugsnag with detailed context and timing
+    final durationStr = duration != null ? ' (${duration.inMilliseconds}ms)' : '';
+    ErrorReportingManager.log('❌ API Error: ${err.requestOptions.method} ${err.requestOptions.uri} - ${err.type}$durationStr');
     
-    // Record the error with full context
+    // Record the error with full context including performance metrics
     ErrorReportingManager.recordError(
       err,
       err.stackTrace,
@@ -280,6 +354,7 @@ class ApiLoggingInterceptor extends Interceptor {
         'status_code': err.response?.statusCode?.toString() ?? 'none',
         'status_message': err.response?.statusMessage ?? 'none',
         'response_data': err.response?.data?.toString() ?? 'none',
+        'duration_ms': duration?.inMilliseconds.toString() ?? 'unknown',
         'timestamp': DateTime.now().toIso8601String(),
       },
     );
@@ -300,5 +375,16 @@ class ApiLoggingInterceptor extends Interceptor {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(2)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+  }
+
+  /// Formats duration to human-readable format
+  String _formatDuration(Duration duration) {
+    if (duration.inSeconds < 1) {
+      return '${duration.inMilliseconds}ms';
+    } else if (duration.inSeconds < 60) {
+      return '${duration.inSeconds}.${(duration.inMilliseconds % 1000).toString().padLeft(3, '0').substring(0, 2)}s';
+    } else {
+      return '${duration.inMinutes}m ${duration.inSeconds % 60}s';
+    }
   }
 }

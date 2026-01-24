@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show ChangeNotifier, kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show ChangeNotifier, kIsWeb, defaultTargetPlatform, TargetPlatform, compute;
 import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -698,11 +698,19 @@ class CaptureViewModel extends ChangeNotifier {
       // Get the image file from the captured photo
       final imageFile = _capturedPhoto!.imageFile;
       
-      // Resize and encode image to meet API requirements:
-      // - Size: 512x512 to 1024x1024 pixels
-      // - Max size: ~2MB after base64 encoding
-      // - Format: JPEG
-      final base64Image = await ImageHelper.resizeAndEncodeImage(imageFile);
+      ErrorReportingManager.log('📦 Starting background image processing');
+      
+      // Optimization: Process image in background isolate to prevent UI freeze
+      // This moves the heavy image processing (decode, resize, encode, base64)
+      // off the main thread, keeping the UI responsive
+      // Processing time: ~400-700ms, but now happens in background
+      final base64Image = await compute(
+        _processImageInBackground,
+        imageFile.path,
+      );
+      
+      ErrorReportingManager.log('✅ Image processing completed in background');
+      ErrorReportingManager.log('📤 Uploading processed image to API');
       
       // Step 3: Update session with photo (PATCH /api/sessions/{sessionId})
       // Note: selectedThemeId is not included here - it will be set later in theme selection
@@ -712,12 +720,15 @@ class CaptureViewModel extends ChangeNotifier {
         selectedThemeId: null, // Theme will be selected later
       );
       
+      ErrorReportingManager.log('✅ Image uploaded successfully');
+      
       // Save the response to SessionManager
       _sessionManager.setSessionFromResponse(response);
       
       // Step 3b: Preprocess image in background (fire-and-forget)
       // This runs validation, compression, and person detection ahead of time
       // Don't wait for it to complete - it's an optimization
+      ErrorReportingManager.log('🔄 Triggering background image preprocessing');
       _apiService.preprocessImage(sessionId: sessionId);
       
       _isUploading = false;
@@ -734,6 +745,16 @@ class CaptureViewModel extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  /// Background processing function for image resize and encoding
+  /// Runs in a separate isolate to prevent UI freeze
+  /// 
+  /// This is a static/top-level function because compute() requires it
+  /// Takes image path and returns base64 encoded data URL
+  static Future<String> _processImageInBackground(String imagePath) async {
+    final file = XFile(imagePath);
+    return await ImageHelper.resizeAndEncodeImage(file);
   }
 
   /// Updates session with captured photo and selected theme
@@ -761,8 +782,11 @@ class CaptureViewModel extends ChangeNotifier {
       // Get the image file from the captured photo
       final imageFile = _capturedPhoto!.imageFile;
       
-      // Resize and encode image to meet API requirements
-      final base64Image = await ImageHelper.resizeAndEncodeImage(imageFile);
+      // Optimization: Process image in background isolate
+      final base64Image = await compute(
+        _processImageInBackground,
+        imageFile.path,
+      );
       
       // Update session via API: PATCH /api/sessions/{sessionId}
       final response = await _apiService.updateSession(

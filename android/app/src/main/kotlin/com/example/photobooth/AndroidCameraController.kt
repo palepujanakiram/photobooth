@@ -671,6 +671,7 @@ class AndroidCameraController(
         if (sizesWithinLimits.isNotEmpty()) {
             val selectedSize = sizesWithinLimits.first()
             Log.d(TAG, "   ✅ Selected size within limits: ${selectedSize.width}×${selectedSize.height}")
+            Bugsnag.leaveBreadcrumb("Camera resolution selected: ${selectedSize.width}×${selectedSize.height}")
             return selectedSize
         }
         
@@ -679,6 +680,7 @@ class AndroidCameraController(
         Log.w(TAG, "   ⚠️ WARNING: All camera sizes exceed maximum limits!")
         Log.w(TAG, "   Camera appears to be 4K or higher resolution")
         Log.w(TAG, "   Will use maximum supported size: $MAX_PREVIEW_WIDTH×$MAX_PREVIEW_HEIGHT")
+        Bugsnag.leaveBreadcrumb("Camera resolution capped: using $MAX_PREVIEW_WIDTH×$MAX_PREVIEW_HEIGHT (hardware downscale)")
         
         // Return our max supported size - the camera will downscale automatically
         return Size(MAX_PREVIEW_WIDTH, MAX_PREVIEW_HEIGHT)
