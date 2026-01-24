@@ -50,9 +50,11 @@ class _ResultScreenState extends State<ResultScreen> {
   Widget build(BuildContext context) {
     final args = ModalRoute.of(context)?.settings.arguments as Map?;
     TransformedImageModel? transformedImage;
+    int? transformationTime;
 
     if (args != null) {
       transformedImage = args['transformedImage'] as TransformedImageModel?;
+      transformationTime = args['transformationTime'] as int?;
     }
 
     if (transformedImage == null) {
@@ -61,7 +63,10 @@ class _ResultScreenState extends State<ResultScreen> {
       );
     }
 
-    final resultViewModel = ResultViewModel(transformedImage: transformedImage);
+    final resultViewModel = ResultViewModel(
+      transformedImage: transformedImage,
+      transformationTime: transformationTime,
+    );
     
     // Initialize controller if not already initialized
     _printerIpController ??= TextEditingController(text: resultViewModel.printerIp);
@@ -95,6 +100,39 @@ class _ResultScreenState extends State<ResultScreen> {
               
               return Column(
                 children: [
+                  // Show transformation time badge
+                  if (viewModel.transformationTime != null)
+                    Container(
+                      margin: const EdgeInsets.only(top: 16, bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: CupertinoColors.systemGreen.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: CupertinoColors.systemGreen.withValues(alpha: 0.3),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            CupertinoIcons.checkmark_alt_circle_fill,
+                            color: CupertinoColors.systemGreen,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Completed in ${viewModel.formattedTransformationTime}',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: CupertinoColors.systemGreen,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   Expanded(
                     child: Center(
                       child: imageFile != null

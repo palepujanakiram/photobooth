@@ -9,6 +9,7 @@ class ResultViewModel extends ChangeNotifier {
   final PrintService _printService;
   final ShareService _shareService;
   final TransformedImageModel? _transformedImage;
+  final int? _transformationTime;
   bool _isPrinting = false;
   bool _isSharing = false;
   String? _errorMessage;
@@ -16,18 +17,31 @@ class ResultViewModel extends ChangeNotifier {
 
   ResultViewModel({
     required TransformedImageModel transformedImage,
+    int? transformationTime,
     PrintService? printService,
     ShareService? shareService,
   })  : _transformedImage = transformedImage,
+        _transformationTime = transformationTime,
         _printService = printService ?? PrintService(),
         _shareService = shareService ?? ShareService();
 
   TransformedImageModel? get transformedImage => _transformedImage;
+  int? get transformationTime => _transformationTime;
   bool get isPrinting => _isPrinting;
   bool get isSharing => _isSharing;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
   String get printerIp => _printerIp;
+  
+  String get formattedTransformationTime {
+    if (_transformationTime == null) return '';
+    final minutes = _transformationTime! ~/ 60;
+    final seconds = _transformationTime! % 60;
+    if (minutes > 0) {
+      return '$minutes:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${seconds}s';
+  }
 
   /// Updates the printer IP address
   void setPrinterIp(String ip) {

@@ -3,12 +3,12 @@ import 'app_config.dart';
 class AppConstants {
   // API Configuration
   static const String kBaseUrl = AppConfig.baseUrl;
-  // Increased timeout for image uploads and AI generation
-  // Image uploads can take 5-15s, AI generation can take 10-60s
-  static const Duration kApiTimeout = Duration(seconds: 120);
+  // Extended timeout for image uploads and AI generation
+  // Set to 5 minutes to handle slower networks and extended processing times
+  static const Duration kApiTimeout = Duration(seconds: 300);
   
-  // Longer timeout for AI generation specifically
-  static const Duration kAiGenerationTimeout = Duration(seconds: 180);
+  // Timeout for AI generation (same as general timeout)
+  static const Duration kAiGenerationTimeout = Duration(seconds: 300);
 
   // Image Configuration
   static const int kImageQuality = 85;

@@ -252,19 +252,8 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                               ),
                             ),
                             const SizedBox(height: 16),
-                            // Error message and button section
-                            if (viewModel.hasError)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 16.0),
-                                child: Text(
-                                  viewModel.errorMessage ?? 'Unknown error',
-                                  style: const TextStyle(
-                                    color: CupertinoColors.systemRed,
-                                    fontSize: 14,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
+                            // Button section (error shown in snackbar instead)
+
                             Padding(
                               padding: EdgeInsets.only(
                                 bottom: 16.0 + bottomPadding,
@@ -293,13 +282,16 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                             arguments: {
                                               'transformedImage':
                                                   transformedImage,
+                                              'transformationTime': viewModel.elapsedSeconds,
                                             },
                                           );
                                         } else if (viewModel.hasError) {
-                                          // Show error with status code if available
+                                          // Show detailed error in dialog
                                           final errorMessage =
                                               viewModel.errorMessage ??
                                                   'Unknown error';
+                                          
+                                          // Show error with full details
                                           AppSnackBar.showError(
                                             currentContext,
                                             errorMessage,
@@ -319,14 +311,16 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
               ),
             ),
           ),
-          // Full screen loader overlay - positioned to cover entire screen
+          // Full screen loader overlay with timer - positioned to cover entire screen
           Consumer<ReviewViewModel>(
             builder: (context, viewModel, child) {
               if (viewModel.isTransforming) {
-                return const Positioned.fill(
+                return Positioned.fill(
                   child: FullScreenLoader(
                     text: 'Generating AI Image',
+                    subtitle: 'This may take 30-60 seconds',
                     loaderColor: CupertinoColors.systemBlue,
+                    elapsedSeconds: viewModel.elapsedSeconds,
                   ),
                 );
               }
