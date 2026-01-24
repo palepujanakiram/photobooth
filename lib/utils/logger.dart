@@ -1,5 +1,6 @@
 import 'dart:developer' as developer;
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'constants.dart';
 
 /// Log levels matching CocoaLumberjack-style logging
 enum LogLevel {
@@ -107,18 +108,20 @@ class AppLogger {
     
     final formattedMessage = '[${level.label}] $fileInfo - $message';
     
-    developer.log(
-      formattedMessage,
-      name: 'AppLogger',
-      level: level.value,
-      error: error,
-      stackTrace: stackTrace,
-    );
+    if (AppConstants.kEnableLogOutput) {
+      developer.log(
+        formattedMessage,
+        name: 'AppLogger',
+        level: level.value,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
     
     // Send errors and warnings to Firebase Crashlytics (if available)
     if (level == LogLevel.error || level == LogLevel.warning) {
       _sendToCrashlytics(formattedMessage, error, stackTrace);
-    } else {
+    } else if (AppConstants.kEnableLogOutput) {
       // For debug and info logs, just log as breadcrumbs (if available)
       _logToCrashlytics(formattedMessage);
     }

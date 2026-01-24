@@ -6,6 +6,9 @@ import 'error_reporting/error_reporting_manager.dart';
 /// Interceptor that logs all API requests and responses with detailed timing
 /// Logs request method, URL, headers, body, response details, and performance metrics
 class ApiLoggingInterceptor extends Interceptor {
+  static const int _maxLoggedStringLength = 2000;
+  static const int _maxLoggedJsonLength = 6000;
+
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     // Store request start time for duration calculation
@@ -60,7 +63,7 @@ class ApiLoggingInterceptor extends Interceptor {
           if (formData.fields.isNotEmpty) {
             buffer.writeln('  Fields:');
             formData.fields.forEach((field) {
-              buffer.writeln('    ${field.key}: ${field.value}');
+              buffer.writeln('    ${field.key}: ${_sanitizeString(field.value)}');
             });
           }
           if (formData.files.isNotEmpty) {
@@ -72,19 +75,21 @@ class ApiLoggingInterceptor extends Interceptor {
             });
           }
         } else if (options.data is Map || options.data is List) {
-          // Pretty print JSON
+          // Pretty print JSON (sanitized)
           final encoder = JsonEncoder.withIndent('  ');
-          final jsonString = encoder.convert(options.data);
-          buffer.writeln(jsonString);
+          final sanitized = _sanitizeData(options.data);
+          final jsonString = encoder.convert(sanitized);
+          buffer.writeln(_truncateJson(jsonString));
         } else if (options.data is String) {
           // Try to parse as JSON for pretty printing
           try {
             final jsonData = jsonDecode(options.data as String);
             final encoder = JsonEncoder.withIndent('  ');
-            buffer.writeln(encoder.convert(jsonData));
+            final sanitized = _sanitizeData(jsonData);
+            buffer.writeln(_truncateJson(encoder.convert(sanitized)));
           } catch (_) {
             // Not JSON, print as-is
-            buffer.writeln('  ${options.data}');
+            buffer.writeln('  ${_sanitizeString(options.data as String)}');
           }
         } else {
           buffer.writeln('  ${options.data}');
@@ -171,24 +176,22 @@ class ApiLoggingInterceptor extends Interceptor {
           final bytes = response.data as List<int>;
           buffer.writeln('  Type: binary (${_formatBytes(bytes.length)})');
         } else if (response.data is Map || response.data is List) {
-          // Pretty print JSON
+          // Pretty print JSON (sanitized)
           final encoder = JsonEncoder.withIndent('  ');
-          final jsonString = encoder.convert(response.data);
-          buffer.writeln(jsonString);
+          final sanitized = _sanitizeData(response.data);
+          final jsonString = encoder.convert(sanitized);
+          buffer.writeln(_truncateJson(jsonString));
         } else if (response.data is String) {
           // Try to parse as JSON for pretty printing
           try {
             final jsonData = jsonDecode(response.data as String);
             final encoder = JsonEncoder.withIndent('  ');
-            buffer.writeln(encoder.convert(jsonData));
+            final sanitized = _sanitizeData(jsonData);
+            buffer.writeln(_truncateJson(encoder.convert(sanitized)));
           } catch (_) {
             // Not JSON, print as-is (but limit length)
-            final data = response.data as String;
-            if (data.length > 1000) {
-              buffer.writeln('  ${data.substring(0, 1000)}... [truncated, ${data.length} chars total]');
-            } else {
-              buffer.writeln('  $data');
-            }
+            final data = _sanitizeString(response.data as String);
+            buffer.writeln('  $data');
           }
         } else {
           final dataStr = response.data.toString();
@@ -270,19 +273,16 @@ class ApiLoggingInterceptor extends Interceptor {
           if (formData.fields.isNotEmpty) {
             buffer.writeln('  Fields:');
             formData.fields.forEach((field) {
-              buffer.writeln('    ${field.key}: ${field.value}');
+              buffer.writeln('    ${field.key}: ${_sanitizeString(field.value)}');
             });
           }
         } else if (err.requestOptions.data is Map || err.requestOptions.data is List) {
           final encoder = JsonEncoder.withIndent('  ');
-          buffer.writeln(encoder.convert(err.requestOptions.data));
+          final sanitized = _sanitizeData(err.requestOptions.data);
+          buffer.writeln(_truncateJson(encoder.convert(sanitized)));
         } else {
-          final dataStr = err.requestOptions.data.toString();
-          if (dataStr.length > 500) {
-            buffer.writeln('  ${dataStr.substring(0, 500)}... [truncated]');
-          } else {
-            buffer.writeln('  $dataStr');
-          }
+          final dataStr = _sanitizeString(err.requestOptions.data.toString());
+          buffer.writeln('  $dataStr');
         }
       } catch (e) {
         buffer.writeln('  [Error formatting: $e]');
@@ -306,19 +306,17 @@ class ApiLoggingInterceptor extends Interceptor {
         try {
           if (err.response!.data is Map || err.response!.data is List) {
             final encoder = JsonEncoder.withIndent('  ');
-            buffer.writeln(encoder.convert(err.response!.data));
+            final sanitized = _sanitizeData(err.response!.data);
+            buffer.writeln(_truncateJson(encoder.convert(sanitized)));
           } else if (err.response!.data is String) {
             try {
               final jsonData = jsonDecode(err.response!.data as String);
               final encoder = JsonEncoder.withIndent('  ');
-              buffer.writeln(encoder.convert(jsonData));
+              final sanitized = _sanitizeData(jsonData);
+              buffer.writeln(_truncateJson(encoder.convert(sanitized)));
             } catch (_) {
-              final data = err.response!.data as String;
-              if (data.length > 1000) {
-                buffer.writeln('  ${data.substring(0, 1000)}... [truncated]');
-              } else {
-                buffer.writeln('  $data');
-              }
+              final data = _sanitizeString(err.response!.data as String);
+              buffer.writeln('  $data');
             }
           } else {
             final dataStr = err.response!.data.toString();
@@ -353,7 +351,9 @@ class ApiLoggingInterceptor extends Interceptor {
         'error_message': err.message ?? 'No message',
         'status_code': err.response?.statusCode?.toString() ?? 'none',
         'status_message': err.response?.statusMessage ?? 'none',
-        'response_data': err.response?.data?.toString() ?? 'none',
+        'response_data': err.response?.data != null
+            ? _sanitizeData(err.response?.data)
+            : 'none',
         'duration_ms': duration?.inMilliseconds.toString() ?? 'unknown',
         'timestamp': DateTime.now().toIso8601String(),
       },
@@ -368,6 +368,40 @@ class ApiLoggingInterceptor extends Interceptor {
       return '***';
     }
     return '${auth.substring(0, 10)}...${auth.substring(auth.length - 4)}';
+  }
+
+  /// Sanitizes request/response data to avoid logging huge payloads
+  dynamic _sanitizeData(dynamic data) {
+    if (data is Map) {
+      return data.map((key, value) => MapEntry(key, _sanitizeData(value)));
+    }
+    if (data is List) {
+      return data.map(_sanitizeData).toList();
+    }
+    if (data is String) {
+      return _sanitizeString(data);
+    }
+    return data;
+  }
+
+  /// Redacts or truncates large strings (especially base64 images)
+  String _sanitizeString(String value) {
+    final lower = value.toLowerCase();
+    if (lower.startsWith('data:image') && value.contains('base64,')) {
+      return '<base64 image omitted (${_formatBytes(value.length)})>';
+    }
+    if (value.length > _maxLoggedStringLength) {
+      return '${value.substring(0, _maxLoggedStringLength)}... [truncated, ${value.length} chars]';
+    }
+    return value;
+  }
+
+  /// Truncates large JSON payloads for logs
+  String _truncateJson(String jsonString) {
+    if (jsonString.length > _maxLoggedJsonLength) {
+      return '${jsonString.substring(0, _maxLoggedJsonLength)}... [truncated, ${jsonString.length} chars total]';
+    }
+    return jsonString;
   }
 
   /// Formats bytes to human-readable format

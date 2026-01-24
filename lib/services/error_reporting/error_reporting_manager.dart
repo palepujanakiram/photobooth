@@ -1,6 +1,7 @@
 import 'error_reporting_service.dart';
 import 'crashlytics_error_reporter.dart';
 import 'bugsnag_error_reporter.dart';
+import '../../utils/constants.dart';
 
 /// Central manager for error reporting
 /// This is the main interface that the app code should use for logging and error reporting
@@ -78,7 +79,7 @@ class ErrorReportingManager {
   /// Log a message/breadcrumb
   /// This creates a trail of events that help understand what led to an error
   static void log(String message) {
-    if (!_isEnabled) return;
+    if (!_isEnabled || !AppConstants.kEnableLogOutput) return;
 
     for (final service in _services) {
       service.log(message);

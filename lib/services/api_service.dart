@@ -569,7 +569,6 @@ class ApiService {
         }
 
         // Handle HTTP URL (new format): https://storage.example.com/generated/image.jpg
-        // Or legacy base64 data URL: data:image/png;base64,iVBORw0KGgo...
         XFile transformedImageFile;
         
         if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
@@ -614,83 +613,9 @@ class ApiService {
             AppLogger.debug(
                 '✅ Saved transformed image: $savedPath ($fileSize bytes)');
             transformedImageFile = XFile(savedPath);
-
-            // Verify XFile can be read
-            try {
-              final testBytes = await transformedImageFile.readAsBytes();
-              if (testBytes.isEmpty) {
-                throw ApiException(
-                    'XFile created but cannot read bytes from: $savedPath');
-              }
-              AppLogger.debug(
-                  '✅ Verified XFile is readable (${testBytes.length} bytes)');
-            } catch (e) {
-              throw ApiException(
-                  'XFile created but read failed: $e (path: $savedPath)');
-            }
-          }
-        } else if (imageUrl.startsWith('data:image/')) {
-          // Legacy base64 data URL support
-          // Extract base64 data
-          final base64Data = imageUrl.split(',');
-          if (base64Data.length != 2) {
-            throw ApiException('Invalid base64 data URL format');
-          }
-
-          final base64String = base64Data[1];
-          final imageBytes = base64Decode(base64String);
-
-          if (imageBytes.isEmpty) {
-            throw ApiException('Decoded image is empty');
-          }
-
-          // Determine file extension from MIME type
-          final mimeType = imageUrl.split(';')[0].split(':')[1];
-          final extension = mimeType == 'image/png' ? 'png' : 'jpg';
-
-          if (kIsWeb) {
-            // On web, create XFile from data URL directly
-            transformedImageFile = XFile(imageUrl, mimeType: mimeType);
-          } else {
-            // On mobile, save to temp file and create XFile
-            final tempDirPath = await FileHelper.getTempDirectoryPath();
-            final fileName = 'transformed_${_uuid.v4()}.$extension';
-            final filePath = '$tempDirPath/$fileName';
-            final file = FileHelper.createFile(filePath);
-            await (file as dynamic).writeAsBytes(imageBytes);
-
-            // Verify the file was written correctly
-            if (!(file as dynamic).existsSync()) {
-              throw ApiException(
-                  'Failed to save transformed image file at: $filePath');
-            }
-
-            final fileSize = await (file as dynamic).length();
-            if (fileSize == 0) {
-              throw ApiException('Saved image file is empty at: $filePath');
-            }
-
-            final savedPath = (file as dynamic).path;
-            AppLogger.debug(
-                '✅ Saved transformed image: $savedPath ($fileSize bytes)');
-            transformedImageFile = XFile(savedPath);
-
-            // Verify XFile can be read
-            try {
-              final testBytes = await transformedImageFile.readAsBytes();
-              if (testBytes.isEmpty) {
-                throw ApiException(
-                    'XFile created but cannot read bytes from: $savedPath');
-              }
-              AppLogger.debug(
-                  '✅ Verified XFile is readable (${testBytes.length} bytes)');
-            } catch (e) {
-              throw ApiException(
-                  'XFile created but read failed: $e (path: $savedPath)');
-            }
           }
         } else {
-          throw ApiException('Invalid image URL format: must be HTTP URL or base64 data URL');
+          throw ApiException('Invalid image URL format: must be HTTP URL');
         }
 
         return TransformedImageModel(
@@ -787,3 +712,4 @@ class ApiService {
     });
   }
 }
+

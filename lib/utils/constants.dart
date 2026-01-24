@@ -21,6 +21,10 @@ class AppConstants {
   static const double kTouchTargetSize = 48.0;
   static const String kContinueButtonText = 'Continue';
 
+  // Logging
+  // Controls console logs and breadcrumb logs (Bugsnag/Crashlytics)
+  static const bool kEnableLogOutput = false;
+
   // Routes
   static const String kRouteSlideshow = '/';
   static const String kRouteTerms = '/terms';

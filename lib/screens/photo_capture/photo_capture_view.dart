@@ -173,6 +173,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                 );
               }
 
+              // Fix upside-down preview on devices with 180 sensor orientation
+              final shouldRotatePreview =
+                  (viewModel.cameraController?.description.sensorOrientation ?? 0) == 180;
+              if (shouldRotatePreview) {
+                previewWidget = RotatedBox(
+                  quarterTurns: 2,
+                  child: previewWidget,
+                );
+              }
+
               return Stack(
                 children: [
                   // Preview widget - must fill the entire stack
