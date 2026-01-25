@@ -9,4 +9,9 @@ class FileHelper {
   static dynamic createFile(String path) {
     throw UnsupportedError('createFile is not available on web');
   }
+
+  /// No-op on web
+  static Future<void> cleanupTempImages() async {
+    return;
+  }
 }

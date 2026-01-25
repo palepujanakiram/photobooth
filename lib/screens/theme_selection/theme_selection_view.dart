@@ -7,7 +7,6 @@ import '../../views/widgets/theme_card.dart';
 import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
-import '../../views/widgets/alice_debug_button.dart';
 import '../../services/theme_manager.dart';
 
 class ThemeSelectionScreen extends StatefulWidget {
@@ -230,8 +229,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                 loaderColor: CupertinoColors.systemBlue,
               ),
             ),
-          // Debug button to open Alice HTTP inspector (debug mode only)
-          const AliceDebugBadge(),
         ],
       ),
     );

@@ -21,39 +21,35 @@ class PhotoReviewScreen extends StatefulWidget {
 
 class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
   late ReviewViewModel _reviewViewModel;
+  PhotoModel? _photo;
+  ThemeModel? _theme;
+  Future<List<int>>? _photoBytesFuture;
+  bool _isInitialized = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (_isInitialized) return;
     final args = ModalRoute.of(context)?.settings.arguments as Map?;
-    if (args != null) {
-      final photo = args['photo'] as PhotoModel?;
-      final theme = args['theme'] as ThemeModel?;
-      if (photo != null && theme != null) {
-        _reviewViewModel = ReviewViewModel(photo: photo, theme: theme);
-      }
+    if (args == null) return;
+    final photo = args['photo'] as PhotoModel?;
+    final theme = args['theme'] as ThemeModel?;
+    if (photo != null && theme != null) {
+      _photo = photo;
+      _theme = theme;
+      _reviewViewModel = ReviewViewModel(photo: photo, theme: theme);
+      _photoBytesFuture = photo.imageFile.readAsBytes();
+      _isInitialized = true;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final args = ModalRoute.of(context)?.settings.arguments as Map?;
-    if (args == null) {
+    if (!_isInitialized || _photo == null || _theme == null) {
       return const Scaffold(
-        body: Center(child: Text('Invalid arguments')),
+        body: Center(child: CupertinoActivityIndicator()),
       );
     }
-
-    final photo = args['photo'] as PhotoModel?;
-    final theme = args['theme'] as ThemeModel?;
-
-    if (photo == null || theme == null) {
-      return const Scaffold(
-        body: Center(child: Text('Missing photo or theme')),
-      );
-    }
-
-    _reviewViewModel = ReviewViewModel(photo: photo, theme: theme);
 
     return ChangeNotifierProvider.value(
       value: _reviewViewModel,
@@ -70,195 +66,189 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final bottomPadding = MediaQuery.of(context).padding.bottom;
-                  return Consumer<ReviewViewModel>(
-                    builder: (context, viewModel, child) {
-                      return Container(
-                        width: double.infinity,
-                        height: constraints.maxHeight,
-                        color: CupertinoColors.systemBackground,
-                        padding:
-                            const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 0.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          mainAxisSize: MainAxisSize.max,
-                          children: [
-                            // Side by side layout for Captured Photo and Selected Theme
-                            Expanded(
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // Left side: Captured Photo
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'Captured Photo',
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
+                  return Container(
+                    width: double.infinity,
+                    height: constraints.maxHeight,
+                    color: CupertinoColors.systemBackground,
+                    padding:
+                        const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 0.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        // Side by side layout for Captured Photo and Selected Theme
+                        Expanded(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Left side: Captured Photo
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Captured Photo',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Expanded(
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color:
+                                              CupertinoColors.systemGrey6,
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          child: FutureBuilder<List<int>>(
+                                            future: _photoBytesFuture,
+                                            builder: (context, snapshot) {
+                                              if (snapshot
+                                                      .connectionState ==
+                                                  ConnectionState.waiting) {
+                                                return const Center(
+                                                  child:
+                                                      CupertinoActivityIndicator(),
+                                                );
+                                              }
+                                              if (snapshot.hasError ||
+                                                  !snapshot.hasData) {
+                                                return const Center(
+                                                  child: Icon(
+                                                    CupertinoIcons
+                                                        .exclamationmark_triangle,
+                                                    color: CupertinoColors
+                                                        .systemRed,
+                                                    size: 48,
+                                                  ),
+                                                );
+                                              }
+                                              return Image.memory(
+                                                Uint8List.fromList(
+                                                    snapshot.data!),
+                                                fit: BoxFit.cover,
+                                                width: double.infinity,
+                                              );
+                                            },
                                           ),
                                         ),
-                                        const SizedBox(height: 12),
-                                        Expanded(
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              color:
-                                                  CupertinoColors.systemGrey6,
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
-                                            child: ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              child: FutureBuilder<List<int>>(
-                                                future: viewModel
-                                                    .photo!.imageFile
-                                                    .readAsBytes(),
-                                                builder: (context, snapshot) {
-                                                  if (snapshot
-                                                          .connectionState ==
-                                                      ConnectionState.waiting) {
-                                                    return const Center(
-                                                      child:
-                                                          CupertinoActivityIndicator(),
-                                                    );
-                                                  }
-                                                  if (snapshot.hasError ||
-                                                      !snapshot.hasData) {
-                                                    return const Center(
-                                                      child: Icon(
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              // Right side: Selected Theme
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Selected Theme',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Expanded(
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color:
+                                              CupertinoColors.systemGrey6,
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          child: _theme?.sampleImageUrl !=
+                                                      null &&
+                                                  _theme!
+                                                      .sampleImageUrl!
+                                                      .isNotEmpty
+                                              ? _buildThemeImage(
+                                                  _theme!.sampleImageUrl!,
+                                                )
+                                              : Container(
+                                                  color: CupertinoColors
+                                                      .systemGrey5,
+                                                  child: Column(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .center,
+                                                    children: [
+                                                      const Icon(
                                                         CupertinoIcons
-                                                            .exclamationmark_triangle,
-                                                        color: CupertinoColors
-                                                            .systemRed,
-                                                        size: 48,
+                                                            .paintbrush,
+                                                        size: 64,
+                                                        color:
+                                                            CupertinoColors
+                                                                .systemGrey,
                                                       ),
-                                                    );
-                                                  }
-                                                  return Image.memory(
-                                                    Uint8List.fromList(
-                                                        snapshot.data!),
-                                                    fit: BoxFit.cover,
-                                                    width: double.infinity,
-                                                  );
-                                                },
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  // Right side: Selected Theme
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'Selected Theme',
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Expanded(
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              color:
-                                                  CupertinoColors.systemGrey6,
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
-                                            child: ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              child: viewModel.theme
-                                                              ?.sampleImageUrl !=
-                                                          null &&
-                                                      viewModel
-                                                          .theme!
-                                                          .sampleImageUrl!
-                                                          .isNotEmpty
-                                                  ? _buildThemeImage(
-                                                      viewModel.theme!
-                                                          .sampleImageUrl!,
-                                                    )
-                                                  : Container(
-                                                      color: CupertinoColors
-                                                          .systemGrey5,
-                                                      child: Column(
-                                                        mainAxisAlignment:
-                                                            MainAxisAlignment
-                                                                .center,
-                                                        children: [
-                                                          const Icon(
-                                                            CupertinoIcons
-                                                                .paintbrush,
-                                                            size: 64,
-                                                            color:
-                                                                CupertinoColors
-                                                                    .systemGrey,
-                                                          ),
-                                                          const SizedBox(
-                                                              height: 16),
-                                                          Text(
-                                                            viewModel.theme
-                                                                    ?.name ??
-                                                                'Unknown',
-                                                            style:
-                                                                const TextStyle(
-                                                              fontSize: 18,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .bold,
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                              height: 8),
-                                                          Padding(
-                                                            padding:
-                                                                const EdgeInsets
-                                                                    .symmetric(
-                                                                    horizontal:
-                                                                        16.0),
-                                                            child: Text(
-                                                              viewModel.theme
-                                                                      ?.description ??
-                                                                  '',
-                                                              style:
-                                                                  const TextStyle(
-                                                                      fontSize:
-                                                                          14),
-                                                              textAlign:
-                                                                  TextAlign
-                                                                      .center,
-                                                            ),
-                                                          ),
-                                                        ],
+                                                      const SizedBox(
+                                                          height: 16),
+                                                      Text(
+                                                        _theme?.name ??
+                                                            'Unknown',
+                                                        style:
+                                                            const TextStyle(
+                                                          fontSize: 18,
+                                                          fontWeight:
+                                                              FontWeight
+                                                                  .bold,
+                                                        ),
                                                       ),
-                                                    ),
-                                            ),
-                                          ),
+                                                      const SizedBox(
+                                                          height: 8),
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal:
+                                                                    16.0),
+                                                        child: Text(
+                                                          _theme
+                                                                  ?.description ??
+                                                              '',
+                                                          style:
+                                                              const TextStyle(
+                                                                  fontSize:
+                                                                      14),
+                                                          textAlign:
+                                                              TextAlign
+                                                                  .center,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
                                         ),
-                                      ],
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 16),
-                            // Button section (error shown in snackbar instead)
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // Button section (error shown in snackbar instead)
 
-                            Padding(
-                              padding: EdgeInsets.only(
-                                bottom: 16.0 + bottomPadding,
-                              ),
-                              child: AppContinueButton(
+                        Padding(
+                          padding: EdgeInsets.only(
+                            bottom: 16.0 + bottomPadding,
+                          ),
+                          child: Consumer<ReviewViewModel>(
+                            builder: (context, viewModel, child) {
+                              return AppContinueButton(
                                 text: 'Transform Photo',
                                 onPressed: viewModel.isTransforming
                                     ? null
@@ -300,12 +290,12 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                       },
                                 isLoading: viewModel.isTransforming,
                                 padding: EdgeInsets.zero,
-                              ),
-                            ),
-                          ],
+                              );
+                            },
+                          ),
                         ),
-                      );
-                    },
+                      ],
+                    ),
                   );
                 },
               ),
@@ -321,6 +311,7 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                     subtitle: 'This may take 30-60 seconds',
                     loaderColor: CupertinoColors.systemBlue,
                     elapsedSeconds: viewModel.elapsedSeconds,
+                    currentProcess: viewModel.currentProcess,
                   ),
                 );
               }

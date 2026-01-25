@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'dart:convert';
+import '../utils/constants.dart';
 import '../utils/logger.dart';
 import 'error_reporting/error_reporting_manager.dart';
 
@@ -13,6 +14,11 @@ class ApiLoggingInterceptor extends Interceptor {
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     // Store request start time for duration calculation
     options.extra['request_start_time'] = DateTime.now();
+
+    if (!AppConstants.kEnableLogOutput) {
+      handler.next(options);
+      return;
+    }
     
     final buffer = StringBuffer();
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -116,6 +122,11 @@ class ApiLoggingInterceptor extends Interceptor {
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
+    if (!AppConstants.kEnableLogOutput) {
+      handler.next(response);
+      return;
+    }
+
     // Calculate request duration
     final startTime = response.requestOptions.extra['request_start_time'] as DateTime?;
     final duration = startTime != null 
@@ -238,106 +249,108 @@ class ApiLoggingInterceptor extends Interceptor {
         ? DateTime.now().difference(startTime) 
         : null;
     
-    final buffer = StringBuffer();
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    buffer.writeln('❌ API ERROR');
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    buffer.writeln('⏱️  Time: ${DateTime.now().toIso8601String()}');
-    if (duration != null) {
-      buffer.writeln('⏱️  Duration: ${duration.inMilliseconds}ms (${_formatDuration(duration)})');
-    }
-    buffer.writeln('Method: ${err.requestOptions.method}');
-    buffer.writeln('URL: ${err.requestOptions.uri}');
-    buffer.writeln('Error Type: ${err.type}');
-    buffer.writeln('Error Message: ${err.message ?? 'N/A'}');
-    
-    // Log request details
-    if (err.requestOptions.headers.isNotEmpty) {
-      buffer.writeln('\nRequest Headers:');
-      err.requestOptions.headers.forEach((key, value) {
-        if (key.toLowerCase() == 'authorization' && value is String) {
-          final masked = _maskAuthorization(value);
-          buffer.writeln('  $key: $masked');
-        } else {
-          buffer.writeln('  $key: $value');
-        }
-      });
-    }
-    
-    if (err.requestOptions.data != null) {
-      buffer.writeln('\nRequest Body:');
-      try {
-        if (err.requestOptions.data is FormData) {
-          final formData = err.requestOptions.data as FormData;
-          buffer.writeln('  Type: multipart/form-data');
-          if (formData.fields.isNotEmpty) {
-            buffer.writeln('  Fields:');
-            formData.fields.forEach((field) {
-              buffer.writeln('    ${field.key}: ${_sanitizeString(field.value)}');
-            });
-          }
-        } else if (err.requestOptions.data is Map || err.requestOptions.data is List) {
-          final encoder = JsonEncoder.withIndent('  ');
-          final sanitized = _sanitizeData(err.requestOptions.data);
-          buffer.writeln(_truncateJson(encoder.convert(sanitized)));
-        } else {
-          final dataStr = _sanitizeString(err.requestOptions.data.toString());
-          buffer.writeln('  $dataStr');
-        }
-      } catch (e) {
-        buffer.writeln('  [Error formatting: $e]');
+    if (AppConstants.kEnableLogOutput) {
+      final buffer = StringBuffer();
+      buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      buffer.writeln('❌ API ERROR');
+      buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      buffer.writeln('⏱️  Time: ${DateTime.now().toIso8601String()}');
+      if (duration != null) {
+        buffer.writeln('⏱️  Duration: ${duration.inMilliseconds}ms (${_formatDuration(duration)})');
       }
-    }
-    
-    // Log response details if available
-    if (err.response != null) {
-      buffer.writeln('\nResponse Status Code: ${err.response?.statusCode}');
-      buffer.writeln('Response Status Message: ${err.response?.statusMessage ?? 'N/A'}');
+      buffer.writeln('Method: ${err.requestOptions.method}');
+      buffer.writeln('URL: ${err.requestOptions.uri}');
+      buffer.writeln('Error Type: ${err.type}');
+      buffer.writeln('Error Message: ${err.message ?? 'N/A'}');
       
-      if (err.response?.headers.map.isNotEmpty ?? false) {
-        buffer.writeln('\nResponse Headers:');
-        err.response!.headers.map.forEach((key, values) {
-          buffer.writeln('  $key: ${values.join(', ')}');
+      // Log request details
+      if (err.requestOptions.headers.isNotEmpty) {
+        buffer.writeln('\nRequest Headers:');
+        err.requestOptions.headers.forEach((key, value) {
+          if (key.toLowerCase() == 'authorization' && value is String) {
+            final masked = _maskAuthorization(value);
+            buffer.writeln('  $key: $masked');
+          } else {
+            buffer.writeln('  $key: $value');
+          }
         });
       }
       
-      if (err.response?.data != null) {
-        buffer.writeln('\nResponse Body:');
+      if (err.requestOptions.data != null) {
+        buffer.writeln('\nRequest Body:');
         try {
-          if (err.response!.data is Map || err.response!.data is List) {
+          if (err.requestOptions.data is FormData) {
+            final formData = err.requestOptions.data as FormData;
+            buffer.writeln('  Type: multipart/form-data');
+            if (formData.fields.isNotEmpty) {
+              buffer.writeln('  Fields:');
+              formData.fields.forEach((field) {
+                buffer.writeln('    ${field.key}: ${_sanitizeString(field.value)}');
+              });
+            }
+          } else if (err.requestOptions.data is Map || err.requestOptions.data is List) {
             final encoder = JsonEncoder.withIndent('  ');
-            final sanitized = _sanitizeData(err.response!.data);
+            final sanitized = _sanitizeData(err.requestOptions.data);
             buffer.writeln(_truncateJson(encoder.convert(sanitized)));
-          } else if (err.response!.data is String) {
-            try {
-              final jsonData = jsonDecode(err.response!.data as String);
-              final encoder = JsonEncoder.withIndent('  ');
-              final sanitized = _sanitizeData(jsonData);
-              buffer.writeln(_truncateJson(encoder.convert(sanitized)));
-            } catch (_) {
-              final data = _sanitizeString(err.response!.data as String);
-              buffer.writeln('  $data');
-            }
           } else {
-            final dataStr = err.response!.data.toString();
-            if (dataStr.length > 1000) {
-              buffer.writeln('  ${dataStr.substring(0, 1000)}... [truncated]');
-            } else {
-              buffer.writeln('  $dataStr');
-            }
+            final dataStr = _sanitizeString(err.requestOptions.data.toString());
+            buffer.writeln('  $dataStr');
           }
         } catch (e) {
-          buffer.writeln('  [Error formatting response: $e]');
+          buffer.writeln('  [Error formatting: $e]');
         }
       }
+      
+      // Log response details if available
+      if (err.response != null) {
+        buffer.writeln('\nResponse Status Code: ${err.response?.statusCode}');
+        buffer.writeln('Response Status Message: ${err.response?.statusMessage ?? 'N/A'}');
+        
+        if (err.response?.headers.map.isNotEmpty ?? false) {
+          buffer.writeln('\nResponse Headers:');
+          err.response!.headers.map.forEach((key, values) {
+            buffer.writeln('  $key: ${values.join(', ')}');
+          });
+        }
+        
+        if (err.response?.data != null) {
+          buffer.writeln('\nResponse Body:');
+          try {
+            if (err.response!.data is Map || err.response!.data is List) {
+              final encoder = JsonEncoder.withIndent('  ');
+              final sanitized = _sanitizeData(err.response!.data);
+              buffer.writeln(_truncateJson(encoder.convert(sanitized)));
+            } else if (err.response!.data is String) {
+              try {
+                final jsonData = jsonDecode(err.response!.data as String);
+                final encoder = JsonEncoder.withIndent('  ');
+                final sanitized = _sanitizeData(jsonData);
+                buffer.writeln(_truncateJson(encoder.convert(sanitized)));
+              } catch (_) {
+                final data = _sanitizeString(err.response!.data as String);
+                buffer.writeln('  $data');
+              }
+            } else {
+              final dataStr = err.response!.data.toString();
+              if (dataStr.length > 1000) {
+                buffer.writeln('  ${dataStr.substring(0, 1000)}... [truncated]');
+              } else {
+                buffer.writeln('  $dataStr');
+              }
+            }
+          } catch (e) {
+            buffer.writeln('  [Error formatting response: $e]');
+          }
+        }
+      }
+      
+      buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      AppLogger.error(buffer.toString(), error: err);
+      
+      // Log API failure to Bugsnag with detailed context and timing
+      final durationStr = duration != null ? ' (${duration.inMilliseconds}ms)' : '';
+      ErrorReportingManager.log('❌ API Error: ${err.requestOptions.method} ${err.requestOptions.uri} - ${err.type}$durationStr');
     }
-    
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    AppLogger.error(buffer.toString(), error: err);
-    
-    // Log API failure to Bugsnag with detailed context and timing
-    final durationStr = duration != null ? ' (${duration.inMilliseconds}ms)' : '';
-    ErrorReportingManager.log('❌ API Error: ${err.requestOptions.method} ${err.requestOptions.uri} - ${err.type}$durationStr');
     
     // Record the error with full context including performance metrics
     ErrorReportingManager.recordError(

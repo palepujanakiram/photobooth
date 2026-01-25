@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
+import '../../services/file_helper.dart';
 import '../../utils/exceptions.dart';
 
 class TermsAndConditionsViewModel extends ChangeNotifier {
@@ -41,6 +42,9 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+
+    // Fire-and-forget cleanup of temp images
+    FileHelper.cleanupTempImages();
 
     _isSubmitting = true;
     _errorMessage = null;

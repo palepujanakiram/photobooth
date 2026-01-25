@@ -119,7 +119,7 @@ class CaptureViewModel extends ChangeNotifier {
       ErrorReportingManager.log('⚠️ Reset blocked - capture in progress');
       return;
     }
-    
+
     // Clear any captured photo
     _capturedPhoto = null;
     
@@ -502,8 +502,15 @@ class CaptureViewModel extends ChangeNotifier {
 
     try {
       AppLogger.debug('📸 Calling _cameraService.takePicture()...');
-      final imageFile = await _cameraService.takePicture();
+      var imageFile = await _cameraService.takePicture();
       AppLogger.debug('✅ Photo captured successfully');
+
+      // Rotate captured image 180 degrees (non-web only)
+      if (!kIsWeb) {
+        AppLogger.debug('🔄 Rotating captured image 180°');
+        imageFile = await ImageHelper.rotateImage180(imageFile);
+      }
+
       // Get camera ID from either standard controller or current camera
       final cameraId = _cameraController?.description.name ?? _currentCamera?.name;
       final photoId = _uuid.v4();

@@ -7,6 +7,7 @@ import 'result_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../utils/logger.dart';
 import '../../views/widgets/app_theme.dart';
+import '../../views/widgets/full_screen_loader.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -18,11 +19,38 @@ class ResultScreen extends StatefulWidget {
 class _ResultScreenState extends State<ResultScreen> {
   TextEditingController? _printerIpController;
   final GlobalKey _shareButtonKey = GlobalKey();
+  ResultViewModel? _resultViewModel;
+  bool _isInitialized = false;
 
   @override
   void dispose() {
     _printerIpController?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_isInitialized) return;
+
+    final args = ModalRoute.of(context)?.settings.arguments as Map?;
+    if (args == null) return;
+
+    final transformedImage = args['transformedImage'] as TransformedImageModel?;
+    final transformationTime = args['transformationTime'] as int?;
+
+    if (transformedImage == null) {
+      return;
+    }
+
+    _resultViewModel = ResultViewModel(
+      transformedImage: transformedImage,
+      transformationTime: transformationTime,
+    );
+    _printerIpController ??=
+        TextEditingController(text: _resultViewModel!.printerIp);
+    _isInitialized = true;
+
   }
 
   /// Get the position of the share button for iOS share sheet positioning
@@ -48,58 +76,50 @@ class _ResultScreenState extends State<ResultScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final args = ModalRoute.of(context)?.settings.arguments as Map?;
-    TransformedImageModel? transformedImage;
-    int? transformationTime;
-
-    if (args != null) {
-      transformedImage = args['transformedImage'] as TransformedImageModel?;
-      transformationTime = args['transformationTime'] as int?;
+    if (!_isInitialized) {
+      return const Scaffold(
+        body: Center(child: CupertinoActivityIndicator()),
+      );
     }
 
-    if (transformedImage == null) {
+    if (_resultViewModel == null) {
       return const Scaffold(
         body: Center(child: Text('No transformed image available')),
       );
     }
 
-    final resultViewModel = ResultViewModel(
-      transformedImage: transformedImage,
-      transformationTime: transformationTime,
-    );
-    
-    // Initialize controller if not already initialized
-    _printerIpController ??= TextEditingController(text: resultViewModel.printerIp);
-    // Update controller text if view model IP changed
-    if (_printerIpController!.text != resultViewModel.printerIp) {
-      _printerIpController!.text = resultViewModel.printerIp;
-    }
-
     return ChangeNotifierProvider.value(
-      value: resultViewModel,
-      child: CupertinoPageScaffold(
-        navigationBar: AppTopBar(
-          title: 'Result',
-          actions: [
-            AppActionButton(
-              icon: CupertinoIcons.house_fill,
-              onPressed: () {
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  AppConstants.kRouteCapture,
-                  (route) => false,
-                );
-              },
+      value: _resultViewModel!,
+      child: Stack(
+        children: [
+          CupertinoPageScaffold(
+            navigationBar: AppTopBar(
+              title: 'Result',
+              actions: [
+                AppActionButton(
+                  icon: CupertinoIcons.house_fill,
+                  onPressed: () {
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      AppConstants.kRouteCapture,
+                      (route) => false,
+                    );
+                  },
+                ),
+              ],
             ),
-          ],
-        ),
-        child: SafeArea(
-          child: Consumer<ResultViewModel>(
-            builder: (context, viewModel, child) {
-              final imageFile = viewModel.transformedImage?.imageFile;
-              
-              return Column(
-                children: [
+            child: SafeArea(
+              child: Consumer<ResultViewModel>(
+                builder: (context, viewModel, child) {
+                  final imageFile = viewModel.transformedImage?.imageFile;
+
+                  if (_printerIpController != null &&
+                      _printerIpController!.text != viewModel.printerIp) {
+                    _printerIpController!.text = viewModel.printerIp;
+                  }
+
+                  return Column(
+                    children: [
                   // Show transformation time badge
                   if (viewModel.transformationTime != null)
                     Container(
@@ -136,111 +156,180 @@ class _ResultScreenState extends State<ResultScreen> {
                   Expanded(
                     child: Center(
                       child: imageFile != null
-                          ? FutureBuilder<Uint8List>(
-                              future: imageFile.readAsBytes().catchError((error) {
-                                AppLogger.debug('❌ Error reading image file: $error');
-                                AppLogger.debug('   File path: ${imageFile.path}');
-                                return Uint8List(0);
-                              }),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState == ConnectionState.waiting) {
-                                  return const Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      CupertinoActivityIndicator(),
-                                      SizedBox(height: 16),
-                                      Text(
-                                        'Loading image...',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: CupertinoColors.systemGrey,
-                                        ),
+                          ? viewModel.isRemoteImageUrl
+                              ? Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Expanded(
+                                      child: Image.network(
+                                        imageFile.path,
+                                        fit: BoxFit.contain,
+                                        loadingBuilder:
+                                            (context, child, loadingProgress) {
+                                          if (loadingProgress == null) {
+                                            return child;
+                                          }
+                                          return const Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              CupertinoActivityIndicator(),
+                                              SizedBox(height: 16),
+                                              Text(
+                                                'Loading image...',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color:
+                                                      CupertinoColors.systemGrey,
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        },
+                                        errorBuilder:
+                                            (context, error, stackTrace) {
+                                          AppLogger.debug(
+                                              '❌ Image.network error: $error');
+                                          return Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              const Icon(
+                                                CupertinoIcons
+                                                    .exclamationmark_triangle,
+                                                size: 64,
+                                                color:
+                                                    CupertinoColors.systemRed,
+                                              ),
+                                              const SizedBox(height: 16),
+                                              const Text(
+                                                'Failed to load image',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  color:
+                                                      CupertinoColors.systemRed,
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        },
                                       ),
-                                    ],
-                                  );
-                                }
-                                if (snapshot.hasError || !snapshot.hasData || (snapshot.data?.isEmpty ?? true)) {
-                                  return Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      const Icon(
-                                        CupertinoIcons.exclamationmark_triangle,
-                                        size: 64,
-                                        color: CupertinoColors.systemRed,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    const Text(
+                                      'Tap to download for share/print',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: CupertinoColors.systemGrey2,
                                       ),
-                                      const SizedBox(height: 16),
-                                      const Text(
-                                        'Failed to load image',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: CupertinoColors.systemRed,
-                                        ),
-                                      ),
-                                      if (snapshot.hasError) ...[
-                                        const SizedBox(height: 8),
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                                          child: Text(
-                                            'Error: ${snapshot.error}',
-                                            style: const TextStyle(
-                                              fontSize: 12,
+                                    ),
+                                  ],
+                                )
+                              : FutureBuilder<Uint8List>(
+                                  future: imageFile.readAsBytes().catchError((error) {
+                                    AppLogger.debug('❌ Error reading image file: $error');
+                                    AppLogger.debug('   File path: ${imageFile.path}');
+                                    return Uint8List(0);
+                                  }),
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState == ConnectionState.waiting) {
+                                      return const Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          CupertinoActivityIndicator(),
+                                          SizedBox(height: 16),
+                                          Text(
+                                            'Loading image...',
+                                            style: TextStyle(
+                                              fontSize: 14,
                                               color: CupertinoColors.systemGrey,
                                             ),
-                                            textAlign: TextAlign.center,
                                           ),
-                                        ),
-                                      ],
-                                      const SizedBox(height: 8),
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                                        child: Text(
-                                          'Path: ${imageFile.path}',
-                                          style: const TextStyle(
-                                            fontSize: 10,
-                                            color: CupertinoColors.systemGrey2,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                }
-                                return Image.memory(
-                                  snapshot.data!,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    AppLogger.debug('❌ Image.memory error: $error');
-                                    return Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        const Icon(
-                                          CupertinoIcons.exclamationmark_triangle,
-                                          size: 64,
-                                          color: CupertinoColors.systemRed,
-                                        ),
-                                        const SizedBox(height: 16),
-                                        const Text(
-                                          'Failed to display image',
-                                          style: TextStyle(
-                                            fontSize: 16,
+                                        ],
+                                      );
+                                    }
+                                    if (snapshot.hasError || !snapshot.hasData || (snapshot.data?.isEmpty ?? true)) {
+                                      return Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(
+                                            CupertinoIcons.exclamationmark_triangle,
+                                            size: 64,
                                             color: CupertinoColors.systemRed,
                                           ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Error: $error',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: CupertinoColors.systemGrey,
+                                          const SizedBox(height: 16),
+                                          const Text(
+                                            'Failed to load image',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              color: CupertinoColors.systemRed,
+                                            ),
                                           ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ],
+                                          if (snapshot.hasError) ...[
+                                            const SizedBox(height: 8),
+                                            Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                                              child: Text(
+                                                'Error: ${snapshot.error}',
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: CupertinoColors.systemGrey,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                              ),
+                                            ),
+                                          ],
+                                          const SizedBox(height: 8),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                                            child: Text(
+                                              'Path: ${imageFile.path}',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                color: CupertinoColors.systemGrey2,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    }
+                                    return Image.memory(
+                                      snapshot.data!,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (context, error, stackTrace) {
+                                        AppLogger.debug('❌ Image.memory error: $error');
+                                        return Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(
+                                              CupertinoIcons.exclamationmark_triangle,
+                                              size: 64,
+                                              color: CupertinoColors.systemRed,
+                                            ),
+                                            const SizedBox(height: 16),
+                                            const Text(
+                                              'Failed to display image',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                color: CupertinoColors.systemRed,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              'Error: $error',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: CupertinoColors.systemGrey,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                          ],
+                                        );
+                                      },
                                     );
                                   },
-                                );
-                              },
-                            )
+                                )
                           : Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -315,7 +404,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                   padding: EdgeInsets.zero,
                                   color: CupertinoColors.systemBlue,
                                   borderRadius: BorderRadius.circular(8),
-                                  onPressed: viewModel.isPrinting
+                                  onPressed: viewModel.isPrinting || viewModel.isDownloading
                                       ? null
                                       : () async {
                                           await viewModel.silentPrintToNetwork();
@@ -337,7 +426,7 @@ class _ResultScreenState extends State<ResultScreen> {
                           AppButtonWithIcon(
                             text: 'Print',
                             icon: CupertinoIcons.printer_fill,
-                            onPressed: viewModel.isPrinting
+                            onPressed: viewModel.isPrinting || viewModel.isDownloading
                                 ? null
                                 : () async {
                                     await viewModel.printImage();
@@ -349,7 +438,7 @@ class _ResultScreenState extends State<ResultScreen> {
                             key: _shareButtonKey,
                             text: 'Share via WhatsApp',
                             icon: CupertinoIcons.share,
-                            onPressed: viewModel.isSharing
+                            onPressed: viewModel.isSharing || viewModel.isDownloading
                                 ? null
                                 : () async {
                                     final sharePosition = _getShareButtonPosition();
@@ -380,6 +469,22 @@ class _ResultScreenState extends State<ResultScreen> {
             },
           ),
         ),
+          ),
+          Consumer<ResultViewModel>(
+            builder: (context, viewModel, child) {
+              if (viewModel.isDownloading) {
+                return Positioned.fill(
+                  child: FullScreenLoader(
+                    text: 'Preparing Result',
+                    subtitle: 'Downloading generated image',
+                    currentProcess: viewModel.downloadMessage,
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+        ],
       ),
     );
   }

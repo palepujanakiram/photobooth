@@ -37,5 +37,23 @@ class AndroidCameraDeviceHelper {
       return null;
     }
   }
+
+  /// Checks if the device is an Android TV
+  static Future<bool> isAndroidTv() async {
+    if (!_isAndroid) {
+      return false;
+    }
+
+    try {
+      final result = await _channel.invokeMethod('isAndroidTv');
+      return result == true;
+    } on PlatformException catch (e) {
+      AppLogger.debug('❌ Error checking Android TV status: ${e.message}');
+      return false;
+    } catch (e) {
+      AppLogger.debug('❌ Unexpected error checking Android TV status: $e');
+      return false;
+    }
+  }
 }
 

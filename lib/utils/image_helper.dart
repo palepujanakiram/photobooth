@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:convert';
 import 'package:image/image.dart' as img;
 import 'package:camera/camera.dart';
+import '../services/file_helper.dart';
 
 /// Helper class for image processing operations
 class ImageHelper {
@@ -132,6 +133,39 @@ class ImageHelper {
       return 'data:$mimeType;base64,$base64String';
     } catch (e) {
       throw Exception('Failed to encode image to base64: $e');
+    }
+  }
+
+  /// Rotates an image 180 degrees and overwrites the original file
+  /// Returns a new XFile pointing to the rotated image
+  static Future<XFile> rotateImage180(XFile imageFile) async {
+    try {
+      final bytes = await imageFile.readAsBytes();
+      if (bytes.isEmpty) {
+        throw Exception('Image file is empty');
+      }
+
+      final originalImage = img.decodeImage(bytes);
+      if (originalImage == null) {
+        throw Exception('Failed to decode image');
+      }
+
+      final rotatedImage = img.copyRotate(originalImage, angle: 180);
+      final extension = imageFile.path.toLowerCase().split('.').last;
+
+      Uint8List encodedBytes;
+      if (extension == 'png') {
+        encodedBytes = Uint8List.fromList(img.encodePng(rotatedImage));
+      } else {
+        encodedBytes = Uint8List.fromList(img.encodeJpg(rotatedImage, quality: 95));
+      }
+
+      final file = FileHelper.createFile(imageFile.path);
+      await (file as dynamic).writeAsBytes(encodedBytes);
+
+      return XFile((file as dynamic).path);
+    } catch (e) {
+      throw Exception('Failed to rotate image: $e');
     }
   }
 }

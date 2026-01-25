@@ -8,4 +8,8 @@ class FileHelper {
   static dynamic createFile(String path) {
     throw UnsupportedError('Platform not supported');
   }
+
+  static Future<void> cleanupTempImages() async {
+    return;
+  }
 }

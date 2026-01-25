@@ -99,7 +99,12 @@ class ReviewViewModel extends ChangeNotifier {
       
       // Start a timer to update process messages during API call
       Timer? processTimer;
+      var isDownloading = false;
+      var responseReceived = false;
       processTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+        if (isDownloading) {
+          return;
+        }
         if (_elapsedSeconds > 5 && _elapsedSeconds < 15) {
           _updateProcess('Server received image, processing...');
         } else if (_elapsedSeconds >= 15 && _elapsedSeconds < 30) {
@@ -120,13 +125,25 @@ class ReviewViewModel extends ChangeNotifier {
           attempt: _attemptNumber,
           originalPhotoId: _photo!.id,
           themeId: _theme!.id,
+          downloadResult: false,
+          onProgress: (message) {
+            if (!isDownloading && message.startsWith('Downloading result')) {
+              isDownloading = true;
+              processTimer?.cancel();
+            }
+            if (!responseReceived && message.startsWith('Response received')) {
+              responseReceived = true;
+              processTimer?.cancel();
+            }
+            _updateProcess(message);
+          },
         );
       } finally {
         processTimer.cancel();
       }
       
       // Step 3: Finalizing
-      _updateProcess('Downloading result...');
+      _updateProcess('Opening result...');
       await Future.delayed(const Duration(milliseconds: 500));
       
       _stopTimer();

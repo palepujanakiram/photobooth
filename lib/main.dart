@@ -12,13 +12,16 @@ import 'screens/photo_review/photo_review_view.dart';
 import 'screens/result/result_view.dart';
 import 'utils/constants.dart';
 import 'utils/logger.dart';
-import 'utils/alice_inspector.dart';
 import 'services/error_reporting/error_reporting_manager.dart';
+import 'services/file_helper.dart';
 
 Future<void> main() async {
   await bugsnag.start(apiKey: '73ebb791c48ae8c4821b511fb286ca23');
   
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Fire-and-forget cleanup of temp images
+  FileHelper.cleanupTempImages();
     
     // Initialize Firebase with error handling
     try {
@@ -150,9 +153,6 @@ class PhotoBoothApp extends StatelessWidget {
       child: CupertinoApp(
         title: 'Photo Booth',
         debugShowCheckedModeBanner: false,
-        // Alice navigator key for in-app HTTP inspector
-        // Shake device or tap floating button to view network calls
-        navigatorKey: kIsWeb ? null : AliceInspector.navigatorKey,
         // Remove hardcoded theme to allow dark mode support
         // The app will automatically use system theme (light/dark)
         initialRoute: AppConstants.kRouteSlideshow,

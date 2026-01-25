@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:bugsnag_flutter/bugsnag_flutter.dart';
+import '../utils/constants.dart';
 
 /// Bugsnag Dio Interceptor
 /// Automatically captures all network requests as breadcrumbs in Bugsnag
@@ -7,6 +8,10 @@ import 'package:bugsnag_flutter/bugsnag_flutter.dart';
 class BugsnagDioInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    if (!AppConstants.kEnableLogOutput) {
+      handler.next(options);
+      return;
+    }
     try {
       // Store request start time for duration tracking
       options.extra['bugsnag_request_start'] = DateTime.now();
@@ -43,6 +48,10 @@ class BugsnagDioInterceptor extends Interceptor {
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
+    if (!AppConstants.kEnableLogOutput) {
+      handler.next(response);
+      return;
+    }
     try {
       // Calculate request duration
       final startTime = response.requestOptions.extra['bugsnag_request_start'] as DateTime?;
@@ -93,6 +102,10 @@ class BugsnagDioInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
+    if (!AppConstants.kEnableLogOutput) {
+      handler.next(err);
+      return;
+    }
     try {
       // Calculate request duration
       final startTime = err.requestOptions.extra['bugsnag_request_start'] as DateTime?;

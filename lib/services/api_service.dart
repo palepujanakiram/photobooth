@@ -12,8 +12,6 @@ import 'api_client.dart';
 import 'file_helper.dart';
 import 'api_logging_interceptor.dart';
 import 'bugsnag_dio_interceptor.dart';
-import '../utils/alice_inspector.dart';
-import 'package:alice_dio/alice_dio_adapter.dart';
 
 // Conditional import for web Dio configuration
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
@@ -39,15 +37,6 @@ class ApiService {
     // Configure Dio to use browser HTTP adapter on web
     // This prevents SocketException errors from native socket lookups
     configureDioForWeb(dio);
-
-    // Add Alice interceptor for in-app network inspection
-    // This must be added FIRST to capture all requests
-    if (!kIsWeb) {
-      // Alice doesn't work well on web, only add for mobile
-      final aliceDioAdapter = AliceDioAdapter();
-      AliceInspector.instance.addAdapter(aliceDioAdapter);
-      dio.interceptors.add(aliceDioAdapter);
-    }
 
     // Add Bugsnag breadcrumbs interceptor to automatically capture network requests
     dio.interceptors.add(BugsnagDioInterceptor());
@@ -478,6 +467,8 @@ class ApiService {
     required int attempt,
     required String originalPhotoId,
     required String themeId,
+    void Function(String message)? onProgress,
+    bool downloadResult = true,
   }) async {
     // Create a Dio instance with extended timeout for AI generation
     // AI generation can take 10-60+ seconds depending on server load
@@ -516,6 +507,7 @@ class ApiService {
           'attempt': attempt,
           'trackDetails': true, // Enable detailed tracking
         });
+        onProgress?.call('Response received');
 
         // Validate response
         if (response['success'] != true) {
@@ -572,47 +564,14 @@ class ApiService {
         XFile transformedImageFile;
         
         if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-          // HTTP URL - download the image
-          if (kIsWeb) {
-            // On web, XFile can accept URLs directly
-            transformedImageFile = XFile(imageUrl);
-          } else {
-            // On mobile, download the image and save to temp file
-            AppLogger.debug('📥 Downloading image from: $imageUrl');
-            final imageResponse = await dioWithTimeout.get<List<int>>(
+          if (downloadResult) {
+            transformedImageFile = await downloadImageToTemp(
               imageUrl,
-              options: Options(responseType: ResponseType.bytes),
+              onProgress: onProgress,
             );
-            
-            final imageBytes = imageResponse.data ?? [];
-            if (imageBytes.isEmpty) {
-              throw ApiException('Downloaded image is empty');
-            }
-
-            // Determine file extension from URL
-            final extension = imageUrl.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
-            
-            final tempDirPath = await FileHelper.getTempDirectoryPath();
-            final fileName = 'transformed_${_uuid.v4()}.$extension';
-            final filePath = '$tempDirPath/$fileName';
-            final file = FileHelper.createFile(filePath);
-            await (file as dynamic).writeAsBytes(imageBytes);
-
-            // Verify the file was written correctly
-            if (!(file as dynamic).existsSync()) {
-              throw ApiException(
-                  'Failed to save transformed image file at: $filePath');
-            }
-
-            final fileSize = await (file as dynamic).length();
-            if (fileSize == 0) {
-              throw ApiException('Saved image file is empty at: $filePath');
-            }
-
-            final savedPath = (file as dynamic).path;
-            AppLogger.debug(
-                '✅ Saved transformed image: $savedPath ($fileSize bytes)');
-            transformedImageFile = XFile(savedPath);
+          } else {
+            // Return URL-based XFile; Result screen will download later on mobile.
+            transformedImageFile = XFile(imageUrl);
           }
         } else {
           throw ApiException('Invalid image URL format: must be HTTP URL');
@@ -691,6 +650,66 @@ class ApiService {
 
     // This should never be reached, but just in case
     throw ApiException('Failed to generate image after retries');
+  }
+
+  Future<XFile> downloadImageToTemp(
+    String imageUrl, {
+    void Function(String message)? onProgress,
+  }) async {
+    if (kIsWeb) {
+      return XFile(imageUrl);
+    }
+
+    // Use a dedicated Dio instance with AI timeout for large downloads
+    final dio = Dio(
+      BaseOptions(
+        connectTimeout: AppConstants.kAiGenerationTimeout,
+        receiveTimeout: AppConstants.kAiGenerationTimeout,
+      ),
+    );
+
+    configureDioForWeb(dio);
+    dio.interceptors.add(BugsnagDioInterceptor());
+    dio.interceptors.add(ApiLoggingInterceptor());
+
+    AppLogger.debug('📥 Downloading image from: $imageUrl');
+    final extension = imageUrl.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+    final tempDirPath = await FileHelper.getTempDirectoryPath();
+    final fileName = 'transformed_${_uuid.v4()}.$extension';
+    final filePath = '$tempDirPath/$fileName';
+    final file = FileHelper.createFile(filePath);
+
+    onProgress?.call('Downloading result...');
+    int lastReportedPercent = -1;
+    await dio.download(
+      imageUrl,
+      (file as dynamic).path,
+      onReceiveProgress: (received, total) {
+        if (total <= 0) {
+          return;
+        }
+        final percent = ((received / total) * 100).floor();
+        if (percent >= lastReportedPercent + 5 || percent == 100) {
+          lastReportedPercent = percent;
+          onProgress?.call('Downloading result... $percent%');
+        }
+      },
+      deleteOnError: true,
+    );
+
+    // Verify the file was written correctly
+    if (!(file as dynamic).existsSync()) {
+      throw ApiException('Failed to save transformed image file at: $filePath');
+    }
+
+    final fileSize = await (file as dynamic).length();
+    if (fileSize == 0) {
+      throw ApiException('Saved image file is empty at: $filePath');
+    }
+
+    final savedPath = (file as dynamic).path;
+    AppLogger.debug('✅ Saved transformed image: $savedPath ($fileSize bytes)');
+    return XFile(savedPath);
   }
 
   /// Preprocesses image (validation, compression, person detection)

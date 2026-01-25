@@ -15,7 +15,7 @@ class AppConfig {
   /// Base URL for the API endpoints
   /// NOTE: For web development, you MUST run Chrome with CORS disabled
   /// See QUICK_CORS_FIX.md or run: ./run_chrome_dev.sh
-  static const String baseUrl = 'https://zenai-labs.replit.app';
+  static const String baseUrl = 'https://fotozenai.fly.dev';
 
   // Links
   /// Terms and Conditions page URL
