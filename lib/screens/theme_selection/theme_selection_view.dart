@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'theme_selection_viewmodel.dart';
@@ -19,6 +20,29 @@ class ThemeSelectionScreen extends StatefulWidget {
 class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   PhotoModel? _photoFromCapture;
   bool _isGenerating = false;
+  Timer? _timer;
+  int _elapsedSeconds = 0;
+
+  void _startTimer() {
+    _elapsedSeconds = 0;
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        _elapsedSeconds++;
+      });
+    });
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  @override
+  void dispose() {
+    _stopTimer();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -153,6 +177,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                   // If we have a photo from capture, update session with theme
                                   if (_photoFromCapture != null) {
                                     // Show full screen loader
+                                    _startTimer();
                                     setState(() {
                                       _isGenerating = true;
                                     });
@@ -163,12 +188,14 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                       final success = await viewModel.updateSessionWithTheme();
 
                                       if (!mounted || !currentContext.mounted) {
+                                        _stopTimer();
                                         setState(() {
                                           _isGenerating = false;
                                         });
                                         return;
                                       }
 
+                                      _stopTimer();
                                       setState(() {
                                         _isGenerating = false;
                                       });
@@ -193,6 +220,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                       }
                                     } catch (e) {
                                       if (mounted) {
+                                        _stopTimer();
                                         setState(() {
                                           _isGenerating = false;
                                         });
@@ -223,10 +251,11 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
           ),
           // Full screen loader overlay - positioned to cover entire screen
           if (_isGenerating)
-            const Positioned.fill(
+            Positioned.fill(
               child: FullScreenLoader(
-                text: 'Creating Session',
+                text: 'Updating Session',
                 loaderColor: CupertinoColors.systemBlue,
+                elapsedSeconds: _elapsedSeconds,
               ),
             ),
         ],

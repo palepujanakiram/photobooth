@@ -22,7 +22,7 @@ class AppConstants {
   static const String kContinueButtonText = 'Continue';
 
   // Logging
-  // Controls console logs and breadcrumb logs (Bugsnag/Crashlytics)
+  // Controls console logs and breadcrumb logs (Bugsnag)
   static const bool kEnableLogOutput = false;
 
   // Routes

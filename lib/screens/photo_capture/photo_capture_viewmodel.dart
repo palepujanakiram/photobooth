@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart' show ChangeNotifier, kIsWeb, defaultTargetPlatform, TargetPlatform, compute;
 import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
@@ -29,8 +30,13 @@ class CaptureViewModel extends ChangeNotifier {
   bool _isLoadingCameras = false;
   bool _isInitializing = false;
   bool _isCapturing = false;
+  bool _isSelectingFromGallery = false;
   bool _isUploading = false;
   String? _errorMessage;
+  
+  // Timer tracking for upload
+  Timer? _uploadTimer;
+  int _uploadElapsedSeconds = 0;
 
   CaptureViewModel({
     CameraService? cameraService,
@@ -51,9 +57,25 @@ class CaptureViewModel extends ChangeNotifier {
   bool get isLoadingCameras => _isLoadingCameras;
   bool get isInitializing => _isInitializing;
   bool get isCapturing => _isCapturing;
+  bool get isSelectingFromGallery => _isSelectingFromGallery;
   bool get isUploading => _isUploading;
+  int get uploadElapsedSeconds => _uploadElapsedSeconds;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
+
+  void _startUploadTimer() {
+    _uploadElapsedSeconds = 0;
+    _uploadTimer?.cancel();
+    _uploadTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _uploadElapsedSeconds++;
+      notifyListeners();
+    });
+  }
+
+  void _stopUploadTimer() {
+    _uploadTimer?.cancel();
+    _uploadTimer = null;
+  }
   bool get isReady {
     // Check if using custom controller
     if (_cameraService.isUsingCustomController) {
@@ -591,7 +613,7 @@ class CaptureViewModel extends ChangeNotifier {
     AppLogger.debug('📂 selectFromGallery() called');
     ErrorReportingManager.log('📂 Gallery selection started');
     
-    _isCapturing = true;
+    _isSelectingFromGallery = true;
     _errorMessage = null;
     notifyListeners();
 
@@ -609,7 +631,7 @@ class CaptureViewModel extends ChangeNotifier {
       if (imageFile == null) {
         AppLogger.debug('⚠️ No image selected from gallery');
         ErrorReportingManager.log('Gallery selection cancelled by user');
-        _isCapturing = false;
+        _isSelectingFromGallery = false;
         notifyListeners();
         return;
       }
@@ -668,7 +690,7 @@ class CaptureViewModel extends ChangeNotifier {
       
       notifyListeners();
     } finally {
-      _isCapturing = false;
+      _isSelectingFromGallery = false;
       notifyListeners();
     }
   }
@@ -699,6 +721,7 @@ class CaptureViewModel extends ChangeNotifier {
 
     _isUploading = true;
     _errorMessage = null;
+    _startUploadTimer();
     notifyListeners();
 
     try {
@@ -738,16 +761,19 @@ class CaptureViewModel extends ChangeNotifier {
       ErrorReportingManager.log('🔄 Triggering background image preprocessing');
       _apiService.preprocessImage(sessionId: sessionId);
       
+      _stopUploadTimer();
       _isUploading = false;
       notifyListeners();
       return true;
     } on app_exceptions.ApiException catch (e) {
       _errorMessage = e.message;
+      _stopUploadTimer();
       _isUploading = false;
       notifyListeners();
       return false;
     } catch (e) {
       _errorMessage = 'Failed to upload photo: ${e.toString()}';
+      _stopUploadTimer();
       _isUploading = false;
       notifyListeners();
       return false;
@@ -824,6 +850,7 @@ class CaptureViewModel extends ChangeNotifier {
   /// Disposes the camera controller
   @override
   void dispose() {
+    _stopUploadTimer();
     _cameraService.dispose();
     _cameraController = null;
     super.dispose();

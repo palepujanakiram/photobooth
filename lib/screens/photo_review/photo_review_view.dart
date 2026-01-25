@@ -308,10 +308,9 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                 return Positioned.fill(
                   child: FullScreenLoader(
                     text: 'Generating AI Image',
-                    subtitle: 'This may take 30-60 seconds',
                     loaderColor: CupertinoColors.systemBlue,
                     elapsedSeconds: viewModel.elapsedSeconds,
-                    currentProcess: viewModel.currentProcess,
+                    hint: 'Note: It may take up to a couple of minutes. Please be patient.',
                   ),
                 );
               }

@@ -1,5 +1,4 @@
 import 'dart:developer' as developer;
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'constants.dart';
 
 /// Log levels matching CocoaLumberjack-style logging
@@ -116,40 +115,6 @@ class AppLogger {
         error: error,
         stackTrace: stackTrace,
       );
-    }
-    
-    // Send errors and warnings to Firebase Crashlytics (if available)
-    if (level == LogLevel.error || level == LogLevel.warning) {
-      _sendToCrashlytics(formattedMessage, error, stackTrace);
-    } else if (AppConstants.kEnableLogOutput) {
-      // For debug and info logs, just log as breadcrumbs (if available)
-      _logToCrashlytics(formattedMessage);
-    }
-  }
-  
-  /// Send error to Crashlytics if available
-  static void _sendToCrashlytics(String message, Object? error, StackTrace? stackTrace) {
-    try {
-      // Check if Firebase is available before using it
-      FirebaseCrashlytics.instance.recordError(
-        error ?? Exception(message),
-        stackTrace,
-        reason: message,
-        fatal: false,
-      );
-      FirebaseCrashlytics.instance.log(message);
-    } catch (e) {
-      // Silently ignore if Firebase/Crashlytics not initialized
-      // This allows the app to work without Crashlytics
-    }
-  }
-  
-  /// Log breadcrumb to Crashlytics if available
-  static void _logToCrashlytics(String message) {
-    try {
-      FirebaseCrashlytics.instance.log(message);
-    } catch (e) {
-      // Silently ignore if Firebase/Crashlytics not initialized
     }
   }
   

@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -93,25 +92,13 @@ class _ResultScreenState extends State<ResultScreen> {
       child: Stack(
         children: [
           CupertinoPageScaffold(
-            navigationBar: AppTopBar(
+            navigationBar: const AppTopBar(
               title: 'Result',
-              actions: [
-                AppActionButton(
-                  icon: CupertinoIcons.house_fill,
-                  onPressed: () {
-                    Navigator.pushNamedAndRemoveUntil(
-                      context,
-                      AppConstants.kRouteCapture,
-                      (route) => false,
-                    );
-                  },
-                ),
-              ],
             ),
             child: SafeArea(
               child: Consumer<ResultViewModel>(
                 builder: (context, viewModel, child) {
-                  final imageFile = viewModel.transformedImage?.imageFile;
+                  final imageUrl = viewModel.imageUrl;
 
                   if (_printerIpController != null &&
                       _printerIpController!.text != viewModel.printerIp) {
@@ -155,86 +142,22 @@ class _ResultScreenState extends State<ResultScreen> {
                     ),
                   Expanded(
                     child: Center(
-                      child: imageFile != null
-                          ? viewModel.isRemoteImageUrl
-                              ? Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Expanded(
-                                      child: Image.network(
-                                        imageFile.path,
-                                        fit: BoxFit.contain,
-                                        loadingBuilder:
-                                            (context, child, loadingProgress) {
-                                          if (loadingProgress == null) {
-                                            return child;
-                                          }
-                                          return const Column(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              CupertinoActivityIndicator(),
-                                              SizedBox(height: 16),
-                                              Text(
-                                                'Loading image...',
-                                                style: TextStyle(
-                                                  fontSize: 14,
-                                                  color:
-                                                      CupertinoColors.systemGrey,
-                                                ),
-                                              ),
-                                            ],
-                                          );
-                                        },
-                                        errorBuilder:
-                                            (context, error, stackTrace) {
-                                          AppLogger.debug(
-                                              '❌ Image.network error: $error');
-                                          return Column(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              const Icon(
-                                                CupertinoIcons
-                                                    .exclamationmark_triangle,
-                                                size: 64,
-                                                color:
-                                                    CupertinoColors.systemRed,
-                                              ),
-                                              const SizedBox(height: 16),
-                                              const Text(
-                                                'Failed to load image',
-                                                style: TextStyle(
-                                                  fontSize: 16,
-                                                  color:
-                                                      CupertinoColors.systemRed,
-                                                ),
-                                              ),
-                                            ],
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    const Text(
-                                      'Tap to download for share/print',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: CupertinoColors.systemGrey2,
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              : FutureBuilder<Uint8List>(
-                                  future: imageFile.readAsBytes().catchError((error) {
-                                    AppLogger.debug('❌ Error reading image file: $error');
-                                    AppLogger.debug('   File path: ${imageFile.path}');
-                                    return Uint8List(0);
-                                  }),
-                                  builder: (context, snapshot) {
-                                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      child: imageUrl != null
+                          ? Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: Image.network(
+                                    imageUrl,
+                                    fit: BoxFit.contain,
+                                    loadingBuilder:
+                                        (context, child, loadingProgress) {
+                                      if (loadingProgress == null) {
+                                        return child;
+                                      }
                                       return const Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         children: [
                                           CupertinoActivityIndicator(),
                                           SizedBox(height: 16),
@@ -242,94 +165,54 @@ class _ResultScreenState extends State<ResultScreen> {
                                             'Loading image...',
                                             style: TextStyle(
                                               fontSize: 14,
-                                              color: CupertinoColors.systemGrey,
+                                              color:
+                                                  CupertinoColors.systemGrey,
                                             ),
                                           ),
                                         ],
                                       );
-                                    }
-                                    if (snapshot.hasError || !snapshot.hasData || (snapshot.data?.isEmpty ?? true)) {
+                                    },
+                                    errorBuilder:
+                                        (context, error, stackTrace) {
+                                      AppLogger.debug(
+                                          '❌ Image.network error: $error');
                                       return Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         children: [
                                           const Icon(
-                                            CupertinoIcons.exclamationmark_triangle,
+                                            CupertinoIcons
+                                                .exclamationmark_triangle,
                                             size: 64,
-                                            color: CupertinoColors.systemRed,
+                                            color:
+                                                CupertinoColors.systemRed,
                                           ),
                                           const SizedBox(height: 16),
                                           const Text(
                                             'Failed to load image',
                                             style: TextStyle(
                                               fontSize: 16,
-                                              color: CupertinoColors.systemRed,
-                                            ),
-                                          ),
-                                          if (snapshot.hasError) ...[
-                                            const SizedBox(height: 8),
-                                            Padding(
-                                              padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                                              child: Text(
-                                                'Error: ${snapshot.error}',
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  color: CupertinoColors.systemGrey,
-                                                ),
-                                                textAlign: TextAlign.center,
-                                              ),
-                                            ),
-                                          ],
-                                          const SizedBox(height: 8),
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                                            child: Text(
-                                              'Path: ${imageFile.path}',
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                color: CupertinoColors.systemGrey2,
-                                              ),
-                                              textAlign: TextAlign.center,
+                                              color:
+                                                  CupertinoColors.systemRed,
                                             ),
                                           ),
                                         ],
                                       );
-                                    }
-                                    return Image.memory(
-                                      snapshot.data!,
-                                      fit: BoxFit.contain,
-                                      errorBuilder: (context, error, stackTrace) {
-                                        AppLogger.debug('❌ Image.memory error: $error');
-                                        return Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            const Icon(
-                                              CupertinoIcons.exclamationmark_triangle,
-                                              size: 64,
-                                              color: CupertinoColors.systemRed,
-                                            ),
-                                            const SizedBox(height: 16),
-                                            const Text(
-                                              'Failed to display image',
-                                              style: TextStyle(
-                                                fontSize: 16,
-                                                color: CupertinoColors.systemRed,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              'Error: $error',
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                                color: CupertinoColors.systemGrey,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                            ),
-                                          ],
-                                        );
-                                      },
-                                    );
-                                  },
-                                )
+                                    },
+                                  ),
+                                ),
+                                if (viewModel.needsDownload) ...[
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'Image will download when you share/print',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: CupertinoColors.systemGrey2,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            )
                           : Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -404,12 +287,12 @@ class _ResultScreenState extends State<ResultScreen> {
                                   padding: EdgeInsets.zero,
                                   color: CupertinoColors.systemBlue,
                                   borderRadius: BorderRadius.circular(8),
-                                  onPressed: viewModel.isPrinting || viewModel.isDownloading
+                                  onPressed: viewModel.isSilentPrinting || viewModel.isDownloading
                                       ? null
                                       : () async {
                                           await viewModel.silentPrintToNetwork();
                                         },
-                                  child: viewModel.isPrinting
+                                  child: viewModel.isSilentPrinting
                                       ? const CupertinoActivityIndicator(
                                           color: CupertinoColors.white,
                                         )
@@ -426,12 +309,12 @@ class _ResultScreenState extends State<ResultScreen> {
                           AppButtonWithIcon(
                             text: 'Print',
                             icon: CupertinoIcons.printer_fill,
-                            onPressed: viewModel.isPrinting || viewModel.isDownloading
+                            onPressed: viewModel.isDialogPrinting || viewModel.isDownloading
                                 ? null
                                 : () async {
                                     await viewModel.printImage();
                                   },
-                            isLoading: viewModel.isPrinting,
+                            isLoading: viewModel.isDialogPrinting,
                           ),
                           const SizedBox(height: 12),
                           AppButtonWithIcon(

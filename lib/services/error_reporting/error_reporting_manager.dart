@@ -1,5 +1,4 @@
 import 'error_reporting_service.dart';
-import 'crashlytics_error_reporter.dart';
 import 'bugsnag_error_reporter.dart';
 import '../../utils/constants.dart';
 
@@ -9,7 +8,7 @@ import '../../utils/constants.dart';
 /// Benefits:
 /// - Single point of control for all error reporting
 /// - Can enable/disable reporting globally
-/// - Can add multiple error reporting services (Crashlytics, Bugsnag, Sentry, etc.)
+/// - Can add multiple error reporting services (Bugsnag, Sentry, etc.)
 /// - Easy to switch or add new error reporting tools
 /// 
 /// Usage:
@@ -37,12 +36,10 @@ class ErrorReportingManager {
   /// Call this once in main.dart before runApp()
   /// 
   /// Parameters:
-  /// - [enableCrashlytics]: Whether to enable Crashlytics service (default: true)
   /// - [enableBugsnag]: Whether to enable Bugsnag service (default: true)
   /// - [enabled]: Whether error reporting should be active initially (default: true)
   ///   This can be controlled by user preferences/consent
   static Future<void> initialize({
-    bool enableCrashlytics = true,
     bool enableBugsnag = true,  // Enabled by default
     bool enabled = true,
     // Add more parameters for other services as needed
@@ -52,11 +49,6 @@ class ErrorReportingManager {
     
     // Set initial enabled state
     _isEnabled = enabled;
-
-    // Add Crashlytics if enabled
-    if (enableCrashlytics) {
-      _services.add(CrashlyticsErrorReporter());
-    }
 
     // Add Bugsnag if enabled
     if (enableBugsnag) {

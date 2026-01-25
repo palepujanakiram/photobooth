@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'transformed_image_model.dart';
 import '../../services/api_service.dart';
@@ -12,7 +13,8 @@ class ResultViewModel extends ChangeNotifier {
   final ApiService _apiService;
   TransformedImageModel? _transformedImage;
   final int? _transformationTime;
-  bool _isPrinting = false;
+  bool _isDialogPrinting = false;
+  bool _isSilentPrinting = false;
   bool _isSharing = false;
   String? _errorMessage;
   String _printerIp = '192.168.2.108'; // Default printer IP
@@ -34,7 +36,9 @@ class ResultViewModel extends ChangeNotifier {
 
   TransformedImageModel? get transformedImage => _transformedImage;
   int? get transformationTime => _transformationTime;
-  bool get isPrinting => _isPrinting;
+  bool get isDialogPrinting => _isDialogPrinting;
+  bool get isSilentPrinting => _isSilentPrinting;
+  bool get isPrinting => _isDialogPrinting || _isSilentPrinting;
   bool get isSharing => _isSharing;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
@@ -43,22 +47,15 @@ class ResultViewModel extends ChangeNotifier {
   String get downloadMessage => _downloadMessage;
   String? get downloadError => _downloadError;
 
-  bool get isRemoteImage {
-    final path = _transformedImage?.imageFile.path;
-    if (path == null) {
-      return false;
-    }
-    return !kIsWeb && _isRemoteUrl(path);
-  }
+  /// Image URL for display (always available)
+  String? get imageUrl => _transformedImage?.imageUrl;
 
-  bool get isRemoteImageUrl {
-    final path = _transformedImage?.imageFile.path;
-    if (path == null) {
-      return false;
-    }
-    return _isRemoteUrl(path);
-  }
-  
+  /// Whether we have a local file (for share/print)
+  bool get hasLocalFile => _transformedImage?.localFile != null;
+
+  /// Whether we need to download for share/print (mobile only)
+  bool get needsDownload => !kIsWeb && !hasLocalFile;
+
   String get formattedTransformationTime {
     if (_transformationTime == null) return '';
     final minutes = _transformationTime! ~/ 60;
@@ -75,11 +72,8 @@ class ResultViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> ensureLocalImage() async {
-    if (_transformedImage == null || _isDownloading) {
-      return;
-    }
-    if (!isRemoteImage) {
+  Future<void> ensureLocalFile() async {
+    if (_transformedImage == null || _isDownloading || hasLocalFile) {
       return;
     }
 
@@ -89,15 +83,14 @@ class ResultViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final imageFile = _transformedImage!.imageFile;
       final downloaded = await _apiService.downloadImageToTemp(
-        imageFile.path,
+        _transformedImage!.imageUrl,
         onProgress: (message) {
           _downloadMessage = message;
           notifyListeners();
         },
       );
-      _transformedImage = _transformedImage!.copyWith(imageFile: downloaded);
+      _transformedImage = _transformedImage!.copyWith(localFile: downloaded);
     } catch (e) {
       _downloadError = 'Failed to download image: $e';
     } finally {
@@ -106,6 +99,8 @@ class ResultViewModel extends ChangeNotifier {
     }
   }
 
+  XFile? get _localFileForShare => _transformedImage?.localFile;
+
   /// Prints the transformed image using system print dialog
   Future<void> printImage() async {
     if (_transformedImage == null) {
@@ -113,21 +108,21 @@ class ResultViewModel extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (isRemoteImage) {
-      await ensureLocalImage();
-      if (isRemoteImage) {
+    if (needsDownload) {
+      await ensureLocalFile();
+      if (needsDownload) {
         _errorMessage = _downloadError ?? 'Image download failed';
         notifyListeners();
         return;
       }
     }
 
-    _isPrinting = true;
+    _isDialogPrinting = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      await _printService.printImageWithDialog(_transformedImage!.imageFile);
+      await _printService.printImageWithDialog(_localFileForShare!);
     } on PrintException catch (e) {
       _errorMessage = e.message;
       notifyListeners();
@@ -135,7 +130,7 @@ class ResultViewModel extends ChangeNotifier {
       _errorMessage = 'Failed to print: $e';
       notifyListeners();
     } finally {
-      _isPrinting = false;
+      _isDialogPrinting = false;
       notifyListeners();
     }
   }
@@ -147,9 +142,9 @@ class ResultViewModel extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (isRemoteImage) {
-      await ensureLocalImage();
-      if (isRemoteImage) {
+    if (needsDownload) {
+      await ensureLocalFile();
+      if (needsDownload) {
         _errorMessage = _downloadError ?? 'Image download failed';
         notifyListeners();
         return;
@@ -162,13 +157,13 @@ class ResultViewModel extends ChangeNotifier {
       return;
     }
 
-    _isPrinting = true;
+    _isSilentPrinting = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
       await _printService.printImageToNetworkPrinter(
-        _transformedImage!.imageFile,
+        _localFileForShare!,
         printerIp: _printerIp,
       );
     } on PrintException catch (e) {
@@ -178,7 +173,7 @@ class ResultViewModel extends ChangeNotifier {
       _errorMessage = 'Failed to print: $e';
       notifyListeners();
     } finally {
-      _isPrinting = false;
+      _isSilentPrinting = false;
       notifyListeners();
     }
   }
@@ -190,9 +185,9 @@ class ResultViewModel extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (isRemoteImage) {
-      await ensureLocalImage();
-      if (isRemoteImage) {
+    if (needsDownload) {
+      await ensureLocalFile();
+      if (needsDownload) {
         _errorMessage = _downloadError ?? 'Image download failed';
         notifyListeners();
         return;
@@ -205,7 +200,7 @@ class ResultViewModel extends ChangeNotifier {
 
     try {
       await _shareService.shareImage(
-        _transformedImage!.imageFile,
+        _localFileForShare!,
         text: text,
       );
     } on ShareException catch (e) {
@@ -231,9 +226,9 @@ class ResultViewModel extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (isRemoteImage) {
-      await ensureLocalImage();
-      if (isRemoteImage) {
+    if (needsDownload) {
+      await ensureLocalFile();
+      if (needsDownload) {
         _errorMessage = _downloadError ?? 'Image download failed';
         notifyListeners();
         return;
@@ -246,7 +241,7 @@ class ResultViewModel extends ChangeNotifier {
 
     try {
       await _shareService.shareViaWhatsApp(
-        _transformedImage!.imageFile,
+        _localFileForShare!,
         text: text,
         sharePositionOrigin: sharePositionOrigin,
       );
@@ -260,11 +255,6 @@ class ResultViewModel extends ChangeNotifier {
       _isSharing = false;
       notifyListeners();
     }
-  }
-
-  bool _isRemoteUrl(String path) {
-    final lower = path.toLowerCase();
-    return lower.startsWith('http://') || lower.startsWith('https://');
   }
 }
 

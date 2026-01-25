@@ -9,6 +9,7 @@ class FullScreenLoader extends StatelessWidget {
   final int? elapsedSeconds;
   final String? subtitle;
   final String? currentProcess;
+  final String? hint;
 
   const FullScreenLoader({
     super.key,
@@ -19,6 +20,7 @@ class FullScreenLoader extends StatelessWidget {
     this.elapsedSeconds,
     this.subtitle,
     this.currentProcess,
+    this.hint,
   });
 
   String _formatTime(int seconds) {
@@ -96,16 +98,6 @@ class FullScreenLoader extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                _getProgressMessage(elapsedSeconds!),
-                style: TextStyle(
-                  fontSize: 13,
-                  color: (textColor ?? CupertinoColors.white).withValues(alpha: 0.6),
-                  fontStyle: FontStyle.italic,
-                ),
-                textAlign: TextAlign.center,
-              ),
             ],
             // Current process indicator
             if (currentProcess != null && currentProcess!.isNotEmpty) ...[
@@ -148,26 +140,27 @@ class FullScreenLoader extends StatelessWidget {
                 ),
               ),
             ],
+            // Hint at the bottom
+            if (hint != null && hint!.isNotEmpty) ...[
+              const SizedBox(height: 32),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  hint!,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: (textColor ?? CupertinoColors.white).withValues(alpha: 0.6),
+                    fontStyle: FontStyle.italic,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
   
-  String _getProgressMessage(int seconds) {
-    if (seconds < 20) {
-      return 'Initializing AI model...';
-    } else if (seconds < 40) {
-      return 'Processing your image...';
-    } else if (seconds < 60) {
-      return 'Generating AI transformation...';
-    } else if (seconds < 90) {
-      return 'Still working... Almost there!';
-    } else if (seconds < 120) {
-      return 'Taking longer than usual...';
-    } else {
-      return 'Please continue waiting...';
-    }
-  }
 }
 

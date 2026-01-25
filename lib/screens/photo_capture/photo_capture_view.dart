@@ -7,6 +7,7 @@ import '../../utils/constants.dart';
 import '../../utils/logger.dart';
 import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/app_colors.dart';
+import '../../views/widgets/full_screen_loader.dart';
 
 class PhotoCaptureScreen extends StatefulWidget {
   const PhotoCaptureScreen({super.key});
@@ -45,8 +46,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       value: _captureViewModel,
       child: Consumer<CaptureViewModel>(
         builder: (context, viewModel, child) {
-          return CupertinoPageScaffold(
-            navigationBar: AppTopBar(
+          return Stack(
+            children: [
+              CupertinoPageScaffold(
+                navigationBar: AppTopBar(
               title: 'Capture Photo',
               leading: AppActionButton(
                 icon: CupertinoIcons.back,
@@ -282,6 +285,17 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             },
           ),
         ),
+              ),
+              // Full screen loader overlay for uploading
+              if (viewModel.isUploading)
+                Positioned.fill(
+                  child: FullScreenLoader(
+                    text: 'Uploading Photo',
+                    loaderColor: CupertinoColors.systemBlue,
+                    elapsedSeconds: viewModel.uploadElapsedSeconds,
+                  ),
+                ),
+            ],
           );
         },
       ),
@@ -442,7 +456,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
           children: [
             // Gallery button
             CupertinoButton(
-              onPressed: viewModel.isCapturing
+              onPressed: (viewModel.isCapturing || viewModel.isSelectingFromGallery)
                   ? null
                   : () async {
                       await viewModel.selectFromGallery();
@@ -459,7 +473,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                     width: 2,
                   ),
                 ),
-                child: viewModel.isCapturing
+                child: viewModel.isSelectingFromGallery
                     ? CupertinoActivityIndicator(
                         color: appColors.textColor,
                       )
@@ -475,7 +489,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             
             // Capture button (main)
             CupertinoButton(
-              onPressed: viewModel.isCapturing
+              onPressed: (viewModel.isCapturing || viewModel.isSelectingFromGallery)
                   ? null
                   : () async {
                       await viewModel.capturePhoto();

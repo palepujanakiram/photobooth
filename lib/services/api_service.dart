@@ -160,15 +160,13 @@ class ApiService {
           throw ApiException('Received empty image data from API');
         }
 
-        // Save transformed image - use XFile for cross-platform support
-        XFile transformedImageFile;
+        // Save transformed image as base64 data URL
         final base64String = base64Encode(responseBytes);
         final dataUrl = 'data:image/jpeg;base64,$base64String';
-        transformedImageFile = XFile(dataUrl, mimeType: 'image/jpeg');
 
         return TransformedImageModel(
           id: _uuid.v4(),
-          imageFile: transformedImageFile,
+          imageUrl: dataUrl,
           originalPhotoId: originalPhotoId,
           themeId: theme.id,
           transformedAt: DateTime.now(),
@@ -198,12 +196,11 @@ class ApiService {
           throw ApiException('Received empty image data from API');
         }
 
-        // Save transformed image - use XFile for cross-platform support
+        // Save transformed image to temp file and return path as URL
         final tempDirPath2 = await FileHelper.getTempDirectoryPath();
         final filePath = '$tempDirPath2/transformed_${_uuid.v4()}.jpg';
         final file = FileHelper.createFile(filePath);
         await (file as dynamic).writeAsBytes(responseBytes);
-        final transformedImageFile = XFile((file as dynamic).path);
 
         // Verify the file was written correctly
         if (!(file as dynamic).existsSync()) {
@@ -215,9 +212,13 @@ class ApiService {
           throw ApiException('Saved image file is empty');
         }
 
+        // For local file, use file:// URL format
+        final localFileUrl = 'file://${(file as dynamic).path}';
+
         return TransformedImageModel(
           id: _uuid.v4(),
-          imageFile: transformedImageFile,
+          imageUrl: localFileUrl,
+          localFile: XFile((file as dynamic).path),
           originalPhotoId: originalPhotoId,
           themeId: theme.id,
           transformedAt: DateTime.now(),
@@ -461,14 +462,13 @@ class ApiService {
   /// Generates transformed image using AI
   /// This call can take 10-60+ seconds, with a 180-second (3 minute) timeout
   /// Retries once on timeout before showing error
-  /// Returns TransformedImageModel with the generated image
+  /// Returns TransformedImageModel with the image URL (no download)
   Future<TransformedImageModel> generateImage({
     required String sessionId,
     required int attempt,
     required String originalPhotoId,
     required String themeId,
     void Function(String message)? onProgress,
-    bool downloadResult = true,
   }) async {
     // Create a Dio instance with extended timeout for AI generation
     // AI generation can take 10-60+ seconds depending on server load
@@ -560,26 +560,15 @@ class ApiService {
           }
         }
 
-        // Handle HTTP URL (new format): https://storage.example.com/generated/image.jpg
-        XFile transformedImageFile;
-        
-        if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-          if (downloadResult) {
-            transformedImageFile = await downloadImageToTemp(
-              imageUrl,
-              onProgress: onProgress,
-            );
-          } else {
-            // Return URL-based XFile; Result screen will download later on mobile.
-            transformedImageFile = XFile(imageUrl);
-          }
-        } else {
+        // Validate URL format
+        if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
           throw ApiException('Invalid image URL format: must be HTTP URL');
         }
 
+        // Just return the URL - no XFile wrapper, no download
         return TransformedImageModel(
           id: _uuid.v4(),
-          imageFile: transformedImageFile,
+          imageUrl: imageUrl,
           originalPhotoId: originalPhotoId,
           themeId: themeId,
           transformedAt: DateTime.now(),

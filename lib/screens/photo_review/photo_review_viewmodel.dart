@@ -90,57 +90,16 @@ class ReviewViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Step 1: Preparing image data
-      _updateProcess('Preparing image data...');
-      await Future.delayed(const Duration(milliseconds: 800)); // Brief pause for UI feedback
-      
-      // Step 2: Uploading to server
-      _updateProcess('Uploading image to server...');
-      
-      // Start a timer to update process messages during API call
-      Timer? processTimer;
-      var isDownloading = false;
-      var responseReceived = false;
-      processTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-        if (isDownloading) {
-          return;
-        }
-        if (_elapsedSeconds > 5 && _elapsedSeconds < 15) {
-          _updateProcess('Server received image, processing...');
-        } else if (_elapsedSeconds >= 15 && _elapsedSeconds < 30) {
-          _updateProcess('AI model analyzing image...');
-        } else if (_elapsedSeconds >= 30 && _elapsedSeconds < 45) {
-          _updateProcess('Applying transformation...');
-        } else if (_elapsedSeconds >= 45 && _elapsedSeconds < 60) {
-          _updateProcess('Generating final image...');
-        } else if (_elapsedSeconds >= 60) {
-          _updateProcess('Almost done, finalizing...');
-        }
-      });
-      
-      try {
-        // Call the new generate-image API endpoint
-        _transformedImage = await _apiService.generateImage(
-          sessionId: sessionId,
-          attempt: _attemptNumber,
-          originalPhotoId: _photo!.id,
-          themeId: _theme!.id,
-          downloadResult: false,
-          onProgress: (message) {
-            if (!isDownloading && message.startsWith('Downloading result')) {
-              isDownloading = true;
-              processTimer?.cancel();
-            }
-            if (!responseReceived && message.startsWith('Response received')) {
-              responseReceived = true;
-              processTimer?.cancel();
-            }
-            _updateProcess(message);
-          },
-        );
-      } finally {
-        processTimer.cancel();
-      }
+      // Call the generate-image API endpoint
+      _transformedImage = await _apiService.generateImage(
+        sessionId: sessionId,
+        attempt: _attemptNumber,
+        originalPhotoId: _photo!.id,
+        themeId: _theme!.id,
+        onProgress: (message) {
+          _updateProcess(message);
+        },
+      );
       
       // Step 3: Finalizing
       _updateProcess('Opening result...');

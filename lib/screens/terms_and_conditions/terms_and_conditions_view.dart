@@ -348,10 +348,11 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                   Consumer<TermsAndConditionsViewModel>(
                     builder: (context, viewModel, child) {
                       if (viewModel.isSubmitting) {
-                        return const Positioned.fill(
+                        return Positioned.fill(
                           child: FullScreenLoader(
                             text: 'Creating Session',
                             loaderColor: CupertinoColors.systemBlue,
+                            elapsedSeconds: viewModel.elapsedSeconds,
                           ),
                         );
                       }

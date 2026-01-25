@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
@@ -10,6 +11,10 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
   bool _isSubmitting = false;
   String? _errorMessage;
   String _kioskName = '';
+  
+  // Timer tracking
+  Timer? _timer;
+  int _elapsedSeconds = 0;
 
   TermsAndConditionsViewModel({ApiService? apiService})
       : _apiService = apiService ?? ApiService();
@@ -20,6 +25,27 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
   bool get hasError => _errorMessage != null;
   String get kioskName => _kioskName;
   bool get canSubmit => _isAgreed && !_isSubmitting;
+  int get elapsedSeconds => _elapsedSeconds;
+
+  void _startTimer() {
+    _elapsedSeconds = 0;
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _elapsedSeconds++;
+      notifyListeners();
+    });
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  @override
+  void dispose() {
+    _stopTimer();
+    super.dispose();
+  }
 
   /// Toggles the agreement checkbox
   void toggleAgreement(bool value) {
@@ -48,6 +74,7 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
 
     _isSubmitting = true;
     _errorMessage = null;
+    _startTimer();
     notifyListeners();
 
     try {
@@ -69,6 +96,7 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
       notifyListeners();
       return false;
     } finally {
+      _stopTimer();
       _isSubmitting = false;
       notifyListeners();
     }
