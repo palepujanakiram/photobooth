@@ -18,7 +18,7 @@ fi
 
 echo ""
 echo "2️⃣  Installing iOS dependencies..."
-cd ios
+cd ios || exit
 pod install
 echo "   ✅ Dependencies installed"
 echo ""

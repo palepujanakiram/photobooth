@@ -21,7 +21,7 @@ echo ""
 # Step 2: iOS CocoaPods (if on macOS)
 if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "🍎 Step 2/3: Installing iOS CocoaPods..."
-    cd ios
+    cd ios || exit
     pod install
     if [ $? -ne 0 ]; then
         echo "⚠️  Warning: pod install failed. You may need to run it manually."
