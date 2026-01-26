@@ -20,6 +20,9 @@ class AppConstants {
   static const double kTabletBreakpoint = 600.0;
   static const double kTouchTargetSize = 48.0;
   static const String kContinueButtonText = 'Continue';
+  
+  // Camera capture countdown (in seconds)
+  static const int kCaptureCountdownSeconds = 3;
 
   // Logging
   // Controls console logs and breadcrumb logs (Bugsnag)
@@ -30,6 +33,7 @@ class AppConstants {
   static const String kRouteTerms = '/terms';
   static const String kRouteHome = '/theme-selection';
   static const String kRouteCapture = '/capture';
+  static const String kRouteGenerate = '/generate';
   static const String kRouteReview = '/review';
   static const String kRouteResult = '/result';
   static const String kRouteWebView = '/webview';

@@ -1,69 +1,74 @@
 import 'dart:ui';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
-import 'transformed_image_model.dart';
+import '../photo_generate/photo_generate_viewmodel.dart';
+import '../photo_capture/photo_model.dart';
 import '../../services/api_service.dart';
 import '../../services/print_service.dart';
 import '../../services/share_service.dart';
 import '../../utils/exceptions.dart';
 
 class ResultViewModel extends ChangeNotifier {
+  final List<GeneratedImage> _generatedImages;
+  final PhotoModel? _originalPhoto;
   final PrintService _printService;
   final ShareService _shareService;
   final ApiService _apiService;
-  TransformedImageModel? _transformedImage;
-  final int? _transformationTime;
-  bool _isDialogPrinting = false;
-  bool _isSilentPrinting = false;
-  bool _isSharing = false;
+  
+  bool _isProcessing = false;
   String? _errorMessage;
   String _printerIp = '192.168.2.108'; // Default printer IP
+  
+  // Print/Share state
+  bool _isSilentPrinting = false;
+  bool _isDialogPrinting = false;
+  bool _isSharing = false;
   bool _isDownloading = false;
   String _downloadMessage = '';
-  String? _downloadError;
+  
+  // Track which action initiated the download
+  String _downloadingForAction = ''; // 'silent', 'dialog', 'share'
+  
+  // Downloaded files for each image
+  final Map<String, XFile> _downloadedFiles = {};
 
   ResultViewModel({
-    required TransformedImageModel transformedImage,
-    int? transformationTime,
+    required List<GeneratedImage> generatedImages,
+    PhotoModel? originalPhoto,
     PrintService? printService,
     ShareService? shareService,
     ApiService? apiService,
-  })  : _transformedImage = transformedImage,
-        _transformationTime = transformationTime,
+  })  : _generatedImages = generatedImages,
+        _originalPhoto = originalPhoto,
         _printService = printService ?? PrintService(),
         _shareService = shareService ?? ShareService(),
         _apiService = apiService ?? ApiService();
 
-  TransformedImageModel? get transformedImage => _transformedImage;
-  int? get transformationTime => _transformationTime;
-  bool get isDialogPrinting => _isDialogPrinting;
-  bool get isSilentPrinting => _isSilentPrinting;
-  bool get isPrinting => _isDialogPrinting || _isSilentPrinting;
-  bool get isSharing => _isSharing;
+  List<GeneratedImage> get generatedImages => _generatedImages;
+  PhotoModel? get originalPhoto => _originalPhoto;
+  bool get isProcessing => _isProcessing;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
   String get printerIp => _printerIp;
+  
+  bool get isSilentPrinting => _isSilentPrinting;
+  bool get isDialogPrinting => _isDialogPrinting;
+  bool get isPrinting => _isSilentPrinting || _isDialogPrinting;
+  bool get isSharing => _isSharing;
   bool get isDownloading => _isDownloading;
   String get downloadMessage => _downloadMessage;
-  String? get downloadError => _downloadError;
+  
+  // Check if downloading for specific action
+  bool get isDownloadingForSilentPrint => _isDownloading && _downloadingForAction == 'silent';
+  bool get isDownloadingForDialogPrint => _isDownloading && _downloadingForAction == 'dialog';
+  bool get isDownloadingForShare => _isDownloading && _downloadingForAction == 'share';
 
-  /// Image URL for display (always available)
-  String? get imageUrl => _transformedImage?.imageUrl;
-
-  /// Whether we have a local file (for share/print)
-  bool get hasLocalFile => _transformedImage?.localFile != null;
-
-  /// Whether we need to download for share/print (mobile only)
-  bool get needsDownload => !kIsWeb && !hasLocalFile;
-
-  String get formattedTransformationTime {
-    if (_transformationTime == null) return '';
-    final minutes = _transformationTime! ~/ 60;
-    final seconds = _transformationTime! % 60;
-    if (minutes > 0) {
-      return '$minutes:${seconds.toString().padLeft(2, '0')}';
-    }
-    return '${seconds}s';
+  /// Get total price based on number of photos
+  int get totalPrice {
+    const basePrice = 100;
+    const additionalPrice = 50;
+    if (_generatedImages.isEmpty) return 0;
+    return basePrice + (_generatedImages.length > 1 ? (_generatedImages.length - 1) * additionalPrice : 0);
   }
 
   /// Updates the printer IP address
@@ -72,89 +77,72 @@ class ResultViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> ensureLocalFile() async {
-    if (_transformedImage == null || _isDownloading || hasLocalFile) {
-      return;
-    }
-
-    _isDownloading = true;
-    _downloadMessage = 'Downloading result...';
-    _downloadError = null;
-    notifyListeners();
-
-    try {
-      final downloaded = await _apiService.downloadImageToTemp(
-        _transformedImage!.imageUrl,
-        onProgress: (message) {
-          _downloadMessage = message;
-          notifyListeners();
-        },
-      );
-      _transformedImage = _transformedImage!.copyWith(localFile: downloaded);
-    } catch (e) {
-      _downloadError = 'Failed to download image: $e';
-    } finally {
-      _isDownloading = false;
-      notifyListeners();
-    }
-  }
-
-  XFile? get _localFileForShare => _transformedImage?.localFile;
-
-  /// Prints the transformed image using system print dialog
-  Future<void> printImage() async {
-    if (_transformedImage == null) {
-      _errorMessage = 'No image to print';
-      notifyListeners();
-      return;
-    }
-    if (needsDownload) {
-      await ensureLocalFile();
-      if (needsDownload) {
-        _errorMessage = _downloadError ?? 'Image download failed';
-        notifyListeners();
-        return;
-      }
-    }
-
-    _isDialogPrinting = true;
+  /// Clear error message
+  void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  /// Download all images to temp files for print/share
+  Future<bool> _ensureAllFilesDownloaded(String forAction) async {
+    if (_isDownloading) return false;
+    
+    _isDownloading = true;
+    _downloadingForAction = forAction;
+    _downloadMessage = 'Preparing images...';
+    notifyListeners();
 
     try {
-      await _printService.printImageWithDialog(_localFileForShare!);
-    } on PrintException catch (e) {
-      _errorMessage = e.message;
+      for (int i = 0; i < _generatedImages.length; i++) {
+        final image = _generatedImages[i];
+        if (!_downloadedFiles.containsKey(image.id)) {
+          _downloadMessage = 'Downloading image ${i + 1} of ${_generatedImages.length}...';
+          notifyListeners();
+          
+          final downloaded = await _apiService.downloadImageToTemp(
+            image.imageUrl,
+            onProgress: (message) {
+              _downloadMessage = message;
+              notifyListeners();
+            },
+          );
+          _downloadedFiles[image.id] = downloaded;
+        }
+      }
+      
+      _isDownloading = false;
+      _downloadingForAction = '';
       notifyListeners();
+      return true;
     } catch (e) {
-      _errorMessage = 'Failed to print: $e';
+      _errorMessage = 'Failed to download images: $e';
+      _isDownloading = false;
+      _downloadingForAction = '';
       notifyListeners();
-    } finally {
-      _isDialogPrinting = false;
-      notifyListeners();
+      return false;
     }
   }
 
-  /// Silently prints the transformed image to network printer
-  Future<void> silentPrintToNetwork() async {
-    if (_transformedImage == null) {
-      _errorMessage = 'No image to print';
-      notifyListeners();
-      return;
-    }
-    if (needsDownload) {
-      await ensureLocalFile();
-      if (needsDownload) {
-        _errorMessage = _downloadError ?? 'Image download failed';
-        notifyListeners();
-        return;
-      }
-    }
+  /// Get downloaded files list
+  List<XFile> get _downloadedFilesList {
+    return _generatedImages
+        .where((img) => _downloadedFiles.containsKey(img.id))
+        .map((img) => _downloadedFiles[img.id]!)
+        .toList();
+  }
 
+  /// Silent print all images to network printer
+  Future<void> silentPrintToNetwork() async {
     if (_printerIp.isEmpty) {
       _errorMessage = 'Please enter a printer IP address';
       notifyListeners();
       return;
+    }
+
+    // Download files first if needed
+    if (!kIsWeb && _downloadedFilesList.length != _generatedImages.length) {
+      final success = await _ensureAllFilesDownloaded('silent');
+      if (!success) return;
     }
 
     _isSilentPrinting = true;
@@ -162,77 +150,56 @@ class ResultViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _printService.printImageToNetworkPrinter(
-        _localFileForShare!,
-        printerIp: _printerIp,
-      );
+      final files = _downloadedFilesList;
+      for (int i = 0; i < files.length; i++) {
+        await _printService.printImageToNetworkPrinter(
+          files[i],
+          printerIp: _printerIp,
+        );
+      }
     } on PrintException catch (e) {
       _errorMessage = e.message;
-      notifyListeners();
     } catch (e) {
       _errorMessage = 'Failed to print: $e';
-      notifyListeners();
     } finally {
       _isSilentPrinting = false;
       notifyListeners();
     }
   }
 
-  /// Shares the transformed image
-  Future<void> shareImage({String? text}) async {
-    if (_transformedImage == null) {
-      _errorMessage = 'No image to share';
-      notifyListeners();
-      return;
-    }
-    if (needsDownload) {
-      await ensureLocalFile();
-      if (needsDownload) {
-        _errorMessage = _downloadError ?? 'Image download failed';
-        notifyListeners();
-        return;
-      }
+  /// Print all images using system print dialog
+  Future<void> printWithDialog() async {
+    // Download files first if needed
+    if (!kIsWeb && _downloadedFilesList.length != _generatedImages.length) {
+      final success = await _ensureAllFilesDownloaded('dialog');
+      if (!success) return;
     }
 
-    _isSharing = true;
+    _isDialogPrinting = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      await _shareService.shareImage(
-        _localFileForShare!,
-        text: text,
-      );
-    } on ShareException catch (e) {
+      final files = _downloadedFilesList;
+      for (int i = 0; i < files.length; i++) {
+        await _printService.printImageWithDialog(files[i]);
+      }
+    } on PrintException catch (e) {
       _errorMessage = e.message;
-      notifyListeners();
     } catch (e) {
-      _errorMessage = 'Failed to share: $e';
-      notifyListeners();
+      _errorMessage = 'Failed to print: $e';
     } finally {
-      _isSharing = false;
+      _isDialogPrinting = false;
       notifyListeners();
     }
   }
 
-  /// Shares the transformed image via WhatsApp
-  /// For iOS: Pass [sharePositionOrigin] to position the share sheet
-  Future<void> shareViaWhatsApp({
-    String? text,
-    Rect? sharePositionOrigin,
-  }) async {
-    if (_transformedImage == null) {
-      _errorMessage = 'No image to share';
-      notifyListeners();
-      return;
-    }
-    if (needsDownload) {
-      await ensureLocalFile();
-      if (needsDownload) {
-        _errorMessage = _downloadError ?? 'Image download failed';
-        notifyListeners();
-        return;
-      }
+  /// Share all images
+  Future<void> shareImages({Rect? sharePositionOrigin}) async {
+    // Download files first if needed
+    if (!kIsWeb && _downloadedFilesList.length != _generatedImages.length) {
+      final success = await _ensureAllFilesDownloaded('share');
+      if (!success) return;
     }
 
     _isSharing = true;
@@ -240,21 +207,26 @@ class ResultViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _shareService.shareViaWhatsApp(
-        _localFileForShare!,
-        text: text,
+      final files = _downloadedFilesList;
+      // Share all images using the multiple images method
+      await _shareService.shareMultipleImages(
+        files,
+        text: 'Check out my ${files.length} AI generated photo${files.length > 1 ? 's' : ''}!',
         sharePositionOrigin: sharePositionOrigin,
       );
     } on ShareException catch (e) {
       _errorMessage = e.message;
-      notifyListeners();
     } catch (e) {
-      _errorMessage = 'Failed to share via WhatsApp: $e';
-      notifyListeners();
+      _errorMessage = 'Failed to share: $e';
     } finally {
       _isSharing = false;
       notifyListeners();
     }
   }
-}
 
+  @override
+  void dispose() {
+    // Clean up downloaded files if needed
+    super.dispose();
+  }
+}

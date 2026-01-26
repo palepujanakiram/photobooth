@@ -7,6 +7,7 @@ import 'screens/theme_slideshow/theme_slideshow_view.dart';
 import 'screens/terms_and_conditions/terms_and_conditions_view.dart';
 import 'screens/theme_selection/theme_selection_view.dart';
 import 'screens/photo_capture/photo_capture_view.dart';
+import 'screens/photo_generate/photo_generate_view.dart';
 import 'screens/photo_review/photo_review_view.dart';
 import 'screens/result/result_view.dart';
 import 'utils/constants.dart';
@@ -137,6 +138,7 @@ class PhotoBoothApp extends StatelessWidget {
               const TermsAndConditionsScreen(),
           AppConstants.kRouteHome: (context) => const ThemeSelectionScreen(),
           AppConstants.kRouteCapture: (context) => const PhotoCaptureScreen(),
+          AppConstants.kRouteGenerate: (context) => const PhotoGenerateScreen(),
           AppConstants.kRouteReview: (context) => const PhotoReviewScreen(),
           AppConstants.kRouteResult: (context) => const ResultScreen(),
         },

@@ -7,6 +7,8 @@ import 'photo_model.dart';
 import '../../services/camera_service.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
+import '../../services/android_camera_device_helper.dart';
+import '../../utils/constants.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
@@ -37,6 +39,10 @@ class CaptureViewModel extends ChangeNotifier {
   // Timer tracking for upload
   Timer? _uploadTimer;
   int _uploadElapsedSeconds = 0;
+  
+  // Countdown timer for capture
+  int? _countdownValue;
+  Timer? _countdownTimer;
 
   CaptureViewModel({
     CameraService? cameraService,
@@ -62,6 +68,8 @@ class CaptureViewModel extends ChangeNotifier {
   int get uploadElapsedSeconds => _uploadElapsedSeconds;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
+  int? get countdownValue => _countdownValue;
+  bool get isCountingDown => _countdownValue != null;
 
   void _startUploadTimer() {
     _uploadElapsedSeconds = 0;
@@ -460,6 +468,51 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  /// Starts a countdown and then captures a photo
+  /// Countdown duration is configured via AppConstants.kCaptureCountdownSeconds
+  Future<void> capturePhotoWithCountdown() async {
+    if (!isReady || _isCapturing || _countdownValue != null) {
+      return;
+    }
+    
+    AppLogger.debug('📸 Starting capture countdown (${AppConstants.kCaptureCountdownSeconds}s)...');
+    
+    // Start countdown from configured value
+    _countdownValue = AppConstants.kCaptureCountdownSeconds;
+    notifyListeners();
+    
+    // Countdown 3 -> 2 -> 1 -> capture
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (_countdownValue == null) {
+        timer.cancel();
+        return;
+      }
+      
+      if (_countdownValue! > 1) {
+        _countdownValue = _countdownValue! - 1;
+        notifyListeners();
+      } else {
+        // Countdown finished, capture the photo
+        timer.cancel();
+        _countdownValue = null;
+        notifyListeners();
+        
+        // Small delay to ensure UI updates before capture
+        await Future.delayed(const Duration(milliseconds: 100));
+        await capturePhoto();
+      }
+    });
+  }
+  
+  /// Cancels the countdown if in progress
+  void cancelCountdown() {
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    _countdownValue = null;
+    notifyListeners();
+  }
+
   /// Captures a photo
   Future<void> capturePhoto() async {
     AppLogger.debug('📸 capturePhoto() called');
@@ -527,9 +580,11 @@ class CaptureViewModel extends ChangeNotifier {
       var imageFile = await _cameraService.takePicture();
       AppLogger.debug('✅ Photo captured successfully');
 
-      // Rotate captured image 180 degrees (non-web only)
-      if (!kIsWeb) {
-        AppLogger.debug('🔄 Rotating captured image 180°');
+      // Rotate captured image 180 degrees (Android TV only)
+      // Android TV cameras often have inverted sensor orientation
+      final isAndroidTv = await AndroidCameraDeviceHelper.isAndroidTv();
+      if (isAndroidTv) {
+        AppLogger.debug('🔄 Android TV detected - Rotating captured image 180°');
         imageFile = await ImageHelper.rotateImage180(imageFile);
       }
 

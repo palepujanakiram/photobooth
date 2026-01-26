@@ -9,22 +9,43 @@ class AppSnackBar {
       context: context,
       barrierDismissible: true,
       barrierColor: CupertinoColors.black.withValues(alpha: 0.5),
-      builder: (context) => _AnimatedErrorDialog(message: message),
+      builder: (context) => _AnimatedMessageDialog(
+        message: message,
+        isError: true,
+      ),
+    );
+  }
+
+  /// Shows an animated success snackbar with consistent styling
+  static void showSuccess(BuildContext context, String message) {
+    // Use animated overlay for success messages
+    showCupertinoDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: CupertinoColors.black.withValues(alpha: 0.5),
+      builder: (context) => _AnimatedMessageDialog(
+        message: message,
+        isError: false,
+      ),
     );
   }
 }
 
-/// Animated error dialog widget
-class _AnimatedErrorDialog extends StatefulWidget {
+/// Animated message dialog widget (for both error and success)
+class _AnimatedMessageDialog extends StatefulWidget {
   final String message;
+  final bool isError;
 
-  const _AnimatedErrorDialog({required this.message});
+  const _AnimatedMessageDialog({
+    required this.message,
+    required this.isError,
+  });
 
   @override
-  State<_AnimatedErrorDialog> createState() => _AnimatedErrorDialogState();
+  State<_AnimatedMessageDialog> createState() => _AnimatedMessageDialogState();
 }
 
-class _AnimatedErrorDialogState extends State<_AnimatedErrorDialog>
+class _AnimatedMessageDialogState extends State<_AnimatedMessageDialog>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
@@ -71,16 +92,20 @@ class _AnimatedErrorDialogState extends State<_AnimatedErrorDialog>
       child: ScaleTransition(
         scale: _scaleAnimation,
         child: CupertinoAlertDialog(
-          title: const Row(
+          title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                CupertinoIcons.exclamationmark_triangle_fill,
-                color: CupertinoColors.systemRed,
+                widget.isError
+                    ? CupertinoIcons.exclamationmark_triangle_fill
+                    : CupertinoIcons.checkmark_circle_fill,
+                color: widget.isError
+                    ? CupertinoColors.systemRed
+                    : CupertinoColors.systemGreen,
                 size: 24,
               ),
-              SizedBox(width: 8),
-              Text('Error'),
+              const SizedBox(width: 8),
+              Text(widget.isError ? 'Error' : 'Success'),
             ],
           ),
           content: Text(widget.message),

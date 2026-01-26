@@ -49,6 +49,33 @@ class ShareService {
     }
   }
 
+  /// Shares multiple image files via share intent
+  /// Works with XFile on all platforms (iOS, Android, Web)
+  /// 
+  /// For iOS: Pass [sharePositionOrigin] to position the share sheet properly
+  Future<void> shareMultipleImages(
+    List<XFile> imageFiles, {
+    String? text,
+    Rect? sharePositionOrigin,
+  }) async {
+    if (imageFiles.isEmpty) {
+      throw ShareException('No images to share');
+    }
+    
+    try {
+      final origin = sharePositionOrigin ?? _getDefaultSharePosition();
+      
+      await Share.shareXFiles(
+        imageFiles,
+        text: text ?? 'Check out my ${imageFiles.length} AI generated photo${imageFiles.length > 1 ? 's' : ''}!',
+        subject: 'Photo Booth Images',
+        sharePositionOrigin: origin,
+      );
+    } catch (e) {
+      throw ShareException('Failed to share images: $e');
+    }
+  }
+
   /// Get default share position (center of screen)
   /// Used when sharePositionOrigin is not provided on iOS
   Rect _getDefaultSharePosition() {

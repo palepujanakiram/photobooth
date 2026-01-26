@@ -56,6 +56,20 @@ class AppColors {
         : CupertinoColors.white;
   }
   
+  /// Card background color - slightly elevated from background
+  Color get cardBackgroundColor {
+    return isDarkMode 
+        ? const Color(0xFF1C1C1E)  // iOS dark card background
+        : CupertinoColors.white;
+  }
+  
+  /// Divider color - adapts to theme
+  Color get dividerColor {
+    return isDarkMode 
+        ? CupertinoColors.separator.darkColor 
+        : CupertinoColors.separator;
+  }
+  
   /// Border color - adapts to theme
   Color get borderColor {
     return isDarkMode 

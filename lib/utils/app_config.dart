@@ -20,5 +20,5 @@ class AppConfig {
   // Links
   /// Terms and Conditions page URL
   static const String termsAndConditionsUrl =
-      'https://fotozenai.com/';
+      'https://fotozenai.fly.dev/terms';
 }

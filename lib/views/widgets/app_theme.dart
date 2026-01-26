@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import '../../utils/constants.dart';
+import 'app_colors.dart';
 
 /// Common theme configuration for the app
 class AppTheme {
@@ -19,6 +20,16 @@ class AppTheme {
     fontWeight: FontWeight.w600,
     color: textColor,
   );
+  
+  // Theme-aware title style
+  static TextStyle titleTextStyleForContext(BuildContext context) {
+    final appColors = AppColors.of(context);
+    return TextStyle(
+      fontSize: 17,
+      fontWeight: FontWeight.w600,
+      color: appColors.textColor,
+    );
+  }
   
   static TextStyle get bodyTextStyle => const TextStyle(
     fontSize: 15,
@@ -51,10 +62,12 @@ class AppTopBar extends StatelessWidget implements ObstructingPreferredSizeWidge
 
   @override
   Widget build(BuildContext context) {
+    final appColors = AppColors.of(context);
+    
     return CupertinoNavigationBar(
       middle: middle ?? (title != null ? Text(
         title!,
-        style: AppTheme.titleTextStyle,
+        style: AppTheme.titleTextStyleForContext(context),
       ) : null),
       leading: leading,
       trailing: actions != null && actions!.isNotEmpty
@@ -70,10 +83,10 @@ class AppTopBar extends StatelessWidget implements ObstructingPreferredSizeWidge
             )
           : null,
       automaticallyImplyLeading: automaticallyImplyLeading,
-      backgroundColor: AppTheme.backgroundColor,
-      border: const Border(
+      backgroundColor: appColors.backgroundColor,
+      border: Border(
         bottom: BorderSide(
-          color: CupertinoColors.separator,
+          color: appColors.dividerColor,
           width: 0.5,
         ),
       ),
@@ -84,7 +97,7 @@ class AppTopBar extends StatelessWidget implements ObstructingPreferredSizeWidge
   Size get preferredSize => const Size.fromHeight(44.0);
 
   @override
-  bool shouldFullyObstruct(BuildContext context) => false;
+  bool shouldFullyObstruct(BuildContext context) => true;
 }
 
 /// Common Cupertino-style bottom continue button
