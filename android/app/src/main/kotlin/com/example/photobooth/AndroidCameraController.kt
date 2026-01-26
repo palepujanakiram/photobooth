@@ -59,47 +59,53 @@ class AndroidCameraController(
     private val cameraStateCallback =
         object : CameraDevice.StateCallback() {
         override fun onOpened(camera: CameraDevice) {
-            Log.d(TAG, "✅ Camera opened: ${camera.id}")
-            Bugsnag.leaveBreadcrumb("Camera opened successfully: ${camera.id}")
-            Log.d(TAG, "   Expected camera ID: $currentCameraId")
-            if (camera.id != currentCameraId) {
-                Log.e(TAG, "❌ ERROR: Opened camera ID (${camera.id}) does not match requested ID ($currentCameraId)!")
-                Bugsnag.leaveBreadcrumb("Camera ID mismatch: expected $currentCameraId, got ${camera.id}")
-            } else {
-                Log.d(TAG, "✅ Camera ID matches requested ID")
-            }
-            cameraDevice = camera
-            createCaptureSession()
+            handleCameraOpened(camera)
         }
 
         override fun onDisconnected(camera: CameraDevice) {
-            Log.d(TAG, "⚠️ Camera disconnected: ${camera.id}")
-            Bugsnag.leaveBreadcrumb("Camera disconnected: ${camera.id}")
-            closeCamera()
+            handleCameraDisconnected(camera)
         }
 
-        override fun onError(
-            camera: CameraDevice,
-            error: Int,
-        ) {
-            Log.e(TAG, "❌ Camera error: $error")
-            val errorMsg =
-                when (error) {
-                    1 -> "Camera device error" // STATE_ERROR_CAMERA_DEVICE
-
-                    2 -> "Camera disabled" // STATE_ERROR_CAMERA_DISABLED
-
-                    3 -> "Camera in use" // STATE_ERROR_CAMERA_IN_USE
-
-                    4 -> "Max cameras in use" // STATE_ERROR_MAX_CAMERAS_IN_USE
-
-                    else -> "Unknown camera error"
-                }
-            Bugsnag.leaveBreadcrumb("Camera error: $errorMsg (code: $error)")
-            pendingPhotoResult?.error("CAMERA_ERROR", errorMsg, null)
-            pendingPhotoResult = null
-            closeCamera()
+        override fun onError(camera: CameraDevice, error: Int) {
+            handleCameraError(error)
         }
+    }
+
+    private fun handleCameraOpened(camera: CameraDevice) {
+        Log.d(TAG, "✅ Camera opened: ${camera.id}")
+        Bugsnag.leaveBreadcrumb("Camera opened successfully: ${camera.id}")
+        Log.d(TAG, "   Expected camera ID: $currentCameraId")
+        if (camera.id != currentCameraId) {
+            Log.e(TAG, "❌ ERROR: Opened camera ID (${camera.id}) does not match requested ID ($currentCameraId)!")
+            Bugsnag.leaveBreadcrumb("Camera ID mismatch: expected $currentCameraId, got ${camera.id}")
+        } else {
+            Log.d(TAG, "✅ Camera ID matches requested ID")
+        }
+        cameraDevice = camera
+        createCaptureSession()
+    }
+
+    private fun handleCameraDisconnected(camera: CameraDevice) {
+        Log.d(TAG, "⚠️ Camera disconnected: ${camera.id}")
+        Bugsnag.leaveBreadcrumb("Camera disconnected: ${camera.id}")
+        closeCamera()
+    }
+
+    private fun handleCameraError(error: Int) {
+        Log.e(TAG, "❌ Camera error: $error")
+        val errorMsg = getCameraErrorMessage(error)
+        Bugsnag.leaveBreadcrumb("Camera error: $errorMsg (code: $error)")
+        pendingPhotoResult?.error("CAMERA_ERROR", errorMsg, null)
+        pendingPhotoResult = null
+        closeCamera()
+    }
+
+    private fun getCameraErrorMessage(error: Int): String = when (error) {
+        CameraDevice.StateCallback.ERROR_CAMERA_DEVICE -> "Camera device error"
+        CameraDevice.StateCallback.ERROR_CAMERA_DISABLED -> "Camera disabled"
+        CameraDevice.StateCallback.ERROR_CAMERA_IN_USE -> "Camera in use"
+        CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE -> "Max cameras in use"
+        else -> "Unknown camera error"
     }
 
     private var pendingPreviewResult: MethodChannel.Result? = null
@@ -176,10 +182,8 @@ class AndroidCameraController(
         }
         
         // Cancel timeout since we received the image
-        captureTimeoutRunnable?.let { runnable ->
-            captureTimeoutHandler?.removeCallbacks(runnable)
-            Log.d(TAG, "   ✅ Cancelled capture timeout")
-        }
+        cancelCaptureTimeout()
+        Log.d(TAG, "   ✅ Cancelled capture timeout")
         
         val image = reader.acquireLatestImage()
         if (image == null) {
@@ -210,173 +214,163 @@ class AndroidCameraController(
      */
     fun initialize(cameraId: String, result: MethodChannel.Result) {
         try {
-            Log.d(TAG, "🎥 Initializing camera: $cameraId")
-            Bugsnag.leaveBreadcrumb("Camera initialization started: $cameraId")
-            Log.d(TAG, "   Camera ID type: ${cameraId::class.java.simpleName}")
-            Log.d(TAG, "   Camera ID value: \"$cameraId\"")
-
+            logInitializationStart(cameraId)
             cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
-            // Verify camera exists by trying to get its characteristics
-            // Note: Some external cameras (like USB cameras) may not be in the initial cameraIdList
-            // but can still be accessed directly by their ID
-            val cameraIds = cameraManager?.cameraIdList
-            Log.d(TAG, "   Available camera IDs in initial list: ${cameraIds?.joinToString(", ") ?: "null"}")
-
-            // Try to get camera characteristics directly
-            // This will work even if the camera is not in the initial cameraIdList
-            val characteristics = try {
-                cameraManager?.getCameraCharacteristics(cameraId)
-            } catch (e: IllegalArgumentException) {
-                Log.e(TAG, "❌ Camera $cameraId does not exist or cannot be accessed")
-                Bugsnag.leaveBreadcrumb("Camera not found: $cameraId")
-                Log.e(TAG, "   Error: ${e.message}")
-                Log.e(TAG, "   Available cameras in initial list: ${cameraIds?.joinToString(", ") ?: "none"}")
-                result.error(
-                    "CAMERA_NOT_FOUND",
-                    "Camera $cameraId not found or cannot be accessed. " +
-                        "Available cameras: ${cameraIds?.joinToString(", ") ?: "none"}",
-                    null,
-                )
-                return
-            } catch (e: CameraAccessException) {
-                Log.e(TAG, "❌ Camera access exception for camera $cameraId: ${e.message}")
-                result.error("CAMERA_ACCESS_ERROR", "Cannot access camera $cameraId: ${e.message}", null)
-                return
-            }
-
-            if (characteristics == null) {
-                Log.e(TAG, "❌ Camera $cameraId characteristics are null")
-                result.error("CAMERA_NOT_FOUND", "Camera $cameraId characteristics are null", null)
-                return
-            }
-
-            if (cameraIds?.contains(cameraId) == true) {
-                Log.d(TAG, "✅ Camera $cameraId found in cameraIdList")
-            } else {
-                Log.d(TAG, "✅ Camera $cameraId found (not in initial cameraIdList - likely external USB camera)")
-            }
-            val facing = characteristics?.get(CameraCharacteristics.LENS_FACING)
-            val cameraName =
-                when (facing) {
-                    CameraCharacteristics.LENS_FACING_BACK -> "Back Camera"
-                    CameraCharacteristics.LENS_FACING_FRONT -> "Front Camera"
-                    CameraCharacteristics.LENS_FACING_EXTERNAL -> "External Camera"
-                    else -> "Camera $cameraId"
-                }
-
-            Log.d(TAG, "   Camera characteristics:")
-            Log.d(TAG, "     LENS_FACING: $facing")
-            Log.d(TAG, "     Camera name: $cameraName")
+            val characteristics = getCameraCharacteristics(cameraId, result) ?: return
+            val cameraName = getCameraName(characteristics, cameraId)
+            logCameraDetails(characteristics, cameraName)
 
             currentCameraId = cameraId
-            Log.d(TAG, "   Stored currentCameraId: $currentCameraId")
-
-            // Start background thread
             startBackgroundThread()
 
-            // Create texture for preview
-            try {
-                textureEntry = textureRegistry.createSurfaceTexture()
-                textureId = textureEntry!!.id()
-                Log.d(TAG, "   ✅ Texture created with ID: $textureId")
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Failed to create texture: ${e.message}")
-                result.error(
-                    "INIT_ERROR",
-                    "Texture registry not available. Please ensure Flutter engine is properly initialized.",
-                    null,
-                )
-                return
-            }
-            
-            val surfaceTexture = textureEntry!!.surfaceTexture()
+            if (!setupTextureEntry(result)) return
+            if (!setupPreviewSurface(characteristics, result)) return
+            if (!setupImageReader(characteristics, result)) return
 
-            // Get available sizes from camera
-            val map = characteristics?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-            val availablePreviewSizes = map?.getOutputSizes(SurfaceTexture::class.java)?.toList() ?: emptyList()
-            val availableCaptureSizes = map?.getOutputSizes(ImageFormat.JPEG)?.toList() ?: emptyList()
-            
-            // Log available sizes for debugging 4K camera issues
-            Log.d(TAG, "   📐 Available preview sizes (${availablePreviewSizes.size}):")
-            availablePreviewSizes.take(5).forEach { size ->
-                Log.d(TAG, "      - ${size.width}×${size.height}")
-            }
-            if (availablePreviewSizes.size > 5) {
-                Log.d(TAG, "      ... and ${availablePreviewSizes.size - 5} more")
-            }
-            
-            Log.d(TAG, "   📐 Available JPEG capture sizes (${availableCaptureSizes.size}):")
-            availableCaptureSizes.take(5).forEach { size ->
-                Log.d(TAG, "      - ${size.width}×${size.height}")
-            }
-            if (availableCaptureSizes.size > 5) {
-                Log.d(TAG, "      ... and ${availableCaptureSizes.size - 5} more")
-            }
-            
-            // Set preview size (with hard limit enforcement)
-            val previewSize = chooseOptimalSize(availablePreviewSizes)
-            Log.d(TAG, "   🎯 Selected preview size: ${previewSize.width}×${previewSize.height}")
-            
-            try {
-                surfaceTexture.setDefaultBufferSize(previewSize.width, previewSize.height)
-                Log.d(TAG, "   ✅ Preview buffer size set successfully")
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Failed to set preview buffer size: ${e.message}")
-                result.error(
-                    "INIT_ERROR",
-                    "Failed to set preview buffer size: ${e.message}",
-                    null,
-                )
-                return
-            }
-            
-            val surface = Surface(surfaceTexture)
-
-            // Create ImageReader for photo capture (with hard limit enforcement)
-            val imageReaderSize = chooseOptimalSize(availableCaptureSizes)
-            Log.d(TAG, "   🎯 Selected capture size: ${imageReaderSize.width}×${imageReaderSize.height}")
-            
-            try {
-                imageReader =
-                    ImageReader.newInstance(
-                        imageReaderSize.width,
-                        imageReaderSize.height,
-                        ImageFormat.JPEG,
-                        1,
-                    )
-                Log.d(TAG, "   ✅ ImageReader created successfully")
-                imageReader?.setOnImageAvailableListener(imageAvailableListener, backgroundHandler)
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Failed to create ImageReader: ${e.message}")
-                result.error(
-                    "INIT_ERROR",
-                    "Failed to create ImageReader for photo capture: ${e.message}",
-                    null,
-                )
-                return
-            }
-
-            // Open camera
             cameraManager?.openCamera(cameraId, cameraStateCallback, backgroundHandler)
-
-            Bugsnag.leaveBreadcrumb("Camera initialization completed: $cameraName (ID: $cameraId)")
-            result.success(
-                mapOf(
-                    "success" to true,
-                    "textureId" to textureId,
-                    "localizedName" to cameraName,
-                ),
-            )
+            returnInitializationSuccess(cameraName, result)
         } catch (e: SecurityException) {
-            Log.e(TAG, "Security exception: ${e.message}", e)
-            Bugsnag.leaveBreadcrumb("Camera initialization failed: SecurityException")
-            result.error("PERMISSION_ERROR", "Camera permission not granted", null)
+            handleInitializationError(e, "PERMISSION_ERROR", "Camera permission not granted", result)
         } catch (e: Exception) {
-            Log.e(TAG, "Error initializing camera: ${e.message}", e)
-            Bugsnag.leaveBreadcrumb("Camera initialization failed: ${e.javaClass.simpleName}")
-            result.error("INIT_ERROR", e.message, null)
+            handleInitializationError(e, "INIT_ERROR", e.message, result)
         }
+    }
+
+    private fun logInitializationStart(cameraId: String) {
+        Log.d(TAG, "🎥 Initializing camera: $cameraId")
+        Bugsnag.leaveBreadcrumb("Camera initialization started: $cameraId")
+        Log.d(TAG, "   Camera ID type: ${cameraId::class.java.simpleName}")
+        Log.d(TAG, "   Camera ID value: \"$cameraId\"")
+    }
+
+    private fun getCameraCharacteristics(cameraId: String, result: MethodChannel.Result): CameraCharacteristics? {
+        val cameraIds = cameraManager?.cameraIdList
+        Log.d(TAG, "   Available camera IDs in initial list: ${cameraIds?.joinToString(", ") ?: "null"}")
+
+        val characteristics = try {
+            cameraManager?.getCameraCharacteristics(cameraId)
+        } catch (e: IllegalArgumentException) {
+            Log.e(TAG, "❌ Camera $cameraId does not exist or cannot be accessed")
+            Bugsnag.leaveBreadcrumb("Camera not found: $cameraId")
+            result.error(
+                "CAMERA_NOT_FOUND",
+                "Camera $cameraId not found or cannot be accessed. Available cameras: ${cameraIds?.joinToString(", ") ?: "none"}",
+                null,
+            )
+            return null
+        } catch (e: CameraAccessException) {
+            Log.e(TAG, "❌ Camera access exception for camera $cameraId: ${e.message}")
+            result.error("CAMERA_ACCESS_ERROR", "Cannot access camera $cameraId: ${e.message}", null)
+            return null
+        }
+
+        if (characteristics == null) {
+            Log.e(TAG, "❌ Camera $cameraId characteristics are null")
+            result.error("CAMERA_NOT_FOUND", "Camera $cameraId characteristics are null", null)
+            return null
+        }
+
+        logCameraFoundStatus(cameraId, cameraIds)
+        return characteristics
+    }
+
+    private fun logCameraFoundStatus(cameraId: String, cameraIds: Array<String>?) {
+        if (cameraIds?.contains(cameraId) == true) {
+            Log.d(TAG, "✅ Camera $cameraId found in cameraIdList")
+        } else {
+            Log.d(TAG, "✅ Camera $cameraId found (not in initial cameraIdList - likely external USB camera)")
+        }
+    }
+
+    private fun getCameraName(characteristics: CameraCharacteristics, cameraId: String): String {
+        val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+        return when (facing) {
+            CameraCharacteristics.LENS_FACING_BACK -> "Back Camera"
+            CameraCharacteristics.LENS_FACING_FRONT -> "Front Camera"
+            CameraCharacteristics.LENS_FACING_EXTERNAL -> "External Camera"
+            else -> "Camera $cameraId"
+        }
+    }
+
+    private fun logCameraDetails(characteristics: CameraCharacteristics, cameraName: String) {
+        val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+        Log.d(TAG, "   Camera characteristics:")
+        Log.d(TAG, "     LENS_FACING: $facing")
+        Log.d(TAG, "     Camera name: $cameraName")
+        Log.d(TAG, "   Stored currentCameraId: $currentCameraId")
+    }
+
+    private fun setupTextureEntry(result: MethodChannel.Result): Boolean {
+        return try {
+            textureEntry = textureRegistry.createSurfaceTexture()
+            textureId = textureEntry!!.id()
+            Log.d(TAG, "   ✅ Texture created with ID: $textureId")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to create texture: ${e.message}")
+            result.error("INIT_ERROR", "Texture registry not available. Please ensure Flutter engine is properly initialized.", null)
+            false
+        }
+    }
+
+    private fun setupPreviewSurface(characteristics: CameraCharacteristics, result: MethodChannel.Result): Boolean {
+        val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+        val availablePreviewSizes = map?.getOutputSizes(SurfaceTexture::class.java)?.toList() ?: emptyList()
+        logAvailableSizes("preview", availablePreviewSizes)
+
+        val previewSize = chooseOptimalSize(availablePreviewSizes)
+        Log.d(TAG, "   🎯 Selected preview size: ${previewSize.width}×${previewSize.height}")
+
+        return try {
+            val surfaceTexture = textureEntry!!.surfaceTexture()
+            surfaceTexture.setDefaultBufferSize(previewSize.width, previewSize.height)
+            Log.d(TAG, "   ✅ Preview buffer size set successfully")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to set preview buffer size: ${e.message}")
+            result.error("INIT_ERROR", "Failed to set preview buffer size: ${e.message}", null)
+            false
+        }
+    }
+
+    private fun setupImageReader(characteristics: CameraCharacteristics, result: MethodChannel.Result): Boolean {
+        val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+        val availableCaptureSizes = map?.getOutputSizes(ImageFormat.JPEG)?.toList() ?: emptyList()
+        logAvailableSizes("JPEG capture", availableCaptureSizes)
+
+        val imageReaderSize = chooseOptimalSize(availableCaptureSizes)
+        Log.d(TAG, "   🎯 Selected capture size: ${imageReaderSize.width}×${imageReaderSize.height}")
+
+        return try {
+            imageReader = ImageReader.newInstance(imageReaderSize.width, imageReaderSize.height, ImageFormat.JPEG, 1)
+            Log.d(TAG, "   ✅ ImageReader created successfully")
+            imageReader?.setOnImageAvailableListener(imageAvailableListener, backgroundHandler)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to create ImageReader: ${e.message}")
+            result.error("INIT_ERROR", "Failed to create ImageReader for photo capture: ${e.message}", null)
+            false
+        }
+    }
+
+    private fun logAvailableSizes(type: String, sizes: List<Size>) {
+        Log.d(TAG, "   📐 Available $type sizes (${sizes.size}):")
+        sizes.take(5).forEach { size -> Log.d(TAG, "      - ${size.width}×${size.height}") }
+        if (sizes.size > 5) {
+            Log.d(TAG, "      ... and ${sizes.size - 5} more")
+        }
+    }
+
+    private fun returnInitializationSuccess(cameraName: String, result: MethodChannel.Result) {
+        Bugsnag.leaveBreadcrumb("Camera initialization completed: $cameraName (ID: $currentCameraId)")
+        result.success(mapOf("success" to true, "textureId" to textureId, "localizedName" to cameraName))
+    }
+
+    private fun handleInitializationError(e: Exception, code: String, message: String?, result: MethodChannel.Result) {
+        Log.e(TAG, "Error initializing camera: ${e.message}", e)
+        Bugsnag.leaveBreadcrumb("Camera initialization failed: ${e.javaClass.simpleName}")
+        result.error(code, message, null)
     }
 
     /**
@@ -504,6 +498,36 @@ class AndroidCameraController(
      * Takes a picture
      */
     fun takePicture(result: MethodChannel.Result) {
+        logTakePictureState()
+        
+        if (!validateCaptureState(result)) return
+
+        pendingPhotoResult = result
+        Bugsnag.leaveBreadcrumb("Photo capture started")
+
+        try {
+            val device = cameraDevice ?: run {
+                result.error("NOT_INITIALIZED", "Camera device not available", null)
+                return
+            }
+
+            logCaptureDeviceInfo(device)
+            val characteristics = cameraManager?.getCameraCharacteristics(device.id)
+            val builder = createCaptureRequest(device, characteristics)
+            
+            setupCaptureTimeout()
+            captureSession?.capture(builder.build(), captureCallback, backgroundHandler)
+            
+            Log.d(TAG, "📸 Capture request sent to camera")
+            Log.d(TAG, "   Waiting for ImageReader callback (timeout: 8s)...")
+        } catch (e: CameraAccessException) {
+            handleCaptureError(e, "CameraAccessException", result)
+        } catch (e: Exception) {
+            handleCaptureError(e, e.javaClass.simpleName, result)
+        }
+    }
+
+    private fun logTakePictureState() {
         Log.d(TAG, "📸 takePicture() called")
         Bugsnag.leaveBreadcrumb("Photo capture requested")
         Log.d(TAG, "   captureSession: ${captureSession != null}")
@@ -511,111 +535,86 @@ class AndroidCameraController(
         Log.d(TAG, "   cameraDevice: ${cameraDevice != null}")
         Log.d(TAG, "   pendingPhotoResult: ${pendingPhotoResult != null}")
         Log.d(TAG, "   isDisposing: $isDisposing")
-        
-        // Check if camera is being disposed
+    }
+
+    private fun validateCaptureState(result: MethodChannel.Result): Boolean {
         if (isDisposing) {
-            val error = "Camera is being disposed, cannot capture photo"
-            Log.e(TAG, "❌ $error")
-            Bugsnag.leaveBreadcrumb("Capture blocked: camera disposing")
-            result.error("CAMERA_CLOSING", error, null)
-            return
+            logAndReportError("CAMERA_CLOSING", "Camera is being disposed, cannot capture photo", "camera disposing", result)
+            return false
         }
         
-        // Check if another capture is in progress
         if (pendingPhotoResult != null) {
-            val error = "Another photo capture is already in progress"
-            Log.e(TAG, "❌ $error")
-            Bugsnag.leaveBreadcrumb("Capture blocked: capture already in progress")
-            result.error("CAPTURE_IN_PROGRESS", error, null)
-            return
+            logAndReportError("CAPTURE_IN_PROGRESS", "Another photo capture is already in progress", "capture already in progress", result)
+            return false
         }
         
         if (captureSession == null || imageReader == null) {
-            val error = "Camera not initialized - captureSession or imageReader is null"
-            Log.e(TAG, "❌ $error")
-            Bugsnag.leaveBreadcrumb("Capture blocked: camera not initialized")
-            result.error("NOT_INITIALIZED", error, null)
-            return
+            logAndReportError("NOT_INITIALIZED", "Camera not initialized - captureSession or imageReader is null", "camera not initialized", result)
+            return false
         }
+        
+        return true
+    }
 
-        pendingPhotoResult = result
-        Bugsnag.leaveBreadcrumb("Photo capture started")
+    private fun logAndReportError(code: String, message: String, breadcrumbSuffix: String, result: MethodChannel.Result) {
+        Log.e(TAG, "❌ $message")
+        Bugsnag.leaveBreadcrumb("Capture blocked: $breadcrumbSuffix")
+        result.error(code, message, null)
+    }
 
-        try {
-            val device = cameraDevice ?: run {
-                val error = "Camera device not available"
-                Log.e(TAG, "❌ $error")
-                result.error("NOT_INITIALIZED", error, null)
-                return
-            }
+    private fun logCaptureDeviceInfo(device: CameraDevice) {
+        Log.d(TAG, "📸 Taking picture")
+        Log.d(TAG, "   Active camera device ID: ${device.id}")
+        Log.d(TAG, "   Expected camera ID: $currentCameraId")
+        if (device.id != currentCameraId) {
+            Log.e(TAG, "❌ ERROR: Capture is using wrong camera! Expected $currentCameraId, got ${device.id}")
+        }
+        val characteristics = cameraManager?.getCameraCharacteristics(device.id)
+        val facing = characteristics?.get(CameraCharacteristics.LENS_FACING)
+        Log.d(TAG, "   Camera LENS_FACING: $facing")
+    }
 
-            Log.d(TAG, "📸 Taking picture")
-            Log.d(TAG, "   Active camera device ID: ${device.id}")
-            Log.d(TAG, "   Expected camera ID: $currentCameraId")
-            if (device.id != currentCameraId) {
-                Log.e(TAG, "❌ ERROR: Capture is using wrong camera! Expected $currentCameraId, got ${device.id}")
-            }
+    private fun createCaptureRequest(device: CameraDevice, characteristics: CameraCharacteristics?): CaptureRequest.Builder {
+        val builder = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+        builder.addTarget(imageReader!!.surface)
+        builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+        builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+        
+        val sensorOrientation = characteristics?.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+        builder.set(CaptureRequest.JPEG_ORIENTATION, sensorOrientation)
+        return builder
+    }
 
-            val characteristics = cameraManager?.getCameraCharacteristics(device.id)
-            val facing = characteristics?.get(CameraCharacteristics.LENS_FACING)
-            Log.d(TAG, "   Camera LENS_FACING: $facing")
-
-            val builder = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-            builder.addTarget(imageReader!!.surface)
-
-            // Set auto-focus and auto-exposure
-            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-            builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-
-            // Set JPEG orientation
-            val sensorOrientation = characteristics?.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
-            builder.set(CaptureRequest.JPEG_ORIENTATION, sensorOrientation)
-
-            // Set up timeout for capture (8 seconds)
-            // If ImageReader doesn't receive the image within this time, we'll return an error
-            captureTimeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
-            captureTimeoutRunnable = Runnable {
-                Log.e(TAG, "❌ TIMEOUT: Photo capture timed out after 8 seconds")
-                Bugsnag.leaveBreadcrumb("Photo capture timeout after 8 seconds")
-                Log.e(TAG, "   ImageReader never received the image data")
-                Log.e(TAG, "   This may indicate the external camera doesn't support JPEG capture properly")
-                
-                pendingPhotoResult?.error(
-                    "CAPTURE_TIMEOUT",
-                    "Photo capture timed out after 8 seconds. The camera may not support still image capture or is not responding.",
-                    null
-                )
-                pendingPhotoResult = null
-            }
-            captureTimeoutHandler?.postDelayed(captureTimeoutRunnable!!, 8000)
+    private fun setupCaptureTimeout() {
+        captureTimeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        captureTimeoutRunnable = Runnable {
+            Log.e(TAG, "❌ TIMEOUT: Photo capture timed out after 8 seconds")
+            Bugsnag.leaveBreadcrumb("Photo capture timeout after 8 seconds")
+            Log.e(TAG, "   ImageReader never received the image data")
+            Log.e(TAG, "   This may indicate the external camera doesn't support JPEG capture properly")
             
-            // Capture
-            captureSession?.capture(builder.build(), captureCallback, backgroundHandler)
-            Log.d(TAG, "📸 Capture request sent to camera")
-            Log.d(TAG, "   Waiting for ImageReader callback (timeout: 8s)...")
-        } catch (e: CameraAccessException) {
-            Log.e(TAG, "❌ Error taking picture: ${e.message}", e)
-            Bugsnag.leaveBreadcrumb("Capture error: CameraAccessException - ${e.message}")
-            
-            // Cancel timeout on error
-            captureTimeoutRunnable?.let { runnable ->
-                captureTimeoutHandler?.removeCallbacks(runnable)
-            }
-            
-            result.error("CAPTURE_ERROR", "Failed to capture photo: ${e.message}", null)
-            pendingPhotoResult = null
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Unexpected error taking picture: ${e.message}", e)
-            Bugsnag.leaveBreadcrumb("Capture error: ${e.javaClass.simpleName} - ${e.message}")
-            
-            // Cancel timeout on error
-            captureTimeoutRunnable?.let { runnable ->
-                captureTimeoutHandler?.removeCallbacks(runnable)
-            }
-            
-            result.error("CAPTURE_ERROR", "Unexpected error: ${e.message}", null)
+            pendingPhotoResult?.error(
+                "CAPTURE_TIMEOUT",
+                "Photo capture timed out after 8 seconds. The camera may not support still image capture or is not responding.",
+                null
+            )
             pendingPhotoResult = null
         }
+        captureTimeoutHandler?.postDelayed(captureTimeoutRunnable!!, 8000)
+    }
+
+    private fun cancelCaptureTimeout() {
+        captureTimeoutRunnable?.let { runnable ->
+            captureTimeoutHandler?.removeCallbacks(runnable)
+        }
+    }
+
+    private fun handleCaptureError(e: Exception, errorType: String, result: MethodChannel.Result) {
+        Log.e(TAG, "❌ Error taking picture: ${e.message}", e)
+        Bugsnag.leaveBreadcrumb("Capture error: $errorType - ${e.message}")
+        cancelCaptureTimeout()
+        result.error("CAPTURE_ERROR", "Failed to capture photo: ${e.message}", null)
+        pendingPhotoResult = null
     }
 
     /**
@@ -757,9 +756,7 @@ class AndroidCameraController(
      */
     private fun closeCamera() {
         // Cancel any pending capture timeout
-        captureTimeoutRunnable?.let { runnable ->
-            captureTimeoutHandler?.removeCallbacks(runnable)
-        }
+        cancelCaptureTimeout()
         captureTimeoutHandler = null
         captureTimeoutRunnable = null
         

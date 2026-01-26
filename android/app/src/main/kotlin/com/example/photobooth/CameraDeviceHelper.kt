@@ -66,30 +66,10 @@ class CameraDeviceHelper(private val context: Context) {
         
         for (cameraId in cameraIds) {
             try {
-                val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-                val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
-                val cameraIdInt = cameraId.toIntOrNull() ?: -1
-                
-                // Determine camera name
-                val name = when {
-                    facing == CameraCharacteristics.LENS_FACING_EXTERNAL -> "External Camera"
-                    facing == CameraCharacteristics.LENS_FACING_FRONT -> "Front Camera"
-                    facing == CameraCharacteristics.LENS_FACING_BACK -> "Back Camera"
-                    // If camera ID is beyond typical built-in range and facing is null/unknown,
-                    // it's likely an external USB camera that doesn't report LENS_FACING correctly
-                    cameraIdInt > maxInitialId -> "External USB Camera"
-                    else -> "Camera $cameraId"
+                val cameraInfo = buildCameraInfo(cameraManager, cameraId, maxInitialId)
+                if (cameraInfo != null) {
+                    result.add(cameraInfo)
                 }
-
-                result.add(
-                    mapOf(
-                        "uniqueID" to cameraId,
-                        "localizedName" to name,
-                        "source" to "camera2"
-                    )
-                )
-
-                Log.d(TAG, "Camera2 → ID=$cameraId, Name=$name, LENS_FACING=$facing")
             } catch (e: Exception) {
                 Log.w(TAG, "Skipping camera $cameraId", e)
             }
@@ -97,6 +77,35 @@ class CameraDeviceHelper(private val context: Context) {
 
         Log.d(TAG, "Total Camera2 cameras found: ${result.size}")
         return result
+    }
+
+    private fun buildCameraInfo(
+        cameraManager: CameraManager,
+        cameraId: String,
+        maxInitialId: Int
+    ): Map<String, Any>? {
+        val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+        val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+        val name = determineCameraName(facing, cameraId, maxInitialId)
+
+        Log.d(TAG, "Camera2 → ID=$cameraId, Name=$name, LENS_FACING=$facing")
+
+        return mapOf(
+            "uniqueID" to cameraId,
+            "localizedName" to name,
+            "source" to "camera2"
+        )
+    }
+
+    private fun determineCameraName(facing: Int?, cameraId: String, maxInitialId: Int): String {
+        val cameraIdInt = cameraId.toIntOrNull() ?: -1
+        return when {
+            facing == CameraCharacteristics.LENS_FACING_EXTERNAL -> "External Camera"
+            facing == CameraCharacteristics.LENS_FACING_FRONT -> "Front Camera"
+            facing == CameraCharacteristics.LENS_FACING_BACK -> "Back Camera"
+            cameraIdInt > maxInitialId -> "External USB Camera"
+            else -> "Camera $cameraId"
+        }
     }
     
     /**
@@ -345,53 +354,71 @@ class CameraDeviceHelper(private val context: Context) {
      * Diagnostics - call this to log device capabilities
      */
     fun logDeviceCapabilities() {
-        val pm = context.packageManager
         Log.d(TAG, "=== Device Camera Capabilities ===")
+        logPackageManagerFeatures()
+        logCameraList()
+        logUsbDevices()
+        Log.d(TAG, "=================================")
+    }
+
+    private fun logPackageManagerFeatures() {
+        val pm = context.packageManager
         Log.d(TAG, "FEATURE_CAMERA = " + pm.hasSystemFeature(PackageManager.FEATURE_CAMERA))
         Log.d(TAG, "FEATURE_CAMERA_ANY = " + pm.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY))
         Log.d(TAG, "FEATURE_CAMERA_EXTERNAL = " + pm.hasSystemFeature(PackageManager.FEATURE_CAMERA_EXTERNAL))
         Log.d(TAG, "FEATURE_USB_HOST = " + pm.hasSystemFeature(PackageManager.FEATURE_USB_HOST))
-        
-        // List all cameras
+    }
+
+    private fun logCameraList() {
         try {
             val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
             val cameraIds = cameraManager.cameraIdList
             Log.d(TAG, "Camera IDs in cameraIdList: ${cameraIds.joinToString()}")
             
             for (cameraId in cameraIds) {
-                try {
-                    val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-                    val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
-                    val facingStr = when (facing) {
-                        CameraCharacteristics.LENS_FACING_FRONT -> "FRONT"
-                        CameraCharacteristics.LENS_FACING_BACK -> "BACK"
-                        CameraCharacteristics.LENS_FACING_EXTERNAL -> "EXTERNAL"
-                        else -> "UNKNOWN($facing)"
-                    }
-                    Log.d(TAG, "  Camera $cameraId: LENS_FACING=$facingStr")
-                } catch (e: Exception) {
-                    Log.e(TAG, "  Camera $cameraId: Error getting characteristics - ${e.message}")
-                }
+                logCameraCharacteristics(cameraManager, cameraId)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error listing cameras: ${e.message}")
         }
-        
-        // List USB devices
+    }
+
+    private fun logCameraCharacteristics(cameraManager: CameraManager, cameraId: String) {
+        try {
+            val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+            val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+            val facingStr = getFacingString(facing)
+            Log.d(TAG, "  Camera $cameraId: LENS_FACING=$facingStr")
+        } catch (e: Exception) {
+            Log.e(TAG, "  Camera $cameraId: Error getting characteristics - ${e.message}")
+        }
+    }
+
+    private fun getFacingString(facing: Int?): String = when (facing) {
+        CameraCharacteristics.LENS_FACING_FRONT -> "FRONT"
+        CameraCharacteristics.LENS_FACING_BACK -> "BACK"
+        CameraCharacteristics.LENS_FACING_EXTERNAL -> "EXTERNAL"
+        else -> "UNKNOWN($facing)"
+    }
+
+    private fun logUsbDevices() {
         try {
             val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
             val devices = usbManager.deviceList.values
             Log.d(TAG, "USB Devices: ${devices.size}")
             for (device in devices) {
-                Log.d(TAG, "  USB: ${device.deviceName}, vendor=${device.vendorId}, product=${device.productId}")
-                for (i in 0 until device.interfaceCount) {
-                    val intf = device.getInterface(i)
-                    Log.d(TAG, "    Interface $i: class=${intf.interfaceClass}, subclass=${intf.interfaceSubclass}")
-                }
+                logUsbDevice(device)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error listing USB devices: ${e.message}")
         }
-        Log.d(TAG, "=================================")
+    }
+
+    private fun logUsbDevice(device: UsbDevice) {
+        Log.d(TAG, "  USB: ${device.deviceName}, vendor=${device.vendorId}, product=${device.productId}")
+        for (i in 0 until device.interfaceCount) {
+            val intf = device.getInterface(i)
+            Log.d(TAG, "    Interface $i: class=${intf.interfaceClass}, subclass=${intf.interfaceSubclass}")
+        }
     }
 }

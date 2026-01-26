@@ -173,27 +173,38 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
     print("📸 photoOutput delegate called")
     
-    // Cancel timeout since we received the callback
-    captureTimeoutTimer?.invalidate()
-    captureTimeoutTimer = nil
-    print("   ✅ Cancelled capture timeout")
+    cancelCaptureTimeout()
     
     if let error = error {
-      print("❌ Photo capture error: \(error.localizedDescription)")
-      pendingPhotoResult?(FlutterError(code: "PHOTO_ERROR", message: error.localizedDescription, details: nil))
-      pendingPhotoResult = nil
+      handlePhotoCaptureError(error)
       return
     }
     
     guard let imageData = photo.fileDataRepresentation() else {
-      print("❌ Failed to get image data representation")
-      pendingPhotoResult?(FlutterError(code: "PHOTO_ERROR", message: "Failed to get image data", details: nil))
-      pendingPhotoResult = nil
+      handlePhotoDataError()
       return
     }
     
     print("   Processing photo data (\(imageData.count) bytes)...")
     savePhotoToFile(imageData: imageData)
+  }
+  
+  private func cancelCaptureTimeout() {
+    captureTimeoutTimer?.invalidate()
+    captureTimeoutTimer = nil
+    print("   ✅ Cancelled capture timeout")
+  }
+  
+  private func handlePhotoCaptureError(_ error: Error) {
+    print("❌ Photo capture error: \(error.localizedDescription)")
+    pendingPhotoResult?(FlutterError(code: "PHOTO_ERROR", message: error.localizedDescription, details: nil))
+    pendingPhotoResult = nil
+  }
+  
+  private func handlePhotoDataError() {
+    print("❌ Failed to get image data representation")
+    pendingPhotoResult?(FlutterError(code: "PHOTO_ERROR", message: "Failed to get image data", details: nil))
+    pendingPhotoResult = nil
   }
   
   private func savePhotoToFile(imageData: Data) {
@@ -996,50 +1007,65 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   
   /// Takes a picture
   private func takePicture(result: @escaping FlutterResult) {
+    logTakePictureState()
+    
+    guard validateCaptureState(result: result) else { return }
+    
+    print("📸 Capturing photo...")
+    pendingPhotoResult = result
+    
+    setupCaptureTimeout()
+    
+    let settings = AVCapturePhotoSettings()
+    photoOutput!.capturePhoto(with: settings, delegate: self)
+    print("✅ capturePhoto called on photoOutput")
+    print("   Waiting for photo delegate callback (timeout: 8s)...")
+  }
+  
+  private func logTakePictureState() {
     print("📸 takePicture() called")
     print("   photoOutput: \(photoOutput != nil ? "exists" : "nil")")
     print("   captureSession: \(captureSession != nil ? "exists" : "nil")")
-    
-    guard let photoOutput = photoOutput else {
+  }
+  
+  private func validateCaptureState(result: @escaping FlutterResult) -> Bool {
+    guard photoOutput != nil else {
       print("❌ Error: photoOutput is nil")
       result(FlutterError(code: "NOT_INITIALIZED", message: "Camera not initialized - photoOutput is nil", details: nil))
-      return
+      return false
     }
     
     guard let session = captureSession, session.isRunning else {
       print("❌ Error: captureSession is not running")
       result(FlutterError(code: "NOT_INITIALIZED", message: "Camera session not running", details: nil))
-      return
+      return false
     }
     
-    print("📸 Capturing photo...")
-    pendingPhotoResult = result
-    
-    // Set up timeout (8 seconds) - if photo delegate is not called, return error
+    return true
+  }
+  
+  private func setupCaptureTimeout() {
     captureTimeoutTimer?.invalidate()
     captureTimeoutTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { [weak self] _ in
-      guard let self = self else { return }
-      
-      print("❌ TIMEOUT: Photo capture timed out after 8 seconds")
-      print("   Photo delegate was never called")
-      print("   This may indicate the camera doesn't support photo capture properly")
-      
-      if let pendingResult = self.pendingPhotoResult {
-        pendingResult(FlutterError(
-          code: "CAPTURE_TIMEOUT",
-          message: "Photo capture timed out after 8 seconds. The camera may not support still image capture or is not responding.",
-          details: nil
-        ))
-        self.pendingPhotoResult = nil
-      }
-      
-      self.captureTimeoutTimer = nil
+      self?.handleCaptureTimeout()
+    }
+  }
+  
+  private func handleCaptureTimeout() {
+    print("❌ TIMEOUT: Photo capture timed out after 8 seconds")
+    print("   Photo delegate was never called")
+    print("   This may indicate the camera doesn't support photo capture properly")
+    
+    if let pendingResult = pendingPhotoResult {
+      pendingResult(FlutterError(
+        code: "CAPTURE_TIMEOUT",
+        message: "Photo capture timed out after 8 seconds. The camera may not support still image capture or is not responding.",
+        details: nil
+      ))
+      pendingPhotoResult = nil
     }
     
-    let settings = AVCapturePhotoSettings()
-    photoOutput.capturePhoto(with: settings, delegate: self)
-    print("✅ capturePhoto called on photoOutput")
-    print("   Waiting for photo delegate callback (timeout: 8s)...")
+    captureTimeoutTimer = nil
   }
   
   /// Cleans up camera session
