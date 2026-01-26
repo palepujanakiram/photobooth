@@ -1,7 +1,7 @@
 name: photobooth
 description: A Flutter photo booth application with AI transformations
 publish_to: 'none'
-version: 0.1.0+6
+version: 0.1.0+8
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
