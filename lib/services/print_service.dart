@@ -3,12 +3,11 @@ import 'package:camera/camera.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import '../utils/exceptions.dart';
 import '../utils/logger.dart';
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
 import 'api_logging_interceptor.dart';
-import 'bugsnag_dio_interceptor.dart';
 import 'printer_api_client.dart';
 import 'file_helper.dart';
 import 'error_reporting/error_reporting_manager.dart';
@@ -119,8 +118,9 @@ class PrintService {
           ),
         );
         configureDioForWeb(downloadDio);
-        downloadDio.interceptors.add(BugsnagDioInterceptor());
-        downloadDio.interceptors.add(ApiLoggingInterceptor());
+        if (kDebugMode == true) {
+            downloadDio.interceptors.add(ApiLoggingInterceptor());
+        }
         
         final response = await downloadDio.get<List<int>>(
           filePath,
@@ -164,11 +164,10 @@ class PrintService {
       // Configure browser adapter for web
       configureDioForWeb(dio);
       
-      // Add Bugsnag breadcrumbs interceptor
-      dio.interceptors.add(BugsnagDioInterceptor());
-      
       // Add logging interceptor
-      dio.interceptors.add(ApiLoggingInterceptor());
+      if (kDebugMode == true) {
+        dio.interceptors.add(ApiLoggingInterceptor());
+      }
 
       // Create Retrofit client for printer API
       final printerClient = PrinterApiClient(dio, baseUrl: 'http://$printerIp', errorLogger: null);

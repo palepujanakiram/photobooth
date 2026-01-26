@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:uuid/uuid.dart';
 import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
@@ -11,7 +11,6 @@ import '../utils/logger.dart';
 import 'api_client.dart';
 import 'file_helper.dart';
 import 'api_logging_interceptor.dart';
-import 'bugsnag_dio_interceptor.dart';
 
 // Conditional import for web Dio configuration
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
@@ -38,11 +37,10 @@ class ApiService {
     // This prevents SocketException errors from native socket lookups
     configureDioForWeb(dio);
 
-    // Add Bugsnag breadcrumbs interceptor to automatically capture network requests
-    dio.interceptors.add(BugsnagDioInterceptor());
-
-    // Add logging interceptor to log all API calls
-    dio.interceptors.add(ApiLoggingInterceptor());
+    if (kDebugMode == true) {
+        // Add logging interceptor to log all API calls
+        dio.interceptors.add(ApiLoggingInterceptor());
+    }
 
     // Add error interceptor for web compatibility
     dio.interceptors.add(InterceptorsWrapper(
@@ -132,14 +130,17 @@ class ApiService {
                 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
           },
         ));
-        dio.interceptors.add(BugsnagDioInterceptor());
-        dio.interceptors.add(ApiLoggingInterceptor());
+        if (kDebugMode == true) {
+            dio.interceptors.add(ApiLoggingInterceptor());
+        }
 
         // Configure browser adapter for web (critical for web platform)
         configureDioForWeb(dio);
         
         // Add logging interceptor
-        dio.interceptors.add(ApiLoggingInterceptor());
+        if (kDebugMode == true) {
+          dio.interceptors.add(ApiLoggingInterceptor());
+        }
 
         final formData = FormData.fromMap({
           'prompt': theme.promptText,
@@ -488,11 +489,10 @@ class ApiService {
     // Configure browser adapter for web (important for all Dio instances)
     configureDioForWeb(dioWithTimeout);
     
-    // Add Bugsnag breadcrumbs interceptor
-    dioWithTimeout.interceptors.add(BugsnagDioInterceptor());
-    
-    // Add logging interceptor
-    dioWithTimeout.interceptors.add(ApiLoggingInterceptor());
+    if (kDebugMode == true) {
+      // Add logging interceptor
+      dioWithTimeout.interceptors.add(ApiLoggingInterceptor());
+    }
 
     final apiClientWithTimeout = ApiClient(dioWithTimeout);
 
@@ -658,8 +658,9 @@ class ApiService {
     );
 
     configureDioForWeb(dio);
-    dio.interceptors.add(BugsnagDioInterceptor());
-    dio.interceptors.add(ApiLoggingInterceptor());
+    if (kDebugMode == true) {
+      dio.interceptors.add(ApiLoggingInterceptor());
+    }
 
     AppLogger.debug('📥 Downloading image from: $imageUrl');
     final extension = imageUrl.toLowerCase().endsWith('.png') ? 'png' : 'jpg';

@@ -17,8 +17,19 @@ import 'services/file_helper.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Bugsnag first
-  await bugsnag.start(apiKey: '73ebb791c48ae8c4821b511fb286ca23');
+  // Initialize Bugsnag with all breadcrumb types enabled
+  await bugsnag.start(
+    apiKey: '73ebb791c48ae8c4821b511fb286ca23',
+    // Enable all breadcrumb types for comprehensive debugging
+    enabledBreadcrumbTypes: const {
+      BugsnagEnabledBreadcrumbType.error,       // Captured errors
+      BugsnagEnabledBreadcrumbType.navigation,  // Navigation changes
+      BugsnagEnabledBreadcrumbType.request,     // Network requests (HTTP)
+      BugsnagEnabledBreadcrumbType.state,       // State changes (connectivity, orientation)
+      BugsnagEnabledBreadcrumbType.user,        // User interactions
+    },
+    maxBreadcrumbs: 50,  // Store up to 50 breadcrumbs (default)
+  );
 
   // Fire-and-forget cleanup of temp images
   FileHelper.cleanupTempImages();
