@@ -19,6 +19,7 @@ import android.os.HandlerThread
 import android.util.Log
 import android.util.Size
 import android.view.Surface
+import android.app.Activity
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
 import com.bugsnag.android.Bugsnag
@@ -580,9 +581,36 @@ class AndroidCameraController(
         builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
         builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
         
+        // JPEG_ORIENTATION = rotation (0/90/180/270) so the image appears upright on the current display.
+        // - sensorOrientation: fixed angle the sensor is mounted (e.g. 90 for typical back camera).
+        // - displayRotationDegrees: current device rotation (0/90/180/270 from getDisplayRotationDegrees()).
+        // Back/external: jpeg = (sensor - display + 360) % 360  (compensate so top-of-image = top-of-screen).
+        // Front:         jpeg = (sensor + display) % 360       (mirror-consistent).
         val sensorOrientation = characteristics?.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
-        builder.set(CaptureRequest.JPEG_ORIENTATION, sensorOrientation)
+        val displayRotationDegrees = getDisplayRotationDegrees()
+        val facing = characteristics?.get(CameraCharacteristics.LENS_FACING)
+        val jpegOrientation = when (facing) {
+            CameraCharacteristics.LENS_FACING_FRONT -> (sensorOrientation + displayRotationDegrees) % 360
+            else -> (sensorOrientation - displayRotationDegrees + 360) % 360 // back or external
+        }
+        builder.set(CaptureRequest.JPEG_ORIENTATION, jpegOrientation)
+        Log.d(TAG, "   JPEG_ORIENTATION: $jpegOrientation (sensor=$sensorOrientation, display=$displayRotationDegrees°)")
         return builder
+    }
+
+    /**
+     * Returns the current display rotation in degrees (0, 90, 180, 270)
+     * so that captured JPEGs can be oriented to match the device rotation.
+     */
+    private fun getDisplayRotationDegrees(): Int {
+        val activity = context as? Activity ?: return 0
+        return when (activity.windowManager.defaultDisplay.rotation) {
+            Surface.ROTATION_0 -> 0
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
     }
 
     private fun setupCaptureTimeout() {

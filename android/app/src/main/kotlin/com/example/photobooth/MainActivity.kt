@@ -1,7 +1,6 @@
 package com.example.photobooth
 
 import android.util.Log
-import android.content.pm.PackageManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -140,14 +139,6 @@ class MainActivity : FlutterActivity() {
                     Log.d("MainActivity", "🔍 Logging diagnostics")
                     cameraDeviceHelper.logDeviceCapabilities()
                     result.success(mapOf("success" to true))
-                }
-
-                "isAndroidTv" -> {
-                    val pm = applicationContext.packageManager
-                    val isTv = pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
-                            pm.hasSystemFeature(PackageManager.FEATURE_TELEVISION)
-                    Log.d("MainActivity", "📺 isAndroidTv: $isTv")
-                    result.success(isTv)
                 }
 
                 else -> {

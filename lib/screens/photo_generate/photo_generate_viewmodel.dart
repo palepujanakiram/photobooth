@@ -143,7 +143,8 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       
       _updateProgress('Transforming your look...');
       
-      // Call the API to generate the image
+      // Call the API to generate the image (120s timeout so UI cannot hang)
+      const generateTimeout = Duration(seconds: 120);
       final result = await _apiService.generateImage(
         sessionId: _sessionManager.sessionId!,
         attempt: _currentAttempt,
@@ -152,6 +153,11 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         onProgress: (message) {
           _updateProgress(message);
         },
+      ).timeout(
+        generateTimeout,
+        onTimeout: () => throw TimeoutException(
+          'Generation timed out after ${generateTimeout.inSeconds} seconds',
+        ),
       );
 
       _stopTimer();
@@ -172,17 +178,14 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         AppLogger.debug('✅ Image generated successfully');
         ErrorReportingManager.log('Image generated successfully');
         
-        _isGenerating = false;
-        _progressMessage = '';
-        notifyListeners();
         return true;
       } else {
         _errorMessage = 'Failed to generate image';
-        _isGenerating = false;
-        _progressMessage = '';
-        notifyListeners();
         return false;
       }
+    } on TimeoutException {
+      _errorMessage = 'Generation took too long. Please try again.';
+      return false;
     } catch (e, stackTrace) {
       _stopTimer();
       AppLogger.error('❌ Error generating image: $e');
@@ -193,10 +196,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       );
       
       _errorMessage = 'Generation failed: ${e.toString()}';
+      return false;
+    } finally {
+      _stopTimer();
       _isGenerating = false;
       _progressMessage = '';
       notifyListeners();
-      return false;
     }
   }
 
@@ -220,25 +225,30 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       
       AppLogger.debug('🎨 Trying different style with theme: ${newTheme.name}');
       
-      // Update session with the new theme
+      // Update session with the new theme (30s timeout)
+      const updateTimeout = Duration(seconds: 30);
       try {
         await _apiService.updateSession(
           sessionId: _sessionManager.sessionId!,
           selectedThemeId: newTheme.id,
+        ).timeout(
+          updateTimeout,
+          onTimeout: () => throw TimeoutException(
+            'Update theme timed out after ${updateTimeout.inSeconds} seconds',
+          ),
         );
+      } on TimeoutException {
+        _errorMessage = 'Request took too long. Please try again.';
+        return false;
       } catch (e) {
-        _stopTimer();
         _errorMessage = 'Failed to update theme: $e';
-        _isLoadingMore = false;
-        _progressMessage = '';
-        notifyListeners();
         return false;
       }
       
       _updateProgress('Transforming your look...');
       
-      // Generate new image
-      // Use attempt=1 for each new theme since server expects per-theme attempt count
+      // Generate new image (120s timeout)
+      const generateTimeout = Duration(seconds: 120);
       final result = await _apiService.generateImage(
         sessionId: _sessionManager.sessionId!,
         attempt: 1, // Always use 1 for new theme
@@ -247,6 +257,11 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         onProgress: (message) {
           _updateProgress(message);
         },
+      ).timeout(
+        generateTimeout,
+        onTimeout: () => throw TimeoutException(
+          'Generation timed out after ${generateTimeout.inSeconds} seconds',
+        ),
       );
 
       _stopTimer();
@@ -263,17 +278,14 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         _triesRemaining--;
         // Don't increment _currentAttempt here since we use attempt=1 for each new theme
         
-        _isLoadingMore = false;
-        _progressMessage = '';
-        notifyListeners();
         return true;
       } else {
         _errorMessage = 'Failed to generate image';
-        _isLoadingMore = false;
-        _progressMessage = '';
-        notifyListeners();
         return false;
       }
+    } on TimeoutException {
+      _errorMessage = 'Generation took too long. Please try again.';
+      return false;
     } catch (e, stackTrace) {
       _stopTimer();
       AppLogger.error('❌ Error trying different style: $e');
@@ -289,10 +301,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         errorMsg = 'Server error. Please try again or start over.';
       }
       _errorMessage = errorMsg;
+      return false;
+    } finally {
+      _stopTimer();
       _isLoadingMore = false;
       _progressMessage = '';
       notifyListeners();
-      return false;
     }
   }
 

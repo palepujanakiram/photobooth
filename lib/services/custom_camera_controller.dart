@@ -183,14 +183,14 @@ class CustomCameraController {
       
       // Add timeout to prevent infinite hang
       final result = await _channel.invokeMethod('takePicture').timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 60),
         onTimeout: () {
-          AppLogger.debug('❌ takePicture timed out after 10 seconds');
-          ErrorReportingManager.log('⏱️ TIMEOUT: Native takePicture timed out after 10 seconds');
+          AppLogger.debug('❌ takePicture timed out after 60 seconds');
+          ErrorReportingManager.log('⏱️ TIMEOUT: Native takePicture timed out after 60 seconds');
           
           // Record timeout to error reporting
           ErrorReportingManager.recordError(
-            TimeoutException('Photo capture timed out after 10 seconds'),
+            TimeoutException('Photo capture timed out after 60 seconds'),
             StackTrace.current,
             reason: 'Flutter-level timeout waiting for native takePicture',
             extraInfo: {
@@ -202,7 +202,7 @@ class CustomCameraController {
             },
           );
           
-          throw TimeoutException('Photo capture timed out after 10 seconds. The camera may not be responding.');
+          throw TimeoutException('Photo capture timed out after 60 seconds. The camera may not be responding.');
         },
       );
       

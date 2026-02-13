@@ -194,23 +194,13 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                       _isGenerating = true;
                                     });
 
+                                    bool success = false;
                                     try {
                                       // Step 4: Update session with selected theme
                                       // PATCH /api/sessions/{sessionId} with only selectedThemeId
-                                      final success = await viewModel.updateSessionWithTheme();
+                                      success = await viewModel.updateSessionWithTheme();
 
-                                      if (!mounted || !currentContext.mounted) {
-                                        _stopTimer();
-                                        setState(() {
-                                          _isGenerating = false;
-                                        });
-                                        return;
-                                      }
-
-                                      _stopTimer();
-                                      setState(() {
-                                        _isGenerating = false;
-                                      });
+                                      if (!mounted || !currentContext.mounted) return;
 
                                       if (success) {
                                         // Navigate to Generate Photo screen
@@ -231,15 +221,19 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                         );
                                       }
                                     } catch (e) {
-                                      if (mounted) {
-                                        _stopTimer();
-                                        setState(() {
-                                          _isGenerating = false;
-                                        });
+                                      if (mounted && currentContext.mounted) {
                                         AppSnackBar.showError(
                                           currentContext,
                                           'An error occurred: ${e.toString()}',
                                         );
+                                      }
+                                    } finally {
+                                      // Always clear loader and timer so UI cannot hang
+                                      _stopTimer();
+                                      if (mounted) {
+                                        setState(() {
+                                          _isGenerating = false;
+                                        });
                                       }
                                     }
                                   } else {

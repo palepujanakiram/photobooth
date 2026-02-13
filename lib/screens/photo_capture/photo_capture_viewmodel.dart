@@ -7,7 +7,6 @@ import 'photo_model.dart';
 import '../../services/camera_service.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
-import '../../services/android_camera_device_helper.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
@@ -577,16 +576,8 @@ class CaptureViewModel extends ChangeNotifier {
 
     try {
       AppLogger.debug('📸 Calling _cameraService.takePicture()...');
-      var imageFile = await _cameraService.takePicture();
+      final imageFile = await _cameraService.takePicture();
       AppLogger.debug('✅ Photo captured successfully');
-
-      // Rotate captured image 180 degrees (Android TV only)
-      // Android TV cameras often have inverted sensor orientation
-      final isAndroidTv = await AndroidCameraDeviceHelper.isAndroidTv();
-      if (isAndroidTv) {
-        AppLogger.debug('🔄 Android TV detected - Rotating captured image 180°');
-        imageFile = await ImageHelper.rotateImage180(imageFile);
-      }
 
       // Get camera ID from either standard controller or current camera
       final cameraId = _cameraController?.description.name ?? _currentCamera?.name;
@@ -799,10 +790,17 @@ class CaptureViewModel extends ChangeNotifier {
       
       // Step 3: Update session with photo (PATCH /api/sessions/{sessionId})
       // Note: selectedThemeId is not included here - it will be set later in theme selection
+      // Use 60s timeout so UI cannot hang (upload can be slow for large images)
+      const uploadTimeout = Duration(seconds: 60);
       final response = await _apiService.updateSession(
         sessionId: sessionId,
         userImageUrl: base64Image,
         selectedThemeId: null, // Theme will be selected later
+      ).timeout(
+        uploadTimeout,
+        onTimeout: () => throw TimeoutException(
+          'Upload timed out after ${uploadTimeout.inSeconds} seconds',
+        ),
       );
       
       ErrorReportingManager.log('✅ Image uploaded successfully');
@@ -816,22 +814,20 @@ class CaptureViewModel extends ChangeNotifier {
       ErrorReportingManager.log('🔄 Triggering background image preprocessing');
       _apiService.preprocessImage(sessionId: sessionId);
       
-      _stopUploadTimer();
-      _isUploading = false;
-      notifyListeners();
       return true;
+    } on TimeoutException {
+      _errorMessage = 'Upload took too long. Please check your connection and try again.';
+      return false;
     } on app_exceptions.ApiException catch (e) {
       _errorMessage = e.message;
-      _stopUploadTimer();
-      _isUploading = false;
-      notifyListeners();
       return false;
     } catch (e) {
       _errorMessage = 'Failed to upload photo: ${e.toString()}';
+      return false;
+    } finally {
       _stopUploadTimer();
       _isUploading = false;
       notifyListeners();
-      return false;
     }
   }
 
@@ -877,28 +873,34 @@ class CaptureViewModel extends ChangeNotifier {
       );
       
       // Update session via API: PATCH /api/sessions/{sessionId}
+      const updateTimeout = Duration(seconds: 60);
       final response = await _apiService.updateSession(
         sessionId: sessionId,
         userImageUrl: base64Image,
         selectedThemeId: selectedThemeId,
+      ).timeout(
+        updateTimeout,
+        onTimeout: () => throw TimeoutException(
+          'Update timed out after ${updateTimeout.inSeconds} seconds',
+        ),
       );
       
       // Save the response to SessionManager
       _sessionManager.setSessionFromResponse(response);
       
-      _isUploading = false;
-      notifyListeners();
       return true;
+    } on TimeoutException {
+      _errorMessage = 'Request took too long. Please check your connection and try again.';
+      return false;
     } on app_exceptions.ApiException catch (e) {
       _errorMessage = e.message;
-      _isUploading = false;
-      notifyListeners();
       return false;
     } catch (e) {
       _errorMessage = 'Failed to update session: ${e.toString()}';
+      return false;
+    } finally {
       _isUploading = false;
       notifyListeners();
-      return false;
     }
   }
 

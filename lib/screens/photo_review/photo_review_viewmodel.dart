@@ -90,7 +90,8 @@ class ReviewViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Call the generate-image API endpoint
+      // Call the generate-image API endpoint (up to 2 minutes for AI generation)
+      const generateTimeout = Duration(seconds: 120);
       _transformedImage = await _apiService.generateImage(
         sessionId: sessionId,
         attempt: _attemptNumber,
@@ -99,6 +100,11 @@ class ReviewViewModel extends ChangeNotifier {
         onProgress: (message) {
           _updateProcess(message);
         },
+      ).timeout(
+        generateTimeout,
+        onTimeout: () => throw TimeoutException(
+          'Generation timed out after ${generateTimeout.inSeconds} seconds',
+        ),
       );
       
       // Step 3: Finalizing
@@ -109,19 +115,18 @@ class ReviewViewModel extends ChangeNotifier {
       _currentProcess = '';
       notifyListeners();
       return _transformedImage;
+    } on TimeoutException {
+      _errorMessage = 'Generation took too long. Please try again.';
+      return null;
     } on ApiException catch (e) {
-      _stopTimer();
       // Include detailed error information
       final statusInfo = e.statusCode != null ? ' (Status: ${e.statusCode})' : '';
       final timeInfo = _elapsedSeconds > 0 ? ' [Took ${_elapsedSeconds}s]' : '';
       _errorMessage = '${e.message}$statusInfo$timeInfo';
-      notifyListeners();
       return null;
     } catch (e) {
-      _stopTimer();
       final timeInfo = _elapsedSeconds > 0 ? ' [Took ${_elapsedSeconds}s]' : '';
       _errorMessage = 'Failed to transform photo: ${e.toString()}$timeInfo';
-      notifyListeners();
       return null;
     } finally {
       _isTransforming = false;
