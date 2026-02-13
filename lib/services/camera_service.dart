@@ -859,6 +859,21 @@ class CameraService {
           AppLogger.debug(
               '   📝 Localized name: ${getCameraDisplayName(camera)}');
 
+          // USB-only ID (usb_vendorId_productId) means no Camera2 ID was found.
+          // Camera2 API can only open cameras in cameraIdList. Android TV often
+          // exposes USB cameras there; many phones do not. Give a clear error.
+          if (deviceId.startsWith('usb_')) {
+            AppLogger.debug(
+                '   ⚠️ USB-only camera (no Camera2 ID). Preview not supported on this device.');
+            ErrorReportingManager.log(
+                'USB camera has no Camera2 ID - preview not supported on this device');
+            throw app_exceptions.CameraException(
+              'This USB camera is not supported for preview on this device. '
+              'Many Android phones do not expose USB webcams to the camera API. '
+              'The same webcam typically works on Android TV (e.g. set-top boxes).',
+            );
+          }
+
           try {
             AppLogger.debug(
                 '   🚀 Attempting to use native Android camera controller...');

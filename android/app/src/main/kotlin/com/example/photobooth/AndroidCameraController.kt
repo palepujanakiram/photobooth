@@ -1,5 +1,6 @@
 package com.example.photobooth
 
+import android.app.ActivityManager
 import android.content.Context
 import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
@@ -40,6 +41,14 @@ class AndroidCameraController(
         private const val TAG = "AndroidCameraController"
         private const val MAX_PREVIEW_WIDTH = 1920
         private const val MAX_PREVIEW_HEIGHT = 1080
+        // Cap still-capture resolution to avoid OOM on low-RAM devices (e.g. Android TV 2GB with 4K webcam)
+        private const val MAX_CAPTURE_WIDTH = 1920
+        private const val MAX_CAPTURE_HEIGHT = 1080
+        // On low-memory devices use smaller capture to reduce ImageReader + save buffer pressure
+        private const val LOW_MEMORY_CAPTURE_WIDTH = 1280
+        private const val LOW_MEMORY_CAPTURE_HEIGHT = 720
+        private const val LOW_MEMORY_CLASS_MB = 128 // Use smaller capture on devices with ≤128MB heap (e.g. many 2GB RAM / Android TV)
+        private const val SAVE_CHUNK_SIZE = 64 * 1024 // 64KB - avoid allocating full image in memory
     }
 
     private var cameraManager: CameraManager? = null
@@ -340,7 +349,7 @@ class AndroidCameraController(
         val availableCaptureSizes = map?.getOutputSizes(ImageFormat.JPEG)?.toList() ?: emptyList()
         logAvailableSizes("JPEG capture", availableCaptureSizes)
 
-        val imageReaderSize = chooseOptimalSize(availableCaptureSizes)
+        val imageReaderSize = chooseOptimalCaptureSize(availableCaptureSizes)
         Log.d(TAG, "   🎯 Selected capture size: ${imageReaderSize.width}×${imageReaderSize.height}")
 
         return try {
@@ -646,12 +655,14 @@ class AndroidCameraController(
     }
 
     /**
-     * Saves the captured image to a file
+     * Saves the captured image to a file.
+     * Uses chunked write (64KB) to avoid allocating a full image-sized ByteArray,
+     * which can be 5-15+ MB for high-res JPEG and cause OOM/hang on 2GB RAM devices.
      */
     private fun saveImageToFile(image: Image) {
         val buffer = image.planes[0].buffer
-        val bytes = ByteArray(buffer.remaining())
-        buffer.get(bytes)
+        val totalSize = buffer.remaining()
+        Log.d(TAG, "   Saving image: $totalSize bytes (chunked to avoid ${totalSize / (1024 * 1024)}MB allocation)")
 
         val tempDir = File(context.cacheDir, "photos")
         if (!tempDir.exists()) {
@@ -661,8 +672,15 @@ class AndroidCameraController(
         val fileName = "photo_${System.currentTimeMillis()}.jpg"
         val file = File(tempDir, fileName)
 
+        val chunk = ByteArray(SAVE_CHUNK_SIZE.coerceAtMost(totalSize))
         FileOutputStream(file).use { output ->
-            output.write(bytes)
+            var remaining = totalSize
+            while (remaining > 0) {
+                val toRead = minOf(chunk.size, remaining)
+                buffer.get(chunk, 0, toRead)
+                output.write(chunk, 0, toRead)
+                remaining -= toRead
+            }
         }
 
         Log.d(TAG, "✅ Image saved: ${file.absolutePath}")
@@ -711,6 +729,45 @@ class AndroidCameraController(
         
         // Return our max supported size - the camera will downscale automatically
         return Size(MAX_PREVIEW_WIDTH, MAX_PREVIEW_HEIGHT)
+    }
+
+    /**
+     * Chooses capture size for ImageReader. Uses lower cap on low-RAM devices (e.g. Android TV 2GB)
+     * to avoid OOM/hang when capturing from 4K webcams.
+     */
+    private fun chooseOptimalCaptureSize(choices: List<Size>): Size {
+        val (maxW, maxH) = if (isLowMemoryDevice()) {
+            Log.d(TAG, "   📱 Low-memory device: capping capture at ${LOW_MEMORY_CAPTURE_WIDTH}×${LOW_MEMORY_CAPTURE_HEIGHT}")
+            Bugsnag.leaveBreadcrumb("Low-memory device: using ${LOW_MEMORY_CAPTURE_WIDTH}x${LOW_MEMORY_CAPTURE_HEIGHT} capture")
+            LOW_MEMORY_CAPTURE_WIDTH to LOW_MEMORY_CAPTURE_HEIGHT
+        } else {
+            MAX_CAPTURE_WIDTH to MAX_CAPTURE_HEIGHT
+        }
+        if (choices.isEmpty()) {
+            Log.d(TAG, "⚠️ No JPEG capture sizes available, using fallback: ${maxW}×${maxH}")
+            return Size(maxW, maxH)
+        }
+        val sizesWithinLimits = choices
+            .filter { it.width <= maxW && it.height <= maxH }
+            .sortedByDescending { it.width * it.height }
+        if (sizesWithinLimits.isNotEmpty()) {
+            val selected = sizesWithinLimits.first()
+            Log.d(TAG, "   ✅ Capture size within limits: ${selected.width}×${selected.height}")
+            return selected
+        }
+        Log.w(TAG, "   ⚠️ All JPEG sizes exceed limit; using ${maxW}×${maxH} (e.g. 4K webcam on low-RAM)")
+        Bugsnag.leaveBreadcrumb("Capture capped to ${maxW}x${maxH} for memory")
+        return Size(maxW, maxH)
+    }
+
+    private fun isLowMemoryDevice(): Boolean {
+        return try {
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return false
+            am.memoryClass <= LOW_MEMORY_CLASS_MB
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not get memory class: ${e.message}")
+            false
+        }
     }
 
     /**
