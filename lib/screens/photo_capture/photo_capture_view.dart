@@ -27,7 +27,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     super.initState();
     _captureViewModel = CaptureViewModel();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _resetAndInitializeCameras();
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _resetAndInitializeCameras();
+      });
     });
   }
 
