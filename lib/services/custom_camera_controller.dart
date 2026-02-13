@@ -158,13 +158,13 @@ class CustomCameraController {
     AppLogger.debug('   _textureId: $_textureId');
     
     if (!_isInitialized) {
-      final error = 'Camera not initialized. Call initialize() first.';
+      const error = 'Camera not initialized. Call initialize() first.';
       AppLogger.debug('❌ $error');
       throw StateError(error);
     }
     
     if (!_isPreviewRunning) {
-      final error = 'Preview not running. Call startPreview() first.';
+      const error = 'Preview not running. Call startPreview() first.';
       AppLogger.debug('❌ $error');
       throw StateError(error);
     }

@@ -53,7 +53,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   void _openFullTerms() {
     showCupertinoModalPopup(
       context: context,
-      builder: (context) => _TermsWebViewSheet(
+      builder: (context) => const _TermsWebViewSheet(
         url: AppConfig.termsAndConditionsUrl,
       ),
     );

@@ -471,7 +471,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                   ),
                   CupertinoButton(
                     padding: EdgeInsets.zero,
-                    minSize: 0,
+                    minimumSize: Size.zero,
                     onPressed: () => viewModel.clearError(),
                     child: const Icon(
                       CupertinoIcons.xmark,
@@ -562,7 +562,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               // Select All / Deselect toggle
               CupertinoButton(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                minSize: 0,
+                minimumSize: Size.zero,
                 onPressed: () {
                   if (viewModel.selectedCount == viewModel.generatedImages.length) {
                     // All selected - deselect all except first
@@ -849,8 +849,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
           // Warning message when taking too long
           if (isTakingLong) ...[
             const SizedBox(height: 4),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
               child: Text(
                 'Taking longer than expected',
                 style: TextStyle(
@@ -865,9 +865,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
           // Cancel button
           CupertinoButton(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            minSize: 0,
+            minimumSize: Size.zero,
             onPressed: () => _showCancelOperationDialog(context, viewModel),
-            child: Text(
+            child: const Text(
               'Cancel',
               style: TextStyle(
                 fontSize: 11,

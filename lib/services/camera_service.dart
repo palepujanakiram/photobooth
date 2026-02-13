@@ -1125,7 +1125,7 @@ class CameraService {
       ErrorReportingManager.log('Using custom controller for photo capture');
       
       if (!_customController!.isPreviewRunning) {
-        final error = 'Camera preview not running';
+        const error = 'Camera preview not running';
         AppLogger.debug('❌ $error');
         ErrorReportingManager.log('❌ Preview not running');
         

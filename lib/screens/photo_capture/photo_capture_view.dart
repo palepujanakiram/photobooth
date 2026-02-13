@@ -607,15 +607,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                const Row(
                   children: [
-                    const Icon(
+                    Icon(
                       CupertinoIcons.exclamationmark_triangle_fill,
                       color: CupertinoColors.white,
                       size: 20,
                     ),
-                    const SizedBox(width: 8),
-                    const Text(
+                    SizedBox(width: 8),
+                    Text(
                       'Error',
                       style: TextStyle(
                         color: CupertinoColors.white,
@@ -638,7 +638,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   color: CupertinoColors.white,
                   borderRadius: BorderRadius.circular(8),
-                  minSize: 0,
+                  minimumSize: Size.zero,
                   onPressed: () {
                     viewModel.clearCapturedPhoto(); // This also clears error
                   },
@@ -694,7 +694,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               const Spacer(),
               
               // Empty space to balance Gallery button width
-              SizedBox(width: 60), // Same width as Gallery button
+              const SizedBox(width: 60), // Same width as Gallery button
             ],
           ),
         ),

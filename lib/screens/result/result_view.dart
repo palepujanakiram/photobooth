@@ -145,7 +145,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                   ),
                                   CupertinoButton(
                                     padding: EdgeInsets.zero,
-                                    minSize: 0,
+                                    minimumSize: Size.zero,
                                     onPressed: () => viewModel.clearError(),
                                     child: const Icon(
                                       CupertinoIcons.xmark,
@@ -433,8 +433,8 @@ class _ResultScreenState extends State<ResultScreen> {
 
   Widget _buildPaymentCard(ResultViewModel viewModel, AppColors appColors) {
     final photoCount = viewModel.generatedImages.length;
-    final basePrice = 100;
-    final additionalPrice = 50;
+    const basePrice = 100;
+    const additionalPrice = 50;
     final totalPrice = basePrice + (photoCount > 1 ? (photoCount - 1) * additionalPrice : 0);
     
     return Container(
