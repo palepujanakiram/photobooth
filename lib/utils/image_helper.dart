@@ -10,8 +10,58 @@ import '../services/file_helper.dart';
 const int kCapturedPhotoMaxDimension = 1920;
 const int kCapturedPhotoJpegQuality = 85;
 
+/// Metadata returned for a photo (dimensions, format label, and file size in bytes).
+typedef ImageMetadata = ({int width, int height, String format, int fileSizeBytes});
+
 /// Helper class for image processing operations
 class ImageHelper {
+  /// Returns width, height, format label, and file size for the given image file.
+  /// Format is derived from file extension (e.g. JPEG, PNG).
+  static Future<ImageMetadata?> getImageMetadata(XFile imageFile) async {
+    try {
+      final bytes = await imageFile.readAsBytes();
+      if (bytes.isEmpty) return null;
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return null;
+      final ext = imageFile.path.toLowerCase().split('.').last;
+      final format = _formatLabelFromExtension(ext);
+      return (
+        width: decoded.width,
+        height: decoded.height,
+        format: format,
+        fileSizeBytes: bytes.length,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Formats [bytes] as "X KB" or "X.X MB".
+  static String formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).round()} KB';
+    final mb = bytes / (1024 * 1024);
+    return '${mb.toStringAsFixed(mb >= 10 ? 0 : 1)} MB';
+  }
+
+  static String _formatLabelFromExtension(String ext) {
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'JPEG';
+      case 'png':
+        return 'PNG';
+      case 'gif':
+        return 'GIF';
+      case 'webp':
+        return 'WebP';
+      case 'heic':
+        return 'HEIC';
+      default:
+        return ext.toUpperCase();
+    }
+  }
+
   /// Normalizes a captured photo to standard format and size, saves to app storage, and returns the new file.
   /// Used only when the standard Flutter camera plugin is used (custom plugin normalizes at native level).
   /// Standard: JPEG, max [kCapturedPhotoMaxDimension] px, [kCapturedPhotoJpegQuality]% quality.

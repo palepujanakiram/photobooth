@@ -20,6 +20,9 @@ class AppConstants {
   static const double kTabletBreakpoint = 600.0;
   static const double kTouchTargetSize = 48.0;
   static const String kContinueButtonText = 'Continue';
+
+  /// When true, shows an overlay above Cancel/Continue with photo metadata (size, format).
+  static const bool kShowCapturedPhotoMetadataOverlay = true;
   
   // Camera capture countdown (in seconds)
   static const int kCaptureCountdownSeconds = 3;

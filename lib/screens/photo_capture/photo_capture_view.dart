@@ -7,6 +7,7 @@ import 'photo_capture_viewmodel.dart';
 import '../../services/camera_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/device_classifier.dart';
+import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
 import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/app_colors.dart';
@@ -504,94 +505,163 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 
+  /// Overlay above Cancel/Continue showing photo size (width × height) and format.
+  Widget _buildPhotoMetadataOverlay(
+    BuildContext context,
+    XFile imageFile,
+    AppColors appColors,
+  ) {
+    return FutureBuilder<ImageMetadata?>(
+      future: ImageHelper.getImageMetadata(imageFile),
+      builder: (context, snapshot) {
+        final meta = snapshot.data;
+        if (meta == null) {
+          return const SizedBox.shrink();
+        }
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: CupertinoColors.systemGrey6.withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: CupertinoColors.systemGrey4,
+              width: 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                '${meta.width} × ${meta.height}',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: appColors.textColor,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                meta.format,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: appColors.textColor.withValues(alpha: 0.8),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                ImageHelper.formatFileSize(meta.fileSizeBytes),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: appColors.textColor.withValues(alpha: 0.8),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildCaptureControls(
       BuildContext context, CaptureViewModel viewModel) {
     final appColors = AppColors.of(context);
 
     if (viewModel.capturedPhoto != null) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            // Cancel/Retake button
-            SizedBox(
-              width: 120,
-              height: 50,
-              child: CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: () {
-                  // Clear cached image bytes
-                  setState(() {
-                    _cachedImageBytes = null;
-                    _cachedPhotoId = null;
-                  });
-                  viewModel.clearCapturedPhoto();
-                },
-                color: CupertinoColors.systemGrey,
-                borderRadius: BorderRadius.circular(12),
-                child: Text(
-                  'Cancel',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: appColors.buttonTextColor,
+      final photo = viewModel.capturedPhoto!;
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (AppConstants.kShowCapturedPhotoMetadataOverlay)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12.0),
+              child: _buildPhotoMetadataOverlay(context, photo.imageFile, appColors),
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                // Cancel/Retake button
+                SizedBox(
+                  width: 120,
+                  height: 50,
+                  child: CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: () {
+                      // Clear cached image bytes
+                      setState(() {
+                        _cachedImageBytes = null;
+                        _cachedPhotoId = null;
+                      });
+                      viewModel.clearCapturedPhoto();
+                    },
+                    color: CupertinoColors.systemGrey,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Text(
+                      'Cancel',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: appColors.buttonTextColor,
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                // Continue button
+                SizedBox(
+                  width: 120,
+                  height: 50,
+                  child: CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: (viewModel.isCapturing || viewModel.isUploading)
+                        ? null
+                        : () async {
+                            // Capture context before async operation
+                            final currentContext = context;
+
+                            if (!mounted || !currentContext.mounted) return;
+
+                            // Upload photo to session and trigger preprocessing
+                            final success = await viewModel.uploadPhotoToSession();
+
+                            if (!mounted || !currentContext.mounted) return;
+
+                            if (success) {
+                              // Navigate to Theme Selection screen
+                              Navigator.pushNamed(
+                                currentContext,
+                                AppConstants.kRouteHome,
+                                arguments: {
+                                  'photo': viewModel.capturedPhoto,
+                                },
+                              );
+                            } else {
+                              // Show error message (error is already set in viewModel)
+                              // The error will be displayed in the error UI
+                            }
+                          },
+                    color: appColors.primaryColor,
+                    disabledColor: CupertinoColors.systemGrey3,
+                    borderRadius: BorderRadius.circular(12),
+                    child: viewModel.isUploading
+                        ? CupertinoActivityIndicator(
+                            color: appColors.buttonTextColor,
+                          )
+                        : Text(
+                            'Continue',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: appColors.buttonTextColor,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
             ),
-            // Continue button
-            SizedBox(
-              width: 120,
-              height: 50,
-              child: CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: (viewModel.isCapturing || viewModel.isUploading)
-                    ? null
-                    : () async {
-                        // Capture context before async operation
-                        final currentContext = context;
-
-                        if (!mounted || !currentContext.mounted) return;
-
-                        // Upload photo to session and trigger preprocessing
-                        final success = await viewModel.uploadPhotoToSession();
-
-                        if (!mounted || !currentContext.mounted) return;
-
-                        if (success) {
-                          // Navigate to Theme Selection screen
-                          Navigator.pushNamed(
-                            currentContext,
-                            AppConstants.kRouteHome,
-                            arguments: {
-                              'photo': viewModel.capturedPhoto,
-                            },
-                          );
-                        } else {
-                          // Show error message (error is already set in viewModel)
-                          // The error will be displayed in the error UI
-                        }
-                      },
-                color: appColors.primaryColor,
-                disabledColor: CupertinoColors.systemGrey3,
-                borderRadius: BorderRadius.circular(12),
-                child: viewModel.isUploading
-                    ? CupertinoActivityIndicator(
-                        color: appColors.buttonTextColor,
-                      )
-                    : Text(
-                        'Continue',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: appColors.buttonTextColor,
-                        ),
-                      ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 
