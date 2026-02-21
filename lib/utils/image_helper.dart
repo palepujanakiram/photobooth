@@ -1,27 +1,83 @@
 import 'dart:typed_data';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:camera/camera.dart';
 import '../services/file_helper.dart';
 
+/// Standard format/size for all captured photos (any camera, any platform).
+/// Ensures one common format and dimensions regardless of Flutter vs custom plugin.
+const int kCapturedPhotoMaxDimension = 1920;
+const int kCapturedPhotoJpegQuality = 85;
+
 /// Helper class for image processing operations
 class ImageHelper {
-  /// Resizes and compresses an image to meet API requirements
-  /// 
-  /// Requirements:
-  /// - Size: 512x512 to 1024x1024 pixels (maintains aspect ratio)
-  /// - Max size: ~2MB after base64 encoding
+  /// Normalizes a captured photo to standard format and size, saves to app storage, and returns the new file.
+  /// Used only when the standard Flutter camera plugin is used (custom plugin normalizes at native level).
+  /// Standard: JPEG, max [kCapturedPhotoMaxDimension] px, [kCapturedPhotoJpegQuality]% quality.
+  /// Heavy work (decode/resize/encode) runs in a background isolate to keep UI responsive.
+  static Future<XFile> normalizeAndSaveCapturedPhoto(XFile sourceFile) async {
+    final bytes = await sourceFile.readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception('Captured image is empty');
+    }
+    final normalizedBytes = await compute(
+      _normalizeToStandardJpegBytes,
+      bytes,
+    );
+    final tempDir = await FileHelper.getTempDirectoryPath();
+    const photosSubdir = 'photos';
+    final photosDir = '$tempDir/$photosSubdir';
+    await FileHelper.ensureDirectory(photosDir);
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final savePath = '$photosDir/photo_$timestamp.jpg';
+    final file = FileHelper.createFile(savePath);
+    await (file as dynamic).writeAsBytes(normalizedBytes);
+    return XFile((file as dynamic).path);
+  }
+
+  /// Top-level/static for compute(): decode, resize to standard max, encode JPEG. No file I/O.
+  static Uint8List _normalizeToStandardJpegBytes(Uint8List bytes) {
+    final originalImage = img.decodeImage(bytes);
+    if (originalImage == null) {
+      throw Exception('Failed to decode captured image');
+    }
+    int targetWidth = originalImage.width;
+    int targetHeight = originalImage.height;
+    if (targetWidth > kCapturedPhotoMaxDimension || targetHeight > kCapturedPhotoMaxDimension) {
+      final scale = (targetWidth > targetHeight)
+          ? kCapturedPhotoMaxDimension / targetWidth
+          : kCapturedPhotoMaxDimension / targetHeight;
+      targetWidth = (targetWidth * scale).round();
+      targetHeight = (targetHeight * scale).round();
+    }
+    final resized = img.copyResize(
+      originalImage,
+      width: targetWidth,
+      height: targetHeight,
+      interpolation: img.Interpolation.linear,
+    );
+    return Uint8List.fromList(
+      img.encodeJpg(resized, quality: kCapturedPhotoJpegQuality),
+    );
+  }
+
+  /// Resizes and compresses an image for upload (same max size as native save for display).
+  ///
+  /// Uses 1920px max to match native scale-at-save: one size for both display and upload.
+  /// - Size: 512x512 to 1920x1920 pixels (maintains aspect ratio)
+  /// - Max size: ~4MB after encoding (allows 1920px at good quality)
   /// - Format: JPEG
-  /// 
+  ///
   /// Returns base64 encoded data URL: data:image/jpeg;base64,...
   static Future<String> resizeAndEncodeImage(
     XFile imageFile, {
-    int maxWidth = 1024,
-    int maxHeight = 1024,
+    int maxWidth = 1920,
+    int maxHeight = 1920,
     int minWidth = 512,
     int minHeight = 512,
     int quality = 85, // JPEG quality (0-100)
-    int maxSizeBytes = 2 * 1024 * 1024, // 2MB
+    int maxSizeBytes = 4 * 1024 * 1024, // 4MB (for 1920px at good quality)
   }) async {
     try {
       // Read image bytes

@@ -2,6 +2,8 @@ package com.example.photobooth
 
 import android.app.ActivityManager
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
@@ -49,6 +51,10 @@ class AndroidCameraController(
         private const val LOW_MEMORY_CAPTURE_HEIGHT = 720
         private const val LOW_MEMORY_CLASS_MB = 128 // Use smaller capture on devices with ≤128MB heap (e.g. many 2GB RAM / Android TV)
         private const val SAVE_CHUNK_SIZE = 64 * 1024 // 64KB - avoid allocating full image in memory
+        // App standard capture format (same for all cameras): JPEG, max 1920px, 85% quality.
+        // Normalization at capture so saved file is identical regardless of 4K vs webcam.
+        private const val MAX_SAVED_DIMENSION = 1920
+        private const val SAVED_JPEG_QUALITY = 85
     }
 
     private var cameraManager: CameraManager? = null
@@ -655,25 +661,30 @@ class AndroidCameraController(
     }
 
     /**
-     * Saves the captured image to a file.
-     * Uses chunked write (64KB) to avoid allocating a full image-sized ByteArray,
-     * which can be 5-15+ MB for high-res JPEG and cause OOM/hang on 2GB RAM devices.
+     * Saves the captured image to a file, scaling down if needed so the saved JPEG
+     * fits within MAX_SAVED_DIMENSION. This keeps memory and disk usage low on
+     * 4K cameras and 2GB/4GB RAM devices:
+     * - Raw JPEG is written to a temp file in 64KB chunks (no full-image allocation).
+     * - Decode uses BitmapFactory with inSampleSize so we never load a full 4K bitmap.
+     * - Final file is scaled JPEG at ~1024px and 85% quality, ready for upload.
      */
     private fun saveImageToFile(image: Image) {
         val buffer = image.planes[0].buffer
         val totalSize = buffer.remaining()
-        Log.d(TAG, "   Saving image: $totalSize bytes (chunked to avoid ${totalSize / (1024 * 1024)}MB allocation)")
+        Log.d(TAG, "   Saving image: $totalSize bytes (chunked write, then scale-at-save)")
 
         val tempDir = File(context.cacheDir, "photos")
         if (!tempDir.exists()) {
             tempDir.mkdirs()
         }
 
-        val fileName = "photo_${System.currentTimeMillis()}.jpg"
-        val file = File(tempDir, fileName)
+        val timestamp = System.currentTimeMillis()
+        val rawFile = File(tempDir, "photo_${timestamp}_raw.jpg")
+        val finalFile = File(tempDir, "photo_$timestamp.jpg")
 
+        // 1) Write raw JPEG to temp file in chunks (avoids holding full image in memory)
         val chunk = ByteArray(SAVE_CHUNK_SIZE.coerceAtMost(totalSize))
-        FileOutputStream(file).use { output ->
+        FileOutputStream(rawFile).use { output ->
             var remaining = totalSize
             while (remaining > 0) {
                 val toRead = minOf(chunk.size, remaining)
@@ -683,11 +694,60 @@ class AndroidCameraController(
             }
         }
 
-        Log.d(TAG, "✅ Image saved: ${file.absolutePath}")
-        pendingPhotoResult?.success(mapOf(
-            "success" to true,
-            "path" to file.absolutePath
-        ))
+        // 2) Decode with inSampleSize so we never load full 4K bitmap (low-memory)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(rawFile.absolutePath, bounds)
+        val w = bounds.outWidth
+        val h = bounds.outHeight
+        val sampleSize = when {
+            w <= 0 || h <= 0 -> 1
+            else -> minOf(w, h).let { minDim ->
+                var s = 1
+                while (minDim / s > MAX_SAVED_DIMENSION) s *= 2
+                s
+            }
+        }
+        Log.d(TAG, "   Decoding at inSampleSize=$sampleSize (original ${w}x${h})")
+
+        val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        val bitmap = BitmapFactory.decodeFile(rawFile.absolutePath, opts)
+        rawFile.delete()
+
+        if (bitmap == null) {
+            Log.e(TAG, "❌ Failed to decode image for scaling")
+            pendingPhotoResult?.error("SAVE_ERROR", "Failed to decode image", null)
+            pendingPhotoResult = null
+            return
+        }
+
+        try {
+            // 3) Optionally scale down further if inSampleSize still left us above MAX_SAVED_DIMENSION
+            val targetBitmap = if (bitmap.width <= MAX_SAVED_DIMENSION && bitmap.height <= MAX_SAVED_DIMENSION) {
+                bitmap
+            } else {
+                val scale = minOf(MAX_SAVED_DIMENSION.toFloat() / bitmap.width, MAX_SAVED_DIMENSION.toFloat() / bitmap.height)
+                val nw = (bitmap.width * scale).toInt().coerceAtLeast(1)
+                val nh = (bitmap.height * scale).toInt().coerceAtLeast(1)
+                Bitmap.createScaledBitmap(bitmap, nw, nh, true).also { if (it != bitmap) bitmap.recycle() }
+            }
+
+            FileOutputStream(finalFile).use { out ->
+                targetBitmap.compress(Bitmap.CompressFormat.JPEG, SAVED_JPEG_QUALITY, out)
+            }
+            if (targetBitmap !== bitmap) targetBitmap.recycle() else bitmap.recycle()
+
+            Log.d(TAG, "✅ Image saved (scaled): ${finalFile.absolutePath}")
+            pendingPhotoResult?.success(mapOf(
+                "success" to true,
+                "path" to finalFile.absolutePath
+            ))
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error scaling/saving image: ${e.message}", e)
+            bitmap.recycle()
+            rawFile.delete()
+            finalFile.delete()
+            pendingPhotoResult?.error("SAVE_ERROR", "Failed to save image: ${e.message}", null)
+        }
         pendingPhotoResult = null
     }
 

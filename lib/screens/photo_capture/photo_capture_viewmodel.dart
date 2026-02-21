@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show ChangeNotifier, kIsWeb, defaultTargetPlatform, TargetPlatform, compute;
+import 'package:flutter/foundation.dart' show ChangeNotifier, compute;
 import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -8,16 +8,12 @@ import '../../services/camera_service.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../utils/constants.dart';
+import '../../utils/device_classifier.dart';
+import '../../utils/app_device_type.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
-
-/// Helper function to check if running on iOS
-bool get _isIOS {
-  if (kIsWeb) return false;
-  return defaultTargetPlatform == TargetPlatform.iOS;
-}
 
 class CaptureViewModel extends ChangeNotifier {
   final CameraService _cameraService;
@@ -28,6 +24,7 @@ class CaptureViewModel extends ChangeNotifier {
   PhotoModel? _capturedPhoto;
   List<CameraDescription> _availableCameras = [];
   CameraDescription? _currentCamera;
+  AppDeviceType? _deviceType;
   bool _isLoadingCameras = false;
   bool _isInitializing = false;
   bool _isCapturing = false;
@@ -95,6 +92,84 @@ class CaptureViewModel extends ChangeNotifier {
   
   CameraService get cameraService => _cameraService;
 
+  /// Picks the default camera: prefer externally connected, otherwise first available (e.g. built-in).
+  /// External is detected by lensDirection.external or by name (iOS external cameras use UUID as name).
+  CameraDescription _pickDefaultCamera(List<CameraDescription> cameras) {
+    if (cameras.isEmpty) {
+      throw StateError('No cameras available');
+    }
+    // 1) Prefer by lensDirection.external (set by camera service for external/USB cameras)
+    final byDirection = cameras.where(
+      (c) => c.lensDirection == CameraLensDirection.external,
+    ).toList();
+    if (byDirection.isNotEmpty) {
+      return byDirection.first;
+    }
+    // 2) Fallback: on iOS, external cameras use UUID as name (e.g. 00000000-0010-0000-03F0-000007600000)
+    final byName = cameras.where((c) => _looksLikeExternalCameraName(c.name)).toList();
+    if (byName.isNotEmpty) {
+      return byName.first;
+    }
+    return cameras.first;
+  }
+
+  /// True if camera name looks like an external device (e.g. iOS UUID, or contains "webcam"/"usb").
+  bool _looksLikeExternalCameraName(String name) {
+    if (name.length < 10) return false;
+    // iOS external cameras use UUID format
+    if (name.length > 30 && name.contains('-')) return true;
+    final lower = name.toLowerCase();
+    return lower.contains('webcam') || lower.contains('usb') || lower.contains('external');
+  }
+
+  /// Set device type from UI (from [DeviceClassifier.getDeviceType]).
+  /// Used to filter cameras: tablet/TV → external only, phone → built-in only.
+  void setDeviceType(AppDeviceType? type) {
+    _deviceType = type;
+  }
+
+  /// Sync tablet/TV flag from UI (e.g. MediaQuery) so initial load doesn't block on async device detection.
+  bool _isTabletOrTv = false;
+  void setTabletOrTv(bool isTabletOrTv) {
+    _isTabletOrTv = isTabletOrTv;
+  }
+
+  /// Filter cameras by device type: tablet/TV show only external; phone show only built-in.
+  /// When [_deviceType] is null, uses [_isTabletOrTv] so we can filter without waiting for getDeviceType().
+  /// When the filtered list is empty, returns all cameras so the user always has at least one.
+  List<CameraDescription> _filterCamerasByDeviceType(List<CameraDescription> cameras) {
+    if (cameras.isEmpty) return cameras;
+    final bool onlyExternal = _deviceType != null
+        ? DeviceClassifier.showOnlyExternalCameras(_deviceType!)
+        : _isTabletOrTv;
+    final filtered = onlyExternal
+        ? cameras
+            .where((c) =>
+                c.lensDirection == CameraLensDirection.external ||
+                _looksLikeExternalCameraName(c.name))
+            .toList()
+        : cameras
+            .where((c) =>
+                c.lensDirection != CameraLensDirection.external &&
+                !_looksLikeExternalCameraName(c.name))
+            .toList();
+    if (filtered.isEmpty) return cameras;
+    return filtered;
+  }
+
+  /// Sorts cameras so external ones come first (for default selection and list order).
+  List<CameraDescription> _externalCamerasFirst(List<CameraDescription> cameras) {
+    if (cameras.length <= 1) return cameras;
+    final list = List<CameraDescription>.from(cameras);
+    list.sort((a, b) {
+      final aExt = a.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(a.name);
+      final bExt = b.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(b.name);
+      if (aExt == bExt) return 0;
+      return aExt ? -1 : 1;
+    });
+    return list;
+  }
+
   /// Loads available cameras
   Future<void> loadCameras() async {
     _isLoadingCameras = true;
@@ -102,19 +177,35 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _availableCameras = await _cameraService.getAvailableCameras();
-      
-      AppLogger.debug('📋 CaptureViewModel.loadCameras - Found ${_availableCameras.length} cameras:');
-      for (var camera in _availableCameras) {
-        AppLogger.debug('   - ${camera.name} (Direction: ${camera.lensDirection})');
+      final allCameras = await _cameraService.getAvailableCameras();
+      _availableCameras = _filterCamerasByDeviceType(allCameras);
+      _availableCameras = _externalCamerasFirst(_availableCameras);
+
+      // Always print to console for debugging
+      print('📷 [Cameras] Device type: $_deviceType');
+      print('📷 [Cameras] Detected ${allCameras.length} total, showing ${_availableCameras.length} after filter:');
+      for (var i = 0; i < _availableCameras.length; i++) {
+        final c = _availableCameras[i];
+        final ext = c.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(c.name);
+        print('   ${i + 1}. name="${c.name}" direction=${c.lensDirection} ${ext ? "[external]" : "[built-in]"}');
       }
-      
-      // If no camera is currently selected and cameras are available, select the first one
+
+      AppLogger.debug(
+          '📋 CaptureViewModel.loadCameras - Device: $_deviceType, showing ${_availableCameras.length} camera(s):');
+      for (var i = 0; i < _availableCameras.length; i++) {
+        final c = _availableCameras[i];
+        final ext = c.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(c.name);
+        AppLogger.debug('   ${i + 1}. ${c.name} (${c.lensDirection}) ${ext ? "[external]" : "[built-in]"}');
+      }
+
+      // If no camera is currently selected and cameras are available, prefer external then first
       if (_currentCamera == null && _availableCameras.isNotEmpty) {
-        _currentCamera = _availableCameras.first;
-        AppLogger.debug('📷 Auto-selected first camera: ${_currentCamera!.name}');
+        _currentCamera = _pickDefaultCamera(_availableCameras);
+        final isExt = _currentCamera!.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(_currentCamera!.name);
+        print('📷 [Cameras] Auto-selected: ${_currentCamera!.name} (${_currentCamera!.lensDirection}) ${isExt ? "[external]" : "[built-in]"}');
+        AppLogger.debug('📷 Auto-selected camera: ${_currentCamera!.name} (${_currentCamera!.lensDirection}) ${isExt ? "[external]" : "[built-in]"}');
       }
-      
+
       notifyListeners();
     } catch (e, stackTrace) {
       _errorMessage = 'Failed to load cameras: $e';
@@ -205,10 +296,11 @@ class CaptureViewModel extends ChangeNotifier {
     // Reload cameras
     await loadCameras();
     
-    // Select and initialize the first camera
+    // Select and initialize default camera (prefer external, else first)
     if (_availableCameras.isNotEmpty) {
-      _currentCamera = _availableCameras.first;
-      AppLogger.debug('📷 Selected first camera: ${_currentCamera!.name}');
+      _currentCamera = _pickDefaultCamera(_availableCameras);
+      final isExt = _currentCamera!.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(_currentCamera!.name);
+      AppLogger.debug('📷 Selected camera: ${_currentCamera!.name} (${_currentCamera!.lensDirection}) ${isExt ? "[external]" : "[built-in]"}');
       await initializeCamera(_currentCamera!);
     } else {
       AppLogger.debug('⚠️ No cameras available');
@@ -225,55 +317,20 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Switches to a different camera
   Future<void> switchCamera(CameraDescription camera) async {
-    // CRITICAL: Prevent camera switch while capture is in progress
     if (_isCapturing) {
       AppLogger.debug('⚠️ Cannot switch cameras - capture in progress');
       ErrorReportingManager.log('⚠️ Camera switch blocked - capture in progress');
       return;
     }
-    
-    // Don't switch if it's the same camera
     if (_currentCamera?.name == camera.name) {
       AppLogger.debug('⚠️ Already using camera: ${camera.name}');
       return;
     }
 
-    AppLogger.debug('🔄 Switching camera:');
-    AppLogger.debug('   From: ${_currentCamera?.name ?? "none"} (${_currentCamera?.lensDirection ?? "unknown"})');
-    AppLogger.debug('   To: ${camera.name} (${camera.lensDirection})');
-    AppLogger.debug('   Camera sensor orientation: ${camera.sensorOrientation}');
-    
-    // Extract camera ID for logging (Android)
-    if (!_isIOS) {
-      final nameMatch = RegExp(r'Camera\s*(\d+)').firstMatch(camera.name);
-      final cameraId = nameMatch != null ? nameMatch.group(1)! : camera.name;
-      AppLogger.debug('   📋 Extracted camera ID: $cameraId');
-    }
-    
-    // CRITICAL: Reload cameras to get fresh CameraDescription objects from the system
-    // This ensures we're using the exact objects that iOS recognizes
-    AppLogger.debug('   Reloading camera list to get fresh CameraDescription objects...');
-    await loadCameras();
-    
-    // Find the exact match in the freshly loaded list
-    final matchingCamera = _availableCameras.firstWhere(
-      (c) => c.name == camera.name,
-      orElse: () {
-        AppLogger.debug('⚠️ WARNING: Camera not found in available list, using provided camera');
-        return camera;
-      },
-    );
-    
-    if (matchingCamera.name != camera.name) {
-      AppLogger.debug('❌ ERROR: Camera mismatch in switch!');
-    } else {
-      AppLogger.debug('✅ Found matching camera in available list');
-      AppLogger.debug('   Using fresh CameraDescription: ${matchingCamera.name}');
-      AppLogger.debug('   Camera direction: ${matchingCamera.lensDirection}');
-    }
-    
-    _currentCamera = matchingCamera;
-    await initializeCamera(matchingCamera);
+    AppLogger.debug('🔄 Switching camera to: ${camera.name} (${camera.lensDirection})');
+
+    _currentCamera = camera;
+    await initializeCamera(camera);
   }
 
   /// Initializes the camera with the selected camera
@@ -283,20 +340,18 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // CRITICAL: Dispose the old controller completely before starting a new one
-      // This forces iPadOS to release the hardware lock on the previous camera
+      // CRITICAL: Fully release the previous camera before opening the new one
       if (_cameraController != null) {
         AppLogger.debug('🔄 Disposing existing camera controller before switch...');
         try {
           await _cameraController!.dispose();
-          AppLogger.debug('   ✅ Existing controller disposed successfully');
         } catch (e) {
           AppLogger.debug('   ⚠️ Warning: Error disposing existing controller: $e');
         }
         _cameraController = null;
-        // Small delay to ensure disposal is complete
-        await Future.delayed(const Duration(milliseconds: 200));
       }
+      await _cameraService.dispose();
+      await Future.delayed(const Duration(milliseconds: 300));
 
       // Debug: Log which camera is being initialized
       AppLogger.debug('📸 CaptureViewModel.initializeCamera called:');
@@ -576,8 +631,17 @@ class CaptureViewModel extends ChangeNotifier {
 
     try {
       AppLogger.debug('📸 Calling _cameraService.takePicture()...');
-      final imageFile = await _cameraService.takePicture();
+      final rawImageFile = await _cameraService.takePicture();
       AppLogger.debug('✅ Photo captured successfully');
+
+      // Custom plugin already normalizes at capture (native); standard Flutter camera plugin
+      // cannot be modified, so we normalize here only when using the standard plugin.
+      final XFile imageFile = _cameraService.isUsingCustomController
+          ? rawImageFile
+          : await ImageHelper.normalizeAndSaveCapturedPhoto(rawImageFile);
+      if (!_cameraService.isUsingCustomController) {
+        AppLogger.debug('✅ Photo normalized to standard format (standard camera path)');
+      }
 
       // Get camera ID from either standard controller or current camera
       final cameraId = _cameraController?.description.name ?? _currentCamera?.name;
@@ -684,6 +748,11 @@ class CaptureViewModel extends ChangeNotifier {
 
       AppLogger.debug('✅ Image selected from gallery: ${imageFile.path}');
       ErrorReportingManager.log('✅ Photo selected from gallery');
+
+      // Normalize to same standard format/size as camera capture (JPEG, max 1920px)
+      AppLogger.debug('📐 Normalizing gallery photo to standard format...');
+      final normalizedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(imageFile);
+      AppLogger.debug('✅ Gallery photo normalized and saved');
       
       // Get camera ID (use current camera if available, otherwise use 'gallery')
       final cameraId = _cameraController?.description.name ?? 
@@ -693,7 +762,7 @@ class CaptureViewModel extends ChangeNotifier {
       
       _capturedPhoto = PhotoModel(
         id: photoId,
-        imageFile: imageFile,
+        imageFile: normalizedFile,
         capturedAt: DateTime.now(),
         cameraId: cameraId,
       );
@@ -774,18 +843,16 @@ class CaptureViewModel extends ChangeNotifier {
       // Get the image file from the captured photo
       final imageFile = _capturedPhoto!.imageFile;
       
-      ErrorReportingManager.log('📦 Starting background image processing');
+      ErrorReportingManager.log('📦 Encoding image for upload (no resize; already normalized at capture)');
       
-      // Optimization: Process image in background isolate to prevent UI freeze
-      // This moves the heavy image processing (decode, resize, encode, base64)
-      // off the main thread, keeping the UI responsive
-      // Processing time: ~400-700ms, but now happens in background
+      // Encode to base64 in background isolate. No resize: image is already
+      // 1920px max / 85% JPEG from capture (custom plugin or Flutter normalization).
       final base64Image = await compute(
-        _processImageInBackground,
+        _encodeImageInBackground,
         imageFile.path,
       );
       
-      ErrorReportingManager.log('✅ Image processing completed in background');
+      ErrorReportingManager.log('✅ Image encoded for upload');
       ErrorReportingManager.log('📤 Uploading processed image to API');
       
       // Step 3: Update session with photo (PATCH /api/sessions/{sessionId})
@@ -831,14 +898,11 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
-  /// Background processing function for image resize and encoding
-  /// Runs in a separate isolate to prevent UI freeze
-  /// 
-  /// This is a static/top-level function because compute() requires it
-  /// Takes image path and returns base64 encoded data URL
-  static Future<String> _processImageInBackground(String imagePath) async {
+  /// Encodes image file to base64 data URL for upload. No resize: dimensions
+  /// and size are already enforced at capture (custom plugin or Flutter normalization).
+  static Future<String> _encodeImageInBackground(String imagePath) async {
     final file = XFile(imagePath);
-    return await ImageHelper.resizeAndEncodeImage(file);
+    return await ImageHelper.encodeImageToBase64(file);
   }
 
   /// Updates session with captured photo and selected theme
@@ -866,9 +930,9 @@ class CaptureViewModel extends ChangeNotifier {
       // Get the image file from the captured photo
       final imageFile = _capturedPhoto!.imageFile;
       
-      // Optimization: Process image in background isolate
+      // Encode to base64 in background (no resize; already normalized at capture)
       final base64Image = await compute(
-        _processImageInBackground,
+        _encodeImageInBackground,
         imageFile.path,
       );
       

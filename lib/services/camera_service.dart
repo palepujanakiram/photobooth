@@ -792,20 +792,30 @@ class CameraService {
       }
 
       // For external cameras, use native controller (iOS or Android)
-      // This bypasses Flutter's camera package limitations
-      if (camera.lensDirection == CameraLensDirection.external) {
-        AppLogger.debug('   🔌 External camera detected');
+      // On iOS, also treat UUID-shaped names as external (e.g. HP 4K: 00000000-0010-0000-03F0-000007600000)
+      final isExternalByDirection =
+          camera.lensDirection == CameraLensDirection.external;
+      final isExternalByNameIOS = _isIOS &&
+          camera.name.length > 30 &&
+          camera.name.contains('-') &&
+          !camera.name.contains('built-in');
+      final useNativeController =
+          isExternalByDirection || isExternalByNameIOS;
+
+      if (useNativeController) {
+        AppLogger.debug('   🔌 External camera detected (direction: $isExternalByDirection, name/UUID: $isExternalByNameIOS)');
         AppLogger.debug(
             '   🔍 Using native camera controller for direct Camera2/AVFoundation access...');
 
         // Extract device ID from camera name and try native controller
         if (_isIOS) {
-          // iOS: Extract from format like "device:0" or UUID
+          // iOS: UUID is the device id; built-in format is "....built-in_video:N"
           String? deviceId;
-          if (camera.name.contains(':')) {
+          if (camera.name.length > 30 && camera.name.contains('-')) {
+            deviceId = camera.name;
+          } else if (camera.name.contains(':')) {
             deviceId = camera.name.split(':').last.split(',').first;
           } else {
-            // Might be UUID format for external cameras
             deviceId = camera.name;
           }
 

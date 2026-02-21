@@ -1,6 +1,7 @@
 import Flutter
 import AVFoundation
 import UIKit
+import ImageIO
 
 // MARK: - Camera Device Helper
 // Consolidated camera helper that handles both device discovery and camera control
@@ -207,18 +208,54 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
     pendingPhotoResult = nil
   }
   
+  /// App standard capture format (same for all cameras): JPEG, max 1920px, 85% quality.
+  /// Normalization at capture so saved file is identical regardless of 4K vs webcam.
+  private static let maxSavedDimension: CGFloat = 1920
+  private static let savedJpegQuality: CGFloat = 0.85
+
+  /// Saves the captured photo to a file, scaling down if needed so the saved JPEG fits within maxSavedDimension.
+  /// Uses Image I/O thumbnail decoding so we never load a full 4K image into memory (safe for 2GB/4GB RAM devices).
   private func savePhotoToFile(imageData: Data) {
     let tempDir = FileManager.default.temporaryDirectory
     let fileName = "photo_\(UUID().uuidString).jpg"
     let fileURL = tempDir.appendingPathComponent(fileName)
-    
+
+    guard let source = CGImageSourceCreateWithData(imageData as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else {
+      // Fallback: write raw data if we can't create source (e.g. unsupported format)
+      do {
+        try imageData.write(to: fileURL)
+        pendingPhotoResult?(["success": true, "path": fileURL.path])
+      } catch {
+        pendingPhotoResult?(FlutterError(code: "PHOTO_ERROR", message: error.localizedDescription, details: nil))
+      }
+      pendingPhotoResult = nil
+      return
+    }
+
+    let options: [CFString: Any] = [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceCreateThumbnailWithTransform: true,
+      kCGImageSourceThumbnailMaxPixelSize: Self.maxSavedDimension,
+    ]
+    guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+      pendingPhotoResult?(FlutterError(code: "PHOTO_ERROR", message: "Failed to create thumbnail for scaling", details: nil))
+      pendingPhotoResult = nil
+      return
+    }
+
+    let scaledImage = UIImage(cgImage: thumbnail)
+    guard let jpegData = scaledImage.jpegData(compressionQuality: Self.savedJpegQuality) else {
+      pendingPhotoResult?(FlutterError(code: "PHOTO_ERROR", message: "Failed to encode JPEG", details: nil))
+      pendingPhotoResult = nil
+      return
+    }
+
     do {
-      try imageData.write(to: fileURL)
+      try jpegData.write(to: fileURL)
       pendingPhotoResult?(["success": true, "path": fileURL.path])
     } catch {
       pendingPhotoResult?(FlutterError(code: "PHOTO_ERROR", message: error.localizedDescription, details: nil))
     }
-    
     pendingPhotoResult = nil
   }
   
@@ -963,12 +1000,19 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
   private func findDeviceForControl(deviceId: String) -> AVCaptureDevice? {
     let discoverySession = createDiscoverySession()
     
-    // Try to find by device ID suffix (for built-in cameras)
+    // Try to find by device ID suffix (for built-in cameras: "0", "1")
     if let device = findBuiltInDevice(deviceId: deviceId, in: discoverySession.devices) {
       return device
     }
     
-    // For external cameras, try to match by index
+    // External camera by UUID (e.g. HP 4K: 00000000-0010-0000-03F0-000007600000)
+    if deviceId.contains("-"), deviceId.count > 30,
+       let device = discoverySession.devices.first(where: { $0.uniqueID == deviceId }) {
+      print("✅ Found external device by UUID: \(deviceId)")
+      return device
+    }
+    
+    // For external cameras by integer index
     return findExternalDeviceForControl(deviceId: deviceId, discoverySession: discoverySession)
   }
   
@@ -981,7 +1025,7 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
     let externalCameras = discoverySession.devices.filter { $0.deviceType == .external }
     
     guard let deviceIdInt = Int(deviceId), deviceIdInt >= builtInCameras.count else {
-      return discoverySession.devices.first
+      return nil
     }
     
     let externalIndex = deviceIdInt - builtInCameras.count
@@ -989,7 +1033,7 @@ class CameraDeviceHelper: NSObject, FlutterPlugin, FlutterTexture, AVCapturePhot
       return externalCameras[externalIndex]
     }
     
-    return discoverySession.devices.first
+    return nil
   }
   
   /// Starts camera preview

@@ -299,31 +299,47 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                           color: Colors.white,
                         ),
                         const SizedBox(height: 16),
-                        Text(
-                          viewModel.errorMessage ?? 'Failed to load themes',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Text(
+                            viewModel.errorMessage ?? 'Failed to load themes',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                          textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 24),
-                        CupertinoButton(
-                          onPressed: () {
-                            if (!mounted) return;
-                            // Capture context before async operation
-                            final currentContext = context;
-                            viewModel.fetchThemes().then((_) {
-                              if (mounted && currentContext.mounted) {
-                                viewModel.preloadImages(currentContext).then((_) {
-                                  if (mounted) {
-                                    _startSlideshow();
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CupertinoButton(
+                              onPressed: () {
+                                if (!mounted) return;
+                                final currentContext = context;
+                                viewModel.fetchThemes().then((_) {
+                                  if (mounted && currentContext.mounted) {
+                                    viewModel.preloadImages(currentContext).then((_) {
+                                      if (mounted) {
+                                        _startSlideshow();
+                                      }
+                                    });
                                   }
                                 });
-                              }
-                            });
-                          },
-                          child: const Text('Retry'),
+                              },
+                              child: const Text('Retry'),
+                            ),
+                            CupertinoButton(
+                              onPressed: () {
+                                if (!mounted) return;
+                                Navigator.of(context).pushReplacementNamed(
+                                  AppConstants.kRouteTerms,
+                                );
+                              },
+                              child: const Text('Continue'),
+                            ),
+                          ],
                         ),
                       ],
                     ),

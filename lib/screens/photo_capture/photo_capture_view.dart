@@ -4,7 +4,9 @@ import 'package:flutter/material.dart' show Colors;
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
 import 'photo_capture_viewmodel.dart';
+import '../../services/camera_service.dart';
 import '../../utils/constants.dart';
+import '../../utils/device_classifier.dart';
 import '../../utils/logger.dart';
 import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/app_colors.dart';
@@ -27,9 +29,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     super.initState();
     _captureViewModel = CaptureViewModel();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) _resetAndInitializeCameras();
-      });
+      if (mounted) _resetAndInitializeCameras();
     });
   }
 
@@ -60,8 +60,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
   /// Common function to reset and initialize cameras
   /// Used both when entering the screen and when tapping the reload button
+  /// Uses sync tablet check so cameras load immediately; does not block on slow getDeviceType().
   Future<void> _resetAndInitializeCameras() async {
+    if (!mounted) return;
+    final shortestSide = MediaQuery.sizeOf(context).shortestSide;
+    _captureViewModel.setTabletOrTv(shortestSide >= AppConstants.kTabletBreakpoint);
+    _captureViewModel.setDeviceType(null);
     await _captureViewModel.resetAndInitializeCameras();
+    // Optionally refine device type in background (e.g. for Android TV); no need to reload cameras
+    if (!mounted) return;
+    try {
+      final deviceType = await DeviceClassifier.getDeviceType(context);
+      if (mounted) _captureViewModel.setDeviceType(deviceType);
+    } catch (_) {}
   }
 
   @override
@@ -71,56 +82,40 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   }
 
   void _showCameraSelectionDialog(BuildContext context, CaptureViewModel viewModel) {
-    final appColors = AppColors.of(context);
-    final uniqueCameras = _getUniqueCameras(viewModel.availableCameras);
-    
-    if (uniqueCameras.isEmpty) {
-      return;
-    }
+    final uniqueCameras = _getUniqueCameras(viewModel.availableCameras, viewModel.cameraService);
+    if (uniqueCameras.isEmpty) return;
 
-    showCupertinoModalPopup(
-      context: context,
-      builder: (dialogContext) => CupertinoActionSheet(
-        title: const Text('Select Camera'),
-        message: const Text('Choose a camera to use'),
-        actions: uniqueCameras.map((camera) {
-          final isActive = viewModel.currentCamera?.name == camera.name;
-          final displayName = viewModel.cameraService.getCameraDisplayName(camera);
-          
-          return CupertinoActionSheetAction(
-            onPressed: () async {
-              Navigator.pop(dialogContext);
-              if (!isActive) {
-                await viewModel.switchCamera(camera);
-              }
-            },
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (isActive)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 8),
-                    child: Icon(
-                      CupertinoIcons.checkmark_circle_fill,
-                      color: CupertinoColors.systemBlue,
-                      size: 20,
-                    ),
-                  ),
-                Text(
-                  displayName,
-                  style: TextStyle(
-                    fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                    color: isActive ? CupertinoColors.systemBlue : appColors.textColor,
-                  ),
-                ),
-              ],
+    Navigator.of(context).push<void>(
+      CupertinoPageRoute<void>(
+        builder: (pickerContext) => CupertinoPageScaffold(
+          navigationBar: CupertinoNavigationBar(
+            middle: const Text('Select Camera'),
+            leading: CupertinoButton(
+              padding: EdgeInsets.zero,
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.pop(pickerContext),
             ),
-          );
-        }).toList(),
-        cancelButton: CupertinoActionSheetAction(
-          isDestructiveAction: true,
-          onPressed: () => Navigator.pop(dialogContext),
-          child: const Text('Cancel'),
+          ),
+          child: SafeArea(
+            child: ListView.builder(
+              itemCount: uniqueCameras.length,
+              itemBuilder: (_, index) {
+                final camera = uniqueCameras[index];
+                final isActive = viewModel.currentCamera?.name == camera.name;
+                final displayName = viewModel.cameraService.getCameraDisplayName(camera);
+                return CupertinoListTile(
+                  title: Text(displayName),
+                  leading: isActive
+                      ? const Icon(CupertinoIcons.checkmark_circle_fill, color: CupertinoColors.activeBlue)
+                      : null,
+                  onTap: () {
+                    Navigator.pop(pickerContext);
+                    if (!isActive) viewModel.switchCamera(camera);
+                  },
+                );
+              },
+            ),
+          ),
         ),
       ),
     );
@@ -174,9 +169,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                     builder: (context) {
                       final viewModel = Provider.of<CaptureViewModel>(context, listen: true);
                       if (viewModel.isInitializing) {
-                        return const Center(
-                          child: CupertinoActivityIndicator(),
-                        );
+                        return const Center(child: CupertinoActivityIndicator());
+                      }
+                      if (viewModel.availableCameras.isEmpty && !viewModel.hasError) {
+                        return const Center(child: CupertinoActivityIndicator());
                       }
 
                       if (viewModel.hasError) {
@@ -759,64 +755,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 
-  /// Filters cameras to remove duplicates
-  /// Keeps only one camera per lens direction for built-in cameras
-  /// Allows multiple external cameras, but deduplicates them properly
-  List<CameraDescription> _getUniqueCameras(List<CameraDescription> cameras) {
-    // Show: 1 front camera, 1 back camera, and all unique external cameras
+  /// Filters cameras to remove duplicates by display name and by logical device.
+  /// Flutter on iOS can return multiple entries for the same logical camera (e.g. two "Front Camera");
+  /// we keep one per display name so the list shows Back Camera, Front Camera, HP 4K once each.
+  List<CameraDescription> _getUniqueCameras(
+    List<CameraDescription> cameras,
+    CameraService cameraService,
+  ) {
     final uniqueCameras = <CameraDescription>[];
-    bool hasFront = false;
-    bool hasBack = false;
-
-    // Normalize camera name to extract unique ID for comparison
-    String normalizeCameraId(CameraDescription camera) {
-      // For Android: "Camera 5" -> "5", "5" -> "5"
-      final nameMatch = RegExp(r'Camera\s*(\d+)').firstMatch(camera.name);
-      if (nameMatch != null) {
-        return nameMatch.group(1)!;
-      }
-      // For iOS: might be UUID or device ID format
-      // If it contains ":", extract the device ID part
-      if (camera.name.contains(':')) {
-        return camera.name.split(':').last.split(',').first.trim();
-      }
-      // Otherwise use the name as-is
-      return camera.name;
-    }
-
-    // Track seen cameras by normalized ID and direction
-    final seenCameraKeys = <String>{};
+    final seenDisplayNames = <String>{};
 
     for (final camera in cameras) {
-      final isExternal = camera.lensDirection == CameraLensDirection.external;
-      final isFront = camera.lensDirection == CameraLensDirection.front;
-      final isBack = camera.lensDirection == CameraLensDirection.back;
-
-      if (isExternal) {
-        // For external cameras, use normalized ID to deduplicate
-        final normalizedId = normalizeCameraId(camera);
-        final cameraKey = 'external:$normalizedId';
-        
-        if (!seenCameraKeys.contains(cameraKey)) {
-          uniqueCameras.add(camera);
-          seenCameraKeys.add(cameraKey);
-          AppLogger.debug('   ✅ Added external camera: ${camera.name} (normalized ID: $normalizedId)');
-        } else {
-          AppLogger.debug('   ⏭️ Skipped duplicate external camera: ${camera.name} (normalized ID: $normalizedId already seen)');
-        }
-      } else if (isFront && !hasFront) {
-        // Add first front camera
-        uniqueCameras.add(camera);
-        hasFront = true;
-        seenCameraKeys.add('front');
-        AppLogger.debug('   ✅ Added front camera: ${camera.name}');
-      } else if (isBack && !hasBack) {
-        // Add first back camera
-        uniqueCameras.add(camera);
-        hasBack = true;
-        seenCameraKeys.add('back');
-        AppLogger.debug('   ✅ Added back camera: ${camera.name}');
+      final displayName = cameraService.getCameraDisplayName(camera);
+      if (seenDisplayNames.contains(displayName)) {
+        continue;
       }
+      seenDisplayNames.add(displayName);
+      uniqueCameras.add(camera);
     }
 
     return uniqueCameras;

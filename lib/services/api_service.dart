@@ -76,7 +76,7 @@ class ApiService {
       },
     ));
 
-    _apiClient = ApiClient(dio);
+    _apiClient = ApiClient(dio, baseUrl: AppConstants.kBaseUrl);
   }
 
   /// Helper method to check and handle CORS/network errors on web
@@ -494,7 +494,7 @@ class ApiService {
       dioWithTimeout.interceptors.add(ApiLoggingInterceptor());
     }
 
-    final apiClientWithTimeout = ApiClient(dioWithTimeout);
+    final apiClientWithTimeout = ApiClient(dioWithTimeout, baseUrl: AppConstants.kBaseUrl);
 
     // Retry logic: try once, retry once on timeout
     int retryCount = 0;

@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:bugsnag_flutter/bugsnag_flutter.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
@@ -18,26 +19,31 @@ import 'services/file_helper.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Bugsnag with all breadcrumb types enabled
-  await bugsnag.start(
-    apiKey: '73ebb791c48ae8c4821b511fb286ca23',
-    // Enable all breadcrumb types for comprehensive debugging
-    enabledBreadcrumbTypes: const {
-      BugsnagEnabledBreadcrumbType.error,       // Captured errors
-      BugsnagEnabledBreadcrumbType.navigation,  // Navigation changes
-      BugsnagEnabledBreadcrumbType.request,     // Network requests (HTTP)
-      BugsnagEnabledBreadcrumbType.state,       // State changes (connectivity, orientation)
-      BugsnagEnabledBreadcrumbType.user,        // User interactions
-    },
-    maxBreadcrumbs: 50,  // Store up to 50 breadcrumbs (default)
-  );
+  // Initialize Bugsnag only when native plugin is available (iOS/Android; not on web/tests)
+  if (!kIsWeb) {
+    try {
+      await bugsnag.start(
+        apiKey: '73ebb791c48ae8c4821b511fb286ca23',
+        enabledBreadcrumbTypes: const {
+          BugsnagEnabledBreadcrumbType.error,
+          BugsnagEnabledBreadcrumbType.navigation,
+          BugsnagEnabledBreadcrumbType.request,
+          BugsnagEnabledBreadcrumbType.state,
+          BugsnagEnabledBreadcrumbType.user,
+        },
+        maxBreadcrumbs: 50,
+      );
+    } on MissingPluginException catch (_) {
+      // Native Bugsnag plugin not available (e.g. unit tests, or platform not linked)
+    }
+  }
 
   // Fire-and-forget cleanup of temp images
   FileHelper.cleanupTempImages();
     
-  // Initialize ErrorReportingManager (uses Bugsnag)
+  // Initialize ErrorReportingManager (Bugsnag only on platforms where native plugin exists)
   await ErrorReportingManager.initialize(
-    enableBugsnag: true,
+    enableBugsnag: !kIsWeb,
   );
 
   // Set up Flutter error handler with filtering

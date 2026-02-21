@@ -10,6 +10,11 @@ class FileHelper {
     return tempDir.path;
   }
 
+  /// Ensures a directory exists (creates it and parents if needed).
+  static Future<void> ensureDirectory(String dirPath) async {
+    await Directory(dirPath).create(recursive: true);
+  }
+
   /// Creates a File instance
   static File createFile(String path) {
     return File(path);
