@@ -92,33 +92,35 @@ class CaptureViewModel extends ChangeNotifier {
   
   CameraService get cameraService => _cameraService;
 
-  /// Picks the default camera: prefer externally connected, otherwise first available (e.g. built-in).
-  /// External is detected by lensDirection.external or by name (iOS external cameras use UUID as name).
+  /// Picks the default camera: prefer real external (UUID/by name), then by direction, then first.
+  /// On iPad the plugin can misreport built-in as external, so we prefer by name (UUID) first.
   CameraDescription _pickDefaultCamera(List<CameraDescription> cameras) {
     if (cameras.isEmpty) {
       throw StateError('No cameras available');
     }
-    // 1) Prefer by lensDirection.external (set by camera service for external/USB cameras)
+    // 1) Prefer by name (UUID = real external on iOS; avoids mislabeled built-in)
+    final byName = cameras.where((c) => _looksLikeExternalCameraName(c.name)).toList();
+    if (byName.isNotEmpty) {
+      return byName.first;
+    }
+    // 2) Then by lensDirection.external
     final byDirection = cameras.where(
       (c) => c.lensDirection == CameraLensDirection.external,
     ).toList();
     if (byDirection.isNotEmpty) {
       return byDirection.first;
     }
-    // 2) Fallback: on iOS, external cameras use UUID as name (e.g. 00000000-0010-0000-03F0-000007600000)
-    final byName = cameras.where((c) => _looksLikeExternalCameraName(c.name)).toList();
-    if (byName.isNotEmpty) {
-      return byName.first;
-    }
     return cameras.first;
   }
 
-  /// True if camera name looks like an external device (e.g. iOS UUID, or contains "webcam"/"usb").
+  /// True if camera name looks like a real external device (e.g. iOS UUID).
+  /// Excludes built-in cameras whose names contain "built-in" (plugin can misreport direction).
   bool _looksLikeExternalCameraName(String name) {
-    if (name.length < 10) return false;
-    // iOS external cameras use UUID format
-    if (name.length > 30 && name.contains('-')) return true;
     final lower = name.toLowerCase();
+    if (lower.contains('built-in')) return false;
+    if (name.length < 10) return false;
+    // iOS external cameras use UUID format (e.g. 00000000-0010-0000-03F0-000007600000)
+    if (name.length > 30 && name.contains('-')) return true;
     return lower.contains('webcam') || lower.contains('usb') || lower.contains('external');
   }
 

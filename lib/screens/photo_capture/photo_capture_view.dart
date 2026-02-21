@@ -165,6 +165,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                   ],
                 ),
                 child: SafeArea(
+                  top: true,
+                  bottom: false,
                   child: Builder(
                     builder: (context) {
                       final viewModel = Provider.of<CaptureViewModel>(context, listen: true);
@@ -230,21 +232,24 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                       // Build preview widget
                       Widget previewWidget;
                       if (isUsingCustomController && textureId != null) {
-                        // Use Texture widget for custom controller
-                        final textureIdValue = textureId; // Local variable to avoid null check warning
-                        AppLogger.debug('📺 Building Texture preview widget with texture ID: $textureIdValue');
-                        // Texture widget must explicitly fill its parent
-                        // Use LayoutBuilder to get available size and ensure proper rendering
+                        // External camera stream is 16:9. The Texture must sit in a 16:9 box so it is never stretched.
+                        // FittedBox.cover then scales that box to cover the screen (same as built-in CameraPreview).
+                        final textureIdValue = textureId;
+                        const streamAspectRatio = 16 / 9;
                         previewWidget = LayoutBuilder(
                           builder: (context, constraints) {
-                            AppLogger.debug('📺 Texture widget constraints: ${constraints.maxWidth}x${constraints.maxHeight}');
-                            return SizedBox(
-                              width: constraints.maxWidth,
-                              height: constraints.maxHeight,
-                              child: Texture(
-                                textureId: textureIdValue,
-                                key: ValueKey('texture_$textureIdValue'),
-                                filterQuality: FilterQuality.medium,
+                            return Center(
+                              child: FittedBox(
+                                fit: BoxFit.cover,
+                                child: SizedBox(
+                                  width: constraints.maxWidth,
+                                  height: constraints.maxWidth / streamAspectRatio,
+                                  child: Texture(
+                                    textureId: textureIdValue,
+                                    key: ValueKey('texture_$textureIdValue'),
+                                    filterQuality: FilterQuality.medium,
+                                  ),
+                                ),
                               ),
                             );
                           },
