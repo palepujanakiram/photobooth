@@ -173,6 +173,48 @@ class CameraService {
     }
   }
 
+  /// On Android, when the selected camera has a usb_ ID (no Camera2 ID), try to find
+  /// a Camera2 ID so we can open preview (e.g. on Android TV where the same camera
+  /// can appear from both Camera2 and USB discovery). Prefer same display name; else
+  /// use the only external camera with a Camera2 ID.
+  String? _resolveUsbToCamera2Id(CameraDescription camera) {
+    if (_cameras == null || _cameras!.isEmpty) return null;
+    if (!camera.name.startsWith('usb_')) return null;
+    final targetDisplayName = getCameraDisplayName(camera);
+
+    // 1) Prefer: same display name and non-usb_ name (exact match for same device)
+    if (targetDisplayName.isNotEmpty) {
+      for (final c in _cameras!) {
+        if (c.name == camera.name || c.name.startsWith('usb_')) continue;
+        if (getCameraDisplayName(c) != targetDisplayName) continue;
+        final nameMatch = RegExp(r'Camera\s*(\d+)').firstMatch(c.name);
+        if (nameMatch != null) return nameMatch.group(1);
+        if (int.tryParse(c.name) != null) return c.name;
+      }
+    }
+
+    // 2) Fallback: single external camera with a Camera2 ID (typical Android TV with one USB cam)
+    final externalWithCamera2Id = _cameras!
+        .where((c) =>
+            c.lensDirection == CameraLensDirection.external &&
+            !c.name.startsWith('usb_') &&
+            c.name != camera.name)
+        .toList();
+    if (externalWithCamera2Id.length == 1) {
+      final c = externalWithCamera2Id.first;
+      final nameMatch = RegExp(r'Camera\s*(\d+)').firstMatch(c.name);
+      if (nameMatch != null) return nameMatch.group(1);
+      if (int.tryParse(c.name) != null) return c.name;
+    } else if (externalWithCamera2Id.isNotEmpty) {
+      // Multiple externals: use first (e.g. user picked one usb_ and we try that device)
+      final c = externalWithCamera2Id.first;
+      final nameMatch = RegExp(r'Camera\s*(\d+)').firstMatch(c.name);
+      if (nameMatch != null) return nameMatch.group(1);
+      if (int.tryParse(c.name) != null) return c.name;
+    }
+    return null;
+  }
+
   /// Gets the localized name for a camera, or returns a fallback name
   String getCameraDisplayName(CameraDescription camera) {
     // Try to get from stored localized names
@@ -869,28 +911,36 @@ class CameraService {
           AppLogger.debug(
               '   📝 Localized name: ${getCameraDisplayName(camera)}');
 
-          // USB-only ID (usb_vendorId_productId) means no Camera2 ID was found.
-          // Camera2 API can only open cameras in cameraIdList. Android TV often
-          // exposes USB cameras there; many phones do not. Give a clear error.
+          // USB-only ID (usb_vendorId_productId) can appear when the same camera is
+          // also in Camera2 cameraIdList (e.g. on Android TV). Try to resolve to a
+          // Camera2 ID so we can open preview.
+          String deviceIdToUse = deviceId;
           if (deviceId.startsWith('usb_')) {
-            AppLogger.debug(
-                '   ⚠️ USB-only camera (no Camera2 ID). Preview not supported on this device.');
-            ErrorReportingManager.log(
-                'USB camera has no Camera2 ID - preview not supported on this device');
-            throw app_exceptions.CameraException(
-              'This USB camera is not supported for preview on this device. '
-              'Many Android phones do not expose USB webcams to the camera API. '
-              'The same webcam typically works on Android TV (e.g. set-top boxes).',
-            );
+            final resolved = _resolveUsbToCamera2Id(camera);
+            if (resolved != null && resolved.isNotEmpty) {
+              deviceIdToUse = resolved;
+              AppLogger.debug(
+                  '   ✅ Resolved usb_ ID to Camera2 ID: $deviceIdToUse (same display name)');
+            } else {
+              AppLogger.debug(
+                  '   ⚠️ USB-only camera (no Camera2 ID). Preview not supported on this device.');
+              ErrorReportingManager.log(
+                  'USB camera has no Camera2 ID - preview not supported on this device');
+              throw app_exceptions.CameraException(
+                'This USB camera is not supported for preview on this device. '
+                'Many Android phones do not expose USB webcams to the camera API. '
+                'The same webcam typically works on Android TV (e.g. set-top boxes).',
+              );
+            }
           }
 
           try {
             AppLogger.debug(
                 '   🚀 Attempting to use native Android camera controller...');
             AppLogger.debug(
-                '   🎯 Will initialize with device ID: "$deviceId"');
+                '   🎯 Will initialize with device ID: "$deviceIdToUse"');
             _customController = CustomCameraController();
-            await _customController!.initialize(deviceId);
+            await _customController!.initialize(deviceIdToUse);
             _useCustomController = true;
             AppLogger.debug(
                 '   ✅ Native Android camera controller initialized successfully');
