@@ -141,6 +141,17 @@ class MainActivity : FlutterActivity() {
                     result.success(mapOf("success" to true))
                 }
 
+                "resolveUsbToCamera2Id" -> {
+                    val args = call.arguments as? Map<*, *>
+                    val vendorId = (args?.get("vendorId") as? Number)?.toInt()
+                    val productId = (args?.get("productId") as? Number)?.toInt()
+                    if (vendorId == null || productId == null) {
+                        result.success(null)
+                    } else {
+                        cameraDeviceHelper.resolveUsbToCamera2Id(vendorId, productId, result)
+                    }
+                }
+
                 else -> {
                     result.notImplemented()
                 }

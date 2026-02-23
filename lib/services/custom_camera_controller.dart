@@ -18,6 +18,15 @@ bool get _isAndroid {
   return defaultTargetPlatform == TargetPlatform.android;
 }
 
+/// Parses texture ID from platform channel (may be int or double).
+int? _parseTextureId(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is double) return value.toInt();
+  if (value is num) return value.toInt();
+  return null;
+}
+
 /// Custom camera controller that uses platform channel to select cameras by device ID
 /// This bypasses the Flutter camera package's lensDirection limitation
 /// Now uses the consolidated camera_device channel
@@ -57,11 +66,13 @@ class CustomCameraController {
       if (result is Map && result['success'] == true) {
         _isInitialized = true;
         _currentDeviceId = deviceId;
-        _textureId = result['textureId'] as int?;
+        _textureId = _parseTextureId(result['textureId']);
         final localizedName = result['localizedName'] ?? 'Camera';
         AppLogger.debug('✅ CustomCameraController initialized: $localizedName');
         if (_textureId != null) {
           AppLogger.debug('   Texture ID: $_textureId');
+        } else {
+          AppLogger.debug('   ⚠️ Texture ID missing or invalid from platform');
         }
       } else {
         throw Exception('Failed to initialize camera: $result');

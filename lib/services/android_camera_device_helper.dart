@@ -37,5 +37,25 @@ class AndroidCameraDeviceHelper {
       return null;
     }
   }
+
+  /// Resolves a USB camera (by vendor/product ID) to a Camera2 ID at runtime.
+  /// Returns the Camera2 ID string if the device is found and has a Camera2 ID, null otherwise.
+  static Future<String?> resolveUsbToCamera2Id(int vendorId, int productId) async {
+    if (!_isAndroid) return null;
+    try {
+      final result = await _channel.invokeMethod('resolveUsbToCamera2Id', {
+        'vendorId': vendorId,
+        'productId': productId,
+      });
+      if (result is String && result.isNotEmpty) return result;
+      return null;
+    } on PlatformException catch (e) {
+      AppLogger.debug('❌ resolveUsbToCamera2Id error: ${e.message}');
+      return null;
+    } catch (e) {
+      AppLogger.debug('❌ resolveUsbToCamera2Id: $e');
+      return null;
+    }
+  }
 }
 

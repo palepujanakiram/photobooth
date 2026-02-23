@@ -42,7 +42,7 @@ class CaptureViewModel extends ChangeNotifier {
   Timer? _countdownTimer;
 
   /// Camera preview rotation in degrees (0, 90, 180, 270). Persisted in SharedPreferences.
-  int _previewRotationDegrees = 0;
+  int _previewRotationDegrees = AppConstants.kCameraPreviewRotationDefault;
 
   CaptureViewModel({
     CameraService? cameraService,
@@ -79,8 +79,11 @@ class CaptureViewModel extends ChangeNotifier {
       final saved = prefs.getInt(AppConstants.kCameraPreviewRotationKey);
       if (saved != null && [0, 90, 180, 270].contains(saved)) {
         _previewRotationDegrees = saved;
-        notifyListeners();
+      } else {
+        _previewRotationDegrees = AppConstants.kCameraPreviewRotationDefault;
+        await prefs.setInt(AppConstants.kCameraPreviewRotationKey, AppConstants.kCameraPreviewRotationDefault);
       }
+      notifyListeners();
     } catch (_) {}
   }
 

@@ -27,6 +27,9 @@ class AppConstants {
   /// SharedPreferences key for camera preview rotation (0, 90, 180, 270 degrees).
   static const String kCameraPreviewRotationKey = 'camera_preview_rotation_degrees';
 
+  /// Default preview rotation when no value is saved. One of 0, 90, 180, 270.
+  static const int kCameraPreviewRotationDefault = 90;
+
   // Camera capture countdown (in seconds)
   static const int kCaptureCountdownSeconds = 3;
 

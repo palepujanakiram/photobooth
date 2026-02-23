@@ -381,7 +381,7 @@ class AndroidCameraController(
 
     private fun returnInitializationSuccess(cameraName: String, result: MethodChannel.Result) {
         Bugsnag.leaveBreadcrumb("Camera initialization completed: $cameraName (ID: $currentCameraId)")
-        result.success(mapOf("success" to true, "textureId" to textureId, "localizedName" to cameraName))
+        result.success(mapOf("success" to true, "textureId" to textureId.toInt(), "localizedName" to cameraName))
     }
 
     private fun handleInitializationError(e: Exception, code: String, message: String?, result: MethodChannel.Result) {
@@ -411,7 +411,7 @@ class AndroidCameraController(
             surfaceTexture.setDefaultBufferSize(optimalSize.width, optimalSize.height)
             Log.d(TAG, "   Preview buffer size set to: ${optimalSize.width}x${optimalSize.height}")
 
-            // Apply preview orientation so the feed matches display (e.g. landscape TV)
+            // Apply identity transform (0°); use in-app "Preview rotation" in Flutter to correct.
             applyPreviewOrientation(surfaceTexture as android.graphics.SurfaceTexture)
 
             // Create Surface from the SurfaceTexture - this is the preview surface
@@ -646,24 +646,16 @@ class AndroidCameraController(
     }
 
     /**
-     * Rotates the preview so it matches the device orientation (respects Android TV Settings).
-     * Without this, external USB cameras often show the feed rotated 90° on landscape TVs.
+     * Preview rotation: we apply 0° here (raw camera output).
+     * Use the in-app "Preview rotation" (0/90/180/270) in Flutter to correct orientation.
+     * That way one source of truth and it works on all Android TVs.
      */
     private fun applyPreviewOrientation(surfaceTexture: android.graphics.SurfaceTexture) {
         try {
-            val characteristics = cameraManager?.getCameraCharacteristics(currentCameraId ?: "") ?: return
-            val sensorDegrees = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
-            val displayDegrees = getDisplayRotationDegrees()
-
-            // Angle to rotate preview so "up" in the image matches "up" on screen.
-            // Use (sensor + display) % 360 for correct orientation on Android TV / external USB cameras.
-            val rotationDegrees = (sensorDegrees + displayDegrees) % 360
-            val matrix = getPreviewRotationMatrix(rotationDegrees)
-            // Use reflection: SurfaceTexture.setTransform(float[]) may not resolve in some Flutter/Kotlin setups
+            val matrix = getPreviewRotationMatrix(0)
             val setTransformMethod: Method = surfaceTexture.javaClass.getMethod("setTransform", FloatArray::class.java)
             setTransformMethod.invoke(surfaceTexture, matrix)
-
-            Log.d(TAG, "   Preview orientation: sensor=$sensorDegrees°, display=$displayDegrees° -> apply $rotationDegrees°")
+            Log.d(TAG, "   Preview orientation: applied 0° (use in-app Preview rotation to correct)")
         } catch (e: Exception) {
             Log.w(TAG, "   Could not apply preview orientation: ${e.message}")
         }

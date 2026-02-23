@@ -18,19 +18,24 @@ class CameraDeviceHelper(private val context: Context) {
 
     /**
      * Entry point called from Flutter
+     * Always merges Camera2 list with USB-detected cameras so external USB cams
+     * (e.g. HP 4K on Android TV) are found even when not yet in cameraIdList.
      */
     fun getAllAvailableCameras(result: MethodChannel.Result) {
         try {
             val cameras = mutableListOf<Map<String, Any>>()
 
-            // Use Camera2 list only when non-empty (includes external USB cams on Android TV).
             val camera2Cameras = getCamera2Cameras()
             cameras.addAll(camera2Cameras)
-            if (camera2Cameras.isEmpty()) {
-                val usbCameras = getUsbCameras(emptyList())
-                cameras.addAll(usbCameras)
-            } else {
-                // Replace "External Camera" with actual USB product name (e.g. "HP 4K Streaming Webcam") when we can match.
+
+            // Always add USB cameras that are not already in the list (by Camera2 ID).
+            // On Android TV, the external USB camera may not appear in cameraIdList yet,
+            // or only built-in "0" is present; merging USB ensures the HP camera is detected.
+            val usbCameras = getUsbCameras(camera2Cameras)
+            cameras.addAll(usbCameras)
+
+            // Replace "External Camera" with actual USB product name (e.g. "HP 4K Streaming Webcam") when we can match.
+            if (cameras.isNotEmpty()) {
                 applyUsbProductNamesToCameraList(cameras)
             }
 
@@ -192,8 +197,12 @@ class CameraDeviceHelper(private val context: Context) {
         val camera2Id = probeForCamera2Id(device, knownCamera2Ids, cameraManager)
 
         if (camera2Id != null) {
-            // Camera already in list from getCamera2Cameras() as "External Camera". Do not add again.
-            Log.d(TAG, "   ⏭️ USB camera already listed as Camera2 ID $camera2Id - skipping duplicate")
+            // Only skip if this camera is already in the list (from getCamera2Cameras). When Camera2 list was empty we must add it here.
+            if (knownCamera2Ids.contains(camera2Id)) {
+                Log.d(TAG, "   ⏭️ USB camera already listed as Camera2 ID $camera2Id - skipping duplicate")
+            } else {
+                addCamera2UsbCamera(device, camera2Id, result)
+            }
         } else {
             addUsbOnlyCamera(device, result)
         }
@@ -293,13 +302,19 @@ class CameraDeviceHelper(private val context: Context) {
             val characteristics = cameraManager.getCameraCharacteristics(cameraId)
             val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
 
-            // ONLY accept cameras that are explicitly marked as EXTERNAL
             if (facing == CameraCharacteristics.LENS_FACING_EXTERNAL) {
                 Log.d(TAG, "   ✅ Found Camera2 match: ID=$cameraId, LENS_FACING=EXTERNAL")
                 return cameraId
-            } else {
-                Log.d(TAG, "   ⏭️ Camera $cameraId has LENS_FACING=$facing (not EXTERNAL), skipping")
             }
+            // Some Android TVs report external USB cameras with facing=null; accept if not back/front
+            if (facing == null) {
+                val idInt = cameraId.toIntOrNull() ?: -1
+                if (idInt > 1) {
+                    Log.d(TAG, "   ✅ Found Camera2 match: ID=$cameraId, LENS_FACING=null (treating as external)")
+                    return cameraId
+                }
+            }
+            Log.d(TAG, "   ⏭️ Camera $cameraId has LENS_FACING=$facing (not EXTERNAL), skipping")
         } catch (e: Exception) {
             Log.d(TAG, "   ⚠️ Error checking camera $cameraId: ${e.message}")
         }
@@ -332,24 +347,24 @@ class CameraDeviceHelper(private val context: Context) {
 
     private fun tryProbeCamera(testIdStr: String, cameraManager: CameraManager): String? {
         try {
-            // Try to get characteristics - this will throw if camera doesn't exist
             val characteristics = cameraManager.getCameraCharacteristics(testIdStr)
             val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
 
-            // ONLY accept cameras that are explicitly marked as EXTERNAL
             if (facing == CameraCharacteristics.LENS_FACING_EXTERNAL) {
                 Log.d(TAG, "   ✅ Found Camera2 ID via probing: $testIdStr (LENS_FACING_EXTERNAL)")
                 return testIdStr
-            } else {
-                Log.d(TAG, "   ⏭️ Camera $testIdStr has LENS_FACING=$facing (not EXTERNAL), skipping")
             }
+            // Some Android TVs don't set LENS_FACING_EXTERNAL for USB cams; accept facing=null for ID > 1
+            if (facing == null && (testIdStr.toIntOrNull() ?: -1) > 1) {
+                Log.d(TAG, "   ✅ Found Camera2 ID via probing: $testIdStr (LENS_FACING=null, treating as external)")
+                return testIdStr
+            }
+            Log.d(TAG, "   ⏭️ Camera $testIdStr has LENS_FACING=$facing (not EXTERNAL), skipping")
         } catch (e: IllegalArgumentException) {
             // Camera doesn't exist at this ID - continue probing
         } catch (e: CameraAccessException) {
-            // Access denied - might need permissions, but continue
             Log.d(TAG, "   ⚠️ Access denied for camera $testIdStr: ${e.message}")
         } catch (e: Exception) {
-            // Other error - continue
             Log.d(TAG, "   ⚠️ Error probing camera $testIdStr: ${e.message}")
         }
         return null
@@ -359,6 +374,38 @@ class CameraDeviceHelper(private val context: Context) {
         Log.d(TAG, "   ❌ No Camera2 ID found with LENS_FACING_EXTERNAL for USB camera")
         Log.d(TAG, "   💡 USB camera will use UVC path (usb_vendorId_productId format)")
         Log.d(TAG, "   ❌ No Camera2 ID found for USB camera")
+    }
+
+    /**
+     * Resolves a USB camera (by vendor/product ID) to a Camera2 ID at runtime.
+     * Used when the camera was listed as usb_only at discovery but may be available
+     * as Camera2 after enumeration (e.g. on Android TV). Returns null if not found.
+     */
+    fun resolveUsbToCamera2Id(vendorId: Int, productId: Int, result: MethodChannel.Result) {
+        try {
+            val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: run {
+                Log.d(TAG, "resolveUsbToCamera2Id: UsbManager null")
+                result.success(null)
+                return
+            }
+            val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager ?: run {
+                Log.d(TAG, "resolveUsbToCamera2Id: CameraManager null")
+                result.success(null)
+                return
+            }
+            val device = usbManager.deviceList.values.find { it.vendorId == vendorId && it.productId == productId }
+            if (device == null || !isUsbCamera(device)) {
+                Log.d(TAG, "resolveUsbToCamera2Id: No UVC device for vendor=$vendorId product=$productId")
+                result.success(null)
+                return
+            }
+            val camera2Id = probeForCamera2Id(device, emptySet(), cameraManager)
+            Log.d(TAG, "resolveUsbToCamera2Id: vendor=$vendorId product=$productId -> $camera2Id")
+            result.success(camera2Id)
+        } catch (e: Exception) {
+            Log.e(TAG, "resolveUsbToCamera2Id failed", e)
+            result.success(null)
+        }
     }
 
     /**

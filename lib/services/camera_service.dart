@@ -27,6 +27,9 @@ class CameraService {
   // Map camera names (unique IDs) to their localized names from iOS
   final Map<String, String> _cameraLocalizedNames = {};
 
+  // Map camera name (e.g. usb_vendorId_productId) to USB vendor/product for runtime resolve on Android
+  final Map<String, ({int vendorId, int productId})> _cameraUsbIds = {};
+
   // Camera change callback
   Function(String event, Map<String, dynamic> cameraInfo)? onCameraChanged;
 
@@ -300,6 +303,15 @@ class CameraService {
                   androidCamera['uniqueID'] as String? ?? 'unknown';
               final localizedName =
                   androidCamera['localizedName'] as String? ?? 'unknown';
+
+              // Store USB vendor/product for runtime resolve (usb_ cameras on Android TV)
+              final v = androidCamera['vendorId'] ?? androidCamera['usbVendorId'];
+              final p = androidCamera['productId'] ?? androidCamera['usbProductId'];
+              if (v != null && p != null) {
+                final vendorId = (v is num) ? v.toInt() : (v as int);
+                final productId = (p is num) ? p.toInt() : (p as int);
+                _cameraUsbIds[uniqueID] = (vendorId: vendorId, productId: productId);
+              }
 
               // Check if this camera is external by matching with Flutter's camera list
               // External cameras on Android have CameraLensDirection.external
@@ -911,16 +923,30 @@ class CameraService {
           AppLogger.debug(
               '   📝 Localized name: ${getCameraDisplayName(camera)}');
 
-          // USB-only ID (usb_vendorId_productId) can appear when the same camera is
-          // also in Camera2 cameraIdList (e.g. on Android TV). Try to resolve to a
-          // Camera2 ID so we can open preview.
+          // USB-only ID (usb_vendorId_productId) can appear when the camera was not
+          // in Camera2 list at discovery time. Resolve to a Camera2 ID so we can open preview.
           String deviceIdToUse = deviceId;
           if (deviceId.startsWith('usb_')) {
-            final resolved = _resolveUsbToCamera2Id(camera);
+            String? resolved = _resolveUsbToCamera2Id(camera);
+            if (resolved == null || resolved.isEmpty) {
+              // Try runtime resolve: ask native to probe for Camera2 ID (e.g. Android TV enumeration)
+              final usbIds = _cameraUsbIds[camera.name];
+              if (usbIds != null) {
+                resolved = await AndroidCameraDeviceHelper.resolveUsbToCamera2Id(
+                  usbIds.vendorId,
+                  usbIds.productId,
+                );
+                if (resolved != null && resolved.isNotEmpty) {
+                  AppLogger.debug(
+                      '   ✅ Resolved usb_ to Camera2 ID at runtime: $resolved');
+                }
+              }
+            } else {
+              AppLogger.debug(
+                  '   ✅ Resolved usb_ ID to Camera2 ID: $resolved (from camera list)');
+            }
             if (resolved != null && resolved.isNotEmpty) {
               deviceIdToUse = resolved;
-              AppLogger.debug(
-                  '   ✅ Resolved usb_ ID to Camera2 ID: $deviceIdToUse (same display name)');
             } else {
               AppLogger.debug(
                   '   ⚠️ USB-only camera (no Camera2 ID). Preview not supported on this device.');

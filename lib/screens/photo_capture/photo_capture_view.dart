@@ -264,17 +264,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                         // External camera stream is 16:9. Apply user-chosen rotation (saved in preferences).
                         final textureIdValue = textureId;
                         const streamAspectRatio = 16 / 9;
+                        const minPreviewSize = 64.0;
                         final rotationRad = viewModel.previewRotationDegrees * pi / 180;
                         previewWidget = LayoutBuilder(
                           builder: (context, constraints) {
+                            final base = constraints.maxWidth > minPreviewSize
+                                ? constraints.maxWidth
+                                : minPreviewSize;
+                            final w = base.isFinite ? base : minPreviewSize;
+                            final h = (w / streamAspectRatio).clamp(minPreviewSize, double.infinity);
                             return Center(
                               child: Transform.rotate(
                                 angle: rotationRad,
                                 child: FittedBox(
                                   fit: BoxFit.cover,
                                   child: SizedBox(
-                                    width: constraints.maxWidth,
-                                    height: constraints.maxWidth / streamAspectRatio,
+                                    width: w,
+                                    height: h,
                                     child: Texture(
                                       textureId: textureIdValue,
                                       key: ValueKey('texture_$textureIdValue'),
