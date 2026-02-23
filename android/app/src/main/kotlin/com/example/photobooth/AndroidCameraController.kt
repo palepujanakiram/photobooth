@@ -656,7 +656,8 @@ class AndroidCameraController(
             val displayDegrees = getDisplayRotationDegrees()
 
             // Angle to rotate preview so "up" in the image matches "up" on screen.
-            val rotationDegrees = (360 + sensorDegrees - displayDegrees) % 360
+            // Use (sensor + display) % 360 for correct orientation on Android TV / external USB cameras.
+            val rotationDegrees = (sensorDegrees + displayDegrees) % 360
             val matrix = getPreviewRotationMatrix(rotationDegrees)
             // Use reflection: SurfaceTexture.setTransform(float[]) may not resolve in some Flutter/Kotlin setups
             val setTransformMethod: Method = surfaceTexture.javaClass.getMethod("setTransform", FloatArray::class.java)

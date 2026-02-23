@@ -168,7 +168,8 @@ class CameraDeviceHelper(private val context: Context) {
         val camera2Id = probeForCamera2Id(device, knownCamera2Ids, cameraManager)
 
         if (camera2Id != null) {
-            addCamera2UsbCamera(device, camera2Id, result)
+            // Camera already in list from getCamera2Cameras() as "External Camera". Do not add again.
+            Log.d(TAG, "   ⏭️ USB camera already listed as Camera2 ID $camera2Id - skipping duplicate")
         } else {
             addUsbOnlyCamera(device, result)
         }
