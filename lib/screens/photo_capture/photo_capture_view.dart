@@ -1,3 +1,4 @@
+import 'dart:math' show pi;
 import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' show Colors;
@@ -12,6 +13,7 @@ import '../../utils/logger.dart';
 import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/full_screen_loader.dart';
+import 'photo_capture_rotation_screen.dart';
 
 class PhotoCaptureScreen extends StatefulWidget {
   const PhotoCaptureScreen({super.key});
@@ -30,7 +32,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     super.initState();
     _captureViewModel = CaptureViewModel();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _resetAndInitializeCameras();
+      if (mounted) {
+        _captureViewModel.loadPreviewRotation();
+        _resetAndInitializeCameras();
+      }
     });
   }
 
@@ -122,6 +127,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 
+  Future<void> _openPreviewRotationScreen(BuildContext context, CaptureViewModel viewModel) async {
+    final result = await Navigator.of(context).push<int>(
+      CupertinoPageRoute<int>(
+        builder: (ctx) => PhotoCaptureRotationScreen(
+          currentRotation: viewModel.previewRotationDegrees,
+        ),
+      ),
+    );
+    if (result != null && mounted) {
+      await viewModel.setPreviewRotation(result);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
@@ -151,6 +169,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                             ? CupertinoColors.systemGrey
                             : CupertinoColors.activeBlue,
                       ),
+                    // Preview rotation button (for external camera)
+                    AppActionButton(
+                      icon: CupertinoIcons.rotate_right,
+                      onPressed: viewModel.isLoadingCameras || viewModel.isInitializing
+                          ? null
+                          : () => _openPreviewRotationScreen(context, viewModel),
+                      color: (viewModel.isLoadingCameras || viewModel.isInitializing)
+                          ? CupertinoColors.systemGrey
+                          : CupertinoColors.activeBlue,
+                    ),
                     // Refresh button
                     AppActionButton(
                       icon: CupertinoIcons.arrow_clockwise,
@@ -233,22 +261,25 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                       // Build preview widget
                       Widget previewWidget;
                       if (isUsingCustomController && textureId != null) {
-                        // External camera stream is 16:9. The Texture must sit in a 16:9 box so it is never stretched.
-                        // FittedBox.cover then scales that box to cover the screen (same as built-in CameraPreview).
+                        // External camera stream is 16:9. Apply user-chosen rotation (saved in preferences).
                         final textureIdValue = textureId;
                         const streamAspectRatio = 16 / 9;
+                        final rotationRad = viewModel.previewRotationDegrees * pi / 180;
                         previewWidget = LayoutBuilder(
                           builder: (context, constraints) {
                             return Center(
-                              child: FittedBox(
-                                fit: BoxFit.cover,
-                                child: SizedBox(
-                                  width: constraints.maxWidth,
-                                  height: constraints.maxWidth / streamAspectRatio,
-                                  child: Texture(
-                                    textureId: textureIdValue,
-                                    key: ValueKey('texture_$textureIdValue'),
-                                    filterQuality: FilterQuality.medium,
+                              child: Transform.rotate(
+                                angle: rotationRad,
+                                child: FittedBox(
+                                  fit: BoxFit.cover,
+                                  child: SizedBox(
+                                    width: constraints.maxWidth,
+                                    height: constraints.maxWidth / streamAspectRatio,
+                                    child: Texture(
+                                      textureId: textureIdValue,
+                                      key: ValueKey('texture_$textureIdValue'),
+                                      filterQuality: FilterQuality.medium,
+                                    ),
                                   ),
                                 ),
                               ),

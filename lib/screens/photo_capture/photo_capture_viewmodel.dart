@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show ChangeNotifier, compute;
 import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'photo_model.dart';
 import '../../services/camera_service.dart';
@@ -40,6 +41,9 @@ class CaptureViewModel extends ChangeNotifier {
   int? _countdownValue;
   Timer? _countdownTimer;
 
+  /// Camera preview rotation in degrees (0, 90, 180, 270). Persisted in SharedPreferences.
+  int _previewRotationDegrees = 0;
+
   CaptureViewModel({
     CameraService? cameraService,
     ApiService? apiService,
@@ -66,6 +70,30 @@ class CaptureViewModel extends ChangeNotifier {
   bool get hasError => _errorMessage != null;
   int? get countdownValue => _countdownValue;
   bool get isCountingDown => _countdownValue != null;
+  int get previewRotationDegrees => _previewRotationDegrees;
+
+  /// Loads saved preview rotation from preferences (call when screen opens).
+  Future<void> loadPreviewRotation() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getInt(AppConstants.kCameraPreviewRotationKey);
+      if (saved != null && [0, 90, 180, 270].contains(saved)) {
+        _previewRotationDegrees = saved;
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  /// Saves and applies preview rotation (0, 90, 180, 270). Persists across sessions.
+  Future<void> setPreviewRotation(int degrees) async {
+    if (![0, 90, 180, 270].contains(degrees)) return;
+    _previewRotationDegrees = degrees;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(AppConstants.kCameraPreviewRotationKey, degrees);
+    } catch (_) {}
+    notifyListeners();
+  }
 
   void _startUploadTimer() {
     _uploadElapsedSeconds = 0;

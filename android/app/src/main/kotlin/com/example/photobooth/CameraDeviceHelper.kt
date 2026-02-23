@@ -23,13 +23,16 @@ class CameraDeviceHelper(private val context: Context) {
         try {
             val cameras = mutableListOf<Map<String, Any>>()
 
-            // Get Camera2 cameras first (to know which ones are already accounted for)
+            // Use Camera2 list only when non-empty (includes external USB cams on Android TV).
             val camera2Cameras = getCamera2Cameras()
             cameras.addAll(camera2Cameras)
-            
-            // Get USB cameras and try to match them with Camera2 IDs
-            val usbCameras = getUsbCameras(camera2Cameras)
-            cameras.addAll(usbCameras)
+            if (camera2Cameras.isEmpty()) {
+                val usbCameras = getUsbCameras(emptyList())
+                cameras.addAll(usbCameras)
+            } else {
+                // Replace "External Camera" with actual USB product name (e.g. "HP 4K Streaming Webcam") when we can match.
+                applyUsbProductNamesToCameraList(cameras)
+            }
 
             Log.d(TAG, "📸 Total cameras returned: ${cameras.size}")
             result.success(cameras)
@@ -107,7 +110,28 @@ class CameraDeviceHelper(private val context: Context) {
             else -> "Camera $cameraId"
         }
     }
-    
+
+    /**
+     * For each Camera2 external camera in the list, if we can match a USB device (by probing),
+     * replace the generic "External Camera" name with the USB product name (e.g. "HP 4K Streaming Webcam").
+     */
+    private fun applyUsbProductNamesToCameraList(cameras: MutableList<Map<String, Any>>) {
+        val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager ?: return
+        val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return
+        val matchedIds = mutableSetOf<String>() // avoid matching same Camera2 ID to multiple USB devices
+        for (device in usbManager.deviceList.values) {
+            if (!isUsbCamera(device)) continue
+            val camera2Id = probeForCamera2Id(device, matchedIds, cameraManager) ?: continue
+            matchedIds.add(camera2Id)
+            val productName = device.productName?.takeIf { it.isNotBlank() } ?: continue
+            val index = cameras.indexOfFirst { it["uniqueID"] == camera2Id }
+            if (index >= 0) {
+                cameras[index] = (cameras[index].toMutableMap()).apply { put("localizedName", productName) }
+                Log.d(TAG, "   📝 Updated camera $camera2Id name to: $productName")
+            }
+        }
+    }
+
     /**
      * Checks if device supports external cameras
      */

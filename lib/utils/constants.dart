@@ -23,7 +23,10 @@ class AppConstants {
 
   /// When true, shows an overlay above Cancel/Continue with photo metadata (size, format).
   static const bool kShowCapturedPhotoMetadataOverlay = true;
-  
+
+  /// SharedPreferences key for camera preview rotation (0, 90, 180, 270 degrees).
+  static const String kCameraPreviewRotationKey = 'camera_preview_rotation_degrees';
+
   // Camera capture countdown (in seconds)
   static const int kCaptureCountdownSeconds = 3;
 
