@@ -26,6 +26,9 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+// App name used for APK output (e.g. photobooth-release.apk instead of app-release.apk)
+def appName = "photobooth"
+
 android {
     namespace "com.example.photobooth"
     compileSdk 36
@@ -52,11 +55,36 @@ android {
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
+        setProperty("archivesBaseName", appName)
     }
 
     buildTypes {
         release {
             signingConfig signingConfigs.debug
+        }
+    }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            output.outputFileName = "${appName}-${variant.buildType.name}.apk"
+        }
+    }
+}
+
+// Copy renamed APK to flutter-apk so it's available as {appname}-release.apk where Flutter reports output
+tasks.whenTaskAdded { task ->
+    if (task.name == "assembleRelease") {
+        task.doLast {
+            def apkDir = file("${project.buildDir}/outputs/apk/release")
+            def flutterApkDir = file("${project.buildDir}/outputs/flutter-apk")
+            def srcApk = file("${apkDir}/${appName}-release.apk")
+            if (srcApk.exists()) {
+                flutterApkDir.mkdirs()
+                copy {
+                    from srcApk
+                    into flutterApkDir
+                }
+            }
         }
     }
 }

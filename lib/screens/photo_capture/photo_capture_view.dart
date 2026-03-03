@@ -1,18 +1,13 @@
-import 'dart:math' show pi;
 import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
-import 'package:flutter/material.dart' show Colors;
-import 'package:flutter/services.dart' show StandardMessageCodec;
-import 'package:flutter/widgets.dart' show AndroidView;
+import 'package:flutter/material.dart' show BoxFit, Colors, Material, InkWell, RotatedBox;
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
 import 'photo_capture_viewmodel.dart';
-import '../../services/camera_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/device_classifier.dart';
 import '../../utils/image_helper.dart';
-import '../../utils/logger.dart';
 import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/full_screen_loader.dart';
@@ -34,11 +29,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   void initState() {
     super.initState();
     _captureViewModel = CaptureViewModel();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _captureViewModel.loadPreviewRotation();
-        _resetAndInitializeCameras();
-      }
+    // Same as fluttercamerabasic: start camera detection on first frame, no delay
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      _captureViewModel.loadPreviewRotation(); // non-blocking for camera load
+      await _resetAndInitializeCameras();
     });
   }
 
@@ -72,8 +67,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   /// Uses sync tablet check so cameras load immediately; does not block on slow getDeviceType().
   Future<void> _resetAndInitializeCameras() async {
     if (!mounted) return;
-    final shortestSide = MediaQuery.sizeOf(context).shortestSide;
-    _captureViewModel.setTabletOrTv(shortestSide >= AppConstants.kTabletBreakpoint);
     _captureViewModel.setDeviceType(null);
     await _captureViewModel.resetAndInitializeCameras();
     // Optionally refine device type in background (e.g. for Android TV); no need to reload cameras
@@ -91,7 +84,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   }
 
   void _showCameraSelectionDialog(BuildContext context, CaptureViewModel viewModel) {
-    final uniqueCameras = _getUniqueCameras(viewModel.availableCameras, viewModel.cameraService);
+    final uniqueCameras = _getUniqueCameras(viewModel.availableCameras, viewModel);
     if (uniqueCameras.isEmpty) return;
 
     Navigator.of(context).push<void>(
@@ -111,7 +104,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               itemBuilder: (_, index) {
                 final camera = uniqueCameras[index];
                 final isActive = viewModel.currentCamera?.name == camera.name;
-                final displayName = viewModel.cameraService.getCameraDisplayName(camera);
+                final displayName = viewModel.getCameraDisplayName(camera);
                 return CupertinoListTile(
                   title: Text(displayName),
                   leading: isActive
@@ -182,14 +175,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           ? CupertinoColors.systemGrey
                           : CupertinoColors.activeBlue,
                     ),
-                    // Refresh button
+                    // Refresh button (fresh enumeration)
                     AppActionButton(
                       icon: CupertinoIcons.arrow_clockwise,
                       onPressed: viewModel.isLoadingCameras || viewModel.isInitializing
                           ? null
-                          : () async {
-                              await _resetAndInitializeCameras();
-                            },
+                          : () => _resetAndInitializeCameras(),
                       color: (viewModel.isLoadingCameras || viewModel.isInitializing)
                           ? CupertinoColors.systemGrey
                           : CupertinoColors.activeBlue,
@@ -202,6 +193,25 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                   child: Builder(
                     builder: (context) {
                       final viewModel = Provider.of<CaptureViewModel>(context, listen: true);
+                      // "Detecting cameras…" full-screen state like fluttercamerabasic (loading gate)
+                      if (viewModel.isLoadingCameras) {
+                        return Container(
+                          color: CupertinoColors.black,
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const CupertinoActivityIndicator(color: CupertinoColors.white),
+                                const SizedBox(height: 20),
+                                Text(
+                                  'Detecting cameras…',
+                                  style: TextStyle(color: CupertinoColors.white.withValues(alpha: 0.9), fontSize: 16),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
                       if (viewModel.isInitializing) {
                         return const Center(child: CupertinoActivityIndicator());
                       }
@@ -230,27 +240,25 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                                 textAlign: TextAlign.center,
                               ),
                               const SizedBox(height: 24),
-                              CupertinoButton(
-                                onPressed: () => _resetAndInitializeCameras(),
-                                child: const Text('Retry'),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  CupertinoButton(
+                                    onPressed: () => _resetAndInitializeCameras(),
+                                    child: const Text('Retry'),
+                                  ),
+                                  CupertinoButton(
+                                    onPressed: () => openAppSettings(),
+                                    child: const Text('Open Settings'),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                         );
                       }
 
-                      // Check if using custom controller (for external cameras)
-                      final isUsingCustomController = viewModel.cameraService.isUsingCustomController;
-                      final useSurfaceView = viewModel.cameraService.useSurfaceView;
-                      final textureId = viewModel.cameraService.textureId;
-
-                      // With SurfaceView we must build the AndroidView so the surface can be created;
-                      // the preview only starts after the surface is ready, so don't require isReady for that path.
-                      final showSurfaceViewPlaceholder = isUsingCustomController &&
-                          useSurfaceView &&
-                          defaultTargetPlatform == TargetPlatform.android &&
-                          viewModel.currentCamera != null;
-                      if (!showSurfaceViewPlaceholder && !viewModel.isReady) {
+                      if (!viewModel.isReady) {
                         final appColors = AppColors.of(context);
                         return Center(
                           child: Text(
@@ -260,127 +268,29 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                         );
                       }
 
-                      // Build preview widget
-                      Widget previewWidget;
-                      if (isUsingCustomController && useSurfaceView && defaultTargetPlatform == TargetPlatform.android) {
-                        // SurfaceView preview (Android): rotation applied natively. Layout aspect must match *displayed* stream:
-                        // stream is 16:9; after 90°/270° rotation it appears 9:16, so use 9:16 for layout.
-                        // Enforce minimum size so Camera2 capture session does not get a zero-sized surface (onConfigureFailed).
-                        const minPreviewSize = 64.0;
-                        final rotation = viewModel.previewRotationDegrees;
-                        final isPortraitDisplay = rotation == 90 || rotation == 270;
-                        const landscapeRatio = 16 / 9;
-                        const portraitRatio = 9 / 16;
-                        final streamAspectRatio = isPortraitDisplay ? portraitRatio : landscapeRatio;
-                        previewWidget = LayoutBuilder(
-                          builder: (context, constraints) {
-                            final maxW = constraints.maxWidth.clamp(minPreviewSize, double.infinity);
-                            final maxH = constraints.maxHeight.clamp(minPreviewSize, double.infinity);
-                            double w;
-                            double h;
-                            if (maxW / maxH > streamAspectRatio) {
-                              h = maxH;
-                              w = maxH * streamAspectRatio;
-                            } else {
-                              w = maxW;
-                              h = maxW / streamAspectRatio;
-                            }
-                            final width = w.clamp(minPreviewSize, double.infinity);
-                            final height = h.clamp(minPreviewSize, double.infinity);
-                            return Center(
-                              child: SizedBox(
-                                width: width,
-                                height: height,
-                                child: AndroidView(
-                                  viewType: 'com.example.photobooth/camera_preview_surface',
-                                  creationParams: <String, dynamic>{
-                                    'rotation': viewModel.previewRotationDegrees,
-                                  },
-                                  creationParamsCodec: const StandardMessageCodec(),
-                                ),
-                              ),
-                            );
-                          },
-                        );
-                      } else if (isUsingCustomController && textureId != null) {
-                        // Texture preview: stream 16:9, after 90°/270° rotation displays as 9:16
-                        final textureIdValue = textureId;
-                        final rotation = viewModel.previewRotationDegrees;
-                        final isPortraitDisplay = rotation == 90 || rotation == 270;
-                        const landscapeRatio = 16 / 9;
-                        const portraitRatio = 9 / 16;
-                        final streamAspectRatio = isPortraitDisplay ? portraitRatio : landscapeRatio;
-                        const minPreviewSize = 64.0;
-                        final rotationRad = rotation * pi / 180;
-                        previewWidget = LayoutBuilder(
-                          builder: (context, constraints) {
-                            final maxW = constraints.maxWidth.clamp(minPreviewSize, double.infinity);
-                            final maxH = constraints.maxHeight.clamp(minPreviewSize, double.infinity);
-                            double w;
-                            double h;
-                            if (maxW / maxH > streamAspectRatio) {
-                              h = maxH;
-                              w = maxH * streamAspectRatio;
-                            } else {
-                              w = maxW;
-                              h = maxW / streamAspectRatio;
-                            }
-                            final width = w.clamp(minPreviewSize, double.infinity);
-                            final height = h.clamp(minPreviewSize, double.infinity);
-                            return Center(
-                              child: Transform.rotate(
-                                angle: rotationRad,
-                                child: FittedBox(
-                                  fit: BoxFit.cover,
-                                  child: SizedBox(
-                                    width: width,
-                                    height: height,
-                                    child: Texture(
-                                      textureId: textureIdValue,
-                                      key: ValueKey('texture_$textureIdValue'),
-                                      filterQuality: FilterQuality.medium,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        );
-                      } else if (viewModel.cameraController != null) {
-                        // Use standard CameraPreview
-                        AppLogger.debug('📺 Building standard CameraPreview widget');
-                        previewWidget = CameraPreview(viewModel.cameraController!);
-                      } else {
-                        AppLogger.debug('📺 No camera controller available - showing placeholder');
-                        previewWidget = Container(
-                          color: AppColors.of(context).backgroundColor,
-                          child: Center(
-                            child: Text(
-                              'Camera preview not available',
-                              style: TextStyle(
-                                color: AppColors.of(context).textColor,
-                              ),
-                            ),
-                          ),
-                        );
-                      }
+                      final Widget previewWidget = _buildCameraPreviewWithRotation(context, viewModel);
 
                       return Stack(
                         children: [
-                          // Preview widget - must fill the entire stack
                           Positioned.fill(
                             child: previewWidget,
                           ),
-                          // SurfaceView: show "Starting camera..." until native surface is ready and preview is running
-                          if (showSurfaceViewPlaceholder && !viewModel.isReady)
-                            Positioned.fill(
-                              child: Container(
-                                color: AppColors.of(context).backgroundColor.withValues(alpha: 0.7),
-                                child: const Center(
-                                  child: CupertinoActivityIndicator(),
-                                ),
+                          // Display rotation badge (like fluttercamerabasic)
+                          Positioned(
+                            top: 12,
+                            right: 12,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                _rotationLabel(viewModel.displayRotation),
+                                style: const TextStyle(color: Colors.white70, fontSize: 12),
                               ),
                             ),
+                          ),
                           if (viewModel.capturedPhoto != null)
                             Positioned.fill(
                               child: Container(
@@ -401,6 +311,22 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           if (viewModel.isCountingDown)
                             Positioned.fill(
                               child: _buildCountdownOverlay(context, viewModel.countdownValue!),
+                            ),
+                          // Zoom overlay (like fluttercamerabasic)
+                          if (viewModel.hasZoomSupport &&
+                              !viewModel.isCountingDown &&
+                              viewModel.capturedPhoto == null)
+                            Positioned(
+                              left: 16,
+                              bottom: 100,
+                              child: _buildZoomOverlay(context, viewModel),
+                            ),
+                          // Captured photo details overlay (like fluttercamerabasic)
+                          if (viewModel.capturedPhoto != null)
+                            Positioned(
+                              left: 16,
+                              bottom: 100,
+                              child: _buildCapturedPhotoDetailsOverlay(context, viewModel),
                             ),
                           Positioned(
                             bottom: 0,
@@ -537,6 +463,68 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 
+  /// Builds camera preview with rotation correction for device orientation (0, 90, 180, 270) like fluttercamerabasic.
+  Widget _buildCameraPreviewWithRotation(BuildContext context, CaptureViewModel viewModel) {
+    final controller = viewModel.cameraController;
+    final camera = viewModel.currentCamera;
+    if (controller == null) {
+      return Container(
+        color: AppColors.of(context).backgroundColor,
+        child: Center(
+          child: Text(
+            'Camera preview not available',
+            style: TextStyle(color: AppColors.of(context).textColor),
+          ),
+        ),
+      );
+    }
+
+    // previewSize can be null briefly after init (e.g. some USB cameras on Android TV); fallback still shows preview
+    // previewSize can be null briefly after init (e.g. some USB cameras on Android TV)
+    final size = controller.value.previewSize;
+    if (size == null || camera == null) {
+      return CameraPreview(controller);
+    }
+
+    final sensorOrientation = camera.sensorOrientation;
+    final displayRotation = viewModel.displayRotation;
+    final needsSwap = sensorOrientation == 90 || sensorOrientation == 270;
+    final correctionTurns = needsSwap ? 0 : (displayRotation.isOdd ? 1 : 3);
+
+    Widget preview = CameraPreview(controller);
+    if (correctionTurns != 0) {
+      preview = RotatedBox(quarterTurns: correctionTurns, child: preview);
+    }
+
+    final rotationSwaps = correctionTurns == 1 || correctionTurns == 3;
+    final displayWidth = rotationSwaps ? size.height : size.width;
+    final displayHeight = rotationSwaps ? size.width : size.height;
+
+    return FittedBox(
+      fit: BoxFit.cover,
+      child: SizedBox(
+        width: displayWidth,
+        height: displayHeight,
+        child: preview,
+      ),
+    );
+  }
+
+  static String _rotationLabel(int value) {
+    switch (value) {
+      case 0:
+        return '0 → Surface.ROTATION_0';
+      case 1:
+        return '1 → Surface.ROTATION_90';
+      case 2:
+        return '2 → Surface.ROTATION_180';
+      case 3:
+        return '3 → Surface.ROTATION_270';
+      default:
+        return '$value → (unknown rotation)';
+    }
+  }
+
   /// Builds the captured photo display using cached bytes
   Widget _buildCapturedPhotoDisplay(BuildContext context, CaptureViewModel viewModel) {
     final appColors = AppColors.of(context);
@@ -603,6 +591,147 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  /// Zoom overlay (like fluttercamerabasic): preset buttons from device min/max.
+  Widget _buildZoomOverlay(BuildContext context, CaptureViewModel viewModel) {
+    final min = viewModel.minZoom!;
+    final max = viewModel.maxZoom!;
+    final current = viewModel.currentZoom.clamp(min, max);
+    final levels = _zoomLevelsFromMinMax(min, max);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Zoom',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: levels.map((level) {
+              final isSelected = (current - level).abs() < 0.05;
+              return Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: Material(
+                  color: isSelected
+                      ? Colors.white.withValues(alpha: 0.25)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  child: InkWell(
+                    onTap: () => viewModel.setZoomLevel(level),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      child: Text(
+                        _zoomLabel(level),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<double> _zoomLevelsFromMinMax(double min, double max) {
+    if (max <= min) return [min];
+    final range = max - min;
+    if (range < 0.01) return [min];
+    final step = range / 3;
+    return [min, min + step, min + step * 2, max];
+  }
+
+  String _zoomLabel(double value) {
+    if (value >= 10 || (value >= 1 && value == value.roundToDouble())) {
+      return '${value.toInt()}x';
+    }
+    if (value < 1 && (value * 2).roundToDouble() == value * 2) {
+      return '${value}x';
+    }
+    return '${value.toStringAsFixed(1)}x';
+  }
+
+  /// Captured photo details overlay (like fluttercamerabasic): resolution, file size.
+  Widget _buildCapturedPhotoDetailsOverlay(
+    BuildContext context,
+    CaptureViewModel viewModel,
+  ) {
+    final photo = viewModel.capturedPhoto;
+    if (photo == null) return const SizedBox.shrink();
+
+    return FutureBuilder<ImageMetadata?>(
+      future: ImageHelper.getImageMetadata(photo.imageFile),
+      builder: (context, snapshot) {
+        final meta = snapshot.data;
+        if (meta == null && snapshot.connectionState != ConnectionState.done) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              'Loading details…',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+          );
+        }
+        if (meta == null) return const SizedBox.shrink();
+
+        final lines = <String>[
+          'Resolution: ${meta.width} × ${meta.height}',
+          'Width: ${meta.width} px',
+          'Height: ${meta.height} px',
+          'File size: ${ImageHelper.formatFileSize(meta.fileSizeBytes)}',
+        ];
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: lines
+                .map((line) => Text(
+                      line,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        height: 1.4,
+                      ),
+                    ))
+                .toList(),
+          ),
+        );
+      },
     );
   }
 
@@ -936,13 +1065,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   /// we keep one per display name so the list shows Back Camera, Front Camera, HP 4K once each.
   List<CameraDescription> _getUniqueCameras(
     List<CameraDescription> cameras,
-    CameraService cameraService,
+    CaptureViewModel viewModel,
   ) {
     final uniqueCameras = <CameraDescription>[];
     final seenDisplayNames = <String>{};
 
     for (final camera in cameras) {
-      final displayName = cameraService.getCameraDisplayName(camera);
+      final displayName = viewModel.getCameraDisplayName(camera);
       if (seenDisplayNames.contains(displayName)) {
         continue;
       }

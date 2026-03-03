@@ -9,6 +9,7 @@ Future<AppDeviceType> getDeviceType(BuildContext context) async {
 
   if (Platform.isIOS) {
     final ios = await deviceInfo.iosInfo;
+    if (!context.mounted) return AppDeviceType.unknown;
     if (_isAppleTv(ios.utsname.machine)) {
       return AppDeviceType.iosTv;
     }
@@ -17,6 +18,7 @@ Future<AppDeviceType> getDeviceType(BuildContext context) async {
 
   if (Platform.isAndroid) {
     final android = await deviceInfo.androidInfo;
+    if (!context.mounted) return AppDeviceType.unknown;
     if (_isAndroidTv(android.systemFeatures)) {
       return AppDeviceType.androidTv;
     }
