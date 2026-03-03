@@ -37,42 +37,47 @@ class CustomCameraController {
   bool _isPreviewRunning = false;
   String? _currentDeviceId;
   int? _textureId;
-  
+  bool _useSurfaceView = false;
+
   bool get isInitialized => _isInitialized;
   bool get isPreviewRunning => _isPreviewRunning;
   String? get currentDeviceId => _currentDeviceId;
   int? get textureId => _textureId;
-  
-  /// Initializes camera with specific device ID
-  /// This allows selecting external cameras even when they share the same lensDirection
-  /// Supports both iOS and Android
-  Future<void> initialize(String deviceId) async {
+  bool get useSurfaceView => _useSurfaceView;
+
+  /// Initializes camera with specific device ID.
+  /// On Android, [useSurfaceView] uses SurfaceView for preview (better rotation on TV).
+  Future<void> initialize(String deviceId, {bool useSurfaceView = false, int? rotation}) async {
     if (kIsWeb) {
       throw UnsupportedError('Custom camera controller not supported on web');
     }
-    
     if (!_isIOS && !_isAndroid) {
       throw UnsupportedError('Custom camera controller only supports iOS and Android');
     }
-    
+
     try {
       AppLogger.debug('🎥 CustomCameraController: Initializing camera with device ID: $deviceId');
-      AppLogger.debug('   Platform: ${_isIOS ? "iOS" : "Android"}');
-      
-      final result = await _channel.invokeMethod('initializeCamera', {
-        'deviceId': deviceId,
-      });
-      
+      if (_isAndroid && useSurfaceView) {
+        AppLogger.debug('   Using SurfaceView for preview, rotation: ${rotation ?? 90}');
+      }
+      final args = <String, dynamic>{'deviceId': deviceId};
+      if (_isAndroid && useSurfaceView) {
+        args['useSurfaceView'] = true;
+        args['rotation'] = rotation ?? 90;
+      }
+      final result = await _channel.invokeMethod('initializeCamera', args);
+
       if (result is Map && result['success'] == true) {
         _isInitialized = true;
         _currentDeviceId = deviceId;
+        _useSurfaceView = (result['useSurfaceView'] == true);
         _textureId = _parseTextureId(result['textureId']);
         final localizedName = result['localizedName'] ?? 'Camera';
         AppLogger.debug('✅ CustomCameraController initialized: $localizedName');
-        if (_textureId != null) {
+        if (_useSurfaceView) {
+          AppLogger.debug('   Preview: SurfaceView');
+        } else if (_textureId != null) {
           AppLogger.debug('   Texture ID: $_textureId');
-        } else {
-          AppLogger.debug('   ⚠️ Texture ID missing or invalid from platform');
         }
       } else {
         throw Exception('Failed to initialize camera: $result');

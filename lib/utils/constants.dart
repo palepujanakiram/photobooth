@@ -30,6 +30,10 @@ class AppConstants {
   /// Default preview rotation when no value is saved. One of 0, 90, 180, 270.
   static const int kCameraPreviewRotationDefault = 90;
 
+  /// Use SurfaceView for camera preview on Android (external camera). When false, uses Texture path
+  /// which sets a supported buffer size and avoids SESSION_ERROR on devices where SurfaceView size isn't supported.
+  static const bool kUseSurfaceViewForPreview = false;
+
   // Camera capture countdown (in seconds)
   static const int kCaptureCountdownSeconds = 3;
 

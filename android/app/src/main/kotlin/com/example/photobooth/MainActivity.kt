@@ -1,12 +1,16 @@
 package com.example.photobooth
 
 import android.util.Log
+import android.view.Surface
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.platform.PlatformViewFactory
 import io.flutter.view.TextureRegistry
 
 class MainActivity : FlutterActivity() {
+
+    fun getAndroidCameraController(): AndroidCameraController? = androidCameraController
     private val channel = "com.example.photobooth/camera_device_helper"
     private val cameraControlChannel = "com.photobooth/camera_device"
     private lateinit var cameraDeviceHelper: CameraDeviceHelper
@@ -30,6 +34,38 @@ class MainActivity : FlutterActivity() {
 
         setupCameraDiscoveryChannel(flutterEngine)
         setupCameraControlChannel(flutterEngine)
+        registerCameraPreviewSurfaceView(flutterEngine)
+    }
+
+    private fun registerCameraPreviewSurfaceView(flutterEngine: FlutterEngine) {
+        val viewTypeId = "com.example.photobooth/camera_preview_surface"
+        val factory: PlatformViewFactory = CameraPreviewSurfaceViewFactory { surface: Surface ->
+            getAndroidCameraController()?.onSurfaceReady(surface)
+        }
+        try {
+            // Use public API first (Flutter embedding v2)
+            val controller = flutterEngine.platformViewsController
+            val registry = controller.registry
+            registry.registerViewFactory(viewTypeId, factory)
+            Log.d("MainActivity", "✅ Registered camera preview SurfaceView platform view (public API)")
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Public API failed, trying reflection: ${e.message}")
+            try {
+                val getController = flutterEngine.javaClass.getMethod("getPlatformViewsController")
+                val platformViewsController = getController.invoke(flutterEngine)
+                val getRegistry = platformViewsController?.javaClass?.getMethod("getRegistry")
+                val registry = getRegistry?.invoke(platformViewsController)
+                val registerFactory = registry?.javaClass?.getMethod(
+                    "registerViewFactory",
+                    String::class.java,
+                    PlatformViewFactory::class.java,
+                )
+                registerFactory?.invoke(registry, viewTypeId, factory)
+                Log.d("MainActivity", "✅ Registered camera preview SurfaceView (reflection)")
+            } catch (e2: Exception) {
+                Log.e("MainActivity", "Failed to register camera preview SurfaceView: ${e2.message}", e2)
+            }
+        }
     }
 
     private fun obtainTextureRegistry(flutterEngine: FlutterEngine) {
@@ -181,17 +217,34 @@ class MainActivity : FlutterActivity() {
             result.error("INVALID_ARGS", "deviceId is required", null)
             return
         }
-        initializeCamera(deviceId, result)
+        val useSurfaceView = (args?.get("useSurfaceView") as? Boolean) == true
+        val rotation = (args?.get("rotation") as? Number)?.toInt() ?: 90
+        if (useSurfaceView) {
+            initializeCameraWithSurfaceView(deviceId, rotation, result)
+        } else {
+            initializeCamera(deviceId, result)
+        }
+    }
+
+    private fun initializeCameraWithSurfaceView(deviceId: String, rotation: Int, result: MethodChannel.Result) {
+        try {
+            val existing = androidCameraController
+            if (existing != null && existing.isPreparedForSurfaceView() && existing.getCurrentCameraId() == deviceId) {
+                result.success(mapOf("success" to true, "useSurfaceView" to true, "localizedName" to "Camera"))
+                return
+            }
+            androidCameraController?.dispose()
+            androidCameraController = AndroidCameraController(this, null)
+            androidCameraController?.prepareForSurfaceView(deviceId, rotation, result)
+        } catch (e: Exception) {
+            result.error("INIT_ERROR", "Failed to prepare camera for SurfaceView: ${e.message}", null)
+        }
     }
 
     private fun initializeCamera(deviceId: String, result: MethodChannel.Result) {
         try {
-            // Dispose existing controller if any
             androidCameraController?.dispose()
-
-            // Use stored TextureRegistry or try to get it via reflection as fallback
             val registry = getTextureRegistryForCamera(result) ?: return
-
             androidCameraController = AndroidCameraController(this, registry)
             androidCameraController?.initialize(deviceId, result)
         } catch (e: Exception) {

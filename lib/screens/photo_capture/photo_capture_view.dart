@@ -1,7 +1,10 @@
 import 'dart:math' show pi;
 import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart' show Colors;
+import 'package:flutter/services.dart' show StandardMessageCodec;
+import 'package:flutter/widgets.dart' show AndroidView;
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
 import 'photo_capture_viewmodel.dart';
@@ -238,18 +241,17 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
                       // Check if using custom controller (for external cameras)
                       final isUsingCustomController = viewModel.cameraService.isUsingCustomController;
+                      final useSurfaceView = viewModel.cameraService.useSurfaceView;
                       final textureId = viewModel.cameraService.textureId;
-                      
-                      // Debug logging
-                      AppLogger.debug('📺 Preview widget state:');
-                      AppLogger.debug('   isUsingCustomController: $isUsingCustomController');
-                      AppLogger.debug('   textureId: $textureId');
-                      AppLogger.debug('   viewModel.isReady: ${viewModel.isReady}');
-                      AppLogger.debug('   viewModel.cameraController: ${viewModel.cameraController != null}');
-                      
-                      if (!viewModel.isReady) {
+
+                      // With SurfaceView we must build the AndroidView so the surface can be created;
+                      // the preview only starts after the surface is ready, so don't require isReady for that path.
+                      final showSurfaceViewPlaceholder = isUsingCustomController &&
+                          useSurfaceView &&
+                          defaultTargetPlatform == TargetPlatform.android &&
+                          viewModel.currentCamera != null;
+                      if (!showSurfaceViewPlaceholder && !viewModel.isReady) {
                         final appColors = AppColors.of(context);
-                        AppLogger.debug('📺 Camera not ready - showing placeholder');
                         return Center(
                           child: Text(
                             'Camera not ready',
@@ -260,27 +262,79 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
                       // Build preview widget
                       Widget previewWidget;
-                      if (isUsingCustomController && textureId != null) {
-                        // External camera stream is 16:9. Apply user-chosen rotation (saved in preferences).
-                        final textureIdValue = textureId;
-                        const streamAspectRatio = 16 / 9;
+                      if (isUsingCustomController && useSurfaceView && defaultTargetPlatform == TargetPlatform.android) {
+                        // SurfaceView preview (Android): rotation applied natively. Layout aspect must match *displayed* stream:
+                        // stream is 16:9; after 90°/270° rotation it appears 9:16, so use 9:16 for layout.
+                        // Enforce minimum size so Camera2 capture session does not get a zero-sized surface (onConfigureFailed).
                         const minPreviewSize = 64.0;
-                        final rotationRad = viewModel.previewRotationDegrees * pi / 180;
+                        final rotation = viewModel.previewRotationDegrees;
+                        final isPortraitDisplay = rotation == 90 || rotation == 270;
+                        const landscapeRatio = 16 / 9;
+                        const portraitRatio = 9 / 16;
+                        final streamAspectRatio = isPortraitDisplay ? portraitRatio : landscapeRatio;
                         previewWidget = LayoutBuilder(
                           builder: (context, constraints) {
-                            final base = constraints.maxWidth > minPreviewSize
-                                ? constraints.maxWidth
-                                : minPreviewSize;
-                            final w = base.isFinite ? base : minPreviewSize;
-                            final h = (w / streamAspectRatio).clamp(minPreviewSize, double.infinity);
+                            final maxW = constraints.maxWidth.clamp(minPreviewSize, double.infinity);
+                            final maxH = constraints.maxHeight.clamp(minPreviewSize, double.infinity);
+                            double w;
+                            double h;
+                            if (maxW / maxH > streamAspectRatio) {
+                              h = maxH;
+                              w = maxH * streamAspectRatio;
+                            } else {
+                              w = maxW;
+                              h = maxW / streamAspectRatio;
+                            }
+                            final width = w.clamp(minPreviewSize, double.infinity);
+                            final height = h.clamp(minPreviewSize, double.infinity);
+                            return Center(
+                              child: SizedBox(
+                                width: width,
+                                height: height,
+                                child: AndroidView(
+                                  viewType: 'com.example.photobooth/camera_preview_surface',
+                                  creationParams: <String, dynamic>{
+                                    'rotation': viewModel.previewRotationDegrees,
+                                  },
+                                  creationParamsCodec: const StandardMessageCodec(),
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      } else if (isUsingCustomController && textureId != null) {
+                        // Texture preview: stream 16:9, after 90°/270° rotation displays as 9:16
+                        final textureIdValue = textureId;
+                        final rotation = viewModel.previewRotationDegrees;
+                        final isPortraitDisplay = rotation == 90 || rotation == 270;
+                        const landscapeRatio = 16 / 9;
+                        const portraitRatio = 9 / 16;
+                        final streamAspectRatio = isPortraitDisplay ? portraitRatio : landscapeRatio;
+                        const minPreviewSize = 64.0;
+                        final rotationRad = rotation * pi / 180;
+                        previewWidget = LayoutBuilder(
+                          builder: (context, constraints) {
+                            final maxW = constraints.maxWidth.clamp(minPreviewSize, double.infinity);
+                            final maxH = constraints.maxHeight.clamp(minPreviewSize, double.infinity);
+                            double w;
+                            double h;
+                            if (maxW / maxH > streamAspectRatio) {
+                              h = maxH;
+                              w = maxH * streamAspectRatio;
+                            } else {
+                              w = maxW;
+                              h = maxW / streamAspectRatio;
+                            }
+                            final width = w.clamp(minPreviewSize, double.infinity);
+                            final height = h.clamp(minPreviewSize, double.infinity);
                             return Center(
                               child: Transform.rotate(
                                 angle: rotationRad,
                                 child: FittedBox(
                                   fit: BoxFit.cover,
                                   child: SizedBox(
-                                    width: w,
-                                    height: h,
+                                    width: width,
+                                    height: height,
                                     child: Texture(
                                       textureId: textureIdValue,
                                       key: ValueKey('texture_$textureIdValue'),
@@ -317,6 +371,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           Positioned.fill(
                             child: previewWidget,
                           ),
+                          // SurfaceView: show "Starting camera..." until native surface is ready and preview is running
+                          if (showSurfaceViewPlaceholder && !viewModel.isReady)
+                            Positioned.fill(
+                              child: Container(
+                                color: AppColors.of(context).backgroundColor.withValues(alpha: 0.7),
+                                child: const Center(
+                                  child: CupertinoActivityIndicator(),
+                                ),
+                              ),
+                            ),
                           if (viewModel.capturedPhoto != null)
                             Positioned.fill(
                               child: Container(

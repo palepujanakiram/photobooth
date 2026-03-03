@@ -258,7 +258,18 @@ class CameraService {
         await initialize();
       }
 
-      _cameras = await availableCameras();
+      // On Android, fetch Flutter and native camera lists in parallel to reduce preview start time
+      List<Map<String, dynamic>>? androidCameras;
+      if (!_isIOS && !kIsWeb) {
+        final results = await Future.wait([
+          availableCameras(),
+          AndroidCameraDeviceHelper.getAllAvailableCameras(),
+        ]);
+        _cameras = results[0] as List<CameraDescription>;
+        androidCameras = results[1] as List<Map<String, dynamic>>?;
+      } else {
+        _cameras = await availableCameras();
+      }
 
       // Store Flutter's original camera list for Android external camera verification
       final flutterOriginalCameras = List<CameraDescription>.from(_cameras!);
@@ -272,8 +283,8 @@ class CameraService {
       }
       AppLogger.debug('');
 
-      // On Android, get cameras from native Camera2 API to detect USB cameras
-      if (!_isIOS && !kIsWeb) {
+      // On Android, merge with native Camera2 API (USB cameras etc.); androidCameras already fetched above
+      if (!_isIOS && !kIsWeb && androidCameras != null) {
         AppLogger.debug('🤖 Android platform detected');
         AppLogger.debug('📱 Flutter detected ${_cameras!.length} camera(s):');
         for (int i = 0; i < _cameras!.length; i++) {
@@ -288,11 +299,9 @@ class CameraService {
           AppLogger.debug('');
         }
 
-        // Get cameras from Android Camera2 API (includes USB cameras)
+        // Merge with Android Camera2 API result (already awaited above)
         try {
-          final androidCameras =
-              await AndroidCameraDeviceHelper.getAllAvailableCameras();
-          if (androidCameras != null && androidCameras.isNotEmpty) {
+          if (androidCameras.isNotEmpty) {
             AppLogger.debug(
                 '📱 Android Camera2 API reports ${androidCameras.length} camera(s):');
             AppLogger.debug('');
@@ -966,15 +975,22 @@ class CameraService {
             AppLogger.debug(
                 '   🎯 Will initialize with device ID: "$deviceIdToUse"');
             _customController = CustomCameraController();
-            await _customController!.initialize(deviceIdToUse);
+            final useSurfaceView = AppConstants.kUseSurfaceViewForPreview;
+            await _customController!.initialize(
+              deviceIdToUse,
+              useSurfaceView: useSurfaceView,
+              rotation: AppConstants.kCameraPreviewRotationDefault,
+            );
             _useCustomController = true;
             AppLogger.debug(
                 '   ✅ Native Android camera controller initialized successfully');
             AppLogger.debug(
                 '   ✅ Active device ID: ${_customController!.currentDeviceId}');
-            AppLogger.debug('   ✅ Texture ID: ${_customController!.textureId}');
-            AppLogger.debug(
-                '   ✅ Preview will use Texture widget with ID: ${_customController!.textureId}');
+            if (_customController!.useSurfaceView) {
+              AppLogger.debug('   ✅ Preview will use SurfaceView');
+            } else {
+              AppLogger.debug('   ✅ Texture ID: ${_customController!.textureId}');
+            }
             return;
           } catch (e, stackTrace) {
             AppLogger.debug('   ❌ Native camera controller failed: $e');
@@ -1202,8 +1218,11 @@ class CameraService {
   /// Checks if using custom controller
   bool get isUsingCustomController => _useCustomController;
 
-  /// Gets the texture ID for custom controller preview
+  /// Gets the texture ID for custom controller preview (null when using SurfaceView)
   int? get textureId => _customController?.textureId;
+
+  /// True when preview uses SurfaceView (Android). Use AndroidView in UI instead of Texture.
+  bool get useSurfaceView => _customController?.useSurfaceView ?? false;
 
   /// Takes a picture and returns the XFile (works on all platforms including web)
   Future<XFile> takePicture() async {

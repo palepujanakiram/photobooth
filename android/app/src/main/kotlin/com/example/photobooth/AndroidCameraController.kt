@@ -37,7 +37,7 @@ import java.lang.reflect.Method
  */
 class AndroidCameraController(
     private val context: Context,
-    private val textureRegistry: TextureRegistry,
+    private val textureRegistry: TextureRegistry?,
 ) {
     // TextureRegistry is provided via constructor
     companion object {
@@ -72,6 +72,10 @@ class AndroidCameraController(
     private var captureTimeoutHandler: android.os.Handler? = null
     private var captureTimeoutRunnable: Runnable? = null
     private var isDisposing: Boolean = false
+
+    /** When true, preview uses SurfaceView (provided via onSurfaceReady) instead of Texture. */
+    private var useSurfaceView: Boolean = false
+    private var externalPreviewSurface: Surface? = null
 
     private val cameraStateCallback =
         object : CameraDevice.StateCallback() {
@@ -185,16 +189,9 @@ class AndroidCameraController(
         Bugsnag.leaveBreadcrumb("Image data received from camera")
         
         // CRITICAL: Check if camera is still active/initialized
-        // Prevents "FlutterJNI not attached" errors when callback fires after disposal
-        if (cameraDevice == null || textureEntry == null) {
+        if (cameraDevice == null || (!useSurfaceView && textureEntry == null)) {
             Log.w(TAG, "⚠️ imageAvailableListener called but camera already disposed. Ignoring.")
-            Bugsnag.leaveBreadcrumb("Image received but camera already disposed")
-            // Acquire/close any pending image to clear the queue
-            try {
-                reader.acquireLatestImage()?.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error closing orphaned image: ${e.message}")
-            }
+            try { reader.acquireLatestImage()?.close() } catch (e: Exception) { }
             return@OnImageAvailableListener
         }
         
@@ -224,6 +221,41 @@ class AndroidCameraController(
             image.close()
             Log.d(TAG, "   Image closed")
         }
+    }
+
+    /**
+     * Prepares for SurfaceView preview: sets up everything except opening the camera.
+     * When the platform view's surface is ready, call onSurfaceReady(surface); the camera will then open and use that surface.
+     */
+    fun prepareForSurfaceView(cameraId: String, rotationDegrees: Int, result: MethodChannel.Result) {
+        try {
+            logInitializationStart(cameraId)
+            cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val characteristics = getCameraCharacteristics(cameraId, result) ?: return
+            val cameraName = getCameraName(characteristics, cameraId)
+            currentCameraId = cameraId
+            useSurfaceView = true
+            startBackgroundThread()
+            if (!setupImageReader(characteristics, result)) return
+            result.success(mapOf(
+                "success" to true,
+                "useSurfaceView" to true,
+                "localizedName" to cameraName,
+            ))
+            Log.d(TAG, "   ✅ Prepared for SurfaceView preview (camera will open when surface is ready)")
+        } catch (e: Exception) {
+            handleInitializationError(e, "INIT_ERROR", e.message, result)
+        }
+    }
+
+    /**
+     * Called when the SurfaceView's surface is ready. Opens the camera and creates the capture session with this surface.
+     */
+    fun onSurfaceReady(surface: Surface) {
+        if (!useSurfaceView || currentCameraId == null) return
+        externalPreviewSurface = surface
+        Log.d(TAG, "   📺 SurfaceView surface ready, opening camera $currentCameraId")
+        cameraManager?.openCamera(currentCameraId!!, cameraStateCallback, backgroundHandler)
     }
 
     /**
@@ -319,8 +351,12 @@ class AndroidCameraController(
     }
 
     private fun setupTextureEntry(result: MethodChannel.Result): Boolean {
+        val registry = textureRegistry ?: run {
+            result.error("INIT_ERROR", "Texture registry not available.", null)
+            return false
+        }
         return try {
-            textureEntry = textureRegistry.createSurfaceTexture()
+            textureEntry = registry.createSurfaceTexture()
             textureId = textureEntry!!.id()
             Log.d(TAG, "   ✅ Texture created with ID: $textureId")
             true
@@ -391,36 +427,37 @@ class AndroidCameraController(
     }
 
     /**
-     * Creates the capture session with preview and photo outputs
+     * Creates the capture session with preview and photo outputs.
+     * Uses SurfaceView surface when useSurfaceView is true, otherwise Texture.
      */
     private fun createCaptureSession() {
         val device = cameraDevice ?: return
-        val textureEntry = textureEntry ?: return
         val imageReader = imageReader ?: return
 
         try {
-            val surfaceTexture = textureEntry.surfaceTexture()
-            // Buffer size was already set during initialization, but ensure it's set correctly
-            // Use optimal preview size instead of hardcoded 1920x1080
-            val map =
-                cameraManager
-                    ?.getCameraCharacteristics(currentCameraId ?: "")
-                    ?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-            val previewSizes = map?.getOutputSizes(SurfaceTexture::class.java)?.toList() ?: emptyList()
-            val optimalSize = chooseOptimalSize(previewSizes)
-            surfaceTexture.setDefaultBufferSize(optimalSize.width, optimalSize.height)
-            Log.d(TAG, "   Preview buffer size set to: ${optimalSize.width}x${optimalSize.height}")
+            val previewSurfaceToUse: Surface = if (useSurfaceView && externalPreviewSurface != null) {
+                Log.d(TAG, "   Using SurfaceView surface for preview")
+                externalPreviewSurface!!
+            } else {
+                val te = textureEntry ?: return
+                val surfaceTexture = te.surfaceTexture()
+                val map =
+                    cameraManager
+                        ?.getCameraCharacteristics(currentCameraId ?: "")
+                        ?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                val previewSizes = map?.getOutputSizes(SurfaceTexture::class.java)?.toList() ?: emptyList()
+                val optimalSize = chooseOptimalSize(previewSizes)
+                surfaceTexture.setDefaultBufferSize(optimalSize.width, optimalSize.height)
+                applyPreviewOrientation(surfaceTexture as android.graphics.SurfaceTexture)
+                previewSurface = Surface(surfaceTexture)
+                previewSurface!!
+            }
 
-            // Apply identity transform (0°); use in-app "Preview rotation" in Flutter to correct.
-            applyPreviewOrientation(surfaceTexture as android.graphics.SurfaceTexture)
-
-            // Create Surface from the SurfaceTexture - this is the preview surface
-            // Store it so we can reuse the same instance in startPreviewInternal
-            previewSurface = Surface(surfaceTexture)
             val imageSurface = imageReader.surface
-
-            val surfaces = listOf(previewSurface!!, imageSurface)
+            val surfaces = listOf(previewSurfaceToUse, imageSurface)
             Log.d(TAG, "   Creating capture session with ${surfaces.size} surfaces (preview + image)")
+
+            previewSurface = previewSurfaceToUse
 
             device.createCaptureSession(
                 surfaces,
@@ -945,9 +982,11 @@ class AndroidCameraController(
             pendingPhotoResult = null
         }
         
-        // Clean up preview surface
-        previewSurface?.release()
+        // Clean up preview surface (only release if we created it from Texture; SurfaceView owns its surface)
+        if (!useSurfaceView) previewSurface?.release()
         previewSurface = null
+        useSurfaceView = false
+        externalPreviewSurface = null
         // Cancel any pending preview requests
         pendingPreviewResult?.error("CANCELLED", "Camera closed", null)
         pendingPreviewResult = null
@@ -980,4 +1019,9 @@ class AndroidCameraController(
      * Checks if camera is initialized
      */
     fun isInitialized(): Boolean = cameraDevice != null && captureSession != null
+
+    /** True when prepared for SurfaceView but camera not yet opened (waiting for surface). */
+    fun isPreparedForSurfaceView(): Boolean = useSurfaceView && cameraDevice == null
+
+    fun getCurrentCameraId(): String? = currentCameraId
 }

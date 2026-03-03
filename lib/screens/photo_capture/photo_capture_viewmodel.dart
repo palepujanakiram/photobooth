@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart' show ChangeNotifier, compute;
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -326,18 +327,25 @@ class CaptureViewModel extends ChangeNotifier {
     // Clear any previous errors
     _errorMessage = null;
     
-    // Reload cameras
-    await loadCameras();
-    
-    // Select and initialize default camera (prefer external, else first)
-    if (_availableCameras.isNotEmpty) {
-      _currentCamera = _pickDefaultCamera(_availableCameras);
-      final isExt = _currentCamera!.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(_currentCamera!.name);
-      AppLogger.debug('📷 Selected camera: ${_currentCamera!.name} (${_currentCamera!.lensDirection}) ${isExt ? "[external]" : "[built-in]"}');
-      await initializeCamera(_currentCamera!);
-    } else {
-      AppLogger.debug('⚠️ No cameras available');
-      _errorMessage = 'No cameras available';
+    const initTimeout = Duration(seconds: 25);
+    try {
+      await (() async {
+        await loadCameras();
+        if (_availableCameras.isNotEmpty) {
+          _currentCamera = _pickDefaultCamera(_availableCameras);
+          final isExt = _currentCamera!.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(_currentCamera!.name);
+          AppLogger.debug('📷 Selected camera: ${_currentCamera!.name} (${_currentCamera!.lensDirection}) ${isExt ? "[external]" : "[built-in]"}');
+          await initializeCamera(_currentCamera!);
+        } else {
+          AppLogger.debug('⚠️ No cameras available');
+          _errorMessage = 'No cameras available';
+          notifyListeners();
+        }
+      })().timeout(initTimeout);
+    } on TimeoutException catch (_) {
+      AppLogger.debug('⏱️ Camera initialization timed out after ${initTimeout.inSeconds}s');
+      _errorMessage = 'Camera took too long to start. Please try again.';
+      _isInitializing = false;
       notifyListeners();
     }
   }
@@ -374,6 +382,7 @@ class CaptureViewModel extends ChangeNotifier {
 
     try {
       // CRITICAL: Fully release the previous camera before opening the new one
+      final hadController = _cameraController != null || _cameraService.isUsingCustomController;
       if (_cameraController != null) {
         AppLogger.debug('🔄 Disposing existing camera controller before switch...');
         try {
@@ -384,7 +393,10 @@ class CaptureViewModel extends ChangeNotifier {
         _cameraController = null;
       }
       await _cameraService.dispose();
-      await Future.delayed(const Duration(milliseconds: 300));
+      // Brief delay only when we actually released a camera (lets system free resources)
+      if (hadController) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
 
       // Debug: Log which camera is being initialized
       AppLogger.debug('📸 CaptureViewModel.initializeCamera called:');
@@ -413,19 +425,31 @@ class CaptureViewModel extends ChangeNotifier {
           AppLogger.debug('   Device ID: ${customController.currentDeviceId}');
           AppLogger.debug('   Texture ID: ${customController.textureId}');
           
-          // Start preview with error handling
+          // Start preview. With SurfaceView we must not await: the surface is ready only after the UI builds the AndroidView.
           try {
-            await customController.startPreview();
-            AppLogger.debug('✅ Preview started for custom controller');
-            
-            // Small delay to ensure preview is fully running before allowing capture
-            await Future.delayed(const Duration(milliseconds: 500));
-            AppLogger.debug('✅ Preview stabilization delay complete');
+            if (customController.useSurfaceView) {
+              customController.startPreview().then((_) => notifyListeners()).catchError((e, st) {
+                if (e is PlatformException && e.code == 'CANCELLED') {
+                  return;
+                }
+                _errorMessage = 'Failed to start camera preview: $e';
+                notifyListeners();
+              });
+            } else {
+              await customController.startPreview();
+              await Future.delayed(const Duration(milliseconds: 100));
+            }
+            AppLogger.debug('✅ Preview start requested for custom controller');
           } catch (e, stackTrace) {
+            if (e is PlatformException && e.code == 'CANCELLED') {
+              _currentCamera = camera;
+              _isInitializing = false;
+              _errorMessage = null;
+              notifyListeners();
+              return;
+            }
             AppLogger.debug('❌ ERROR: Failed to start preview: $e');
             _errorMessage = 'Failed to start camera preview: $e';
-            
-            // Log to Bugsnag
             ErrorReportingManager.log('❌ Failed to start camera preview');
             await ErrorReportingManager.recordError(
               e,
@@ -433,22 +457,20 @@ class CaptureViewModel extends ChangeNotifier {
               reason: 'Failed to start preview for custom controller',
               extraInfo: {
                 'camera_name': camera.name,
-                'camera_direction': camera.lensDirection.toString(),
                 'device_id': customController.currentDeviceId ?? 'unknown',
                 'error': e.toString(),
               },
             );
-            
             _isInitializing = false;
             notifyListeners();
             return;
           }
-          
+
           _currentCamera = camera;
           _isInitializing = false;
           _errorMessage = null;
-          notifyListeners(); // CRITICAL: Notify listeners so UI rebuilds with new preview
-          return; // CRITICAL: Return to avoid calling notifyListeners() again
+          notifyListeners();
+          return;
         } else {
           AppLogger.debug('❌ ERROR: Custom controller is null after initialization!');
           _errorMessage = 'Custom camera controller is null after initialization';
