@@ -217,32 +217,57 @@ class CaptureViewModel extends ChangeNotifier {
     return list;
   }
 
-  /// Loads available cameras when user opens Capture screen; single [availableCameras] call.
+  /// Loads available cameras when user opens Capture screen.
+  /// On Android, ensures camera permission is requested before enumeration.
+  /// If first enumeration returns 0, retries with delay (helps USB/external cameras).
   Future<void> loadCameras() async {
     _isLoadingCameras = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      final allCameras = await cam.availableCameras();
+      // On Android, request permission so the system exposes cameras to the app (some devices need this even if already "Allow" in Settings).
+      if (Platform.isAndroid) {
+        final status = await Permission.camera.status;
+        if (!status.isGranted) {
+          final result = await Permission.camera.request();
+          if (!result.isGranted) {
+            _errorMessage = 'Camera permission is required to detect and use cameras.';
+            notifyListeners();
+            return;
+          }
+        }
+      }
+
+      const int maxAttempts = 3;
+      const Duration retryDelay = Duration(milliseconds: 1500);
+      List<CameraDescription> allCameras = await cam.availableCameras();
+
+      for (int attempt = 1; attempt < maxAttempts && allCameras.isEmpty; attempt++) {
+        AppLogger.debug('📷 Camera enumeration attempt $attempt returned 0; retrying in ${retryDelay.inMilliseconds}ms...');
+        await Future<void>.delayed(retryDelay);
+        allCameras = await cam.availableCameras();
+      }
+
       if (allCameras.isEmpty) {
         final cameraPermissionStatus = Platform.isAndroid ? (await Permission.camera.status).toString() : 'n/a';
-        ErrorReportingManager.log('❌ Camera enumeration returned 0 cameras');
+        ErrorReportingManager.log('❌ Camera enumeration returned 0 cameras after $maxAttempts attempts');
         await ErrorReportingManager.recordError(
-          Exception('Camera enumeration returned 0 cameras'),
+          Exception('Camera enumeration returned 0 cameras after $maxAttempts attempts'),
           StackTrace.current,
           reason: 'No cameras detected',
           extraInfo: {
             'platform': defaultTargetPlatform.name,
             'cameraPermissionStatus': cameraPermissionStatus,
+            'attempts': maxAttempts,
             'message': 'availableCameras() returned empty list; no exception thrown',
           },
           fatal: false,
         );
       }
       AppLogger.debug('📷 Detected ${allCameras.length} camera(s):');
-      for (final camera in allCameras) {
-        AppLogger.debug('  - Name: "${camera.name}", Direction: ${camera.lensDirection}');
+      for (final c in allCameras) {
+        AppLogger.debug('  - Name: "${c.name}", Direction: ${c.lensDirection}');
       }
       // Show all cameras (no device-type filter that could hide the only camera)
       _availableCameras = _externalCamerasFirst(allCameras);
