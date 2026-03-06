@@ -60,9 +60,9 @@ dev_dependencies:
   json_serializable: ^6.7.1
   flutter_launcher_icons: ^0.13.1
 
-# Force camera_android_camerax 0.6.30+ for external/USB camera support on Android TV
+# Force a recent CameraX plugin for external/USB camera support and rotation fixes.
 dependency_overrides:
-  camera_android_camerax: 0.6.30
+  camera_android_camerax: 0.7.1
 
 flutter:
   uses-material-design: true

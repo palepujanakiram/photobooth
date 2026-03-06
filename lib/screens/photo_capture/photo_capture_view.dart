@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart' show BoxFit, Colors, Material, InkWell, RotatedBox;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
@@ -65,14 +67,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   /// Common function to reset and initialize cameras
   /// Used both when entering the screen and when tapping the reload button
   /// Uses sync tablet check so cameras load immediately; does not block on slow getDeviceType().
-  Future<void> _resetAndInitializeCameras() async {
+  Future<void> _resetAndInitializeCameras({bool forceRefresh = false}) async {
     if (!mounted) return;
     _captureViewModel.setDeviceType(null);
-    await _captureViewModel.resetAndInitializeCameras();
-    // Optionally refine device type in background (e.g. for Android TV); no need to reload cameras
+    final deviceTypeFuture = DeviceClassifier.getDeviceType(context);
+    await _captureViewModel.resetAndInitializeCameras(
+      forceRefresh: forceRefresh,
+    );
     if (!mounted) return;
     try {
-      final deviceType = await DeviceClassifier.getDeviceType(context);
+      final deviceType = await deviceTypeFuture;
       if (mounted) _captureViewModel.setDeviceType(deviceType);
     } catch (_) {}
   }
@@ -180,7 +184,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                       icon: CupertinoIcons.arrow_clockwise,
                       onPressed: viewModel.isLoadingCameras || viewModel.isInitializing
                           ? null
-                          : () => _resetAndInitializeCameras(),
+                          : () => _resetAndInitializeCameras(forceRefresh: true),
                       color: (viewModel.isLoadingCameras || viewModel.isInitializing)
                           ? CupertinoColors.systemGrey
                           : CupertinoColors.activeBlue,
@@ -244,7 +248,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   CupertinoButton(
-                                    onPressed: () => _resetAndInitializeCameras(),
+                                    onPressed: () => _resetAndInitializeCameras(forceRefresh: true),
                                     child: const Text('Retry'),
                                   ),
                                   CupertinoButton(
@@ -286,7 +290,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
-                                _rotationLabel(viewModel.displayRotation),
+                                _effectiveRotationLabel(viewModel),
                                 style: const TextStyle(color: Colors.white70, fontSize: 12),
                               ),
                             ),
@@ -463,10 +467,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 
-  /// Builds camera preview with rotation correction for device orientation (0, 90, 180, 270) like fluttercamerabasic.
+  /// Builds camera preview and applies Android TV/external-camera correction
+  /// plus any user-selected manual rotation.
   Widget _buildCameraPreviewWithRotation(BuildContext context, CaptureViewModel viewModel) {
     final controller = viewModel.cameraController;
-    final camera = viewModel.currentCamera;
     if (controller == null) {
       return Container(
         color: AppColors.of(context).backgroundColor,
@@ -479,50 +483,88 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       );
     }
 
-    // previewSize can be null briefly after init (e.g. some USB cameras on Android TV); fallback still shows preview
-    // previewSize can be null briefly after init (e.g. some USB cameras on Android TV)
-    final size = controller.value.previewSize;
-    if (size == null || camera == null) {
-      return CameraPreview(controller);
-    }
-
-    final sensorOrientation = camera.sensorOrientation;
-    final displayRotation = viewModel.displayRotation;
-    final needsSwap = sensorOrientation == 90 || sensorOrientation == 270;
-    final correctionTurns = needsSwap ? 0 : (displayRotation.isOdd ? 1 : 3);
-
-    Widget preview = CameraPreview(controller);
-    if (correctionTurns != 0) {
-      preview = RotatedBox(quarterTurns: correctionTurns, child: preview);
-    }
-
-    final rotationSwaps = correctionTurns == 1 || correctionTurns == 3;
-    final displayWidth = rotationSwaps ? size.height : size.width;
-    final displayHeight = rotationSwaps ? size.width : size.height;
-
-    return FittedBox(
-      fit: BoxFit.cover,
-      child: SizedBox(
-        width: displayWidth,
-        height: displayHeight,
+    Widget preview = _buildPlatformPreview(controller);
+    final autoQuarterTurns = _androidTvPreviewQuarterTurns(viewModel);
+    final manualQuarterTurns = (viewModel.previewRotationDegrees ~/ 90) % 4;
+    final effectiveQuarterTurns =
+        (autoQuarterTurns + manualQuarterTurns) % 4;
+    if (effectiveQuarterTurns != 0) {
+      preview = RotatedBox(
+        quarterTurns: effectiveQuarterTurns,
         child: preview,
+      );
+    }
+
+    final previewSize = controller.value.previewSize;
+    final baseAspectRatio = controller.value.aspectRatio;
+    final displayAspectRatio =
+        effectiveQuarterTurns.isOdd ? 1 / baseAspectRatio : baseAspectRatio;
+
+    return ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: ClipRect(
+          child: SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.fill,
+              child: SizedBox(
+                width: previewSize == null
+                    ? (effectiveQuarterTurns.isOdd ? 1 : displayAspectRatio)
+                    : (effectiveQuarterTurns.isOdd
+                        ? previewSize.height
+                        : previewSize.width),
+                height: previewSize == null
+                    ? (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1)
+                    : (effectiveQuarterTurns.isOdd
+                        ? previewSize.width
+                        : previewSize.height),
+                child: preview,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  static String _rotationLabel(int value) {
-    switch (value) {
-      case 0:
-        return '0 → Surface.ROTATION_0';
-      case 1:
-        return '1 → Surface.ROTATION_90';
-      case 2:
-        return '2 → Surface.ROTATION_180';
-      case 3:
-        return '3 → Surface.ROTATION_270';
-      default:
-        return '$value → (unknown rotation)';
+  Widget _buildPlatformPreview(CameraController controller) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return controller.buildPreview();
     }
+    return CameraPreview(controller);
+  }
+
+  int _androidTvPreviewQuarterTurns(CaptureViewModel viewModel) {
+    final camera = viewModel.currentCamera;
+    if (camera == null) return 0;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return 0;
+    if (!viewModel.shouldUseLandscapePreviewRotationWorkaround &&
+        camera.lensDirection != CameraLensDirection.external) {
+      return 0;
+    }
+
+    final surfaceRotationDegrees = switch (viewModel.displayRotation) {
+      1 => 90,
+      2 => 180,
+      3 => 270,
+      _ => 0,
+    };
+
+    final sensorOrientation = camera.sensorOrientation % 360;
+    final rotationDegrees = switch (camera.lensDirection) {
+      CameraLensDirection.front =>
+        (sensorOrientation + surfaceRotationDegrees) % 360,
+      _ => (sensorOrientation - surfaceRotationDegrees + 360) % 360,
+    };
+
+    return ((360 - rotationDegrees) % 360) ~/ 90;
+  }
+
+  String _effectiveRotationLabel(CaptureViewModel viewModel) {
+    final autoTurns = _androidTvPreviewQuarterTurns(viewModel);
+    final manualTurns = (viewModel.previewRotationDegrees ~/ 90) % 4;
+    final effectiveTurns = (autoTurns + manualTurns) % 4;
+    return '${effectiveTurns * 90}° (auto ${autoTurns * 90}° + manual ${manualTurns * 90}°)';
   }
 
   /// Builds the captured photo display using cached bytes

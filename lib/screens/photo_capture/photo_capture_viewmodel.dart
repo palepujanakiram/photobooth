@@ -23,6 +23,7 @@ class CaptureViewModel extends ChangeNotifier {
   final ApiService _apiService;
   final SessionManager _sessionManager;
   final Uuid _uuid = const Uuid();
+  static List<CameraDescription>? _cachedAvailableCameras;
   CameraController? _cameraController;
   PhotoModel? _capturedPhoto;
   List<CameraDescription> _availableCameras = [];
@@ -51,6 +52,7 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Camera preview rotation in degrees (0, 90, 180, 270). Persisted in SharedPreferences.
   int _previewRotationDegrees = AppConstants.kCameraPreviewRotationDefault;
+  bool _isPreviewRotationConfiguredByUser = false;
 
   /// Display rotation from Android WindowManager (0–3: ROTATION_0, 90, 180, 270). Used for preview correction and capture lock.
   int _displayRotation = 0;
@@ -80,6 +82,9 @@ class CaptureViewModel extends ChangeNotifier {
   int? get countdownValue => _countdownValue;
   bool get isCountingDown => _countdownValue != null;
   int get previewRotationDegrees => _previewRotationDegrees;
+  bool get shouldUseLandscapePreviewRotationWorkaround =>
+      _deviceType == AppDeviceType.androidTv ||
+      _deviceType == AppDeviceType.androidTablet;
   double? get minZoom => _minZoom;
   double? get maxZoom => _maxZoom;
   double get currentZoom => _currentZoom;
@@ -107,12 +112,62 @@ class CaptureViewModel extends ChangeNotifier {
   Future<void> loadPreviewRotation() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final migrationVersion = prefs.getInt(
+            AppConstants.kCameraPreviewRotationMigrationVersionKey,
+          ) ??
+          0;
       final saved = prefs.getInt(AppConstants.kCameraPreviewRotationKey);
-      if (saved != null && [0, 90, 180, 270].contains(saved)) {
-        _previewRotationDegrees = saved;
-      } else {
+      final isConfigured =
+          prefs.getBool(AppConstants.kCameraPreviewRotationConfiguredKey) ??
+              false;
+      final needsRotationReset =
+          migrationVersion < AppConstants.kCameraPreviewRotationMigrationVersion;
+
+      if (needsRotationReset) {
+        _isPreviewRotationConfiguredByUser = false;
         _previewRotationDegrees = AppConstants.kCameraPreviewRotationDefault;
-        await prefs.setInt(AppConstants.kCameraPreviewRotationKey, AppConstants.kCameraPreviewRotationDefault);
+        await prefs.setInt(
+          AppConstants.kCameraPreviewRotationKey,
+          AppConstants.kCameraPreviewRotationDefault,
+        );
+        await prefs.setBool(
+          AppConstants.kCameraPreviewRotationConfiguredKey,
+          false,
+        );
+        await prefs.setInt(
+          AppConstants.kCameraPreviewRotationMigrationVersionKey,
+          AppConstants.kCameraPreviewRotationMigrationVersion,
+        );
+      } else
+      if (saved != null &&
+          [0, 90, 180, 270].contains(saved) &&
+          isConfigured) {
+        _isPreviewRotationConfiguredByUser = true;
+        _previewRotationDegrees = saved;
+      } else if (saved != null && [0, 90, 180, 270].contains(saved)) {
+        // Older builds persisted a default rotation even though it was not
+        // applied to the preview. Reset that legacy value to a neutral default.
+        _isPreviewRotationConfiguredByUser = false;
+        _previewRotationDegrees = AppConstants.kCameraPreviewRotationDefault;
+        await prefs.setInt(
+          AppConstants.kCameraPreviewRotationKey,
+          AppConstants.kCameraPreviewRotationDefault,
+        );
+        await prefs.setInt(
+          AppConstants.kCameraPreviewRotationMigrationVersionKey,
+          AppConstants.kCameraPreviewRotationMigrationVersion,
+        );
+      } else {
+        _isPreviewRotationConfiguredByUser = false;
+        _previewRotationDegrees = AppConstants.kCameraPreviewRotationDefault;
+        await prefs.setInt(
+          AppConstants.kCameraPreviewRotationKey,
+          AppConstants.kCameraPreviewRotationDefault,
+        );
+        await prefs.setInt(
+          AppConstants.kCameraPreviewRotationMigrationVersionKey,
+          AppConstants.kCameraPreviewRotationMigrationVersion,
+        );
       }
       notifyListeners();
     } catch (_) {}
@@ -121,10 +176,15 @@ class CaptureViewModel extends ChangeNotifier {
   /// Saves and applies preview rotation (0, 90, 180, 270). Persists across sessions.
   Future<void> setPreviewRotation(int degrees) async {
     if (![0, 90, 180, 270].contains(degrees)) return;
+    _isPreviewRotationConfiguredByUser = true;
     _previewRotationDegrees = degrees;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(AppConstants.kCameraPreviewRotationKey, degrees);
+      await prefs.setBool(
+        AppConstants.kCameraPreviewRotationConfiguredKey,
+        true,
+      );
     } catch (_) {}
     notifyListeners();
   }
@@ -201,6 +261,20 @@ class CaptureViewModel extends ChangeNotifier {
   /// Used to filter cameras: tablet/TV → external only, phone → built-in only.
   void setDeviceType(AppDeviceType? type) {
     _deviceType = type;
+    unawaited(_applyDefaultPreviewRotationForDevice());
+  }
+
+  Future<void> _applyDefaultPreviewRotationForDevice() async {
+    if (_isPreviewRotationConfiguredByUser) return;
+    if (!shouldUseLandscapePreviewRotationWorkaround) return;
+
+    final desiredRotation = _displayRotation == 0
+        ? 270
+        : AppConstants.kCameraPreviewRotationDefault;
+    if (_previewRotationDegrees == desiredRotation) return;
+
+    _previewRotationDegrees = desiredRotation;
+    notifyListeners();
   }
 
   /// Sorts cameras so external ones come first (for default selection and list order).
@@ -220,12 +294,21 @@ class CaptureViewModel extends ChangeNotifier {
   /// On Android, availableCameras() returns an empty list (no exception) when
   /// camera permission is not granted, so we must request permission first.
   /// On iOS, the camera plugin triggers the permission dialog itself.
-  Future<void> loadCameras() async {
+  Future<void> loadCameras({bool forceRefresh = false}) async {
     _isLoadingCameras = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
+      if (!forceRefresh && _cachedAvailableCameras != null) {
+        _availableCameras = _externalCamerasFirst(_cachedAvailableCameras!);
+        if (_currentCamera == null && _availableCameras.isNotEmpty) {
+          _currentCamera = _pickDefaultCamera(_availableCameras);
+        }
+        notifyListeners();
+        return;
+      }
+
       // On Android, request camera permission before enumeration.
       // Without this, availableCameras() silently returns an empty list.
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
@@ -243,7 +326,7 @@ class CaptureViewModel extends ChangeNotifier {
         }
       }
 
-      List<CameraDescription> allCameras = await cam.availableCameras();
+      final allCameras = await cam.availableCameras();
 
       if (allCameras.isEmpty) {
         ErrorReportingManager.log('❌ Camera enumeration returned 0 cameras');
@@ -264,6 +347,7 @@ class CaptureViewModel extends ChangeNotifier {
       }
       // Show all cameras (no device-type filter that could hide the only camera)
       _availableCameras = _externalCamerasFirst(allCameras);
+      _cachedAvailableCameras = List<CameraDescription>.from(allCameras);
 
       AppLogger.debug(
           '📋 CaptureViewModel.loadCameras - Device: $_deviceType, showing ${_availableCameras.length} camera(s):');
@@ -303,7 +387,7 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Resets the camera screen and initializes with the first available camera
   /// This is a common function used both when entering the screen and when reloading
-  Future<void> resetAndInitializeCameras() async {
+  Future<void> resetAndInitializeCameras({bool forceRefresh = false}) async {
     AppLogger.debug('🔄 Resetting camera screen and initializing cameras...');
     
     // CRITICAL: Prevent reset while capture is in progress
@@ -344,7 +428,7 @@ class CaptureViewModel extends ChangeNotifier {
     const initTimeout = Duration(seconds: 25);
     try {
       await (() async {
-        await loadCameras();
+        await loadCameras(forceRefresh: forceRefresh);
         if (_availableCameras.isNotEmpty) {
           _currentCamera = _pickDefaultCamera(_availableCameras);
           final isExt = _currentCamera!.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(_currentCamera!.name);
@@ -422,28 +506,32 @@ class CaptureViewModel extends ChangeNotifier {
       AppLogger.debug('   Camera sensor orientation: ${camera.sensorOrientation}');
       
       // Set error reporting context for better error tracking
-      await ErrorReportingManager.setCameraContext(
+      unawaited(ErrorReportingManager.setCameraContext(
         cameraId: camera.name,
         cameraDirection: camera.lensDirection.toString(),
         isExternal: camera.lensDirection == CameraLensDirection.external,
-      );
+      ));
       ErrorReportingManager.log('Initializing camera: ${camera.name}');
       
       CameraDescription cameraToUse = camera;
       try {
         cameraToUse = _availableCameras.firstWhere((c) => c.name == camera.name);
       } catch (_) {}
+      final isExternalCamera =
+          cameraToUse.lensDirection == CameraLensDirection.external ||
+          _looksLikeExternalCameraName(cameraToUse.name);
+      final resolutionPreset = isExternalCamera
+          ? ResolutionPreset.high
+          : ResolutionPreset.high;
       _cameraController = CameraController(
         cameraToUse,
-        ResolutionPreset.veryHigh,
+        resolutionPreset,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
       );
       await _cameraController!.initialize().timeout(
         const Duration(seconds: 15),
         onTimeout: () => throw Exception('Camera initialization timed out after 15 seconds'),
       );
-      await Future.delayed(const Duration(milliseconds: 300));
 
       if (_cameraController != null) {
         final activeCamera = _cameraController!.description;
@@ -456,27 +544,10 @@ class CaptureViewModel extends ChangeNotifier {
         _maxZoom = null;
         _currentZoom = 1.0;
 
-        // Fetch display rotation (Android) for preview correction and optional capture lock
-        final rotation = await _fetchDisplayRotation();
-        _displayRotation = rotation;
-        AppLogger.debug('   Display rotation: $rotation');
-
-        // On Android at 90°, lock capture orientation to portrait for more reliable capture (like fluttercamerabasic)
-        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android && rotation == 1) {
-          final so = camera.sensorOrientation;
-          if (so == 0 || so == 180) {
-            try {
-              await _cameraController!.lockCaptureOrientation(DeviceOrientation.portraitUp);
-            } on CameraException {
-              // Best-effort
-            }
-          }
-        }
-
         _isInitializing = false;
         _errorMessage = null;
         notifyListeners();
-        _loadZoomInBackground();
+        unawaited(_finishCameraSetup(camera));
         return;
       }
 
@@ -539,6 +610,38 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> _finishCameraSetup(CameraDescription camera) async {
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    try {
+      final rotation = await _fetchDisplayRotation();
+      _displayRotation = rotation;
+      AppLogger.debug('   Display rotation: $rotation');
+
+      // Best-effort capture lock for cameras that report 0/180 sensor orientation.
+      if (!kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.android &&
+          rotation == 1) {
+        final so = camera.sensorOrientation;
+        if (so == 0 || so == 180) {
+          try {
+            await controller.lockCaptureOrientation(DeviceOrientation.portraitUp);
+          } on CameraException {
+            // Best-effort
+          }
+        }
+      }
+
+      await _applyDefaultPreviewRotationForDevice();
+      notifyListeners();
+    } catch (_) {
+      // Preview can still work without this metadata.
+    }
+
+    await _loadZoomInBackground();
+  }
+
   /// Loads zoom range in background with timeout so init never hangs.
   Future<void> _loadZoomInBackground() async {
     final ctrl = _cameraController;
@@ -555,7 +658,8 @@ class CaptureViewModel extends ChangeNotifier {
         _zoomLoadTimeout,
         onTimeout: () => throw TimeoutException('getMaxZoomLevel'),
       );
-      await ctrl.setZoomLevel(minZ);
+      final defaultZoom = 1.0.clamp(minZ, maxZ);
+      await ctrl.setZoomLevel(defaultZoom);
     } on CameraException {
       // Zoom not supported
     } on TimeoutException {
@@ -563,7 +667,11 @@ class CaptureViewModel extends ChangeNotifier {
     } catch (_) {}
     _minZoom = minZ;
     _maxZoom = maxZ;
-    _currentZoom = minZ ?? 1.0;
+    if (minZ != null && maxZ != null) {
+      _currentZoom = 1.0.clamp(minZ, maxZ);
+    } else {
+      _currentZoom = 1.0;
+    }
     notifyListeners();
   }
 
