@@ -1,6 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show ChangeNotifier, compute, defaultTargetPlatform;
+import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, compute, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/services.dart' show DeviceOrientation, MethodChannel;
 import 'package:camera/camera.dart';
 import 'package:camera/camera.dart' as cam show availableCameras;
@@ -95,7 +94,7 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Fetches display rotation from Android WindowManager (0–3). Returns 0 on non-Android or on error.
   Future<int> _fetchDisplayRotation() async {
-    if (!Platform.isAndroid) return 0;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return 0;
     try {
       final result = await const MethodChannel('photobooth/display').invokeMethod<int>('getRotation');
       return result ?? 0;
@@ -218,48 +217,42 @@ class CaptureViewModel extends ChangeNotifier {
   }
 
   /// Loads available cameras when user opens Capture screen.
-  /// On Android, ensures camera permission is requested before enumeration.
-  /// If first enumeration returns 0, retries with delay (helps USB/external cameras).
+  /// On Android, availableCameras() returns an empty list (no exception) when
+  /// camera permission is not granted, so we must request permission first.
+  /// On iOS, the camera plugin triggers the permission dialog itself.
   Future<void> loadCameras() async {
     _isLoadingCameras = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      // On Android, request permission so the system exposes cameras to the app (some devices need this even if already "Allow" in Settings).
-      if (Platform.isAndroid) {
+      // On Android, request camera permission before enumeration.
+      // Without this, availableCameras() silently returns an empty list.
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
         final status = await Permission.camera.status;
         if (!status.isGranted) {
+          AppLogger.debug('📷 Camera permission not granted, requesting...');
           final result = await Permission.camera.request();
+          AppLogger.debug('📷 Permission result: $result');
           if (!result.isGranted) {
             _errorMessage = 'Camera permission is required to detect and use cameras.';
+            _isLoadingCameras = false;
             notifyListeners();
             return;
           }
         }
       }
 
-      const int maxAttempts = 3;
-      const Duration retryDelay = Duration(milliseconds: 1500);
       List<CameraDescription> allCameras = await cam.availableCameras();
 
-      for (int attempt = 1; attempt < maxAttempts && allCameras.isEmpty; attempt++) {
-        AppLogger.debug('📷 Camera enumeration attempt $attempt returned 0; retrying in ${retryDelay.inMilliseconds}ms...');
-        await Future<void>.delayed(retryDelay);
-        allCameras = await cam.availableCameras();
-      }
-
       if (allCameras.isEmpty) {
-        final cameraPermissionStatus = Platform.isAndroid ? (await Permission.camera.status).toString() : 'n/a';
-        ErrorReportingManager.log('❌ Camera enumeration returned 0 cameras after $maxAttempts attempts');
+        ErrorReportingManager.log('❌ Camera enumeration returned 0 cameras');
         await ErrorReportingManager.recordError(
-          Exception('Camera enumeration returned 0 cameras after $maxAttempts attempts'),
+          Exception('Camera enumeration returned 0 cameras'),
           StackTrace.current,
           reason: 'No cameras detected',
           extraInfo: {
             'platform': defaultTargetPlatform.name,
-            'cameraPermissionStatus': cameraPermissionStatus,
-            'attempts': maxAttempts,
             'message': 'availableCameras() returned empty list; no exception thrown',
           },
           fatal: false,
@@ -328,7 +321,6 @@ class CaptureViewModel extends ChangeNotifier {
       AppLogger.debug('   Disposing current camera controller...');
       try {
         await _cameraController!.dispose();
-        _cameraController = null;
       } catch (e, stackTrace) {
         AppLogger.debug('   ⚠️ Warning: Error disposing camera: $e');
         ErrorReportingManager.log('⚠️ Warning: Error disposing camera controller');
@@ -340,9 +332,8 @@ class CaptureViewModel extends ChangeNotifier {
           fatal: false,
         );
       }
+      _cameraController = null;
     }
-    await _cameraController?.dispose();
-    _cameraController = null;
 
     // Clear current camera selection
     _currentCamera = null;
@@ -449,8 +440,8 @@ class CaptureViewModel extends ChangeNotifier {
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
       await _cameraController!.initialize().timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('Camera initialization timed out after 10 seconds'),
+        const Duration(seconds: 15),
+        onTimeout: () => throw Exception('Camera initialization timed out after 15 seconds'),
       );
       await Future.delayed(const Duration(milliseconds: 300));
 
@@ -471,7 +462,7 @@ class CaptureViewModel extends ChangeNotifier {
         AppLogger.debug('   Display rotation: $rotation');
 
         // On Android at 90°, lock capture orientation to portrait for more reliable capture (like fluttercamerabasic)
-        if (Platform.isAndroid && rotation == 1) {
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android && rotation == 1) {
           final so = camera.sensorOrientation;
           if (so == 0 || so == 180) {
             try {
