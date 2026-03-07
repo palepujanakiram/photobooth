@@ -1,15 +1,17 @@
-import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
-import 'package:flutter/material.dart' show BoxFit, Colors, Material, InkWell, RotatedBox;
+import 'package:flutter/material.dart' show BoxFit, Colors, FontWeight, RotatedBox, TextStyle;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import 'dart:ui' show Size;
 import 'package:camera/camera.dart';
+import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_viewmodel.dart';
+import 'photo_image_from_xfile_io.dart' if (dart.library.html) 'photo_image_from_xfile_web.dart' as photo_image;
 import '../../utils/constants.dart';
-import '../../utils/device_classifier.dart';
 import '../../utils/image_helper.dart';
+import '../../utils/device_classifier.dart';
 import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/full_screen_loader.dart';
@@ -24,44 +26,16 @@ class PhotoCaptureScreen extends StatefulWidget {
 
 class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   late CaptureViewModel _captureViewModel;
-  Uint8List? _cachedImageBytes;
-  String? _cachedPhotoId;
 
   @override
   void initState() {
     super.initState();
     _captureViewModel = CaptureViewModel();
-    // Same as fluttercamerabasic: start camera detection on first frame, no delay
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      _captureViewModel.loadPreviewRotation(); // non-blocking for camera load
+      _captureViewModel.loadPreviewRotation();
       await _resetAndInitializeCameras();
     });
-  }
-
-  /// Loads and caches the captured photo bytes
-  Future<void> _loadCapturedPhotoBytes() async {
-    final photo = _captureViewModel.capturedPhoto;
-    if (photo == null) {
-      _cachedImageBytes = null;
-      _cachedPhotoId = null;
-      return;
-    }
-    
-    // Only reload if photo changed
-    if (_cachedPhotoId != photo.id) {
-      try {
-        final bytes = await photo.imageFile.readAsBytes();
-        if (mounted) {
-          setState(() {
-            _cachedImageBytes = Uint8List.fromList(bytes);
-            _cachedPhotoId = photo.id;
-          });
-        }
-      } catch (e) {
-        // Handle error silently
-      }
-    }
   }
 
   /// Common function to reset and initialize cameras
@@ -153,12 +127,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                   title: 'Capture Photo',
                   leading: AppActionButton(
                     icon: CupertinoIcons.back,
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
+                    onPressed: () => Navigator.pop(context),
                   ),
                   actions: [
-                    // Camera selection button
                     if (viewModel.availableCameras.length > 1)
                       AppActionButton(
                         icon: CupertinoIcons.camera_rotate,
@@ -169,7 +140,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                             ? CupertinoColors.systemGrey
                             : CupertinoColors.activeBlue,
                       ),
-                    // Preview rotation button (for external camera)
                     AppActionButton(
                       icon: CupertinoIcons.rotate_right,
                       onPressed: viewModel.isLoadingCameras || viewModel.isInitializing
@@ -179,7 +149,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           ? CupertinoColors.systemGrey
                           : CupertinoColors.activeBlue,
                     ),
-                    // Refresh button (fresh enumeration)
                     AppActionButton(
                       icon: CupertinoIcons.arrow_clockwise,
                       onPressed: viewModel.isLoadingCameras || viewModel.isInitializing
@@ -279,7 +248,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           Positioned.fill(
                             child: previewWidget,
                           ),
-                          // Display rotation badge (like fluttercamerabasic)
+                          // Display rotation badge
                           Positioned(
                             top: 12,
                             right: 12,
@@ -304,7 +273,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                                 ),
                               ),
                             ),
-                          // Step banner at the top (always visible, on top of captured photo)
+                          // Step banner at the top
                           Positioned(
                             top: 0,
                             left: 0,
@@ -316,16 +285,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                             Positioned.fill(
                               child: _buildCountdownOverlay(context, viewModel.countdownValue!),
                             ),
-                          // Zoom overlay (like fluttercamerabasic)
-                          if (viewModel.hasZoomSupport &&
-                              !viewModel.isCountingDown &&
-                              viewModel.capturedPhoto == null)
+                          // Native camera details (preview size etc.) — visible until photo is captured
+                          if (viewModel.nativeCameraDetails != null && viewModel.capturedPhoto == null)
                             Positioned(
-                              left: 16,
-                              bottom: 100,
-                              child: _buildZoomOverlay(context, viewModel),
+                              left: 12,
+                              bottom: 180,
+                              child: _buildNativeCameraDetailsCard(
+                                context,
+                                viewModel.nativeCameraDetails!,
+                                previewSize: viewModel.previewSize,
+                                resolutionPreset: viewModel.effectiveResolutionPreset,
+                                currentZoom: viewModel.currentZoom,
+                              ),
                             ),
-                          // Captured photo details overlay (like fluttercamerabasic)
+                          // Captured photo info (resolution, file size) — only after capture
                           if (viewModel.capturedPhoto != null)
                             Positioned(
                               left: 16,
@@ -499,38 +472,37 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     final baseAspectRatio = controller.value.aspectRatio;
     final displayAspectRatio =
         effectiveQuarterTurns.isOdd ? 1 / baseAspectRatio : baseAspectRatio;
+    final width = previewSize == null
+        ? (effectiveQuarterTurns.isOdd ? 1.0 : displayAspectRatio)
+        : (effectiveQuarterTurns.isOdd
+            ? previewSize.height
+            : previewSize.width);
+    final height = previewSize == null
+        ? (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1.0)
+        : (effectiveQuarterTurns.isOdd
+            ? previewSize.width
+            : previewSize.height);
 
+    // Fit full preview inside screen so the complete picture is visible (no cropping).
     return ColoredBox(
       color: Colors.black,
-      child: Center(
-        child: ClipRect(
-          child: SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.fill,
-              child: SizedBox(
-                width: previewSize == null
-                    ? (effectiveQuarterTurns.isOdd ? 1 : displayAspectRatio)
-                    : (effectiveQuarterTurns.isOdd
-                        ? previewSize.height
-                        : previewSize.width),
-                height: previewSize == null
-                    ? (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1)
-                    : (effectiveQuarterTurns.isOdd
-                        ? previewSize.width
-                        : previewSize.height),
-                child: preview,
-              ),
-            ),
+      child: SizedBox.expand(
+        child: FittedBox(
+          fit: BoxFit.contain,
+          alignment: Alignment.center,
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: preview,
           ),
         ),
       ),
     );
   }
 
+  /// Use CameraPreview (Texture) on all platforms so aspect ratio is respected and
+  /// the image is not stretched; buildPreview() on Android can stretch to fill.
   Widget _buildPlatformPreview(CameraController controller) {
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return controller.buildPreview();
-    }
     return CameraPreview(controller);
   }
 
@@ -564,41 +536,134 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     final autoTurns = _androidTvPreviewQuarterTurns(viewModel);
     final manualTurns = (viewModel.previewRotationDegrees ~/ 90) % 4;
     final effectiveTurns = (autoTurns + manualTurns) % 4;
-    return '${effectiveTurns * 90}° (auto ${autoTurns * 90}° + manual ${manualTurns * 90}°)';
+    final rotation = '${effectiveTurns * 90}° (auto ${autoTurns * 90}° + manual ${manualTurns * 90}°)';
+    final size = viewModel.previewSize;
+    if (size != null) {
+      return '$rotation • ${size.width.toInt()}×${size.height.toInt()}';
+    }
+    return rotation;
   }
 
-  /// Builds the captured photo display using cached bytes
+  /// Builds the captured photo display. Uses file path for immediate display (no 2s delay).
   Widget _buildCapturedPhotoDisplay(BuildContext context, CaptureViewModel viewModel) {
-    final appColors = AppColors.of(context);
     final photo = viewModel.capturedPhoto;
-    
-    if (photo == null) {
-      return const SizedBox.shrink();
-    }
-    
-    // Load image bytes if not cached or photo changed
-    if (_cachedPhotoId != photo.id) {
-      // Trigger async load
-      _loadCapturedPhotoBytes();
-      
-      // Show loading while bytes are being loaded
-      return CupertinoActivityIndicator(
-        color: appColors.textColor,
-      );
-    }
-    
-    // Show cached image
-    if (_cachedImageBytes != null) {
-      return Image.memory(
-        _cachedImageBytes!,
-        fit: BoxFit.contain,
-        gaplessPlayback: true, // Prevents flickering
-      );
-    }
-    
-    // Fallback: show loading
-    return CupertinoActivityIndicator(
-      color: appColors.textColor,
+    if (photo == null) return const SizedBox.shrink();
+    return photo_image.imageFromXFile(photo.imageFile);
+  }
+
+  /// Native camera details pane (preview size, active array, zoom, etc.). Shown until photo is captured.
+  Widget _buildNativeCameraDetailsCard(
+    BuildContext context,
+    CameraDetails details, {
+    Size? previewSize,
+    ResolutionPreset? resolutionPreset,
+    double? currentZoom,
+  }) {
+    const style = TextStyle(color: Colors.white70, fontSize: 11);
+    const labelStyle = TextStyle(color: Colors.white54, fontSize: 10);
+    final inUseW = previewSize != null ? previewSize.width.toInt() : null;
+    final inUseH = previewSize != null ? previewSize.height.toInt() : null;
+    final presetName = resolutionPreset?.name ?? '?';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      constraints: const BoxConstraints(maxWidth: 260),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Native camera (${details.platform})', style: style.copyWith(fontWeight: FontWeight.w600)),
+          if (inUseW != null && inUseH != null)
+            _detailRow('Preview in use', '$inUseW×$inUseH ($presetName)', labelStyle, style),
+          if (currentZoom != null)
+            _detailRow('Current zoom', '${currentZoom.toStringAsFixed(2)}x', labelStyle, style),
+          const SizedBox(height: 6),
+          if (details.activeArrayWidth != null && details.activeArrayHeight != null)
+            _detailRow('Active array', '${details.activeArrayWidth}×${details.activeArrayHeight}', labelStyle, style),
+          if (details.zoomRatioRangeMin != null && details.zoomRatioRangeMax != null)
+            _detailRow('Zoom ratio', '${details.zoomRatioRangeMin!.toStringAsFixed(2)} – ${details.zoomRatioRangeMax!.toStringAsFixed(2)}', labelStyle, style),
+          if (details.maxDigitalZoom != null)
+            _detailRow('Max digital zoom', details.maxDigitalZoom!.toStringAsFixed(2), labelStyle, style),
+          if (details.lensFacing != null)
+            _detailRow('Lens facing', details.lensFacing!, labelStyle, style),
+          const SizedBox(height: 4),
+          Text('Preview sizes (${details.supportedPreviewSizes.length})', style: labelStyle),
+          Text(details.supportedPreviewSizes.isEmpty ? '—' : details.supportedPreviewSizes.join(', '), style: style),
+          const SizedBox(height: 2),
+          Text('Capture sizes (${details.supportedCaptureSizes.length})', style: labelStyle),
+          Text(details.supportedCaptureSizes.isEmpty ? '—' : details.supportedCaptureSizes.join(', '), style: style),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value, TextStyle labelStyle, TextStyle valueStyle) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 110, child: Text(label, style: labelStyle)),
+          Expanded(child: Text(value, style: valueStyle)),
+        ],
+      ),
+    );
+  }
+
+  /// Captured photo info (resolution, file size). Shown only after photo is captured.
+  Widget _buildCapturedPhotoDetailsOverlay(
+    BuildContext context,
+    CaptureViewModel viewModel,
+  ) {
+    final photo = viewModel.capturedPhoto;
+    if (photo == null) return const SizedBox.shrink();
+
+    return FutureBuilder<ImageMetadata?>(
+      future: ImageHelper.getImageMetadata(photo.imageFile),
+      builder: (context, snapshot) {
+        final meta = snapshot.data;
+        if (meta == null && snapshot.connectionState != ConnectionState.done) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              'Loading…',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+          );
+        }
+        if (meta == null) return const SizedBox.shrink();
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Resolution: ${meta.width} × ${meta.height}',
+                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'File size: ${ImageHelper.formatFileSize(meta.fileSizeBytes)}',
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -636,219 +701,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 
-  /// Zoom overlay (like fluttercamerabasic): preset buttons from device min/max.
-  Widget _buildZoomOverlay(BuildContext context, CaptureViewModel viewModel) {
-    final min = viewModel.minZoom!;
-    final max = viewModel.maxZoom!;
-    final current = viewModel.currentZoom.clamp(min, max);
-    final levels = _zoomLevelsFromMinMax(min, max);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Zoom',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: levels.map((level) {
-              final isSelected = (current - level).abs() < 0.05;
-              return Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: Material(
-                  color: isSelected
-                      ? Colors.white.withValues(alpha: 0.25)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  child: InkWell(
-                    onTap: () => viewModel.setZoomLevel(level),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      child: Text(
-                        _zoomLabel(level),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<double> _zoomLevelsFromMinMax(double min, double max) {
-    if (max <= min) return [min];
-    final range = max - min;
-    if (range < 0.01) return [min];
-    final step = range / 3;
-    return [min, min + step, min + step * 2, max];
-  }
-
-  String _zoomLabel(double value) {
-    if (value >= 10 || (value >= 1 && value == value.roundToDouble())) {
-      return '${value.toInt()}x';
-    }
-    if (value < 1 && (value * 2).roundToDouble() == value * 2) {
-      return '${value}x';
-    }
-    return '${value.toStringAsFixed(1)}x';
-  }
-
-  /// Captured photo details overlay (like fluttercamerabasic): resolution, file size.
-  Widget _buildCapturedPhotoDetailsOverlay(
-    BuildContext context,
-    CaptureViewModel viewModel,
-  ) {
-    final photo = viewModel.capturedPhoto;
-    if (photo == null) return const SizedBox.shrink();
-
-    return FutureBuilder<ImageMetadata?>(
-      future: ImageHelper.getImageMetadata(photo.imageFile),
-      builder: (context, snapshot) {
-        final meta = snapshot.data;
-        if (meta == null && snapshot.connectionState != ConnectionState.done) {
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'Loading details…',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-          );
-        }
-        if (meta == null) return const SizedBox.shrink();
-
-        final lines = <String>[
-          'Resolution: ${meta.width} × ${meta.height}',
-          'Width: ${meta.width} px',
-          'Height: ${meta.height} px',
-          'File size: ${ImageHelper.formatFileSize(meta.fileSizeBytes)}',
-        ];
-
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.black54,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: lines
-                .map((line) => Text(
-                      line,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        height: 1.4,
-                      ),
-                    ))
-                .toList(),
-          ),
-        );
-      },
-    );
-  }
-
-  /// Overlay above Cancel/Continue showing photo size (width × height) and format.
-  Widget _buildPhotoMetadataOverlay(
-    BuildContext context,
-    XFile imageFile,
-    AppColors appColors,
-  ) {
-    return FutureBuilder<ImageMetadata?>(
-      future: ImageHelper.getImageMetadata(imageFile),
-      builder: (context, snapshot) {
-        final meta = snapshot.data;
-        if (meta == null) {
-          return const SizedBox.shrink();
-        }
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: CupertinoColors.systemGrey6.withValues(alpha: 0.95),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: CupertinoColors.systemGrey4,
-              width: 1,
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                '${meta.width} × ${meta.height}',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: appColors.textColor,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                meta.format,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: appColors.textColor.withValues(alpha: 0.8),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                ImageHelper.formatFileSize(meta.fileSizeBytes),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: appColors.textColor.withValues(alpha: 0.8),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   Widget _buildCaptureControls(
       BuildContext context, CaptureViewModel viewModel) {
     final appColors = AppColors.of(context);
 
     if (viewModel.capturedPhoto != null) {
-      final photo = viewModel.capturedPhoto!;
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (AppConstants.kShowCapturedPhotoMetadataOverlay)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12.0),
-              child: _buildPhotoMetadataOverlay(context, photo.imageFile, appColors),
-            ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32.0),
             child: Row(
@@ -860,14 +720,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                   height: 50,
                   child: CupertinoButton(
                     padding: EdgeInsets.zero,
-                    onPressed: () {
-                      // Clear cached image bytes
-                      setState(() {
-                        _cachedImageBytes = null;
-                        _cachedPhotoId = null;
-                      });
-                      viewModel.clearCapturedPhoto();
-                    },
+                    onPressed: () => viewModel.clearCapturedPhoto(),
                     color: CupertinoColors.systemGrey,
                     borderRadius: BorderRadius.circular(12),
                     child: Text(

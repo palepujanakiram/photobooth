@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show Size;
 import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, compute, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/services.dart' show DeviceOrientation, MethodChannel;
 import 'package:camera/camera.dart';
@@ -18,6 +19,7 @@ import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
+import 'package:camera_native_details/camera_native_details.dart';
 
 class CaptureViewModel extends ChangeNotifier {
   final ApiService _apiService;
@@ -25,6 +27,19 @@ class CaptureViewModel extends ChangeNotifier {
   final Uuid _uuid = const Uuid();
   static List<CameraDescription>? _cachedAvailableCameras;
   CameraController? _cameraController;
+
+  /// Preloads camera list in main() (like the camera package example).
+  /// Only caches when list is non-empty so Android without permission still does full load on screen open.
+  static Future<void> preloadCameras() async {
+    try {
+      final list = await cam.availableCameras();
+      if (list.isNotEmpty) {
+        _cachedAvailableCameras = List<CameraDescription>.from(list);
+      }
+    } on Exception {
+      _cachedAvailableCameras = null;
+    }
+  }
   PhotoModel? _capturedPhoto;
   List<CameraDescription> _availableCameras = [];
   CameraDescription? _currentCamera;
@@ -96,6 +111,28 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Display rotation from device (0–3). Used for preview orientation correction (Android).
   int get displayRotation => _displayRotation;
+
+  /// Listener for controller updates (aligned with camera package example).
+  void _onCameraControllerUpdate() {
+    final ctrl = _cameraController;
+    if (ctrl == null) return;
+    if (ctrl.value.hasError) {
+      _errorMessage = ctrl.value.errorDescription;
+    }
+    notifyListeners();
+  }
+
+  /// Resolution preset currently in use (after init). Null if camera not initialized.
+  ResolutionPreset? get effectiveResolutionPreset =>
+      _cameraController?.resolutionPreset;
+
+  /// Actual preview size in use (from controller after init). Null until camera is initialized.
+  /// Use this to show or log the resolution the camera is actually using.
+  Size? get previewSize => _cameraController?.value.previewSize;
+
+  /// Native camera characteristics (Android Camera2; default/placeholder on iOS/Web). Fetched after camera init.
+  CameraDetails? _nativeCameraDetails;
+  CameraDetails? get nativeCameraDetails => _nativeCameraDetails;
 
   /// Fetches display rotation from Android WindowManager (0–3). Returns 0 on non-Android or on error.
   Future<int> _fetchDisplayRotation() async {
@@ -404,6 +441,7 @@ class CaptureViewModel extends ChangeNotifier {
     if (_cameraController != null) {
       AppLogger.debug('   Disposing current camera controller...');
       try {
+        _cameraController!.removeListener(_onCameraControllerUpdate);
         await _cameraController!.dispose();
       } catch (e, stackTrace) {
         AppLogger.debug('   ⚠️ Warning: Error disposing camera: $e');
@@ -483,11 +521,32 @@ class CaptureViewModel extends ChangeNotifier {
       _maxZoom = null;
       _currentZoom = 1.0;
 
+      CameraDescription cameraToUse = camera;
+      try {
+        cameraToUse = _availableCameras.firstWhere((c) => c.name == camera.name);
+      } catch (_) {}
+
+      // Aligned with camera package example: try setDescription when switching (no full reinit)
+      if (_cameraController != null && _cameraController!.value.isInitialized) {
+        try {
+          await _cameraController!.setDescription(cameraToUse);
+          _currentCamera = camera;
+          _isInitializing = false;
+          _errorMessage = null;
+          notifyListeners();
+          unawaited(_finishCameraSetup(camera));
+          return;
+        } catch (_) {
+          // Fall through to full dispose + init
+        }
+      }
+
       // CRITICAL: Fully release the previous camera before opening the new one
       final hadController = _cameraController != null;
       if (_cameraController != null) {
         AppLogger.debug('🔄 Disposing existing camera controller before switch...');
         try {
+          _cameraController!.removeListener(_onCameraControllerUpdate);
           await _cameraController!.dispose();
         } catch (e) {
           AppLogger.debug('   ⚠️ Warning: Error disposing existing controller: $e');
@@ -512,32 +571,32 @@ class CaptureViewModel extends ChangeNotifier {
         isExternal: camera.lensDirection == CameraLensDirection.external,
       ));
       ErrorReportingManager.log('Initializing camera: ${camera.name}');
-      
-      CameraDescription cameraToUse = camera;
-      try {
-        cameraToUse = _availableCameras.firstWhere((c) => c.name == camera.name);
-      } catch (_) {}
-      final isExternalCamera =
-          cameraToUse.lensDirection == CameraLensDirection.external ||
-          _looksLikeExternalCameraName(cameraToUse.name);
-      final resolutionPreset = isExternalCamera
-          ? ResolutionPreset.high
-          : ResolutionPreset.high;
+
+      // Single preset for fast preview; veryHigh (1080p) is widely supported.
+      const preset = ResolutionPreset.veryHigh;
       _cameraController = CameraController(
         cameraToUse,
-        resolutionPreset,
+        preset,
         enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
       );
+      _cameraController!.addListener(_onCameraControllerUpdate);
       await _cameraController!.initialize().timeout(
         const Duration(seconds: 15),
-        onTimeout: () => throw Exception('Camera initialization timed out after 15 seconds'),
+        onTimeout: () =>
+            throw Exception(
+                'Camera initialization timed out after 15 seconds'),
       );
 
-      if (_cameraController != null) {
+      if (_cameraController != null &&
+          _cameraController!.value.isInitialized) {
         final activeCamera = _cameraController!.description;
-        AppLogger.debug('✅ CaptureViewModel - Camera controller obtained:');
-        AppLogger.debug('   Active camera name: ${activeCamera.name}');
-        AppLogger.debug('   Active camera direction: ${activeCamera.lensDirection}');
+        final size = _cameraController!.value.previewSize;
+        AppLogger.debug(
+            '✅ CaptureViewModel - Camera initialized with ${preset.name}:');
+        AppLogger.debug('   Active camera: ${activeCamera.name}');
+        AppLogger.debug(
+            '   Preview size: ${size?.width ?? "?"}x${size?.height ?? "?"}');
 
         _currentCamera = camera;
         _minZoom = null;
@@ -551,7 +610,6 @@ class CaptureViewModel extends ChangeNotifier {
         return;
       }
 
-      AppLogger.debug('❌ ERROR: Camera controller is null after initialization!');
       _errorMessage = 'Camera controller is null after initialization';
       _isInitializing = false;
       notifyListeners();
@@ -640,6 +698,25 @@ class CaptureViewModel extends ChangeNotifier {
     }
 
     await _loadZoomInBackground();
+
+    // Fetch native camera details (Android: Camera2; iOS/Web: default values).
+    try {
+      final details = await CameraNativeDetails.getCameraDetails(camera.name);
+      _nativeCameraDetails = details;
+      if (details != null) {
+        AppLogger.debug('   Native camera details (${details.platform}):');
+        AppLogger.debug('     activeArray: ${details.activeArrayWidth}x${details.activeArrayHeight}');
+        AppLogger.debug('     zoomRatioRange: ${details.zoomRatioRangeMin}..${details.zoomRatioRangeMax}');
+        AppLogger.debug('     maxDigitalZoom: ${details.maxDigitalZoom}');
+        AppLogger.debug('     lensFacing: ${details.lensFacing}');
+        if (details.supportedPreviewSizes.isNotEmpty) {
+          AppLogger.debug('     previewSizes: ${details.supportedPreviewSizes.take(5).join(", ")}${details.supportedPreviewSizes.length > 5 ? "..." : ""}');
+        }
+      }
+    } catch (_) {
+      _nativeCameraDetails = null;
+    }
+    notifyListeners();
   }
 
   /// Loads zoom range in background with timeout so init never hangs.
@@ -658,8 +735,8 @@ class CaptureViewModel extends ChangeNotifier {
         _zoomLoadTimeout,
         onTimeout: () => throw TimeoutException('getMaxZoomLevel'),
       );
-      final defaultZoom = 1.0.clamp(minZ, maxZ);
-      await ctrl.setZoomLevel(defaultZoom);
+      // Keep preview at minimum zoom (no zoom buttons in UI).
+      await ctrl.setZoomLevel(minZ);
     } on CameraException {
       // Zoom not supported
     } on TimeoutException {
@@ -668,7 +745,7 @@ class CaptureViewModel extends ChangeNotifier {
     _minZoom = minZ;
     _maxZoom = maxZ;
     if (minZ != null && maxZ != null) {
-      _currentZoom = 1.0.clamp(minZ, maxZ);
+      _currentZoom = minZ;
     } else {
       _currentZoom = 1.0;
     }
@@ -1117,6 +1194,7 @@ class CaptureViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _stopUploadTimer();
+    _cameraController?.removeListener(_onCameraControllerUpdate);
     _cameraController?.dispose();
     _cameraController = null;
     super.dispose();

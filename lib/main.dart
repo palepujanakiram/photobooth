@@ -15,9 +15,13 @@ import 'utils/constants.dart';
 import 'utils/logger.dart';
 import 'services/error_reporting/error_reporting_manager.dart';
 import 'services/file_helper.dart';
+import 'screens/photo_capture/photo_capture_viewmodel.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Preload camera list (like the camera package example) so the capture screen can use it immediately.
+  await CaptureViewModel.preloadCameras();
 
   // Initialize Bugsnag only when native plugin is available (iOS/Android; not on web/tests)
   if (!kIsWeb) {

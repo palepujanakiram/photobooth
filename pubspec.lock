@@ -169,6 +169,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.9.22+6"
+  camera_native_details:
+    dependency: "direct main"
+    description:
+      path: "packages/camera_native_details"
+      relative: true
+    source: path
+    version: "0.0.1"
   camera_platform_interface:
     dependency: transitive
     description:
