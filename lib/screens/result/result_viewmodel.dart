@@ -15,7 +15,7 @@ class ResultViewModel extends ChangeNotifier {
   final ShareService _shareService;
   final ApiService _apiService;
   
-  bool _isProcessing = false;
+  final bool _isProcessing = false;
   String? _errorMessage;
   String _printerIp = '192.168.2.108'; // Default printer IP
   

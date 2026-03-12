@@ -1,13 +1,25 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Network -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Camera: required for capture and for camera list (availableCameras) -->
     <uses-permission android:name="android.permission.CAMERA"/>
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-    
+
+    <!-- Storage: for saving/reading photos (Android 12 and below). tools:replace overrides camera plugin's maxSdkVersion. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" tools:replace="android:maxSdkVersion"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" tools:replace="android:maxSdkVersion"/>
+
+    <!-- Storage: for images on Android 13+ (replaces READ/WRITE_EXTERNAL_STORAGE for media) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+
     <uses-feature android:name="android.hardware.usb.host" android:required="false"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.external" android:required="false"/>
+    <!-- Allow install and run on Android TV (D-pad/remote; no touchscreen) -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
+    <uses-feature android:name="android.software.leanback" android:required="false"/>
 
     <application
         android:label="Photo Booth"

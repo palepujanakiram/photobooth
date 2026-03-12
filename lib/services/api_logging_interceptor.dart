@@ -68,21 +68,21 @@ class ApiLoggingInterceptor extends Interceptor {
           buffer.writeln('  Type: multipart/form-data');
           if (formData.fields.isNotEmpty) {
             buffer.writeln('  Fields:');
-            formData.fields.forEach((field) {
+            for (final field in formData.fields) {
               buffer.writeln('    ${field.key}: ${_sanitizeString(field.value)}');
-            });
+            }
           }
           if (formData.files.isNotEmpty) {
             buffer.writeln('  Files:');
-            formData.files.forEach((file) {
+            for (final file in formData.files) {
               final fileName = file.value.filename ?? 'unknown';
               final fileSize = file.value.length;
               buffer.writeln('    ${file.key}: $fileName (${_formatBytes(fileSize)})');
-            });
+            }
           }
         } else if (options.data is Map || options.data is List) {
           // Pretty print JSON (sanitized)
-          final encoder = JsonEncoder.withIndent('  ');
+          const encoder = JsonEncoder.withIndent('  ');
           final sanitized = _sanitizeData(options.data);
           final jsonString = encoder.convert(sanitized);
           buffer.writeln(_truncateJson(jsonString));
@@ -90,7 +90,7 @@ class ApiLoggingInterceptor extends Interceptor {
           // Try to parse as JSON for pretty printing
           try {
             final jsonData = jsonDecode(options.data as String);
-            final encoder = JsonEncoder.withIndent('  ');
+            const encoder = JsonEncoder.withIndent('  ');
             final sanitized = _sanitizeData(jsonData);
             buffer.writeln(_truncateJson(encoder.convert(sanitized)));
           } catch (_) {
@@ -149,9 +149,9 @@ class ApiLoggingInterceptor extends Interceptor {
     // Log response headers
     if (response.headers.map.isNotEmpty) {
       buffer.writeln('\nResponse Headers:');
-      response.headers.map.forEach((key, values) {
-        buffer.writeln('  $key: ${values.join(', ')}');
-      });
+      for (final entry in response.headers.map.entries) {
+        buffer.writeln('  ${entry.key}: ${entry.value.join(', ')}');
+      }
     }
     
     // Log response data and size
@@ -188,7 +188,7 @@ class ApiLoggingInterceptor extends Interceptor {
           buffer.writeln('  Type: binary (${_formatBytes(bytes.length)})');
         } else if (response.data is Map || response.data is List) {
           // Pretty print JSON (sanitized)
-          final encoder = JsonEncoder.withIndent('  ');
+          const encoder = JsonEncoder.withIndent('  ');
           final sanitized = _sanitizeData(response.data);
           final jsonString = encoder.convert(sanitized);
           buffer.writeln(_truncateJson(jsonString));
@@ -196,7 +196,7 @@ class ApiLoggingInterceptor extends Interceptor {
           // Try to parse as JSON for pretty printing
           try {
             final jsonData = jsonDecode(response.data as String);
-            final encoder = JsonEncoder.withIndent('  ');
+            const encoder = JsonEncoder.withIndent('  ');
             final sanitized = _sanitizeData(jsonData);
             buffer.writeln(_truncateJson(encoder.convert(sanitized)));
           } catch (_) {
@@ -284,12 +284,12 @@ class ApiLoggingInterceptor extends Interceptor {
             buffer.writeln('  Type: multipart/form-data');
             if (formData.fields.isNotEmpty) {
               buffer.writeln('  Fields:');
-              formData.fields.forEach((field) {
+              for (final field in formData.fields) {
                 buffer.writeln('    ${field.key}: ${_sanitizeString(field.value)}');
-              });
+              }
             }
-          } else if (err.requestOptions.data is Map || err.requestOptions.data is List) {
-            final encoder = JsonEncoder.withIndent('  ');
+          } else           if (err.requestOptions.data is Map || err.requestOptions.data is List) {
+            const encoder = JsonEncoder.withIndent('  ');
             final sanitized = _sanitizeData(err.requestOptions.data);
             buffer.writeln(_truncateJson(encoder.convert(sanitized)));
           } else {
@@ -308,22 +308,22 @@ class ApiLoggingInterceptor extends Interceptor {
         
         if (err.response?.headers.map.isNotEmpty ?? false) {
           buffer.writeln('\nResponse Headers:');
-          err.response!.headers.map.forEach((key, values) {
-            buffer.writeln('  $key: ${values.join(', ')}');
-          });
+          for (final entry in err.response!.headers.map.entries) {
+            buffer.writeln('  ${entry.key}: ${entry.value.join(', ')}');
+          }
         }
         
         if (err.response?.data != null) {
           buffer.writeln('\nResponse Body:');
           try {
             if (err.response!.data is Map || err.response!.data is List) {
-              final encoder = JsonEncoder.withIndent('  ');
+              const encoder = JsonEncoder.withIndent('  ');
               final sanitized = _sanitizeData(err.response!.data);
               buffer.writeln(_truncateJson(encoder.convert(sanitized)));
             } else if (err.response!.data is String) {
               try {
                 final jsonData = jsonDecode(err.response!.data as String);
-                final encoder = JsonEncoder.withIndent('  ');
+                const encoder = JsonEncoder.withIndent('  ');
                 final sanitized = _sanitizeData(jsonData);
                 buffer.writeln(_truncateJson(encoder.convert(sanitized)));
               } catch (_) {

@@ -78,8 +78,14 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
+      const createSessionTimeout = Duration(seconds: 30);
       final response = await _apiService.acceptTermsAndCreateSession(
         kioskCode: kioskCode,
+      ).timeout(
+        createSessionTimeout,
+        onTimeout: () => throw TimeoutException(
+          'Creating session timed out after ${createSessionTimeout.inSeconds} seconds',
+        ),
       );
       
       // Store session data in SessionManager from API response
@@ -87,13 +93,14 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
       sessionManager.setSessionFromResponse(response);
       
       return true;
+    } on TimeoutException {
+      _errorMessage = 'Request took too long. Please check your connection and try again.';
+      return false;
     } on ApiException catch (e) {
       _errorMessage = e.message;
-      notifyListeners();
       return false;
     } catch (e) {
       _errorMessage = 'Failed to accept terms: $e';
-      notifyListeners();
       return false;
     } finally {
       _stopTimer();

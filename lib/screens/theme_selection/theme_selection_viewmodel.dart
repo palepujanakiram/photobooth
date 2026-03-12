@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'theme_model.dart';
 import '../../services/theme_manager.dart';
@@ -202,29 +203,36 @@ class ThemeViewModel extends ChangeNotifier {
     try {
       // Step 4: Update session with selected theme
       // PATCH /api/sessions/{sessionId} with only selectedThemeId
+      // Use a 30s timeout so the UI cannot hang indefinitely
+      const updateTimeout = Duration(seconds: 30);
       final response = await _apiService.updateSession(
         sessionId: sessionId,
         selectedThemeId: _selectedTheme!.id,
         // userImageUrl is not provided - photo already uploaded in Step 3
+      ).timeout(
+        updateTimeout,
+        onTimeout: () => throw TimeoutException(
+          'Update session timed out after ${updateTimeout.inSeconds} seconds',
+        ),
       );
 
       // Save the response to SessionManager
       // Response includes: id, selectedThemeId, selectedCategoryId
       _sessionManager.setSessionFromResponse(response);
 
-      _isUpdatingSession = false;
-      notifyListeners();
       return true;
+    } on TimeoutException {
+      _errorMessage = 'Request took too long. Please check your connection and try again.';
+      return false;
     } on ApiException catch (e) {
       _errorMessage = e.message;
-      _isUpdatingSession = false;
-      notifyListeners();
       return false;
     } catch (e) {
       _errorMessage = 'Failed to update session with theme: ${e.toString()}';
+      return false;
+    } finally {
       _isUpdatingSession = false;
       notifyListeners();
-      return false;
     }
   }
 }

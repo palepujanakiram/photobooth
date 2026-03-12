@@ -78,7 +78,7 @@ platform :android do
     # Uses Firebase configuration from Appfile (Android Firebase account)
     firebase_app_distribution(
       app: firebase_android_app_id,
-      apk_path: "build/app/outputs/flutter-apk/app-release.apk",
+      apk_path: "build/app/outputs/flutter-apk/photobooth-release.apk",
       firebase_cli_token: firebase_android_token,
       groups: firebase_android_test_groups,
       release_notes: firebase_android_release_notes
