@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' show Orientation, Scaffold;
 import 'package:provider/provider.dart';
 import '../photo_capture/photo_model.dart';
 import '../theme_selection/theme_model.dart';
@@ -11,6 +11,7 @@ import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/cached_network_image.dart';
+import '../../views/widgets/bottom_safe_area.dart';
 
 class PhotoReviewScreen extends StatefulWidget {
   const PhotoReviewScreen({super.key});
@@ -63,15 +64,20 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
             child: SafeArea(
               top: true,
               bottom: false,
-              child: LayoutBuilder(
+              child: BottomSafePadding(
+                child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final bottomPadding = MediaQuery.of(context).padding.bottom;
+                  final mediaQuery = MediaQuery.of(context);
+                  final bottomPadding = mediaQuery.padding.bottom;
+                  final isLandscape = mediaQuery.orientation == Orientation.landscape;
+                  final contentPadding = isLandscape ? 10.0 : 16.0;
+                  final labelFontSize = isLandscape ? 14.0 : 18.0;
+                  final labelGap = isLandscape ? 6.0 : 12.0;
                   return Container(
                     width: double.infinity,
                     height: constraints.maxHeight,
                     color: CupertinoColors.systemBackground,
-                    padding:
-                        const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 0.0),
+                    padding: EdgeInsets.fromLTRB(contentPadding, contentPadding, contentPadding, 0.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       mainAxisSize: MainAxisSize.max,
@@ -87,14 +93,14 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                   crossAxisAlignment:
                                       CrossAxisAlignment.start,
                                   children: [
-                                    const Text(
+                                    Text(
                                       'Captured Photo',
                                       style: TextStyle(
-                                        fontSize: 18,
+                                        fontSize: labelFontSize,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    const SizedBox(height: 12),
+                                    SizedBox(height: labelGap),
                                     Expanded(
                                       child: Container(
                                         decoration: BoxDecoration(
@@ -143,21 +149,21 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 16),
+                              SizedBox(width: isLandscape ? 10 : 16),
                               // Right side: Selected Theme
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment:
                                       CrossAxisAlignment.start,
                                   children: [
-                                    const Text(
+                                    Text(
                                       'Selected Theme',
                                       style: TextStyle(
-                                        fontSize: 18,
+                                        fontSize: labelFontSize,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    const SizedBox(height: 12),
+                                    SizedBox(height: labelGap),
                                     Expanded(
                                       child: Container(
                                         decoration: BoxDecoration(
@@ -239,12 +245,12 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        SizedBox(height: isLandscape ? 8 : 16),
                         // Button section (error shown in snackbar instead)
 
                         Padding(
                           padding: EdgeInsets.only(
-                            bottom: 16.0 + bottomPadding,
+                            bottom: (isLandscape ? 10.0 : 16.0) + bottomPadding,
                           ),
                           child: Consumer<ReviewViewModel>(
                             builder: (context, viewModel, child) {
@@ -298,6 +304,7 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                     ),
                   );
                 },
+              ),
               ),
             ),
           ),

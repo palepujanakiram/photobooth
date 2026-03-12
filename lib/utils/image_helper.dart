@@ -222,6 +222,21 @@ class ImageHelper {
     }
   }
 
+  /// Encodes image for upload with smaller payload (faster upload on slow links).
+  /// Uses max 1600px and quality 80, cap ~120 KB, so upload is typically 2–3× faster
+  /// than sending full capture while keeping good quality for AI/processing.
+  static Future<String> encodeImageForUpload(XFile imageFile) async {
+    return resizeAndEncodeImage(
+      imageFile,
+      maxWidth: 1600,
+      maxHeight: 1080,
+      quality: 80,
+      maxSizeBytes: 120 * 1024, // ~120 KB target
+      minWidth: 320,
+      minHeight: 240,
+    );
+  }
+
   /// Converts image file to base64 data URL without resizing
   /// Use this if you want to preserve original image quality
   static Future<String> encodeImageToBase64(XFile imageFile) async {

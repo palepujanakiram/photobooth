@@ -7,6 +7,7 @@ import 'theme_slideshow_viewmodel.dart';
 import '../terms_and_conditions/terms_and_conditions_view.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/cached_network_image.dart';
+import '../../views/widgets/bottom_safe_area.dart';
 
 /// Enum for different slide transition types
 enum SlideTransitionType {
@@ -263,8 +264,10 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
+    final mediaQuery = MediaQuery.of(context);
+    final screenWidth = mediaQuery.size.width;
     _isTablet = screenWidth > AppConstants.kTabletBreakpoint;
+    final isLandscape = mediaQuery.orientation == Orientation.landscape;
 
     return ChangeNotifierProvider.value(
       value: _viewModel,
@@ -272,11 +275,12 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
         backgroundColor: Colors.black,
         extendBody: true,
         extendBodyBehindAppBar: true,
-        body: Container(
-          width: double.infinity,
-          height: double.infinity,
-          color: Colors.black,
-          child: Consumer<ThemeSlideshowViewModel>(
+        body: BottomSafePadding(
+          child: Container(
+            width: double.infinity,
+            height: double.infinity,
+            color: Colors.black,
+            child: Consumer<ThemeSlideshowViewModel>(
             builder: (context, viewModel, child) {
             if (viewModel.isLoading) {
               return const Center(
@@ -440,7 +444,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                         ),
                       ),
                     ),
-                    // Theme name on the left side
+                    // Theme name on the left side (compact in landscape)
                     Positioned(
                       left: 0,
                       bottom: 0,
@@ -449,24 +453,24 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                         bottom: true,
                         child: Padding(
                           padding: EdgeInsets.only(
-                            left: _isTablet ? 32.0 : 20.0,
-                            bottom: _isTablet ? 40.0 : 24.0,
+                            left: isLandscape ? 12.0 : (_isTablet ? 32.0 : 20.0),
+                            bottom: isLandscape ? 12.0 : (_isTablet ? 40.0 : 24.0),
                           ),
-                          child: _buildThemeName(viewModel, displayUrls),
+                          child: _buildThemeName(viewModel, displayUrls, isLandscape),
                         ),
                       ),
                     ),
-                    // Centered overlay button
+                    // Centered overlay (compact in landscape)
                     Center(
                       child: IgnorePointer(
                         child: Container(
                           padding: EdgeInsets.symmetric(
-                            horizontal: _isTablet ? 48.0 : 32.0,
-                            vertical: _isTablet ? 32.0 : 24.0,
+                            horizontal: isLandscape ? 20.0 : (_isTablet ? 48.0 : 32.0),
+                            vertical: isLandscape ? 16.0 : (_isTablet ? 32.0 : 24.0),
                           ),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.6),
-                            borderRadius: BorderRadius.circular(_isTablet ? 16.0 : 12.0),
+                            borderRadius: BorderRadius.circular(isLandscape ? 10.0 : (_isTablet ? 16.0 : 12.0)),
                           ),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -474,17 +478,17 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                               Text(
                                 'ZenAI Photo Booth',
                                 style: TextStyle(
-                                  fontSize: _isTablet ? 28.0 : 24.0,
+                                  fontSize: isLandscape ? 20.0 : (_isTablet ? 28.0 : 24.0),
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white,
                                   letterSpacing: 0.5,
                                 ),
                               ),
-                              SizedBox(height: _isTablet ? 12.0 : 8.0),
+                              SizedBox(height: isLandscape ? 6.0 : (_isTablet ? 12.0 : 8.0)),
                               Text(
                                 'Touch anywhere to start',
                                 style: TextStyle(
-                                  fontSize: _isTablet ? 18.0 : 16.0,
+                                  fontSize: isLandscape ? 14.0 : (_isTablet ? 18.0 : 16.0),
                                   fontWeight: FontWeight.normal,
                                   color: Colors.white,
                                   letterSpacing: 0.3,
@@ -502,11 +506,12 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
             },
           ),
         ),
+        ),
       ),
     );
   }
 
-  Widget _buildThemeName(ThemeSlideshowViewModel viewModel, List<String> displayUrls) {
+  Widget _buildThemeName(ThemeSlideshowViewModel viewModel, List<String> displayUrls, [bool compact = false]) {
     if (displayUrls.isEmpty || viewModel.themes.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -521,6 +526,8 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
       return const SizedBox.shrink();
     }
 
+    final titleSize = compact ? 22.0 : (_isTablet ? 32.0 : 28.0);
+    final descSize = compact ? 14.0 : (_isTablet ? 18.0 : 16.0);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -528,7 +535,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
         Text(
           currentTheme.name,
           style: TextStyle(
-            fontSize: _isTablet ? 32.0 : 28.0,
+            fontSize: titleSize,
             fontWeight: FontWeight.bold,
             color: Colors.white,
             letterSpacing: 0.5,
@@ -542,11 +549,11 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
           ),
         ),
         if (currentTheme.description.isNotEmpty) ...[
-          SizedBox(height: _isTablet ? 8.0 : 4.0),
+          SizedBox(height: compact ? 4.0 : (_isTablet ? 8.0 : 4.0)),
           Text(
             currentTheme.description,
             style: TextStyle(
-              fontSize: _isTablet ? 18.0 : 16.0,
+              fontSize: descSize,
               fontWeight: FontWeight.normal,
               color: Colors.white.withValues(alpha: 0.9),
               letterSpacing: 0.3,

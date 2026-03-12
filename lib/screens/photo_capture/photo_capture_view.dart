@@ -1,10 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
-import 'package:flutter/material.dart' show BoxFit, Colors, FontWeight, RotatedBox, TextStyle;
+import 'package:flutter/material.dart' show BoxFit, Colors, FontWeight, Orientation, RotatedBox, TextStyle;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
-import 'dart:ui' show Size;
 import 'package:camera/camera.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_viewmodel.dart';
@@ -15,6 +14,7 @@ import '../../utils/device_classifier.dart';
 import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/full_screen_loader.dart';
+import '../../views/widgets/bottom_safe_area.dart';
 import 'photo_capture_rotation_screen.dart';
 
 class PhotoCaptureScreen extends StatefulWidget {
@@ -120,9 +120,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       value: _captureViewModel,
       child: Consumer<CaptureViewModel>(
         builder: (context, viewModel, child) {
-          return Stack(
-            children: [
-              CupertinoPageScaffold(
+          return CupertinoPageScaffold(
                 navigationBar: AppTopBar(
                   title: 'Capture Photo',
                   leading: AppActionButton(
@@ -160,10 +158,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                     ),
                   ],
                 ),
-                child: SafeArea(
-                  top: true,
-                  bottom: false,
-                  child: Builder(
+                child: SizedBox.expand(
+                  child: SafeArea(
+                    top: true,
+                    bottom: false,
+                    child: Builder(
                     builder: (context) {
                       final viewModel = Provider.of<CaptureViewModel>(context, listen: true);
                       // "Detecting cameras…" full-screen state like fluttercamerabasic (loading gate)
@@ -242,25 +241,45 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                       }
 
                       final Widget previewWidget = _buildCameraPreviewWithRotation(context, viewModel);
+                      final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+                      final badgeTop = isLandscape ? 8.0 : 12.0;
+                      final badgeRight = isLandscape ? 8.0 : 12.0;
+                      final detailsBottom = isLandscape ? 90.0 : 180.0;
+                      final photoInfoBottom = isLandscape ? 70.0 : 100.0;
+                      final controlsBottomPadding = (isLandscape ? 16.0 : 32.0) + effectiveBottomInset(context);
+
+                      final captureControlsPositioned = Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: SafeArea(
+                          top: false,
+                          bottom: true,
+                          child: Padding(
+                            padding: EdgeInsets.only(bottom: controlsBottomPadding),
+                            child: _buildCaptureControls(context, viewModel),
+                          ),
+                        ),
+                      );
 
                       return Stack(
                         children: [
                           Positioned.fill(
                             child: previewWidget,
                           ),
-                          // Display rotation badge
+                          // Display rotation badge (compact position in landscape)
                           Positioned(
-                            top: 12,
-                            right: 12,
+                            top: badgeTop,
+                            right: badgeRight,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              padding: EdgeInsets.symmetric(horizontal: isLandscape ? 8 : 10, vertical: isLandscape ? 4 : 6),
                               decoration: BoxDecoration(
                                 color: Colors.black.withValues(alpha: 0.6),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
                                 _effectiveRotationLabel(viewModel),
-                                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                style: TextStyle(color: Colors.white70, fontSize: isLandscape ? 11 : 12),
                               ),
                             ),
                           ),
@@ -273,12 +292,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                                 ),
                               ),
                             ),
-                          // Step banner at the top
+                          // Step banner at the top (compact in landscape)
                           Positioned(
                             top: 0,
                             left: 0,
                             right: 0,
-                            child: _buildStepBanner(context, 0), // 0 = Photo step
+                            child: _buildStepBanner(context, 0, isLandscape), // 0 = Photo step
                           ),
                           // Countdown overlay
                           if (viewModel.isCountingDown)
@@ -288,8 +307,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           // Native camera details (preview size etc.) — visible until photo is captured
                           if (viewModel.nativeCameraDetails != null && viewModel.capturedPhoto == null)
                             Positioned(
-                              left: 12,
-                              bottom: 180,
+                              left: isLandscape ? 8 : 12,
+                              bottom: detailsBottom,
                               child: _buildNativeCameraDetailsCard(
                                 context,
                                 viewModel.nativeCameraDetails!,
@@ -301,47 +320,34 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           // Captured photo info (resolution, file size) — only after capture
                           if (viewModel.capturedPhoto != null)
                             Positioned(
-                              left: 16,
-                              bottom: 100,
+                              left: isLandscape ? 8 : 16,
+                              bottom: photoInfoBottom,
                               child: _buildCapturedPhotoDetailsOverlay(context, viewModel),
                             ),
-                          Positioned(
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            child: SafeArea(
-                              top: false,
-                              bottom: true,
-                              child: Padding(
-                                padding: const EdgeInsets.only(bottom: 32.0),
-                                child: _buildCaptureControls(context, viewModel),
-                              ),
-                            ),
-                          ),
+                          captureControlsPositioned,
+                          viewModel.isUploading
+                              ? Positioned.fill(
+                                  child: FullScreenLoader(
+                                    text: 'Uploading Photo',
+                                    loaderColor: CupertinoColors.systemBlue,
+                                    elapsedSeconds: viewModel.uploadElapsedSeconds,
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
                         ],
                       );
                     },
                   ),
                 ),
-              ),
-              // Full screen loader overlay for uploading
-              if (viewModel.isUploading)
-                Positioned.fill(
-                  child: FullScreenLoader(
-                    text: 'Uploading Photo',
-                    loaderColor: CupertinoColors.systemBlue,
-                    elapsedSeconds: viewModel.uploadElapsedSeconds,
-                  ),
                 ),
-            ],
-          );
+              );
         },
       ),
     );
   }
 
-  /// Builds the step progress banner
-  Widget _buildStepBanner(BuildContext context, int currentStep) {
+  /// Builds the step progress banner (compact in landscape)
+  Widget _buildStepBanner(BuildContext context, int currentStep, [bool compact = false]) {
     final appColors = AppColors.of(context);
     
     final steps = [
@@ -351,8 +357,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       _StepInfo(icon: CupertinoIcons.tray_arrow_down, label: 'Pay & Collect'),
     ];
 
+    final bannerPadding = compact ? const EdgeInsets.symmetric(vertical: 6, horizontal: 6) : const EdgeInsets.symmetric(vertical: 12, horizontal: 8);
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: bannerPadding,
       decoration: BoxDecoration(
         color: appColors.backgroundColor,
         boxShadow: [
@@ -378,8 +385,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        width: 36,
-                        height: 36,
+                        width: compact ? 28.0 : 36,
+                        height: compact ? 28.0 : 36,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: isActive 
@@ -396,7 +403,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                         ),
                         child: Icon(
                           isCompleted ? CupertinoIcons.checkmark : step.icon,
-                          size: 18,
+                          size: compact ? 14.0 : 18,
                           color: isCompleted
                               ? CupertinoColors.white
                               : isActive
@@ -404,11 +411,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                                   : CupertinoColors.systemGrey,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      SizedBox(height: compact ? 2 : 4),
                       Text(
                         step.label,
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: compact ? 9 : 10,
                           fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
                           color: isActive || isCompleted
                               ? CupertinoColors.systemBlue
@@ -426,7 +433,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                   Expanded(
                     child: Container(
                       height: 1,
-                      margin: const EdgeInsets.only(bottom: 20),
+                      margin: EdgeInsets.only(bottom: compact ? 14.0 : 20),
                       color: isCompleted
                           ? CupertinoColors.systemBlue
                           : CupertinoColors.systemGrey3,
@@ -483,25 +490,25 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             ? previewSize.width
             : previewSize.height);
 
-    // Fit full preview inside screen so the complete picture is visible (no cropping).
     return ColoredBox(
       color: Colors.black,
-      child: SizedBox.expand(
-        child: FittedBox(
-          fit: BoxFit.contain,
-          alignment: Alignment.center,
-          child: SizedBox(
-            width: width,
-            height: height,
-            child: preview,
+      child: Center(
+        child: ClipRect(
+          child: SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.fill,
+              child: SizedBox(
+                width: width,
+                height: height,
+                child: preview,
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// Use CameraPreview (Texture) on all platforms so aspect ratio is respected and
-  /// the image is not stretched; buildPreview() on Android can stretch to fill.
   Widget _buildPlatformPreview(CameraController controller) {
     return CameraPreview(controller);
   }
@@ -561,8 +568,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   }) {
     const style = TextStyle(color: Colors.white70, fontSize: 11);
     const labelStyle = TextStyle(color: Colors.white54, fontSize: 10);
-    final inUseW = previewSize != null ? previewSize.width.toInt() : null;
-    final inUseH = previewSize != null ? previewSize.height.toInt() : null;
+    final inUseW = previewSize?.width.toInt();
+    final inUseH = previewSize?.height.toInt();
     final presetName = resolutionPreset?.name ?? '?';
 
     return Container(

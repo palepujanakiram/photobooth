@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors;
+import 'package:flutter/material.dart' show Colors, Orientation;
 import 'package:provider/provider.dart';
 import 'photo_generate_viewmodel.dart';
 import '../photo_capture/photo_model.dart';
@@ -10,6 +10,7 @@ import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/theme_card.dart';
+import '../../views/widgets/bottom_safe_area.dart';
 import '../../services/theme_manager.dart';
 
 class PhotoGenerateScreen extends StatefulWidget {
@@ -23,6 +24,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   late PhotoGenerateViewModel _viewModel;
   Uint8List? _originalPhotoBytes;
   bool _isInitialized = false;
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _contentKey = GlobalKey();
+  bool _hasScrolledToCenter = false;
 
   @override
   void initState() {
@@ -268,13 +272,28 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _viewModel.dispose();
     super.dispose();
+  }
+
+  void _scrollToCenterIfNeeded(double viewportHeight) {
+    if (!mounted || _scrollController.hasClients == false) return;
+    final renderObject = _contentKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return;
+    final contentHeight = renderObject.size.height;
+    if (contentHeight >= viewportHeight) return;
+    final offset = (viewportHeight - contentHeight) / 2;
+    if (offset > 0) {
+      _scrollController.jumpTo(offset);
+    }
+    _hasScrolledToCenter = true;
   }
 
   @override
   Widget build(BuildContext context) {
     final appColors = AppColors.of(context);
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return ChangeNotifierProvider.value(
       value: _viewModel,
@@ -296,19 +315,32 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               ),
             ),
             child: SafeArea(
-              child: Column(
+              child: BottomSafePadding(
+                child: Column(
                 children: [
                   // Step banner
-                  _buildStepBanner(context, 2), // 2 = Generate step
+                  _buildStepBanner(context, 2, isLandscape), // 2 = Generate step
                   
-                  // Main content
+                  // Main content: fill height and center block when content is short
                   Expanded(
-                    child: _buildMainContent(context, viewModel, appColors),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return _buildMainContent(
+                          context,
+                          viewModel,
+                          appColors,
+                          isLandscape,
+                          constraints.maxHeight,
+                          constraints.maxWidth,
+                        );
+                      },
+                    ),
                   ),
                   
                   // Bottom buttons
                   _buildBottomButtons(context, viewModel, appColors),
                 ],
+                ),
               ),
             ),
           );
@@ -317,7 +349,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     );
   }
 
-  Widget _buildStepBanner(BuildContext context, int currentStep) {
+  Widget _buildStepBanner(BuildContext context, int currentStep, [bool compact = false]) {
     final appColors = AppColors.of(context);
     
     final steps = [
@@ -327,8 +359,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       _StepInfo(icon: CupertinoIcons.tray_arrow_down, label: 'Pay & Collect'),
     ];
 
+    final bannerPadding = compact ? const EdgeInsets.symmetric(vertical: 6, horizontal: 6) : const EdgeInsets.symmetric(vertical: 12, horizontal: 8);
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: bannerPadding,
       decoration: BoxDecoration(
         color: appColors.backgroundColor,
         boxShadow: [
@@ -354,8 +387,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        width: 36,
-                        height: 36,
+                        width: compact ? 28.0 : 36,
+                        height: compact ? 28.0 : 36,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: isActive 
@@ -372,7 +405,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                         ),
                         child: Icon(
                           isCompleted ? CupertinoIcons.checkmark : step.icon,
-                          size: 18,
+                          size: compact ? 14.0 : 18,
                           color: isCompleted
                               ? CupertinoColors.white
                               : isActive
@@ -380,11 +413,11 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                                   : CupertinoColors.systemGrey,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      SizedBox(height: compact ? 2 : 4),
                       Text(
                         step.label,
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: compact ? 9 : 10,
                           fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
                           color: isActive || isCompleted
                               ? CupertinoColors.systemBlue
@@ -401,7 +434,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                   Expanded(
                     child: Container(
                       height: 1,
-                      margin: const EdgeInsets.only(bottom: 20),
+                      margin: EdgeInsets.only(bottom: compact ? 14.0 : 20),
                       color: isCompleted
                           ? CupertinoColors.systemBlue
                           : CupertinoColors.systemGrey3,
@@ -415,137 +448,204 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     );
   }
 
-  Widget _buildMainContent(BuildContext context, PhotoGenerateViewModel viewModel, AppColors appColors) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Title
-          Text(
-            'Generating Your Photo',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: appColors.textColor,
-            ),
+  Widget _buildMainContent(
+    BuildContext context,
+    PhotoGenerateViewModel viewModel,
+    AppColors appColors, [
+    bool isLandscape = false,
+    double? viewportHeight,
+    double? viewportWidth,
+  ]) {
+    final padding = isLandscape ? 12.0 : 16.0;
+    final maxWidth = viewportWidth != null && viewportWidth.isFinite ? viewportWidth : double.infinity;
+    final content = Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          child: Column(
+            key: _contentKey,
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+            Text(
+              'Generating Your Photo',
+          style: TextStyle(
+            fontSize: isLandscape ? 20 : 24,
+            fontWeight: FontWeight.bold,
+            color: appColors.textColor,
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Please wait while we create your masterpiece',
-            style: TextStyle(
-              fontSize: 14,
-              color: appColors.secondaryTextColor,
-            ),
+        ),
+        SizedBox(height: isLandscape ? 4 : 8),
+        Text(
+          'Please wait while we create your masterpiece',
+          style: TextStyle(
+            fontSize: isLandscape ? 12 : 14,
+            color: appColors.secondaryTextColor,
           ),
-          const SizedBox(height: 24),
-          
-          // Photos display
-          _buildPhotosDisplay(context, viewModel, appColors),
-          
-          // Error message
-          if (viewModel.hasError)
-            Container(
-              margin: const EdgeInsets.only(top: 16),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: CupertinoColors.systemRed.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    CupertinoIcons.exclamationmark_triangle,
-                    color: CupertinoColors.systemRed,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      viewModel.errorMessage!,
-                      style: const TextStyle(
-                        color: CupertinoColors.systemRed,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    minimumSize: Size.zero,
-                    onPressed: () => viewModel.clearError(),
-                    child: const Icon(
-                      CupertinoIcons.xmark,
+        ),
+        SizedBox(height: isLandscape ? 12 : 24),
+        _buildPhotosDisplay(context, viewModel, appColors, isLandscape),
+        if (viewModel.hasError)
+          Container(
+            margin: const EdgeInsets.only(top: 16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: CupertinoColors.systemRed.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  CupertinoIcons.exclamationmark_triangle,
+                  color: CupertinoColors.systemRed,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    viewModel.errorMessage!,
+                    style: const TextStyle(
                       color: CupertinoColors.systemRed,
-                      size: 18,
+                      fontSize: 13,
                     ),
                   ),
-                ],
-              ),
+                ),
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  onPressed: () => viewModel.clearError(),
+                  child: const Icon(
+                    CupertinoIcons.xmark,
+                    color: CupertinoColors.systemRed,
+                    size: 18,
+                  ),
+                ),
+              ],
             ),
-        ],
-      ),
+          ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (viewportHeight != null && viewportHeight > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_hasScrolledToCenter && mounted) {
+          _scrollToCenterIfNeeded(viewportHeight);
+        }
+      });
+      return SingleChildScrollView(
+        controller: _scrollController,
+        padding: EdgeInsets.all(padding),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: viewportHeight),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [content],
+          ),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(padding),
+      child: content,
     );
   }
 
-  Widget _buildPhotosDisplay(BuildContext context, PhotoGenerateViewModel viewModel, AppColors appColors) {
+  Widget _buildPhotosDisplay(BuildContext context, PhotoGenerateViewModel viewModel, AppColors appColors, [bool isLandscape = false]) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isTablet = screenWidth > AppConstants.kTabletBreakpoint;
+
+    // Must match _buildGeneratedImageCard exactly (no landscape variant there)
+    final double cardWidth = isTablet ? 180.0 : 140.0;
+    final double cardHeight = isTablet ? 220.0 : 180.0;
+
+    final double sectionPadding = isLandscape ? 12.0 : 16.0;
+    // Fixed header height so original and generated card areas start at same Y (centers align)
+    final double headerHeight = isLandscape ? 60.0 : 64.0;
+    final Widget originalSection = Padding(
+      padding: EdgeInsets.all(sectionPadding),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            height: headerHeight,
+            child: Center(
+              child: Text(
+                'Original',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: appColors.textColor,
+                ),
+              ),
+            ),
+          ),
+          Container(
+            width: cardWidth,
+            height: cardHeight,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: appColors.borderColor),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(7),
+              child: _originalPhotoBytes != null
+                  ? Image.memory(
+                      _originalPhotoBytes!,
+                      fit: BoxFit.cover,
+                    )
+                  : Center(
+                      child: CupertinoActivityIndicator(
+                        color: appColors.textColor,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
     
+    final Widget generatedSection = _buildGeneratedImagesSection(context, viewModel, appColors, isTablet, isLandscape, headerHeight);
+    
+    if (isLandscape) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          originalSection,
+          const SizedBox(width: 16),
+          Expanded(child: generatedSection),
+        ],
+      );
+    }
+
     return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Original photo
-        Column(
-          children: [
-            Text(
-              'Original',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: appColors.secondaryTextColor,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              width: isTablet ? 150 : 120,
-              height: isTablet ? 200 : 150,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: appColors.borderColor),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(7),
-                child: _originalPhotoBytes != null
-                    ? Image.memory(
-                        _originalPhotoBytes!,
-                        fit: BoxFit.cover,
-                      )
-                    : Center(
-                        child: CupertinoActivityIndicator(
-                          color: appColors.textColor,
-                        ),
-                      ),
-              ),
-            ),
-          ],
-        ),
-        
+        originalSection,
         const SizedBox(height: 24),
-        
-        // Generated images section
-        _buildGeneratedImagesSection(context, viewModel, appColors, isTablet),
+        generatedSection,
       ],
     );
   }
 
-  Widget _buildGeneratedImagesSection(BuildContext context, PhotoGenerateViewModel viewModel, AppColors appColors, bool isTablet) {
-    final cardWidth = isTablet ? 180.0 : 140.0;
-    final cardHeight = isTablet ? 220.0 : 180.0;
-    
-    return Column(
+  Widget _buildGeneratedImagesSection(BuildContext context, PhotoGenerateViewModel viewModel, AppColors appColors, bool isTablet, [bool isLandscape = false, double headerHeight = 64.0]) {
+    final cardWidth = isLandscape ? 100.0 : (isTablet ? 180.0 : 140.0);
+    final cardHeight = isLandscape ? 130.0 : (isTablet ? 220.0 : 180.0);
+
+    final Widget headerContent = Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Label with selection controls
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -559,20 +659,16 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
             ),
             if (viewModel.generatedImages.length > 1) ...[
               const SizedBox(width: 16),
-              // Select All / Deselect toggle
               CupertinoButton(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 minimumSize: Size.zero,
                 onPressed: () {
                   if (viewModel.selectedCount == viewModel.generatedImages.length) {
-                    // All selected - deselect all except first
                     viewModel.deselectAllImages();
-                    // Re-select first one to maintain at least one selected
                     if (viewModel.generatedImages.isNotEmpty) {
                       viewModel.toggleImageSelection(viewModel.generatedImages.first.id);
                     }
                   } else {
-                    // Not all selected - select all
                     viewModel.selectAllImages();
                   }
                 },
@@ -599,23 +695,35 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                   ],
                 ),
               ),
+              if (viewModel.generatedImages.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                Text(
+                  '${viewModel.selectedCount} of ${viewModel.generatedImages.length} selected (tap to select/deselect)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: appColors.secondaryTextColor,
+                  ),
+                ),
+              ],
             ],
           ],
         ),
-        // Selection hint
-        if (viewModel.generatedImages.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              '${viewModel.selectedCount} of ${viewModel.generatedImages.length} selected (tap to select/deselect)',
-              style: TextStyle(
-                fontSize: 11,
-                color: appColors.secondaryTextColor,
-              ),
-            ),
-          ),
         const SizedBox(height: 12),
-        
+      ],
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          height: headerHeight,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [headerContent],
+          ),
+        ),
         if (viewModel.isGenerating && viewModel.generatedImages.isEmpty)
           // Initial generation - show loading state
           _buildGeneratingPlaceholder(viewModel, appColors, isTablet)

@@ -65,6 +65,10 @@ class CaptureViewModel extends ChangeNotifier {
   double _currentZoom = 1.0;
   static const _zoomLoadTimeout = Duration(seconds: 3);
 
+  /// Max wait for camera enumeration. On devices with only external cameras, CameraX
+  /// validation can retry for a long time; we timeout so the UI stays responsive.
+  static const _loadCamerasTimeout = Duration(seconds: 25);
+
   /// Camera preview rotation in degrees (0, 90, 180, 270). Persisted in SharedPreferences.
   int _previewRotationDegrees = AppConstants.kCameraPreviewRotationDefault;
   bool _isPreviewRotationConfiguredByUser = false;
@@ -363,7 +367,14 @@ class CaptureViewModel extends ChangeNotifier {
         }
       }
 
-      final allCameras = await cam.availableCameras();
+      final allCameras = await cam.availableCameras().timeout(
+        _loadCamerasTimeout,
+        onTimeout: () {
+          throw TimeoutException(
+            'Camera enumeration timed out after ${_loadCamerasTimeout.inSeconds}s',
+          );
+        },
+      );
 
       if (allCameras.isEmpty) {
         ErrorReportingManager.log('❌ Camera enumeration returned 0 cameras');
@@ -402,6 +413,9 @@ class CaptureViewModel extends ChangeNotifier {
       }
 
       notifyListeners();
+    } on TimeoutException {
+      _errorMessage = 'Camera took too long to load. Please try again.';
+      ErrorReportingManager.log('❌ Camera enumeration timed out');
     } catch (e, stackTrace) {
       _errorMessage = 'Failed to load cameras: $e';
       ErrorReportingManager.log('❌ Failed to load cameras: $e');
@@ -573,7 +587,7 @@ class CaptureViewModel extends ChangeNotifier {
       ErrorReportingManager.log('Initializing camera: ${camera.name}');
 
       // Single preset for fast preview; veryHigh (1080p) is widely supported.
-      const preset = ResolutionPreset.veryHigh;
+      const preset = ResolutionPreset.max;
       _cameraController = CameraController(
         cameraToUse,
         preset,
@@ -1065,12 +1079,11 @@ class CaptureViewModel extends ChangeNotifier {
       // Get the image file from the captured photo
       final imageFile = _capturedPhoto!.imageFile;
       
-      ErrorReportingManager.log('📦 Encoding image for upload (no resize; already normalized at capture)');
+      ErrorReportingManager.log('📦 Encoding image for upload (upload-optimized size)');
       
-      // Encode to base64 in background isolate. No resize: image is already
-      // 1920px max / 85% JPEG from capture (custom plugin or Flutter normalization).
+      // Encode in background with smaller payload (~120 KB target) for faster upload on slow links.
       final base64Image = await compute(
-        _encodeImageInBackground,
+        _encodeImageForUploadInBackground,
         imageFile.path,
       );
       
@@ -1079,16 +1092,15 @@ class CaptureViewModel extends ChangeNotifier {
       
       // Step 3: Update session with photo (PATCH /api/sessions/{sessionId})
       // Note: selectedThemeId is not included here - it will be set later in theme selection
-      // Use 60s timeout so UI cannot hang (upload can be slow for large images)
-      const uploadTimeout = Duration(seconds: 60);
+      // Use app API timeout so slow connections / large images can complete
       final response = await _apiService.updateSession(
         sessionId: sessionId,
         userImageUrl: base64Image,
         selectedThemeId: null, // Theme will be selected later
       ).timeout(
-        uploadTimeout,
+        AppConstants.kApiTimeout,
         onTimeout: () => throw TimeoutException(
-          'Upload timed out after ${uploadTimeout.inSeconds} seconds',
+          'Upload timed out after ${AppConstants.kApiTimeout.inSeconds} seconds',
         ),
       );
       
@@ -1120,11 +1132,10 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
-  /// Encodes image file to base64 data URL for upload. No resize: dimensions
-  /// and size are already enforced at capture (custom plugin or Flutter normalization).
-  static Future<String> _encodeImageInBackground(String imagePath) async {
+  /// Encodes image for upload with smaller payload (faster upload on slow links).
+  static Future<String> _encodeImageForUploadInBackground(String imagePath) async {
     final file = XFile(imagePath);
-    return await ImageHelper.encodeImageToBase64(file);
+    return await ImageHelper.encodeImageForUpload(file);
   }
 
   /// Updates session with captured photo and selected theme
@@ -1154,7 +1165,7 @@ class CaptureViewModel extends ChangeNotifier {
       
       // Encode to base64 in background (no resize; already normalized at capture)
       final base64Image = await compute(
-        _encodeImageInBackground,
+        _encodeImageForUploadInBackground,
         imageFile.path,
       );
       
