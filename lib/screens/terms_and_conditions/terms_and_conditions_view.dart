@@ -1,5 +1,5 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' show Colors, Divider, Orientation;
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'terms_and_conditions_viewmodel.dart';
@@ -8,6 +8,7 @@ import '../../utils/app_config.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/app_colors.dart';
+import '../../views/widgets/bottom_safe_area.dart';
 
 class TermsAndConditionsScreen extends StatefulWidget {
   final List<String>? carouselImages;
@@ -53,7 +54,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   void _openFullTerms() {
     showCupertinoModalPopup(
       context: context,
-      builder: (context) => _TermsWebViewSheet(
+      builder: (context) => const _TermsWebViewSheet(
         url: AppConfig.termsAndConditionsUrl,
       ),
     );
@@ -64,25 +65,31 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     final appColors = AppColors.of(context);
     final mediaQuery = MediaQuery.of(context);
     final screenWidth = mediaQuery.size.width;
+    final isLandscape = mediaQuery.orientation == Orientation.landscape;
     
     // Calculate responsive sizes
     final double horizontalPadding = screenWidth * 0.06;
     final double cardMaxWidth = screenWidth > 600 ? 500.0 : screenWidth * 0.9;
+    // In landscape use less vertical space for logo so card and buttons fit
+    final double logoTop = isLandscape ? 8.0 : 24.0;
+    final double logoBottom = isLandscape ? 6.0 : 16.0;
+    final double scrollVerticalPadding = isLandscape ? 8.0 : 16.0;
 
     return ChangeNotifierProvider.value(
       value: _viewModel,
       child: CupertinoPageScaffold(
         backgroundColor: appColors.backgroundColor,
         child: SafeArea(
-          child: Stack(
+          child: BottomSafePadding(
+            child: Stack(
             children: [
               // Main content
               Column(
                 children: [
-                  // Logo at top
+                  // Logo at top (compact in landscape)
                   Padding(
-                    padding: const EdgeInsets.only(top: 24, bottom: 16),
-                    child: _buildLogo(appColors),
+                    padding: EdgeInsets.only(top: logoTop, bottom: logoBottom),
+                    child: _buildLogo(appColors, isLandscape),
                   ),
                   
                   // Scrollable content area
@@ -91,13 +98,13 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                       child: SingleChildScrollView(
                         padding: EdgeInsets.symmetric(
                           horizontal: horizontalPadding,
-                          vertical: 16,
+                          vertical: scrollVerticalPadding,
                         ),
                         child: Consumer<TermsAndConditionsViewModel>(
                           builder: (context, viewModel, child) {
                             return ConstrainedBox(
                               constraints: BoxConstraints(maxWidth: cardMaxWidth),
-                              child: _buildConsentCard(viewModel, appColors),
+                              child: _buildConsentCard(viewModel, appColors, isLandscape),
                             );
                           },
                         ),
@@ -123,16 +130,17 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                 },
               ),
             ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildLogo(AppColors appColors) {
+  Widget _buildLogo(AppColors appColors, [bool compact = false]) {
     return Image.asset(
       'lib/images/zen_ai_logo.jpeg',
-      height: 80,
+      height: compact ? 48 : 80,
       fit: BoxFit.contain,
       errorBuilder: (context, error, stackTrace) {
         return Text(
@@ -147,7 +155,8 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
-  Widget _buildConsentCard(TermsAndConditionsViewModel viewModel, AppColors appColors) {
+  Widget _buildConsentCard(TermsAndConditionsViewModel viewModel, AppColors appColors, [bool compact = false]) {
+    final cardPadding = compact ? 12.0 : 20.0;
     return Container(
       decoration: BoxDecoration(
         color: appColors.cardBackgroundColor,
@@ -166,7 +175,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         children: [
           // Header
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(cardPadding),
             child: Row(
               children: [
                 Container(
@@ -199,14 +208,14 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           
           // Content
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(cardPadding),
             child: _buildQuickConsentContent(appColors),
           ),
           
           // Checkbox section
           Container(
-            margin: const EdgeInsets.symmetric(horizontal: 20),
-            padding: const EdgeInsets.all(16),
+            margin: EdgeInsets.symmetric(horizontal: cardPadding),
+            padding: EdgeInsets.all(compact ? 12.0 : 16),
             decoration: BoxDecoration(
               color: appColors.backgroundColor,
               borderRadius: BorderRadius.circular(12),
@@ -214,15 +223,15 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             child: _buildCheckbox(viewModel, appColors),
           ),
           
-          const SizedBox(height: 20),
+          SizedBox(height: compact ? 12 : 20),
           
           // Action button
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: EdgeInsets.symmetric(horizontal: cardPadding),
             child: _buildActionButtons(viewModel, appColors),
           ),
           
-          const SizedBox(height: 16),
+          SizedBox(height: compact ? 8 : 16),
           
           // View full T&C link
           Center(

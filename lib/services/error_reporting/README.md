@@ -518,7 +518,6 @@ static void log(String message) {
 - `error_reporting_manager.dart` - Main facade
 - `crashlytics_error_reporter.dart` - Crashlytics implementation
 - `../../main.dart` - Initialization code
-- `../camera_service.dart` - Usage example
 - `../../screens/photo_capture/photo_capture_viewmodel.dart` - Usage example
 
 ---

@@ -1,5 +1,5 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors;
+import 'package:flutter/material.dart' show Colors, Orientation;
 import 'package:provider/provider.dart';
 import 'result_viewmodel.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
@@ -8,6 +8,7 @@ import '../../utils/constants.dart';
 import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
+import '../../views/widgets/bottom_safe_area.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -82,13 +83,14 @@ class _ResultScreenState extends State<ResultScreen> {
               ),
             ),
             child: SafeArea(
-              child: Column(
-                children: [
-                  // Step banner
-                  _buildStepBanner(context, 3), // 3 = Pay & Collect step
-                  
-                  // Main content
-                  Expanded(
+              child: BottomSafePadding(
+                child: Column(
+                  children: [
+                    // Step banner
+                    _buildStepBanner(context, 3), // 3 = Pay & Collect step
+                    
+                    // Main content
+                    Expanded(
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.all(16),
                       child: Column(
@@ -145,7 +147,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                   ),
                                   CupertinoButton(
                                     padding: EdgeInsets.zero,
-                                    minSize: 0,
+                                    minimumSize: Size.zero,
                                     onPressed: () => viewModel.clearError(),
                                     child: const Icon(
                                       CupertinoIcons.xmark,
@@ -160,10 +162,11 @@ class _ResultScreenState extends State<ResultScreen> {
                       ),
                     ),
                   ),
-                  
-                  // Bottom buttons
-                  _buildBottomButtons(context, viewModel, appColors),
-                ],
+                    
+                    // Bottom buttons
+                    _buildBottomButtons(context, viewModel, appColors),
+                  ],
+                ),
               ),
             ),
           );
@@ -294,8 +297,10 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   Widget _buildMainContent(BuildContext context, ResultViewModel viewModel, AppColors appColors) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isWideScreen = screenWidth > 600;
+    final mediaQuery = MediaQuery.of(context);
+    final screenWidth = mediaQuery.size.width;
+    final isLandscape = mediaQuery.orientation == Orientation.landscape;
+    final isWideScreen = screenWidth > 600 || isLandscape;
     
     if (isWideScreen) {
       // Two column layout for wide screens
@@ -433,8 +438,8 @@ class _ResultScreenState extends State<ResultScreen> {
 
   Widget _buildPaymentCard(ResultViewModel viewModel, AppColors appColors) {
     final photoCount = viewModel.generatedImages.length;
-    final basePrice = 100;
-    final additionalPrice = 50;
+    const basePrice = 100;
+    const additionalPrice = 50;
     final totalPrice = basePrice + (photoCount > 1 ? (photoCount - 1) * additionalPrice : 0);
     
     return Container(

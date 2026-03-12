@@ -13,11 +13,13 @@ class ShareService {
     Rect? sharePositionOrigin,
   }) async {
     try {
-      await Share.shareXFiles(
-        [imageFile],
-        text: text,
-        subject: 'Photo Booth Image',
-        sharePositionOrigin: sharePositionOrigin,
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [imageFile],
+          text: text,
+          subject: 'Photo Booth Image',
+          sharePositionOrigin: sharePositionOrigin,
+        ),
       );
     } catch (e) {
       throw ShareException('Failed to share image: $e');
@@ -38,11 +40,13 @@ class ShareService {
       // If no position provided, use a default center position for iOS
       final origin = sharePositionOrigin ?? _getDefaultSharePosition();
       
-      await Share.shareXFiles(
-        [imageFile],
-        text: text ?? 'Check out my photo!',
-        subject: 'Photo Booth Image',
-        sharePositionOrigin: origin,
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [imageFile],
+          text: text ?? 'Check out my photo!',
+          subject: 'Photo Booth Image',
+          sharePositionOrigin: origin,
+        ),
       );
     } catch (e) {
       throw ShareException('Failed to share via WhatsApp: $e');
@@ -65,11 +69,13 @@ class ShareService {
     try {
       final origin = sharePositionOrigin ?? _getDefaultSharePosition();
       
-      await Share.shareXFiles(
-        imageFiles,
-        text: text ?? 'Check out my ${imageFiles.length} AI generated photo${imageFiles.length > 1 ? 's' : ''}!',
-        subject: 'Photo Booth Images',
-        sharePositionOrigin: origin,
+      await SharePlus.instance.share(
+        ShareParams(
+          files: imageFiles,
+          text: text ?? 'Check out my ${imageFiles.length} AI generated photo${imageFiles.length > 1 ? 's' : ''}!',
+          subject: 'Photo Booth Images',
+          sharePositionOrigin: origin,
+        ),
       );
     } catch (e) {
       throw ShareException('Failed to share images: $e');

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors;
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'theme_selection_viewmodel.dart';
 import '../photo_capture/photo_model.dart';
@@ -10,6 +10,7 @@ import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/full_screen_loader.dart';
+import '../../views/widgets/bottom_safe_area.dart';
 import '../../services/theme_manager.dart';
 
 class ThemeSelectionScreen extends StatefulWidget {
@@ -24,6 +25,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   bool _isGenerating = false;
   Timer? _timer;
   int _elapsedSeconds = 0;
+  final ScrollController _gridScrollController = ScrollController();
 
   void _startTimer() {
     _elapsedSeconds = 0;
@@ -43,6 +45,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   @override
   void dispose() {
     _stopTimer();
+    _gridScrollController.dispose();
     super.dispose();
   }
 
@@ -70,8 +73,10 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
+    final mediaQuery = MediaQuery.of(context);
+    final screenWidth = mediaQuery.size.width;
     final isTablet = screenWidth > AppConstants.kTabletBreakpoint;
+    final isLandscape = mediaQuery.orientation == Orientation.landscape;
 
     return PopScope(
       canPop: false,
@@ -139,41 +144,67 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                     );
                   }
 
-                  return Column(
-                    children: [
-                      // Step banner at the top
-                      _buildStepBanner(context, 1), // 1 = Select Theme step
+                  const buttonSectionTopPadding = 16.0;
+                  final baseButtonBottom = isTablet ? 24.0 : (isLandscape ? 12.0 : 16.0);
+
+                  return BottomSafePadding(
+                    child: Column(
+                      children: [
+                        // Step banner at the top (compact in landscape)
+                        _buildStepBanner(context, 1, isLandscape),
                       
                       Expanded(
-                        child: GridView.builder(
-                          padding: EdgeInsets.all(isTablet ? 24.0 : 16.0),
-                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: isTablet ? 3 : 2,
-                            crossAxisSpacing: 16.0,
-                            mainAxisSpacing: 16.0,
-                            childAspectRatio: isTablet ? 0.75 : 0.7,
-                          ),
-                          itemCount: viewModel.themes.length,
-                          itemBuilder: (context, index) {
-                            final theme = viewModel.themes[index];
-                            final isSelected = viewModel.selectedTheme?.id == theme.id;
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final padding = isTablet ? 24.0 : (isLandscape ? 12.0 : 16.0);
+                            final crossAxisCount = isLandscape ? (isTablet ? 4 : 3) : (isTablet ? 3 : 2);
+                            final crossAxisSpacing = isLandscape ? 12.0 : 16.0;
+                            final mainAxisSpacing = isLandscape ? 12.0 : 16.0;
+                            // Size grid so exactly 2 full rows are visible (use full available height)
+                            final contentHeight = constraints.maxHeight - padding * 2;
+                            final rowHeight = contentHeight > mainAxisSpacing ? (contentHeight - mainAxisSpacing) / 2 : 80.0;
+                            final contentWidth = constraints.maxWidth - padding * 2;
+                            final cellWidth = contentWidth > 0 ? (contentWidth - (crossAxisCount - 1) * crossAxisSpacing) / crossAxisCount : 100.0;
+                            final childAspectRatio = rowHeight > 0 ? cellWidth / rowHeight : (isTablet ? 0.75 : 0.7);
 
-                            return ThemeCard(
-                              theme: theme,
-                              isSelected: isSelected,
-                              onTap: () {
-                                viewModel.selectTheme(theme);
-                              },
+                            return Scrollbar(
+                              controller: _gridScrollController,
+                              thumbVisibility: true,
+                              child: GridView.builder(
+                                controller: _gridScrollController,
+                                padding: EdgeInsets.all(padding),
+                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: crossAxisCount,
+                                  crossAxisSpacing: crossAxisSpacing,
+                                  mainAxisSpacing: mainAxisSpacing,
+                                  childAspectRatio: childAspectRatio,
+                                ),
+                                itemCount: viewModel.themes.length,
+                                itemBuilder: (context, index) {
+                                  final theme = viewModel.themes[index];
+                                  final isSelected = viewModel.selectedTheme?.id == theme.id;
+
+                                  return ThemeCard(
+                                    theme: theme,
+                                    isSelected: isSelected,
+                                    onTap: () {
+                                      viewModel.selectTheme(theme);
+                                    },
+                                  );
+                                },
+                              ),
                             );
                           },
                         ),
                       ),
-                      // Continue button at bottom
+                      // Space between grid and Continue button
+                      const SizedBox(height: buttonSectionTopPadding),
+                      // Continue button (safe area keeps it above system nav bar)
                       Padding(
                         padding: EdgeInsets.only(
-                          left: isTablet ? 24.0 : 16.0,
-                          right: isTablet ? 24.0 : 16.0,
-                          bottom: isTablet ? 24.0 : 16.0,
+                          left: isTablet ? 24.0 : (isLandscape ? 12.0 : 16.0),
+                          right: isTablet ? 24.0 : (isLandscape ? 12.0 : 16.0),
+                          bottom: baseButtonBottom,
                         ),
                         child: AppContinueButton(
                           onPressed: viewModel.selectedTheme != null &&
@@ -194,23 +225,13 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                       _isGenerating = true;
                                     });
 
+                                    bool success = false;
                                     try {
                                       // Step 4: Update session with selected theme
                                       // PATCH /api/sessions/{sessionId} with only selectedThemeId
-                                      final success = await viewModel.updateSessionWithTheme();
+                                      success = await viewModel.updateSessionWithTheme();
 
-                                      if (!mounted || !currentContext.mounted) {
-                                        _stopTimer();
-                                        setState(() {
-                                          _isGenerating = false;
-                                        });
-                                        return;
-                                      }
-
-                                      _stopTimer();
-                                      setState(() {
-                                        _isGenerating = false;
-                                      });
+                                      if (!mounted || !currentContext.mounted) return;
 
                                       if (success) {
                                         // Navigate to Generate Photo screen
@@ -231,15 +252,19 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                         );
                                       }
                                     } catch (e) {
-                                      if (mounted) {
-                                        _stopTimer();
-                                        setState(() {
-                                          _isGenerating = false;
-                                        });
+                                      if (mounted && currentContext.mounted) {
                                         AppSnackBar.showError(
                                           currentContext,
                                           'An error occurred: ${e.toString()}',
                                         );
+                                      }
+                                    } finally {
+                                      // Always clear loader and timer so UI cannot hang
+                                      _stopTimer();
+                                      if (mounted) {
+                                        setState(() {
+                                          _isGenerating = false;
+                                        });
                                       }
                                     }
                                   } else {
@@ -255,6 +280,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                         ),
                       ),
                     ],
+                    ),
                   );
                 },
               ),
@@ -274,8 +300,8 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     );
   }
 
-  /// Builds the step progress banner
-  Widget _buildStepBanner(BuildContext context, int currentStep) {
+  /// Builds the step progress banner (compact in landscape)
+  Widget _buildStepBanner(BuildContext context, int currentStep, [bool compact = false]) {
     final appColors = AppColors.of(context);
     
     final steps = [
@@ -285,8 +311,9 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       _StepInfo(icon: CupertinoIcons.tray_arrow_down, label: 'Pay & Collect'),
     ];
 
+    final bannerPadding = compact ? const EdgeInsets.symmetric(vertical: 6, horizontal: 6) : const EdgeInsets.symmetric(vertical: 12, horizontal: 8);
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: bannerPadding,
       decoration: BoxDecoration(
         color: appColors.backgroundColor,
         boxShadow: [
@@ -312,8 +339,8 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        width: 36,
-                        height: 36,
+                        width: compact ? 28.0 : 36,
+                        height: compact ? 28.0 : 36,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: isActive 
@@ -330,7 +357,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                         ),
                         child: Icon(
                           isCompleted ? CupertinoIcons.checkmark : step.icon,
-                          size: 18,
+                          size: compact ? 14.0 : 18,
                           color: isCompleted
                               ? CupertinoColors.white
                               : isActive
@@ -338,11 +365,11 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                   : CupertinoColors.systemGrey,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      SizedBox(height: compact ? 2 : 4),
                       Text(
                         step.label,
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: compact ? 9 : 10,
                           fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
                           color: isActive || isCompleted
                               ? CupertinoColors.systemBlue
@@ -360,7 +387,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                   Expanded(
                     child: Container(
                       height: 1,
-                      margin: const EdgeInsets.only(bottom: 20),
+                      margin: EdgeInsets.only(bottom: compact ? 14.0 : 20),
                       color: isCompleted
                           ? CupertinoColors.systemBlue
                           : CupertinoColors.systemGrey3,
