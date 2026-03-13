@@ -10,7 +10,7 @@ Flutter photo booth app with AI transformations. Use this context when editing o
 ## Stack & platforms
 
 - **Flutter** (SDK >=3.0.0 <4.0.0), **Provider** for state
-- **Platforms**: iOS, Android (phones, tablets, Android TV). Web exists but is secondary (stubs for file/camera).
+- **Platforms**: iOS, Android (phones, tablets, Android TV). **Android minimum**: API 30 (Android 11). Web exists but is secondary (stubs for file/camera).
 - **Camera**: Official Flutter `camera` plugin only; no custom native camera. External/USB cameras supported via `camera_android_camerax` (dependency override 0.7.1).
 - **API**: Dio + Retrofit; base URL in `lib/utils/app_config.dart` (`AppConfig.baseUrl`).
 - **Error reporting**: Bugsnag via `ErrorReportingManager` (disabled on web).

@@ -51,7 +51,9 @@ android {
 
     defaultConfig {
         applicationId "com.example.photobooth"
-        minSdkVersion flutter.minSdkVersion
+        minSdkVersion rootProject.hasProperty('flutter.minSdkVersion')
+            ? rootProject.property('flutter.minSdkVersion').toInteger()
+            : flutter.minSdkVersion
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
