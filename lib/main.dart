@@ -141,7 +141,7 @@ class PhotoBoothApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         // Remove hardcoded theme to allow dark mode support
         // The app will automatically use system theme (light/dark)
-        initialRoute: AppConstants.kRouteSlideshow,
+        initialRoute: AppConstants.kRouteTerms,
         routes: {
           AppConstants.kRouteSlideshow: (context) =>
               const ThemeSlideshowScreen(),

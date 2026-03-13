@@ -71,6 +71,7 @@ flutter:
 
   assets:
     - lib/images/
+    - assets/slideshow/
 
 flutter_launcher_icons:
   android: true

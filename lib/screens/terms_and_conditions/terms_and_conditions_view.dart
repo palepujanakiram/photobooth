@@ -9,6 +9,7 @@ import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/bottom_safe_area.dart';
+import '../../views/widgets/animated_slideshow_background.dart';
 
 class TermsAndConditionsScreen extends StatefulWidget {
   final List<String>? carouselImages;
@@ -70,9 +71,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     // Calculate responsive sizes
     final double horizontalPadding = screenWidth * 0.06;
     final double cardMaxWidth = screenWidth > 600 ? 500.0 : screenWidth * 0.9;
-    // In landscape use less vertical space for logo so card and buttons fit
-    final double logoTop = isLandscape ? 8.0 : 24.0;
-    final double logoBottom = isLandscape ? 6.0 : 16.0;
     final double scrollVerticalPadding = isLandscape ? 8.0 : 16.0;
 
     return ChangeNotifierProvider.value(
@@ -83,16 +81,13 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           child: BottomSafePadding(
             child: Stack(
             children: [
-              // Main content
+              // Animated slideshow background (behind consent UI)
+              const Positioned.fill(
+                child: AnimatedSlideshowBackground(),
+              ),
+              // Main content (no top logo; card has logo in header)
               Column(
                 children: [
-                  // Logo at top (compact in landscape)
-                  Padding(
-                    padding: EdgeInsets.only(top: logoTop, bottom: logoBottom),
-                    child: _buildLogo(appColors, isLandscape),
-                  ),
-                  
-                  // Scrollable content area
                   Expanded(
                     child: Center(
                       child: SingleChildScrollView(
@@ -137,24 +132,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
-  Widget _buildLogo(AppColors appColors, [bool compact = false]) {
-    return Image.asset(
-      'lib/images/zen_ai_logo.jpeg',
-      height: compact ? 48 : 80,
-      fit: BoxFit.contain,
-      errorBuilder: (context, error, stackTrace) {
-        return Text(
-          'FotoZen.AI',
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-            color: appColors.textColor,
-          ),
-        );
-      },
-    );
-  }
-
   Widget _buildConsentCard(TermsAndConditionsViewModel viewModel, AppColors appColors, [bool compact = false]) {
     final cardPadding = compact ? 12.0 : 20.0;
     return Container(
@@ -173,30 +150,36 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header
+          // Header: Zen AI logo left of "Quick Consent"
           Padding(
             padding: EdgeInsets.all(cardPadding),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: CupertinoColors.systemBlue.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    CupertinoIcons.shield_fill,
-                    color: CupertinoColors.systemBlue,
-                    size: 24,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    'lib/images/zen_ai_logo.jpeg',
+                    width: 40,
+                    height: 40,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Icon(
+                      CupertinoIcons.photo,
+                      size: 40,
+                      color: appColors.textColor,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  'Quick Consent',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: appColors.textColor,
+                Expanded(
+                  child: Text(
+                    'Quick Consent',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: appColors.textColor,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                 ),
               ],
