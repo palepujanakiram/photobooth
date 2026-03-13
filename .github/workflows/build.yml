@@ -29,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
       - name: Build App
-        run: flutter build apk --release
+        run: flutter build apk
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v6
         env:
