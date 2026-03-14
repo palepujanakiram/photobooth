@@ -154,6 +154,30 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       child: Stack(
         children: [
           CupertinoPageScaffold(
+            backgroundColor: Colors.transparent,
+            navigationBar: CupertinoNavigationBar(
+              backgroundColor: Colors.transparent,
+              border: null,
+              middle: const Text(
+                'Select a theme',
+                style: TextStyle(
+                  color: CupertinoColors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 17,
+                ),
+              ),
+              leading: CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: () {
+                  Navigator.pushNamed(context, AppConstants.kRouteTerms);
+                },
+                child: const Icon(
+                  CupertinoIcons.back,
+                  color: CupertinoColors.white,
+                ),
+              ),
+              automaticallyImplyLeading: false,
+            ),
             child: Stack(
               children: [
                 Positioned.fill(
