@@ -8,12 +8,15 @@ class ThemeCard extends StatelessWidget {
   final ThemeModel theme;
   final bool isSelected;
   final VoidCallback onTap;
+  /// When set and [isSelected] is true, shows a "Select" button to proceed (e.g. to next screen).
+  final VoidCallback? onSelectPressed;
 
   const ThemeCard({
     super.key,
     required this.theme,
     required this.isSelected,
     required this.onTap,
+    this.onSelectPressed,
   });
 
   String _getImageUrl() {
@@ -58,14 +61,17 @@ class ThemeCard extends StatelessWidget {
     final imageUrl = _getImageUrl();
     
     return Card(
-      elevation: isSelected ? 8 : 2,
+      elevation: isSelected ? 12 : 2,
+      shadowColor: isSelected
+          ? CupertinoColors.systemBlue.withValues(alpha: 0.35)
+          : null,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: isSelected 
-              ? CupertinoColors.systemBlue 
+          color: isSelected
+              ? CupertinoColors.systemBlue.withValues(alpha: 0.5)
               : Colors.transparent,
-          width: isSelected ? 3 : 0,
+          width: isSelected ? 2.5 : 0,
         ),
       ),
       clipBehavior: Clip.antiAlias,
@@ -111,43 +117,61 @@ class ThemeCard extends StatelessWidget {
                       ),
                     ),
                   ),
-            // Background color overlay at bottom for text
+            // Bottom bar: name left, Select button right (sleek, no description)
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
-              child: Container(
-                color: _parseColor(theme.backgroundColor) ?? 
-                    Colors.black.withValues(alpha: 0.8),
-                padding: const EdgeInsets.all(12.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      theme.name,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: isSelected 
-                            ? FontWeight.bold 
-                            : FontWeight.w600,
-                        color: _parseColor(theme.textColor) ?? Colors.white,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  color: _parseColor(theme.backgroundColor) ??
+                      Colors.black.withValues(alpha: 0.8),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 5),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          theme.name,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.w600,
+                            color: _parseColor(theme.textColor) ??
+                                Colors.white,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      theme.description,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: (_parseColor(theme.textColor) ?? Colors.white)
-                            .withValues(alpha: 0.9),
-                      ),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                      if (isSelected && onSelectPressed != null) ...[
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: onSelectPressed,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: CupertinoColors.systemBlue,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'Select',
+                              style: TextStyle(
+                                color: CupertinoColors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),

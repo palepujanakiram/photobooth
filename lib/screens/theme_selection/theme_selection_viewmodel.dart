@@ -44,12 +44,96 @@ class ThemeViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
 
+  /// Category tab ids: "All" plus unique categoryIds from themes.
+  List<String> get categoryIds {
+    if (_themes.isEmpty) return ['All'];
+    final ids = _themes.map((t) => t.categoryId).toSet().toList()..sort();
+    return ['All', ...ids];
+  }
+
+  /// Known categoryId -> display name when API does not send categoryName.
+  static const Map<String, String> _categoryIdToName = {
+    'all': 'All',
+    'royal': 'Royal',
+    'superhero': 'Superhero',
+    'wedding': 'Wedding',
+    'fantasy': 'Fantasy',
+    'cat-1': 'General',
+    'vintage': 'Vintage',
+    'portrait': 'Portrait',
+  };
+
+  /// Display name for category (for tabs). Uses API categoryName when present, else known mapping, else title-case of id.
+  String getCategoryDisplayName(String id) {
+    if (id == 'All') return 'All';
+    for (final t in _themes) {
+      if (t.categoryId == id && t.categoryName != null && t.categoryName!.isNotEmpty) {
+        return t.categoryName!;
+      }
+    }
+    final key = id.toLowerCase();
+    if (_categoryIdToName.containsKey(key)) {
+      return _categoryIdToName[key]!;
+    }
+    final parts = id.split(RegExp(r'[-_\s]+'));
+    return parts
+        .map((p) => p.isEmpty
+            ? p
+            : '${p[0].toUpperCase()}${p.length > 1 ? p.substring(1).toLowerCase() : ''}')
+        .join(' ');
+  }
+
+  /// Currently selected category ("All" or a categoryId).
+  String get selectedCategoryId => _selectedCategoryId;
+  String _selectedCategoryId = 'All';
+
+  /// Themes filtered by selected category.
+  List<ThemeModel> get filteredThemes {
+    if (_selectedCategoryId == 'All') return _themes;
+    return _themes.where((t) => t.categoryId == _selectedCategoryId).toList();
+  }
+
+  /// Current carousel center index (for filtered themes).
+  int get carouselIndex => _carouselIndex;
+  int _carouselIndex = 0;
+
+  void selectCategory(String id) {
+    _selectedCategoryId = id;
+    _carouselIndex = 0;
+    final list = filteredThemes;
+    _selectedTheme = list.isEmpty ? null : list[0];
+    notifyListeners();
+  }
+
+  void setCarouselIndex(int index) {
+    final list = filteredThemes;
+    if (index < 0 || index >= list.length) return;
+    _carouselIndex = index;
+    _selectedTheme = list[index];
+    notifyListeners();
+  }
+
+  /// Advance carousel by one (for auto-play). Call from view timer.
+  void advanceCarousel() {
+    final list = filteredThemes;
+    if (list.isEmpty) return;
+    final next = (_carouselIndex + 1) % list.length;
+    setCarouselIndex(next);
+  }
+
   /// Called when ThemeManager updates themes
   /// Made public so view can call it to use cached themes immediately
   void _onThemesUpdated() {
     _themes = _themeManager.getActiveThemes();
     _isLoading = _themeManager.isLoading;
     _errorMessage = _themeManager.errorMessage;
+    final list = filteredThemes;
+    if (list.isNotEmpty && _carouselIndex >= list.length) {
+      _carouselIndex = 0;
+      _selectedTheme = list[0];
+    } else if (list.isNotEmpty && _selectedTheme == null) {
+      _selectedTheme = list[0];
+    }
     notifyListeners();
   }
 

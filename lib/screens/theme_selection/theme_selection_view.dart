@@ -1,17 +1,19 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'theme_selection_viewmodel.dart';
 import '../photo_capture/photo_model.dart';
 import '../../utils/constants.dart';
+import '../../utils/app_config.dart';
 import '../../views/widgets/theme_card.dart';
-import '../../views/widgets/app_theme.dart';
+import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/app_snackbar.dart';
-import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/bottom_safe_area.dart';
 import '../../services/theme_manager.dart';
+import 'theme_model.dart';
 
 class ThemeSelectionScreen extends StatefulWidget {
   const ThemeSelectionScreen({super.key});
@@ -24,16 +26,18 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   PhotoModel? _photoFromCapture;
   bool _isGenerating = false;
   Timer? _timer;
+  Timer? _carouselTimer;
   int _elapsedSeconds = 0;
-  final ScrollController _gridScrollController = ScrollController();
+  PageController? _pageController;
+  ScrollController? _thumbScrollController;
+  String? _prevCategoryId;
+  bool _thumbScrollLayoutDone = false;
 
   void _startTimer() {
     _elapsedSeconds = 0;
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        _elapsedSeconds++;
-      });
+      if (mounted) setState(() => _elapsedSeconds++);
     });
   }
 
@@ -42,28 +46,47 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     _timer = null;
   }
 
+  void _startCarouselTimer(ThemeViewModel viewModel) {
+    _carouselTimer?.cancel();
+    _carouselTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) {
+      if (!mounted) return;
+      viewModel.advanceCarousel();
+      _pageController?.animateToPage(
+        viewModel.carouselIndex,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  void _stopCarouselTimer() {
+    _carouselTimer?.cancel();
+    _carouselTimer = null;
+  }
+
   @override
   void dispose() {
     _stopTimer();
-    _gridScrollController.dispose();
+    _stopCarouselTimer();
+    _pageController?.dispose();
+    _thumbScrollController?.dispose();
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
+    _thumbScrollController = ScrollController()
+      ..addListener(() {
+        if (mounted) setState(() {});
+      });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final viewModel = context.read<ThemeViewModel>();
-      // Use cached themes immediately if available (faster)
       final themeManager = ThemeManager();
       if (themeManager.hasThemes) {
-        // Update themes from cache immediately
         viewModel.updateFromCache();
       }
-      // Then fetch/refresh themes
       viewModel.loadThemes();
-
-      // Check if we have a photo from capture screen
       final args = ModalRoute.of(context)?.settings.arguments;
       if (args != null && args is Map) {
         _photoFromCapture = args['photo'] as PhotoModel?;
@@ -71,222 +94,137 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     });
   }
 
+  Future<void> _onContinue(
+      BuildContext context, ThemeViewModel viewModel) async {
+    final selectedTheme = viewModel.selectedTheme;
+    if (selectedTheme == null) return;
+
+    final currentContext = context;
+    if (_photoFromCapture != null) {
+      _startTimer();
+      setState(() => _isGenerating = true);
+      bool success = false;
+      try {
+        success = await viewModel.updateSessionWithTheme();
+        if (!mounted || !currentContext.mounted) return;
+        if (success) {
+          Navigator.pushNamed(
+            currentContext,
+            AppConstants.kRouteGenerate,
+            arguments: {
+              'photo': _photoFromCapture,
+              'theme': selectedTheme,
+            },
+          );
+        } else {
+          AppSnackBar.showError(
+            currentContext,
+            viewModel.errorMessage ??
+                'Failed to update session with theme',
+          );
+        }
+      } catch (e) {
+        if (mounted && currentContext.mounted) {
+          AppSnackBar.showError(
+            currentContext,
+            'An error occurred: ${e.toString()}',
+          );
+        }
+      } finally {
+        _stopTimer();
+        if (mounted) setState(() => _isGenerating = false);
+      }
+    } else {
+      Navigator.pushNamed(currentContext, AppConstants.kRouteCapture);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
-    final screenWidth = mediaQuery.size.width;
-    final isTablet = screenWidth > AppConstants.kTabletBreakpoint;
-    final isLandscape = mediaQuery.orientation == Orientation.landscape;
+    final isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
 
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (bool didPop, dynamic result) {
         if (!didPop) {
-          Navigator.pushNamed(
-            context,
-            AppConstants.kRouteTerms,
-          );
+          Navigator.pushNamed(context, AppConstants.kRouteTerms);
         }
       },
       child: Stack(
         children: [
           CupertinoPageScaffold(
-            navigationBar: AppTopBar(
-              title: 'Select Theme',
-              leading: AppActionButton(
-                icon: CupertinoIcons.back,
-                onPressed: () {
-                  Navigator.pushNamed(
-                    context,
-                    AppConstants.kRouteTerms,
-                  );
-                },
-              ),
-            ),
-            child: SafeArea(
-              child: Consumer<ThemeViewModel>(
-                builder: (context, viewModel, child) {
-                  if (viewModel.isLoading) {
-                    return const Center(
-                      child: CupertinoActivityIndicator(),
-                    );
-                  }
-
-                  if (viewModel.hasError) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            CupertinoIcons.exclamationmark_triangle,
-                            size: 64,
-                            color: CupertinoColors.systemRed,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            viewModel.errorMessage ?? 'Unknown error',
-                            style: const TextStyle(fontSize: 16),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 24),
-                          CupertinoButton(
-                            onPressed: () => viewModel.loadThemes(),
-                            child: const Text('Retry'),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  if (viewModel.themes.isEmpty) {
-                    return const Center(
-                      child: Text('No themes available'),
-                    );
-                  }
-
-                  const buttonSectionTopPadding = 16.0;
-                  final baseButtonBottom = isTablet ? 24.0 : (isLandscape ? 12.0 : 16.0);
-
-                  return BottomSafePadding(
-                    child: Column(
-                      children: [
-                        // Step banner at the top (compact in landscape)
-                        _buildStepBanner(context, 1, isLandscape),
-                      
-                      Expanded(
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final padding = isTablet ? 24.0 : (isLandscape ? 12.0 : 16.0);
-                            final crossAxisCount = isLandscape ? (isTablet ? 4 : 3) : (isTablet ? 3 : 2);
-                            final crossAxisSpacing = isLandscape ? 12.0 : 16.0;
-                            final mainAxisSpacing = isLandscape ? 12.0 : 16.0;
-                            // Size grid so exactly 2 full rows are visible (use full available height)
-                            final contentHeight = constraints.maxHeight - padding * 2;
-                            final rowHeight = contentHeight > mainAxisSpacing ? (contentHeight - mainAxisSpacing) / 2 : 80.0;
-                            final contentWidth = constraints.maxWidth - padding * 2;
-                            final cellWidth = contentWidth > 0 ? (contentWidth - (crossAxisCount - 1) * crossAxisSpacing) / crossAxisCount : 100.0;
-                            final childAspectRatio = rowHeight > 0 ? cellWidth / rowHeight : (isTablet ? 0.75 : 0.7);
-
-                            return Scrollbar(
-                              controller: _gridScrollController,
-                              thumbVisibility: true,
-                              child: GridView.builder(
-                                controller: _gridScrollController,
-                                padding: EdgeInsets.all(padding),
-                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: crossAxisCount,
-                                  crossAxisSpacing: crossAxisSpacing,
-                                  mainAxisSpacing: mainAxisSpacing,
-                                  childAspectRatio: childAspectRatio,
-                                ),
-                                itemCount: viewModel.themes.length,
-                                itemBuilder: (context, index) {
-                                  final theme = viewModel.themes[index];
-                                  final isSelected = viewModel.selectedTheme?.id == theme.id;
-
-                                  return ThemeCard(
-                                    theme: theme,
-                                    isSelected: isSelected,
-                                    onTap: () {
-                                      viewModel.selectTheme(theme);
-                                    },
-                                  );
-                                },
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Consumer<ThemeViewModel>(
+                    builder: (_, viewModel, __) =>
+                        _buildScreenBackground(context, viewModel),
+                  ),
+                ),
+                SafeArea(
+                  child: Consumer<ThemeViewModel>(
+                    builder: (context, viewModel, child) {
+                      if (viewModel.isLoading) {
+                        return const Center(
+                          child: CupertinoActivityIndicator(),
+                        );
+                      }
+                      if (viewModel.hasError) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                CupertinoIcons.exclamationmark_triangle,
+                                size: 64,
+                                color: CupertinoColors.systemRed,
                               ),
-                            );
-                          },
+                              const SizedBox(height: 16),
+                              Text(
+                                viewModel.errorMessage ?? 'Unknown error',
+                                style: const TextStyle(
+                                    fontSize: 16, color: CupertinoColors.white),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 24),
+                              CupertinoButton(
+                                onPressed: () => viewModel.loadThemes(),
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                      if (viewModel.themes.isEmpty) {
+                        return const Center(
+                          child: Text(
+                            'No themes available',
+                            style: TextStyle(color: CupertinoColors.white),
+                          ),
+                        );
+                      }
+
+                      return BottomSafePadding(
+                        child: Column(
+                          children: [
+                            _buildCategoryTabs(context, viewModel),
+                            Expanded(
+                              child: _buildCarouselAndThumbnails(
+                                context,
+                                viewModel,
+                                isLandscape,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      // Space between grid and Continue button
-                      const SizedBox(height: buttonSectionTopPadding),
-                      // Continue button (safe area keeps it above system nav bar)
-                      Padding(
-                        padding: EdgeInsets.only(
-                          left: isTablet ? 24.0 : (isLandscape ? 12.0 : 16.0),
-                          right: isTablet ? 24.0 : (isLandscape ? 12.0 : 16.0),
-                          bottom: baseButtonBottom,
-                        ),
-                        child: AppContinueButton(
-                          onPressed: viewModel.selectedTheme != null &&
-                                  !_isGenerating &&
-                                  !viewModel.isUpdatingSession
-                              ? () async {
-                                  final selectedTheme = viewModel.selectedTheme;
-                                  if (selectedTheme == null) return;
-
-                                  // Capture context before async operation
-                                  final currentContext = context;
-
-                                  // If we have a photo from capture, update session with theme
-                                  if (_photoFromCapture != null) {
-                                    // Show full screen loader
-                                    _startTimer();
-                                    setState(() {
-                                      _isGenerating = true;
-                                    });
-
-                                    bool success = false;
-                                    try {
-                                      // Step 4: Update session with selected theme
-                                      // PATCH /api/sessions/{sessionId} with only selectedThemeId
-                                      success = await viewModel.updateSessionWithTheme();
-
-                                      if (!mounted || !currentContext.mounted) return;
-
-                                      if (success) {
-                                        // Navigate to Generate Photo screen
-                                        Navigator.pushNamed(
-                                          currentContext,
-                                          AppConstants.kRouteGenerate,
-                                          arguments: {
-                                            'photo': _photoFromCapture,
-                                            'theme': selectedTheme,
-                                          },
-                                        );
-                                      } else {
-                                        // Show animated error if update fails
-                                        AppSnackBar.showError(
-                                          currentContext,
-                                          viewModel.errorMessage ??
-                                              'Failed to update session with theme',
-                                        );
-                                      }
-                                    } catch (e) {
-                                      if (mounted && currentContext.mounted) {
-                                        AppSnackBar.showError(
-                                          currentContext,
-                                          'An error occurred: ${e.toString()}',
-                                        );
-                                      }
-                                    } finally {
-                                      // Always clear loader and timer so UI cannot hang
-                                      _stopTimer();
-                                      if (mounted) {
-                                        setState(() {
-                                          _isGenerating = false;
-                                        });
-                                      }
-                                    }
-                                  } else {
-                                    // Normal flow: navigate to capture photo
-                                    Navigator.pushNamed(
-                                      currentContext,
-                                      AppConstants.kRouteCapture,
-                                    );
-                                  }
-                                }
-                              : null,
-                          padding: EdgeInsets.zero,
-                        ),
-                      ),
-                    ],
-                    ),
-                  );
-                },
-              ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
-          // Full screen loader overlay - positioned to cover entire screen
           if (_isGenerating)
             Positioned.fill(
               child: FullScreenLoader(
@@ -300,112 +238,585 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     );
   }
 
-  /// Builds the step progress banner (compact in landscape)
-  Widget _buildStepBanner(BuildContext context, int currentStep, [bool compact = false]) {
-    final appColors = AppColors.of(context);
-    
-    final steps = [
-      _StepInfo(icon: CupertinoIcons.camera, label: 'Photo'),
-      _StepInfo(icon: CupertinoIcons.paintbrush, label: 'Select Theme'),
-      _StepInfo(icon: CupertinoIcons.sparkles, label: 'Generate'),
-      _StepInfo(icon: CupertinoIcons.tray_arrow_down, label: 'Pay & Collect'),
-    ];
+  String _themeSampleImageUrl(ThemeModel? theme) {
+    if (theme?.sampleImageUrl == null || theme!.sampleImageUrl!.isEmpty) {
+      return '';
+    }
+    final imageUrl = theme.sampleImageUrl!;
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      return imageUrl;
+    }
+    final baseUrl = AppConfig.baseUrl.endsWith('/')
+        ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
+        : AppConfig.baseUrl;
+    final path = imageUrl.startsWith('/') ? imageUrl : '/$imageUrl';
+    return '$baseUrl$path';
+  }
 
-    final bannerPadding = compact ? const EdgeInsets.symmetric(vertical: 6, horizontal: 6) : const EdgeInsets.symmetric(vertical: 12, horizontal: 8);
-    return Container(
-      padding: bannerPadding,
-      decoration: BoxDecoration(
-        color: appColors.backgroundColor,
-        boxShadow: [
-          BoxShadow(
-            color: appColors.shadowColor.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: List.generate(steps.length, (index) {
-          final step = steps[index];
-          final isActive = index == currentStep;
-          final isCompleted = index < currentStep;
-          
-          return Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: compact ? 28.0 : 36,
-                        height: compact ? 28.0 : 36,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isActive 
-                              ? CupertinoColors.systemBlue.withValues(alpha: 0.1)
-                              : isCompleted
-                                  ? CupertinoColors.systemBlue
-                                  : Colors.transparent,
-                          border: Border.all(
-                            color: isActive || isCompleted
-                                ? CupertinoColors.systemBlue
-                                : CupertinoColors.systemGrey3,
-                            width: isActive ? 2 : 1,
-                          ),
-                        ),
-                        child: Icon(
-                          isCompleted ? CupertinoIcons.checkmark : step.icon,
-                          size: compact ? 14.0 : 18,
-                          color: isCompleted
-                              ? CupertinoColors.white
-                              : isActive
-                                  ? CupertinoColors.systemBlue
-                                  : CupertinoColors.systemGrey,
-                        ),
-                      ),
-                      SizedBox(height: compact ? 2 : 4),
-                      Text(
-                        step.label,
-                        style: TextStyle(
-                          fontSize: compact ? 9 : 10,
-                          fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-                          color: isActive || isCompleted
-                              ? CupertinoColors.systemBlue
-                              : CupertinoColors.systemGrey,
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                // Connector line (except for last item)
-                if (index < steps.length - 1)
-                  Expanded(
-                    child: Container(
-                      height: 1,
-                      margin: EdgeInsets.only(bottom: compact ? 14.0 : 20),
-                      color: isCompleted
-                          ? CupertinoColors.systemBlue
-                          : CupertinoColors.systemGrey3,
+  Color? _parseThemeBackgroundColor(String? hexColor) {
+    if (hexColor == null || hexColor.isEmpty) return null;
+    final hex = hexColor.replaceAll('#', '');
+    if (hex.length == 6) {
+      return Color(int.parse('FF$hex', radix: 16));
+    }
+    if (hex.length == 8) {
+      return Color(int.parse(hex, radix: 16));
+    }
+    return null;
+  }
+
+  Widget _buildScreenBackground(
+      BuildContext context, ThemeViewModel viewModel) {
+    final theme = viewModel.selectedTheme;
+    final imageUrl = _themeSampleImageUrl(theme);
+    final themeColor = theme != null ? _parseThemeBackgroundColor(theme.backgroundColor) : null;
+
+    return Stack(
+      key: ValueKey(theme?.id ?? 'no-theme'),
+      fit: StackFit.expand,
+      children: [
+        if (imageUrl.isNotEmpty)
+          Positioned.fill(
+            key: ValueKey(imageUrl),
+            child: ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                placeholder: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        Color(0xFF0D2130),
+                        Color(0xFF0A1628),
+                        Color(0xFF050810),
+                      ],
                     ),
                   ),
-              ],
+                ),
+                errorWidget: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        Color(0xFF0D2130),
+                        Color(0xFF0A1628),
+                        Color(0xFF050810),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (themeColor != null)
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: themeColor.withValues(alpha: 0.35),
+              ),
+            ),
+          ),
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: imageUrl.isNotEmpty
+                    ? [
+                        const Color(0xFF0D2130).withValues(alpha: 0.75),
+                        const Color(0xFF0A1628).withValues(alpha: 0.82),
+                        const Color(0xFF050810).withValues(alpha: 0.88),
+                      ]
+                    : const [
+                        Color(0xFF0D2130),
+                        Color(0xFF0A1628),
+                        Color(0xFF050810),
+                      ],
+              ),
+            ),
+          ),
+        ),
+        const Positioned.fill(
+          child: _FallingDotsBackground(),
+        ),
+      ],
+    );
+  }
+
+  static const double _categorySidePadding = 24.0;
+  static const double _categoryChipWidth = 84.0;
+  static const double _categoryChipGap = 8.0;
+  static const double _categoryChipRowHeight = 44.0;
+  static const int _maxVisibleCategoryChips = 5;
+
+  Widget _buildCategoryTabs(BuildContext context, ThemeViewModel viewModel) {
+    final ids = viewModel.categoryIds;
+    const double itemExtent = _categoryChipWidth + _categoryChipGap;
+    const double maxRowWidth =
+        _maxVisibleCategoryChips * itemExtent;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: 8,
+        horizontal: _categorySidePadding,
+      ),
+      child: Center(
+        child: SizedBox(
+          width: maxRowWidth,
+          height: _categoryChipRowHeight,
+          child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          itemCount: ids.length,
+          itemBuilder: (context, index) {
+          final id = ids[index];
+          final isActive = viewModel.selectedCategoryId == id;
+          return SizedBox(
+            width: itemExtent,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: _categoryChipWidth,
+                child: Center(
+                  child: CupertinoButton(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    minSize: 0,
+                    borderRadius: BorderRadius.circular(20),
+                    color: isActive
+                        ? const Color(0xFF2A6DF4)
+                        : CupertinoColors.white.withValues(alpha: 0.15),
+                    onPressed: () {
+                      viewModel.selectCategory(id);
+                      if (_pageController != null &&
+                          viewModel.filteredThemes.isNotEmpty) {
+                        _pageController!.animateToPage(
+                          0,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOut,
+                        );
+                      }
+                    },
+                    child: Text(
+                      viewModel.getCategoryDisplayName(id),
+                      style: const TextStyle(
+                        color: CupertinoColors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ),
             ),
           );
-        }),
+        },
+          ),
+        ),
       ),
+    );
+  }
+
+  Widget _buildCarouselAndThumbnails(
+    BuildContext context,
+    ThemeViewModel viewModel,
+    bool isLandscape,
+  ) {
+    final filtered = viewModel.filteredThemes;
+    if (filtered.isEmpty) {
+      return const Center(child: Text('No themes in this category'));
+    }
+
+    _pageController ??= PageController(
+      viewportFraction: 0.2,
+      initialPage: viewModel.carouselIndex.clamp(0, filtered.length - 1),
+    );
+
+    if (_prevCategoryId != viewModel.selectedCategoryId) {
+      _prevCategoryId = viewModel.selectedCategoryId;
+      _thumbScrollLayoutDone = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageController!.hasClients) {
+          _pageController!.jumpToPage(0);
+        }
+      });
+    }
+
+    _startCarouselTimer(viewModel);
+
+    return Column(
+      children: [
+        Expanded(
+          flex: 4,
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: filtered.length,
+            onPageChanged: (i) {
+              viewModel.setCarouselIndex(i);
+            },
+            itemBuilder: (context, index) {
+              final theme = filtered[index];
+              final isSelected =
+                  viewModel.selectedTheme?.id == theme.id;
+              return AnimatedBuilder(
+                animation: _pageController!,
+                builder: (context, _) {
+                  final hasPage = _pageController!.position.hasContentDimensions &&
+                      _pageController!.page != null;
+                  final page = hasPage
+                      ? _pageController!.page!
+                      : viewModel.carouselIndex.toDouble();
+                  final offset = page - index;
+                  final delta = offset.abs();
+                  final scale = (1.0 - (delta * 0.28)).clamp(0.48, 1.15);
+                  final opacity = (1.0 - (delta * 0.22)).clamp(0.5, 1.0);
+                  final isCenter = delta < 0.5;
+                  const perspective = 0.001;
+                  final angleY = offset * 0.5;
+                  final matrix = Matrix4.identity()
+                    ..setEntry(3, 2, perspective)
+                    ..rotateY(angleY)
+                    ..scaleByDouble(scale, scale, 1.0, 1.0);
+                  final aspectRatio = isCenter ? 3 / 4.5 : 3 / 4;
+                  return Opacity(
+                    opacity: opacity,
+                    child: Transform(
+                      alignment: Alignment.center,
+                      transform: matrix,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 16),
+                        child: Center(
+                          child: AspectRatio(
+                            aspectRatio: aspectRatio,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(25),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: CupertinoColors.black
+                                        .withValues(alpha: 0.6),
+                                    blurRadius: 40,
+                                    offset: const Offset(0, 20),
+                                  ),
+                                ],
+                              ),
+                              clipBehavior: Clip.antiAlias,
+                              child: ThemeCard(
+                                theme: theme,
+                                isSelected: isSelected,
+                                onTap: () {
+                                  viewModel.selectTheme(theme);
+                                  viewModel.setCarouselIndex(index);
+                                  _pageController?.animateToPage(
+                                    index,
+                                    duration: const Duration(milliseconds: 400),
+                                    curve: Curves.easeOut,
+                                  );
+                                },
+                                onSelectPressed: isSelected &&
+                                        viewModel.selectedTheme != null &&
+                                        !_isGenerating &&
+                                        !viewModel.isUpdatingSession
+                                    ? () => _onContinue(context, viewModel)
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        _buildThumbnails(context, viewModel, isLandscape),
+      ],
+    );
+  }
+
+  static const double _thumbWidth = 70;
+  static const double _thumbSpacing = 10;
+  static const double _thumbScrollAmount = 240;
+
+  Widget _buildThumbnails(
+    BuildContext context,
+    ThemeViewModel viewModel,
+    bool isLandscape,
+  ) {
+    final filtered = viewModel.filteredThemes;
+    final hasClients = _thumbScrollController?.hasClients ?? false;
+    final offset = hasClients ? _thumbScrollController!.offset : 0.0;
+    final maxExtent = hasClients
+        ? _thumbScrollController!.position.maxScrollExtent
+        : 0.0;
+    final canScrollLeft = hasClients && offset > 8;
+    final canScrollRight = hasClients && maxExtent > 8 && offset < maxExtent - 8;
+
+    if (filtered.isNotEmpty && hasClients && !_thumbScrollLayoutDone) {
+      _thumbScrollLayoutDone = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    }
+
+    const double thumbHeight = 72.0;
+    const double verticalPadding = 16.0;
+    const double borderMargin = 4.0;
+    final rowHeight =
+        thumbHeight + borderMargin * 2 + verticalPadding * 2;
+
+    const double sidePadding = _thumbWidth;
+
+    return SizedBox(
+      height: rowHeight,
+      child: Stack(
+        children: [
+          Row(
+            children: [
+              const SizedBox(width: sidePadding),
+              Expanded(
+                child: ListView.builder(
+                  controller: _thumbScrollController,
+                  scrollDirection: Axis.horizontal,
+                  padding: EdgeInsets.symmetric(vertical: verticalPadding),
+                  clipBehavior: Clip.none,
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final theme = filtered[index];
+                    final isActive = viewModel.carouselIndex == index;
+                    return Padding(
+                      padding: const EdgeInsets.only(
+                        left: borderMargin,
+                        top: borderMargin,
+                        right: _thumbSpacing,
+                        bottom: borderMargin,
+                      ),
+                      child: GestureDetector(
+                        onTap: () {
+                          viewModel.setCarouselIndex(index);
+                          _pageController?.animateToPage(
+                            index,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOut,
+                          );
+                        },
+                        child: Container(
+                          width: _thumbWidth,
+                          height: thumbHeight,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              _ThemeThumbImage(theme: theme),
+                              if (!isActive)
+                                Positioned.fill(
+                                  child: Container(
+                                    color: CupertinoColors.black
+                                        .withValues(alpha: 0.3),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: sidePadding),
+            ],
+          ),
+          if (canScrollLeft)
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: sidePadding,
+              child: Center(
+                child: _buildThumbArrow(context, isLeft: true),
+              ),
+            ),
+          if (canScrollRight)
+            Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: sidePadding,
+              child: Center(
+                child: _buildThumbArrow(context, isLeft: false),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildThumbArrow(BuildContext context, {required bool isLeft}) {
+    return CupertinoButton(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      minSize: 0,
+      onPressed: () {
+        if (_thumbScrollController == null || !_thumbScrollController!.hasClients) return;
+        final pos = _thumbScrollController!.position;
+        final current = pos.pixels;
+        final target = isLeft
+            ? (current - _thumbScrollAmount).clamp(0.0, pos.maxScrollExtent)
+            : (current + _thumbScrollAmount).clamp(0.0, pos.maxScrollExtent);
+        _thumbScrollController!.animateTo(
+          target,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      },
+      child: Icon(
+        isLeft ? CupertinoIcons.chevron_left : CupertinoIcons.chevron_right,
+        color: CupertinoColors.white.withValues(alpha: 0.9),
+        size: 28,
+      ),
+    );
+  }
+
+}
+
+class _FallingDotsBackground extends StatefulWidget {
+  const _FallingDotsBackground();
+
+  @override
+  State<_FallingDotsBackground> createState() => _FallingDotsBackgroundState();
+}
+
+class _FallingDotsBackgroundState extends State<_FallingDotsBackground>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 25),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return CustomPaint(
+          painter: _FallingStarfieldPainter(progress: _controller.value),
+          size: Size.infinite,
+        );
+      },
     );
   }
 }
 
-/// Helper class to store step information
-class _StepInfo {
-  final IconData icon;
-  final String label;
+class _FallingStarfieldPainter extends CustomPainter {
+  _FallingStarfieldPainter({required this.progress});
 
-  _StepInfo({required this.icon, required this.label});
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rnd = _SeededRandom(42);
+    final paint = Paint()
+      ..color = CupertinoColors.white.withValues(alpha: 0.5)
+      ..style = PaintingStyle.fill;
+
+    for (int i = 0; i < 120; i++) {
+      final x = rnd.nextDouble() * size.width;
+      final baseY = rnd.nextDouble();
+      final pixelY =
+          ((baseY + progress) * (size.height + 100)) % (size.height + 100);
+      if (pixelY >= 0 && pixelY <= size.height) {
+        final r = 1.0 + rnd.nextDouble();
+        canvas.drawCircle(Offset(x, pixelY), r, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _FallingStarfieldPainter old) =>
+      old.progress != progress;
+}
+
+class _SeededRandom {
+  _SeededRandom(this.seed) : _state = seed;
+  final int seed;
+  int _state;
+
+  double nextDouble() {
+    _state = (6364136223846793005 * _state + 1442695040888963407) & 0x7fffffffffffffff;
+    return _state / 0x7fffffffffffffff;
+  }
+}
+
+class _ThemeThumbImage extends StatelessWidget {
+  final ThemeModel theme;
+
+  const _ThemeThumbImage({required this.theme});
+
+  String _getImageUrl() {
+    if (theme.sampleImageUrl == null || theme.sampleImageUrl!.isEmpty) {
+      return '';
+    }
+    final imageUrl = theme.sampleImageUrl!;
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      return imageUrl;
+    }
+    final baseUrl = AppConfig.baseUrl.endsWith('/')
+        ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
+        : AppConfig.baseUrl;
+    final relativePath =
+        imageUrl.startsWith('/') ? imageUrl : '/$imageUrl';
+    return '$baseUrl$relativePath';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = _getImageUrl();
+    if (url.isEmpty) {
+      return Container(
+        color: CupertinoColors.systemGrey5,
+        child: const Icon(CupertinoIcons.photo, size: 32),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      placeholder: const Center(
+        child: CupertinoActivityIndicator(),
+      ),
+      errorWidget: const Icon(
+        CupertinoIcons.photo,
+        size: 32,
+      ),
+    );
+  }
 }

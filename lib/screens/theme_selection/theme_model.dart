@@ -1,6 +1,8 @@
 class ThemeModel {
   final String id;
   final String categoryId;
+  /// Optional display name for the category (e.g. "Royal", "Superhero"). When set by API, used for category tabs.
+  final String? categoryName;
   final String name;
   final String description;
   final String promptText;
@@ -13,6 +15,7 @@ class ThemeModel {
   const ThemeModel({
     required this.id,
     required this.categoryId,
+    this.categoryName,
     required this.name,
     required this.description,
     required this.promptText,
@@ -29,6 +32,7 @@ class ThemeModel {
   ThemeModel copyWith({
     String? id,
     String? categoryId,
+    String? categoryName,
     String? name,
     String? description,
     String? promptText,
@@ -41,6 +45,7 @@ class ThemeModel {
     return ThemeModel(
       id: id ?? this.id,
       categoryId: categoryId ?? this.categoryId,
+      categoryName: categoryName ?? this.categoryName,
       name: name ?? this.name,
       description: description ?? this.description,
       promptText: promptText ?? this.promptText,
@@ -56,6 +61,7 @@ class ThemeModel {
     return {
       'id': id,
       'categoryId': categoryId,
+      'categoryName': categoryName,
       'name': name,
       'description': description,
       'promptText': promptText,
@@ -71,6 +77,7 @@ class ThemeModel {
     return ThemeModel(
       id: json['id'] as String,
       categoryId: json['categoryId'] as String,
+      categoryName: json['categoryName'] as String?,
       name: json['name'] as String,
       description: json['description'] as String,
       promptText: json['promptText'] as String,
