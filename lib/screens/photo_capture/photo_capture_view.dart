@@ -1,7 +1,7 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
-import 'package:flutter/material.dart' show BoxFit, Colors, FontWeight, Orientation, RotatedBox, TextStyle;
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
@@ -66,27 +66,26 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     if (uniqueCameras.isEmpty) return;
 
     Navigator.of(context).push<void>(
-      CupertinoPageRoute<void>(
-        builder: (pickerContext) => CupertinoPageScaffold(
-          navigationBar: CupertinoNavigationBar(
-            middle: const Text('Select Camera'),
-            leading: CupertinoButton(
-              padding: EdgeInsets.zero,
-              child: const Text('Cancel'),
+      MaterialPageRoute<void>(
+        builder: (pickerContext) => Scaffold(
+          appBar: AppBar(
+            title: const Text('Select Camera'),
+            leading: IconButton(
+              icon: const Icon(CupertinoIcons.xmark),
               onPressed: () => Navigator.pop(pickerContext),
             ),
           ),
-          child: SafeArea(
+          body: SafeArea(
             child: ListView.builder(
               itemCount: uniqueCameras.length,
               itemBuilder: (_, index) {
                 final camera = uniqueCameras[index];
                 final isActive = viewModel.currentCamera?.name == camera.name;
                 final displayName = viewModel.getCameraDisplayName(camera);
-                return CupertinoListTile(
+                return ListTile(
                   title: Text(displayName),
                   leading: isActive
-                      ? const Icon(CupertinoIcons.checkmark_circle_fill, color: CupertinoColors.activeBlue)
+                      ? const Icon(CupertinoIcons.checkmark_circle_fill, color: Colors.blue)
                       : null,
                   onTap: () {
                     Navigator.pop(pickerContext);
@@ -103,7 +102,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
   Future<void> _openPreviewRotationScreen(BuildContext context, CaptureViewModel viewModel) async {
     final result = await Navigator.of(context).push<int>(
-      CupertinoPageRoute<int>(
+      MaterialPageRoute<int>(
         builder: (ctx) => PhotoCaptureRotationScreen(
           currentRotation: viewModel.previewRotationDegrees,
         ),
@@ -120,8 +119,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       value: _captureViewModel,
       child: Consumer<CaptureViewModel>(
         builder: (context, viewModel, child) {
-          return CupertinoPageScaffold(
-                navigationBar: AppTopBar(
+          return Scaffold(
+                appBar: AppTopBar(
                   title: 'Capture Photo',
                   leading: AppActionButton(
                     icon: CupertinoIcons.back,
@@ -135,8 +134,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                             ? null
                             : () => _showCameraSelectionDialog(context, viewModel),
                         color: (viewModel.isLoadingCameras || viewModel.isInitializing)
-                            ? CupertinoColors.systemGrey
-                            : CupertinoColors.activeBlue,
+                            ? Colors.grey
+                            : Colors.blue,
                       ),
                     AppActionButton(
                       icon: CupertinoIcons.rotate_right,
@@ -144,8 +143,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           ? null
                           : () => _openPreviewRotationScreen(context, viewModel),
                       color: (viewModel.isLoadingCameras || viewModel.isInitializing)
-                          ? CupertinoColors.systemGrey
-                          : CupertinoColors.activeBlue,
+                          ? Colors.grey
+                          : Colors.blue,
                     ),
                     AppActionButton(
                       icon: CupertinoIcons.arrow_clockwise,
@@ -153,12 +152,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           ? null
                           : () => _resetAndInitializeCameras(forceRefresh: true),
                       color: (viewModel.isLoadingCameras || viewModel.isInitializing)
-                          ? CupertinoColors.systemGrey
-                          : CupertinoColors.activeBlue,
+                          ? Colors.grey
+                          : Colors.blue,
                     ),
                   ],
                 ),
-                child: SizedBox.expand(
+                body: SizedBox.expand(
                   child: SafeArea(
                     top: true,
                     bottom: false,
@@ -168,16 +167,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                       // "Detecting cameras…" full-screen state like fluttercamerabasic (loading gate)
                       if (viewModel.isLoadingCameras) {
                         return Container(
-                          color: CupertinoColors.black,
+                          color: Colors.black,
                           child: Center(
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const CupertinoActivityIndicator(color: CupertinoColors.white),
+                                const CircularProgressIndicator(color: Colors.white),
                                 const SizedBox(height: 20),
                                 Text(
                                   'Detecting cameras…',
-                                  style: TextStyle(color: CupertinoColors.white.withValues(alpha: 0.9), fontSize: 16),
+                                  style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 16),
                                 ),
                               ],
                             ),
@@ -185,10 +184,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                         );
                       }
                       if (viewModel.isInitializing) {
-                        return const Center(child: CupertinoActivityIndicator());
+                        return const Center(child: CircularProgressIndicator());
                       }
                       if (viewModel.availableCameras.isEmpty && !viewModel.hasError) {
-                        return const Center(child: CupertinoActivityIndicator());
+                        return const Center(child: CircularProgressIndicator());
                       }
 
                       if (viewModel.hasError) {
@@ -215,11 +214,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  CupertinoButton(
+                                  TextButton(
                                     onPressed: () => _resetAndInitializeCameras(forceRefresh: true),
                                     child: const Text('Retry'),
                                   ),
-                                  CupertinoButton(
+                                  TextButton(
                                     onPressed: () => openAppSettings(),
                                     child: const Text('Open Settings'),
                                   ),
@@ -329,7 +328,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                               ? Positioned.fill(
                                   child: FullScreenLoader(
                                     text: 'Uploading Photo',
-                                    loaderColor: CupertinoColors.systemBlue,
+                                    loaderColor: Colors.blue,
                                     elapsedSeconds: viewModel.uploadElapsedSeconds,
                                   ),
                                 )
@@ -390,14 +389,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: isActive 
-                              ? CupertinoColors.systemBlue.withValues(alpha: 0.1)
+                              ? Colors.blue.withValues(alpha: 0.1)
                               : isCompleted
-                                  ? CupertinoColors.systemBlue
+                                  ? Colors.blue
                                   : Colors.transparent,
                           border: Border.all(
                             color: isActive || isCompleted
-                                ? CupertinoColors.systemBlue
-                                : CupertinoColors.systemGrey3,
+                                ? Colors.blue
+                                : Colors.grey.shade400,
                             width: isActive ? 2 : 1,
                           ),
                         ),
@@ -405,10 +404,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           isCompleted ? CupertinoIcons.checkmark : step.icon,
                           size: compact ? 14.0 : 18,
                           color: isCompleted
-                              ? CupertinoColors.white
+                              ? Colors.white
                               : isActive
-                                  ? CupertinoColors.systemBlue
-                                  : CupertinoColors.systemGrey,
+                                  ? Colors.blue
+                                  : Colors.grey,
                         ),
                       ),
                       SizedBox(height: compact ? 2 : 4),
@@ -418,8 +417,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           fontSize: compact ? 9 : 10,
                           fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
                           color: isActive || isCompleted
-                              ? CupertinoColors.systemBlue
-                              : CupertinoColors.systemGrey,
+                              ? Colors.blue
+                              : Colors.grey,
                         ),
                         textAlign: TextAlign.center,
                         maxLines: 1,
@@ -435,8 +434,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                       height: 1,
                       margin: EdgeInsets.only(bottom: compact ? 14.0 : 20),
                       color: isCompleted
-                          ? CupertinoColors.systemBlue
-                          : CupertinoColors.systemGrey3,
+                          ? Colors.blue
+                          : Colors.grey.shade400,
                     ),
                   ),
               ],
@@ -699,7 +698,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               style: const TextStyle(
                 fontSize: 80,
                 fontWeight: FontWeight.bold,
-                color: CupertinoColors.white,
+                color: Colors.white,
               ),
             ),
           ),
@@ -725,11 +724,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                 SizedBox(
                   width: 120,
                   height: 50,
-                  child: CupertinoButton(
-                    padding: EdgeInsets.zero,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                     onPressed: () => viewModel.clearCapturedPhoto(),
-                    color: CupertinoColors.systemGrey,
-                    borderRadius: BorderRadius.circular(12),
                     child: Text(
                       'Cancel',
                       style: TextStyle(
@@ -744,8 +746,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                 SizedBox(
                   width: 120,
                   height: 50,
-                  child: CupertinoButton(
-                    padding: EdgeInsets.zero,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: appColors.primaryColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                     onPressed: (viewModel.isCapturing || viewModel.isUploading)
                         ? null
                         : () async {
@@ -773,11 +780,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                               // The error will be displayed in the error UI
                             }
                           },
-                    color: appColors.primaryColor,
-                    disabledColor: CupertinoColors.systemGrey3,
-                    borderRadius: BorderRadius.circular(12),
                     child: viewModel.isUploading
-                        ? CupertinoActivityIndicator(
+                        ? CircularProgressIndicator(
                             color: appColors.buttonTextColor,
                           )
                         : Text(
@@ -812,18 +816,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(
-                      CupertinoIcons.exclamationmark_triangle_fill,
-                      color: CupertinoColors.white,
+                    const Icon(
+                      CupertinoIcons.exclamationmark_triangle,
+                      color: Colors.white,
                       size: 20,
                     ),
-                    SizedBox(width: 8),
+                    const SizedBox(width: 8),
                     Text(
                       'Error',
                       style: TextStyle(
-                        color: CupertinoColors.white,
+                        color: Colors.white,
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
@@ -834,16 +838,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                 Text(
                   viewModel.errorMessage!,
                   style: const TextStyle(
-                    color: CupertinoColors.white,
+                    color: Colors.white,
                     fontSize: 12,
                   ),
                 ),
                 const SizedBox(height: 8),
-                CupertinoButton(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  color: CupertinoColors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  minimumSize: Size.zero,
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
                   onPressed: () {
                     viewModel.clearCapturedPhoto(); // This also clears error
                   },
@@ -920,9 +926,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        CupertinoButton(
-          onPressed: isDisabled ? null : onPressed,
-          padding: EdgeInsets.zero,
+        InkWell(
+          onTap: isDisabled ? null : onPressed,
+          borderRadius: BorderRadius.circular(999),
           child: Container(
             width: isPrimary ? 80 : 60,
             height: isPrimary ? 80 : 60,
@@ -939,12 +945,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               ),
             ),
             child: isLoading
-                ? CupertinoActivityIndicator(
-                    color: isPrimary ? CupertinoColors.white : appColors.textColor,
+                ? CircularProgressIndicator(
+                    color: isPrimary ? Colors.white : appColors.textColor,
                   )
                 : Icon(
                     icon,
-                    color: isPrimary ? CupertinoColors.white : appColors.textColor,
+                    color: isPrimary ? Colors.white : appColors.textColor,
                     size: isPrimary ? 40 : 28,
                   ),
           ),

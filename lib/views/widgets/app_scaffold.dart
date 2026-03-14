@@ -1,58 +1,53 @@
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:flutter/material.dart';
 import 'app_theme.dart';
 
-/// Common scaffold widget that handles navigation bar, back button, and status bar padding
-/// 
+/// Common scaffold widget that handles app bar, back button, and status bar padding.
+///
 /// This widget provides a consistent way to create screens with:
-/// - Optional navigation bar with title or custom middle widget
+/// - Optional app bar with title or custom middle widget
 /// - Optional back button with custom navigation
 /// - Optional extension behind status bar with proper padding
 /// - SafeArea option for screens that don't extend behind status bar
 /// - Automatic device-aware padding calculation
 class AppScaffold extends StatelessWidget {
-  /// Title for the navigation bar (mutually exclusive with [middle])
+  /// Title for the app bar (mutually exclusive with [middle])
   final String? title;
-  
-  /// Custom widget for the navigation bar middle (mutually exclusive with [title])
+
+  /// Custom widget for the app bar middle (mutually exclusive with [title])
   final Widget? middle;
-  
-  /// Actions to display in the navigation bar
+
+  /// Actions to display in the app bar
   final List<Widget>? actions;
-  
+
   /// Whether to show a back button
   final bool showBackButton;
-  
+
   /// Custom back button action (if null, uses Navigator.pop())
   final VoidCallback? onBackPressed;
-  
+
   /// Whether the screen should extend behind the status bar
-  /// If true, content will be padded to account for status bar and nav bar
-  /// If false, SafeArea will be used
   final bool extendBehindStatusBar;
-  
+
   /// Background color of the scaffold
   final Color? backgroundColor;
-  
+
   /// The main content of the screen
   final Widget child;
-  
+
   /// Whether to automatically imply leading (back button)
   final bool automaticallyImplyLeading;
-  
+
   /// Whether to apply automatic device-aware horizontal padding
-  /// If true, padding will be calculated based on screen width
-  /// Defaults to false (no horizontal padding)
   final bool applyHorizontalPadding;
-  
+
   /// Whether to apply automatic device-aware vertical padding
-  /// If true, padding will be calculated based on screen size
-  /// Defaults to false (no vertical padding)
   final bool applyVerticalPadding;
-  
-  /// Custom horizontal padding (overrides automatic padding if provided)
+
+  /// Custom horizontal padding
   final double? horizontalPadding;
-  
-  /// Custom vertical padding (overrides automatic padding if provided)
+
+  /// Custom vertical padding
   final double? verticalPadding;
 
   const AppScaffold({
@@ -77,23 +72,19 @@ class AppScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Build the navigation bar
-    final navigationBar = _buildNavigationBar(context);
-
-    // Build the content with proper padding or SafeArea
+    final appBar = _buildAppBar(context);
     final content = extendBehindStatusBar
         ? _buildContentWithPadding(context)
         : SafeArea(child: child);
 
-    return CupertinoPageScaffold(
-      backgroundColor: backgroundColor ?? CupertinoColors.white,
-      navigationBar: navigationBar,
-      child: content,
+    return Scaffold(
+      backgroundColor: backgroundColor ?? Theme.of(context).colorScheme.surface,
+      appBar: appBar,
+      body: content,
     );
   }
 
-  ObstructingPreferredSizeWidget? _buildNavigationBar(BuildContext context) {
-    // If no title, middle, or actions, and no back button, return null
+  PreferredSizeWidget? _buildAppBar(BuildContext context) {
     if (title == null && middle == null && actions == null && !showBackButton) {
       return null;
     }
@@ -117,20 +108,16 @@ class AppScaffold extends StatelessWidget {
 
   Widget _buildContentWithPadding(BuildContext context) {
     final statusBarHeight = MediaQuery.of(context).padding.top;
-    const navBarHeight = 44.0; // Standard CupertinoNavigationBar height
+    const navBarHeight = kToolbarHeight;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    
-    // Calculate device-aware padding
+
     final screenWidth = MediaQuery.of(context).size.width;
     final scaleFactor = (screenWidth / 400.0).clamp(0.8, 2.0);
-    
-    // Calculate horizontal padding (device-aware or custom)
-    final double horizontal = horizontalPadding ?? 
+
+    final double horizontal = horizontalPadding ??
         (applyHorizontalPadding ? 8.0 + (scaleFactor * 8.0) : 0.0);
-    
-    // Calculate vertical padding (device-aware or custom)
-    final double vertical = verticalPadding ?? 
-        (applyVerticalPadding ? 2.0 + (scaleFactor * 3.0) : 0.0);
+    final double vertical =
+        verticalPadding ?? (applyVerticalPadding ? 2.0 + (scaleFactor * 3.0) : 0.0);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -149,4 +136,3 @@ class AppScaffold extends StatelessWidget {
     );
   }
 }
-

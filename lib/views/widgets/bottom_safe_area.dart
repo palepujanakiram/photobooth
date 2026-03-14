@@ -4,6 +4,10 @@ import 'package:flutter/widgets.dart';
 /// Minimum bottom padding when the system reports no inset (e.g. Android TV 11).
 const double kBottomSafeAreaMinInset = 48.0;
 
+/// Height of the custom bottom bar content (debug actions). Used so screens can
+/// reserve space when the bar is visible.
+const double kAppBottomBarContentHeight = 48.0;
+
 /// On Android (e.g. Android TV 11), the system may report 0 for bottom view inset.
 /// Returns extra bottom padding so content stays above the system nav bar.
 /// On other platforms returns 0.
@@ -13,9 +17,24 @@ double effectiveBottomInset(BuildContext context) {
   return padding >= kBottomSafeAreaMinInset ? 0 : (kBottomSafeAreaMinInset - padding);
 }
 
-/// Wraps [child] with bottom padding when on Android and the system reports
-/// less than [kBottomSafeAreaMinInset]. Use around screen content so it does
-/// not overlap the Android TV / system bottom bar.
+/// Total bottom inset to reserve (system nav + optional bar). On Android uses
+/// at least [kBottomSafeAreaMinInset] when system reports less.
+double safeBottomInset(BuildContext context) {
+  final padding = MediaQuery.paddingOf(context).bottom;
+  if (defaultTargetPlatform == TargetPlatform.android) {
+    return padding >= kBottomSafeAreaMinInset ? padding : kBottomSafeAreaMinInset;
+  }
+  return padding;
+}
+
+/// Total height of the app bottom bar (content + safe area). Use when reserving
+/// space so content does not sit under the bar.
+double appBottomBarTotalHeight(BuildContext context) {
+  return kAppBottomBarContentHeight + safeBottomInset(context);
+}
+
+/// Wraps [child] with bottom padding so content stays above the system nav bar
+/// and, when the debug bottom bar is visible (Alice provided), above the bar.
 class BottomSafePadding extends StatelessWidget {
   const BottomSafePadding({super.key, required this.child});
 

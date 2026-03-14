@@ -1,6 +1,6 @@
 import 'dart:typed_data';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Orientation, Scaffold;
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../photo_capture/photo_model.dart';
 import '../theme_selection/theme_model.dart';
@@ -48,7 +48,7 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
   Widget build(BuildContext context) {
     if (!_isInitialized || _photo == null || _theme == null) {
       return const Scaffold(
-        body: Center(child: CupertinoActivityIndicator()),
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -56,12 +56,12 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
       value: _reviewViewModel,
       child: Stack(
         children: [
-          CupertinoPageScaffold(
-            backgroundColor: CupertinoColors.systemBackground,
-            navigationBar: const AppTopBar(
+          Scaffold(
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            appBar: const AppTopBar(
               title: 'Review Photo',
             ),
-            child: SafeArea(
+            body: SafeArea(
               top: true,
               bottom: false,
               child: BottomSafePadding(
@@ -76,7 +76,7 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                   return Container(
                     width: double.infinity,
                     height: constraints.maxHeight,
-                    color: CupertinoColors.systemBackground,
+                    color: Theme.of(context).colorScheme.surface,
                     padding: EdgeInsets.fromLTRB(contentPadding, contentPadding, contentPadding, 0.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -105,7 +105,7 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                       child: Container(
                                         decoration: BoxDecoration(
                                           color:
-                                              CupertinoColors.systemGrey6,
+                                              Theme.of(context).colorScheme.surfaceContainerHighest,
                                           borderRadius:
                                               BorderRadius.circular(12),
                                         ),
@@ -120,17 +120,15 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                                   ConnectionState.waiting) {
                                                 return const Center(
                                                   child:
-                                                      CupertinoActivityIndicator(),
+                                                      CircularProgressIndicator(),
                                                 );
                                               }
                                               if (snapshot.hasError ||
                                                   !snapshot.hasData) {
-                                                return const Center(
+                                                return Center(
                                                   child: Icon(
-                                                    CupertinoIcons
-                                                        .exclamationmark_triangle,
-                                                    color: CupertinoColors
-                                                        .systemRed,
+                                                    CupertinoIcons.exclamationmark_triangle,
+                                                    color: Theme.of(context).colorScheme.error,
                                                     size: 48,
                                                   ),
                                                 );
@@ -168,7 +166,7 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                       child: Container(
                                         decoration: BoxDecoration(
                                           color:
-                                              CupertinoColors.systemGrey6,
+                                              Theme.of(context).colorScheme.surfaceContainerHighest,
                                           borderRadius:
                                               BorderRadius.circular(12),
                                         ),
@@ -184,20 +182,17 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                                   _theme!.sampleImageUrl!,
                                                 )
                                               : Container(
-                                                  color: CupertinoColors
-                                                      .systemGrey5,
+                                                  color: Colors.grey.shade300,
                                                   child: Column(
                                                     mainAxisAlignment:
                                                         MainAxisAlignment
                                                             .center,
                                                     children: [
                                                       const Icon(
-                                                        CupertinoIcons
-                                                            .paintbrush,
+                                                        CupertinoIcons.paintbrush,
                                                         size: 64,
                                                         color:
-                                                            CupertinoColors
-                                                                .systemGrey,
+                                                            Colors.grey,
                                                       ),
                                                       const SizedBox(
                                                           height: 16),
@@ -315,7 +310,7 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                 return Positioned.fill(
                   child: FullScreenLoader(
                     text: 'Generating AI Image',
-                    loaderColor: CupertinoColors.systemBlue,
+                    loaderColor: Colors.blue,
                     elapsedSeconds: viewModel.elapsedSeconds,
                     hint: 'Note: It may take up to a couple of minutes. Please be patient.',
                   ),
@@ -348,18 +343,18 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
       width: double.infinity,
       height: double.infinity,
       placeholder: Container(
-        color: CupertinoColors.systemGrey5,
+        color: Colors.grey.shade300,
         child: const Center(
-          child: CupertinoActivityIndicator(),
+          child: CircularProgressIndicator(),
         ),
       ),
       errorWidget: Container(
-        color: CupertinoColors.systemGrey5,
+        color: Colors.grey.shade300,
         child: const Center(
           child: Icon(
             CupertinoIcons.photo,
             size: 48,
-            color: CupertinoColors.systemGrey,
+            color: Colors.grey,
           ),
         ),
       ),

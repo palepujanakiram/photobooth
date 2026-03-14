@@ -1,4 +1,5 @@
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:flutter/material.dart';
 import '../../views/widgets/app_colors.dart';
 
 /// Screen to choose camera preview rotation (0, 90, 180, 270 degrees).
@@ -13,18 +14,16 @@ class PhotoCaptureRotationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appColors = AppColors.of(context);
-    return CupertinoPageScaffold(
-      navigationBar: CupertinoNavigationBar(
+    return Scaffold(
+      appBar: AppBar(
         backgroundColor: appColors.backgroundColor,
-        border: null,
-        leading: CupertinoButton(
-          padding: EdgeInsets.zero,
+        leading: IconButton(
+          icon: const Icon(CupertinoIcons.back),
           onPressed: () => Navigator.pop(context),
-          child: const Icon(CupertinoIcons.back),
         ),
-        middle: const Text('Preview rotation'),
+        title: const Text('Preview rotation'),
       ),
-      child: SafeArea(
+      body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           children: [
@@ -41,32 +40,35 @@ class PhotoCaptureRotationScreen extends StatelessWidget {
               final isSelected = degrees == currentRotation;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: CupertinoButton(
-                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                child: Material(
                   color: isSelected
                       ? appColors.primaryColor.withValues(alpha: 0.3)
-                      : CupertinoColors.systemGrey6,
+                      : Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
-                  onPressed: () {
-                    Navigator.pop(context, degrees);
-                  },
-                  child: Row(
-                    children: [
-                      Icon(
-                        isSelected ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
-                        color: isSelected ? appColors.primaryColor : CupertinoColors.systemGrey,
-                        size: 24,
+                  child: InkWell(
+                    onTap: () => Navigator.pop(context, degrees),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isSelected ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
+                            color: isSelected ? appColors.primaryColor : Colors.grey,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 16),
+                          Text(
+                            '$degrees°',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: appColors.textColor,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 16),
-                      Text(
-                        '$degrees°',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: appColors.textColor,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               );

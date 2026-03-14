@@ -11,6 +11,7 @@ import '../utils/logger.dart';
 import 'api_client.dart';
 import 'file_helper.dart';
 import 'api_logging_interceptor.dart';
+import 'alice_inspector.dart';
 
 // Conditional import for web Dio configuration
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
@@ -40,6 +41,10 @@ class ApiService {
     if (kDebugMode == true) {
         // Add logging interceptor to log all API calls
         dio.interceptors.add(ApiLoggingInterceptor());
+        final alice = AliceInspector.instance;
+        if (alice != null) {
+          dio.interceptors.add(alice.getDioInterceptor());
+        }
     }
 
     // Add error interceptor for web compatibility
@@ -132,15 +137,14 @@ class ApiService {
         ));
         if (kDebugMode == true) {
             dio.interceptors.add(ApiLoggingInterceptor());
+            final alice = AliceInspector.instance;
+            if (alice != null) {
+              dio.interceptors.add(alice.getDioInterceptor());
+            }
         }
 
         // Configure browser adapter for web (critical for web platform)
         configureDioForWeb(dio);
-        
-        // Add logging interceptor
-        if (kDebugMode == true) {
-          dio.interceptors.add(ApiLoggingInterceptor());
-        }
 
         final formData = FormData.fromMap({
           'prompt': theme.promptText,
@@ -490,8 +494,11 @@ class ApiService {
     configureDioForWeb(dioWithTimeout);
     
     if (kDebugMode == true) {
-      // Add logging interceptor
       dioWithTimeout.interceptors.add(ApiLoggingInterceptor());
+      final alice = AliceInspector.instance;
+      if (alice != null) {
+        dioWithTimeout.interceptors.add(alice.getDioInterceptor());
+      }
     }
 
     final apiClientWithTimeout = ApiClient(dioWithTimeout, baseUrl: AppConstants.kBaseUrl);
@@ -660,6 +667,10 @@ class ApiService {
     configureDioForWeb(dio);
     if (kDebugMode == true) {
       dio.interceptors.add(ApiLoggingInterceptor());
+      final alice = AliceInspector.instance;
+      if (alice != null) {
+        dio.interceptors.add(alice.getDioInterceptor());
+      }
     }
 
     AppLogger.debug('📥 Downloading image from: $imageUrl');

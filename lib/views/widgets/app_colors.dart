@@ -1,8 +1,7 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-/// AppColors class that provides theme-aware colors based on system dark/light mode
-/// 
+/// AppColors class that provides theme-aware colors based on Material theme (light/dark).
+///
 /// Usage:
 /// ```dart
 /// AppColors.of(context).backgroundColor
@@ -10,111 +9,69 @@ import 'package:flutter/material.dart';
 /// ```
 class AppColors {
   final BuildContext context;
-  
+
   const AppColors(this.context);
-  
+
   /// Factory constructor to get AppColors instance
   factory AppColors.of(BuildContext context) {
     return AppColors(context);
   }
-  
+
+  ThemeData get _theme => Theme.of(context);
+  ColorScheme get _colorScheme => _theme.colorScheme;
+
   /// Get the current brightness (light or dark)
-  Brightness get brightness {
-    return CupertinoTheme.brightnessOf(context);
-  }
-  
+  Brightness get brightness => _theme.brightness;
+
   /// Check if dark mode is active
-  bool get isDarkMode {
-    return brightness == Brightness.dark;
-  }
-  
+  bool get isDarkMode => brightness == Brightness.dark;
+
   /// Background color - adapts to theme
-  Color get backgroundColor {
-    return isDarkMode 
-        ? CupertinoColors.black 
-        : CupertinoColors.white;
-  }
-  
+  Color get backgroundColor => _colorScheme.surface;
+
   /// Text color - adapts to theme
-  Color get textColor {
-    return isDarkMode 
-        ? CupertinoColors.white 
-        : CupertinoColors.black;
-  }
-  
+  Color get textColor => _colorScheme.onSurface;
+
   /// Secondary text color - adapts to theme
-  Color get secondaryTextColor {
-    return isDarkMode 
-        ? CupertinoColors.systemGrey 
-        : CupertinoColors.systemGrey;
-  }
-  
+  Color get secondaryTextColor => _colorScheme.onSurfaceVariant;
+
   /// Surface color (for cards, containers) - adapts to theme
-  Color get surfaceColor {
-    return isDarkMode 
-        ? CupertinoColors.systemGrey6.darkColor 
-        : CupertinoColors.white;
-  }
-  
+  Color get surfaceColor => _colorScheme.surface;
+
   /// Card background color - slightly elevated from background
-  Color get cardBackgroundColor {
-    return isDarkMode 
-        ? const Color(0xFF1C1C1E)  // iOS dark card background
-        : CupertinoColors.white;
-  }
-  
+  Color get cardBackgroundColor => _colorScheme.surfaceContainerHighest;
+
   /// Divider color - adapts to theme
-  Color get dividerColor {
-    return isDarkMode 
-        ? CupertinoColors.separator.darkColor 
-        : CupertinoColors.separator;
-  }
-  
+  Color get dividerColor => _colorScheme.outlineVariant;
+
   /// Border color - adapts to theme
-  Color get borderColor {
-    return isDarkMode 
-        ? CupertinoColors.separator.darkColor 
-        : CupertinoColors.separator;
-  }
-  
+  Color get borderColor => _colorScheme.outline;
+
   /// Shadow color for overlays - adapts to theme
-  Color get shadowColor {
-    return isDarkMode 
-        ? Colors.black.withValues(alpha: 0.5) 
-        : Colors.black.withValues(alpha: 0.3);
-  }
-  
+  Color get shadowColor =>
+      isDarkMode
+          ? Colors.black.withValues(alpha: 0.5)
+          : Colors.black.withValues(alpha: 0.3);
+
   /// Overlay background for semi-transparent overlays - adapts to theme
-  Color get overlayBackground {
-    return isDarkMode 
-        ? Colors.black.withValues(alpha: 0.6) 
-        : Colors.black.withValues(alpha: 0.3);
-  }
-  
+  Color get overlayBackground =>
+      isDarkMode
+          ? Colors.black.withValues(alpha: 0.6)
+          : Colors.black.withValues(alpha: 0.3);
+
   /// Error color - consistent across themes
-  Color get errorColor {
-    return CupertinoColors.systemRed;
-  }
-  
+  Color get errorColor => _colorScheme.error;
+
   /// Success color - consistent across themes
-  Color get successColor {
-    return CupertinoColors.systemGreen;
-  }
-  
+  Color get successColor => _colorScheme.tertiary;
+
   /// Warning color - consistent across themes
-  Color get warningColor {
-    return CupertinoColors.systemOrange;
-  }
-  
+  Color get warningColor => _colorScheme.error;
+
   /// Primary color - consistent across themes
-  Color get primaryColor {
-    return CupertinoColors.systemBlue;
-  }
-  
-  /// Button text color - always white for colored buttons (blue, etc.)
-  /// This ensures good contrast on colored button backgrounds
-  Color get buttonTextColor {
-    return CupertinoColors.white;
-  }
+  Color get primaryColor => _colorScheme.primary;
+
+  /// Button text color - for colored buttons (primary, etc.)
+  Color get buttonTextColor => _colorScheme.onPrimary;
 }
 
