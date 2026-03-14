@@ -1,5 +1,5 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors, Divider, Orientation;
+import 'package:flutter/material.dart' show Colors, Divider, Orientation, Scaffold;
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'terms_and_conditions_viewmodel.dart';
@@ -8,7 +8,6 @@ import '../../utils/app_config.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/app_colors.dart';
-import '../../views/widgets/bottom_safe_area.dart';
 import '../../views/widgets/animated_slideshow_background.dart';
 
 class TermsAndConditionsScreen extends StatefulWidget {
@@ -75,11 +74,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
 
     return ChangeNotifierProvider.value(
       value: _viewModel,
-      child: CupertinoPageScaffold(
+      child: Scaffold(
         backgroundColor: appColors.backgroundColor,
-        child: SafeArea(
-          child: BottomSafePadding(
-            child: Stack(
+        body: SafeArea(
+          child: Stack(
             children: [
               // Animated slideshow background (behind consent UI)
               const Positioned.fill(
@@ -116,7 +114,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                     return Positioned.fill(
                       child: FullScreenLoader(
                         text: 'Creating Session',
-                        loaderColor: CupertinoColors.systemBlue,
+                        loaderColor: Colors.blue,
                         elapsedSeconds: viewModel.elapsedSeconds,
                       ),
                     );
@@ -125,7 +123,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                 },
               ),
             ],
-            ),
           ),
         ),
       ),

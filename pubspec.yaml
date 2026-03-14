@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   cupertino_icons: ^1.0.8
 
   # State Management
@@ -51,7 +53,7 @@ dependencies:
   url_launcher: ^6.2.2
   webview_flutter: ^4.4.2
   bugsnag_flutter: ^4.2.0
-  
+  flutter_alice: ^2.0.1
 
 dev_dependencies:
   flutter_test:

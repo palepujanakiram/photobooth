@@ -1,8 +1,10 @@
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:bugsnag_flutter/bugsnag_flutter.dart';
+import 'package:flutter_alice/alice.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
 import 'screens/theme_slideshow/theme_slideshow_view.dart';
 import 'screens/terms_and_conditions/terms_and_conditions_view.dart';
@@ -15,6 +17,7 @@ import 'utils/constants.dart';
 import 'utils/logger.dart';
 import 'services/error_reporting/error_reporting_manager.dart';
 import 'services/file_helper.dart';
+import 'services/alice_inspector.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -124,23 +127,44 @@ Future<void> main() async {
     print('   - Bugsnag: enabled');
   }
   
-  runApp(const PhotoBoothApp());
+  final navigatorKey = GlobalKey<NavigatorState>();
+  if (kDebugMode) {
+    AliceInspector.initialize(navigatorKey);
+  }
+
+  runApp(PhotoBoothApp(navigatorKey: navigatorKey));
 }
 
 class PhotoBoothApp extends StatelessWidget {
-  const PhotoBoothApp({super.key});
+  const PhotoBoothApp({super.key, required this.navigatorKey});
+  final GlobalKey<NavigatorState> navigatorKey;
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeViewModel()),
+        Provider<Alice?>.value(value: AliceInspector.instance),
       ],
-      child: CupertinoApp(
+      child: MaterialApp(
+        navigatorKey: navigatorKey,
         title: 'Photo Booth',
         debugShowCheckedModeBanner: false,
-        // Remove hardcoded theme to allow dark mode support
-        // The app will automatically use system theme (light/dark)
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.light),
+          useMaterial3: true,
+        ),
+        darkTheme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark),
+          useMaterial3: true,
+        ),
+        themeMode: ThemeMode.system,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [Locale('en')],
         initialRoute: AppConstants.kRouteTerms,
         routes: {
           AppConstants.kRouteSlideshow: (context) =>

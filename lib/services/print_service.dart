@@ -8,6 +8,7 @@ import '../utils/exceptions.dart';
 import '../utils/logger.dart';
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
 import 'api_logging_interceptor.dart';
+import 'alice_inspector.dart';
 import 'printer_api_client.dart';
 import 'file_helper.dart';
 import 'error_reporting/error_reporting_manager.dart';
@@ -120,8 +121,12 @@ class PrintService {
         configureDioForWeb(downloadDio);
         if (kDebugMode == true) {
             downloadDio.interceptors.add(ApiLoggingInterceptor());
+            final alice = AliceInspector.instance;
+            if (alice != null) {
+              downloadDio.interceptors.add(alice.getDioInterceptor());
+            }
         }
-        
+
         final response = await downloadDio.get<List<int>>(
           filePath,
           options: Options(responseType: ResponseType.bytes),
@@ -164,9 +169,12 @@ class PrintService {
       // Configure browser adapter for web
       configureDioForWeb(dio);
       
-      // Add logging interceptor
       if (kDebugMode == true) {
         dio.interceptors.add(ApiLoggingInterceptor());
+        final alice = AliceInspector.instance;
+        if (alice != null) {
+          dio.interceptors.add(alice.getDioInterceptor());
+        }
       }
 
       // Create Retrofit client for printer API

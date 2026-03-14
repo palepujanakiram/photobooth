@@ -1,17 +1,15 @@
 import 'dart:typed_data';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors, Orientation;
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'photo_generate_viewmodel.dart';
 import '../photo_capture/photo_model.dart';
 import '../theme_selection/theme_model.dart';
 import '../../utils/constants.dart';
-import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
-import '../../views/widgets/theme_card.dart';
-import '../../views/widgets/bottom_safe_area.dart';
-import '../../services/theme_manager.dart';
+import '../../views/widgets/leading_with_alice.dart';
+import '../../views/widgets/theme_background.dart';
 
 class PhotoGenerateScreen extends StatefulWidget {
   const PhotoGenerateScreen({super.key});
@@ -74,159 +72,30 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     }
   }
 
-  void _showThemeSelectionDialog() {
-    final themeManager = ThemeManager();
-    final themes = themeManager.themes;
-    
-    if (themes.isEmpty) {
-      AppSnackBar.showError(context, 'No themes available');
-      return;
-    }
-
-    showCupertinoModalPopup(
-      context: context,
-      builder: (dialogContext) {
-        final appColors = AppColors.of(dialogContext);
-        
-        return Container(
-          height: MediaQuery.of(dialogContext).size.height * 0.6,
-          decoration: BoxDecoration(
-            color: appColors.backgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              // Handle bar
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: CupertinoColors.systemGrey3,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              
-              // Header
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Select a Different Theme',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: appColors.textColor,
-                      ),
-                    ),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: () => Navigator.pop(dialogContext),
-                      child: const Icon(
-                        CupertinoIcons.xmark_circle_fill,
-                        color: CupertinoColors.systemGrey,
-                        size: 28,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              
-              // Theme grid - using ThemeCard for consistent image loading
-              Expanded(
-                child: GridView.builder(
-                  padding: const EdgeInsets.all(16),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 0.7,
-                  ),
-                  itemCount: themes.length,
-                  itemBuilder: (context, index) {
-                    final theme = themes[index];
-                    final isCurrentTheme = _viewModel.selectedTheme?.id == theme.id;
-                    // Check if this theme has already been used for generation
-                    final isAlreadyGenerated = _viewModel.generatedImages.any(
-                      (img) => img.theme.id == theme.id,
-                    );
-                    final isDisabled = isCurrentTheme || isAlreadyGenerated;
-                    
-                    return Stack(
-                      children: [
-                        // Use ThemeCard for consistent image loading
-                        Opacity(
-                          opacity: isDisabled ? 0.5 : 1.0,
-                          child: ThemeCard(
-                            theme: theme,
-                            isSelected: isCurrentTheme || isAlreadyGenerated,
-                            onTap: isDisabled 
-                                ? () {} 
-                                : () {
-                                    Navigator.pop(dialogContext);
-                                    _viewModel.tryDifferentStyle(theme);
-                                  },
-                          ),
-                        ),
-                        // Badge for already generated themes
-                        if (isAlreadyGenerated)
-                          Positioned(
-                            top: 8,
-                            right: 8,
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: const BoxDecoration(
-                                color: CupertinoColors.systemGreen,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                CupertinoIcons.checkmark,
-                                color: CupertinoColors.white,
-                                size: 12,
-                              ),
-                            ),
-                          ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   void _showCancelConfirmation(BuildContext context) {
-    showCupertinoDialog(
+    showDialog<void>(
       context: context,
       builder: (dialogContext) {
-        return CupertinoAlertDialog(
+        return AlertDialog(
           title: const Text('Cancel Process?'),
           content: const Text(
             'Are you sure you want to cancel? Your generated images will be lost.',
           ),
           actions: [
-            CupertinoDialogAction(
-              isDefaultAction: true,
+            TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: const Text('No'),
             ),
-            CupertinoDialogAction(
-              isDestructiveAction: true,
+            TextButton(
               onPressed: () {
                 Navigator.pop(dialogContext);
-                // Navigate to terms screen and clear navigation stack
                 Navigator.pushNamedAndRemoveUntil(
                   context,
                   AppConstants.kRouteTerms,
                   (route) => false,
                 );
               },
-              child: const Text('Yes'),
+              child: const Text('Yes', style: TextStyle(color: Colors.red)),
             ),
           ],
         );
@@ -235,34 +104,30 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   }
 
   void _showCancelOperationDialog(BuildContext context, PhotoGenerateViewModel viewModel) {
-    showCupertinoDialog(
+    showDialog<void>(
       context: context,
       builder: (dialogContext) {
-        return CupertinoAlertDialog(
+        return AlertDialog(
           title: const Text('Cancel Generation?'),
           content: const Text(
             'An image is currently being generated. Do you want to cancel and go back?',
           ),
           actions: [
-            CupertinoDialogAction(
-              isDefaultAction: true,
+            TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Keep Waiting'),
             ),
-            CupertinoDialogAction(
-              isDestructiveAction: true,
+            TextButton(
               onPressed: () {
                 Navigator.pop(dialogContext);
-                // Cancel the current operation
                 viewModel.cancelOperation();
-                // Navigate to terms screen and clear navigation stack
                 Navigator.pushNamedAndRemoveUntil(
                   context,
                   AppConstants.kRouteTerms,
                   (route) => false,
                 );
               },
-              child: const Text('Cancel & Go Back'),
+              child: const Text('Cancel & Go Back', style: TextStyle(color: Colors.red)),
             ),
           ],
         );
@@ -299,12 +164,36 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       value: _viewModel,
       child: Consumer<PhotoGenerateViewModel>(
         builder: (context, viewModel, child) {
-          return CupertinoPageScaffold(
-            backgroundColor: appColors.backgroundColor,
-            navigationBar: AppTopBar(
-              title: 'Generate Photo',
-              leading: AppActionButton(
-                icon: CupertinoIcons.back,
+          if (viewModel.hasError) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && viewModel.hasError) {
+                AppSnackBar.showError(
+                  context,
+                  viewModel.errorMessage ?? 'Generation failed',
+                );
+                viewModel.clearError();
+              }
+            });
+          }
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            extendBodyBehindAppBar: true,
+            appBar: AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              surfaceTintColor: Colors.transparent,
+              forceMaterialTransparency: true,
+              title: Text(
+                'Generate Photo',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 17,
+                ),
+              ),
+              leading: IconButton(
+                icon: const Icon(CupertinoIcons.back, color: Colors.white),
                 onPressed: () {
                   if (viewModel.isOperationInProgress) {
                     _showCancelOperationDialog(context, viewModel);
@@ -313,137 +202,41 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                   }
                 },
               ),
+              actions: const [AppBarAliceAction()],
             ),
-            child: SafeArea(
-              child: BottomSafePadding(
-                child: Column(
-                children: [
-                  // Step banner
-                  _buildStepBanner(context, 2, isLandscape), // 2 = Generate step
-                  
-                  // Main content: fill height and center block when content is short
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        return _buildMainContent(
-                          context,
-                          viewModel,
-                          appColors,
-                          isLandscape,
-                          constraints.maxHeight,
-                          constraints.maxWidth,
-                        );
-                      },
-                    ),
-                  ),
-                  
-                  // Bottom buttons
-                  _buildBottomButtons(context, viewModel, appColors),
-                ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildStepBanner(BuildContext context, int currentStep, [bool compact = false]) {
-    final appColors = AppColors.of(context);
-    
-    final steps = [
-      _StepInfo(icon: CupertinoIcons.camera, label: 'Photo'),
-      _StepInfo(icon: CupertinoIcons.paintbrush, label: 'Select Theme'),
-      _StepInfo(icon: CupertinoIcons.sparkles, label: 'Generate'),
-      _StepInfo(icon: CupertinoIcons.tray_arrow_down, label: 'Pay & Collect'),
-    ];
-
-    final bannerPadding = compact ? const EdgeInsets.symmetric(vertical: 6, horizontal: 6) : const EdgeInsets.symmetric(vertical: 12, horizontal: 8);
-    return Container(
-      padding: bannerPadding,
-      decoration: BoxDecoration(
-        color: appColors.backgroundColor,
-        boxShadow: [
-          BoxShadow(
-            color: appColors.shadowColor.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: List.generate(steps.length, (index) {
-          final step = steps[index];
-          final isActive = index == currentStep;
-          final isCompleted = index < currentStep;
-          
-          return Expanded(
-            child: Row(
+            body: Stack(
               children: [
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: compact ? 28.0 : 36,
-                        height: compact ? 28.0 : 36,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isActive 
-                              ? CupertinoColors.systemBlue.withValues(alpha: 0.1)
-                              : isCompleted
-                                  ? CupertinoColors.systemBlue
-                                  : Colors.transparent,
-                          border: Border.all(
-                            color: isActive || isCompleted
-                                ? CupertinoColors.systemBlue
-                                : CupertinoColors.systemGrey3,
-                            width: isActive ? 2 : 1,
-                          ),
-                        ),
-                        child: Icon(
-                          isCompleted ? CupertinoIcons.checkmark : step.icon,
-                          size: compact ? 14.0 : 18,
-                          color: isCompleted
-                              ? CupertinoColors.white
-                              : isActive
-                                  ? CupertinoColors.systemBlue
-                                  : CupertinoColors.systemGrey,
-                        ),
-                      ),
-                      SizedBox(height: compact ? 2 : 4),
-                      Text(
-                        step.label,
-                        style: TextStyle(
-                          fontSize: compact ? 9 : 10,
-                          fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-                          color: isActive || isCompleted
-                              ? CupertinoColors.systemBlue
-                              : CupertinoColors.systemGrey,
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
+                Positioned.fill(
+                  child: ThemeBackground(theme: viewModel.selectedTheme),
                 ),
-                if (index < steps.length - 1)
-                  Expanded(
-                    child: Container(
-                      height: 1,
-                      margin: EdgeInsets.only(bottom: compact ? 14.0 : 20),
-                      color: isCompleted
-                          ? CupertinoColors.systemBlue
-                          : CupertinoColors.systemGrey3,
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: kToolbarHeight),
+                    child: Column(
+                      children: [
+                        Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                return _buildMainContent(
+                                  context,
+                                  viewModel,
+                                  appColors,
+                                  isLandscape,
+                                  constraints.maxHeight,
+                                  constraints.maxWidth,
+                                );
+                              },
+                            ),
+                          ),
+                      ],
                     ),
                   ),
+                ),
               ],
             ),
           );
-        }),
+        },
       ),
     );
   }
@@ -458,78 +251,27 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   ]) {
     final padding = isLandscape ? 12.0 : 16.0;
     final maxWidth = viewportWidth != null && viewportWidth.isFinite ? viewportWidth : double.infinity;
-    final content = Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxWidth),
-          child: Column(
-            key: _contentKey,
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-            Text(
-              'Generating Your Photo',
-          style: TextStyle(
-            fontSize: isLandscape ? 20 : 24,
-            fontWeight: FontWeight.bold,
-            color: appColors.textColor,
-          ),
-        ),
-        SizedBox(height: isLandscape ? 4 : 8),
-        Text(
-          'Please wait while we create your masterpiece',
-          style: TextStyle(
-            fontSize: isLandscape ? 12 : 14,
-            color: appColors.secondaryTextColor,
-          ),
-        ),
-        SizedBox(height: isLandscape ? 12 : 24),
-        _buildPhotosDisplay(context, viewModel, appColors, isLandscape),
-        if (viewModel.hasError)
-          Container(
-            margin: const EdgeInsets.only(top: 16),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: CupertinoColors.systemRed.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
+
+    Widget buildContent(double width) {
+      final contentWidth = width.isFinite ? width : null;
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: width),
+            child: Column(
+              key: _contentKey,
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(
-                  CupertinoIcons.exclamationmark_triangle,
-                  color: CupertinoColors.systemRed,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    viewModel.errorMessage!,
-                    style: const TextStyle(
-                      color: CupertinoColors.systemRed,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  minimumSize: Size.zero,
-                  onPressed: () => viewModel.clearError(),
-                  child: const Icon(
-                    CupertinoIcons.xmark,
-                    color: CupertinoColors.systemRed,
-                    size: 18,
-                  ),
-                ),
+                _buildPhotosDisplay(context, viewModel, appColors, isLandscape, contentWidth),
               ],
             ),
           ),
-            ],
-          ),
-        ),
-      ],
-    );
+        ],
+      );
+    }
 
     if (viewportHeight != null && viewportHeight > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -545,7 +287,14 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
-            children: [content],
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final w = constraints.maxWidth.isFinite ? constraints.maxWidth : maxWidth;
+                  return buildContent(w);
+                },
+              ),
+            ],
           ),
         ),
       );
@@ -553,299 +302,408 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
 
     return SingleChildScrollView(
       padding: EdgeInsets.all(padding),
-      child: content,
-    );
-  }
-
-  Widget _buildPhotosDisplay(BuildContext context, PhotoGenerateViewModel viewModel, AppColors appColors, [bool isLandscape = false]) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isTablet = screenWidth > AppConstants.kTabletBreakpoint;
-
-    // Must match _buildGeneratedImageCard exactly (no landscape variant there)
-    final double cardWidth = isTablet ? 180.0 : 140.0;
-    final double cardHeight = isTablet ? 220.0 : 180.0;
-
-    final double sectionPadding = isLandscape ? 12.0 : 16.0;
-    // Fixed header height so original and generated card areas start at same Y (centers align)
-    final double headerHeight = isLandscape ? 60.0 : 64.0;
-    final Widget originalSection = Padding(
-      padding: EdgeInsets.all(sectionPadding),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(
-            height: headerHeight,
-            child: Center(
-              child: Text(
-                'Original',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: appColors.textColor,
-                ),
-              ),
-            ),
-          ),
-          Container(
-            width: cardWidth,
-            height: cardHeight,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: appColors.borderColor),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(7),
-              child: _originalPhotoBytes != null
-                  ? Image.memory(
-                      _originalPhotoBytes!,
-                      fit: BoxFit.cover,
-                    )
-                  : Center(
-                      child: CupertinoActivityIndicator(
-                        color: appColors.textColor,
-                      ),
-                    ),
-            ),
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth.isFinite ? constraints.maxWidth : maxWidth;
+          return buildContent(w);
+        },
       ),
     );
-    
-    final Widget generatedSection = _buildGeneratedImagesSection(context, viewModel, appColors, isTablet, isLandscape, headerHeight);
-    
-    if (isLandscape) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          originalSection,
-          const SizedBox(width: 16),
-          Expanded(child: generatedSection),
-        ],
-      );
-    }
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        originalSection,
-        const SizedBox(height: 24),
-        generatedSection,
-      ],
-    );
   }
 
-  Widget _buildGeneratedImagesSection(BuildContext context, PhotoGenerateViewModel viewModel, AppColors appColors, bool isTablet, [bool isLandscape = false, double headerHeight = 64.0]) {
-    final cardWidth = isLandscape ? 100.0 : (isTablet ? 180.0 : 140.0);
-    final cardHeight = isLandscape ? 130.0 : (isTablet ? 220.0 : 180.0);
+  Widget _buildPhotosDisplay(BuildContext context, PhotoGenerateViewModel viewModel, AppColors appColors, [bool isLandscape = false, double? availableWidth]) {
+    final double sectionPadding = isLandscape ? 12.0 : 16.0;
+    // Use available width; when null, subtract padding so row never overflows when placed in padded layout
+    final screenWidth = availableWidth ??
+        (MediaQuery.sizeOf(context).width - 2 * sectionPadding).clamp(0.0, double.infinity);
+    final isTablet = screenWidth > AppConstants.kTabletBreakpoint;
 
-    final Widget headerContent = Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Generated Images',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: appColors.textColor,
-              ),
-            ),
-            if (viewModel.generatedImages.length > 1) ...[
-              const SizedBox(width: 16),
-              CupertinoButton(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                minimumSize: Size.zero,
-                onPressed: () {
-                  if (viewModel.selectedCount == viewModel.generatedImages.length) {
-                    viewModel.deselectAllImages();
-                    if (viewModel.generatedImages.isNotEmpty) {
-                      viewModel.toggleImageSelection(viewModel.generatedImages.first.id);
-                    }
-                  } else {
-                    viewModel.selectAllImages();
-                  }
-                },
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      viewModel.selectedCount == viewModel.generatedImages.length
-                          ? CupertinoIcons.checkmark_square
-                          : CupertinoIcons.square,
-                      size: 16,
-                      color: CupertinoColors.systemBlue,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      viewModel.selectedCount == viewModel.generatedImages.length
-                          ? 'Deselect'
-                          : 'Select All',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: CupertinoColors.systemBlue,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (viewModel.generatedImages.isNotEmpty) ...[
-                const SizedBox(width: 12),
-                Text(
-                  '${viewModel.selectedCount} of ${viewModel.generatedImages.length} selected (tap to select/deselect)',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: appColors.secondaryTextColor,
-                  ),
-                ),
-              ],
-            ],
-          ],
-        ),
-        const SizedBox(height: 12),
-      ],
-    );
+    // Card size so full row fits: 1 original + up to 4 transformed (3 images + loading card) + lightning + paddings
+    const double lightningWidth = 60.0;
+    const double cardGap = 12.0;
+    const double minCardWidth = 72.0;
+    const double maxCardWidthPhone = 130.0;
+    const double maxCardWidthTablet = 160.0;
+    const double overflowSafetyMargin = 32.0; // avoid right overflow (e.g. scrollbar, rounding)
+    final double maxCardWidth = isTablet ? maxCardWidthTablet : maxCardWidthPhone;
+    final bool canAddMoreStyle = viewModel.generatedImages.length < 3;
+    // Worst case: 5 card widths (1 original + 4 transformed), 3 gaps in center, paddings
+    final double rowReserved = 4 * sectionPadding + lightningWidth + 3 * cardGap;
+    final double availableForCards = (screenWidth - rowReserved - overflowSafetyMargin).clamp(0.0, double.infinity);
+    final double cardWidth = (availableForCards / 5).clamp(minCardWidth, maxCardWidth);
+    final double cardHeight = cardWidth * (180 / 140);
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        SizedBox(
-          height: headerHeight,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [headerContent],
-          ),
-        ),
-        if (viewModel.isGenerating && viewModel.generatedImages.isEmpty)
-          // Initial generation - show loading state
-          _buildGeneratingPlaceholder(viewModel, appColors, isTablet)
-        else if (viewModel.generatedImages.isEmpty)
-          // No images yet
-          Container(
-            width: cardWidth,
-            height: cardHeight,
-            decoration: BoxDecoration(
-              color: appColors.surfaceColor,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: appColors.borderColor),
-            ),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    CupertinoIcons.photo,
-                    size: 48,
-                    color: appColors.secondaryTextColor,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'No images yet',
-                    style: TextStyle(
-                      color: appColors.secondaryTextColor,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else
-          // Show generated images in a grid layout
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            alignment: WrapAlignment.center,
-            children: [
-              ...viewModel.generatedImages.map((image) => 
-                _buildGeneratedImageCard(context, image, viewModel, appColors, isTablet),
-              ),
-              // Loading more indicator
-              if (viewModel.isLoadingMore)
-                _buildGeneratingPlaceholder(viewModel, appColors, isTablet),
-            ],
-          ),
-      ],
-    );
-  }
-
-  Widget _buildGeneratedImageCard(BuildContext context, GeneratedImage image, PhotoGenerateViewModel viewModel, AppColors appColors, bool isTablet) {
-    final cardWidth = isTablet ? 180.0 : 140.0;
-    final cardHeight = isTablet ? 220.0 : 180.0;
-    
-    return GestureDetector(
-      onTap: () => viewModel.toggleImageSelection(image.id),
+    final Widget originalCard = Padding(
+      padding: EdgeInsets.all(sectionPadding),
       child: Container(
         width: cardWidth,
         height: cardHeight,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: image.isSelected 
-                ? CupertinoColors.systemBlue 
-                : appColors.borderColor,
-            width: image.isSelected ? 3 : 1,
-          ),
-          boxShadow: image.isSelected ? [
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white24),
+          boxShadow: [
             BoxShadow(
-              color: CupertinoColors.systemBlue.withValues(alpha: 0.3),
-              blurRadius: 8,
-              spreadRadius: 2,
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
-          ] : null,
+          ],
         ),
-        child: Stack(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(image.isSelected ? 9 : 11),
-              child: Image.network(
-                image.imageUrl,
-                fit: BoxFit.cover,
-                width: double.infinity,
-                height: double.infinity,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Center(
-                    child: CupertinoActivityIndicator(
-                      color: appColors.textColor,
-                    ),
-                  );
-                },
-                errorBuilder: (_, __, ___) => Center(
-                  child: Icon(
-                    CupertinoIcons.exclamationmark_triangle,
-                    color: appColors.errorColor,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(7),
+          child: _originalPhotoBytes != null
+              ? Image.memory(
+                  _originalPhotoBytes!,
+                  fit: BoxFit.cover,
+                )
+              : Center(
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
                   ),
+                ),
+        ),
+      ),
+    );
+
+    const double lightningAreaWidth = 60.0;
+    final Widget lightningIcon = SizedBox(
+      width: lightningAreaWidth,
+      child: Center(
+        child: Icon(
+          CupertinoIcons.bolt_fill,
+          size: 36,
+          color: Colors.amber.shade400,
+        ),
+      ),
+    );
+
+    final Widget transformedSection = Padding(
+      padding: EdgeInsets.all(sectionPadding),
+      child: _buildTransformedSection(
+        context,
+        viewModel,
+        appColors,
+        cardWidth,
+        cardHeight,
+        isTablet,
+      ),
+    );
+
+    final bool isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
+    final bool isLoadingMore = viewModel.isLoadingMore;
+    final bool hasResult = viewModel.generatedImages.isNotEmpty;
+    final bool isGeneratingOrLoading = isGenerating || isLoadingMore;
+    final String messageBelow = isGeneratingOrLoading
+        ? 'Please wait while we create your masterpiece'
+        : hasResult
+            ? 'Your masterpiece is ready'
+            : '';
+
+    final Widget addOneMoreButton = canAddMoreStyle
+        ? _buildAddOneMoreStyleButton(context, viewModel)
+        : const SizedBox.shrink();
+
+    // Reserve for up to 4 cards (3 images + loading) so no overflow when loading more
+    const int maxTransformedCards = 4;
+    final double centerSectionWidth = maxTransformedCards * cardWidth +
+        (maxTransformedCards - 1) * cardGap +
+        2 * sectionPadding;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (messageBelow.isNotEmpty) ...[
+          Center(
+            child: hasResult
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        messageBelow,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton(
+                        onPressed: (!isGeneratingOrLoading && viewModel.hasSelectedImages)
+                            ? () {
+                                final selectedImages = viewModel.selectedGeneratedImages;
+                                if (selectedImages.isNotEmpty) {
+                                  Navigator.pushNamed(
+                                    context,
+                                    AppConstants.kRouteResult,
+                                    arguments: {
+                                      'generatedImages': selectedImages,
+                                      'originalPhoto': viewModel.originalPhoto,
+                                    },
+                                  );
+                                }
+                              }
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.grey.shade600,
+                          disabledForegroundColor: Colors.white70,
+                        ),
+                        child: const Text('Continue'),
+                      ),
+                    ],
+                  )
+                : Text(
+                    messageBelow,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+          ),
+          const SizedBox(height: 24),
+        ],
+        Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              originalCard,
+              lightningIcon,
+              SizedBox(
+                width: centerSectionWidth,
+                child: Center(
+                  child: transformedSection,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (canAddMoreStyle) ...[
+          const SizedBox(height: 24),
+          Center(child: addOneMoreButton),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildAddOneMoreStyleButton(
+    BuildContext context,
+    PhotoGenerateViewModel viewModel,
+  ) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.15),
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: viewModel.isGenerating || viewModel.isLoadingMore
+            ? null
+            : () async {
+                final result = await Navigator.pushNamed(
+                  context,
+                  AppConstants.kRouteHome,
+                  arguments: {
+                    'addOneMoreStyle': true,
+                    'usedThemeIds': viewModel.generatedImages
+                        .map((e) => e.theme.id)
+                        .toList(),
+                  },
+                );
+                if (!mounted) return;
+                if (result is ThemeModel) {
+                  viewModel.tryDifferentStyle(result);
+                }
+              },
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 180,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          child: Center(
+            child: Text(
+              'Add one more style',
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTransformedSection(
+    BuildContext context,
+    PhotoGenerateViewModel viewModel,
+    AppColors appColors,
+    double cardWidth,
+    double cardHeight,
+    bool isTablet,
+  ) {
+    final isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
+    final isLoadingMore = viewModel.isLoadingMore;
+    final images = viewModel.generatedImages;
+    final hasImages = images.isNotEmpty;
+
+    // Initial generation only: single loading card
+    if (isGenerating && !hasImages) {
+      return Container(
+        width: cardWidth,
+        height: cardHeight,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(7),
+          child: _buildTransformedLoadingPlaceholder(viewModel, appColors),
+        ),
+      );
+    }
+
+    // No images and not generating
+    if (!hasImages) {
+      return Container(
+        width: cardWidth,
+        height: cardHeight,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(7),
+          child: Center(
+            child: Icon(
+              Icons.photo_outlined,
+              size: 48,
+              color: Colors.white54,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // One or more images: show all existing + loading card when adding another style
+    // Gaps only between cards (not after the last) so row width matches centerSectionWidth
+    final imageCards = images
+        .map((img) => _buildOneTransformedImageCard(img, cardWidth, cardHeight))
+        .toList();
+    final Widget? loadingCard = isLoadingMore
+        ? Container(
+            width: cardWidth,
+            height: cardHeight,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.white24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(7),
+              child: _buildTransformedLoadingPlaceholder(viewModel, appColors),
+            ),
+          )
+        : null;
+
+    final List<Widget> cardList = [];
+    for (int i = 0; i < imageCards.length; i++) {
+      cardList.add(imageCards[i]);
+      if (i < imageCards.length - 1 || isLoadingMore) {
+        cardList.add(const SizedBox(width: 12));
+      }
+    }
+    if (loadingCard != null) cardList.add(loadingCard);
+
+    if (cardList.length == 1) {
+      return cardList.first;
+    }
+
+    return Center(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: cardList,
+      ),
+    );
+  }
+
+  Widget _buildOneTransformedImageCard(
+    GeneratedImage image,
+    double cardWidth,
+    double cardHeight,
+  ) {
+    return Container(
+      width: cardWidth,
+      height: cardHeight,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(7),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(
+              image.imageUrl,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return Center(
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                  ),
+                );
+              },
+              errorBuilder: (_, __, ___) => Center(
+                child: Icon(
+                  CupertinoIcons.exclamationmark_triangle,
+                  color: Colors.white,
+                  size: 32,
                 ),
               ),
             ),
-            // Selection indicator
-            if (image.isSelected)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: CupertinoColors.systemBlue,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    CupertinoIcons.checkmark,
-                    color: CupertinoColors.white,
-                    size: 16,
-                  ),
-                ),
-              ),
-            // Theme name badge
             Positioned(
               bottom: 0,
               left: 0,
@@ -861,14 +719,11 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                       Colors.transparent,
                     ],
                   ),
-                  borderRadius: const BorderRadius.vertical(
-                    bottom: Radius.circular(11),
-                  ),
                 ),
                 child: Text(
                   image.theme.name,
                   style: const TextStyle(
-                    color: CupertinoColors.white,
+                    color: Colors.white,
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                   ),
@@ -883,220 +738,41 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     );
   }
 
-  Widget _buildGeneratingPlaceholder(PhotoGenerateViewModel viewModel, AppColors appColors, bool isTablet) {
-    final cardWidth = isTablet ? 180.0 : 140.0;
-    final cardHeight = isTablet ? 260.0 : 220.0; // Increased height for cancel button
-    final isTakingLong = viewModel.elapsedSeconds > 60;
-    
+  Widget _buildTransformedLoadingPlaceholder(
+    PhotoGenerateViewModel viewModel,
+    AppColors appColors,
+  ) {
+    final message = viewModel.progressMessage.isNotEmpty
+        ? viewModel.progressMessage
+        : (viewModel.isLoadingMore ? 'Transforming your look...' : 'Creating...');
     return Container(
-      width: cardWidth,
-      height: cardHeight,
-      decoration: BoxDecoration(
-        color: appColors.surfaceColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isTakingLong ? CupertinoColors.systemOrange : appColors.borderColor,
-          width: isTakingLong ? 2 : 1,
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const CupertinoActivityIndicator(),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text(
-              viewModel.progressMessage.isNotEmpty 
-                  ? viewModel.progressMessage 
-                  : 'Transforming your look...',
-              style: TextStyle(
-                fontSize: 11,
-                color: appColors.secondaryTextColor,
+      color: Colors.black26,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: Colors.white),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.white70,
               ),
               textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${viewModel.elapsedSeconds}s',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: isTakingLong ? FontWeight.bold : FontWeight.normal,
-              color: isTakingLong ? CupertinoColors.systemOrange : appColors.secondaryTextColor,
-            ),
-          ),
-          // Progress bar
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            height: 4,
-            decoration: BoxDecoration(
-              color: appColors.borderColor,
-              borderRadius: BorderRadius.circular(2),
-            ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                // Animate progress based on elapsed time (assume ~120s max)
-                final progress = (viewModel.elapsedSeconds / 120).clamp(0.0, 0.95);
-                return Align(
-                  alignment: Alignment.centerLeft,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 500),
-                    width: constraints.maxWidth * progress,
-                    decoration: BoxDecoration(
-                      color: isTakingLong ? CupertinoColors.systemOrange : CupertinoColors.systemBlue,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          // Warning message when taking too long
-          if (isTakingLong) ...[
             const SizedBox(height: 4),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                'Taking longer than expected',
-                style: TextStyle(
-                  fontSize: 9,
-                  color: CupertinoColors.systemOrange,
-                ),
-                textAlign: TextAlign.center,
+            Text(
+              '${viewModel.elapsedSeconds}s',
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.white70,
               ),
             ),
           ],
-          const SizedBox(height: 8),
-          // Cancel button
-          CupertinoButton(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            minimumSize: Size.zero,
-            onPressed: () => _showCancelOperationDialog(context, viewModel),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(
-                fontSize: 11,
-                color: CupertinoColors.systemRed,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildBottomButtons(BuildContext context, PhotoGenerateViewModel viewModel, AppColors appColors) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: appColors.backgroundColor,
-        boxShadow: [
-          BoxShadow(
-            color: appColors.shadowColor.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Try Different Style button
-          Expanded(
-            child: CupertinoButton(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              color: viewModel.canTryDifferentStyle
-                  ? appColors.surfaceColor
-                  : CupertinoColors.systemGrey5,
-              borderRadius: BorderRadius.circular(12),
-              onPressed: viewModel.canTryDifferentStyle
-                  ? () => _showThemeSelectionDialog()
-                  : null,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    CupertinoIcons.arrow_2_circlepath,
-                    size: 18,
-                    color: viewModel.canTryDifferentStyle
-                        ? appColors.textColor
-                        : CupertinoColors.systemGrey,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Try Different Style',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: viewModel.canTryDifferentStyle
-                          ? appColors.textColor
-                          : CupertinoColors.systemGrey,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Continue button - passes only selected images
-          Expanded(
-            child: CupertinoButton(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              color: viewModel.hasSelectedImages
-                  ? CupertinoColors.systemBlue
-                  : CupertinoColors.systemGrey3,
-              borderRadius: BorderRadius.circular(12),
-              onPressed: viewModel.hasSelectedImages && 
-                         !viewModel.isGenerating && 
-                         !viewModel.isLoadingMore
-                  ? () {
-                      final selectedImages = viewModel.selectedGeneratedImages;
-                      if (selectedImages.isNotEmpty) {
-                        Navigator.pushNamed(
-                          context,
-                          AppConstants.kRouteResult,
-                          arguments: {
-                            'generatedImages': selectedImages,
-                            'originalPhoto': viewModel.originalPhoto,
-                          },
-                        );
-                      }
-                    }
-                  : null,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    CupertinoIcons.arrow_right,
-                    size: 18,
-                    color: CupertinoColors.white,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Continue',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: viewModel.hasSelectedImages
-                          ? CupertinoColors.white
-                          : appColors.secondaryTextColor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Helper class to store step information
-class _StepInfo {
-  final IconData icon;
-  final String label;
-
-  _StepInfo({required this.icon, required this.label});
 }

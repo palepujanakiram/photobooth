@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:ui' as ui;
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'theme_selection_viewmodel.dart';
+import '../../views/widgets/leading_with_alice.dart';
 import '../photo_capture/photo_model.dart';
 import '../../utils/constants.dart';
 import '../../utils/app_config.dart';
@@ -24,6 +25,8 @@ class ThemeSelectionScreen extends StatefulWidget {
 
 class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   PhotoModel? _photoFromCapture;
+  bool _addOneMoreStyle = false;
+  List<String> _usedThemeIds = const [];
   bool _isGenerating = false;
   Timer? _timer;
   Timer? _carouselTimer;
@@ -90,6 +93,12 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       final args = ModalRoute.of(context)?.settings.arguments;
       if (args != null && args is Map) {
         _photoFromCapture = args['photo'] as PhotoModel?;
+        _addOneMoreStyle = args['addOneMoreStyle'] == true;
+        final used = args['usedThemeIds'];
+        _usedThemeIds = used is List
+            ? used.map((e) => e.toString()).toList()
+            : <String>[];
+        if (mounted) setState(() {});
       }
     });
   }
@@ -98,6 +107,11 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       BuildContext context, ThemeViewModel viewModel) async {
     final selectedTheme = viewModel.selectedTheme;
     if (selectedTheme == null) return;
+
+    if (_addOneMoreStyle) {
+      Navigator.of(context).pop(selectedTheme);
+      return;
+    }
 
     final currentContext = context;
     if (_photoFromCapture != null) {
@@ -145,53 +159,62 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         MediaQuery.orientationOf(context) == Orientation.landscape;
 
     return PopScope(
-      canPop: false,
+      canPop: _addOneMoreStyle,
       onPopInvokedWithResult: (bool didPop, dynamic result) {
-        if (!didPop) {
+        if (!didPop && !_addOneMoreStyle) {
           Navigator.pushNamed(context, AppConstants.kRouteTerms);
         }
       },
       child: Stack(
         children: [
-          CupertinoPageScaffold(
+          Scaffold(
             backgroundColor: Colors.transparent,
-            navigationBar: CupertinoNavigationBar(
+            extendBodyBehindAppBar: true,
+            appBar: AppBar(
               backgroundColor: Colors.transparent,
-              border: null,
-              middle: const Text(
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              surfaceTintColor: Colors.transparent,
+              forceMaterialTransparency: true,
+              iconTheme: const IconThemeData(color: Colors.white),
+              title: const Text(
                 'Select a theme',
                 style: TextStyle(
-                  color: CupertinoColors.white,
+                  color: Colors.white,
                   fontWeight: FontWeight.w600,
                   fontSize: 17,
                 ),
               ),
-              leading: CupertinoButton(
-                padding: EdgeInsets.zero,
+              leading: IconButton(
+                icon: const Icon(CupertinoIcons.back, color: Colors.white),
                 onPressed: () {
-                  Navigator.pushNamed(context, AppConstants.kRouteTerms);
+                  if (_addOneMoreStyle) {
+                    Navigator.of(context).pop();
+                  } else {
+                    Navigator.pushNamed(context, AppConstants.kRouteTerms);
+                  }
                 },
-                child: const Icon(
-                  CupertinoIcons.back,
-                  color: CupertinoColors.white,
-                ),
               ),
+              actions: const [AppBarAliceAction()],
               automaticallyImplyLeading: false,
             ),
-            child: Stack(
+            body: Stack(
               children: [
                 Positioned.fill(
-                  child: Consumer<ThemeViewModel>(
-                    builder: (_, viewModel, __) =>
-                        _buildScreenBackground(context, viewModel),
+                  child: Selector<ThemeViewModel, ThemeModel?>(
+                    selector: (_, vm) => vm.selectedTheme,
+                    builder: (_, theme, __) => _buildScreenBackgroundForTheme(context, theme),
                   ),
                 ),
                 SafeArea(
-                  child: Consumer<ThemeViewModel>(
-                    builder: (context, viewModel, child) {
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: kToolbarHeight),
+                    child: Consumer<ThemeViewModel>(
+                      builder: (context, viewModel, child) {
                       if (viewModel.isLoading) {
                         return const Center(
-                          child: CupertinoActivityIndicator(),
+                          child: CircularProgressIndicator(),
                         );
                       }
                       if (viewModel.hasError) {
@@ -202,17 +225,17 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                               const Icon(
                                 CupertinoIcons.exclamationmark_triangle,
                                 size: 64,
-                                color: CupertinoColors.systemRed,
+                                color: Colors.red,
                               ),
                               const SizedBox(height: 16),
                               Text(
                                 viewModel.errorMessage ?? 'Unknown error',
                                 style: const TextStyle(
-                                    fontSize: 16, color: CupertinoColors.white),
+                                    fontSize: 16, color: Colors.white),
                                 textAlign: TextAlign.center,
                               ),
                               const SizedBox(height: 24),
-                              CupertinoButton(
+                              TextButton(
                                 onPressed: () => viewModel.loadThemes(),
                                 child: const Text('Retry'),
                               ),
@@ -224,7 +247,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                         return const Center(
                           child: Text(
                             'No themes available',
-                            style: TextStyle(color: CupertinoColors.white),
+                            style: const TextStyle(color: Colors.white),
                           ),
                         );
                       }
@@ -244,6 +267,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                         ),
                       );
                     },
+                    ),
                   ),
                 ),
               ],
@@ -253,7 +277,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
             Positioned.fill(
               child: FullScreenLoader(
                 text: 'Updating Session',
-                loaderColor: CupertinoColors.systemBlue,
+                loaderColor: Colors.blue,
                 elapsedSeconds: _elapsedSeconds,
               ),
             ),
@@ -289,9 +313,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     return null;
   }
 
-  Widget _buildScreenBackground(
-      BuildContext context, ThemeViewModel viewModel) {
-    final theme = viewModel.selectedTheme;
+  Widget _buildScreenBackgroundForTheme(BuildContext context, ThemeModel? theme) {
     final imageUrl = _themeSampleImageUrl(theme);
     final themeColor = theme != null ? _parseThemeBackgroundColor(theme.backgroundColor) : null;
 
@@ -303,7 +325,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
           Positioned.fill(
             key: ValueKey(imageUrl),
             child: ImageFiltered(
-              imageFilter: ui.ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+              imageFilter: ui.ImageFilter.blur(sigmaX: 40, sigmaY: 40),
               child: CachedNetworkImage(
                 imageUrl: imageUrl,
                 fit: BoxFit.cover,
@@ -387,9 +409,11 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         _maxVisibleCategoryChips * itemExtent;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        vertical: 8,
-        horizontal: _categorySidePadding,
+      padding: const EdgeInsets.only(
+        top: 0,
+        bottom: 8,
+        left: _categorySidePadding,
+        right: _categorySidePadding,
       ),
       child: Center(
         child: SizedBox(
@@ -408,37 +432,43 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
               child: SizedBox(
                 width: _categoryChipWidth,
                 child: Center(
-                  child: CupertinoButton(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    minSize: 0,
-                    borderRadius: BorderRadius.circular(20),
+                  child: Material(
                     color: isActive
                         ? const Color(0xFF2A6DF4)
-                        : CupertinoColors.white.withValues(alpha: 0.15),
-                    onPressed: () {
-                      viewModel.selectCategory(id);
-                      if (_pageController != null &&
-                          viewModel.filteredThemes.isNotEmpty) {
-                        _pageController!.animateToPage(
-                          0,
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOut,
-                        );
-                      }
-                    },
-                    child: Text(
-                      viewModel.getCategoryDisplayName(id),
-                      style: const TextStyle(
-                        color: CupertinoColors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
+                        : Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    child: InkWell(
+                      onTap: () {
+                        viewModel.selectCategory(id);
+                        if (_pageController != null &&
+                            viewModel.filteredThemes.isNotEmpty) {
+                          _pageController!.animateToPage(
+                            0,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOut,
+                          );
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(20),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        child: Center(
+                          child: Text(
+                            viewModel.getCategoryDisplayName(id),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
                     ),
                   ),
                 ),
@@ -529,7 +559,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                 borderRadius: BorderRadius.circular(25),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: CupertinoColors.black
+                                    color: Colors.black
                                         .withValues(alpha: 0.6),
                                     blurRadius: 40,
                                     offset: const Offset(0, 20),
@@ -549,11 +579,17 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                     curve: Curves.easeOut,
                                   );
                                 },
+                                showSelectedLabel: _addOneMoreStyle &&
+                                    _usedThemeIds.contains(theme.id),
                                 onSelectPressed: isSelected &&
                                         viewModel.selectedTheme != null &&
                                         !_isGenerating &&
                                         !viewModel.isUpdatingSession
-                                    ? () => _onContinue(context, viewModel)
+                                    ? (_addOneMoreStyle
+                                        ? () =>
+                                            Navigator.of(context)
+                                                .pop(viewModel.selectedTheme)
+                                        : () => _onContinue(context, viewModel))
                                     : null,
                               ),
                             ),
@@ -652,7 +688,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                               if (!isActive)
                                 Positioned.fill(
                                   child: Container(
-                                    color: CupertinoColors.black
+                                    color: Colors.black
                                         .withValues(alpha: 0.3),
                                   ),
                                 ),
@@ -693,9 +729,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   }
 
   Widget _buildThumbArrow(BuildContext context, {required bool isLeft}) {
-    return CupertinoButton(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      minSize: 0,
+    return IconButton(
       onPressed: () {
         if (_thumbScrollController == null || !_thumbScrollController!.hasClients) return;
         final pos = _thumbScrollController!.position;
@@ -709,9 +743,9 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
           curve: Curves.easeOut,
         );
       },
-      child: Icon(
+      icon: Icon(
         isLeft ? CupertinoIcons.chevron_left : CupertinoIcons.chevron_right,
-        color: CupertinoColors.white.withValues(alpha: 0.9),
+        color: Colors.white.withValues(alpha: 0.9),
         size: 28,
       ),
     );
@@ -768,7 +802,7 @@ class _FallingStarfieldPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final rnd = _SeededRandom(42);
     final paint = Paint()
-      ..color = CupertinoColors.white.withValues(alpha: 0.5)
+      ..color = Colors.white.withValues(alpha: 0.5)
       ..style = PaintingStyle.fill;
 
     for (int i = 0; i < 120; i++) {
@@ -825,7 +859,7 @@ class _ThemeThumbImage extends StatelessWidget {
     final url = _getImageUrl();
     if (url.isEmpty) {
       return Container(
-        color: CupertinoColors.systemGrey5,
+        color: Colors.grey.shade300,
         child: const Icon(CupertinoIcons.photo, size: 32),
       );
     }
@@ -835,7 +869,7 @@ class _ThemeThumbImage extends StatelessWidget {
       width: double.infinity,
       height: double.infinity,
       placeholder: const Center(
-        child: CupertinoActivityIndicator(),
+        child: const CircularProgressIndicator(),
       ),
       errorWidget: const Icon(
         CupertinoIcons.photo,
@@ -844,3 +878,4 @@ class _ThemeThumbImage extends StatelessWidget {
     );
   }
 }
+

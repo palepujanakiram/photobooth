@@ -1,26 +1,27 @@
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import '../../utils/constants.dart';
 import 'app_colors.dart';
+import 'leading_with_alice.dart';
 
-/// Common theme configuration for the app
+/// Common theme configuration for the app (Material).
 class AppTheme {
-  // Colors
-  static const Color primaryColor = CupertinoColors.systemBlue;
-  static const Color backgroundColor = CupertinoColors.white;
-  static const Color textColor = CupertinoColors.black;
-  static const Color secondaryTextColor = CupertinoColors.systemGrey;
-  
+  // Fallback colors when Theme is not available
+  static const Color primaryColor = Colors.blue;
+  static const Color backgroundColor = Colors.white;
+  static const Color textColor = Colors.black;
+  static const Color secondaryTextColor = Colors.grey;
+
   // Button styles
   static const double buttonHeight = AppConstants.kButtonHeight;
   static const double buttonBorderRadius = 12.0;
-  
+
   // Text styles
   static TextStyle get titleTextStyle => const TextStyle(
     fontSize: 17,
     fontWeight: FontWeight.w600,
     color: textColor,
   );
-  
+
   // Theme-aware title style
   static TextStyle titleTextStyleForContext(BuildContext context) {
     final appColors = AppColors.of(context);
@@ -30,27 +31,27 @@ class AppTheme {
       color: appColors.textColor,
     );
   }
-  
+
   static TextStyle get bodyTextStyle => const TextStyle(
     fontSize: 15,
     color: textColor,
   );
-  
+
   static TextStyle get buttonTextStyle => const TextStyle(
     fontSize: 17,
     fontWeight: FontWeight.w600,
-    color: CupertinoColors.white,
+    color: Colors.white,
   );
 }
 
-/// Common Cupertino-style top bar widget
-class AppTopBar extends StatelessWidget implements ObstructingPreferredSizeWidget {
+/// Material AppBar used as the top bar across the app.
+class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
   final String? title;
   final Widget? middle;
   final List<Widget>? actions;
   final Widget? leading;
   final bool automaticallyImplyLeading;
-  
+
   const AppTopBar({
     super.key,
     this.title,
@@ -61,46 +62,40 @@ class AppTopBar extends StatelessWidget implements ObstructingPreferredSizeWidge
   });
 
   @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+
+  @override
   Widget build(BuildContext context) {
     final appColors = AppColors.of(context);
-    
-    return CupertinoNavigationBar(
-      middle: middle ?? (title != null ? Text(
+
+    return AppBar(
+      title: middle ?? (title != null ? Text(
         title!,
         style: AppTheme.titleTextStyleForContext(context),
       ) : null),
       leading: leading,
-      trailing: actions != null && actions!.isNotEmpty
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: actions!.map((action) => 
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 48),
-                  child: action,
-                )
-              ).toList(),
-            )
-          : null,
+      actions: [
+        ...?actions?.map((action) => ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 48),
+              child: action,
+            )),
+        const AppBarAliceAction(),
+      ],
       automaticallyImplyLeading: automaticallyImplyLeading,
       backgroundColor: appColors.backgroundColor,
-      border: Border(
-        bottom: BorderSide(
-          color: appColors.dividerColor,
-          width: 0.5,
-        ),
+      foregroundColor: appColors.textColor,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(0.5),
+        child: Divider(height: 0.5, color: appColors.dividerColor),
       ),
     );
   }
-
-  @override
-  Size get preferredSize => const Size.fromHeight(44.0);
-
-  @override
-  bool shouldFullyObstruct(BuildContext context) => true;
 }
 
-/// Common Cupertino-style bottom continue button
+/// Common bottom continue button (Material ElevatedButton).
 class AppContinueButton extends StatelessWidget {
   final String text;
   final VoidCallback? onPressed;
@@ -109,7 +104,7 @@ class AppContinueButton extends StatelessWidget {
   final Color? foregroundColor;
   final double? height;
   final EdgeInsets? padding;
-  
+
   const AppContinueButton({
     super.key,
     this.text = 'Continue',
@@ -123,31 +118,33 @@ class AppContinueButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = AppColors.of(context);
     final screenWidth = MediaQuery.of(context).size.width;
     final isTablet = screenWidth > AppConstants.kTabletBreakpoint;
-    
+
     return SafeArea(
       child: Padding(
         padding: padding ?? EdgeInsets.all(isTablet ? 20.0 : 16.0),
         child: SizedBox(
           width: double.infinity,
           height: height ?? AppTheme.buttonHeight,
-          child: CupertinoButton(
-            padding: EdgeInsets.zero,
-            color: backgroundColor ?? AppTheme.primaryColor,
-            disabledColor: CupertinoColors.systemGrey3,
+          child: ElevatedButton(
             onPressed: isLoading ? null : onPressed,
-            borderRadius: BorderRadius.circular(AppTheme.buttonBorderRadius),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: backgroundColor ?? appColors.primaryColor,
+              foregroundColor: foregroundColor ?? appColors.buttonTextColor,
+              disabledBackgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.buttonBorderRadius),
+              ),
+            ),
             child: isLoading
-                ? const CupertinoActivityIndicator(
-                    color: CupertinoColors.white,
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Text(
-                    text,
-                    style: AppTheme.buttonTextStyle.copyWith(
-                      color: foregroundColor ?? CupertinoColors.white,
-                    ),
-                  ),
+                : Text(text, style: AppTheme.buttonTextStyle),
           ),
         ),
       ),
@@ -155,13 +152,13 @@ class AppContinueButton extends StatelessWidget {
   }
 }
 
-/// Common Cupertino-style action button (for icon buttons)
+/// Common action button (Material IconButton).
 class AppActionButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onPressed;
   final Color? color;
   final double? iconSize;
-  
+
   const AppActionButton({
     super.key,
     required this.icon,
@@ -172,23 +169,21 @@ class AppActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 44.0,
-      height: 44.0,
-      child: CupertinoButton(
-        padding: EdgeInsets.zero,
-        onPressed: onPressed,
-        child: Icon(
-          icon,
-          color: color ?? AppTheme.primaryColor,
-          size: iconSize ?? 28.0,
-        ),
+    final appColors = AppColors.of(context);
+
+    return IconButton(
+      icon: Icon(icon, size: iconSize ?? 28.0),
+      color: color ?? appColors.primaryColor,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        minimumSize: const Size(44, 44),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
     );
   }
 }
 
-/// Common Cupertino-style full-width button with icon
+/// Common full-width button with icon (Material ElevatedButton).
 class AppButtonWithIcon extends StatelessWidget {
   final String text;
   final IconData icon;
@@ -197,7 +192,7 @@ class AppButtonWithIcon extends StatelessWidget {
   final Color? backgroundColor;
   final Color? foregroundColor;
   final double? height;
-  
+
   const AppButtonWithIcon({
     super.key,
     required this.text,
@@ -211,44 +206,33 @@ class AppButtonWithIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = AppColors.of(context);
+
     return SizedBox(
       width: double.infinity,
       height: height ?? AppTheme.buttonHeight,
-      child: CupertinoButton(
-        padding: EdgeInsets.zero,
-        color: backgroundColor ?? AppTheme.primaryColor,
-        disabledColor: CupertinoColors.systemGrey3,
+      child: ElevatedButton(
         onPressed: isLoading ? null : onPressed,
-        borderRadius: BorderRadius.circular(AppTheme.buttonBorderRadius),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: backgroundColor ?? appColors.primaryColor,
+          foregroundColor: foregroundColor ?? appColors.buttonTextColor,
+          disabledBackgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.buttonBorderRadius),
+          ),
+        ),
         child: isLoading
-            ? const CupertinoActivityIndicator(
-                color: CupertinoColors.white,
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
               )
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  if (isLoading)
-                    const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CupertinoActivityIndicator(
-                        color: CupertinoColors.white,
-                        radius: 10,
-                      ),
-                    )
-                  else
-                    Icon(
-                      icon,
-                      color: foregroundColor ?? CupertinoColors.white,
-                      size: 20,
-                    ),
+                  Icon(icon, size: 20),
                   const SizedBox(width: 8),
-                  Text(
-                    text,
-                    style: AppTheme.buttonTextStyle.copyWith(
-                      color: foregroundColor ?? CupertinoColors.white,
-                    ),
-                  ),
+                  Text(text, style: AppTheme.buttonTextStyle),
                 ],
               ),
       ),
@@ -256,7 +240,7 @@ class AppButtonWithIcon extends StatelessWidget {
   }
 }
 
-/// Common Cupertino-style outlined button
+/// Common outlined button (Material OutlinedButton).
 class AppOutlinedButton extends StatelessWidget {
   final String text;
   final IconData? icon;
@@ -264,7 +248,7 @@ class AppOutlinedButton extends StatelessWidget {
   final Color? borderColor;
   final Color? textColor;
   final double? height;
-  
+
   const AppOutlinedButton({
     super.key,
     required this.text,
@@ -277,45 +261,34 @@ class AppOutlinedButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = AppColors.of(context);
+
     return SizedBox(
       width: double.infinity,
       height: height ?? AppTheme.buttonHeight,
-      child: CupertinoButton(
-        padding: EdgeInsets.zero,
+      child: OutlinedButton(
         onPressed: onPressed,
-        borderRadius: BorderRadius.circular(AppTheme.buttonBorderRadius),
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: borderColor ?? AppTheme.primaryColor,
-              width: 1.5,
-            ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: textColor ?? appColors.primaryColor,
+          side: BorderSide(
+            color: borderColor ?? appColors.primaryColor,
+            width: 1.5,
+          ),
+          shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppTheme.buttonBorderRadius),
           ),
-          child: Center(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (icon != null) ...[
-                  Icon(
-                    icon,
-                    color: textColor ?? AppTheme.primaryColor,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                Text(
-                  text,
-                  style: AppTheme.buttonTextStyle.copyWith(
-                    color: textColor ?? AppTheme.primaryColor,
-                  ),
-                ),
-              ],
-            ),
-          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 20, color: textColor ?? appColors.primaryColor),
+              const SizedBox(width: 8),
+            ],
+            Text(text, style: AppTheme.buttonTextStyle.copyWith(color: textColor ?? appColors.primaryColor)),
+          ],
         ),
       ),
     );
   }
 }
-

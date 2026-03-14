@@ -10,6 +10,8 @@ class ThemeCard extends StatelessWidget {
   final VoidCallback onTap;
   /// When set and [isSelected] is true, shows a "Select" button to proceed (e.g. to next screen).
   final VoidCallback? onSelectPressed;
+  /// When true and [isSelected], shows "Selected" label in blue instead of the Select button (e.g. add-one-more flow).
+  final bool showSelectedLabel;
 
   const ThemeCard({
     super.key,
@@ -17,6 +19,7 @@ class ThemeCard extends StatelessWidget {
     required this.isSelected,
     required this.onTap,
     this.onSelectPressed,
+    this.showSelectedLabel = false,
   });
 
   String _getImageUrl() {
@@ -111,7 +114,7 @@ class ThemeCard extends StatelessWidget {
                     color: Colors.grey[200],
                     child: const Center(
                       child: Icon(
-                        Icons.palette,
+                        CupertinoIcons.paintbrush,
                         size: 48,
                         color: Colors.grey,
                       ),
@@ -147,7 +150,17 @@ class ThemeCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (isSelected && onSelectPressed != null) ...[
+                      if (isSelected && showSelectedLabel) ...[
+                        const SizedBox(width: 6),
+                        const Text(
+                          'Selected',
+                          style: TextStyle(
+                            color: CupertinoColors.systemBlue,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ] else if (isSelected && onSelectPressed != null) ...[
                         const SizedBox(width: 6),
                         GestureDetector(
                           behavior: HitTestBehavior.opaque,
