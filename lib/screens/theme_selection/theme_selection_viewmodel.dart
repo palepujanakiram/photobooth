@@ -4,6 +4,7 @@ import 'theme_model.dart';
 import '../../services/theme_manager.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
+import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../utils/exceptions.dart';
 
 class ThemeViewModel extends ChangeNotifier {
@@ -15,6 +16,7 @@ class ThemeViewModel extends ChangeNotifier {
   bool _isLoading = false;
   bool _isUpdatingSession = false;
   String? _errorMessage;
+  bool _showNoThemesMessage = false;
   VoidCallback? _themeManagerListener;
 
   ThemeViewModel({
@@ -43,6 +45,8 @@ class ThemeViewModel extends ChangeNotifier {
   bool get isUpdatingSession => _isUpdatingSession;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
+  /// True when API returned successfully but no themes are available (report and show snackbar once).
+  bool get showNoThemesMessage => _showNoThemesMessage;
 
   /// Category tab ids: "All" plus unique categoryIds from themes.
   List<String> get categoryIds {
@@ -154,14 +158,22 @@ class ThemeViewModel extends ChangeNotifier {
       await _themeManager.fetchThemes(forceRefresh: forceRefresh);
       // Update local state from ThemeManager
       _onThemesUpdated();
+      if (_themes.isEmpty) {
+        await ErrorReportingManager.recordError(
+          Exception('Themes API returned no themes'),
+          null,
+          reason: 'No themes available',
+          extraInfo: {'source': 'theme_selection_load'},
+        );
+        _showNoThemesMessage = true;
+      }
     } on ApiException catch (e) {
       _errorMessage = e.message;
       // If ThemeManager has cached themes, use them
       if (_themeManager.hasThemes) {
         _onThemesUpdated();
       } else {
-        // Fallback to mock themes only if API fails and no cache
-        _themes = _getMockThemes();
+        _themes = [];
         notifyListeners();
       }
     } catch (e) {
@@ -170,79 +182,12 @@ class ThemeViewModel extends ChangeNotifier {
       if (_themeManager.hasThemes) {
         _onThemesUpdated();
       } else {
-        // Fallback to mock themes for development
-        _themes = _getMockThemes();
+        _themes = [];
         notifyListeners();
       }
     } finally {
       _setLoading(false);
     }
-  }
-
-  /// Returns mock themes for development/demo purposes
-  List<ThemeModel> _getMockThemes() {
-    return [
-      const ThemeModel(
-        id: '1',
-        categoryId: 'cat-1',
-        name: 'Vintage',
-        description: 'Classic vintage photo effect with warm tones',
-        promptText: 'oil painting style',
-        negativePrompt: 'blurry, low quality',
-        sampleImageUrl: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&h=600&fit=crop',
-        isActive: true,
-      ),
-      const ThemeModel(
-        id: '2',
-        categoryId: 'cat-1',
-        name: 'Black & White',
-        description: 'Timeless black and white photography',
-        promptText: 'oil painting style',
-        negativePrompt: 'blurry, low quality',
-        sampleImageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&h=600&fit=crop',
-        isActive: true,
-      ),
-      const ThemeModel(
-        id: '3',
-        categoryId: 'cat-1',
-        name: 'Portrait',
-        description: 'Professional portrait enhancement',
-        promptText: 'oil painting style',
-        negativePrompt: 'blurry, low quality',
-        sampleImageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800&h=600&fit=crop',
-        isActive: true,
-      ),
-      const ThemeModel(
-        id: '4',
-        categoryId: 'cat-1',
-        name: 'Artistic',
-        description: 'Creative artistic transformation',
-        promptText: 'oil painting style',
-        negativePrompt: 'blurry, low quality',
-        sampleImageUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=800&h=600&fit=crop',
-        isActive: true,
-      ),
-      const ThemeModel(
-        id: '5',
-        categoryId: 'cat-1',
-        name: 'Nature',
-        description: 'Natural outdoor enhancement',
-        promptText: 'oil painting style',
-        negativePrompt: 'blurry, low quality',
-        sampleImageUrl: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&h=600&fit=crop',
-        isActive: true,
-      ),
-      const ThemeModel(
-        id: '6',
-        categoryId: 'cat-1',
-        name: 'Cinematic',
-        description: 'Movie-like cinematic effect',
-        promptText: 'oil painting style',
-        negativePrompt: 'blurry, low quality',
-        sampleImageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&h=600&fit=crop',
-        isActive: true,
-      ),
-    ];
   }
 
   /// Selects a theme
@@ -256,6 +201,14 @@ class ThemeViewModel extends ChangeNotifier {
   void clearSelection() {
     _selectedTheme = null;
     notifyListeners();
+  }
+
+  /// Call after showing the "no themes available" snackbar so it is not shown again.
+  void clearNoThemesMessage() {
+    if (_showNoThemesMessage) {
+      _showNoThemesMessage = false;
+      notifyListeners();
+    }
   }
 
   void _setLoading(bool value) {

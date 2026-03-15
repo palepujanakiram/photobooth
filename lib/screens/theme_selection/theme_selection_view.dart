@@ -212,6 +212,16 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                     padding: const EdgeInsets.only(top: kToolbarHeight),
                     child: Consumer<ThemeViewModel>(
                       builder: (context, viewModel, child) {
+                      if (viewModel.showNoThemesMessage) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (!mounted) return;
+                          final vm = context.read<ThemeViewModel>();
+                          if (vm.showNoThemesMessage) {
+                            AppSnackBar.showError(context, 'No themes available');
+                            vm.clearNoThemesMessage();
+                          }
+                        });
+                      }
                       if (viewModel.isLoading) {
                         return const Center(
                           child: CircularProgressIndicator(),
@@ -247,7 +257,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                         return const Center(
                           child: Text(
                             'No themes available',
-                            style: const TextStyle(color: Colors.white),
+                            style: TextStyle(color: Colors.white),
                           ),
                         );
                       }
@@ -636,7 +646,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     const double thumbHeight = 72.0;
     const double verticalPadding = 16.0;
     const double borderMargin = 4.0;
-    final rowHeight =
+    const rowHeight =
         thumbHeight + borderMargin * 2 + verticalPadding * 2;
 
     const double sidePadding = _thumbWidth;
@@ -652,7 +662,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                 child: ListView.builder(
                   controller: _thumbScrollController,
                   scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.symmetric(vertical: verticalPadding),
+                  padding: const EdgeInsets.symmetric(vertical: verticalPadding),
                   clipBehavior: Clip.none,
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
@@ -869,7 +879,7 @@ class _ThemeThumbImage extends StatelessWidget {
       width: double.infinity,
       height: double.infinity,
       placeholder: const Center(
-        child: const CircularProgressIndicator(),
+        child: CircularProgressIndicator(),
       ),
       errorWidget: const Icon(
         CupertinoIcons.photo,
