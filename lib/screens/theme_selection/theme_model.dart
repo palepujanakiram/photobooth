@@ -8,7 +8,10 @@ class ThemeModel {
   final String promptText;
   final String? negativePrompt;
   final String? sampleImageUrl;
-  final bool isActive;
+  /// When sent by backend: true = show, false = hide. When omitted (null), show theme.
+  final bool? isActive;
+  /// When sent by backend: order for display (ascending). When omitted (null), order is unchanged.
+  final int? displayOrder;
   final String? backgroundColor; // Hex color for text background (e.g., "#FF0000" or "FF0000")
   final String? textColor; // Hex color for text (e.g., "#FFFFFF" or "FFFFFF")
 
@@ -21,7 +24,8 @@ class ThemeModel {
     required this.promptText,
     this.negativePrompt,
     this.sampleImageUrl,
-    required this.isActive,
+    this.isActive,
+    this.displayOrder,
     this.backgroundColor,
     this.textColor,
   });
@@ -39,6 +43,7 @@ class ThemeModel {
     String? negativePrompt,
     String? sampleImageUrl,
     bool? isActive,
+    int? displayOrder,
     String? backgroundColor,
     String? textColor,
   }) {
@@ -52,6 +57,7 @@ class ThemeModel {
       negativePrompt: negativePrompt ?? this.negativePrompt,
       sampleImageUrl: sampleImageUrl ?? this.sampleImageUrl,
       isActive: isActive ?? this.isActive,
+      displayOrder: displayOrder ?? this.displayOrder,
       backgroundColor: backgroundColor ?? this.backgroundColor,
       textColor: textColor ?? this.textColor,
     );
@@ -67,7 +73,8 @@ class ThemeModel {
       'promptText': promptText,
       'negativePrompt': negativePrompt,
       'sampleImageUrl': sampleImageUrl,
-      'isActive': isActive,
+      if (isActive != null) 'isActive': isActive,
+      if (displayOrder != null) 'displayOrder': displayOrder,
       'backgroundColor': backgroundColor,
       'textColor': textColor,
     };
@@ -83,7 +90,8 @@ class ThemeModel {
       promptText: json['promptText'] as String,
       negativePrompt: json['negativePrompt'] as String?,
       sampleImageUrl: json['sampleImageUrl'] as String?,
-      isActive: json['isActive'] as bool,
+      isActive: json['isActive'] as bool?,
+      displayOrder: json['displayOrder'] as int?,
       backgroundColor: json['backgroundColor'] as String?,
       textColor: json['textColor'] as String?,
     );

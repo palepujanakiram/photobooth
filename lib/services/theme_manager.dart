@@ -122,9 +122,19 @@ class ThemeManager {
     }
   }
 
-  /// Gets all active themes from cache.
+  /// Gets themes for display: filter by isActive when present (show only when true),
+  /// sort by displayOrder ascending when present (nulls last).
   List<ThemeModel> getActiveThemes() {
-    return _cachedThemes.where((theme) => theme.isActive).toList();
+    final list = _cachedThemes.where((theme) => theme.isActive != false).toList();
+    list.sort((a, b) {
+      final aOrder = a.displayOrder;
+      final bOrder = b.displayOrder;
+      if (aOrder == null && bOrder == null) return 0;
+      if (aOrder == null) return 1;
+      if (bOrder == null) return -1;
+      return aOrder.compareTo(bOrder);
+    });
+    return list;
   }
 
   /// Gets all sample image URLs from active themes with base URL prepended.

@@ -184,7 +184,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               scrolledUnderElevation: 0,
               surfaceTintColor: Colors.transparent,
               forceMaterialTransparency: true,
-              title: Text(
+              title: const Text(
                 'Generate Photo',
                 style: TextStyle(
                   color: Colors.white,
@@ -356,7 +356,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                   _originalPhotoBytes!,
                   fit: BoxFit.cover,
                 )
-              : Center(
+              : const Center(
                   child: CircularProgressIndicator(
                     color: Colors.white,
                   ),
@@ -526,13 +526,13 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         child: Container(
           width: 180,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-          child: Center(
+          child: const Center(
             child: Text(
               'Add one more style',
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: Colors.white,
@@ -598,7 +598,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(7),
-          child: Center(
+          child: const Center(
             child: Icon(
               Icons.photo_outlined,
               size: 48,
@@ -690,13 +690,13 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               height: double.infinity,
               loadingBuilder: (context, child, loadingProgress) {
                 if (loadingProgress == null) return child;
-                return Center(
+                return const Center(
                   child: CircularProgressIndicator(
                     color: Colors.white,
                   ),
                 );
               },
-              errorBuilder: (_, __, ___) => Center(
+              errorBuilder: (_, __, ___) => const Center(
                 child: Icon(
                   CupertinoIcons.exclamationmark_triangle,
                   color: Colors.white,

@@ -537,7 +537,7 @@ class _ResultScreenState extends State<ResultScreen> {
                     color: Colors.white,
                     fontSize: 14,
                   ),
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 ),
               ),
             ],
