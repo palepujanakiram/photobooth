@@ -141,8 +141,8 @@ class ThemeManager {
   /// Returns empty list if no themes are available.
   List<String> getSampleImageUrls() {
     return _cachedThemes
-        .where((theme) => 
-            theme.isActive && 
+        .where((theme) =>
+            (theme.isActive == true) &&
             theme.sampleImageUrl != null && 
             theme.sampleImageUrl!.isNotEmpty)
         .map((theme) {
