@@ -135,6 +135,37 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     );
   }
 
+  void _showRemoveStyleConfirmation(
+    BuildContext context, {
+    required String themeName,
+    required VoidCallback onConfirm,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Remove this style?'),
+          content: Text(
+            'Remove "$themeName" from your generated photos? You can add it again later with "Add one more style".',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                onConfirm();
+              },
+              child: const Text('Remove', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
@@ -319,17 +350,17 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final isTablet = screenWidth > AppConstants.kTabletBreakpoint;
 
     // Card size so full row fits: 1 original + up to 4 transformed (3 images + loading card) + lightning + paddings
-    const double lightningWidth = 60.0;
+    const double lightningWidth = 36.0;
     const double cardGap = 12.0;
-    const double minCardWidth = 72.0;
+    const double minCardWidth = 48.0; // allow smaller so row never overflows on narrow screens
     const double maxCardWidthPhone = 130.0;
     const double maxCardWidthTablet = 160.0;
-    const double overflowSafetyMargin = 32.0; // avoid right overflow (e.g. scrollbar, rounding)
     final double maxCardWidth = isTablet ? maxCardWidthTablet : maxCardWidthPhone;
     final bool canAddMoreStyle = viewModel.generatedImages.length < 3;
-    // Worst case: 5 card widths (1 original + 4 transformed), 3 gaps in center, paddings
-    final double rowReserved = 4 * sectionPadding + lightningWidth + 3 * cardGap;
-    final double availableForCards = (screenWidth - rowReserved - overflowSafetyMargin).clamp(0.0, double.infinity);
+    // Worst case: 5 card widths (1 original + 4 transformed), 3 gaps in center, paddings (transformed section has smaller left padding)
+    const double transformedLeftPad = 8.0;
+    final double rowReserved = 3 * sectionPadding + transformedLeftPad + lightningWidth + 3 * cardGap;
+    final double availableForCards = (screenWidth - rowReserved).clamp(0.0, double.infinity);
     final double cardWidth = (availableForCards / 5).clamp(minCardWidth, maxCardWidth);
     final double cardHeight = cardWidth * (180 / 140);
 
@@ -365,7 +396,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       ),
     );
 
-    const double lightningAreaWidth = 60.0;
+    const double lightningAreaWidth = 36.0;
     final Widget lightningIcon = SizedBox(
       width: lightningAreaWidth,
       child: Center(
@@ -378,7 +409,12 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     );
 
     final Widget transformedSection = Padding(
-      padding: EdgeInsets.all(sectionPadding),
+      padding: EdgeInsets.only(
+        left: transformedLeftPad,
+        top: sectionPadding,
+        right: sectionPadding,
+        bottom: sectionPadding,
+      ),
       child: _buildTransformedSection(
         context,
         viewModel,
@@ -394,7 +430,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final bool hasResult = viewModel.generatedImages.isNotEmpty;
     final bool isGeneratingOrLoading = isGenerating || isLoadingMore;
     final String messageBelow = isGeneratingOrLoading
-        ? 'Please wait while we create your masterpiece'
+        ? (isLoadingMore
+            ? 'Adding your new style...'
+            : 'Please wait while we create your masterpiece')
         : hasResult
             ? 'Your masterpiece is ready'
             : '';
@@ -407,16 +445,16 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     const int maxTransformedCards = 4;
     final double centerSectionWidth = maxTransformedCards * cardWidth +
         (maxTransformedCards - 1) * cardGap +
-        2 * sectionPadding;
+        transformedLeftPad +
+        sectionPadding;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (messageBelow.isNotEmpty) ...[
-          Center(
-            child: hasResult
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (messageBelow.isNotEmpty) ...[
+            hasResult
                 ? Row(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -468,11 +506,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                     ),
                     textAlign: TextAlign.center,
                   ),
-          ),
-          const SizedBox(height: 24),
-        ],
-        Center(
-          child: Row(
+            const SizedBox(height: 24),
+          ],
+          Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -487,12 +523,12 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               ),
             ],
           ),
-        ),
-        if (canAddMoreStyle) ...[
-          const SizedBox(height: 24),
-          Center(child: addOneMoreButton),
+          if (hasResult && canAddMoreStyle) ...[
+            const SizedBox(height: 24),
+            addOneMoreButton,
+          ],
         ],
-      ],
+      ),
     );
   }
 
@@ -500,47 +536,34 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     BuildContext context,
     PhotoGenerateViewModel viewModel,
   ) {
-    return Material(
-      color: Colors.white.withValues(alpha: 0.15),
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: viewModel.isGenerating || viewModel.isLoadingMore
-            ? null
-            : () async {
-                final result = await Navigator.pushNamed(
-                  context,
-                  AppConstants.kRouteHome,
-                  arguments: {
-                    'addOneMoreStyle': true,
-                    'usedThemeIds': viewModel.generatedImages
-                        .map((e) => e.theme.id)
-                        .toList(),
-                  },
-                );
-                if (!mounted) return;
-                if (result is ThemeModel) {
-                  viewModel.tryDifferentStyle(result);
-                }
-              },
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          width: 180,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-          child: const Center(
-            child: Text(
-              'Add one more style',
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ),
+    final isDisabled = viewModel.isGenerating || viewModel.isLoadingMore;
+    return ElevatedButton(
+      onPressed: isDisabled
+          ? null
+          : () async {
+              final result = await Navigator.pushNamed(
+                context,
+                AppConstants.kRouteHome,
+                arguments: {
+                  'addOneMoreStyle': true,
+                  'usedThemeIds': List<String>.from(
+                    viewModel.generatedImages.map((e) => e.theme.id),
+                  ),
+                },
+              );
+              if (!mounted) return;
+              if (result is ThemeModel) {
+                viewModel.prepareToAddStyle(result);
+                viewModel.tryDifferentStyle(result);
+              }
+            },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: Colors.grey.shade600,
+        disabledForegroundColor: Colors.white70,
       ),
+      child: const Text('Add one more style'),
     );
   }
 
@@ -611,8 +634,17 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
 
     // One or more images: show all existing + loading card when adding another style
     // Gaps only between cards (not after the last) so row width matches centerSectionWidth
+    // Close/remove button hidden for now; remove functionality to be handled later
+    const bool showRemoveButton = false;
     final imageCards = images
-        .map((img) => _buildOneTransformedImageCard(img, cardWidth, cardHeight))
+        .map((img) => _buildOneTransformedImageCard(
+              context,
+              viewModel,
+              img,
+              cardWidth,
+              cardHeight,
+              showRemoveButton: showRemoveButton,
+            ))
         .toList();
     final Widget? loadingCard = isLoadingMore
         ? Container(
@@ -660,10 +692,13 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   }
 
   Widget _buildOneTransformedImageCard(
+    BuildContext context,
+    PhotoGenerateViewModel viewModel,
     GeneratedImage image,
     double cardWidth,
-    double cardHeight,
-  ) {
+    double cardHeight, {
+    bool showRemoveButton = false,
+  }) {
     return Container(
       width: cardWidth,
       height: cardHeight,
@@ -704,6 +739,33 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                 ),
               ),
             ),
+            if (showRemoveButton)
+              Positioned(
+                top: 6,
+                right: 6,
+                child: Material(
+                  color: Colors.white,
+                  elevation: 2,
+                  shadowColor: Colors.black38,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    onTap: () => _showRemoveStyleConfirmation(
+                      context,
+                      themeName: image.theme.name,
+                      onConfirm: () => viewModel.removeGeneratedImage(image.id),
+                    ),
+                    customBorder: const CircleBorder(),
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(
+                        CupertinoIcons.trash_fill,
+                        color: Colors.black87,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             Positioned(
               bottom: 0,
               left: 0,
@@ -744,7 +806,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   ) {
     final message = viewModel.progressMessage.isNotEmpty
         ? viewModel.progressMessage
-        : (viewModel.isLoadingMore ? 'Transforming your look...' : 'Creating...');
+        : (viewModel.isLoadingMore ? 'Adding new style...' : 'Creating...');
     return Container(
       color: Colors.black26,
       child: Center(

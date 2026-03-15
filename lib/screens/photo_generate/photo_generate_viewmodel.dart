@@ -205,16 +205,25 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     }
   }
 
-  /// Try a different style (regenerate with same or different theme)
+  /// Call from the view before tryDifferentStyle so the UI shows loading immediately.
+  void prepareToAddStyle(ThemeModel newTheme) {
+    _isLoadingMore = true;
+    _selectedTheme = newTheme;
+    _errorMessage = null;
+    _progressMessage = 'Adding your new style...';
+    notifyListeners();
+  }
+
+  /// Try a different style (regenerate with same or different theme).
+  /// May be called after prepareToAddStyle (then _isLoadingMore is already true).
   Future<bool> tryDifferentStyle(ThemeModel newTheme) async {
-    if (!canTryDifferentStyle || _originalPhoto == null) {
-      return false;
-    }
+    if (_originalPhoto == null) return false;
+    if (!_isLoadingMore && !canTryDifferentStyle) return false;
 
     _resetCancellation();
     _isLoadingMore = true;
     _errorMessage = null;
-    _progressMessage = 'Trying new style...';
+    _progressMessage = _progressMessage.isNotEmpty ? _progressMessage : 'Trying new style...';
     notifyListeners();
     
     _startTimer();
@@ -334,6 +343,23 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       }
       return img;
     }).toList();
+    notifyListeners();
+  }
+
+  /// Remove a generated image by id. No-op if only one remains (keep at least one).
+  /// Restores one "try" so the user can add a style again (e.g. re-add the removed theme).
+  void removeGeneratedImage(String imageId) {
+    if (_generatedImages.length <= 1) return;
+    final removedWasSelected = _generatedImages.any((img) => img.id == imageId && img.isSelected);
+    _generatedImages = _generatedImages.where((img) => img.id != imageId).toList();
+    if (removedWasSelected && _generatedImages.isNotEmpty) {
+      final firstId = _generatedImages.first.id;
+      _generatedImages = _generatedImages
+          .map((img) => img.copyWith(isSelected: img.id == firstId))
+          .toList();
+    }
+    // Give back one try so user can add a style again (including re-adding the removed one)
+    if (_triesRemaining < 3) _triesRemaining++;
     notifyListeners();
   }
   

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'theme_selection_viewmodel.dart';
@@ -90,17 +91,30 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         viewModel.updateFromCache();
       }
       viewModel.loadThemes();
-      final args = ModalRoute.of(context)?.settings.arguments;
-      if (args != null && args is Map) {
-        _photoFromCapture = args['photo'] as PhotoModel?;
-        _addOneMoreStyle = args['addOneMoreStyle'] == true;
-        final used = args['usedThemeIds'];
-        _usedThemeIds = used is List
-            ? used.map((e) => e.toString()).toList()
-            : <String>[];
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args != null && args is Map) {
+      final photo = args['photo'] as PhotoModel?;
+      final addOneMore = args['addOneMoreStyle'] == true;
+      final used = args['usedThemeIds'];
+      final usedIds = used is List
+          ? used.map((e) => e.toString()).toList()
+          : <String>[];
+      if (_photoFromCapture != photo ||
+          _addOneMoreStyle != addOneMore ||
+          _usedThemeIds.length != usedIds.length ||
+          !listEquals(_usedThemeIds, usedIds)) {
+        _photoFromCapture = photo;
+        _addOneMoreStyle = addOneMore;
+        _usedThemeIds = usedIds;
         if (mounted) setState(() {});
       }
-    });
+    }
   }
 
   Future<void> _onContinue(
