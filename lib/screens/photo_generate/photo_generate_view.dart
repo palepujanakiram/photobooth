@@ -215,6 +215,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               scrolledUnderElevation: 0,
               surfaceTintColor: Colors.transparent,
               forceMaterialTransparency: true,
+              centerTitle: true,
               title: const Text(
                 'Generate Photo',
                 style: TextStyle(

@@ -54,12 +54,15 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     _carouselTimer?.cancel();
     _carouselTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) {
       if (!mounted) return;
-      viewModel.advanceCarousel();
+      final list = viewModel.filteredThemes;
+      if (list.isEmpty) return;
+      final next = (viewModel.carouselIndex + 1) % list.length;
       _pageController?.animateToPage(
-        viewModel.carouselIndex,
+        next,
         duration: const Duration(milliseconds: 400),
         curve: Curves.easeOut,
       );
+      // View model is updated in onPageChanged when the animation completes
     });
   }
 
@@ -163,7 +166,14 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         if (mounted) setState(() => _isGenerating = false);
       }
     } else {
-      Navigator.pushNamed(currentContext, AppConstants.kRouteCapture);
+      Navigator.pushNamed(currentContext, AppConstants.kRouteCapture).then((result) {
+        if (!mounted || result == null || result is! PhotoModel) return;
+        Navigator.pushReplacementNamed(
+          currentContext,
+          AppConstants.kRouteHome,
+          arguments: {'photo': result},
+        );
+      });
     }
   }
 
@@ -190,6 +200,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
               scrolledUnderElevation: 0,
               surfaceTintColor: Colors.transparent,
               forceMaterialTransparency: true,
+              centerTitle: true,
               iconTheme: const IconThemeData(color: Colors.white),
               title: const Text(
                 'Select a theme',

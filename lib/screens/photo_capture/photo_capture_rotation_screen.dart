@@ -17,6 +17,7 @@ class PhotoCaptureRotationScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: appColors.backgroundColor,
+        centerTitle: true,
         leading: IconButton(
           icon: const Icon(CupertinoIcons.back),
           onPressed: () => Navigator.pop(context),

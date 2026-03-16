@@ -12,3 +12,15 @@ Widget imageFromXFile(XFile file) {
     filterQuality: FilterQuality.high,
   );
 }
+
+/// Same as [imageFromXFile] but with explicit width/height so the image fills the given box (with contain).
+Widget imageFromXFileSized(XFile file, double width, double height) {
+  return Image.file(
+    File(file.path),
+    width: width,
+    height: height,
+    fit: BoxFit.contain,
+    gaplessPlayback: true,
+    filterQuality: FilterQuality.high,
+  );
+}
