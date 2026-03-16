@@ -219,7 +219,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
               onPressed: _openFullTerms,
               child: const Text(
-                'View full Terms & Conditions',
+                'View Full Terms & Conditions',
                 style: TextStyle(
                   fontSize: 14,
                   color: CupertinoColors.systemBlue,
@@ -474,7 +474,7 @@ class _TermsWebViewSheetState extends State<_TermsWebViewSheet> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Terms & Conditions',
+                  '',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,

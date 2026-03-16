@@ -464,6 +464,48 @@ class ApiService {
     }
   }
 
+  /// Deletes the session and associated data on the server
+  /// DELETE /api/sessions/{sessionId}
+  Future<void> deleteSession(String sessionId) async {
+    try {
+      await _apiClient.deleteSession(sessionId);
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
+
+      String errorMessage = AppConstants.kErrorApiCall;
+      if (e.response != null) {
+        final responseData = e.response?.data;
+        if (responseData is Map<String, dynamic>) {
+          errorMessage = responseData['message'] as String? ??
+              responseData['error'] as String? ??
+              'API Error: ${e.response?.statusCode}';
+        } else if (responseData is String) {
+          errorMessage = responseData;
+        } else {
+          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
+        }
+      } else {
+        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
+      }
+
+      throw ApiException(
+        errorMessage,
+        e.response?.statusCode,
+      );
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('${AppConstants.kErrorUnknown}: $e');
+    }
+  }
+
   /// Generates transformed image using AI
   /// This call can take 10-60+ seconds, with a 180-second (3 minute) timeout
   /// Retries once on timeout before showing error

@@ -9,7 +9,7 @@ class WebViewScreen extends StatefulWidget {
   const WebViewScreen({
     super.key,
     required this.url,
-    this.title = 'Terms and Conditions',
+    this.title = '',
   });
 
   @override

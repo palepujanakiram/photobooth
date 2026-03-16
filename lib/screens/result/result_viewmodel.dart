@@ -5,6 +5,7 @@ import '../photo_generate/photo_generate_viewmodel.dart';
 import '../photo_capture/photo_model.dart';
 import '../../services/api_service.dart';
 import '../../services/print_service.dart';
+import '../../services/session_manager.dart';
 import '../../services/share_service.dart';
 import '../../utils/exceptions.dart';
 
@@ -14,6 +15,7 @@ class ResultViewModel extends ChangeNotifier {
   final PrintService _printService;
   final ShareService _shareService;
   final ApiService _apiService;
+  final SessionManager _sessionManager;
   
   final bool _isProcessing = false;
   String? _errorMessage;
@@ -38,11 +40,13 @@ class ResultViewModel extends ChangeNotifier {
     PrintService? printService,
     ShareService? shareService,
     ApiService? apiService,
+    SessionManager? sessionManager,
   })  : _generatedImages = generatedImages,
         _originalPhoto = originalPhoto,
         _printService = printService ?? PrintService(),
         _shareService = shareService ?? ShareService(),
-        _apiService = apiService ?? ApiService();
+        _apiService = apiService ?? ApiService(),
+        _sessionManager = sessionManager ?? SessionManager();
 
   List<GeneratedImage> get generatedImages => _generatedImages;
   PhotoModel? get originalPhoto => _originalPhoto;
@@ -81,6 +85,15 @@ class ResultViewModel extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  /// Deletes the session on the server (DELETE /api/sessions/{sessionId}) and clears local session.
+  /// Call after user confirms "Delete my photos". Throws [ApiException] on API failure.
+  Future<void> deleteSession() async {
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null) return;
+    await _apiService.deleteSession(sessionId);
+    _sessionManager.clearSession();
   }
 
   /// Download all images to temp files for print/share
