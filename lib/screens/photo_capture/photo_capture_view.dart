@@ -14,7 +14,6 @@ import '../../utils/image_helper.dart';
 import '../../utils/device_classifier.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/full_screen_loader.dart';
-import '../../views/widgets/bottom_safe_area.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import 'photo_capture_rotation_screen.dart';
@@ -301,10 +300,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                             top: true,
                             bottom: false,
                             child: Padding(
-                              padding: EdgeInsets.only(
+                              padding: const EdgeInsets.only(
                                 left: 12,
                                 right: 12,
-                                bottom: 12 + effectiveBottomInset(context),
                               ),
                               child: _buildCaptureColumn(
                                 context: context,
@@ -317,7 +315,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           if (viewModel.isUploading)
                             Positioned.fill(
                               child: FullScreenLoader(
-                                text: 'Uploading Photo',
+                                text: 'Processing Your Photo',
                                 loaderColor: Colors.blue,
                                 elapsedSeconds: viewModel.uploadElapsedSeconds,
                               ),
@@ -341,7 +339,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     required bool hasCapturedPhoto,
     required Widget previewWidget,
   }) {
-    final showNativeDetails = viewModel.nativeCameraDetails != null && !hasCapturedPhoto;
+    final showNativeDetails = AppConstants.kShowNativeCameraInfoPane &&
+        viewModel.nativeCameraDetails != null &&
+        !hasCapturedPhoto;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -365,19 +365,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(8),
+                if (AppConstants.kShowNativeCameraInfoPane)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _effectiveRotationLabel(viewModel),
+                      style: const TextStyle(color: Colors.white70, fontSize: 11),
+                    ),
                   ),
-                  child: Text(
-                    _effectiveRotationLabel(viewModel),
-                    style: const TextStyle(color: Colors.white70, fontSize: 11),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                _buildCapturedPhotoDetailsOverlay(context, viewModel),
+                if (AppConstants.kShowNativeCameraInfoPane) const SizedBox(height: 6),
+                if (AppConstants.kShowNativeCameraInfoPane)
+                  _buildCapturedPhotoDetailsOverlay(context, viewModel),
               ],
             ),
           ),
@@ -415,7 +417,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                         )
                       : previewWidget,
                 ),
-                if (!hasCapturedPhoto)
+                if (!hasCapturedPhoto && AppConstants.kShowNativeCameraInfoPane)
                   Positioned(
                     top: 8,
                     right: 8,

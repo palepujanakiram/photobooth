@@ -52,6 +52,12 @@ abstract class ApiClient {
     @Body() Map<String, dynamic> body,
   );
 
+  /// Deletes the session and associated data
+  @DELETE('/api/sessions/{sessionId}')
+  Future<void> deleteSession(
+    @Path('sessionId') String sessionId,
+  );
+
   /// Generates transformed image using AI
   @POST('/api/generate-image')
   Future<dynamic> generateImage(

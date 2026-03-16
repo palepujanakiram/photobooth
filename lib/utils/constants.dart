@@ -24,6 +24,12 @@ class AppConstants {
   /// When true, shows an overlay above Cancel/Continue with photo metadata (size, format).
   static const bool kShowCapturedPhotoMetadataOverlay = true;
 
+  /// When true, shows the native camera info pane (preview size, active array, zoom, etc.) on Capture Photo screen.
+  static const bool kShowNativeCameraInfoPane = false;
+
+  /// When true, shows the Print & Share Options section (Printer IP, Silent Print, Print, Share) on Complete Payment / Result screen.
+  static const bool kShowResultPrintSection = false;
+
   /// SharedPreferences key for camera preview rotation (0, 90, 180, 270 degrees).
   static const String kCameraPreviewRotationKey = 'camera_preview_rotation_degrees';
 

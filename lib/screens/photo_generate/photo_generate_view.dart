@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:flutter/cupertino.dart' show CupertinoButton, CupertinoColors, CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'photo_generate_viewmodel.dart';
@@ -438,10 +438,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
             ? 'Your masterpiece is ready'
             : '';
 
-    final Widget addOneMoreButton = canAddMoreStyle
-        ? _buildAddOneMoreStyleButton(context, viewModel)
-        : const SizedBox.shrink();
-
     // Reserve for up to 4 cards (3 images + loading) so no overflow when loading more
     const int maxTransformedCards = 4;
     final double centerSectionWidth = maxTransformedCards * cardWidth +
@@ -456,47 +452,16 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         children: [
           if (messageBelow.isNotEmpty) ...[
             hasResult
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        messageBelow,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(width: 12),
-                      ElevatedButton(
-                        onPressed: (!isGeneratingOrLoading && viewModel.hasSelectedImages)
-                            ? () {
-                                final selectedImages = viewModel.selectedGeneratedImages;
-                                if (selectedImages.isNotEmpty) {
-                                  Navigator.pushNamed(
-                                    context,
-                                    AppConstants.kRouteResult,
-                                    arguments: {
-                                      'generatedImages': selectedImages,
-                                      'originalPhoto': viewModel.originalPhoto,
-                                    },
-                                  );
-                                }
-                              }
-                            : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor: Colors.grey.shade600,
-                          disabledForegroundColor: Colors.white70,
-                        ),
-                        child: const Text('Continue'),
-                      ),
-                    ],
+                ? Text(
+                    messageBelow,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   )
                 : Text(
                     messageBelow,
@@ -524,47 +489,85 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               ),
             ],
           ),
-          if (hasResult && canAddMoreStyle) ...[
+          if (hasResult) ...[
             const SizedBox(height: 24),
-            addOneMoreButton,
+            SizedBox(
+              width: 320,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  CupertinoButton(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    color: (!isGeneratingOrLoading && viewModel.hasSelectedImages)
+                        ? CupertinoColors.systemBlue
+                        : CupertinoColors.systemGrey,
+                    borderRadius: BorderRadius.circular(12),
+                    onPressed: (!isGeneratingOrLoading && viewModel.hasSelectedImages)
+                        ? () {
+                            final selectedImages = viewModel.selectedGeneratedImages;
+                            if (selectedImages.isNotEmpty) {
+                              Navigator.pushNamed(
+                                context,
+                                AppConstants.kRouteResult,
+                                arguments: {
+                                  'generatedImages': selectedImages,
+                                  'originalPhoto': viewModel.originalPhoto,
+                                },
+                              );
+                            }
+                          }
+                        : null,
+                    child: const Text(
+                      'Continue',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: CupertinoColors.white,
+                      ),
+                    ),
+                  ),
+                  if (canAddMoreStyle) ...[
+                    const SizedBox(height: 8),
+                    Center(
+                      child: CupertinoButton(
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                        onPressed: (viewModel.isGenerating || viewModel.isLoadingMore)
+                            ? null
+                            : () async {
+                                final result = await Navigator.pushNamed(
+                                  context,
+                                  AppConstants.kRouteHome,
+                                  arguments: {
+                                    'addOneMoreStyle': true,
+                                    'usedThemeIds': List<String>.from(
+                                      viewModel.generatedImages.map((e) => e.theme.id),
+                                    ),
+                                  },
+                                );
+                                if (!mounted) return;
+                                if (result is ThemeModel) {
+                                  viewModel.prepareToAddStyle(result);
+                                  viewModel.tryDifferentStyle(result);
+                                }
+                              },
+                        child: const Text(
+                          'Or add one more style',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: CupertinoColors.systemBlue,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ],
         ],
       ),
-    );
-  }
-
-  Widget _buildAddOneMoreStyleButton(
-    BuildContext context,
-    PhotoGenerateViewModel viewModel,
-  ) {
-    final isDisabled = viewModel.isGenerating || viewModel.isLoadingMore;
-    return ElevatedButton(
-      onPressed: isDisabled
-          ? null
-          : () async {
-              final result = await Navigator.pushNamed(
-                context,
-                AppConstants.kRouteHome,
-                arguments: {
-                  'addOneMoreStyle': true,
-                  'usedThemeIds': List<String>.from(
-                    viewModel.generatedImages.map((e) => e.theme.id),
-                  ),
-                },
-              );
-              if (!mounted) return;
-              if (result is ThemeModel) {
-                viewModel.prepareToAddStyle(result);
-                viewModel.tryDifferentStyle(result);
-              }
-            },
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
-        disabledBackgroundColor: Colors.grey.shade600,
-        disabledForegroundColor: Colors.white70,
-      ),
-      child: const Text('Add one more style'),
     );
   }
 
