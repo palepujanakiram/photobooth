@@ -18,8 +18,12 @@ class AppBarAliceAction extends StatelessWidget {
         if (alice == null) return const SizedBox.shrink();
 
         final core = alice.getDioInterceptor().aliceCore;
-        final color = Theme.of(context).appBarTheme.iconTheme?.color ??
-            Theme.of(context).appBarTheme.foregroundColor;
+        final theme = Theme.of(context);
+        final barBg = theme.appBarTheme.backgroundColor;
+        final isDarkBar = barBg == null ||
+            barBg == Colors.transparent ||
+            barBg.computeLuminance() < 0.5;
+        final color = isDarkBar ? Colors.white : Colors.black87;
         return Padding(
           padding: const EdgeInsets.only(right: _rightPadding),
           child: IconButton(

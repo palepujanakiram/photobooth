@@ -69,6 +69,7 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
     final appColors = AppColors.of(context);
 
     return AppBar(
+      centerTitle: true,
       title: middle ?? (title != null ? Text(
         title!,
         style: AppTheme.titleTextStyleForContext(context),
