@@ -167,7 +167,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       }
     } else {
       Navigator.pushNamed(currentContext, AppConstants.kRouteCapture).then((result) {
-        if (!mounted || result == null || result is! PhotoModel) return;
+        if (!mounted || !currentContext.mounted || result == null || result is! PhotoModel) return;
         Navigator.pushReplacementNamed(
           currentContext,
           AppConstants.kRouteHome,
