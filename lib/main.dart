@@ -18,6 +18,7 @@ import 'utils/logger.dart';
 import 'services/error_reporting/error_reporting_manager.dart';
 import 'services/file_helper.dart';
 import 'services/alice_inspector.dart';
+import 'services/app_settings_manager.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,7 +49,7 @@ Future<void> main() async {
 
   // Fire-and-forget cleanup of temp images
   FileHelper.cleanupTempImages();
-    
+
   // Initialize ErrorReportingManager (Bugsnag only on platforms where native plugin exists)
   await ErrorReportingManager.initialize(
     enableBugsnag: !kIsWeb,
@@ -60,23 +61,25 @@ Future<void> main() async {
     // These are handled by Image.errorBuilder widgets
     final errorString = errorDetails.exception.toString().toLowerCase();
     if (errorString.contains('image decoding') ||
-        errorString.contains('failed to submit image decoding command buffer') ||
+        errorString
+            .contains('failed to submit image decoding command buffer') ||
         errorString.contains('codec failed to produce an image') ||
         errorString.contains('failed to load network image')) {
       // Log to console in debug mode but don't report to Bugsnag
       if (kDebugMode) {
-        AppLogger.debug('Image loading error (non-fatal, handled by UI): ${errorDetails.exception}');
+        AppLogger.debug(
+            'Image loading error (non-fatal, handled by UI): ${errorDetails.exception}');
       }
       return;
     }
-    
+
     ErrorReportingManager.recordError(
       errorDetails.exception,
       errorDetails.stack,
       reason: 'Flutter Fatal Error',
       fatal: true,
     );
-    
+
     // Also log to console in debug mode
     if (kDebugMode) {
       AppLogger.error(
@@ -93,23 +96,25 @@ Future<void> main() async {
     // These are handled by Image.errorBuilder widgets
     final errorString = error.toString().toLowerCase();
     if (errorString.contains('image decoding') ||
-        errorString.contains('failed to submit image decoding command buffer') ||
+        errorString
+            .contains('failed to submit image decoding command buffer') ||
         errorString.contains('codec failed to produce an image') ||
         errorString.contains('failed to load network image')) {
       // Log to console in debug mode but don't report to Bugsnag
       if (kDebugMode) {
-        AppLogger.debug('Image loading error (non-fatal, handled by UI): $error');
+        AppLogger.debug(
+            'Image loading error (non-fatal, handled by UI): $error');
       }
       return true; // Mark as handled
     }
-    
+
     ErrorReportingManager.recordError(
       error,
       stack,
       reason: 'Uncaught Async Error',
       fatal: true,
     );
-    
+
     // Also log to console in debug mode
     if (kDebugMode) {
       AppLogger.error(
@@ -126,7 +131,7 @@ Future<void> main() async {
     print('   Active services: ${ErrorReportingManager.serviceCount}');
     print('   - Bugsnag: enabled');
   }
-  
+
   final navigatorKey = GlobalKey<NavigatorState>();
   if (kDebugMode) {
     AliceInspector.initialize(navigatorKey);
@@ -135,27 +140,61 @@ Future<void> main() async {
   runApp(PhotoBoothApp(navigatorKey: navigatorKey));
 }
 
-class PhotoBoothApp extends StatelessWidget {
+class PhotoBoothApp extends StatefulWidget {
   const PhotoBoothApp({super.key, required this.navigatorKey});
   final GlobalKey<NavigatorState> navigatorKey;
+
+  @override
+  State<PhotoBoothApp> createState() => _PhotoBoothAppState();
+}
+
+class _PhotoBoothAppState extends State<PhotoBoothApp>
+    with WidgetsBindingObserver {
+  final AppSettingsManager _appSettingsManager = AppSettingsManager();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _appSettingsManager.fetchSettings(forceRefresh: true);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _appSettingsManager.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _appSettingsManager.fetchSettings(forceRefresh: true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeViewModel()),
+        ChangeNotifierProvider<AppSettingsManager>.value(
+          value: _appSettingsManager,
+        ),
         Provider<Alice?>.value(value: AliceInspector.instance),
       ],
       child: MaterialApp(
-        navigatorKey: navigatorKey,
+        navigatorKey: widget.navigatorKey,
         title: 'Photo Booth',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.light),
+          colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue, brightness: Brightness.light),
           useMaterial3: true,
         ),
         darkTheme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark),
+          colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue, brightness: Brightness.dark),
           useMaterial3: true,
         ),
         themeMode: ThemeMode.system,
