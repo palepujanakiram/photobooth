@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:uuid/uuid.dart';
+import '../models/app_settings_model.dart';
 import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/exceptions.dart';
@@ -39,12 +40,12 @@ class ApiService {
     configureDioForWeb(dio);
 
     if (kDebugMode == true) {
-        // Add logging interceptor to log all API calls
-        dio.interceptors.add(ApiLoggingInterceptor());
-        final alice = AliceInspector.instance;
-        if (alice != null) {
-          dio.interceptors.add(alice.getDioInterceptor());
-        }
+      // Add logging interceptor to log all API calls
+      dio.interceptors.add(ApiLoggingInterceptor());
+      final alice = AliceInspector.instance;
+      if (alice != null) {
+        dio.interceptors.add(alice.getDioInterceptor());
+      }
     }
 
     // Add error interceptor for web compatibility
@@ -136,11 +137,11 @@ class ApiService {
           },
         ));
         if (kDebugMode == true) {
-            dio.interceptors.add(ApiLoggingInterceptor());
-            final alice = AliceInspector.instance;
-            if (alice != null) {
-              dio.interceptors.add(alice.getDioInterceptor());
-            }
+          dio.interceptors.add(ApiLoggingInterceptor());
+          final alice = AliceInspector.instance;
+          if (alice != null) {
+            dio.interceptors.add(alice.getDioInterceptor());
+          }
         }
 
         // Configure browser adapter for web (critical for web platform)
@@ -316,6 +317,47 @@ class ApiService {
         'device_type': deviceType,
         'accepted': true,
       });
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
+
+      String errorMessage = AppConstants.kErrorApiCall;
+      if (e.response != null) {
+        final responseData = e.response?.data;
+        if (responseData is Map<String, dynamic>) {
+          errorMessage = responseData['message'] as String? ??
+              responseData['error'] as String? ??
+              'API Error: ${e.response?.statusCode}';
+        } else if (responseData is String) {
+          errorMessage = responseData;
+        } else {
+          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
+        }
+      } else {
+        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
+      }
+
+      throw ApiException(
+        errorMessage,
+        e.response?.statusCode,
+      );
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('${AppConstants.kErrorUnknown}: $e');
+    }
+  }
+
+  /// Fetches app settings from API.
+  Future<AppSettingsModel> getAppSettings() async {
+    try {
+      return await _apiClient.getAppSettings();
     } on DioException catch (e) {
       _handleWebNetworkError(e);
 
@@ -534,7 +576,7 @@ class ApiService {
 
     // Configure browser adapter for web (important for all Dio instances)
     configureDioForWeb(dioWithTimeout);
-    
+
     if (kDebugMode == true) {
       dioWithTimeout.interceptors.add(ApiLoggingInterceptor());
       final alice = AliceInspector.instance;
@@ -543,7 +585,8 @@ class ApiService {
       }
     }
 
-    final apiClientWithTimeout = ApiClient(dioWithTimeout, baseUrl: AppConstants.kBaseUrl);
+    final apiClientWithTimeout =
+        ApiClient(dioWithTimeout, baseUrl: AppConstants.kBaseUrl);
 
     // Retry logic: try once, retry once on timeout
     int retryCount = 0;
@@ -573,7 +616,8 @@ class ApiService {
         final runId = response['runId'] as String?;
         final framing = response['framing'] as Map<String, dynamic>?;
         final timing = response['timing'] as Map<String, dynamic>?;
-        final faceVerification = response['faceVerification'] as Map<String, dynamic>?;
+        final faceVerification =
+            response['faceVerification'] as Map<String, dynamic>?;
         final evaluation = response['evaluation'] as Map<String, dynamic>?;
 
         if (runId != null || framing != null || timing != null) {
@@ -610,7 +654,8 @@ class ApiService {
         }
 
         // Validate URL format
-        if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+        if (!imageUrl.startsWith('http://') &&
+            !imageUrl.startsWith('https://')) {
           throw ApiException('Invalid image URL format: must be HTTP URL');
         }
 
@@ -639,11 +684,11 @@ class ApiService {
         String errorMessage = AppConstants.kErrorApiCall;
         String? errorDetails;
         String? runId;
-        
+
         if (e.response != null) {
           final statusCode = e.response?.statusCode;
           final responseData = e.response?.data;
-          
+
           if (responseData is Map<String, dynamic>) {
             // New API error format: { "error": "...", "details": "...", "runId": "..." }
             errorMessage = responseData['error'] as String? ??
@@ -651,15 +696,16 @@ class ApiService {
                 'API Error: $statusCode';
             errorDetails = responseData['details'] as String?;
             runId = responseData['runId'] as String?;
-            
+
             // Build error message with details if available
             if (errorDetails != null && errorDetails.isNotEmpty) {
               errorMessage = '$errorMessage: $errorDetails';
             }
-            
+
             // Include runId in debug logs for tracking
             if (runId != null) {
-              AppLogger.debug('❌ Generation failed (Run ID: $runId): $errorMessage');
+              AppLogger.debug(
+                  '❌ Generation failed (Run ID: $runId): $errorMessage');
             }
           } else if (responseData is String) {
             errorMessage = responseData;
@@ -774,4 +820,3 @@ class ApiService {
     });
   }
 }
-
