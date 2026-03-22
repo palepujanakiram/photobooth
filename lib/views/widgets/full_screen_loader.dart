@@ -1,8 +1,11 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-/// Centered loader with a compact gray panel (spinner, text, timer).
-/// The rest of the screen stays clear; an invisible barrier still blocks taps.
+import '../../utils/constants.dart';
+
+/// Centered loader with a compact gray panel (spinner; optional status text and timer).
+/// Debug-style lines (status, timer, subtitle, current process) follow [AppConstants.kshowDebugInfo].
+/// [hint] is always shown when set. The rest of the screen stays clear; taps are blocked.
 class FullScreenLoader extends StatelessWidget {
   final String text;
   final Color loaderColor;
@@ -72,95 +75,98 @@ class FullScreenLoader extends StatelessWidget {
                         radius: 20,
                         color: loaderColor,
                       ),
-                      const SizedBox(height: 20),
-                      Text(
-                        text,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: resolvedTextColor,
-                          letterSpacing: 0.5,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      if (subtitle != null) ...[
-                        const SizedBox(height: 8),
+                      if (AppConstants.kshowDebugInfo) ...[
+                        const SizedBox(height: 20),
                         Text(
-                          subtitle!,
+                          text,
                           style: TextStyle(
-                            fontSize: 14,
-                            color: resolvedTextColor.withValues(alpha: 0.85),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: resolvedTextColor,
+                            letterSpacing: 0.5,
                           ),
                           textAlign: TextAlign.center,
                         ),
-                      ],
-                      if (elapsedSeconds != null) ...[
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              CupertinoIcons.timer,
-                              color: resolvedTextColor.withValues(alpha: 0.9),
-                              size: 18,
+                        if (subtitle != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            subtitle!,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: resolvedTextColor.withValues(alpha: 0.85),
                             ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _formatTime(elapsedSeconds!),
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                color: resolvedTextColor,
-                                fontFeatures: const [
-                                  FontFeature.tabularFigures(),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      if (currentProcess != null && currentProcess!.isNotEmpty) ...[
-                        const SizedBox(height: 18),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
+                            textAlign: TextAlign.center,
                           ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.12),
-                            ),
-                          ),
-                          child: Row(
+                        ],
+                        if (elapsedSeconds != null) ...[
+                          const SizedBox(height: 16),
+                          Row(
                             mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CupertinoActivityIndicator(
-                                  radius: 8,
-                                  color: resolvedTextColor,
-                                ),
+                              Icon(
+                                CupertinoIcons.timer,
+                                color: resolvedTextColor.withValues(alpha: 0.9),
+                                size: 18,
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  currentProcess!,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: resolvedTextColor,
-                                  ),
-                                  textAlign: TextAlign.center,
+                              const SizedBox(width: 8),
+                              Text(
+                                _formatTime(elapsedSeconds!),
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  color: resolvedTextColor,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
-                        ),
+                        ],
+                        if (currentProcess != null &&
+                            currentProcess!.isNotEmpty) ...[
+                          const SizedBox(height: 18),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.12),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CupertinoActivityIndicator(
+                                    radius: 8,
+                                    color: resolvedTextColor,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    currentProcess!,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: resolvedTextColor,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                       if (hint != null && hint!.isNotEmpty) ...[
                         const SizedBox(height: 20),
