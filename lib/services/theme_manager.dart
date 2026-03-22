@@ -23,6 +23,7 @@ class ThemeManager {
   
   // Loading state
   bool _isLoading = false;
+  Future<List<ThemeModel>>? _ongoingFetch;
   
   // Error state
   String? _errorMessage;
@@ -63,15 +64,21 @@ class ThemeManager {
       return List.unmodifiable(_cachedThemes);
     }
 
-    // If already loading, wait for current request to complete
-    if (_isLoading) {
-      // Wait for loading to complete
-      while (_isLoading) {
-        await Future.delayed(const Duration(milliseconds: 100));
-      }
-      return List.unmodifiable(_cachedThemes);
+    // If a request is already in progress, reuse it instead of polling.
+    if (_ongoingFetch != null) {
+      return _ongoingFetch!;
     }
 
+    final fetchFuture = _fetchThemesInternal();
+    _ongoingFetch = fetchFuture;
+    try {
+      return await fetchFuture;
+    } finally {
+      _ongoingFetch = null;
+    }
+  }
+
+  Future<List<ThemeModel>> _fetchThemesInternal() async {
     _isLoading = true;
     _errorMessage = null;
     _notifyListeners();
@@ -88,7 +95,6 @@ class ThemeManager {
       _errorMessage = e.message;
       _isLoading = false;
       _notifyListeners();
-      // Return cached themes if available, even if there's an error
       if (_cachedThemes.isNotEmpty) {
         return List.unmodifiable(_cachedThemes);
       }
@@ -97,7 +103,6 @@ class ThemeManager {
       _errorMessage = 'Failed to fetch themes: $e';
       _isLoading = false;
       _notifyListeners();
-      // Return cached themes if available, even if there's an error
       if (_cachedThemes.isNotEmpty) {
         return List.unmodifiable(_cachedThemes);
       }

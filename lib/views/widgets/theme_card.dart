@@ -91,6 +91,9 @@ class ThemeCard extends StatelessWidget {
                     fit: BoxFit.cover,
                     width: double.infinity,
                     height: double.infinity,
+                    cacheWidth: 480,
+                    cacheHeight: 720,
+                    filterQuality: FilterQuality.medium,
                     placeholder: Container(
                       color: Colors.grey[200],
                       child: const Center(
