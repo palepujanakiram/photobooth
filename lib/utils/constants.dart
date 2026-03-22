@@ -53,6 +53,10 @@ class AppConstants {
   // Controls console logs and breadcrumb logs (Bugsnag)
   static const bool kEnableLogOutput = false;
 
+  /// Terms & Conditions page (WebView via [WebViewScreen]). Defaults to
+  /// [AppConfig.baseUrl]/terms; replace with any absolute URL if hosted elsewhere.
+  static const String kTermsAndConditionsUrl = '${AppConfig.baseUrl}/terms';
+
   // Routes
   static const String kRouteSlideshow = '/';
   static const String kRouteTerms = '/terms';
@@ -61,6 +65,8 @@ class AppConstants {
   static const String kRouteGenerate = '/generate';
   static const String kRouteReview = '/review';
   static const String kRouteResult = '/result';
+  /// Push [WebViewScreen] (full-screen, close button only; no app bar) using
+  /// `arguments`: a URL [String], or a [Map] with `url` ([String]).
   static const String kRouteWebView = '/webview';
 
   // Error Messages

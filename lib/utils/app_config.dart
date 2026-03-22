@@ -1,6 +1,7 @@
 /// Application Configuration
 ///
-/// This file contains all configurable URLs and links.
+/// This file contains configurable API base URL and related endpoints.
+/// In-app links (e.g. Terms URL) live in [AppConstants].
 /// Modify these values to change the app's endpoints without code changes.
 class AppConfig {
   // API Configuration
@@ -16,9 +17,4 @@ class AppConfig {
   /// NOTE: For web development, you MUST run Chrome with CORS disabled
   /// See QUICK_CORS_FIX.md or run: ./run_chrome_dev.sh
   static const String baseUrl = 'https://fotozenai.fly.dev';
-
-  // Links
-  /// Terms and Conditions page URL
-  static const String termsAndConditionsUrl =
-      'https://fotozenai.fly.dev/terms';
 }
