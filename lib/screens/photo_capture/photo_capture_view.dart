@@ -12,6 +12,7 @@ import 'photo_image_from_xfile_io.dart' if (dart.library.html) 'photo_image_from
 import '../../utils/constants.dart';
 import '../../utils/image_helper.dart';
 import '../../utils/device_classifier.dart';
+import '../../services/app_settings_manager.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/theme_background.dart';
@@ -793,24 +794,29 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
   /// Gallery and Capture buttons in a Row (pre-capture).
   Widget _buildGalleryCaptureButtonsRow(BuildContext context, CaptureViewModel viewModel) {
+    final isPhotoUploadAllowed = context.select<AppSettingsManager, bool>(
+      (settingsManager) => settingsManager.settings?.photoUploadAllowed == true,
+    );
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        ElevatedButton.icon(
-          style: _captureScreenButtonStyle(),
-          onPressed: (viewModel.isCapturing || viewModel.isSelectingFromGallery)
-              ? null
-              : () async => await viewModel.selectFromGallery(),
-          icon: viewModel.isSelectingFromGallery
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                )
-              : const Icon(CupertinoIcons.photo, size: 20),
-          label: const Text('Gallery'),
-        ),
-        const SizedBox(width: 12),
+        if (isPhotoUploadAllowed)
+          ElevatedButton.icon(
+            style: _captureScreenButtonStyle(),
+            onPressed: (viewModel.isCapturing || viewModel.isSelectingFromGallery)
+                ? null
+                : () async => await viewModel.selectFromGallery(),
+            icon: viewModel.isSelectingFromGallery
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  )
+                : const Icon(CupertinoIcons.photo, size: 20),
+            label: const Text('Gallery'),
+          ),
+        if (isPhotoUploadAllowed) const SizedBox(width: 12),
         ElevatedButton.icon(
           style: _captureScreenButtonStyle(),
           onPressed: (viewModel.isCapturing || viewModel.isSelectingFromGallery || viewModel.isCountingDown)

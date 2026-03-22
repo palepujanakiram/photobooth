@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/foundation.dart' show listEquals;
@@ -36,6 +37,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   ScrollController? _thumbScrollController;
   String? _prevCategoryId;
   bool _thumbScrollLayoutDone = false;
+  int _lastCarouselThemeCount = 0;
 
   void _startTimer() {
     _elapsedSeconds = 0;
@@ -69,6 +71,19 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   void _stopCarouselTimer() {
     _carouselTimer?.cancel();
     _carouselTimer = null;
+  }
+
+  void _syncCarouselTimer(ThemeViewModel viewModel) {
+    final count = viewModel.filteredThemes.length;
+    if (count <= 1) {
+      _lastCarouselThemeCount = count;
+      _stopCarouselTimer();
+      return;
+    }
+    if (_carouselTimer == null || _lastCarouselThemeCount != count) {
+      _lastCarouselThemeCount = count;
+      _startCarouselTimer(viewModel);
+    }
   }
 
   @override
@@ -366,6 +381,15 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                 fit: BoxFit.cover,
                 width: double.infinity,
                 height: double.infinity,
+                cacheWidth: math.max(
+                  640,
+                  (MediaQuery.sizeOf(context).width * 0.7).round(),
+                ),
+                cacheHeight: math.max(
+                  360,
+                  (MediaQuery.sizeOf(context).height * 0.7).round(),
+                ),
+                filterQuality: FilterQuality.low,
                 placeholder: const DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -524,8 +548,11 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   ) {
     final filtered = viewModel.filteredThemes;
     if (filtered.isEmpty) {
+      _stopCarouselTimer();
       return const Center(child: Text('No themes in this category'));
     }
+
+    _syncCarouselTimer(viewModel);
 
     _pageController ??= PageController(
       viewportFraction: 0.2,
@@ -541,8 +568,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         }
       });
     }
-
-    _startCarouselTimer(viewModel);
 
     return Column(
       children: [
@@ -903,6 +928,9 @@ class _ThemeThumbImage extends StatelessWidget {
       fit: BoxFit.cover,
       width: double.infinity,
       height: double.infinity,
+      cacheWidth: 140,
+      cacheHeight: 160,
+      filterQuality: FilterQuality.low,
       placeholder: const Center(
         child: CircularProgressIndicator(),
       ),
