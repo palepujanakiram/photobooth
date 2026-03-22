@@ -1,10 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' show Colors, Divider, Orientation, Scaffold;
 import 'package:provider/provider.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 import 'terms_and_conditions_viewmodel.dart';
 import '../../utils/constants.dart';
-import '../../utils/app_config.dart';
+import '../webview/webview_screen.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/app_colors.dart';
@@ -52,11 +51,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   void _openFullTerms() {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (context) => const _TermsWebViewSheet(
-        url: AppConfig.termsAndConditionsUrl,
-      ),
+    showWebViewUrlSheet(
+      context,
+      url: AppConstants.kTermsAndConditionsUrl,
     );
   }
 
@@ -365,201 +362,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                 ),
               ),
       ),
-    );
-  }
-}
-
-/// Modal sheet that displays the full Terms & Conditions in a WebView
-class _TermsWebViewSheet extends StatefulWidget {
-  final String url;
-
-  const _TermsWebViewSheet({required this.url});
-
-  @override
-  State<_TermsWebViewSheet> createState() => _TermsWebViewSheetState();
-}
-
-class _TermsWebViewSheetState extends State<_TermsWebViewSheet> {
-  WebViewController? _controller;
-  bool _isLoading = true;
-  String? _errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeWebView();
-  }
-
-  void _initializeWebView() {
-    try {
-      final controller = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setNavigationDelegate(
-          NavigationDelegate(
-            onPageStarted: (String url) {
-              if (mounted) {
-                setState(() {
-                  _isLoading = true;
-                  _errorMessage = null;
-                });
-              }
-            },
-            onPageFinished: (String url) {
-              if (mounted) {
-                setState(() {
-                  _isLoading = false;
-                });
-              }
-            },
-            onWebResourceError: (WebResourceError error) {
-              if (mounted) {
-                setState(() {
-                  _isLoading = false;
-                  _errorMessage = 'Failed to load page: ${error.description}';
-                });
-              }
-            },
-          ),
-        );
-
-      setState(() {
-        _controller = controller;
-      });
-
-      // Load URL after a small delay to ensure platform is ready
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted && _controller != null) {
-          _controller!.loadRequest(Uri.parse(widget.url));
-        }
-      });
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = 'Failed to initialize WebView: $e';
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final appColors = AppColors.of(context);
-    final mediaQuery = MediaQuery.of(context);
-    final screenHeight = mediaQuery.size.height;
-    
-    return Container(
-      height: screenHeight * 0.9,
-      decoration: BoxDecoration(
-        color: appColors.backgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          // Handle bar
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: CupertinoColors.systemGrey3,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          
-          // Header with close button
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: appColors.textColor,
-                  ),
-                ),
-                CupertinoButton(
-                  padding: const EdgeInsets.all(8),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Icon(
-                    CupertinoIcons.xmark_circle_fill,
-                    color: CupertinoColors.systemGrey,
-                    size: 28,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          
-          // Divider
-          Divider(height: 1, color: appColors.dividerColor),
-          
-          // WebView content
-          Expanded(
-            child: _buildWebViewContent(appColors),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWebViewContent(AppColors appColors) {
-    if (_controller == null) {
-      return const Center(
-        child: CupertinoActivityIndicator(),
-      );
-    }
-
-    if (_errorMessage != null && !_isLoading) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                CupertinoIcons.exclamationmark_triangle,
-                size: 48,
-                color: CupertinoColors.systemRed,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                _errorMessage!,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: appColors.textColor,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              CupertinoButton(
-                color: CupertinoColors.systemBlue,
-                onPressed: () {
-                  setState(() {
-                    _errorMessage = null;
-                    _isLoading = true;
-                  });
-                  _controller?.reload();
-                },
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Stack(
-      children: [
-        WebViewWidget(controller: _controller!),
-        if (_isLoading)
-          const Center(
-            child: CupertinoActivityIndicator(),
-          ),
-      ],
     );
   }
 }

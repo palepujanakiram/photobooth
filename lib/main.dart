@@ -8,6 +8,7 @@ import 'package:flutter_alice/alice.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
 import 'screens/theme_slideshow/theme_slideshow_view.dart';
 import 'screens/terms_and_conditions/terms_and_conditions_view.dart';
+import 'screens/webview/webview_screen.dart';
 import 'screens/theme_selection/theme_selection_view.dart';
 import 'screens/photo_capture/photo_capture_view.dart';
 import 'screens/photo_generate/photo_generate_view.dart';
@@ -215,6 +216,9 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
           AppConstants.kRouteGenerate: (context) => const PhotoGenerateScreen(),
           AppConstants.kRouteReview: (context) => const PhotoReviewScreen(),
           AppConstants.kRouteResult: (context) => const ResultScreen(),
+          AppConstants.kRouteWebView: (context) => WebViewScreen.fromRouteSettings(
+                ModalRoute.of(context)?.settings,
+              ),
         },
       ),
     );
