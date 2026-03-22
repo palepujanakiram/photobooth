@@ -186,146 +186,128 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                     const AppBarAliceAction(),
                   ],
                 ),
-                body: SizedBox.expand(
-                  child: SafeArea(
-                    top: true,
-                    bottom: false,
-                    child: Builder(
-                    builder: (context) {
-                      final viewModel = Provider.of<CaptureViewModel>(context, listen: true);
-                      // "Detecting cameras…" full-screen state like fluttercamerabasic (loading gate)
-                      if (viewModel.isLoadingCameras) {
-                        return Stack(
-                          children: [
-                            const Positioned.fill(child: ThemeBackground(theme: null)),
-                            Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const CircularProgressIndicator(color: Colors.white),
-                                const SizedBox(height: 20),
-                                Text(
-                                  'Detecting cameras…',
-                                  style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 16),
-                                ),
-                              ],
-                            ),
-                            ),
-                          ],
-                        );
-                      }
-                      if (viewModel.isInitializing) {
-                        return const Stack(
-                          children: [
-                            Positioned.fill(child: ThemeBackground(theme: null)),
-                            Center(child: CircularProgressIndicator(color: Colors.white)),
-                          ],
-                        );
-                      }
-                      if (viewModel.availableCameras.isEmpty && !viewModel.hasError) {
-                        return const Stack(
-                          children: [
-                            Positioned.fill(child: ThemeBackground(theme: null)),
-                            Center(child: CircularProgressIndicator(color: Colors.white)),
-                          ],
-                        );
-                      }
-
-                      if (viewModel.hasError) {
-                        final appColors = AppColors.of(context);
-                        return Stack(
-                          children: [
-                            const Positioned.fill(child: ThemeBackground(theme: null)),
-                            Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    CupertinoIcons.exclamationmark_triangle,
-                                    size: 64,
-                                    color: appColors.errorColor,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    viewModel.errorMessage ?? 'Unknown error',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.white,
+                body: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    const Positioned.fill(
+                      child: ThemeBackground(theme: null),
+                    ),
+                    SafeArea(
+                      top: false,
+                      bottom: false,
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          top: MediaQuery.paddingOf(context).top + kToolbarHeight,
+                        ),
+                        child: Builder(
+                          builder: (context) {
+                            final viewModel =
+                                Provider.of<CaptureViewModel>(context, listen: true);
+                            // "Detecting cameras…" full-screen state like fluttercamerabasic (loading gate)
+                            if (viewModel.isLoadingCameras) {
+                              return Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const CircularProgressIndicator(color: Colors.white),
+                                    const SizedBox(height: 20),
+                                    Text(
+                                      'Detecting cameras…',
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.9),
+                                        fontSize: 16,
+                                      ),
                                     ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                              const SizedBox(height: 24),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  TextButton(
-                                    onPressed: () => _resetAndInitializeCameras(forceRefresh: true),
-                                    child: const Text('Retry'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => openAppSettings(),
-                                    child: const Text('Open Settings'),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                            ),
-                          ],
-                        );
-                      }
+                                  ],
+                                ),
+                              );
+                            }
+                            if (viewModel.isInitializing) {
+                              return const Center(
+                                child: CircularProgressIndicator(color: Colors.white),
+                              );
+                            }
+                            if (viewModel.availableCameras.isEmpty && !viewModel.hasError) {
+                              return const Center(
+                                child: CircularProgressIndicator(color: Colors.white),
+                              );
+                            }
 
-                      if (!viewModel.isReady) {
-                        return const Stack(
-                          children: [
-                            Positioned.fill(child: ThemeBackground(theme: null)),
-                            Center(
-                              child: Text(
-                                'Camera not ready',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ),
-                          ],
-                        );
-                      }
+                            if (viewModel.hasError) {
+                              final appColors = AppColors.of(context);
+                              return Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      CupertinoIcons.exclamationmark_triangle,
+                                      size: 64,
+                                      color: appColors.errorColor,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      viewModel.errorMessage ?? 'Unknown error',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.white,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 24),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              _resetAndInitializeCameras(forceRefresh: true),
+                                          child: const Text('Retry'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () => openAppSettings(),
+                                          child: const Text('Open Settings'),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
 
-                      final Widget previewWidget = _buildCameraPreviewWithRotation(context, viewModel);
-                      final hasCapturedPhoto = viewModel.capturedPhoto != null;
+                            if (!viewModel.isReady) {
+                              return const Center(
+                                child: Text(
+                                  'Camera not ready',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              );
+                            }
 
-                      return Stack(
-                        children: [
-                          const Positioned.fill(
-                            child: ThemeBackground(theme: null),
-                          ),
-                          SafeArea(
-                            top: true,
-                            bottom: false,
-                            child: Padding(
-                              padding: const EdgeInsets.only(
-                                left: 12,
-                                right: 12,
-                              ),
+                            final Widget previewWidget =
+                                _buildCameraPreviewWithRotation(context, viewModel);
+                            final hasCapturedPhoto = viewModel.capturedPhoto != null;
+
+                            return Padding(
+                              padding: const EdgeInsets.only(left: 12, right: 12),
                               child: _buildCaptureColumn(
                                 context: context,
                                 viewModel: viewModel,
                                 hasCapturedPhoto: hasCapturedPhoto,
                                 previewWidget: previewWidget,
                               ),
-                            ),
-                          ),
-                          if (viewModel.isUploading)
-                            Positioned.fill(
-                              child: FullScreenLoader(
-                                text: 'Processing Your Photo',
-                                loaderColor: Colors.blue,
-                                elapsedSeconds: viewModel.uploadElapsedSeconds,
-                              ),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                    if (viewModel.isUploading)
+                      Positioned.fill(
+                        child: FullScreenLoader(
+                          text: 'Processing Your Photo',
+                          loaderColor: Colors.blue,
+                          elapsedSeconds: viewModel.uploadElapsedSeconds,
+                        ),
+                      ),
+                  ],
                 ),
               );
         },
@@ -405,7 +387,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           builder: (context, constraints) {
                             final photo = viewModel.capturedPhoto!;
                             return Container(
-                              color: Colors.black,
+                              color: Colors.transparent,
                               width: constraints.maxWidth,
                               height: constraints.maxHeight,
                               child: photo_image.imageFromXFileSized(
