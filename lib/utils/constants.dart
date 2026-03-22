@@ -10,6 +10,11 @@ class AppConstants {
   // Timeout for AI generation (same as general timeout)
   static const Duration kAiGenerationTimeout = Duration(seconds: 300);
 
+  /// `count` for GET `/api/generate-stream-parallel`. Use **1** when each UI action
+  /// should produce a single image; use **3** (or more) only if the screen offers
+  /// multiple parallel style options in one request.
+  static const int kAiParallelGenerationCount = 1;
+
   // Image Configuration
   static const int kImageQuality = 85;
   static const int kMaxImageWidth = 1920;

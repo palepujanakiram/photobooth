@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:uuid/uuid.dart';
 import '../models/app_settings_model.dart';
+import '../models/parallel_generation_result.dart';
 import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/exceptions.dart';
@@ -736,6 +738,153 @@ class ApiService {
     throw ApiException('Failed to generate image after retries');
   }
 
+  /// Parallel AI generation via GET `/api/generate-stream-parallel` (SSE).
+  ///
+  /// See product doc: "Parallel Generation with SSE". Uses [sessionId] and [count];
+  /// [originalPhotoId] and [themeId] are accepted for parity with [generateImage] (logging only).
+  ///
+  /// The legacy [generateImage] (POST `/api/generate-image`) remains available if needed later.
+  Future<ParallelGenerationResult> generateImageParallelStream({
+    required String sessionId,
+    int count = AppConstants.kAiParallelGenerationCount,
+    required String originalPhotoId,
+    required String themeId,
+    void Function(String message)? onProgress,
+  }) async {
+    AppLogger.debug(
+        '📡 Parallel SSE generation session=$sessionId photo=$originalPhotoId theme=$themeId count=$count');
+
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: AppConstants.kBaseUrl,
+        connectTimeout: AppConstants.kApiTimeout,
+        receiveTimeout: AppConstants.kAiGenerationTimeout,
+        headers: {
+          'Accept': 'text/event-stream',
+          'Authorization':
+              'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
+        },
+      ),
+    );
+
+    configureDioForWeb(dio);
+
+    if (kDebugMode == true) {
+      dio.interceptors.add(ApiLoggingInterceptor());
+      final alice = AliceInspector.instance;
+      if (alice != null) {
+        dio.interceptors.add(alice.getDioInterceptor());
+      }
+    }
+
+    final slots = List<String>.filled(count, '');
+    final qualityByIndex = <int, double>{};
+    final completer = Completer<ParallelGenerationResult>();
+
+    try {
+      final response = await dio.get(
+        '/api/generate-stream-parallel',
+        queryParameters: {
+          'sessionId': sessionId,
+          'count': count,
+        },
+        options: Options(
+          responseType: ResponseType.stream,
+        ),
+      );
+
+      final body = response.data;
+      if (body is! ResponseBody) {
+        throw ApiException('Unexpected response for parallel generation stream');
+      }
+
+      var buffer = '';
+      try {
+        await for (final chunk in utf8.decoder.bind(body.stream)) {
+          buffer += chunk;
+          while (true) {
+            final sep = buffer.indexOf('\n\n');
+            if (sep < 0) break;
+            var block = buffer.substring(0, sep);
+            buffer = buffer.substring(sep + 2);
+            if (block.endsWith('\r')) {
+              block = block.substring(0, block.length - 1);
+            }
+            _dispatchParallelSseBlock(
+              block,
+              slots: slots,
+              qualityByIndex: qualityByIndex,
+              completer: completer,
+              onProgress: onProgress,
+            );
+            if (completer.isCompleted) {
+              return await completer.future;
+            }
+          }
+        }
+        if (buffer.trim().isNotEmpty) {
+          _dispatchParallelSseBlock(
+            buffer,
+            slots: slots,
+            qualityByIndex: qualityByIndex,
+            completer: completer,
+            onProgress: onProgress,
+          );
+        }
+      } catch (e) {
+        if (!completer.isCompleted) {
+          completer.completeError(
+            ApiException('Parallel generation stream failed: $e'),
+          );
+        }
+      }
+
+      if (!completer.isCompleted) {
+        if (slots.any((u) => u.isNotEmpty)) {
+          completer.complete(
+            ParallelGenerationResult(
+              imageUrlsBySlot: List<String>.from(slots),
+              success: true,
+              qualityScoreByIndex: Map<int, double>.from(qualityByIndex),
+            ),
+          );
+        } else {
+          completer.completeError(
+            ApiException('Generation ended without any image'),
+          );
+        }
+      }
+
+      return await completer.future;
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
+
+      String errorMessage = AppConstants.kErrorApiCall;
+      if (e.response != null) {
+        final responseData = e.response?.data;
+        if (responseData is Map<String, dynamic>) {
+          errorMessage = responseData['error'] as String? ??
+              responseData['message'] as String? ??
+              'API Error: ${e.response?.statusCode}';
+        } else if (responseData is String) {
+          errorMessage = responseData;
+        } else {
+          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
+        }
+      } else {
+        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
+      }
+
+      throw ApiException(errorMessage, e.response?.statusCode);
+    }
+  }
+
   Future<XFile> downloadImageToTemp(
     String imageUrl, {
     void Function(String message)? onProgress,
@@ -818,5 +967,107 @@ class ApiService {
       // Silently ignore errors - this is a background optimization
       AppLogger.debug('⚠️ Preprocess image failed (non-critical): $error');
     });
+  }
+}
+
+void _dispatchParallelSseBlock(
+  String block, {
+  required List<String> slots,
+  required Map<int, double> qualityByIndex,
+  required Completer<ParallelGenerationResult> completer,
+  void Function(String message)? onProgress,
+}) {
+  String? eventType;
+  final dataParts = <String>[];
+  for (final rawLine in block.split('\n')) {
+    final line = rawLine.trimRight();
+    if (line.isEmpty) continue;
+    if (line.startsWith('event:')) {
+      eventType = line.substring(6).trim();
+    } else if (line.startsWith('data:')) {
+      dataParts.add(line.substring(5).trimLeft());
+    }
+  }
+  if (dataParts.isEmpty) return;
+
+  final payload = dataParts.join('\n');
+  final Map<String, dynamic> json;
+  try {
+    json = jsonDecode(payload) as Map<String, dynamic>;
+  } catch (_) {
+    return;
+  }
+
+  switch (eventType) {
+    case 'start':
+      final total = json['total'];
+      onProgress?.call(
+        total != null
+            ? 'Starting parallel generation ($total options)...'
+            : 'Starting parallel generation...',
+      );
+      break;
+    case 'image_complete':
+      final idx = json['index'] as int?;
+      final url = json['imageUrl'] as String?;
+      final q = json['qualityScore'];
+      if (idx != null &&
+          idx >= 0 &&
+          idx < slots.length &&
+          url != null &&
+          url.isNotEmpty) {
+        slots[idx] = url;
+        if (q is num) {
+          qualityByIndex[idx] = q.toDouble();
+        }
+        final c = json['completed'];
+        final t = json['total'];
+        if (c != null && t != null) {
+          onProgress?.call('Option $c of $t ready...');
+        } else {
+          onProgress?.call('An option finished...');
+        }
+      }
+      break;
+    case 'image_failed':
+      onProgress?.call('One option failed, continuing...');
+      break;
+    case 'complete':
+      final urls = json['imageUrls'];
+      if (urls is List) {
+        for (var i = 0; i < urls.length && i < slots.length; i++) {
+          final u = urls[i];
+          if (u is String && u.isNotEmpty) {
+            slots[i] = u;
+          }
+        }
+      }
+      final timing = json['timing'] as Map<String, dynamic>?;
+      int? totalMs;
+      final rawMs = timing?['totalMs'];
+      if (rawMs is int) {
+        totalMs = rawMs;
+      } else if (rawMs is num) {
+        totalMs = rawMs.toInt();
+      }
+      if (!completer.isCompleted) {
+        completer.complete(
+          ParallelGenerationResult(
+            imageUrlsBySlot: List<String>.from(slots),
+            success: json['success'] == true,
+            timingTotalMs: totalMs,
+            qualityScoreByIndex: Map<int, double>.from(qualityByIndex),
+          ),
+        );
+      }
+      break;
+    case 'error':
+      final msg = json['error'] as String? ?? 'Generation failed';
+      if (!completer.isCompleted) {
+        completer.completeError(ApiException(msg));
+      }
+      break;
+    default:
+      break;
   }
 }
