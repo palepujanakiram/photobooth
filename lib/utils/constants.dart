@@ -15,6 +15,13 @@ class AppConstants {
   /// multiple parallel style options in one request.
   static const int kAiParallelGenerationCount = 1;
 
+  /// Fallback when `/api/settings` omits `initialPrice` / `additionalPrintPrice`.
+  static const int kDefaultInitialPrintPrice = 100;
+  static const int kDefaultAdditionalPrintPrice = 50;
+
+  /// Fallback when `/api/settings` omits `printerHost`.
+  static const String kDefaultPrinterHost = '192.168.2.108';
+
   // Image Configuration
   static const int kImageQuality = 85;
   static const int kMaxImageWidth = 1920;
@@ -24,6 +31,19 @@ class AppConstants {
   static const double kButtonHeight = 48.0;
   static const double kTabletBreakpoint = 600.0;
   static const double kTouchTargetSize = 48.0;
+
+  /// Width : height for the centered (selected) theme card in the theme carousel.
+  /// Keep in sync with `isCenter ? 3 / 4.5` in [ThemeSelectionScreen] carousel.
+  static const double kThemeSelectedCardAspectRatio = 3 / 4.5;
+
+  /// [PageController.viewportFraction] on theme selection; each page is this wide relative to screen.
+  static const double kThemeCarouselViewportFraction = 0.2;
+
+  /// Peak scale of the centered card in the theme carousel 3D transform (clamped in carousel).
+  static const double kThemeCarouselCenterMaxScale = 1.15;
+
+  /// On Generate Photo, generated-image cards scale to this factor when toggled (tap again restores 1.0).
+  static const double kGeneratePhotoZoomedScale = 1.3;
   static const String kContinueButtonText = 'Continue';
 
   /// When true, shows an overlay above Cancel/Continue with photo metadata (size, format).

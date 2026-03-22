@@ -167,10 +167,11 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
       if (parallel.firstImageUrl != null) {
         var isFirstInBatch = true;
+        final newImages = <GeneratedImage>[];
         for (var i = 0; i < parallel.imageUrlsBySlot.length; i++) {
           final url = parallel.imageUrlsBySlot[i];
           if (url.isEmpty) continue;
-          _generatedImages.add(GeneratedImage(
+          newImages.add(GeneratedImage(
             id: '${DateTime.now().millisecondsSinceEpoch}_$i',
             imageUrl: url,
             theme: _selectedTheme!,
@@ -178,6 +179,8 @@ class PhotoGenerateViewModel extends ChangeNotifier {
           ));
           isFirstInBatch = false;
         }
+        // Newest generations first (stack order: latest left / first in list).
+        _generatedImages = [...newImages, ..._generatedImages];
         _triesRemaining--;
         
         AppLogger.debug('✅ Image generated successfully');
@@ -282,16 +285,18 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       _stopTimer();
 
       if (parallel.firstImageUrl != null) {
+        final newImages = <GeneratedImage>[];
         for (var i = 0; i < parallel.imageUrlsBySlot.length; i++) {
           final url = parallel.imageUrlsBySlot[i];
           if (url.isEmpty) continue;
-          _generatedImages.add(GeneratedImage(
+          newImages.add(GeneratedImage(
             id: '${DateTime.now().millisecondsSinceEpoch}_$i',
             imageUrl: url,
             theme: newTheme,
             isSelected: true,
           ));
         }
+        _generatedImages = [...newImages, ..._generatedImages];
         _triesRemaining--;
         
         return true;

@@ -4,9 +4,11 @@ import 'package:flutter/foundation.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../photo_capture/photo_model.dart';
 import '../../services/api_service.dart';
+import '../../services/app_settings_manager.dart';
 import '../../services/print_service.dart';
 import '../../services/session_manager.dart';
 import '../../services/share_service.dart';
+import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 
 class ResultViewModel extends ChangeNotifier {
@@ -16,10 +18,11 @@ class ResultViewModel extends ChangeNotifier {
   final ShareService _shareService;
   final ApiService _apiService;
   final SessionManager _sessionManager;
-  
+  final AppSettingsManager? _appSettingsManager;
+
   final bool _isProcessing = false;
   String? _errorMessage;
-  String _printerIp = '192.168.2.108'; // Default printer IP
+  String _printerHost;
   
   // Print/Share state
   bool _isSilentPrinting = false;
@@ -41,19 +44,47 @@ class ResultViewModel extends ChangeNotifier {
     ShareService? shareService,
     ApiService? apiService,
     SessionManager? sessionManager,
+    AppSettingsManager? appSettingsManager,
   })  : _generatedImages = generatedImages,
         _originalPhoto = originalPhoto,
         _printService = printService ?? PrintService(),
         _shareService = shareService ?? ShareService(),
         _apiService = apiService ?? ApiService(),
-        _sessionManager = sessionManager ?? SessionManager();
+        _sessionManager = sessionManager ?? SessionManager(),
+        _appSettingsManager = appSettingsManager,
+        _printerHost = _defaultPrinterHost(appSettingsManager);
 
   List<GeneratedImage> get generatedImages => _generatedImages;
   PhotoModel? get originalPhoto => _originalPhoto;
   bool get isProcessing => _isProcessing;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
-  String get printerIp => _printerIp;
+  String get printerHost => _printerHost;
+
+  static String _defaultPrinterHost(AppSettingsManager? manager) {
+    final fromApi = manager?.settings?.printerHost?.trim();
+    if (fromApi != null && fromApi.isNotEmpty) {
+      return fromApi;
+    }
+    return AppConstants.kDefaultPrinterHost;
+  }
+
+  /// Port from `/api/settings` when valid; otherwise HTTP default (80).
+  int get effectivePrinterPort {
+    final p = _appSettingsManager?.settings?.printerPort;
+    if (p != null && p > 0 && p <= 65535) {
+      return p;
+    }
+    return 80;
+  }
+
+  int get initialPrintPrice =>
+      _appSettingsManager?.settings?.initialPrice ??
+      AppConstants.kDefaultInitialPrintPrice;
+
+  int get additionalPrintPrice =>
+      _appSettingsManager?.settings?.additionalPrintPrice ??
+      AppConstants.kDefaultAdditionalPrintPrice;
   
   bool get isSilentPrinting => _isSilentPrinting;
   bool get isDialogPrinting => _isDialogPrinting;
@@ -69,15 +100,18 @@ class ResultViewModel extends ChangeNotifier {
 
   /// Get total price based on number of photos
   int get totalPrice {
-    const basePrice = 100;
-    const additionalPrice = 50;
     if (_generatedImages.isEmpty) return 0;
-    return basePrice + (_generatedImages.length > 1 ? (_generatedImages.length - 1) * additionalPrice : 0);
+    final basePrice = initialPrintPrice;
+    final additionalPrice = additionalPrintPrice;
+    return basePrice +
+        (_generatedImages.length > 1
+            ? (_generatedImages.length - 1) * additionalPrice
+            : 0);
   }
 
-  /// Updates the printer IP address
-  void setPrinterIp(String ip) {
-    _printerIp = ip.trim();
+  /// Updates the printer host (hostname or IP) shown in the print options field.
+  void setPrinterHost(String host) {
+    _printerHost = host.trim();
     notifyListeners();
   }
 
@@ -146,8 +180,8 @@ class ResultViewModel extends ChangeNotifier {
 
   /// Silent print all images to network printer
   Future<void> silentPrintToNetwork() async {
-    if (_printerIp.isEmpty) {
-      _errorMessage = 'Please enter a printer IP address';
+    if (_printerHost.isEmpty) {
+      _errorMessage = 'Please enter a printer address';
       notifyListeners();
       return;
     }
@@ -167,7 +201,8 @@ class ResultViewModel extends ChangeNotifier {
       for (int i = 0; i < files.length; i++) {
         await _printService.printImageToNetworkPrinter(
           files[i],
-          printerIp: _printerIp,
+          printerHost: _printerHost,
+          printerPort: effectivePrinterPort,
         );
       }
     } on PrintException catch (e) {
