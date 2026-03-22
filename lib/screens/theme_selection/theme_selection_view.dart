@@ -555,7 +555,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     _syncCarouselTimer(viewModel);
 
     _pageController ??= PageController(
-      viewportFraction: 0.2,
+      viewportFraction: AppConstants.kThemeCarouselViewportFraction,
       initialPage: viewModel.carouselIndex.clamp(0, filtered.length - 1),
     );
 
@@ -602,7 +602,9 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                     ..setEntry(3, 2, perspective)
                     ..rotateY(angleY)
                     ..scaleByDouble(scale, scale, 1.0, 1.0);
-                  final aspectRatio = isCenter ? 3 / 4.5 : 3 / 4;
+                  final aspectRatio = isCenter
+                      ? AppConstants.kThemeSelectedCardAspectRatio
+                      : 3 / 4;
                   return Opacity(
                     opacity: opacity,
                     child: Transform(

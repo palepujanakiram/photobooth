@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'result_viewmodel.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../photo_capture/photo_model.dart';
+import '../../services/app_settings_manager.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../views/widgets/app_colors.dart';
@@ -21,12 +22,12 @@ class ResultScreen extends StatefulWidget {
 class _ResultScreenState extends State<ResultScreen> {
   ResultViewModel? _viewModel;
   bool _isInitialized = false;
-  late TextEditingController _printerIpController;
+  late TextEditingController _printerHostController;
 
   @override
   void initState() {
     super.initState();
-    _printerIpController = TextEditingController();
+    _printerHostController = TextEditingController();
   }
 
   @override
@@ -47,14 +48,15 @@ class _ResultScreenState extends State<ResultScreen> {
     _viewModel = ResultViewModel(
       generatedImages: generatedImages,
       originalPhoto: originalPhoto,
+      appSettingsManager: context.read<AppSettingsManager>(),
     );
-    _printerIpController.text = _viewModel!.printerIp;
+    _printerHostController.text = _viewModel!.printerHost;
     _isInitialized = true;
   }
 
   @override
   void dispose() {
-    _printerIpController.dispose();
+    _printerHostController.dispose();
     _viewModel?.dispose();
     super.dispose();
   }
@@ -72,8 +74,8 @@ class _ResultScreenState extends State<ResultScreen> {
 
     return ChangeNotifierProvider.value(
       value: _viewModel!,
-      child: Consumer<ResultViewModel>(
-        builder: (context, viewModel, child) {
+      child: Consumer2<ResultViewModel, AppSettingsManager>(
+        builder: (context, viewModel, _, child) {
           return Scaffold(
             backgroundColor: Colors.transparent,
             extendBodyBehindAppBar: true,
@@ -420,9 +422,9 @@ class _ResultScreenState extends State<ResultScreen> {
 
   Widget _buildPaymentCard(BuildContext context, ResultViewModel viewModel, AppColors appColors) {
     final photoCount = viewModel.generatedImages.length;
-    const basePrice = 100;
-    const additionalPrice = 50;
-    final totalPrice = basePrice + (photoCount > 1 ? (photoCount - 1) * additionalPrice : 0);
+    final basePrice = viewModel.initialPrintPrice;
+    final additionalPrice = viewModel.additionalPrintPrice;
+    final totalPrice = viewModel.totalPrice;
     final breakdownText = photoCount > 1
         ? '$photoCount prints: Rs $basePrice + ${photoCount - 1} x Rs $additionalPrice'
         : '1 print: Rs $basePrice';
@@ -628,7 +630,7 @@ class _ResultScreenState extends State<ResultScreen> {
           Row(
             children: [
               const Text(
-                'Printer IP:',
+                'Printer:',
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.white,
@@ -637,10 +639,10 @@ class _ResultScreenState extends State<ResultScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: TextField(
-                  controller: _printerIpController,
-                  onChanged: (value) => viewModel.setPrinterIp(value),
+                  controller: _printerHostController,
+                  onChanged: (value) => viewModel.setPrinterHost(value),
                   decoration: InputDecoration(
-                    hintText: '192.168.2.108',
+                    hintText: AppConstants.kDefaultPrinterHost,
                     hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
                     filled: true,
                     fillColor: Colors.white.withValues(alpha: 0.15),
@@ -657,13 +659,21 @@ class _ResultScreenState extends State<ResultScreen> {
                     color: Colors.white,
                     fontSize: 14,
                   ),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: TextInputType.url,
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 6),
+          Text(
+            'Print API port: ${viewModel.effectivePrinterPort}',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.white.withValues(alpha: 0.65),
+            ),
+          ),
           const SizedBox(height: 16),
-          
+
           // Silent Print button
           SizedBox(
             width: double.infinity,

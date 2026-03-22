@@ -13,6 +13,22 @@ import 'printer_api_client.dart';
 import 'file_helper.dart';
 import 'error_reporting/error_reporting_manager.dart';
 
+Uri _printerHttpBaseUri(String host, int port) {
+  final h = host.trim();
+  if (h.isEmpty) {
+    throw ArgumentError('Printer host is required');
+  }
+  var p = port <= 0 ? 80 : port;
+  if (p > 65535) {
+    p = 80;
+  }
+  return Uri(
+    scheme: 'http',
+    host: h,
+    port: p == 80 ? null : p,
+  );
+}
+
 class PrintService {
   /// Prints an image file using the system print dialog
   /// Works with XFile on all platforms (iOS, Android, Web)
@@ -87,22 +103,25 @@ class PrintService {
   /// Prints an image file to a network printer via HTTP API (silent print)
   /// Works with XFile on all platforms (iOS, Android, Web)
   /// Handles both local files and HTTP/HTTPS URLs
-  Future<void> printImageToNetworkPrinter(XFile imageFile, {required String printerIp}) async {
+  Future<void> printImageToNetworkPrinter(
+    XFile imageFile, {
+    required String printerHost,
+    int printerPort = 80,
+  }) async {
+    final baseUri = _printerHttpBaseUri(printerHost, printerPort);
+    final baseUrl = baseUri.origin;
+
     try {
-      AppLogger.debug('🖨️ Starting network print to $printerIp...');
-      ErrorReportingManager.log('🖨️ Network print initiated to $printerIp');
-      
+      AppLogger.debug('🖨️ Starting network print to $baseUrl...');
+      ErrorReportingManager.log('🖨️ Network print initiated to $baseUrl');
+
       await ErrorReportingManager.setCustomKeys({
         'print_method': 'network',
-        'printer_ip': printerIp,
+        'printer_host': printerHost.trim(),
+        'printer_port': printerPort.toString(),
+        'printer_base_url': baseUrl,
         'image_path': imageFile.path,
       });
-      
-      // Validate printer IP
-      if (printerIp.isEmpty) {
-        ErrorReportingManager.log('❌ Printer IP is empty');
-        throw PrintException('Printer IP address is required');
-      }
 
       // Get image bytes - handle both local files and URLs
       List<int> imageBytes;
@@ -151,7 +170,7 @@ class PrintService {
       // Create Dio instance for printer API
       final dio = Dio(
         BaseOptions(
-          baseUrl: 'http://$printerIp',
+          baseUrl: baseUrl,
           connectTimeout: const Duration(seconds: 10),
           receiveTimeout: const Duration(seconds: 10),
           headers: {
@@ -159,8 +178,8 @@ class PrintService {
             'Accept-Encoding': 'gzip, deflate',
             'Accept-Language': 'en-IN,en;q=0.9,te-IN;q=0.8,te;q=0.7,en-GB;q=0.6,en-US;q=0.5',
             'Connection': 'keep-alive',
-            'Origin': 'http://$printerIp',
-            'Referer': 'http://$printerIp/print',
+            'Origin': baseUrl,
+            'Referer': '$baseUrl/print',
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
           },
         ),
@@ -178,7 +197,7 @@ class PrintService {
       }
 
       // Create Retrofit client for printer API
-      final printerClient = PrinterApiClient(dio, baseUrl: 'http://$printerIp', errorLogger: null);
+      final printerClient = PrinterApiClient(dio, baseUrl: baseUrl, errorLogger: null);
 
       // Save image bytes to temp file for Retrofit (which expects File type)
       // On web, we'll use a workaround
@@ -197,7 +216,7 @@ class PrintService {
           'DeviceId': 'flutter-photobooth-web',
         });
 
-        AppLogger.debug('🖨️ Sending print request to http://$printerIp/api/PrintImage');
+        AppLogger.debug('🖨️ Sending print request to $baseUrl/api/PrintImage');
 
         await dio.post(
           '/api/PrintImage',
@@ -216,7 +235,7 @@ class PrintService {
         tempFile = FileHelper.createFile(filePath);
         await (tempFile as dynamic).writeAsBytes(imageBytes);
 
-        AppLogger.debug('🖨️ Sending print request to http://$printerIp/api/PrintImage');
+        AppLogger.debug('🖨️ Sending print request to $baseUrl/api/PrintImage');
 
         try {
           // Use Retrofit to make the print request
@@ -244,10 +263,12 @@ class PrintService {
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout) {
         errorType = 'timeout';
-        errorMessage = 'Connection to printer timed out. Please check the printer IP address.';
+        errorMessage =
+            'Connection to printer timed out. Please check the printer address and port.';
       } else if (e.type == DioExceptionType.connectionError) {
         errorType = 'connection_error';
-        errorMessage = 'Cannot connect to printer at $printerIp. Please check the IP address and network connection.';
+        errorMessage =
+            'Cannot connect to printer at $baseUrl. Please check the address, port, and network connection.';
       } else if (e.response != null) {
         errorType = 'http_error';
         errorMessage = 'Print request failed: ${e.response?.statusCode}';
@@ -269,7 +290,7 @@ class PrintService {
         extraInfo: {
           'error_type': errorType,
           'error_message': errorMessage,
-          'printer_ip': printerIp,
+          'printer_base_url': baseUrl,
           'dio_error_type': e.type.toString(),
           'status_code': e.response?.statusCode?.toString() ?? 'none',
           'response_data': e.response?.data?.toString() ?? 'none',
@@ -291,7 +312,7 @@ class PrintService {
         reason: 'Unexpected print error',
         extraInfo: {
           'error': e.toString(),
-          'printer_ip': printerIp,
+          'printer_base_url': baseUrl,
           'image_path': imageFile.path,
         },
       );
