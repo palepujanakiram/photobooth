@@ -30,6 +30,10 @@ class AppConstants {
   /// When true, shows the Print & Share Options section (Printer IP, Silent Print, Print, Share) on Complete Payment / Result screen.
   static const bool kShowResultPrintSection = false;
 
+  /// When true, full-screen loaders show status text, elapsed timer, subtitle, and current-process line.
+  /// When false, only the spinner (and any optional loader hint) are shown so the panel height follows content.
+  static const bool kshowDebugInfo = false;
+
   /// SharedPreferences key for camera preview rotation (0, 90, 180, 270 degrees).
   static const String kCameraPreviewRotationKey = 'camera_preview_rotation_degrees';
 

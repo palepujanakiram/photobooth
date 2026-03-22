@@ -121,12 +121,13 @@ class _WebViewScreenState extends State<WebViewScreen> {
               child: Padding(
                 padding: const EdgeInsets.only(top: 4, right: 4),
                 child: CupertinoButton(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(12),
+                  minimumSize: const Size(48, 48),
                   onPressed: () => Navigator.of(context).maybePop(),
                   child: const Icon(
                     CupertinoIcons.xmark_circle_fill,
                     color: CupertinoColors.systemGrey,
-                    size: 28,
+                    size: 40,
                   ),
                 ),
               ),
@@ -220,7 +221,8 @@ class _WebViewSheetTopChrome extends StatefulWidget {
 class _WebViewSheetTopChromeState extends State<_WebViewSheetTopChrome> {
   double _dragDown = 0;
 
-  static const double _kCloseSlot = 56;
+  /// Matches [WebViewScreen] close control (padding + minimumSize + icon).
+  static const double _kCloseSlot = 80;
   static const double _kStripHeight = 52;
   static const double _kDismissDistance = 56;
   static const double _kDismissVelocity = 400;
