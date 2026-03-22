@@ -4,6 +4,7 @@ import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../photo_capture/photo_model.dart';
 import '../theme_selection/theme_model.dart';
+import '../../utils/constants.dart';
 import '../../utils/logger.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 
@@ -47,7 +48,6 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   bool _isLoadingMore = false;
   String? _errorMessage;
   int _triesRemaining = 3; // Allow 3 tries total (initial + 2 more)
-  int _currentAttempt = 1; // Track attempt number for API
   
   // Timer for generation progress
   Timer? _timer;
@@ -143,17 +143,20 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       
       _updateProgress('Transforming your look...');
       
-      // Call the API to generate the image (120s timeout so UI cannot hang)
+      // Parallel SSE generation (GET /api/generate-stream-parallel); legacy POST
+      // /api/generate-image remains on [ApiService.generateImage] if needed later.
       const generateTimeout = Duration(seconds: 120);
-      final result = await _apiService.generateImage(
+      final parallel = await _apiService
+          .generateImageParallelStream(
         sessionId: _sessionManager.sessionId!,
-        attempt: _currentAttempt,
+        count: AppConstants.kAiParallelGenerationCount,
         originalPhotoId: _originalPhoto!.id,
         themeId: _selectedTheme!.id,
         onProgress: (message) {
           _updateProgress(message);
         },
-      ).timeout(
+      )
+          .timeout(
         generateTimeout,
         onTimeout: () => throw TimeoutException(
           'Generation timed out after ${generateTimeout.inSeconds} seconds',
@@ -162,18 +165,20 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
       _stopTimer();
 
-      if (result.imageUrl.isNotEmpty) {
-        // Add to generated images list
-        final generatedImage = GeneratedImage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          imageUrl: result.imageUrl,
-          theme: _selectedTheme!,
-          isSelected: _generatedImages.isEmpty, // Select first one by default
-        );
-        
-        _generatedImages.add(generatedImage);
+      if (parallel.firstImageUrl != null) {
+        var isFirstInBatch = true;
+        for (var i = 0; i < parallel.imageUrlsBySlot.length; i++) {
+          final url = parallel.imageUrlsBySlot[i];
+          if (url.isEmpty) continue;
+          _generatedImages.add(GeneratedImage(
+            id: '${DateTime.now().millisecondsSinceEpoch}_$i',
+            imageUrl: url,
+            theme: _selectedTheme!,
+            isSelected: _generatedImages.isEmpty && isFirstInBatch,
+          ));
+          isFirstInBatch = false;
+        }
         _triesRemaining--;
-        _currentAttempt++;
         
         AppLogger.debug('✅ Image generated successfully');
         ErrorReportingManager.log('Image generated successfully');
@@ -256,17 +261,18 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       
       _updateProgress('Transforming your look...');
       
-      // Generate new image (120s timeout)
       const generateTimeout = Duration(seconds: 120);
-      final result = await _apiService.generateImage(
+      final parallel = await _apiService
+          .generateImageParallelStream(
         sessionId: _sessionManager.sessionId!,
-        attempt: 1, // Always use 1 for new theme
+        count: AppConstants.kAiParallelGenerationCount,
         originalPhotoId: _originalPhoto!.id,
         themeId: newTheme.id,
         onProgress: (message) {
           _updateProgress(message);
         },
-      ).timeout(
+      )
+          .timeout(
         generateTimeout,
         onTimeout: () => throw TimeoutException(
           'Generation timed out after ${generateTimeout.inSeconds} seconds',
@@ -275,17 +281,18 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
       _stopTimer();
 
-      if (result.imageUrl.isNotEmpty) {
-        final generatedImage = GeneratedImage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          imageUrl: result.imageUrl,
-          theme: newTheme,
-          isSelected: true, // Auto-select new theme images
-        );
-        
-        _generatedImages.add(generatedImage);
+      if (parallel.firstImageUrl != null) {
+        for (var i = 0; i < parallel.imageUrlsBySlot.length; i++) {
+          final url = parallel.imageUrlsBySlot[i];
+          if (url.isEmpty) continue;
+          _generatedImages.add(GeneratedImage(
+            id: '${DateTime.now().millisecondsSinceEpoch}_$i',
+            imageUrl: url,
+            theme: newTheme,
+            isSelected: true,
+          ));
+        }
         _triesRemaining--;
-        // Don't increment _currentAttempt here since we use attempt=1 for each new theme
         
         return true;
       } else {
