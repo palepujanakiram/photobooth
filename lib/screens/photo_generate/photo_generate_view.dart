@@ -317,7 +317,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     }
 
     if (viewportHeight != null && viewportHeight > 0) {
-      final hasFooter = viewModel.generatedImages.isNotEmpty;
+      final hasFooter = viewModel.generatedImages.isNotEmpty ||
+          viewModel.isGenerating;
       final footerH = hasFooter ? _kGenerateFooterSlotHeight : 0.0;
 
       return Padding(
@@ -648,7 +649,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               ),
             ),
           ),
-          if (hasResult && !fixedFooterOutside) ...[
+          if ((hasResult || isGenerating) && !fixedFooterOutside) ...[
             const SizedBox(height: 24),
             _buildPhotosActionFooter(context, viewModel, appColors),
           ],

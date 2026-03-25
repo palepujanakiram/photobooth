@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
-import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:flutter/cupertino.dart'
+    show CupertinoButton, CupertinoColors, CupertinoIcons;
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -32,12 +33,16 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   bool _isGenerating = false;
   Timer? _timer;
   Timer? _carouselTimer;
+  Timer? _autoScrollResumeTimer;
   int _elapsedSeconds = 0;
   PageController? _pageController;
   ScrollController? _thumbScrollController;
   String? _prevCategoryId;
   bool _thumbScrollLayoutDone = false;
   int _lastCarouselThemeCount = 0;
+  bool _isAutoScrollPaused = false;
+  String? _armedThemeId;
+  String? _pendingArmThemeId;
 
   void _startTimer() {
     _elapsedSeconds = 0;
@@ -56,6 +61,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     _carouselTimer?.cancel();
     _carouselTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) {
       if (!mounted) return;
+      if (_isAutoScrollPaused) return;
       final list = viewModel.filteredThemes;
       if (list.isEmpty) return;
       final next = (viewModel.carouselIndex + 1) % list.length;
@@ -71,6 +77,37 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   void _stopCarouselTimer() {
     _carouselTimer?.cancel();
     _carouselTimer = null;
+  }
+
+  void _pauseAutoScrollTemporarily() {
+    _isAutoScrollPaused = true;
+    _autoScrollResumeTimer?.cancel();
+    _autoScrollResumeTimer = Timer(
+      AppConstants.kThemeCarouselAutoScrollPauseDuration,
+      () {
+      if (!mounted) return;
+      setState(() {
+        _isAutoScrollPaused = false;
+        _armedThemeId = null;
+      });
+    },
+    );
+  }
+
+  void _clearArmedSelection() {
+    if (_armedThemeId == null &&
+        _pendingArmThemeId == null &&
+        !_isAutoScrollPaused) {
+      return;
+    }
+    _autoScrollResumeTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _armedThemeId = null;
+        _pendingArmThemeId = null;
+        _isAutoScrollPaused = false;
+      });
+    }
   }
 
   void _syncCarouselTimer(ThemeViewModel viewModel) {
@@ -90,6 +127,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   void dispose() {
     _stopTimer();
     _stopCarouselTimer();
+    _autoScrollResumeTimer?.cancel();
     _pageController?.dispose();
     _thumbScrollController?.dispose();
     super.dispose();
@@ -302,7 +340,12 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                         );
                       }
 
-                      return BottomSafePadding(
+                      final reducedBottomInset = math.max(
+                        0.0,
+                        effectiveBottomInset(context) - 40.0,
+                      );
+                      return Padding(
+                        padding: EdgeInsets.only(bottom: reducedBottomInset),
                         child: Column(
                           children: [
                             _buildCategoryTabs(context, viewModel),
@@ -577,6 +620,16 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
             controller: _pageController,
             itemCount: filtered.length,
             onPageChanged: (i) {
+              final currentTheme = filtered[i];
+              if (_pendingArmThemeId == currentTheme.id) {
+                setState(() {
+                  _pendingArmThemeId = null;
+                  _armedThemeId = currentTheme.id;
+                });
+                _pauseAutoScrollTemporarily();
+              } else {
+                _clearArmedSelection();
+              }
               viewModel.setCarouselIndex(i);
             },
             itemBuilder: (context, index) {
@@ -632,7 +685,26 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                               child: ThemeCard(
                                 theme: theme,
                                 isSelected: isSelected,
+                                selectedBorderWidth: isSelected &&
+                                        _armedThemeId == theme.id
+                                    ? 4.0
+                                    : 2.0,
                                 onTap: () {
+                                  final isCurrentCenter =
+                                      viewModel.carouselIndex == index;
+                                  if (isCurrentCenter) {
+                                    viewModel.selectTheme(theme);
+                                    setState(() {
+                                      _pendingArmThemeId = null;
+                                      _armedThemeId = theme.id;
+                                    });
+                                    _pauseAutoScrollTemporarily();
+                                    return;
+                                  }
+                                  _clearArmedSelection();
+                                  setState(() {
+                                    _pendingArmThemeId = theme.id;
+                                  });
                                   viewModel.selectTheme(theme);
                                   viewModel.setCarouselIndex(index);
                                   _pageController?.animateToPage(
@@ -643,16 +715,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                 },
                                 showSelectedLabel: _addOneMoreStyle &&
                                     _usedThemeIds.contains(theme.id),
-                                onSelectPressed: isSelected &&
-                                        viewModel.selectedTheme != null &&
-                                        !_isGenerating &&
-                                        !viewModel.isUpdatingSession
-                                    ? (_addOneMoreStyle
-                                        ? () =>
-                                            Navigator.of(context)
-                                                .pop(viewModel.selectedTheme)
-                                        : () => _onContinue(context, viewModel))
-                                    : null,
+                                onSelectPressed: null,
                               ),
                             ),
                           ),
@@ -665,6 +728,35 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
             },
           ),
         ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: 320,
+          child: CupertinoButton(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            color: (viewModel.selectedTheme != null &&
+                    _armedThemeId == viewModel.selectedTheme!.id &&
+                    !_isGenerating &&
+                    !viewModel.isUpdatingSession)
+                ? CupertinoColors.systemBlue
+                : CupertinoColors.systemGrey,
+            borderRadius: BorderRadius.circular(12),
+            onPressed: (viewModel.selectedTheme != null &&
+                    _armedThemeId == viewModel.selectedTheme!.id &&
+                    !_isGenerating &&
+                    !viewModel.isUpdatingSession)
+                ? () => _onContinue(context, viewModel)
+                : null,
+            child: const Text(
+              'Continue',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: CupertinoColors.white,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
         _buildThumbnails(context, viewModel, isLandscape),
       ],
     );
@@ -696,7 +788,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     }
 
     const double thumbHeight = 72.0;
-    const double verticalPadding = 16.0;
+    const double verticalPadding = 8.0;
     const double borderMargin = 4.0;
     const rowHeight =
         thumbHeight + borderMargin * 2 + verticalPadding * 2;
@@ -729,6 +821,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                       ),
                       child: GestureDetector(
                         onTap: () {
+                          _clearArmedSelection();
                           viewModel.setCarouselIndex(index);
                           _pageController?.animateToPage(
                             index,
