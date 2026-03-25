@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../services/api_service.dart';
+import '../../services/app_settings_manager.dart';
 import '../../services/session_manager.dart';
 import '../photo_capture/photo_model.dart';
 import '../theme_selection/theme_model.dart';
@@ -40,14 +41,16 @@ class GeneratedImage {
 class PhotoGenerateViewModel extends ChangeNotifier {
   final ApiService _apiService;
   final SessionManager _sessionManager;
-  
+  final AppSettingsManager? _appSettingsManager;
+
   PhotoModel? _originalPhoto;
   ThemeModel? _selectedTheme;
   List<GeneratedImage> _generatedImages = [];
   bool _isGenerating = false;
   bool _isLoadingMore = false;
   String? _errorMessage;
-  int _triesRemaining = 3; // Allow 3 tries total (initial + 2 more)
+  int _maxRegenerationsAllowed = AppConstants.kDefaultMaxRegenerations;
+  int _triesRemaining = AppConstants.kDefaultMaxRegenerations;
   
   // Timer for generation progress
   Timer? _timer;
@@ -62,8 +65,10 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   PhotoGenerateViewModel({
     ApiService? apiService,
     SessionManager? sessionManager,
+    AppSettingsManager? appSettingsManager,
   })  : _apiService = apiService ?? ApiService(),
-        _sessionManager = sessionManager ?? SessionManager();
+        _sessionManager = sessionManager ?? SessionManager(),
+        _appSettingsManager = appSettingsManager;
 
   // Getters
   PhotoModel? get originalPhoto => _originalPhoto;
@@ -74,7 +79,11 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
   int get triesRemaining => _triesRemaining;
+  int get maxRegenerationsAllowed => _maxRegenerationsAllowed;
   bool get canTryDifferentStyle => _triesRemaining > 0 && !_isGenerating && !_isLoadingMore;
+  /// Whether the UI may offer “add one more style” (cap from `/api/settings` `maxRegenerations`).
+  bool get canShowAddAnotherStyleButton =>
+      generatedImages.length < _maxRegenerationsAllowed && triesRemaining > 0;
   int get elapsedSeconds => _elapsedSeconds;
   String get progressMessage => _progressMessage;
   bool get isCancelled => _isCancelled;
@@ -114,10 +123,19 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   static String _newGeneratedImageId(int slotIndex) =>
       '${DateTime.now().microsecondsSinceEpoch}_$slotIndex';
 
+  void _refreshMaxRegenerationsFromSettings() {
+    final n = _appSettingsManager?.settings?.maxRegenerations;
+    _maxRegenerationsAllowed = (n != null && n > 0)
+        ? n
+        : AppConstants.kDefaultMaxRegenerations;
+  }
+
   /// Initialize with photo and theme
   void initialize(PhotoModel photo, ThemeModel theme) {
+    _refreshMaxRegenerationsFromSettings();
     _originalPhoto = photo;
     _selectedTheme = theme;
+    _triesRemaining = _maxRegenerationsAllowed;
     notifyListeners();
   }
 
@@ -387,7 +405,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
           .toList();
     }
     // Give back one try so user can add a style again (including re-adding the removed one)
-    if (_triesRemaining < 3) _triesRemaining++;
+    if (_triesRemaining < _maxRegenerationsAllowed) _triesRemaining++;
     notifyListeners();
   }
   

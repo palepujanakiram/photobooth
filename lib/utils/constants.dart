@@ -19,6 +19,9 @@ class AppConstants {
   static const int kDefaultInitialPrintPrice = 100;
   static const int kDefaultAdditionalPrintPrice = 50;
 
+  /// Fallback when `/api/settings` omits `maxRegenerations` (total generation slots on Generate screen).
+  static const int kDefaultMaxRegenerations = 3;
+
   /// Fallback when `/api/settings` omits `printerHost`.
   static const String kDefaultPrinterHost = '192.168.2.108';
 

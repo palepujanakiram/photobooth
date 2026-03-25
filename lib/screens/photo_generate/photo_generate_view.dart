@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/cupertino.dart' show CupertinoButton, CupertinoColors, CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../services/app_settings_manager.dart';
 import 'photo_generate_viewmodel.dart';
 import '../photo_capture/photo_model.dart';
 import '../theme_selection/theme_model.dart';
@@ -29,6 +30,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   static const double _kGenerateFooterSlotHeight = 140.0;
 
   late PhotoGenerateViewModel _viewModel;
+  bool _viewModelCreated = false;
   Uint8List? _originalPhotoBytes;
   bool _isInitialized = false;
   final GlobalKey _contentKey = GlobalKey();
@@ -44,14 +46,14 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   }
 
   @override
-  void initState() {
-    super.initState();
-    _viewModel = PhotoGenerateViewModel();
-  }
-
-  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (!_viewModelCreated) {
+      _viewModel = PhotoGenerateViewModel(
+        appSettingsManager: context.read<AppSettingsManager>(),
+      );
+      _viewModelCreated = true;
+    }
     if (!_isInitialized) {
       _initializeFromArguments();
       _isInitialized = true;
@@ -401,7 +403,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     PhotoGenerateViewModel viewModel,
     AppColors appColors,
   ) {
-    final canAddMoreStyle = viewModel.generatedImages.length < 3;
+    final canAddMoreStyle = viewModel.canShowAddAnotherStyleButton;
     final isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
     final isLoadingMore = viewModel.isLoadingMore;
     final isGeneratingOrLoading = isGenerating || isLoadingMore;
