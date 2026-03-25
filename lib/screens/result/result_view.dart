@@ -330,7 +330,7 @@ class _ResultScreenState extends State<ResultScreen> {
                         SizedBox(
                           width: cardWidth,
                           height: cardHeight,
-                          child: _buildPhotoCard(images[i], i + 1, appColors),
+                          child: _buildPhotoCard(images[i], appColors),
                         ),
                       ],
                     ],
@@ -344,7 +344,7 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
-  Widget _buildPhotoCard(GeneratedImage image, int number, AppColors appColors) {
+  Widget _buildPhotoCard(GeneratedImage image, AppColors appColors) {
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -362,13 +362,15 @@ class _ResultScreenState extends State<ResultScreen> {
           ),
         ],
       ),
-      child: Stack(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.network(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ColoredBox(color: appColors.surfaceColor),
+            Image.network(
               image.imageUrl,
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
               width: double.infinity,
               height: double.infinity,
               loadingBuilder: (context, child, loadingProgress) {
@@ -391,31 +393,8 @@ class _ResultScreenState extends State<ResultScreen> {
                 ),
               ),
             ),
-          ),
-          // Number badge
-          Positioned(
-            top: 8,
-            left: 8,
-            child: Container(
-              width: 24,
-              height: 24,
-              decoration: const BoxDecoration(
-                color: Colors.blue,
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  '$number',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

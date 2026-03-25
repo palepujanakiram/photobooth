@@ -95,6 +95,25 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   
   bool get hasGeneratedImages => _generatedImages.isNotEmpty;
 
+  /// Newest generation is first in [_generatedImages] (prepended batches). It stays selected.
+  String? get newestGeneratedImageId =>
+      _generatedImages.isEmpty ? null : _generatedImages.first.id;
+
+  bool isNewestGeneratedImage(String imageId) =>
+      newestGeneratedImageId == imageId;
+
+  void _ensureNewestAlwaysSelected() {
+    if (_generatedImages.isEmpty) return;
+    final id = _generatedImages.first.id;
+    if (_generatedImages.first.isSelected) return;
+    _generatedImages = _generatedImages
+        .map((img) => img.id == id ? img.copyWith(isSelected: true) : img)
+        .toList();
+  }
+
+  static String _newGeneratedImageId(int slotIndex) =>
+      '${DateTime.now().microsecondsSinceEpoch}_$slotIndex';
+
   /// Initialize with photo and theme
   void initialize(PhotoModel photo, ThemeModel theme) {
     _originalPhoto = photo;
@@ -166,21 +185,20 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       _stopTimer();
 
       if (parallel.firstImageUrl != null) {
-        var isFirstInBatch = true;
         final newImages = <GeneratedImage>[];
         for (var i = 0; i < parallel.imageUrlsBySlot.length; i++) {
           final url = parallel.imageUrlsBySlot[i];
           if (url.isEmpty) continue;
           newImages.add(GeneratedImage(
-            id: '${DateTime.now().millisecondsSinceEpoch}_$i',
+            id: _newGeneratedImageId(i),
             imageUrl: url,
             theme: _selectedTheme!,
-            isSelected: _generatedImages.isEmpty && isFirstInBatch,
+            isSelected: true,
           ));
-          isFirstInBatch = false;
         }
         // Newest generations first (stack order: latest left / first in list).
         _generatedImages = [...newImages, ..._generatedImages];
+        _ensureNewestAlwaysSelected();
         _triesRemaining--;
         
         AppLogger.debug('✅ Image generated successfully');
@@ -290,13 +308,14 @@ class PhotoGenerateViewModel extends ChangeNotifier {
           final url = parallel.imageUrlsBySlot[i];
           if (url.isEmpty) continue;
           newImages.add(GeneratedImage(
-            id: '${DateTime.now().millisecondsSinceEpoch}_$i',
+            id: _newGeneratedImageId(i),
             imageUrl: url,
             theme: newTheme,
             isSelected: true,
           ));
         }
         _generatedImages = [...newImages, ..._generatedImages];
+        _ensureNewestAlwaysSelected();
         _triesRemaining--;
         
         return true;
@@ -331,30 +350,27 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     }
   }
 
-  /// Toggle selection of a generated image (multi-select)
-  /// Ensures at least one image is always selected
+  /// Toggle selection of a generated image (multi-select).
+  /// The newest image ([newestGeneratedImageId]) cannot be deselected; at least one stays selected.
   void toggleImageSelection(String imageId) {
-    // Find the image being toggled
-    final targetImage = _generatedImages.firstWhere(
-      (img) => img.id == imageId,
-      orElse: () => _generatedImages.first,
-    );
-    
-    // If trying to deselect and it's the only selected one, don't allow
+    final idx = _generatedImages.indexWhere((img) => img.id == imageId);
+    if (idx < 0) return;
+    final targetImage = _generatedImages[idx];
+
     if (targetImage.isSelected) {
-      final currentSelectedCount = _generatedImages.where((img) => img.isSelected).length;
-      if (currentSelectedCount <= 1) {
-        // Can't deselect the last selected image - at least one must be selected
-        return;
-      }
+      if (idx == 0) return;
+      final currentSelectedCount =
+          _generatedImages.where((img) => img.isSelected).length;
+      if (currentSelectedCount <= 1) return;
     }
-    
+
     _generatedImages = _generatedImages.map((img) {
       if (img.id == imageId) {
         return img.copyWith(isSelected: !img.isSelected);
       }
       return img;
     }).toList();
+    _ensureNewestAlwaysSelected();
     notifyListeners();
   }
 
@@ -362,12 +378,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   /// Restores one "try" so the user can add a style again (e.g. re-add the removed theme).
   void removeGeneratedImage(String imageId) {
     if (_generatedImages.length <= 1) return;
-    final removedWasSelected = _generatedImages.any((img) => img.id == imageId && img.isSelected);
     _generatedImages = _generatedImages.where((img) => img.id != imageId).toList();
-    if (removedWasSelected && _generatedImages.isNotEmpty) {
-      final firstId = _generatedImages.first.id;
+    if (_generatedImages.isNotEmpty) {
+      final newestId = _generatedImages.first.id;
       _generatedImages = _generatedImages
-          .map((img) => img.copyWith(isSelected: img.id == firstId))
+          .map((img) =>
+              img.id == newestId ? img.copyWith(isSelected: true) : img)
           .toList();
     }
     // Give back one try so user can add a style again (including re-adding the removed one)
@@ -383,10 +399,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     notifyListeners();
   }
   
-  /// Deselect all images
+  /// Deselect all except the newest (keeps at least one selected).
   void deselectAllImages() {
+    if (_generatedImages.isEmpty) return;
+    final newestId = _generatedImages.first.id;
     _generatedImages = _generatedImages.map((img) {
-      return img.copyWith(isSelected: false);
+      return img.copyWith(isSelected: img.id == newestId);
     }).toList();
     notifyListeners();
   }

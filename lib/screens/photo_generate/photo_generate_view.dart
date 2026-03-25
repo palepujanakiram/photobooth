@@ -435,9 +435,11 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                     }
                   }
                 : null,
-            child: const Text(
-              'Continue',
-              style: TextStyle(
+            child: Text(
+              viewModel.selectedCount < viewModel.generatedImages.length
+                  ? 'Continue (${viewModel.selectedCount} of ${viewModel.generatedImages.length})'
+                  : 'Continue',
+              style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
                 color: CupertinoColors.white,
@@ -728,10 +730,11 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
+                  const ColoredBox(color: Colors.black),
                   if (_originalPhotoBytes != null)
                     Image.memory(
                       _originalPhotoBytes!,
-                      fit: BoxFit.cover,
+                      fit: BoxFit.contain,
                       width: double.infinity,
                       height: double.infinity,
                     )
@@ -892,9 +895,10 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
+                const ColoredBox(color: Colors.black),
                 Image.network(
                   image.imageUrl,
-                  fit: BoxFit.cover,
+                  fit: BoxFit.contain,
                   width: double.infinity,
                   height: double.infinity,
                   loadingBuilder: (context, child, loadingProgress) {
@@ -941,6 +945,36 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                       ),
                     ),
                   ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Material(
+                    color: Colors.white.withValues(alpha: 0.95),
+                    elevation: 2,
+                    shadowColor: Colors.black38,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () {
+                        if (!viewModel.isNewestGeneratedImage(image.id)) {
+                          viewModel.toggleImageSelection(image.id);
+                        }
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Icon(
+                          image.isSelected
+                              ? CupertinoIcons.check_mark_circled_solid
+                              : CupertinoIcons.circle,
+                          color: image.isSelected
+                              ? CupertinoColors.activeGreen
+                              : CupertinoColors.systemGrey,
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
                 Positioned(
                   bottom: 0,
                   left: 0,
