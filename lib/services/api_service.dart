@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:uuid/uuid.dart';
 import '../models/app_settings_model.dart';
+import '../models/payment_initiate_result.dart';
 import '../models/parallel_generation_result.dart';
 import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
@@ -21,10 +22,11 @@ import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
 
 class ApiService {
   late final ApiClient _apiClient;
+  late final Dio _dio;
   final Uuid _uuid = const Uuid();
 
   ApiService() {
-    final dio = Dio(
+    _dio = Dio(
       BaseOptions(
         baseUrl: AppConstants.kBaseUrl,
         connectTimeout: AppConstants.kApiTimeout,
@@ -39,19 +41,19 @@ class ApiService {
 
     // Configure Dio to use browser HTTP adapter on web
     // This prevents SocketException errors from native socket lookups
-    configureDioForWeb(dio);
+    configureDioForWeb(_dio);
 
     if (kDebugMode == true) {
       // Add logging interceptor to log all API calls
-      dio.interceptors.add(ApiLoggingInterceptor());
+      _dio.interceptors.add(ApiLoggingInterceptor());
       final alice = AliceInspector.instance;
       if (alice != null) {
-        dio.interceptors.add(alice.getDioInterceptor());
+        _dio.interceptors.add(alice.getDioInterceptor());
       }
     }
 
     // Add error interceptor for web compatibility
-    dio.interceptors.add(InterceptorsWrapper(
+    _dio.interceptors.add(InterceptorsWrapper(
       onError: (error, handler) {
         // Handle web-specific errors
         if (kIsWeb) {
@@ -84,7 +86,34 @@ class ApiService {
       },
     ));
 
-    _apiClient = ApiClient(dio, baseUrl: AppConstants.kBaseUrl);
+    _apiClient = ApiClient(_dio, baseUrl: AppConstants.kBaseUrl);
+  }
+
+  /// GET `/api/payments/status/{paymentId}` — `{ "status": "PENDING" | "APPROVED" | "FAILED" }`.
+  /// Poll when FCM is unavailable; returns that map or null on error / non-JSON.
+  Future<Map<String, dynamic>?> fetchPaymentStatus(String paymentId) async {
+    if (paymentId.isEmpty) return null;
+    try {
+      final r = await _dio.get<dynamic>(
+        '/api/payments/status/$paymentId',
+        options: Options(
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+          responseType: ResponseType.json,
+        ),
+      );
+      final data = r.data;
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        AppLogger.debug('fetchPaymentStatus: ${e.message}');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        AppLogger.debug('fetchPaymentStatus: $e');
+      }
+    }
+    return null;
   }
 
   /// Helper method to check and handle CORS/network errors on web
@@ -513,6 +542,64 @@ class ApiService {
   Future<void> deleteSession(String sessionId) async {
     try {
       await _apiClient.deleteSession(sessionId);
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
+
+      String errorMessage = AppConstants.kErrorApiCall;
+      if (e.response != null) {
+        final responseData = e.response?.data;
+        if (responseData is Map<String, dynamic>) {
+          errorMessage = responseData['message'] as String? ??
+              responseData['error'] as String? ??
+              'API Error: ${e.response?.statusCode}';
+        } else if (responseData is String) {
+          errorMessage = responseData;
+        } else {
+          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
+        }
+      } else {
+        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
+      }
+
+      throw ApiException(
+        errorMessage,
+        e.response?.statusCode,
+      );
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('${AppConstants.kErrorUnknown}: $e');
+    }
+  }
+
+  /// POST /api/payment/initiate — returns payment link for UPI QR.
+  Future<PaymentInitiateResult> initiatePayment({
+    required String sessionId,
+    required int amount,
+    String type = 'INITIAL',
+    String? customerPhone,
+    required String fcmToken,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'sessionId': sessionId,
+        'amount': amount,
+        'type': type,
+        'fcmToken': fcmToken,
+      };
+      if (customerPhone != null && customerPhone.trim().isNotEmpty) {
+        body['customerPhone'] = customerPhone.trim();
+      }
+
+      final raw = await _apiClient.initiatePayment(body);
+      return PaymentInitiateResult.fromJson(raw);
     } on DioException catch (e) {
       _handleWebNetworkError(e);
 
