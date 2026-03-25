@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +13,8 @@ import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
+import '../../views/widgets/payment_link_qr.dart';
+import '../../services/payment_push_coordinator.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -52,13 +56,48 @@ class _ResultScreenState extends State<ResultScreen> {
     );
     _printerHostController.text = _viewModel!.printerHost;
     _isInitialized = true;
+
+    PaymentPushCoordinator.instance
+        .registerResultScreenCallback(_onPaymentPushFromFcm);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(PaymentPushCoordinator.instance.flushPendingStoragePayment());
+      _viewModel?.loadPaymentQr();
+    });
   }
 
   @override
   void dispose() {
+    PaymentPushCoordinator.instance.registerResultScreenCallback(null);
     _printerHostController.dispose();
     _viewModel?.dispose();
     super.dispose();
+  }
+
+  /// FCM payment push: inline status under Pay & Collect; silent print on approval.
+  void _onPaymentPushFromFcm(PaymentPushPayload payload) {
+    if (!mounted || _viewModel == null) return;
+    // Run immediately on the main isolate (do not defer to next frame): deferred
+    // delivery was dropping updates when lifecycle/FCM timing coincided with frame gaps.
+    unawaited(_applyPaymentPushFromFcm(payload));
+  }
+
+  Future<void> _applyPaymentPushFromFcm(PaymentPushPayload payload) async {
+    try {
+      if (!mounted || _viewModel == null) return;
+
+      await _viewModel!.onFcmPaymentPush(payload);
+      if (!mounted) return;
+
+      if (_viewModel!.fcmPaymentPushSuccess == true && _viewModel!.hasError) {
+        AppSnackBar.showError(context, _viewModel!.errorMessage!);
+      } else if (_viewModel!.fcmPaymentPushSuccess == true &&
+          !_viewModel!.hasError) {
+        AppSnackBar.showSuccess(context, 'Print job sent successfully!');
+      }
+    } catch (e, st) {
+      debugPrint('Payment FCM UI error: $e\n$st');
+    }
   }
 
   @override
@@ -399,6 +438,43 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
+  Widget _buildPaymentQrArea(ResultViewModel viewModel, double side) {
+    if (viewModel.paymentInitInProgress) {
+      return SizedBox(
+        width: side,
+        height: side,
+        child: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(12),
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    if (viewModel.paymentInitError != null) {
+      return Padding(
+        padding: const EdgeInsets.all(8),
+        child: Text(
+          viewModel.paymentInitError!,
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 11, color: Colors.grey.shade800),
+        ),
+      );
+    }
+    final link = viewModel.paymentLink;
+    if (link == null || link.isEmpty) {
+      return Icon(
+        CupertinoIcons.qrcode,
+        size: side * 0.45,
+        color: Colors.grey.shade700,
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.all(6),
+      child: PaymentLinkQr(paymentLink: link, size: side - 12),
+    );
+  }
+
   Widget _buildPaymentCard(BuildContext context, ResultViewModel viewModel, AppColors appColors) {
     final photoCount = viewModel.generatedImages.length;
     final basePrice = viewModel.initialPrintPrice;
@@ -471,24 +547,9 @@ class _ResultScreenState extends State<ResultScreen> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      CupertinoIcons.qrcode,
-                      size: 72,
-                      color: Colors.grey.shade700,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'QR Code',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
+                clipBehavior: Clip.antiAlias,
+                alignment: Alignment.center,
+                child: _buildPaymentQrArea(viewModel, side),
               );
             },
           ),
@@ -519,6 +580,21 @@ class _ResultScreenState extends State<ResultScreen> {
               color: Colors.blue,
             ),
           ),
+          if (viewModel.hasFcmPaymentStatus) ...[
+            const SizedBox(height: 8),
+            Text(
+              viewModel.fcmPaymentStatusDetail!,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+                color: viewModel.fcmPaymentPushSuccess == true
+                    ? Colors.green
+                    : Colors.red,
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           Row(
             children: [

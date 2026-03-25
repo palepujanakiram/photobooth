@@ -8,7 +8,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.photobooth"
+    namespace = "com.srisarani.fotozenai"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -23,7 +23,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.photobooth"
+        applicationId = "com.srisarani.fotozenai"
         minSdk = (project.findProperty("flutter.minSdkVersion")?.toString()?.toIntOrNull()
             ?: flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion

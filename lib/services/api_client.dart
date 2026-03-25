@@ -77,4 +77,10 @@ abstract class ApiClient {
   Future<dynamic> preprocessImage(
     @Body() Map<String, dynamic> body,
   );
+
+  /// Starts a payment and returns a link to encode as UPI QR.
+  @POST('/api/payment/initiate')
+  Future<Map<String, dynamic>> initiatePayment(
+    @Body() Map<String, dynamic> body,
+  );
 }

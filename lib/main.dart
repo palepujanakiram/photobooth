@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -20,9 +24,24 @@ import 'services/error_reporting/error_reporting_manager.dart';
 import 'services/file_helper.dart';
 import 'services/alice_inspector.dart';
 import 'services/app_settings_manager.dart';
+import 'firebase_options.dart';
+import 'services/fcm_token_store.dart';
+import 'services/firebase_messaging_background.dart';
+import 'services/payment_push_coordinator.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (DefaultFirebaseOptions.isFirebaseConfigured) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    if (!kIsWeb) {
+      FirebaseMessaging.onBackgroundMessage(
+        firebaseMessagingBackgroundHandler,
+      );
+    }
+  }
 
   // Do not preload cameras at startup. On devices with only LENS_FACING_EXTERNAL
   // cameras (e.g. RTC Mini PC), any camera plugin call triggers CameraX init and
@@ -153,15 +172,158 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
     with WidgetsBindingObserver {
   final AppSettingsManager _appSettingsManager = AppSettingsManager();
 
+  /// Foreground FCM subscription (payment + any future topics).
+  StreamSubscription<RemoteMessage>? _fcmForegroundSub;
+  StreamSubscription<RemoteMessage>? _fcmOpenedAppSub;
+  StreamSubscription<String>? _fcmTokenRefreshSub;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    PaymentPushCoordinator.instance.attachNavigator(widget.navigatorKey);
     _appSettingsManager.fetchSettings(forceRefresh: true);
+    if (!kIsWeb && DefaultFirebaseOptions.isFirebaseConfigured) {
+      unawaited(_setupPaymentFcmListeners());
+    }
+  }
+
+  Future<void> _setupPaymentFcmListeners() async {
+    // Register streams before any await so a push is never dropped while we
+    // wait for permission/token (narrow race on slow devices).
+    _fcmOpenedAppSub?.cancel();
+    _fcmForegroundSub?.cancel();
+
+    _fcmOpenedAppSub = FirebaseMessaging.onMessageOpenedApp.listen(
+      (message) {
+        if (kDebugMode) {
+          debugPrint(
+            'FCM onMessageOpenedApp (background/killed: user likely tapped notification)',
+          );
+        }
+        PaymentPushCoordinator.instance.handleRemoteMessage(message);
+      },
+      onError: (e, st) {
+        if (kDebugMode) {
+          debugPrint('FCM onMessageOpenedApp error: $e');
+        }
+      },
+    );
+
+    _fcmForegroundSub = FirebaseMessaging.onMessage.listen(
+      (message) {
+        if (kDebugMode) {
+          debugPrint(
+            'FCM onMessage FOREGROUND (push reached Dart): '
+            'data=${message.data} title=${message.notification?.title}',
+          );
+        }
+        PaymentPushCoordinator.instance.handleRemoteMessage(message);
+      },
+      onError: (e, st) {
+        if (kDebugMode) {
+          debugPrint('FCM onMessage error: $e');
+        }
+      },
+    );
+
+    _fcmTokenRefreshSub?.cancel();
+    _fcmTokenRefreshSub = FirebaseMessaging.instance.onTokenRefresh.listen(
+      (token) {
+        unawaited(FcmTokenStore.save(token));
+        if (kDebugMode) {
+          debugPrint(
+            'FCM token refreshed; persisted locally. Use this token on the next '
+            'POST /api/payment/initiate (or backend token-update if you add one): $token',
+          );
+        }
+      },
+    );
+
+    if (kDebugMode) {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        debugPrint(
+          'FCM Firebase project (server Admin SDK must match): '
+          '${DefaultFirebaseOptions.android.projectId}',
+        );
+        debugPrint(
+          'FCM Android appId: ${DefaultFirebaseOptions.android.appId}',
+        );
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        debugPrint(
+          'FCM Firebase project (server Admin SDK must match): '
+          '${DefaultFirebaseOptions.ios.projectId}',
+        );
+      }
+      debugPrint(
+        'FCM: listeners registered. If you never see "FCM rx message" after paying, '
+        'the message is not reaching the device (wrong Firebase project, token not stored server-side, '
+        'or not sent). Android: notification-led pushes skip onMessage while backgrounded unless user '
+        'taps the notification; use data + android.priority=high for silent wake.',
+      );
+    }
+
+    final perm = await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      announcement: false,
+      badge: true,
+      carPlay: false,
+      criticalAlert: false,
+      provisional: false,
+      sound: true,
+    );
+    if (kDebugMode) {
+      debugPrint('FCM permission: ${perm.authorizationStatus}');
+    }
+
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null && token.trim().isNotEmpty) {
+        await FcmTokenStore.save(token);
+      }
+      if (kDebugMode) {
+        if (token != null) {
+          debugPrint('FCM registration token (use in payment init & server): $token');
+        } else {
+          debugPrint('FCM registration token: null');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('FCM getToken failed: $e');
+      }
+    }
+
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+        alert: false,
+        badge: false,
+        sound: false,
+      );
+    }
+
+    final initial = await FirebaseMessaging.instance.getInitialMessage();
+    if (kDebugMode) {
+      debugPrint(
+        'FCM getInitialMessage: ${initial != null ? "message present (cold start from notif)" : "null"}',
+      );
+    }
+    if (initial != null && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        PaymentPushCoordinator.instance.handleRemoteMessage(initial);
+      });
+    }
+
+    if (mounted) {
+      await PaymentPushCoordinator.instance.flushPendingStoragePayment();
+    }
   }
 
   @override
   void dispose() {
+    _fcmForegroundSub?.cancel();
+    _fcmOpenedAppSub?.cancel();
+    _fcmTokenRefreshSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _appSettingsManager.dispose();
     super.dispose();
@@ -171,6 +333,11 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _appSettingsManager.fetchSettings(forceRefresh: true);
+      if (!kIsWeb && DefaultFirebaseOptions.isFirebaseConfigured) {
+        unawaited(
+          PaymentPushCoordinator.instance.flushPendingStoragePayment(),
+        );
+      }
     }
   }
 
