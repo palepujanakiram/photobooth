@@ -10,6 +10,8 @@ class ThemeCard extends StatelessWidget {
   final VoidCallback onTap;
   /// When set and [isSelected] is true, shows a "Select" button to proceed (e.g. to next screen).
   final VoidCallback? onSelectPressed;
+  final String actionButtonLabel;
+  final double selectedBorderWidth;
   /// When true and [isSelected], shows "Selected" label in blue instead of the Select button (e.g. add-one-more flow).
   final bool showSelectedLabel;
 
@@ -20,6 +22,8 @@ class ThemeCard extends StatelessWidget {
     required this.onTap,
     this.onSelectPressed,
     this.showSelectedLabel = false,
+    this.actionButtonLabel = 'Select',
+    this.selectedBorderWidth = 1.0,
   });
 
   String _getImageUrl() {
@@ -64,17 +68,17 @@ class ThemeCard extends StatelessWidget {
     final imageUrl = _getImageUrl();
     
     return Card(
-      elevation: isSelected ? 12 : 2,
+      elevation: isSelected ? 14 : 6,
       shadowColor: isSelected
-          ? CupertinoColors.systemBlue.withValues(alpha: 0.35)
-          : null,
+          ? CupertinoColors.systemBlue.withValues(alpha: 0.55)
+          : Colors.black.withValues(alpha: 0.38),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
           color: isSelected
-              ? CupertinoColors.systemBlue.withValues(alpha: 0.5)
-              : Colors.transparent,
-          width: isSelected ? 2.5 : 0,
+              ? CupertinoColors.systemBlue.withValues(alpha: 0.9)
+              : const Color(0xFF4A4A4A),
+          width: isSelected ? selectedBorderWidth : 1.5,
         ),
       ),
       clipBehavior: Clip.antiAlias,
@@ -175,8 +179,8 @@ class ThemeCard extends StatelessWidget {
                               color: CupertinoColors.systemBlue,
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Text(
-                              'Select',
+                            child: Text(
+                              actionButtonLabel,
                               style: TextStyle(
                                 color: CupertinoColors.white,
                                 fontWeight: FontWeight.w600,

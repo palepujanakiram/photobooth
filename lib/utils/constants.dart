@@ -42,6 +42,10 @@ class AppConstants {
   /// Peak scale of the centered card in the theme carousel 3D transform (clamped in carousel).
   static const double kThemeCarouselCenterMaxScale = 1.15;
 
+  /// Pause duration after user taps a theme before auto-scroll resumes.
+  static const Duration kThemeCarouselAutoScrollPauseDuration =
+      Duration(seconds: 4);
+
   /// On Generate Photo, generated-image cards scale to this factor when toggled (tap again restores 1.0).
   static const double kGeneratePhotoZoomedScale = 1.3;
   static const String kContinueButtonText = 'Continue';
