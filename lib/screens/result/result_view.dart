@@ -26,6 +26,7 @@ class ResultScreen extends StatefulWidget {
 class _ResultScreenState extends State<ResultScreen> {
   ResultViewModel? _viewModel;
   bool _isInitialized = false;
+  bool _didNavigateToThankYou = false;
   late TextEditingController _printerHostController;
 
   @override
@@ -89,15 +90,24 @@ class _ResultScreenState extends State<ResultScreen> {
       await _viewModel!.onFcmPaymentPush(payload);
       if (!mounted) return;
 
-      if (_viewModel!.fcmPaymentPushSuccess == true && _viewModel!.hasError) {
-        AppSnackBar.showError(context, _viewModel!.errorMessage!);
-      } else if (_viewModel!.fcmPaymentPushSuccess == true &&
-          !_viewModel!.hasError) {
-        AppSnackBar.showSuccess(context, 'Print job sent successfully!');
+      if (_viewModel!.fcmPaymentPushSuccess == true) {
+        if (_viewModel!.hasError) {
+          AppSnackBar.showError(context, _viewModel!.errorMessage!);
+        } else {
+          AppSnackBar.showSuccess(context, 'Print job sent successfully!');
+          _navigateToThankYouIfEligible(_viewModel!);
+        }
       }
     } catch (e, st) {
       debugPrint('Payment FCM UI error: $e\n$st');
     }
+  }
+
+  void _navigateToThankYouIfEligible(ResultViewModel viewModel) {
+    if (!mounted || _didNavigateToThankYou) return;
+    if (viewModel.fcmPaymentPushSuccess != true || viewModel.hasError) return;
+    _didNavigateToThankYou = true;
+    Navigator.pushReplacementNamed(context, AppConstants.kRouteThankYou);
   }
 
   @override
@@ -615,6 +625,7 @@ class _ResultScreenState extends State<ResultScreen> {
                             AppSnackBar.showError(context, viewModel.errorMessage!);
                           } else if (!viewModel.hasError && context.mounted) {
                             AppSnackBar.showSuccess(context, 'Print job sent successfully!');
+                            _navigateToThankYouIfEligible(viewModel);
                           }
                         },
                   child: viewModel.isSilentPrinting || viewModel.isDownloadingForSilentPrint
@@ -748,6 +759,7 @@ class _ResultScreenState extends State<ResultScreen> {
                         AppSnackBar.showError(context, viewModel.errorMessage!);
                       } else if (!viewModel.hasError && context.mounted) {
                         AppSnackBar.showSuccess(context, 'Print job sent successfully!');
+                        _navigateToThankYouIfEligible(viewModel);
                       }
                     },
               child: viewModel.isSilentPrinting || viewModel.isDownloadingForSilentPrint

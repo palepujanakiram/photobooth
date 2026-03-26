@@ -101,6 +101,7 @@ class AppConstants {
   static const String kRouteGenerate = '/generate';
   static const String kRouteReview = '/review';
   static const String kRouteResult = '/result';
+  static const String kRouteThankYou = '/thank-you';
   /// Push [WebViewScreen] (full-screen, close button only; no app bar) using
   /// `arguments`: a URL [String], or a [Map] with `url` ([String]).
   static const String kRouteWebView = '/webview';
