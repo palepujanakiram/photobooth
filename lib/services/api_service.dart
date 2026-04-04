@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:uuid/uuid.dart';
+import '../models/app_settings_model.dart';
+import '../models/payment_initiate_result.dart';
+import '../models/parallel_generation_result.dart';
 import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/exceptions.dart';
@@ -11,16 +15,18 @@ import '../utils/logger.dart';
 import 'api_client.dart';
 import 'file_helper.dart';
 import 'api_logging_interceptor.dart';
+import 'alice_inspector.dart';
 
 // Conditional import for web Dio configuration
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
 
 class ApiService {
   late final ApiClient _apiClient;
+  late final Dio _dio;
   final Uuid _uuid = const Uuid();
 
   ApiService() {
-    final dio = Dio(
+    _dio = Dio(
       BaseOptions(
         baseUrl: AppConstants.kBaseUrl,
         connectTimeout: AppConstants.kApiTimeout,
@@ -35,15 +41,19 @@ class ApiService {
 
     // Configure Dio to use browser HTTP adapter on web
     // This prevents SocketException errors from native socket lookups
-    configureDioForWeb(dio);
+    configureDioForWeb(_dio);
 
     if (kDebugMode == true) {
-        // Add logging interceptor to log all API calls
-        dio.interceptors.add(ApiLoggingInterceptor());
+      // Add logging interceptor to log all API calls
+      _dio.interceptors.add(ApiLoggingInterceptor());
+      final alice = AliceInspector.instance;
+      if (alice != null) {
+        _dio.interceptors.add(alice.getDioInterceptor());
+      }
     }
 
     // Add error interceptor for web compatibility
-    dio.interceptors.add(InterceptorsWrapper(
+    _dio.interceptors.add(InterceptorsWrapper(
       onError: (error, handler) {
         // Handle web-specific errors
         if (kIsWeb) {
@@ -76,7 +86,34 @@ class ApiService {
       },
     ));
 
-    _apiClient = ApiClient(dio, baseUrl: AppConstants.kBaseUrl);
+    _apiClient = ApiClient(_dio, baseUrl: AppConstants.kBaseUrl);
+  }
+
+  /// GET `/api/payments/status/{paymentId}` — `{ "status": "PENDING" | "APPROVED" | "FAILED" }`.
+  /// Poll when FCM is unavailable; returns that map or null on error / non-JSON.
+  Future<Map<String, dynamic>?> fetchPaymentStatus(String paymentId) async {
+    if (paymentId.isEmpty) return null;
+    try {
+      final r = await _dio.get<dynamic>(
+        '/api/payments/status/$paymentId',
+        options: Options(
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+          responseType: ResponseType.json,
+        ),
+      );
+      final data = r.data;
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        AppLogger.debug('fetchPaymentStatus: ${e.message}');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        AppLogger.debug('fetchPaymentStatus: $e');
+      }
+    }
+    return null;
   }
 
   /// Helper method to check and handle CORS/network errors on web
@@ -131,16 +168,15 @@ class ApiService {
           },
         ));
         if (kDebugMode == true) {
-            dio.interceptors.add(ApiLoggingInterceptor());
+          dio.interceptors.add(ApiLoggingInterceptor());
+          final alice = AliceInspector.instance;
+          if (alice != null) {
+            dio.interceptors.add(alice.getDioInterceptor());
+          }
         }
 
         // Configure browser adapter for web (critical for web platform)
         configureDioForWeb(dio);
-        
-        // Add logging interceptor
-        if (kDebugMode == true) {
-          dio.interceptors.add(ApiLoggingInterceptor());
-        }
 
         final formData = FormData.fromMap({
           'prompt': theme.promptText,
@@ -349,6 +385,47 @@ class ApiService {
     }
   }
 
+  /// Fetches app settings from API.
+  Future<AppSettingsModel> getAppSettings() async {
+    try {
+      return await _apiClient.getAppSettings();
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
+
+      String errorMessage = AppConstants.kErrorApiCall;
+      if (e.response != null) {
+        final responseData = e.response?.data;
+        if (responseData is Map<String, dynamic>) {
+          errorMessage = responseData['message'] as String? ??
+              responseData['error'] as String? ??
+              'API Error: ${e.response?.statusCode}';
+        } else if (responseData is String) {
+          errorMessage = responseData;
+        } else {
+          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
+        }
+      } else {
+        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
+      }
+
+      throw ApiException(
+        errorMessage,
+        e.response?.statusCode,
+      );
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('${AppConstants.kErrorUnknown}: $e');
+    }
+  }
+
   /// Accepts terms and creates a new session
   /// Returns session data including sessionId
   Future<Map<String, dynamic>> acceptTermsAndCreateSession({
@@ -460,6 +537,106 @@ class ApiService {
     }
   }
 
+  /// Deletes the session and associated data on the server
+  /// DELETE /api/sessions/{sessionId}
+  Future<void> deleteSession(String sessionId) async {
+    try {
+      await _apiClient.deleteSession(sessionId);
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
+
+      String errorMessage = AppConstants.kErrorApiCall;
+      if (e.response != null) {
+        final responseData = e.response?.data;
+        if (responseData is Map<String, dynamic>) {
+          errorMessage = responseData['message'] as String? ??
+              responseData['error'] as String? ??
+              'API Error: ${e.response?.statusCode}';
+        } else if (responseData is String) {
+          errorMessage = responseData;
+        } else {
+          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
+        }
+      } else {
+        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
+      }
+
+      throw ApiException(
+        errorMessage,
+        e.response?.statusCode,
+      );
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('${AppConstants.kErrorUnknown}: $e');
+    }
+  }
+
+  /// POST /api/payment/initiate — returns payment link for UPI QR.
+  Future<PaymentInitiateResult> initiatePayment({
+    required String sessionId,
+    required int amount,
+    String type = 'INITIAL',
+    String? customerPhone,
+    required String fcmToken,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'sessionId': sessionId,
+        'amount': amount,
+        'type': type,
+        'fcmToken': fcmToken,
+      };
+      if (customerPhone != null && customerPhone.trim().isNotEmpty) {
+        body['customerPhone'] = customerPhone.trim();
+      }
+
+      final raw = await _apiClient.initiatePayment(body);
+      return PaymentInitiateResult.fromJson(raw);
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
+
+      String errorMessage = AppConstants.kErrorApiCall;
+      if (e.response != null) {
+        final responseData = e.response?.data;
+        if (responseData is Map<String, dynamic>) {
+          errorMessage = responseData['message'] as String? ??
+              responseData['error'] as String? ??
+              'API Error: ${e.response?.statusCode}';
+        } else if (responseData is String) {
+          errorMessage = responseData;
+        } else {
+          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
+        }
+      } else {
+        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
+      }
+
+      throw ApiException(
+        errorMessage,
+        e.response?.statusCode,
+      );
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('${AppConstants.kErrorUnknown}: $e');
+    }
+  }
+
   /// Generates transformed image using AI
   /// This call can take 10-60+ seconds, with a 180-second (3 minute) timeout
   /// Retries once on timeout before showing error
@@ -488,13 +665,17 @@ class ApiService {
 
     // Configure browser adapter for web (important for all Dio instances)
     configureDioForWeb(dioWithTimeout);
-    
+
     if (kDebugMode == true) {
-      // Add logging interceptor
       dioWithTimeout.interceptors.add(ApiLoggingInterceptor());
+      final alice = AliceInspector.instance;
+      if (alice != null) {
+        dioWithTimeout.interceptors.add(alice.getDioInterceptor());
+      }
     }
 
-    final apiClientWithTimeout = ApiClient(dioWithTimeout, baseUrl: AppConstants.kBaseUrl);
+    final apiClientWithTimeout =
+        ApiClient(dioWithTimeout, baseUrl: AppConstants.kBaseUrl);
 
     // Retry logic: try once, retry once on timeout
     int retryCount = 0;
@@ -524,7 +705,8 @@ class ApiService {
         final runId = response['runId'] as String?;
         final framing = response['framing'] as Map<String, dynamic>?;
         final timing = response['timing'] as Map<String, dynamic>?;
-        final faceVerification = response['faceVerification'] as Map<String, dynamic>?;
+        final faceVerification =
+            response['faceVerification'] as Map<String, dynamic>?;
         final evaluation = response['evaluation'] as Map<String, dynamic>?;
 
         if (runId != null || framing != null || timing != null) {
@@ -561,7 +743,8 @@ class ApiService {
         }
 
         // Validate URL format
-        if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+        if (!imageUrl.startsWith('http://') &&
+            !imageUrl.startsWith('https://')) {
           throw ApiException('Invalid image URL format: must be HTTP URL');
         }
 
@@ -590,11 +773,11 @@ class ApiService {
         String errorMessage = AppConstants.kErrorApiCall;
         String? errorDetails;
         String? runId;
-        
+
         if (e.response != null) {
           final statusCode = e.response?.statusCode;
           final responseData = e.response?.data;
-          
+
           if (responseData is Map<String, dynamic>) {
             // New API error format: { "error": "...", "details": "...", "runId": "..." }
             errorMessage = responseData['error'] as String? ??
@@ -602,15 +785,16 @@ class ApiService {
                 'API Error: $statusCode';
             errorDetails = responseData['details'] as String?;
             runId = responseData['runId'] as String?;
-            
+
             // Build error message with details if available
             if (errorDetails != null && errorDetails.isNotEmpty) {
               errorMessage = '$errorMessage: $errorDetails';
             }
-            
+
             // Include runId in debug logs for tracking
             if (runId != null) {
-              AppLogger.debug('❌ Generation failed (Run ID: $runId): $errorMessage');
+              AppLogger.debug(
+                  '❌ Generation failed (Run ID: $runId): $errorMessage');
             }
           } else if (responseData is String) {
             errorMessage = responseData;
@@ -641,6 +825,153 @@ class ApiService {
     throw ApiException('Failed to generate image after retries');
   }
 
+  /// Parallel AI generation via GET `/api/generate-stream-parallel` (SSE).
+  ///
+  /// See product doc: "Parallel Generation with SSE". Uses [sessionId] and [count];
+  /// [originalPhotoId] and [themeId] are accepted for parity with [generateImage] (logging only).
+  ///
+  /// The legacy [generateImage] (POST `/api/generate-image`) remains available if needed later.
+  Future<ParallelGenerationResult> generateImageParallelStream({
+    required String sessionId,
+    int count = AppConstants.kAiParallelGenerationCount,
+    required String originalPhotoId,
+    required String themeId,
+    void Function(String message)? onProgress,
+  }) async {
+    AppLogger.debug(
+        '📡 Parallel SSE generation session=$sessionId photo=$originalPhotoId theme=$themeId count=$count');
+
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: AppConstants.kBaseUrl,
+        connectTimeout: AppConstants.kApiTimeout,
+        receiveTimeout: AppConstants.kAiGenerationTimeout,
+        headers: {
+          'Accept': 'text/event-stream',
+          'Authorization':
+              'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
+        },
+      ),
+    );
+
+    configureDioForWeb(dio);
+
+    if (kDebugMode == true) {
+      dio.interceptors.add(ApiLoggingInterceptor());
+      final alice = AliceInspector.instance;
+      if (alice != null) {
+        dio.interceptors.add(alice.getDioInterceptor());
+      }
+    }
+
+    final slots = List<String>.filled(count, '');
+    final qualityByIndex = <int, double>{};
+    final completer = Completer<ParallelGenerationResult>();
+
+    try {
+      final response = await dio.get(
+        '/api/generate-stream-parallel',
+        queryParameters: {
+          'sessionId': sessionId,
+          'count': count,
+        },
+        options: Options(
+          responseType: ResponseType.stream,
+        ),
+      );
+
+      final body = response.data;
+      if (body is! ResponseBody) {
+        throw ApiException('Unexpected response for parallel generation stream');
+      }
+
+      var buffer = '';
+      try {
+        await for (final chunk in utf8.decoder.bind(body.stream)) {
+          buffer += chunk;
+          while (true) {
+            final sep = buffer.indexOf('\n\n');
+            if (sep < 0) break;
+            var block = buffer.substring(0, sep);
+            buffer = buffer.substring(sep + 2);
+            if (block.endsWith('\r')) {
+              block = block.substring(0, block.length - 1);
+            }
+            _dispatchParallelSseBlock(
+              block,
+              slots: slots,
+              qualityByIndex: qualityByIndex,
+              completer: completer,
+              onProgress: onProgress,
+            );
+            if (completer.isCompleted) {
+              return await completer.future;
+            }
+          }
+        }
+        if (buffer.trim().isNotEmpty) {
+          _dispatchParallelSseBlock(
+            buffer,
+            slots: slots,
+            qualityByIndex: qualityByIndex,
+            completer: completer,
+            onProgress: onProgress,
+          );
+        }
+      } catch (e) {
+        if (!completer.isCompleted) {
+          completer.completeError(
+            ApiException('Parallel generation stream failed: $e'),
+          );
+        }
+      }
+
+      if (!completer.isCompleted) {
+        if (slots.any((u) => u.isNotEmpty)) {
+          completer.complete(
+            ParallelGenerationResult(
+              imageUrlsBySlot: List<String>.from(slots),
+              success: true,
+              qualityScoreByIndex: Map<int, double>.from(qualityByIndex),
+            ),
+          );
+        } else {
+          completer.completeError(
+            ApiException('Generation ended without any image'),
+          );
+        }
+      }
+
+      return await completer.future;
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
+
+      String errorMessage = AppConstants.kErrorApiCall;
+      if (e.response != null) {
+        final responseData = e.response?.data;
+        if (responseData is Map<String, dynamic>) {
+          errorMessage = responseData['error'] as String? ??
+              responseData['message'] as String? ??
+              'API Error: ${e.response?.statusCode}';
+        } else if (responseData is String) {
+          errorMessage = responseData;
+        } else {
+          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
+        }
+      } else {
+        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
+      }
+
+      throw ApiException(errorMessage, e.response?.statusCode);
+    }
+  }
+
   Future<XFile> downloadImageToTemp(
     String imageUrl, {
     void Function(String message)? onProgress,
@@ -660,6 +991,10 @@ class ApiService {
     configureDioForWeb(dio);
     if (kDebugMode == true) {
       dio.interceptors.add(ApiLoggingInterceptor());
+      final alice = AliceInspector.instance;
+      if (alice != null) {
+        dio.interceptors.add(alice.getDioInterceptor());
+      }
     }
 
     AppLogger.debug('📥 Downloading image from: $imageUrl');
@@ -722,3 +1057,104 @@ class ApiService {
   }
 }
 
+void _dispatchParallelSseBlock(
+  String block, {
+  required List<String> slots,
+  required Map<int, double> qualityByIndex,
+  required Completer<ParallelGenerationResult> completer,
+  void Function(String message)? onProgress,
+}) {
+  String? eventType;
+  final dataParts = <String>[];
+  for (final rawLine in block.split('\n')) {
+    final line = rawLine.trimRight();
+    if (line.isEmpty) continue;
+    if (line.startsWith('event:')) {
+      eventType = line.substring(6).trim();
+    } else if (line.startsWith('data:')) {
+      dataParts.add(line.substring(5).trimLeft());
+    }
+  }
+  if (dataParts.isEmpty) return;
+
+  final payload = dataParts.join('\n');
+  final Map<String, dynamic> json;
+  try {
+    json = jsonDecode(payload) as Map<String, dynamic>;
+  } catch (_) {
+    return;
+  }
+
+  switch (eventType) {
+    case 'start':
+      final total = json['total'];
+      onProgress?.call(
+        total != null
+            ? 'Starting parallel generation ($total options)...'
+            : 'Starting parallel generation...',
+      );
+      break;
+    case 'image_complete':
+      final idx = json['index'] as int?;
+      final url = json['imageUrl'] as String?;
+      final q = json['qualityScore'];
+      if (idx != null &&
+          idx >= 0 &&
+          idx < slots.length &&
+          url != null &&
+          url.isNotEmpty) {
+        slots[idx] = url;
+        if (q is num) {
+          qualityByIndex[idx] = q.toDouble();
+        }
+        final c = json['completed'];
+        final t = json['total'];
+        if (c != null && t != null) {
+          onProgress?.call('Option $c of $t ready...');
+        } else {
+          onProgress?.call('An option finished...');
+        }
+      }
+      break;
+    case 'image_failed':
+      onProgress?.call('One option failed, continuing...');
+      break;
+    case 'complete':
+      final urls = json['imageUrls'];
+      if (urls is List) {
+        for (var i = 0; i < urls.length && i < slots.length; i++) {
+          final u = urls[i];
+          if (u is String && u.isNotEmpty) {
+            slots[i] = u;
+          }
+        }
+      }
+      final timing = json['timing'] as Map<String, dynamic>?;
+      int? totalMs;
+      final rawMs = timing?['totalMs'];
+      if (rawMs is int) {
+        totalMs = rawMs;
+      } else if (rawMs is num) {
+        totalMs = rawMs.toInt();
+      }
+      if (!completer.isCompleted) {
+        completer.complete(
+          ParallelGenerationResult(
+            imageUrlsBySlot: List<String>.from(slots),
+            success: json['success'] == true,
+            timingTotalMs: totalMs,
+            qualityScoreByIndex: Map<int, double>.from(qualityByIndex),
+          ),
+        );
+      }
+      break;
+    case 'error':
+      final msg = json['error'] as String? ?? 'Generation failed';
+      if (!completer.isCompleted) {
+        completer.completeError(ApiException(msg));
+      }
+      break;
+    default:
+      break;
+  }
+}

@@ -5,6 +5,7 @@ import '../theme_selection/theme_model.dart';
 import '../result/transformed_image_model.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
+import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 
 class ReviewViewModel extends ChangeNotifier {
@@ -15,7 +16,6 @@ class ReviewViewModel extends ChangeNotifier {
   TransformedImageModel? _transformedImage;
   bool _isTransforming = false;
   String? _errorMessage;
-  final int _attemptNumber = 1;
   
   // Timer tracking
   int _elapsedSeconds = 0;
@@ -90,21 +90,37 @@ class ReviewViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Call the generate-image API endpoint (up to 2 minutes for AI generation)
+      // Parallel SSE generation; legacy POST /api/generate-image: [ApiService.generateImage].
       const generateTimeout = Duration(seconds: 120);
-      _transformedImage = await _apiService.generateImage(
+      final parallel = await _apiService
+          .generateImageParallelStream(
         sessionId: sessionId,
-        attempt: _attemptNumber,
+        count: AppConstants.kAiParallelGenerationCount,
         originalPhotoId: _photo!.id,
         themeId: _theme!.id,
         onProgress: (message) {
           _updateProcess(message);
         },
-      ).timeout(
+      )
+          .timeout(
         generateTimeout,
         onTimeout: () => throw TimeoutException(
           'Generation timed out after ${generateTimeout.inSeconds} seconds',
         ),
+      );
+
+      final imageUrl = parallel.preferredImageUrl;
+      if (imageUrl == null ||
+          (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://'))) {
+        throw ApiException('No valid image URL in parallel generation result');
+      }
+
+      _transformedImage = TransformedImageModel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        imageUrl: imageUrl,
+        originalPhotoId: _photo!.id,
+        themeId: _theme!.id,
+        transformedAt: DateTime.now(),
       );
       
       // Step 3: Finalizing

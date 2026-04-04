@@ -1,0 +1,61 @@
+---
+description: Dart and Flutter coding standards for this project
+globs: "**/*.dart"
+alwaysApply: false
+---
+
+# Dart & Flutter Standards
+
+Follow existing patterns and the linter config in `analysis_options.yaml`.
+
+## Linter (already in project)
+
+- `prefer_const_constructors`, `prefer_const_literals_to_create_immutables`
+- `prefer_single_quotes`, `always_declare_return_types`
+- `avoid_print` — use `utils/logger.dart` instead
+- `prefer_final_fields`, `prefer_final_locals`, `avoid_empty_else`
+- Generated files: `**/*.g.dart`, `**/*.freezed.dart` are excluded from analyzer
+
+## MVVM in this codebase
+
+**ViewModels**
+
+- Extend `ChangeNotifier`; private state with public getters; call `notifyListeners()` after state changes.
+- Inject services via constructor (e.g. `ThemeManager`, `ApiService`, `SessionManager`) with defaults for production (e.g. `ThemeManager? themeManager` with `?? ThemeManager()`).
+- Override `dispose()` to remove listeners, cancel timers, and clean up.
+
+**Views (screens)**
+
+- Use `context.read<MyViewModel>()` for one-off access, `context.watch<MyViewModel>()` when the widget must rebuild on ViewModel changes.
+- Screen widgets live in `screens/<feature>/` with matching `*_view.dart` and `*_viewmodel.dart`.
+- Reusable widgets go in `views/widgets/` (e.g. `AppScaffold`, `ThemeCard`, `FullScreenLoader`).
+
+## Imports
+
+- Order: Dart SDK, Flutter, packages, then local (e.g. `utils/`, `services/`, `views/widgets/`).
+- Use relative imports for files under `lib/` (e.g. `../../utils/logger.dart`).
+
+## Examples
+
+```dart
+// ViewModel: private state, notifyListeners
+class ThemeViewModel extends ChangeNotifier {
+  List<ThemeModel> _themes = [];
+  List<ThemeModel> get themes => _themes;
+  void _setLoading(bool value) {
+    _isLoading = value;
+    notifyListeners();
+  }
+}
+
+// View: read/watch ViewModel
+final viewModel = context.read<ThemeViewModel>();
+// or
+final viewModel = context.watch<ThemeViewModel>();
+```
+
+```dart
+// Config: use AppConfig, not hardcoded URLs
+import 'package:photobooth/utils/app_config.dart';
+final url = '${AppConfig.baseUrl}/api/themes';
+```

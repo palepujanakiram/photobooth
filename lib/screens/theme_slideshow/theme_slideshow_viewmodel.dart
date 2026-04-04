@@ -64,7 +64,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
     // Get active themes with sample images
     final activeThemes = _themes
         .where((theme) =>
-            theme.isActive &&
+            (theme.isActive == true) &&
             theme.sampleImageUrl != null &&
             theme.sampleImageUrl!.isNotEmpty)
         .toList();
@@ -163,7 +163,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
   List<String> getSampleImageUrls() {
     return _themes
         .where((theme) =>
-            theme.isActive &&
+            (theme.isActive == true) &&
             theme.sampleImageUrl != null &&
             theme.sampleImageUrl!.isNotEmpty)
         .map((theme) {

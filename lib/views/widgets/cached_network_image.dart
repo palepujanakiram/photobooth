@@ -13,6 +13,9 @@ class CachedNetworkImage extends StatefulWidget {
   final Widget? errorWidget;
   final double? width;
   final double? height;
+  final int? cacheWidth;
+  final int? cacheHeight;
+  final FilterQuality filterQuality;
 
   const CachedNetworkImage({
     super.key,
@@ -22,6 +25,9 @@ class CachedNetworkImage extends StatefulWidget {
     this.errorWidget,
     this.width,
     this.height,
+    this.cacheWidth,
+    this.cacheHeight,
+    this.filterQuality = FilterQuality.low,
   });
 
   @override
@@ -145,6 +151,9 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
           fit: widget.fit,
           width: widget.width,
           height: widget.height,
+          cacheWidth: widget.cacheWidth,
+          cacheHeight: widget.cacheHeight,
+          filterQuality: widget.filterQuality,
           color: null, // Ensure no color tint
           colorBlendMode: null, // Ensure no color blending
           errorBuilder: (context, error, stackTrace) {
@@ -154,6 +163,9 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
               fit: widget.fit,
               width: widget.width,
               height: widget.height,
+              cacheWidth: widget.cacheWidth,
+              cacheHeight: widget.cacheHeight,
+              filterQuality: widget.filterQuality,
               color: null,
               colorBlendMode: null,
               loadingBuilder: (context, child, loadingProgress) {
@@ -184,6 +196,9 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
       fit: widget.fit,
       width: widget.width,
       height: widget.height,
+      cacheWidth: widget.cacheWidth,
+      cacheHeight: widget.cacheHeight,
+      filterQuality: widget.filterQuality,
       color: null, // Ensure no color tint
       colorBlendMode: null, // Ensure no color blending
       loadingBuilder: (context, child, loadingProgress) {

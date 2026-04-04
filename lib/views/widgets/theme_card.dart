@@ -8,12 +8,22 @@ class ThemeCard extends StatelessWidget {
   final ThemeModel theme;
   final bool isSelected;
   final VoidCallback onTap;
+  /// When set and [isSelected] is true, shows a "Select" button to proceed (e.g. to next screen).
+  final VoidCallback? onSelectPressed;
+  final String actionButtonLabel;
+  final double selectedBorderWidth;
+  /// When true and [isSelected], shows "Selected" label in blue instead of the Select button (e.g. add-one-more flow).
+  final bool showSelectedLabel;
 
   const ThemeCard({
     super.key,
     required this.theme,
     required this.isSelected,
     required this.onTap,
+    this.onSelectPressed,
+    this.showSelectedLabel = false,
+    this.actionButtonLabel = 'Select',
+    this.selectedBorderWidth = 1.0,
   });
 
   String _getImageUrl() {
@@ -58,14 +68,17 @@ class ThemeCard extends StatelessWidget {
     final imageUrl = _getImageUrl();
     
     return Card(
-      elevation: isSelected ? 8 : 2,
+      elevation: isSelected ? 14 : 6,
+      shadowColor: isSelected
+          ? CupertinoColors.systemBlue.withValues(alpha: 0.55)
+          : Colors.black.withValues(alpha: 0.38),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: isSelected 
-              ? CupertinoColors.systemBlue 
-              : Colors.transparent,
-          width: isSelected ? 3 : 0,
+          color: isSelected
+              ? CupertinoColors.systemBlue.withValues(alpha: 0.9)
+              : const Color(0xFF4A4A4A),
+          width: isSelected ? selectedBorderWidth : 1.5,
         ),
       ),
       clipBehavior: Clip.antiAlias,
@@ -82,6 +95,9 @@ class ThemeCard extends StatelessWidget {
                     fit: BoxFit.cover,
                     width: double.infinity,
                     height: double.infinity,
+                    cacheWidth: 480,
+                    cacheHeight: 720,
+                    filterQuality: FilterQuality.medium,
                     placeholder: Container(
                       color: Colors.grey[200],
                       child: const Center(
@@ -105,49 +121,77 @@ class ThemeCard extends StatelessWidget {
                     color: Colors.grey[200],
                     child: const Center(
                       child: Icon(
-                        Icons.palette,
+                        CupertinoIcons.paintbrush,
                         size: 48,
                         color: Colors.grey,
                       ),
                     ),
                   ),
-            // Background color overlay at bottom for text
+            // Bottom bar: name left, Select button right (sleek, no description)
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
-              child: Container(
-                color: _parseColor(theme.backgroundColor) ?? 
-                    Colors.black.withValues(alpha: 0.8),
-                padding: const EdgeInsets.all(12.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      theme.name,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: isSelected 
-                            ? FontWeight.bold 
-                            : FontWeight.w600,
-                        color: _parseColor(theme.textColor) ?? Colors.white,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  color: _parseColor(theme.backgroundColor) ??
+                      Colors.black.withValues(alpha: 0.8),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 5),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          theme.name,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.w600,
+                            color: _parseColor(theme.textColor) ??
+                                Colors.white,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      theme.description,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: (_parseColor(theme.textColor) ?? Colors.white)
-                            .withValues(alpha: 0.9),
-                      ),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                      if (isSelected && showSelectedLabel) ...[
+                        const SizedBox(width: 6),
+                        const Text(
+                          'Selected',
+                          style: TextStyle(
+                            color: CupertinoColors.systemBlue,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ] else if (isSelected && onSelectPressed != null) ...[
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: onSelectPressed,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: CupertinoColors.systemBlue,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              actionButtonLabel,
+                              style: TextStyle(
+                                color: CupertinoColors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),
