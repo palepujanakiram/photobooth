@@ -587,7 +587,7 @@ class CaptureViewModel extends ChangeNotifier {
       ErrorReportingManager.log('Initializing camera: ${camera.name}');
 
       // Single preset for fast preview; veryHigh (1080p) is widely supported.
-      const preset = ResolutionPreset.max;
+      const preset = ResolutionPreset.high;
       _cameraController = CameraController(
         cameraToUse,
         preset,

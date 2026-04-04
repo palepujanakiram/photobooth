@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../services/api_service.dart';
+import '../../services/app_settings_manager.dart';
 import '../../services/session_manager.dart';
 import '../photo_capture/photo_model.dart';
 import '../theme_selection/theme_model.dart';
+import '../../utils/constants.dart';
 import '../../utils/logger.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 
@@ -39,15 +41,16 @@ class GeneratedImage {
 class PhotoGenerateViewModel extends ChangeNotifier {
   final ApiService _apiService;
   final SessionManager _sessionManager;
-  
+  final AppSettingsManager? _appSettingsManager;
+
   PhotoModel? _originalPhoto;
   ThemeModel? _selectedTheme;
   List<GeneratedImage> _generatedImages = [];
   bool _isGenerating = false;
   bool _isLoadingMore = false;
   String? _errorMessage;
-  int _triesRemaining = 3; // Allow 3 tries total (initial + 2 more)
-  int _currentAttempt = 1; // Track attempt number for API
+  int _maxRegenerationsAllowed = AppConstants.kDefaultMaxRegenerations;
+  int _triesRemaining = AppConstants.kDefaultMaxRegenerations;
   
   // Timer for generation progress
   Timer? _timer;
@@ -62,8 +65,10 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   PhotoGenerateViewModel({
     ApiService? apiService,
     SessionManager? sessionManager,
+    AppSettingsManager? appSettingsManager,
   })  : _apiService = apiService ?? ApiService(),
-        _sessionManager = sessionManager ?? SessionManager();
+        _sessionManager = sessionManager ?? SessionManager(),
+        _appSettingsManager = appSettingsManager;
 
   // Getters
   PhotoModel? get originalPhoto => _originalPhoto;
@@ -74,7 +79,11 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
   int get triesRemaining => _triesRemaining;
+  int get maxRegenerationsAllowed => _maxRegenerationsAllowed;
   bool get canTryDifferentStyle => _triesRemaining > 0 && !_isGenerating && !_isLoadingMore;
+  /// Whether the UI may offer “add one more style” (cap from `/api/settings` `maxRegenerations`).
+  bool get canShowAddAnotherStyleButton =>
+      generatedImages.length < _maxRegenerationsAllowed && triesRemaining > 0;
   int get elapsedSeconds => _elapsedSeconds;
   String get progressMessage => _progressMessage;
   bool get isCancelled => _isCancelled;
@@ -95,10 +104,38 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   
   bool get hasGeneratedImages => _generatedImages.isNotEmpty;
 
+  /// Newest generation is first in [_generatedImages] (prepended batches). It stays selected.
+  String? get newestGeneratedImageId =>
+      _generatedImages.isEmpty ? null : _generatedImages.first.id;
+
+  bool isNewestGeneratedImage(String imageId) =>
+      newestGeneratedImageId == imageId;
+
+  void _ensureNewestAlwaysSelected() {
+    if (_generatedImages.isEmpty) return;
+    final id = _generatedImages.first.id;
+    if (_generatedImages.first.isSelected) return;
+    _generatedImages = _generatedImages
+        .map((img) => img.id == id ? img.copyWith(isSelected: true) : img)
+        .toList();
+  }
+
+  static String _newGeneratedImageId(int slotIndex) =>
+      '${DateTime.now().microsecondsSinceEpoch}_$slotIndex';
+
+  void _refreshMaxRegenerationsFromSettings() {
+    final n = _appSettingsManager?.settings?.maxRegenerations;
+    _maxRegenerationsAllowed = (n != null && n > 0)
+        ? n
+        : AppConstants.kDefaultMaxRegenerations;
+  }
+
   /// Initialize with photo and theme
   void initialize(PhotoModel photo, ThemeModel theme) {
+    _refreshMaxRegenerationsFromSettings();
     _originalPhoto = photo;
     _selectedTheme = theme;
+    _triesRemaining = _maxRegenerationsAllowed;
     notifyListeners();
   }
 
@@ -143,17 +180,20 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       
       _updateProgress('Transforming your look...');
       
-      // Call the API to generate the image (120s timeout so UI cannot hang)
+      // Parallel SSE generation (GET /api/generate-stream-parallel); legacy POST
+      // /api/generate-image remains on [ApiService.generateImage] if needed later.
       const generateTimeout = Duration(seconds: 120);
-      final result = await _apiService.generateImage(
+      final parallel = await _apiService
+          .generateImageParallelStream(
         sessionId: _sessionManager.sessionId!,
-        attempt: _currentAttempt,
+        count: AppConstants.kAiParallelGenerationCount,
         originalPhotoId: _originalPhoto!.id,
         themeId: _selectedTheme!.id,
         onProgress: (message) {
           _updateProgress(message);
         },
-      ).timeout(
+      )
+          .timeout(
         generateTimeout,
         onTimeout: () => throw TimeoutException(
           'Generation timed out after ${generateTimeout.inSeconds} seconds',
@@ -162,18 +202,22 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
       _stopTimer();
 
-      if (result.imageUrl.isNotEmpty) {
-        // Add to generated images list
-        final generatedImage = GeneratedImage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          imageUrl: result.imageUrl,
-          theme: _selectedTheme!,
-          isSelected: _generatedImages.isEmpty, // Select first one by default
-        );
-        
-        _generatedImages.add(generatedImage);
+      if (parallel.firstImageUrl != null) {
+        final newImages = <GeneratedImage>[];
+        for (var i = 0; i < parallel.imageUrlsBySlot.length; i++) {
+          final url = parallel.imageUrlsBySlot[i];
+          if (url.isEmpty) continue;
+          newImages.add(GeneratedImage(
+            id: _newGeneratedImageId(i),
+            imageUrl: url,
+            theme: _selectedTheme!,
+            isSelected: true,
+          ));
+        }
+        // Newest generations first (stack order: latest left / first in list).
+        _generatedImages = [...newImages, ..._generatedImages];
+        _ensureNewestAlwaysSelected();
         _triesRemaining--;
-        _currentAttempt++;
         
         AppLogger.debug('✅ Image generated successfully');
         ErrorReportingManager.log('Image generated successfully');
@@ -205,16 +249,25 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     }
   }
 
-  /// Try a different style (regenerate with same or different theme)
+  /// Call from the view before tryDifferentStyle so the UI shows loading immediately.
+  void prepareToAddStyle(ThemeModel newTheme) {
+    _isLoadingMore = true;
+    _selectedTheme = newTheme;
+    _errorMessage = null;
+    _progressMessage = 'Adding your new style...';
+    notifyListeners();
+  }
+
+  /// Try a different style (regenerate with same or different theme).
+  /// May be called after prepareToAddStyle (then _isLoadingMore is already true).
   Future<bool> tryDifferentStyle(ThemeModel newTheme) async {
-    if (!canTryDifferentStyle || _originalPhoto == null) {
-      return false;
-    }
+    if (_originalPhoto == null) return false;
+    if (!_isLoadingMore && !canTryDifferentStyle) return false;
 
     _resetCancellation();
     _isLoadingMore = true;
     _errorMessage = null;
-    _progressMessage = 'Trying new style...';
+    _progressMessage = _progressMessage.isNotEmpty ? _progressMessage : 'Trying new style...';
     notifyListeners();
     
     _startTimer();
@@ -247,17 +300,18 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       
       _updateProgress('Transforming your look...');
       
-      // Generate new image (120s timeout)
       const generateTimeout = Duration(seconds: 120);
-      final result = await _apiService.generateImage(
+      final parallel = await _apiService
+          .generateImageParallelStream(
         sessionId: _sessionManager.sessionId!,
-        attempt: 1, // Always use 1 for new theme
+        count: AppConstants.kAiParallelGenerationCount,
         originalPhotoId: _originalPhoto!.id,
         themeId: newTheme.id,
         onProgress: (message) {
           _updateProgress(message);
         },
-      ).timeout(
+      )
+          .timeout(
         generateTimeout,
         onTimeout: () => throw TimeoutException(
           'Generation timed out after ${generateTimeout.inSeconds} seconds',
@@ -266,17 +320,21 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
       _stopTimer();
 
-      if (result.imageUrl.isNotEmpty) {
-        final generatedImage = GeneratedImage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          imageUrl: result.imageUrl,
-          theme: newTheme,
-          isSelected: true, // Auto-select new theme images
-        );
-        
-        _generatedImages.add(generatedImage);
+      if (parallel.firstImageUrl != null) {
+        final newImages = <GeneratedImage>[];
+        for (var i = 0; i < parallel.imageUrlsBySlot.length; i++) {
+          final url = parallel.imageUrlsBySlot[i];
+          if (url.isEmpty) continue;
+          newImages.add(GeneratedImage(
+            id: _newGeneratedImageId(i),
+            imageUrl: url,
+            theme: newTheme,
+            isSelected: true,
+          ));
+        }
+        _generatedImages = [...newImages, ..._generatedImages];
+        _ensureNewestAlwaysSelected();
         _triesRemaining--;
-        // Don't increment _currentAttempt here since we use attempt=1 for each new theme
         
         return true;
       } else {
@@ -310,30 +368,44 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     }
   }
 
-  /// Toggle selection of a generated image (multi-select)
-  /// Ensures at least one image is always selected
+  /// Toggle selection of a generated image (multi-select).
+  /// The newest image ([newestGeneratedImageId]) cannot be deselected; at least one stays selected.
   void toggleImageSelection(String imageId) {
-    // Find the image being toggled
-    final targetImage = _generatedImages.firstWhere(
-      (img) => img.id == imageId,
-      orElse: () => _generatedImages.first,
-    );
-    
-    // If trying to deselect and it's the only selected one, don't allow
+    final idx = _generatedImages.indexWhere((img) => img.id == imageId);
+    if (idx < 0) return;
+    final targetImage = _generatedImages[idx];
+
     if (targetImage.isSelected) {
-      final currentSelectedCount = _generatedImages.where((img) => img.isSelected).length;
-      if (currentSelectedCount <= 1) {
-        // Can't deselect the last selected image - at least one must be selected
-        return;
-      }
+      if (idx == 0) return;
+      final currentSelectedCount =
+          _generatedImages.where((img) => img.isSelected).length;
+      if (currentSelectedCount <= 1) return;
     }
-    
+
     _generatedImages = _generatedImages.map((img) {
       if (img.id == imageId) {
         return img.copyWith(isSelected: !img.isSelected);
       }
       return img;
     }).toList();
+    _ensureNewestAlwaysSelected();
+    notifyListeners();
+  }
+
+  /// Remove a generated image by id. No-op if only one remains (keep at least one).
+  /// Restores one "try" so the user can add a style again (e.g. re-add the removed theme).
+  void removeGeneratedImage(String imageId) {
+    if (_generatedImages.length <= 1) return;
+    _generatedImages = _generatedImages.where((img) => img.id != imageId).toList();
+    if (_generatedImages.isNotEmpty) {
+      final newestId = _generatedImages.first.id;
+      _generatedImages = _generatedImages
+          .map((img) =>
+              img.id == newestId ? img.copyWith(isSelected: true) : img)
+          .toList();
+    }
+    // Give back one try so user can add a style again (including re-adding the removed one)
+    if (_triesRemaining < _maxRegenerationsAllowed) _triesRemaining++;
     notifyListeners();
   }
   
@@ -345,10 +417,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     notifyListeners();
   }
   
-  /// Deselect all images
+  /// Deselect all except the newest (keeps at least one selected).
   void deselectAllImages() {
+    if (_generatedImages.isEmpty) return;
+    final newestId = _generatedImages.first.id;
     _generatedImages = _generatedImages.map((img) {
-      return img.copyWith(isSelected: false);
+      return img.copyWith(isSelected: img.id == newestId);
     }).toList();
     notifyListeners();
   }

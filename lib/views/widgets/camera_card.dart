@@ -1,5 +1,4 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 
 class CameraCard extends StatelessWidget {
@@ -16,8 +15,6 @@ class CameraCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isFrontFacing = camera.lensDirection == CameraLensDirection.front;
-    
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -59,9 +56,7 @@ class CameraCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
-                  isFrontFacing 
-                      ? Icons.camera_front 
-                      : Icons.camera_rear,
+                  CupertinoIcons.camera,
                   size: 32,
                   color: isSelected 
                       ? CupertinoColors.systemBlue 
@@ -91,7 +86,7 @@ class CameraCard extends StatelessWidget {
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
-                    Icons.check,
+                    CupertinoIcons.checkmark,
                     color: CupertinoColors.white,
                     size: 16,
                   ),

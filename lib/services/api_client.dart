@@ -1,8 +1,10 @@
 // Conditional import: use dart:io on mobile, create stub on web
 // The transformImage method is only called on mobile (ApiService uses Dio directly on web)
-import 'dart:io' if (dart.library.html) 'api_client_web_stub.dart' show File, Platform;
+import 'dart:io' if (dart.library.html) 'api_client_web_stub.dart'
+    show File, Platform;
 import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
+import '../models/app_settings_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/constants.dart';
 
@@ -10,7 +12,8 @@ part 'api_client.g.dart';
 
 /// Error logger interface for retrofit generated code
 abstract class ParseErrorLogger {
-  void logError(Object error, StackTrace stackTrace, RequestOptions options, [dynamic response]);
+  void logError(Object error, StackTrace stackTrace, RequestOptions options,
+      [dynamic response]);
 }
 
 @RestApi(baseUrl: AppConstants.kBaseUrl)
@@ -20,6 +23,10 @@ abstract class ApiClient {
   /// Fetches available themes from the API
   @GET('/api/themes')
   Future<List<ThemeModel>> getThemes();
+
+  /// Fetches app-level settings
+  @GET('/api/settings')
+  Future<AppSettingsModel> getAppSettings();
 
   /// Transforms an image using AI with the selected theme
   /// Note: This method is only used on mobile platforms.
@@ -52,7 +59,13 @@ abstract class ApiClient {
     @Body() Map<String, dynamic> body,
   );
 
-  /// Generates transformed image using AI
+  /// Deletes the session and associated data
+  @DELETE('/api/sessions/{sessionId}')
+  Future<void> deleteSession(
+    @Path('sessionId') String sessionId,
+  );
+
+  /// Generates transformed image using AI (legacy; app uses parallel SSE — see [ApiService.generateImageParallelStream]).
   @POST('/api/generate-image')
   Future<dynamic> generateImage(
     @Body() Map<String, dynamic> body,
@@ -64,5 +77,10 @@ abstract class ApiClient {
   Future<dynamic> preprocessImage(
     @Body() Map<String, dynamic> body,
   );
-}
 
+  /// Starts a payment and returns a link to encode as UPI QR.
+  @POST('/api/payment/initiate')
+  Future<Map<String, dynamic>> initiatePayment(
+    @Body() Map<String, dynamic> body,
+  );
+}

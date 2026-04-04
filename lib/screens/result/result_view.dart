@@ -1,14 +1,20 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors, Orientation;
+import 'dart:async';
+
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'result_viewmodel.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../photo_capture/photo_model.dart';
+import '../../services/app_settings_manager.dart';
 import '../../utils/constants.dart';
-import '../../views/widgets/app_theme.dart';
+import '../../utils/exceptions.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
-import '../../views/widgets/bottom_safe_area.dart';
+import '../../views/widgets/leading_with_alice.dart';
+import '../../views/widgets/theme_background.dart';
+import '../../views/widgets/payment_link_qr.dart';
+import '../../services/payment_push_coordinator.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -20,12 +26,13 @@ class ResultScreen extends StatefulWidget {
 class _ResultScreenState extends State<ResultScreen> {
   ResultViewModel? _viewModel;
   bool _isInitialized = false;
-  late TextEditingController _printerIpController;
+  bool _didNavigateToThankYou = false;
+  late TextEditingController _printerHostController;
 
   @override
   void initState() {
     super.initState();
-    _printerIpController = TextEditingController();
+    _printerHostController = TextEditingController();
   }
 
   @override
@@ -46,16 +53,61 @@ class _ResultScreenState extends State<ResultScreen> {
     _viewModel = ResultViewModel(
       generatedImages: generatedImages,
       originalPhoto: originalPhoto,
+      appSettingsManager: context.read<AppSettingsManager>(),
     );
-    _printerIpController.text = _viewModel!.printerIp;
+    _printerHostController.text = _viewModel!.printerHost;
     _isInitialized = true;
+
+    PaymentPushCoordinator.instance
+        .registerResultScreenCallback(_onPaymentPushFromFcm);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(PaymentPushCoordinator.instance.flushPendingStoragePayment());
+      _viewModel?.loadPaymentQr();
+    });
   }
 
   @override
   void dispose() {
-    _printerIpController.dispose();
+    PaymentPushCoordinator.instance.registerResultScreenCallback(null);
+    _printerHostController.dispose();
     _viewModel?.dispose();
     super.dispose();
+  }
+
+  /// FCM payment push: inline status under Pay & Collect; silent print on approval.
+  void _onPaymentPushFromFcm(PaymentPushPayload payload) {
+    if (!mounted || _viewModel == null) return;
+    // Run immediately on the main isolate (do not defer to next frame): deferred
+    // delivery was dropping updates when lifecycle/FCM timing coincided with frame gaps.
+    unawaited(_applyPaymentPushFromFcm(payload));
+  }
+
+  Future<void> _applyPaymentPushFromFcm(PaymentPushPayload payload) async {
+    try {
+      if (!mounted || _viewModel == null) return;
+
+      await _viewModel!.onFcmPaymentPush(payload);
+      if (!mounted) return;
+
+      if (_viewModel!.fcmPaymentPushSuccess == true) {
+        if (_viewModel!.hasError) {
+          AppSnackBar.showError(context, _viewModel!.errorMessage!);
+        } else {
+          AppSnackBar.showSuccess(context, 'Print job sent successfully!');
+          _navigateToThankYouIfEligible(_viewModel!);
+        }
+      }
+    } catch (e, st) {
+      debugPrint('Payment FCM UI error: $e\n$st');
+    }
+  }
+
+  void _navigateToThankYouIfEligible(ResultViewModel viewModel) {
+    if (!mounted || _didNavigateToThankYou) return;
+    if (viewModel.fcmPaymentPushSuccess != true || viewModel.hasError) return;
+    _didNavigateToThankYou = true;
+    Navigator.pushReplacementNamed(context, AppConstants.kRouteThankYou);
   }
 
   @override
@@ -63,111 +115,114 @@ class _ResultScreenState extends State<ResultScreen> {
     final appColors = AppColors.of(context);
 
     if (!_isInitialized || _viewModel == null) {
-      return CupertinoPageScaffold(
+      return Scaffold(
         backgroundColor: appColors.backgroundColor,
-        child: const Center(child: CupertinoActivityIndicator()),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return ChangeNotifierProvider.value(
       value: _viewModel!,
-      child: Consumer<ResultViewModel>(
-        builder: (context, viewModel, child) {
-          return CupertinoPageScaffold(
-            backgroundColor: appColors.backgroundColor,
-            navigationBar: AppTopBar(
-              title: 'Pay & Collect',
-              leading: AppActionButton(
-                icon: CupertinoIcons.back,
+      child: Consumer2<ResultViewModel, AppSettingsManager>(
+        builder: (context, viewModel, _, child) {
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            extendBodyBehindAppBar: true,
+            appBar: AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              surfaceTintColor: Colors.transparent,
+              forceMaterialTransparency: true,
+              centerTitle: true,
+              title: const Text(
+                'Complete Payment',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 17,
+                ),
+              ),
+              leading: IconButton(
+                icon: const Icon(CupertinoIcons.back, color: Colors.white),
                 onPressed: () => Navigator.pop(context),
               ),
+              actions: const [AppBarAliceAction()],
             ),
-            child: SafeArea(
-              child: BottomSafePadding(
-                child: Column(
-                  children: [
-                    // Step banner
-                    _buildStepBanner(context, 3), // 3 = Pay & Collect step
-                    
-                    // Main content
-                    Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          // Title section
-                          _buildTitleSection(appColors),
-                          const SizedBox(height: 24),
-                          
-                          // Main content - Photos and Payment
-                          _buildMainContent(context, viewModel, appColors),
-                          
-                          const SizedBox(height: 24),
-                          
-                          // Info text
-                          Text(
-                            'Payment will be verified automatically. Print will start once payment is approved.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: appColors.secondaryTextColor,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          
-                          const SizedBox(height: 24),
-                          
-                          // Print/Share actions section
-                          _buildPrintShareSection(context, viewModel, appColors),
-                          
-                          // Error message
-                          if (viewModel.hasError)
-                            Container(
-                              margin: const EdgeInsets.only(top: 16),
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: CupertinoColors.systemRed.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
+            body: Stack(
+              children: [
+                const Positioned.fill(
+                  child: ThemeBackground(),
+                ),
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: kToolbarHeight),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isWide = constraints.maxWidth > 600 ||
+                            MediaQuery.orientationOf(context) == Orientation.landscape;
+                        if (isWide) {
+                          return Column(
+                            children: [
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    children: [
+                                      _buildTitleSection(appColors),
+                                      const SizedBox(height: 16),
+                                      _buildMainContent(context, viewModel, appColors),
+                                      if (AppConstants.kShowResultPrintSection) ...[
+                                        const SizedBox(height: 20),
+                                        _buildPrintShareSection(context, viewModel, appColors),
+                                      ],
+                                      if (viewModel.hasError) _buildErrorBanner(viewModel),
+                                    ],
+                                  ),
+                                ),
                               ),
-                              child: Row(
+                              _buildBottomButtons(context, viewModel, appColors),
+                            ],
+                          );
+                        }
+                        // Narrow: title + payment card fixed at top so QR box is fully visible
+                        return Column(
+                          children: [
+                            SingleChildScrollView(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(
-                                    CupertinoIcons.exclamationmark_triangle,
-                                    color: CupertinoColors.systemRed,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      viewModel.errorMessage!,
-                                      style: const TextStyle(
-                                        color: CupertinoColors.systemRed,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                  CupertinoButton(
-                                    padding: EdgeInsets.zero,
-                                    minimumSize: Size.zero,
-                                    onPressed: () => viewModel.clearError(),
-                                    child: const Icon(
-                                      CupertinoIcons.xmark,
-                                      color: CupertinoColors.systemRed,
-                                      size: 18,
-                                    ),
-                                  ),
+                                  _buildTitleSection(appColors),
+                                  const SizedBox(height: 16),
+                                  _buildPaymentCard(context, viewModel, appColors),
                                 ],
                               ),
                             ),
-                        ],
-                      ),
+                            Expanded(
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                child: Column(
+                                  children: [
+                                    _buildPhotosSection(viewModel, appColors),
+                                    if (AppConstants.kShowResultPrintSection) ...[
+                                      const SizedBox(height: 20),
+                                      _buildPrintShareSection(context, viewModel, appColors),
+                                    ],
+                                    if (viewModel.hasError) _buildErrorBanner(viewModel),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            _buildBottomButtons(context, viewModel, appColors),
+                          ],
+                        );
+                      },
                     ),
                   ),
-                    
-                    // Bottom buttons
-                    _buildBottomButtons(context, viewModel, appColors),
-                  ],
                 ),
-              ),
+              ],
             ),
           );
         },
@@ -175,124 +230,50 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
-  Widget _buildStepBanner(BuildContext context, int currentStep) {
-    final appColors = AppColors.of(context);
-    
-    final steps = [
-      _StepInfo(icon: CupertinoIcons.camera, label: 'Photo'),
-      _StepInfo(icon: CupertinoIcons.paintbrush, label: 'Select Theme'),
-      _StepInfo(icon: CupertinoIcons.sparkles, label: 'Generate'),
-      _StepInfo(icon: CupertinoIcons.tray_arrow_down, label: 'Pay & Collect'),
-    ];
-
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      decoration: BoxDecoration(
-        color: appColors.backgroundColor,
-        boxShadow: [
-          BoxShadow(
-            color: appColors.shadowColor.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: List.generate(steps.length, (index) {
-          final step = steps[index];
-          final isActive = index == currentStep;
-          final isCompleted = index < currentStep;
-          
-          return Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isActive 
-                              ? CupertinoColors.systemBlue.withValues(alpha: 0.1)
-                              : isCompleted
-                                  ? CupertinoColors.systemBlue
-                                  : Colors.transparent,
-                          border: Border.all(
-                            color: isActive || isCompleted
-                                ? CupertinoColors.systemBlue
-                                : CupertinoColors.systemGrey3,
-                            width: isActive ? 2 : 1,
-                          ),
-                        ),
-                        child: Icon(
-                          isCompleted ? CupertinoIcons.checkmark : step.icon,
-                          size: 18,
-                          color: isCompleted
-                              ? CupertinoColors.white
-                              : isActive
-                                  ? CupertinoColors.systemBlue
-                                  : CupertinoColors.systemGrey,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        step.label,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-                          color: isActive || isCompleted
-                              ? CupertinoColors.systemBlue
-                              : CupertinoColors.systemGrey,
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                if (index < steps.length - 1)
-                  Expanded(
-                    child: Container(
-                      height: 1,
-                      margin: const EdgeInsets.only(bottom: 20),
-                      color: isCompleted
-                          ? CupertinoColors.systemBlue
-                          : CupertinoColors.systemGrey3,
-                    ),
-                  ),
-              ],
-            ),
-          );
-        }),
+  Widget _buildTitleSection(AppColors appColors) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Text(
+        'Payment will be verified automatically. Print will start once payment is approved.',
+        style: TextStyle(
+          fontSize: 13,
+          color: Colors.white.withValues(alpha: 0.8),
+        ),
+        textAlign: TextAlign.center,
       ),
     );
   }
 
-  Widget _buildTitleSection(AppColors appColors) {
-    return Column(
-      children: [
-        Text(
-          'Complete Payment',
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-            color: appColors.textColor,
+  Widget _buildErrorBanner(ResultViewModel viewModel) {
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            CupertinoIcons.exclamationmark_triangle,
+            color: Colors.red,
+            size: 20,
           ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Scan the QR code to pay and print',
-          style: TextStyle(
-            fontSize: 16,
-            color: appColors.secondaryTextColor,
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              viewModel.errorMessage!,
+              style: const TextStyle(color: Colors.red, fontSize: 13),
+            ),
           ),
-        ),
-      ],
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onPressed: () => viewModel.clearError(),
+            icon: const Icon(CupertinoIcons.xmark, color: Colors.red, size: 18),
+          ),
+        ],
+      ),
     );
   }
 
@@ -316,58 +297,110 @@ class _ResultScreenState extends State<ResultScreen> {
           // Right side - Payment
           Expanded(
             flex: 1,
-            child: _buildPaymentCard(viewModel, appColors),
+            child: _buildPaymentCard(context, viewModel, appColors),
           ),
         ],
       );
     } else {
-      // Single column layout for narrow screens
+      // Single column: payment card (with QR) first so QR is visible without scrolling
       return Column(
         children: [
-          _buildPhotosSection(viewModel, appColors),
+          _buildPaymentCard(context, viewModel, appColors),
           const SizedBox(height: 24),
-          _buildPaymentCard(viewModel, appColors),
+          _buildPhotosSection(viewModel, appColors),
         ],
       );
     }
   }
 
+  static const double _photoCardAspectRatio = 140 / 180; // width / height
+  static const double _photoCardSpacing = 12;
+
+  /// Shared height for Pay & Collect and Your N Photos boxes so they align. Kept within typical viewport to avoid overflow.
+  static const double _resultBoxHeight = 400;
+
+  /// Space between title and QR box in payment card (title line + 4 + Rs row + 12). Match this in photos section so card tops align with QR top.
+  static const double _resultBoxTitleToContentSpacing = 40;
+
+  static const TextStyle _resultBoxTitleStyle = TextStyle(
+    fontSize: 32,
+    fontWeight: FontWeight.bold,
+    color: Colors.white,
+  );
+
   Widget _buildPhotosSection(ResultViewModel viewModel, AppColors appColors) {
     final photoCount = viewModel.generatedImages.length;
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Text(
-          'Your $photoCount Photo${photoCount > 1 ? 's' : ''}',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: appColors.textColor,
+    final images = viewModel.generatedImages;
+
+    return Container(
+      height: _resultBoxHeight,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
           ),
-        ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          alignment: WrapAlignment.center,
-          children: List.generate(viewModel.generatedImages.length, (index) {
-            final image = viewModel.generatedImages[index];
-            return _buildPhotoCard(image, index + 1, appColors);
-          }),
-        ),
-      ],
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Your $photoCount Photo${photoCount > 1 ? 's' : ''}',
+            style: _resultBoxTitleStyle,
+          ),
+          const SizedBox(height: _resultBoxTitleToContentSpacing),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final innerWidth = constraints.maxWidth;
+                final innerHeight = constraints.maxHeight;
+                final spacingTotal = _photoCardSpacing * (images.length - 1);
+                final n = images.length;
+                // Size by width first, then constrain by available height to prevent overflow
+                final cardWidthByWidth = (innerWidth - spacingTotal) / n;
+                final cardHeightByWidth = cardWidthByWidth / _photoCardAspectRatio;
+                final cardHeight = cardHeightByWidth.clamp(0.0, innerHeight);
+                final cardWidth = cardHeight * _photoCardAspectRatio;
+                return SizedBox(
+                  height: cardHeight,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (int i = 0; i < n; i++) ...[
+                        if (i > 0) const SizedBox(width: 12),
+                        SizedBox(
+                          width: cardWidth,
+                          height: cardHeight,
+                          child: _buildPhotoCard(images[i], appColors),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildPhotoCard(GeneratedImage image, int number, AppColors appColors) {
+  Widget _buildPhotoCard(GeneratedImage image, AppColors appColors) {
     return Container(
-      width: 140,
-      height: 180,
+      width: double.infinity,
+      height: double.infinity,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: CupertinoColors.systemBlue,
+          color: Colors.blue,
           width: 2,
         ),
         boxShadow: [
@@ -378,13 +411,15 @@ class _ResultScreenState extends State<ResultScreen> {
           ),
         ],
       ),
-      child: Stack(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.network(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ColoredBox(color: appColors.surfaceColor),
+            Image.network(
               image.imageUrl,
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
               width: double.infinity,
               height: double.infinity,
               loadingBuilder: (context, child, loadingProgress) {
@@ -392,7 +427,7 @@ class _ResultScreenState extends State<ResultScreen> {
                 return Container(
                   color: appColors.surfaceColor,
                   child: const Center(
-                    child: CupertinoActivityIndicator(),
+                    child: CircularProgressIndicator(),
                   ),
                 );
               },
@@ -400,122 +435,141 @@ class _ResultScreenState extends State<ResultScreen> {
                 color: appColors.surfaceColor,
                 child: const Center(
                   child: Icon(
-                    CupertinoIcons.photo,
+                    Icons.photo,
                     size: 32,
-                    color: CupertinoColors.systemGrey,
+                    color: Colors.grey,
                   ),
                 ),
               ),
             ),
-          ),
-          // Number badge
-          Positioned(
-            top: 8,
-            left: 8,
-            child: Container(
-              width: 24,
-              height: 24,
-              decoration: const BoxDecoration(
-                color: CupertinoColors.systemBlue,
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  '$number',
-                  style: const TextStyle(
-                    color: CupertinoColors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildPaymentCard(ResultViewModel viewModel, AppColors appColors) {
+  Widget _buildPaymentQrArea(ResultViewModel viewModel, double side) {
+    if (viewModel.paymentInitInProgress) {
+      return SizedBox(
+        width: side,
+        height: side,
+        child: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(12),
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    if (viewModel.paymentInitError != null) {
+      return Padding(
+        padding: const EdgeInsets.all(8),
+        child: Text(
+          viewModel.paymentInitError!,
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 11, color: Colors.grey.shade800),
+        ),
+      );
+    }
+    final link = viewModel.paymentLink;
+    if (link == null || link.isEmpty) {
+      return Icon(
+        CupertinoIcons.qrcode,
+        size: side * 0.45,
+        color: Colors.grey.shade700,
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.all(6),
+      child: PaymentLinkQr(paymentLink: link, size: side - 12),
+    );
+  }
+
+  Widget _buildPaymentCard(BuildContext context, ResultViewModel viewModel, AppColors appColors) {
     final photoCount = viewModel.generatedImages.length;
-    const basePrice = 100;
-    const additionalPrice = 50;
-    final totalPrice = basePrice + (photoCount > 1 ? (photoCount - 1) * additionalPrice : 0);
-    
+    final basePrice = viewModel.initialPrintPrice;
+    final additionalPrice = viewModel.additionalPrintPrice;
+    final totalPrice = viewModel.totalPrice;
+    final breakdownText = photoCount > 1
+        ? '$photoCount prints: Rs $basePrice + ${photoCount - 1} x Rs $additionalPrice'
+        : '1 print: Rs $basePrice';
+
     return Container(
-      padding: const EdgeInsets.all(20),
+      height: _resultBoxHeight,
+      clipBehavior: Clip.antiAlias,
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: appColors.surfaceColor,
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: appColors.borderColor),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
         boxShadow: [
           BoxShadow(
-            color: appColors.shadowColor.withValues(alpha: 0.1),
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        children: [
-          // Price
-          Text(
-            'Rs $totalPrice',
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: appColors.textColor,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Pay & Collect',
+              style: _resultBoxTitleStyle,
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            photoCount > 1
-                ? '$photoCount prints: Rs $basePrice + ${photoCount - 1} x Rs $additionalPrice'
-                : '1 print: Rs $basePrice',
-            style: TextStyle(
-              fontSize: 13,
-              color: appColors.secondaryTextColor,
-            ),
-          ),
-          const SizedBox(height: 20),
-          
-          // QR Code placeholder
-          Container(
-            width: 180,
-            height: 180,
-            decoration: BoxDecoration(
-              color: CupertinoColors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: appColors.borderColor),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  CupertinoIcons.qrcode,
-                  size: 100,
-                  color: appColors.textColor,
+            const SizedBox(height: 4),
+            Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Rs $totalPrice',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'QR Code',
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  breakdownText,
                   style: TextStyle(
-                    fontSize: 12,
-                    color: appColors.secondaryTextColor,
+                    fontSize: 13,
+                    color: Colors.white.withValues(alpha: 0.85),
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          
-          // UPI info
-          Text(
+          const SizedBox(height: 8),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final side = (constraints.maxWidth - 24).clamp(100.0, 130.0);
+              return Container(
+                width: side,
+                height: side,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                ),
+                clipBehavior: Clip.antiAlias,
+                alignment: Alignment.center,
+                child: _buildPaymentQrArea(viewModel, side),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          const Text(
             'UPI Payment',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: appColors.textColor,
+              color: Colors.white,
             ),
           ),
           const SizedBox(height: 4),
@@ -523,37 +577,97 @@ class _ResultScreenState extends State<ResultScreen> {
             'Scan with any UPI app (GPay, PhonePe, Paytm, etc.)',
             style: TextStyle(
               fontSize: 12,
-              color: appColors.secondaryTextColor,
+              color: Colors.white.withValues(alpha: 0.85),
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           const Text(
             'Trusted by 10,000+ happy visitors',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
-              color: CupertinoColors.systemBlue,
+              color: Colors.blue,
             ),
           ),
-          const SizedBox(height: 16),
-          
-          // Waiting status
+          if (viewModel.hasFcmPaymentStatus) ...[
+            const SizedBox(height: 8),
+            Text(
+              viewModel.fcmPaymentStatusDetail!,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+                color: viewModel.fcmPaymentPushSuccess == true
+                    ? Colors.green
+                    : Colors.red,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const CupertinoActivityIndicator(radius: 8),
-              const SizedBox(width: 8),
-              Text(
-                'Waiting for payment confirmation...',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: appColors.secondaryTextColor,
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: viewModel.isSilentPrinting || viewModel.isDownloadingForSilentPrint || viewModel.isDialogPrinting || viewModel.isSharing
+                      ? null
+                      : () async {
+                          await viewModel.silentPrintToNetwork();
+                          if (viewModel.hasError && context.mounted) {
+                            AppSnackBar.showError(context, viewModel.errorMessage!);
+                          } else if (!viewModel.hasError && context.mounted) {
+                            AppSnackBar.showSuccess(context, 'Print job sent successfully!');
+                            _navigateToThankYouIfEligible(viewModel);
+                          }
+                        },
+                  child: viewModel.isSilentPrinting || viewModel.isDownloadingForSilentPrint
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                viewModel.isDownloadingForSilentPrint ? viewModel.downloadMessage : 'Printing...',
+                                style: const TextStyle(color: Colors.white, fontSize: 13),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        )
+                      : const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(CupertinoIcons.printer_fill, color: Colors.white, size: 16),
+                            SizedBox(width: 6),
+                            Text(
+                              'Print',
+                              style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
                 ),
               ),
+              const SizedBox(width: 8),
+              Expanded(child: _buildDeleteButton(context, viewModel, appColors)),
             ],
           ),
         ],
+      ),
       ),
     );
   }
@@ -562,83 +676,102 @@ class _ResultScreenState extends State<ResultScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: appColors.surfaceColor,
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: appColors.borderColor),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Section title
-          Text(
+          const Text(
             'Print & Share Options',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: appColors.textColor,
+              color: Colors.white,
             ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
-          
-          // Printer IP TextField
           Row(
             children: [
-              Text(
-                'Printer IP:',
+              const Text(
+                'Printer:',
                 style: TextStyle(
                   fontSize: 14,
-                  color: appColors.textColor,
+                  color: Colors.white,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: CupertinoTextField(
-                  placeholder: '192.168.2.108',
-                  controller: _printerIpController,
-                  onChanged: (value) => viewModel.setPrinterIp(value),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: appColors.backgroundColor,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: appColors.borderColor),
+                child: TextField(
+                  controller: _printerHostController,
+                  onChanged: (value) => viewModel.setPrinterHost(value),
+                  decoration: InputDecoration(
+                    hintText: AppConstants.kDefaultPrinterHost,
+                    hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: 0.15),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                    ),
                   ),
-                  style: TextStyle(
-                    color: appColors.textColor,
+                  style: const TextStyle(
+                    color: Colors.white,
                     fontSize: 14,
                   ),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: TextInputType.url,
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 6),
+          Text(
+            'Print API port: ${viewModel.effectivePrinterPort}',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.white.withValues(alpha: 0.65),
+            ),
+          ),
           const SizedBox(height: 16),
-          
+
           // Silent Print button
-          CupertinoButton(
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            color: CupertinoColors.systemGreen,
-            borderRadius: BorderRadius.circular(10),
-            onPressed: viewModel.isSilentPrinting || viewModel.isDownloadingForSilentPrint || viewModel.isDialogPrinting || viewModel.isSharing
-                ? null
-                : () async {
-                    await viewModel.silentPrintToNetwork();
-                    if (viewModel.hasError && context.mounted) {
-                      AppSnackBar.showError(context, viewModel.errorMessage!);
-                    } else if (!viewModel.hasError && context.mounted) {
-                      AppSnackBar.showSuccess(context, 'Print job sent successfully!');
-                    }
-                  },
-            child: viewModel.isSilentPrinting || viewModel.isDownloadingForSilentPrint
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onPressed: viewModel.isSilentPrinting || viewModel.isDownloadingForSilentPrint || viewModel.isDialogPrinting || viewModel.isSharing
+                  ? null
+                  : () async {
+                      await viewModel.silentPrintToNetwork();
+                      if (viewModel.hasError && context.mounted) {
+                        AppSnackBar.showError(context, viewModel.errorMessage!);
+                      } else if (!viewModel.hasError && context.mounted) {
+                        AppSnackBar.showSuccess(context, 'Print job sent successfully!');
+                        _navigateToThankYouIfEligible(viewModel);
+                      }
+                    },
+              child: viewModel.isSilentPrinting || viewModel.isDownloadingForSilentPrint
                 ? Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const CupertinoActivityIndicator(color: CupertinoColors.white),
+                      const CircularProgressIndicator(color: Colors.white),
                       const SizedBox(width: 8),
                       Text(
                         viewModel.isDownloadingForSilentPrint ? viewModel.downloadMessage : 'Printing...',
                         style: const TextStyle(
-                          color: CupertinoColors.white,
+                          color: Colors.white,
                           fontSize: 14,
                         ),
                       ),
@@ -648,21 +781,22 @@ class _ResultScreenState extends State<ResultScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        CupertinoIcons.printer,
-                        color: CupertinoColors.white,
+                        CupertinoIcons.printer_fill,
+                        color: Colors.white,
                         size: 18,
                       ),
                       SizedBox(width: 8),
                       Text(
                         'Silent Print (Network)',
                         style: TextStyle(
-                          color: CupertinoColors.white,
+                          color: Colors.white,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
                   ),
+            ),
           ),
           const SizedBox(height: 12),
           
@@ -671,10 +805,14 @@ class _ResultScreenState extends State<ResultScreen> {
             children: [
               // Print with Dialog button
               Expanded(
-                child: CupertinoButton(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  color: CupertinoColors.systemBlue,
-                  borderRadius: BorderRadius.circular(10),
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
                   onPressed: viewModel.isDialogPrinting || viewModel.isDownloadingForDialogPrint || viewModel.isSilentPrinting || viewModel.isSharing
                       ? null
                       : () async {
@@ -687,12 +825,12 @@ class _ResultScreenState extends State<ResultScreen> {
                       ? const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            CupertinoActivityIndicator(color: CupertinoColors.white),
+                            CircularProgressIndicator(color: Colors.white),
                             SizedBox(width: 8),
                             Text(
                               'Preparing...',
                               style: TextStyle(
-                                color: CupertinoColors.white,
+                                color: Colors.white,
                                 fontSize: 13,
                               ),
                             ),
@@ -703,14 +841,14 @@ class _ResultScreenState extends State<ResultScreen> {
                           children: [
                             Icon(
                               CupertinoIcons.doc_text,
-                              color: CupertinoColors.white,
+                              color: Colors.white,
                               size: 16,
                             ),
                             SizedBox(width: 6),
                             Text(
                               'Print',
                               style: TextStyle(
-                                color: CupertinoColors.white,
+                                color: Colors.white,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -722,10 +860,14 @@ class _ResultScreenState extends State<ResultScreen> {
               const SizedBox(width: 12),
               // Share button
               Expanded(
-                child: CupertinoButton(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  color: CupertinoColors.systemOrange,
-                  borderRadius: BorderRadius.circular(10),
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
                   onPressed: viewModel.isSharing || viewModel.isDownloadingForShare || viewModel.isSilentPrinting || viewModel.isDialogPrinting
                       ? null
                       : () async {
@@ -744,12 +886,12 @@ class _ResultScreenState extends State<ResultScreen> {
                       ? const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            CupertinoActivityIndicator(color: CupertinoColors.white),
+                            CircularProgressIndicator(color: Colors.white),
                             SizedBox(width: 8),
                             Text(
                               'Preparing...',
                               style: TextStyle(
-                                color: CupertinoColors.white,
+                                color: Colors.white,
                                 fontSize: 13,
                               ),
                             ),
@@ -760,14 +902,14 @@ class _ResultScreenState extends State<ResultScreen> {
                           children: [
                             Icon(
                               CupertinoIcons.share,
-                              color: CupertinoColors.white,
+                              color: Colors.white,
                               size: 16,
                             ),
                             SizedBox(width: 6),
                             Text(
                               'Share',
                               style: TextStyle(
-                                color: CupertinoColors.white,
+                                color: Colors.white,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -797,37 +939,34 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   Widget _buildBottomButtons(BuildContext context, ResultViewModel viewModel, AppColors appColors) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: appColors.backgroundColor,
-        boxShadow: [
-          BoxShadow(
-            color: appColors.shadowColor.withValues(alpha: 0.1),
-            blurRadius: 4,
-            offset: const Offset(0, -2),
+    return const SizedBox.shrink();
+  }
+
+  /// Delete my photos button, styled like the Print button (green, full width), placed below the content.
+  Widget _buildDeleteButton(BuildContext context, ResultViewModel viewModel, AppColors appColors) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.green,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
           ),
-        ],
-      ),
-      child: CupertinoButton(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        onPressed: () {
-          _showDeleteConfirmation(context, viewModel, appColors);
-        },
+        ),
+        onPressed: () => _showDeleteConfirmation(context, viewModel, appColors),
         child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              CupertinoIcons.trash,
-              size: 16,
-              color: CupertinoColors.systemRed,
-            ),
-            SizedBox(width: 8),
-            Text(
-              'Delete My Data Now',
-              style: TextStyle(
-                fontSize: 14,
-                color: CupertinoColors.systemRed,
+            Icon(CupertinoIcons.delete, color: Colors.white, size: 16),
+            SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                'Delete my photos',
+                style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
               ),
             ),
           ],
@@ -837,44 +976,45 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   void _showDeleteConfirmation(BuildContext context, ResultViewModel viewModel, AppColors appColors) {
-    showCupertinoDialog(
+    showDialog<void>(
       context: context,
       builder: (dialogContext) {
-        return CupertinoAlertDialog(
+        return AlertDialog(
           title: const Text('Delete My Data'),
           content: const Text(
             'This will delete all your photos and generated images. This action cannot be undone.',
           ),
           actions: [
-            CupertinoDialogAction(
-              isDefaultAction: true,
+            TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Cancel'),
             ),
-            CupertinoDialogAction(
-              isDestructiveAction: true,
-              onPressed: () {
+            TextButton(
+              onPressed: () async {
                 Navigator.pop(dialogContext);
-                // Navigate to terms screen and clear all data
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  AppConstants.kRouteTerms,
-                  (route) => false,
-                );
+                try {
+                  await viewModel.deleteSession();
+                  if (context.mounted) {
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      AppConstants.kRouteTerms,
+                      (route) => false,
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    AppSnackBar.showError(
+                      context,
+                      e is ApiException ? e.message : e.toString(),
+                    );
+                  }
+                }
               },
-              child: const Text('Delete'),
+              child: const Text('Delete', style: TextStyle(color: Colors.red)),
             ),
           ],
         );
       },
     );
   }
-}
-
-/// Helper class to store step information
-class _StepInfo {
-  final IconData icon;
-  final String label;
-
-  _StepInfo({required this.icon, required this.label});
 }

@@ -1,0 +1,45 @@
+---
+description: Photobooth app context, architecture, and conventions
+alwaysApply: true
+---
+
+# Photo Booth Project
+
+Flutter photo booth app with AI transformations. Use this context when editing or adding code.
+
+## Stack & platforms
+
+- **Flutter** (SDK >=3.0.0 <4.0.0), **Provider** for state
+- **Platforms**: iOS, Android (phones, tablets, Android TV). **Android minimum**: API 30 (Android 11). Web exists but is secondary (stubs for file/camera).
+- **Camera**: Official Flutter `camera` plugin only; no custom native camera. External/USB cameras supported via `camera_android_camerax` (dependency override 0.7.1).
+- **API**: Dio + Retrofit; base URL in `lib/utils/app_config.dart` (`AppConfig.baseUrl`).
+- **Error reporting**: Bugsnag via `ErrorReportingManager` (disabled on web).
+
+## Architecture: MVVM
+
+- **Models**: `lib/models/` and screen-specific models (e.g. `theme_model.dart`, `photo_model.dart`).
+- **ViewModels**: `ChangeNotifier` in `*_viewmodel.dart` next to the screen; business logic and API/session here.
+- **Views**: Screens in `lib/screens/<feature>/` with `*_view.dart`; use `Provider` to read ViewModels. Reusable UI in `lib/views/widgets/`.
+- **Services**: `lib/services/` — API, theme manager, session, file helper, print, share, error reporting. Prefer injecting services into ViewModels (constructor) for testability.
+
+## Project structure
+
+```
+lib/
+├── models/
+├── screens/          # <feature>/<feature>_view.dart, <feature>_viewmodel.dart, models
+├── services/         # API, theme, session, file, print, share, error_reporting
+├── utils/            # app_config, constants, logger, exceptions, device_classifier
+└── views/widgets/    # app_theme, app_scaffold, theme_card, full_screen_loader, etc.
+```
+
+- **Local package**: `packages/camera_native_details` (Android Camera2 details; stubs for iOS/Web).
+- **Generated files**: `*.g.dart` (Retrofit, json_serializable) — do not edit; run `dart run build_runner build` if needed.
+- **Assets**: `lib/images/` (e.g. launcher icon).
+
+## Conventions
+
+- **Config/URLs**: Change endpoints and links in `lib/utils/app_config.dart` only; no hardcoded API URLs elsewhere.
+- **Logging**: Use `utils/logger.dart`; avoid `print`.
+- **Errors**: Use `utils/exceptions.dart` (e.g. `ApiException`); report via `ErrorReportingManager` where appropriate.
+- **Platform conditionals**: Use `kIsWeb`, or stub implementations (e.g. `file_helper_io.dart` vs `file_helper_web.dart`, `file_helper_stub.dart`) and `file_helper.dart` exports the right implementation.

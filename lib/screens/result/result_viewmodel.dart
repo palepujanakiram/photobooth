@@ -1,12 +1,21 @@
+import 'dart:async';
 import 'dart:ui';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../photo_capture/photo_model.dart';
 import '../../services/api_service.dart';
+import '../../services/app_settings_manager.dart';
 import '../../services/print_service.dart';
+import '../../services/session_manager.dart';
 import '../../services/share_service.dart';
+import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
+import '../../services/fcm_service.dart';
+import '../../services/payment_push_coordinator.dart';
+
+enum _PollVerdict { approved, failed, pending }
 
 class ResultViewModel extends ChangeNotifier {
   final List<GeneratedImage> _generatedImages;
@@ -14,10 +23,12 @@ class ResultViewModel extends ChangeNotifier {
   final PrintService _printService;
   final ShareService _shareService;
   final ApiService _apiService;
-  
+  final SessionManager _sessionManager;
+  final AppSettingsManager? _appSettingsManager;
+
   final bool _isProcessing = false;
   String? _errorMessage;
-  String _printerIp = '192.168.2.108'; // Default printer IP
+  String _printerHost;
   
   // Print/Share state
   bool _isSilentPrinting = false;
@@ -32,24 +43,79 @@ class ResultViewModel extends ChangeNotifier {
   // Downloaded files for each image
   final Map<String, XFile> _downloadedFiles = {};
 
+  String? _paymentLink;
+  String? _paymentInitError;
+  bool _paymentInitInProgress = false;
+
+  /// Set when an FCM payment push is handled on the Pay & Collect screen (inline UI, no dialog).
+  String? _fcmPaymentStatusDetail;
+  bool? _fcmPaymentPushSuccess;
+
+  /// Server payment id from initiate; used to poll when FCM is missing (emulator / tray only).
+  String? _activePaymentId;
+  Timer? _paymentPollTimer;
+  int _paymentPollTicks = 0;
+  int _pollNullStreak = 0;
+  bool _paymentOutcomeHandled = false;
+
+  String? get paymentLink => _paymentLink;
+  String? get paymentInitError => _paymentInitError;
+  bool get paymentInitInProgress => _paymentInitInProgress;
+
+  String? get fcmPaymentStatusDetail => _fcmPaymentStatusDetail;
+  bool? get fcmPaymentPushSuccess => _fcmPaymentPushSuccess;
+
+  bool get hasFcmPaymentStatus =>
+      _fcmPaymentStatusDetail != null && _fcmPaymentStatusDetail!.isNotEmpty;
+
   ResultViewModel({
     required List<GeneratedImage> generatedImages,
     PhotoModel? originalPhoto,
     PrintService? printService,
     ShareService? shareService,
     ApiService? apiService,
+    SessionManager? sessionManager,
+    AppSettingsManager? appSettingsManager,
   })  : _generatedImages = generatedImages,
         _originalPhoto = originalPhoto,
         _printService = printService ?? PrintService(),
         _shareService = shareService ?? ShareService(),
-        _apiService = apiService ?? ApiService();
+        _apiService = apiService ?? ApiService(),
+        _sessionManager = sessionManager ?? SessionManager(),
+        _appSettingsManager = appSettingsManager,
+        _printerHost = _defaultPrinterHost(appSettingsManager);
 
   List<GeneratedImage> get generatedImages => _generatedImages;
   PhotoModel? get originalPhoto => _originalPhoto;
   bool get isProcessing => _isProcessing;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
-  String get printerIp => _printerIp;
+  String get printerHost => _printerHost;
+
+  static String _defaultPrinterHost(AppSettingsManager? manager) {
+    final fromApi = manager?.settings?.printerHost?.trim();
+    if (fromApi != null && fromApi.isNotEmpty) {
+      return fromApi;
+    }
+    return AppConstants.kDefaultPrinterHost;
+  }
+
+  /// Port from `/api/settings` when valid; otherwise HTTP default (80).
+  int get effectivePrinterPort {
+    final p = _appSettingsManager?.settings?.printerPort;
+    if (p != null && p > 0 && p <= 65535) {
+      return p;
+    }
+    return 80;
+  }
+
+  int get initialPrintPrice =>
+      _appSettingsManager?.settings?.initialPrice ??
+      AppConstants.kDefaultInitialPrintPrice;
+
+  int get additionalPrintPrice =>
+      _appSettingsManager?.settings?.additionalPrintPrice ??
+      AppConstants.kDefaultAdditionalPrintPrice;
   
   bool get isSilentPrinting => _isSilentPrinting;
   bool get isDialogPrinting => _isDialogPrinting;
@@ -65,15 +131,18 @@ class ResultViewModel extends ChangeNotifier {
 
   /// Get total price based on number of photos
   int get totalPrice {
-    const basePrice = 100;
-    const additionalPrice = 50;
     if (_generatedImages.isEmpty) return 0;
-    return basePrice + (_generatedImages.length > 1 ? (_generatedImages.length - 1) * additionalPrice : 0);
+    final basePrice = initialPrintPrice;
+    final additionalPrice = additionalPrintPrice;
+    return basePrice +
+        (_generatedImages.length > 1
+            ? (_generatedImages.length - 1) * additionalPrice
+            : 0);
   }
 
-  /// Updates the printer IP address
-  void setPrinterIp(String ip) {
-    _printerIp = ip.trim();
+  /// Updates the printer host (hostname or IP) shown in the print options field.
+  void setPrinterHost(String host) {
+    _printerHost = host.trim();
     notifyListeners();
   }
 
@@ -81,6 +150,208 @@ class ResultViewModel extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  /// Loads UPI payment link from POST /api/payment/initiate and exposes it for QR display.
+  Future<void> loadPaymentQr({String? customerPhone}) async {
+    if (_paymentInitInProgress || _paymentLink != null) return;
+
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null || sessionId.isEmpty) {
+      _paymentInitError = 'No session for payment. Go back and try again.';
+      notifyListeners();
+      return;
+    }
+
+    _paymentInitInProgress = true;
+    _paymentInitError = null;
+    _activePaymentId = null;
+    _paymentPollTimer?.cancel();
+    _paymentPollTicks = 0;
+    _pollNullStreak = 0;
+    _paymentOutcomeHandled = false;
+    notifyListeners();
+
+    try {
+      final fcmToken = await FcmService.getToken();
+      if (kDebugMode) {
+        final len = fcmToken?.length ?? 0;
+        debugPrint(
+          'Payment initiate: fcmToken length=$len'
+          '${len == 0 ? " — server cannot send FCM; check permission / Play services" : ""}',
+        );
+      }
+      final result = await _apiService.initiatePayment(
+        sessionId: sessionId,
+        amount: totalPrice,
+        customerPhone: customerPhone,
+        fcmToken: fcmToken ?? '',
+      );
+      if (kDebugMode) {
+        debugPrint(
+          'Payment initiate OK: id=${result.id} status=${result.status} — '
+          'confirm backend stores token + sends FCM from same Firebase project as the app',
+        );
+      }
+      _paymentLink = result.paymentLink;
+      final pid = result.id.trim();
+      _activePaymentId = pid.isNotEmpty ? pid : null;
+      if (_activePaymentId != null) {
+        _startPaymentStatusPolling();
+      }
+    } on ApiException catch (e) {
+      _paymentInitError = e.message;
+    } catch (e) {
+      _paymentInitError = 'Payment setup failed: $e';
+    } finally {
+      _paymentInitInProgress = false;
+      notifyListeners();
+    }
+  }
+
+  /// Backend recommends polling every 3–5s; use 4s.
+  static const _paymentPollInterval = Duration(seconds: 4);
+
+  void _startPaymentStatusPolling() {
+    _paymentPollTimer?.cancel();
+    _paymentPollTicks = 0;
+    _pollNullStreak = 0;
+    _paymentPollTimer = Timer.periodic(
+      _paymentPollInterval,
+      _onPaymentPollTick,
+    );
+  }
+
+  Future<void> _onPaymentPollTick(Timer t) async {
+    if (_paymentOutcomeHandled) {
+      t.cancel();
+      return;
+    }
+    if (++_paymentPollTicks > 90) {
+      t.cancel();
+      return;
+    }
+    final id = _activePaymentId;
+    if (id == null || id.isEmpty) {
+      t.cancel();
+      return;
+    }
+
+    final raw = await _apiService.fetchPaymentStatus(id);
+    if (_paymentOutcomeHandled) {
+      t.cancel();
+      return;
+    }
+    if (raw == null) {
+      if (++_pollNullStreak >= 8) {
+        t.cancel();
+      }
+      return;
+    }
+    _pollNullStreak = 0;
+
+    final verdict = _verdictFromPaymentStatusResponse(raw);
+    switch (verdict) {
+      case _PollVerdict.approved:
+        t.cancel();
+        await onFcmPaymentPush(
+          PaymentPushPayload(
+            type: PaymentPushCoordinator.typeApproved,
+            paymentId: id,
+            title: 'Payment confirmed',
+            body: 'Payment approved. Proceed to print your photo.',
+          ),
+        );
+      case _PollVerdict.failed:
+        t.cancel();
+        await onFcmPaymentPush(
+          PaymentPushPayload(
+            type: PaymentPushCoordinator.typeFailed,
+            paymentId: id,
+            title: 'Payment not completed',
+            body: 'Payment failed. Try again or use another method.',
+          ),
+        );
+      case _PollVerdict.pending:
+      case null:
+        break;
+    }
+  }
+
+  /// Parses `GET /api/payments/status/{id}` body: `status` is PENDING | APPROVED | FAILED.
+  static _PollVerdict? _verdictFromPaymentStatusResponse(
+    Map<String, dynamic> raw,
+  ) {
+    final s = raw['status']?.toString().trim().toUpperCase();
+    if (s == null || s.isEmpty) return null;
+    switch (s) {
+      case 'APPROVED':
+        return _PollVerdict.approved;
+      case 'FAILED':
+        return _PollVerdict.failed;
+      case 'PENDING':
+        return _PollVerdict.pending;
+      default:
+        return _PollVerdict.pending;
+    }
+  }
+
+  /// First caller (FCM or status poll) wins; the other sees [false] and does nothing — no double print.
+  bool _tryClaimPaymentOutcome() {
+    if (_paymentOutcomeHandled) return false;
+    _paymentOutcomeHandled = true;
+    _paymentPollTimer?.cancel();
+    _paymentPollTimer = null;
+    return true;
+  }
+
+  /// FCM or poll: updates inline Pay & Collect; on approval runs [silentPrintToNetwork] once.
+  Future<void> onFcmPaymentPush(PaymentPushPayload payload) async {
+    if (!payload.isApproved && !payload.isFailed) return;
+    if (!_tryClaimPaymentOutcome()) return;
+
+    if (payload.isApproved) {
+      _fcmPaymentPushSuccess = true;
+      _fcmPaymentStatusDetail = _fcmApprovedDetailText(payload);
+      notifyListeners();
+      await silentPrintToNetwork();
+      notifyListeners();
+      return;
+    }
+    _fcmPaymentPushSuccess = false;
+    _fcmPaymentStatusDetail = _fcmFailedDetailText(payload);
+    notifyListeners();
+  }
+
+  static String _fcmApprovedDetailText(PaymentPushPayload payload) {
+    final body = payload.body ??
+        (payload.amount != null && payload.amount!.isNotEmpty
+            ? '₹${payload.amount} paid successfully. Proceed to print your photo.'
+            : 'Payment approved. Proceed to print your photo.');
+    final title = payload.title?.trim();
+    if (title != null && title.isNotEmpty) {
+      return '$title\n$body';
+    }
+    return body;
+  }
+
+  static String _fcmFailedDetailText(PaymentPushPayload payload) {
+    final body = payload.body ??
+        'Your payment could not be confirmed. Try again or use another method.';
+    final title = payload.title?.trim();
+    if (title != null && title.isNotEmpty) {
+      return '$title\n$body';
+    }
+    return body;
+  }
+
+  /// Deletes the session on the server (DELETE /api/sessions/{sessionId}) and clears local session.
+  /// Call after user confirms "Delete my photos". Throws [ApiException] on API failure.
+  Future<void> deleteSession() async {
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null) return;
+    await _apiService.deleteSession(sessionId);
+    _sessionManager.clearSession();
   }
 
   /// Download all images to temp files for print/share
@@ -133,8 +404,8 @@ class ResultViewModel extends ChangeNotifier {
 
   /// Silent print all images to network printer
   Future<void> silentPrintToNetwork() async {
-    if (_printerIp.isEmpty) {
-      _errorMessage = 'Please enter a printer IP address';
+    if (_printerHost.isEmpty) {
+      _errorMessage = 'Please enter a printer address';
       notifyListeners();
       return;
     }
@@ -154,7 +425,8 @@ class ResultViewModel extends ChangeNotifier {
       for (int i = 0; i < files.length; i++) {
         await _printService.printImageToNetworkPrinter(
           files[i],
-          printerIp: _printerIp,
+          printerHost: _printerHost,
+          printerPort: effectivePrinterPort,
         );
       }
     } on PrintException catch (e) {
@@ -226,7 +498,7 @@ class ResultViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
-    // Clean up downloaded files if needed
+    _paymentPollTimer?.cancel();
     super.dispose();
   }
 }

@@ -23,6 +23,7 @@ class ThemeManager {
   
   // Loading state
   bool _isLoading = false;
+  Future<List<ThemeModel>>? _ongoingFetch;
   
   // Error state
   String? _errorMessage;
@@ -63,15 +64,21 @@ class ThemeManager {
       return List.unmodifiable(_cachedThemes);
     }
 
-    // If already loading, wait for current request to complete
-    if (_isLoading) {
-      // Wait for loading to complete
-      while (_isLoading) {
-        await Future.delayed(const Duration(milliseconds: 100));
-      }
-      return List.unmodifiable(_cachedThemes);
+    // If a request is already in progress, reuse it instead of polling.
+    if (_ongoingFetch != null) {
+      return _ongoingFetch!;
     }
 
+    final fetchFuture = _fetchThemesInternal();
+    _ongoingFetch = fetchFuture;
+    try {
+      return await fetchFuture;
+    } finally {
+      _ongoingFetch = null;
+    }
+  }
+
+  Future<List<ThemeModel>> _fetchThemesInternal() async {
     _isLoading = true;
     _errorMessage = null;
     _notifyListeners();
@@ -88,7 +95,6 @@ class ThemeManager {
       _errorMessage = e.message;
       _isLoading = false;
       _notifyListeners();
-      // Return cached themes if available, even if there's an error
       if (_cachedThemes.isNotEmpty) {
         return List.unmodifiable(_cachedThemes);
       }
@@ -97,7 +103,6 @@ class ThemeManager {
       _errorMessage = 'Failed to fetch themes: $e';
       _isLoading = false;
       _notifyListeners();
-      // Return cached themes if available, even if there's an error
       if (_cachedThemes.isNotEmpty) {
         return List.unmodifiable(_cachedThemes);
       }
@@ -122,17 +127,27 @@ class ThemeManager {
     }
   }
 
-  /// Gets all active themes from cache.
+  /// Gets themes for display: filter by isActive when present (show only when true),
+  /// sort by displayOrder ascending when present (nulls last).
   List<ThemeModel> getActiveThemes() {
-    return _cachedThemes.where((theme) => theme.isActive).toList();
+    final list = _cachedThemes.where((theme) => theme.isActive != false).toList();
+    list.sort((a, b) {
+      final aOrder = a.displayOrder;
+      final bOrder = b.displayOrder;
+      if (aOrder == null && bOrder == null) return 0;
+      if (aOrder == null) return 1;
+      if (bOrder == null) return -1;
+      return aOrder.compareTo(bOrder);
+    });
+    return list;
   }
 
   /// Gets all sample image URLs from active themes with base URL prepended.
   /// Returns empty list if no themes are available.
   List<String> getSampleImageUrls() {
     return _cachedThemes
-        .where((theme) => 
-            theme.isActive && 
+        .where((theme) =>
+            (theme.isActive == true) &&
             theme.sampleImageUrl != null && 
             theme.sampleImageUrl!.isNotEmpty)
         .map((theme) {

@@ -30,7 +30,7 @@ if (flutterVersionName == null) {
 def appName = "photobooth"
 
 android {
-    namespace "com.example.photobooth"
+    namespace "com.srisarani.fotozenai"
     compileSdk 36
     ndkVersion flutter.ndkVersion
 
@@ -50,8 +50,10 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.example.photobooth"
-        minSdkVersion flutter.minSdkVersion
+        applicationId "com.srisarani.fotozenai"
+        minSdkVersion rootProject.hasProperty('flutter.minSdkVersion')
+            ? rootProject.property('flutter.minSdkVersion').toInteger()
+            : flutter.minSdkVersion
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
@@ -94,6 +96,9 @@ flutter {
 }
 
 dependencies {
+    // Firebase Messaging + BoM are provided by FlutterFire (firebase_messaging / firebase_core)
+    // at versions compatible with this project’s Gradle; do not pin an older BoM or
+    // firebase-messaging-ktx here — newer BoMs may omit the separate ktx artifact line.
     implementation 'com.bugsnag:bugsnag-android:6.+'
     // Core library desugaring for Java 8+ APIs on older Android versions
     // Required by flutter_local_notifications (version 2.1.4+)
