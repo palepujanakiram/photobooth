@@ -138,7 +138,7 @@ class ThemeCard extends StatelessWidget {
                   color: _parseColor(theme.backgroundColor) ??
                       Colors.black.withValues(alpha: 0.8),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 5),
+                      horizontal: 10, vertical: 7),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
@@ -146,14 +146,15 @@ class ThemeCard extends StatelessWidget {
                         child: Text(
                           theme.name,
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 12,
+                            height: 1.2,
                             fontWeight: isSelected
                                 ? FontWeight.bold
                                 : FontWeight.w600,
                             color: _parseColor(theme.textColor) ??
                                 Colors.white,
                           ),
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),

@@ -194,12 +194,17 @@ class _FallingStarfieldPainter extends CustomPainter {
 }
 
 class _SeededRandom {
-  _SeededRandom(this.seed) : _state = seed;
-  final int seed;
-  int _state;
+  _SeededRandom(int seed)
+      : _state = BigInt.from(seed) & _mask;
+
+  BigInt _state;
+
+  static final BigInt _a = BigInt.parse('6364136223846793005');
+  static final BigInt _c = BigInt.parse('1442695040888963407');
+  static final BigInt _mask = BigInt.parse('9223372036854775807'); // 0x7fffffffffffffff
 
   double nextDouble() {
-    _state = (6364136223846793005 * _state + 1442695040888963407) & 0x7fffffffffffffff;
-    return _state / 0x7fffffffffffffff;
+    _state = (_a * _state + _c) & _mask;
+    return _state.toDouble() / _mask.toDouble();
   }
 }

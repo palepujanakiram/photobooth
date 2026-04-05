@@ -43,6 +43,8 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   bool _isAutoScrollPaused = false;
   String? _armedThemeId;
   String? _pendingArmThemeId;
+  /// Tracks [PageController.viewportFraction] so we can rebuild when phone vs tablet layout changes.
+  double? _carouselViewportFraction;
 
   void _startTimer() {
     _elapsedSeconds = 0;
@@ -273,7 +275,11 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                   }
                 },
               ),
-              actions: const [AppBarAliceAction()],
+              // Alice (ant) overlaps category chips on narrow phones; keep it on tablets / wide layouts.
+              actions: [
+                if (MediaQuery.sizeOf(context).width >= 520)
+                  const AppBarAliceAction(),
+              ],
               automaticallyImplyLeading: false,
             ),
             body: Stack(
@@ -287,7 +293,9 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                 SafeArea(
                   top: false,
                   child: Padding(
-                    padding: const EdgeInsets.only(top: kToolbarHeight),
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.paddingOf(context).top + kToolbarHeight,
+                    ),
                     child: Consumer<ThemeViewModel>(
                       builder: (context, viewModel, child) {
                       if (viewModel.showNoThemesMessage) {
@@ -499,27 +507,42 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   }
 
   static const double _categorySidePadding = 24.0;
-  static const double _categoryChipWidth = 84.0;
   static const double _categoryChipGap = 8.0;
-  static const double _categoryChipRowHeight = 44.0;
+  static const double _categoryChipRowHeight = 48.0;
   static const int _maxVisibleCategoryChips = 5;
+
+  /// Larger fraction on phone portrait so the hero card uses the screen; smaller on tablet / landscape.
+  double _carouselViewportFractionFor(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
+    final h = size.height;
+    if (w < AppConstants.kTabletBreakpoint) {
+      return h >= w ? 0.76 : 0.52;
+    }
+    if (w < 900) {
+      return 0.42;
+    }
+    return AppConstants.kThemeCarouselViewportFraction;
+  }
 
   Widget _buildCategoryTabs(BuildContext context, ThemeViewModel viewModel) {
     final ids = viewModel.categoryIds;
-    const double itemExtent = _categoryChipWidth + _categoryChipGap;
-    const double maxRowWidth =
-        _maxVisibleCategoryChips * itemExtent;
+    final screenW = MediaQuery.sizeOf(context).width;
+    final chipW = screenW < 400 ? 78.0 : 90.0;
+    final itemExtent = chipW + _categoryChipGap;
+    final maxRowWidth = _maxVisibleCategoryChips * itemExtent;
+    final rowW = math.min(maxRowWidth, screenW - _categorySidePadding * 2);
 
     return Padding(
       padding: const EdgeInsets.only(
-        top: 0,
-        bottom: 8,
+        top: 4,
+        bottom: 10,
         left: _categorySidePadding,
         right: _categorySidePadding,
       ),
       child: Center(
         child: SizedBox(
-          width: maxRowWidth,
+          width: rowW,
           height: _categoryChipRowHeight,
           child: ListView.builder(
           scrollDirection: Axis.horizontal,
@@ -532,7 +555,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: SizedBox(
-                width: _categoryChipWidth,
+                width: chipW,
                 child: Center(
                   child: Material(
                     color: isActive
@@ -560,10 +583,10 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                         child: Center(
                           child: Text(
                             viewModel.getCategoryDisplayName(id),
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w600,
-                              fontSize: 15,
+                              fontSize: screenW < 400 ? 13 : 14,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -597,10 +620,16 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
 
     _syncCarouselTimer(viewModel);
 
-    _pageController ??= PageController(
-      viewportFraction: AppConstants.kThemeCarouselViewportFraction,
-      initialPage: viewModel.carouselIndex.clamp(0, filtered.length - 1),
-    );
+    final vf = _carouselViewportFractionFor(context);
+    if (_pageController == null || _carouselViewportFraction != vf) {
+      final initial = viewModel.carouselIndex.clamp(0, filtered.length - 1);
+      _pageController?.dispose();
+      _pageController = PageController(
+        viewportFraction: vf,
+        initialPage: initial,
+      );
+      _carouselViewportFraction = vf;
+    }
 
     if (_prevCategoryId != viewModel.selectedCategoryId) {
       _prevCategoryId = viewModel.selectedCategoryId;
@@ -615,7 +644,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     return Column(
       children: [
         Expanded(
-          flex: 4,
+          flex: 6,
           child: PageView.builder(
             controller: _pageController,
             itemCount: filtered.length,
@@ -728,11 +757,12 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
             },
           ),
         ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: 320,
-          child: CupertinoButton(
-            padding: const EdgeInsets.symmetric(vertical: 14),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+          child: SizedBox(
+            width: double.infinity,
+            child: CupertinoButton(
+            padding: const EdgeInsets.symmetric(vertical: 16),
             color: (viewModel.selectedTheme != null &&
                     _armedThemeId == viewModel.selectedTheme!.id &&
                     !_isGenerating &&
@@ -749,14 +779,15 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
             child: const Text(
               'Continue',
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 17,
                 fontWeight: FontWeight.bold,
                 color: CupertinoColors.white,
               ),
             ),
           ),
+          ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         _buildThumbnails(context, viewModel, isLandscape),
       ],
     );
@@ -978,13 +1009,18 @@ class _FallingStarfieldPainter extends CustomPainter {
 }
 
 class _SeededRandom {
-  _SeededRandom(this.seed) : _state = seed;
-  final int seed;
-  int _state;
+  _SeededRandom(int seed)
+      : _state = BigInt.from(seed) & _mask;
+
+  BigInt _state;
+
+  static final BigInt _a = BigInt.parse('6364136223846793005');
+  static final BigInt _c = BigInt.parse('1442695040888963407');
+  static final BigInt _mask = BigInt.parse('9223372036854775807'); // 0x7fffffffffffffff
 
   double nextDouble() {
-    _state = (6364136223846793005 * _state + 1442695040888963407) & 0x7fffffffffffffff;
-    return _state / 0x7fffffffffffffff;
+    _state = (_a * _state + _c) & _mask;
+    return _state.toDouble() / _mask.toDouble();
   }
 }
 
