@@ -75,6 +75,17 @@ class AppConstants {
   static const Duration kThemeCarouselAutoScrollPauseDuration =
       Duration(seconds: 4);
 
+  /// Capture / preview card: max width as a fraction of screen width (landscape aligns ~theme carousel hero ~0.42–0.44).
+  static const double kCapturePreviewCardMaxWidthFractionLandscape = 0.44;
+
+  /// Capture / preview card: max width in portrait (leave side margins).
+  static const double kCapturePreviewCardMaxWidthFractionPortrait = 0.92;
+
+  /// Capture / preview card: max height as fraction of screen height (landscape kiosks — avoid a full-height tower).
+  static const double kCapturePreviewCardMaxHeightFractionLandscape = 0.50;
+
+  static const double kCapturePreviewCardMaxHeightFractionPortrait = 0.58;
+
   /// On Generate Photo, generated-image cards scale to this factor when toggled (tap again restores 1.0).
   static const double kGeneratePhotoZoomedScale = 1.3;
   static const String kContinueButtonText = 'Continue';

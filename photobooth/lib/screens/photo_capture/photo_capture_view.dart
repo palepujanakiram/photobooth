@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
@@ -395,7 +397,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
           _buildCapturedPhotoControlsRow(context, viewModel),
           const SizedBox(height: 12),
         ],
-        // 3. Preview or captured photo: portrait 9:16 card (matches theme carousel / kiosk photo shape).
+        // 3. Preview or captured photo: same aspect as theme hero card; size capped so landscape matches carousel scale.
         Expanded(
           child: _buildCapturePreviewCard(
             context,
@@ -413,8 +415,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 
-  /// Portrait photo area with rounded corners and shadow — same aspect as [AppConstants.kPortraitCaptureAspectRatio]
-  /// (matches theme selection cards). Preview uses [BoxFit.contain]; no stretch-to-fill.
+  /// Preview / captured still: [ThemeCard]-style shell (12px radius, border, elevation) and
+  /// [AppConstants.themeCardSlotAspectRatio] so shape matches the theme carousel hero.
+  ///
+  /// In **device landscape**, the slot is still **portrait-shaped** (9:16) so output matches
+  /// phone-style booth photos. Webcams often save **landscape** JPEGs; the still uses
+  /// [BoxFit.cover] so the card fills without side letterboxing (center crop).
+  ///
+  /// Size is capped on width/height so landscape kiosks get a smaller card (not full [Expanded] height).
   Widget _buildCapturePreviewCard(
     BuildContext context,
     CaptureViewModel viewModel,
@@ -423,9 +431,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   ) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final maxW = constraints.maxWidth;
-        final maxH = constraints.maxHeight;
-        const aspect = AppConstants.kPortraitCaptureAspectRatio;
+        final media = MediaQuery.sizeOf(context);
+        final isLandscape =
+            MediaQuery.orientationOf(context) == Orientation.landscape;
+        final aspect = AppConstants.themeCardSlotAspectRatio(context);
+
+        final widthCapFrac = isLandscape
+            ? AppConstants.kCapturePreviewCardMaxWidthFractionLandscape
+            : AppConstants.kCapturePreviewCardMaxWidthFractionPortrait;
+        final heightCapFrac = isLandscape
+            ? AppConstants.kCapturePreviewCardMaxHeightFractionLandscape
+            : AppConstants.kCapturePreviewCardMaxHeightFractionPortrait;
+
+        final maxW = math.min(constraints.maxWidth, media.width * widthCapFrac);
+        final maxH = math.min(constraints.maxHeight, media.height * heightCapFrac);
+
         late double cardW;
         late double cardH;
         if (maxW / maxH > aspect) {
@@ -437,54 +457,57 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         }
 
         return Center(
-          child: Container(
-            width: cardW,
-            height: cardH,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(25),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.6),
-                  blurRadius: 40,
-                  offset: const Offset(0, 20),
-                ),
-              ],
+          child: Card(
+            margin: EdgeInsets.zero,
+            elevation: 8,
+            shadowColor: Colors.black.withValues(alpha: 0.38),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(
+                color: Color(0xFF4A4A4A),
+                width: 1.5,
+              ),
             ),
             clipBehavior: Clip.antiAlias,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                ColoredBox(
-                  color: Colors.black,
-                  child: viewModel.capturedPhoto != null
-                      ? photo_image.imageFromXFileSized(
-                          viewModel.capturedPhoto!.imageFile,
-                          cardW,
-                          cardH,
-                        )
-                      : previewWidget,
-                ),
-                if (!hasCapturedPhoto && AppConstants.kShowNativeCameraInfoPane)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        _effectiveRotationLabel(viewModel),
-                        style: const TextStyle(color: Colors.white70, fontSize: 11),
+            child: SizedBox(
+              width: cardW,
+              height: cardH,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ColoredBox(
+                    color: Colors.black,
+                    child: viewModel.capturedPhoto != null
+                        ? photo_image.imageFromXFileSized(
+                            viewModel.capturedPhoto!.imageFile,
+                            cardW,
+                            cardH,
+                            fit: BoxFit.cover,
+                          )
+                        : previewWidget,
+                  ),
+                  if (!hasCapturedPhoto && AppConstants.kShowNativeCameraInfoPane)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _effectiveRotationLabel(viewModel),
+                          style: const TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
                       ),
                     ),
-                  ),
-                if (viewModel.isCountingDown)
-                  Positioned.fill(
-                    child: _buildCountdownOverlay(context, viewModel.countdownValue!),
-                  ),
-              ],
+                  if (viewModel.isCountingDown)
+                    Positioned.fill(
+                      child: _buildCountdownOverlay(context, viewModel.countdownValue!),
+                    ),
+                ],
+              ),
             ),
           ),
         );
