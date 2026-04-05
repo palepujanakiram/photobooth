@@ -795,6 +795,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                   final success = await viewModel.uploadPhotoToSession();
                   if (!mounted || !currentContext.mounted) return;
                   if (success && viewModel.capturedPhoto != null) {
+                    // Release camera native buffers (~300–600 MB) BEFORE
+                    // navigating so the next screen doesn't overlap with
+                    // camera heap on a 4 GB kiosk.
+                    viewModel.disposeCamera();
                     Navigator.pushNamedAndRemoveUntil(
                       currentContext,
                       AppConstants.kRouteHome,

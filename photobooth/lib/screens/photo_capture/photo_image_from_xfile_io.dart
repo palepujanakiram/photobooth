@@ -3,13 +3,25 @@ import 'package:flutter/material.dart';
 import 'package:cross_file/cross_file.dart';
 
 /// Builds an Image widget from XFile for mobile (io). Uses Image.file for immediate display.
-/// Uses high filter quality so the captured photo stays sharp when scaled to fit the screen.
+/// Uses medium filter quality and cacheWidth to limit GPU memory on low-RAM kiosks.
 Widget imageFromXFile(XFile file) {
-  return Image.file(
-    File(file.path),
-    fit: BoxFit.contain,
-    gaplessPlayback: true,
-    filterQuality: FilterQuality.high,
+  // Without cacheWidth the full capture (e.g. 1920×1080 = 8 MB RGBA) is
+  // decoded even when displayed at ~400 logical pixels. Use a Builder to
+  // read devicePixelRatio and clamp decode size.
+  return Builder(
+    builder: (context) {
+      final dpr = MediaQuery.devicePixelRatioOf(context);
+      final screenWidth = MediaQuery.sizeOf(context).width;
+      // Decode at screen width (not card width — we don't know it here)
+      final cw = (screenWidth * dpr).ceil();
+      return Image.file(
+        File(file.path),
+        fit: BoxFit.contain,
+        gaplessPlayback: true,
+        filterQuality: FilterQuality.medium,
+        cacheWidth: cw,
+      );
+    },
   );
 }
 
@@ -22,13 +34,23 @@ Widget imageFromXFileSized(
   BoxFit fit = BoxFit.contain,
   Alignment alignment = Alignment.center,
 }) {
-  return Image.file(
-    File(file.path),
-    width: width,
-    height: height,
-    fit: fit,
-    alignment: alignment,
-    gaplessPlayback: true,
-    filterQuality: FilterQuality.high,
+  return Builder(
+    builder: (context) {
+      final dpr = MediaQuery.devicePixelRatioOf(context);
+      // Decode at display card size, not source image size.
+      final cw = (width * dpr).ceil();
+      final ch = (height * dpr).ceil();
+      return Image.file(
+        File(file.path),
+        width: width,
+        height: height,
+        fit: fit,
+        alignment: alignment,
+        gaplessPlayback: true,
+        filterQuality: FilterQuality.medium,
+        cacheWidth: cw,
+        cacheHeight: ch,
+      );
+    },
   );
 }
