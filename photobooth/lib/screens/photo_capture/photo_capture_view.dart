@@ -16,6 +16,7 @@ import '../../services/app_settings_manager.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/theme_background.dart';
+import '../../views/widgets/debug_ram_monitor_overlay.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import 'photo_capture_rotation_screen.dart';
 
@@ -311,6 +312,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                           elapsedSeconds: viewModel.uploadElapsedSeconds,
                         ),
                       ),
+                    Consumer<AppSettingsManager>(
+                      builder: (context, appSettings, _) {
+                        if (appSettings.settings?.showGenerationCommentary != true) {
+                          return const SizedBox.shrink();
+                        }
+                        return Positioned(
+                          left: 10,
+                          top: MediaQuery.paddingOf(context).top + kToolbarHeight + 6,
+                          child: const DebugRamMonitorOverlay(),
+                        );
+                      },
+                    ),
                   ],
                 ),
               );
@@ -382,29 +395,72 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
           _buildCapturedPhotoControlsRow(context, viewModel),
           const SizedBox(height: 12),
         ],
-        // 3. Preview or captured photo fills remaining space
+        // 3. Preview or captured photo: portrait 9:16 card (matches theme carousel / kiosk photo shape).
         Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+          child: _buildCapturePreviewCard(
+            context,
+            viewModel,
+            previewWidget,
+            hasCapturedPhoto,
+          ),
+        ),
+        if (!hasCapturedPhoto && viewModel.hasError && viewModel.errorMessage != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: _buildCaptureErrorSection(context, viewModel),
+          ),
+      ],
+    );
+  }
+
+  /// Portrait photo area with rounded corners and shadow — same aspect as [AppConstants.kPortraitCaptureAspectRatio]
+  /// (matches theme selection cards). Preview uses [BoxFit.contain]; no stretch-to-fill.
+  Widget _buildCapturePreviewCard(
+    BuildContext context,
+    CaptureViewModel viewModel,
+    Widget previewWidget,
+    bool hasCapturedPhoto,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxW = constraints.maxWidth;
+        final maxH = constraints.maxHeight;
+        const aspect = AppConstants.kPortraitCaptureAspectRatio;
+        late double cardW;
+        late double cardH;
+        if (maxW / maxH > aspect) {
+          cardH = maxH;
+          cardW = cardH * aspect;
+        } else {
+          cardW = maxW;
+          cardH = cardW / aspect;
+        }
+
+        return Center(
+          child: Container(
+            width: cardW,
+            height: cardH,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(25),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  blurRadius: 40,
+                  offset: const Offset(0, 20),
+                ),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Positioned.fill(
+                ColoredBox(
+                  color: Colors.black,
                   child: viewModel.capturedPhoto != null
-                      ? LayoutBuilder(
-                          builder: (context, constraints) {
-                            final photo = viewModel.capturedPhoto!;
-                            return Container(
-                              color: Colors.transparent,
-                              width: constraints.maxWidth,
-                              height: constraints.maxHeight,
-                              child: photo_image.imageFromXFileSized(
-                                photo.imageFile,
-                                constraints.maxWidth,
-                                constraints.maxHeight,
-                              ),
-                            );
-                          },
+                      ? photo_image.imageFromXFileSized(
+                          viewModel.capturedPhoto!.imageFile,
+                          cardW,
+                          cardH,
                         )
                       : previewWidget,
                 ),
@@ -431,13 +487,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               ],
             ),
           ),
-        ),
-        if (!hasCapturedPhoto && viewModel.hasError && viewModel.errorMessage != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: _buildCaptureErrorSection(context, viewModel),
-          ),
-      ],
+        );
+      },
     );
   }
 
@@ -484,20 +535,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             ? previewSize.width
             : previewSize.height);
 
-    return ColoredBox(
-      color: Colors.black,
-      child: Center(
-        child: ClipRect(
-          child: SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.fill,
-              child: SizedBox(
-                width: width,
-                height: height,
-                child: preview,
-              ),
-            ),
-          ),
+    // [BoxFit.contain] keeps sensor aspect ratio (webcam/TV); avoids stretch from [BoxFit.fill].
+    return Center(
+      child: FittedBox(
+        fit: BoxFit.contain,
+        alignment: Alignment.center,
+        child: SizedBox(
+          width: width,
+          height: height,
+          child: preview,
         ),
       ),
     );

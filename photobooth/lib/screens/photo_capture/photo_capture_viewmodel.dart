@@ -588,11 +588,10 @@ class CaptureViewModel extends ChangeNotifier {
       ));
       ErrorReportingManager.log('Initializing camera: ${camera.name}');
 
-      // Always [high] for usable capture/preview quality on kiosk TV. [medium] was
-      // tried under [kLowMemoryKioskMode] but visibly degraded photos; native camera
-      // init still causes a short RAM spike (buffers). Downstream we still resize for
-      // upload ([ImageHelper.encodeImageForUpload]) so network/RAM stay bounded.
-      const preset = ResolutionPreset.high;
+      // [max] for highest still quality the device supports; preview stays one preset
+      // lower in vendored camera_android_camerax. Downstream, [ImageHelper.encodeImageForUpload]
+      // still caps upload size.
+      const preset = ResolutionPreset.max;
       _cameraController = CameraController(
         cameraToUse,
         preset,
