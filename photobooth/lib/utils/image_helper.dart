@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:camera/camera.dart';
@@ -12,23 +13,52 @@ const int kCapturedPhotoJpegQuality = 85;
 /// Metadata returned for a photo (dimensions, format label, and file size in bytes).
 typedef ImageMetadata = ({int width, int height, String format, int fileSizeBytes});
 
+typedef _ImageMetadataIsolateArgs = ({Uint8List bytes, String path});
+
+String _extensionFormatLabel(String ext) {
+  switch (ext) {
+    case 'jpg':
+    case 'jpeg':
+      return 'JPEG';
+    case 'png':
+      return 'PNG';
+    case 'gif':
+      return 'GIF';
+    case 'webp':
+      return 'WebP';
+    case 'heic':
+      return 'HEIC';
+    default:
+      return ext.toUpperCase();
+  }
+}
+
+/// Top-level for [compute] — must not reference [ImageHelper] instance state.
+ImageMetadata? _decodeImageMetadataIsolate(_ImageMetadataIsolateArgs args) {
+  final decoded = img.decodeImage(args.bytes);
+  if (decoded == null) return null;
+  final ext = args.path.toLowerCase().split('.').last;
+  return (
+    width: decoded.width,
+    height: decoded.height,
+    format: _extensionFormatLabel(ext),
+    fileSizeBytes: args.bytes.length,
+  );
+}
+
 /// Helper class for image processing operations
 class ImageHelper {
   /// Returns width, height, format label, and file size for the given image file.
   /// Format is derived from file extension (e.g. JPEG, PNG).
+  /// Decode runs in a background isolate so large photos do not block the UI.
   static Future<ImageMetadata?> getImageMetadata(XFile imageFile) async {
     try {
       final bytes = await imageFile.readAsBytes();
       if (bytes.isEmpty) return null;
-      final decoded = img.decodeImage(bytes);
-      if (decoded == null) return null;
-      final ext = imageFile.path.toLowerCase().split('.').last;
-      final format = _formatLabelFromExtension(ext);
-      return (
-        width: decoded.width,
-        height: decoded.height,
-        format: format,
-        fileSizeBytes: bytes.length,
+      final path = imageFile.path;
+      return compute(
+        _decodeImageMetadataIsolate,
+        (bytes: bytes, path: path),
       );
     } catch (_) {
       return null;
@@ -41,24 +71,6 @@ class ImageHelper {
     if (bytes < 1024 * 1024) return '${(bytes / 1024).round()} KB';
     final mb = bytes / (1024 * 1024);
     return '${mb.toStringAsFixed(mb >= 10 ? 0 : 1)} MB';
-  }
-
-  static String _formatLabelFromExtension(String ext) {
-    switch (ext) {
-      case 'jpg':
-      case 'jpeg':
-        return 'JPEG';
-      case 'png':
-        return 'PNG';
-      case 'gif':
-        return 'GIF';
-      case 'webp':
-        return 'WebP';
-      case 'heic':
-        return 'HEIC';
-      default:
-        return ext.toUpperCase();
-    }
   }
 
   /// Normalizes a captured photo to standard format and size, saves to app storage, and returns the new file.

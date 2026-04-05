@@ -6,6 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 
+import '../utils/constants.dart';
+
 /// Service for caching theme images to disk for persistent storage
 class ImageCacheService {
   static final ImageCacheService _instance = ImageCacheService._internal();
@@ -14,7 +16,6 @@ class ImageCacheService {
 
   Directory? _cacheDir;
   static const String _cacheSubDir = 'theme_images';
-  static const int _maxCacheSizeMB = 100; // Maximum cache size in MB
   static const int maxCacheAgeDays = 30; // Maximum age of cached images in days
 
   /// Initialize cache directory
@@ -157,7 +158,8 @@ class ImageCacheService {
         }
       }
 
-      const maxSizeBytes = _maxCacheSizeMB * 1024 * 1024;
+      const maxSizeBytes =
+          AppConstants.kThemeDiskCacheMaxSizeMB * 1024 * 1024;
       
       if (totalSize > maxSizeBytes) {
         // Sort by modification time (oldest first)
