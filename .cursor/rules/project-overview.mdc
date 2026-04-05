@@ -7,6 +7,8 @@ alwaysApply: true
 
 Flutter photo booth app with AI transformations. Use this context when editing or adding code.
 
+**App root:** `photobooth/` — the Flutter package (`pubspec.yaml`, `lib/`, `android/`, `ios/`) lives there. Run `flutter pub get`, `flutter run`, and `dart run build_runner` from `photobooth/`, not from the repository root.
+
 ## Stack & platforms
 
 - **Flutter** (SDK >=3.0.0 <4.0.0), **Provider** for state
