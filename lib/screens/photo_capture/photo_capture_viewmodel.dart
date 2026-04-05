@@ -738,6 +738,18 @@ class CaptureViewModel extends ChangeNotifier {
     final ctrl = _cameraController;
     if (ctrl == null || !ctrl.value.isInitialized) return;
 
+    // camera_web only supports zoom when the track exposes `zoom` in
+    // getCapabilities(); otherwise getMin/getMax/setZoom throw and emit
+    // camera errors ("zoom level is not supported by the current camera").
+    // Skip zoom APIs on web so preview/capture work without noisy failures.
+    if (kIsWeb) {
+      _minZoom = null;
+      _maxZoom = null;
+      _currentZoom = 1.0;
+      notifyListeners();
+      return;
+    }
+
     double? minZ;
     double? maxZ;
     try {

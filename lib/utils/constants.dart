@@ -39,8 +39,8 @@ class AppConstants {
   /// Keep in sync with `isCenter ? 3 / 4.5` in [ThemeSelectionScreen] carousel.
   static const double kThemeSelectedCardAspectRatio = 3 / 4.5;
 
-  /// [PageController.viewportFraction] on theme selection; each page is this wide relative to screen.
-  static const double kThemeCarouselViewportFraction = 0.2;
+  /// Default [PageController.viewportFraction] for very wide layouts; phones use ~0.76 in code.
+  static const double kThemeCarouselViewportFraction = 0.38;
 
   /// Peak scale of the centered card in the theme carousel 3D transform (clamped in carousel).
   static const double kThemeCarouselCenterMaxScale = 1.15;
