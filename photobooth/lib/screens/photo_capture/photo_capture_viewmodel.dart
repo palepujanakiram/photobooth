@@ -588,10 +588,13 @@ class CaptureViewModel extends ChangeNotifier {
       ));
       ErrorReportingManager.log('Initializing camera: ${camera.name}');
 
-      // [max] for highest still quality the device supports; preview stays one preset
-      // lower in vendored camera_android_camerax. Downstream, [ImageHelper.encodeImageForUpload]
-      // still caps upload size.
-      const preset = ResolutionPreset.max;
+      // [max] still capture asks the device for the largest photo buffers; on 4 GB kiosks that
+      // plus preview ([veryHigh] when capture is max in vendored camera_android_camerax) can add
+      // ~1.5–2 GB and trigger OOM. [kLowMemoryKioskMode] keeps [high] still + [medium] preview via
+      // the fork; uploads are still resized in [ImageHelper.encodeImageForUpload].
+      const preset = AppConstants.kLowMemoryKioskMode
+          ? ResolutionPreset.high
+          : ResolutionPreset.max;
       _cameraController = CameraController(
         cameraToUse,
         preset,

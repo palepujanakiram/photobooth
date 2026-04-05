@@ -12,13 +12,20 @@ Widget imageFromXFile(XFile file) {
   );
 }
 
-/// Same as [imageFromXFile] but with explicit width/height so the image fills the given box (with contain).
-Widget imageFromXFileSized(XFile file, double width, double height) {
+/// Same as [imageFromXFile] but with explicit width/height. See io stub for [fit] / [alignment].
+Widget imageFromXFileSized(
+  XFile file,
+  double width,
+  double height, {
+  BoxFit fit = BoxFit.contain,
+  Alignment alignment = Alignment.center,
+}) {
   return Image.network(
     file.path,
     width: width,
     height: height,
-    fit: BoxFit.contain,
+    fit: fit,
+    alignment: alignment,
     gaplessPlayback: true,
     filterQuality: FilterQuality.high,
   );

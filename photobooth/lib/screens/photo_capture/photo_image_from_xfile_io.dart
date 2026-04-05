@@ -13,13 +13,21 @@ Widget imageFromXFile(XFile file) {
   );
 }
 
-/// Same as [imageFromXFile] but with explicit width/height so the image fills the given box (with contain).
-Widget imageFromXFileSized(XFile file, double width, double height) {
+/// Same as [imageFromXFile] but with explicit width/height. [fit] defaults to [BoxFit.contain];
+/// use [BoxFit.cover] when the photo aspect (e.g. landscape webcam) differs from a portrait card.
+Widget imageFromXFileSized(
+  XFile file,
+  double width,
+  double height, {
+  BoxFit fit = BoxFit.contain,
+  Alignment alignment = Alignment.center,
+}) {
   return Image.file(
     File(file.path),
     width: width,
     height: height,
-    fit: BoxFit.contain,
+    fit: fit,
+    alignment: alignment,
     gaplessPlayback: true,
     filterQuality: FilterQuality.high,
   );
