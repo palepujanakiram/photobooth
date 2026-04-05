@@ -476,7 +476,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                'ZenAI Photo Booth',
+                                AppConstants.kBrandAppTitle,
                                 style: TextStyle(
                                   fontSize: isLandscape ? 20.0 : (_isTablet ? 28.0 : 24.0),
                                   fontWeight: FontWeight.bold,

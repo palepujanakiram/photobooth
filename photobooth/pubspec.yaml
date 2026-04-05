@@ -82,7 +82,12 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "lib/images/zen_ai_logo.jpeg"
+  image_path: "lib/images/fotozen_ai_logo.png"
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "lib/images/zen_ai_logo.jpeg"
+  adaptive_icon_foreground: "lib/images/fotozen_ai_logo.png"
+  web:
+    generate: true
+    image_path: "lib/images/fotozen_ai_logo.png"
+    background_color: "#FFFFFF"
+    theme_color: "#0088CC"
 

@@ -354,7 +354,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
       ],
       child: MaterialApp(
         navigatorKey: widget.navigatorKey,
-        title: 'Photo Booth',
+        title: AppConstants.kBrandName,
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(

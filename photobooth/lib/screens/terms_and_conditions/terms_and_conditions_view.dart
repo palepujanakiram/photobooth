@@ -144,18 +144,18 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header: Zen AI logo left of "Quick Consent"
+          // Header: Fotozen AI logo left of "Quick Consent"
           Padding(
             padding: EdgeInsets.all(cardPadding),
             child: Row(
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
+                SizedBox(
+                  width: 132,
+                  height: 40,
                   child: Image.asset(
-                    'lib/images/zen_ai_logo.jpeg',
-                    width: 40,
-                    height: 40,
-                    fit: BoxFit.cover,
+                    AppConstants.kBrandLogoAsset,
+                    fit: BoxFit.contain,
+                    alignment: Alignment.centerLeft,
                     errorBuilder: (_, __, ___) => Icon(
                       CupertinoIcons.photo,
                       size: 40,

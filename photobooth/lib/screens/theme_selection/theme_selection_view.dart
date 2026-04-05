@@ -685,8 +685,8 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                     ..rotateY(angleY)
                     ..scaleByDouble(scale, scale, 1.0, 1.0);
                   final aspectRatio = isCenter
-                      ? AppConstants.kThemeSelectedCardAspectRatio
-                      : 3 / 4;
+                      ? AppConstants.themeCardSlotAspectRatio(context)
+                      : AppConstants.themeCarouselSideAspectRatio(context);
                   return Opacity(
                     opacity: opacity,
                     child: Transform(

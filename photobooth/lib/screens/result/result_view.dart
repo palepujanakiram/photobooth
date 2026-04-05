@@ -313,11 +313,14 @@ class _ResultScreenState extends State<ResultScreen> {
     }
   }
 
-  static const double _photoCardAspectRatio = 140 / 180; // width / height
+  /// Match portrait captures / AI output (9:16); avoids letterboxing with [BoxFit.cover].
+  static const double _photoCardAspectRatio =
+      AppConstants.kPortraitCaptureAspectRatio;
   static const double _photoCardSpacing = 12;
 
-  /// Shared height for Pay & Collect and Your N Photos boxes so they align. Kept within typical viewport to avoid overflow.
-  static const double _resultBoxHeight = 400;
+  /// Shared height for Pay & Collect and Your N Photos boxes so they align.
+  /// Taller to fit 9:16 thumbnails without excessive clipping in landscape/kiosk.
+  static const double _resultBoxHeight = 460;
 
   /// Space between title and QR box in payment card (title line + 4 + Rs row + 12). Match this in photos section so card tops align with QR top.
   static const double _resultBoxTitleToContentSpacing = 40;
@@ -419,7 +422,8 @@ class _ResultScreenState extends State<ResultScreen> {
             ColoredBox(color: appColors.surfaceColor),
             Image.network(
               image.imageUrl,
-              fit: BoxFit.contain,
+              fit: BoxFit.cover,
+              alignment: Alignment.center,
               width: double.infinity,
               height: double.infinity,
               loadingBuilder: (context, child, loadingProgress) {

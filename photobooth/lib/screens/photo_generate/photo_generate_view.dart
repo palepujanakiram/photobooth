@@ -506,7 +506,10 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
 
     const double lightningWidth = 36.0;
     const double cardGap = 12.0;
-    const double aspect = AppConstants.kThemeSelectedCardAspectRatio;
+    // Landscape / kiosk: match portrait capture (9:16). Portrait phone: theme card ratio.
+    final double aspect = isLandscape
+        ? AppConstants.kPortraitCaptureAspectRatio
+        : AppConstants.kThemeSelectedCardAspectRatio;
 
     /// Matches centered theme card: carousel page width × peak center scale.
     final double themeReferenceCardWidth = screenWidth *
@@ -525,12 +528,16 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final double vh = viewportHeight ?? MediaQuery.sizeOf(context).height;
     const double reservedAboveRow = 88.0;
     const double reservedBelowRow = 188.0;
+    // Landscape / large displays: let the photo row use more vertical space (kiosk).
+    final double heightFraction = isLandscape ? 0.78 : 0.62;
+    final double maxRowCap = isLandscape ? 1080.0 : 920.0;
+    final double minRow = isLandscape ? 300.0 : 260.0;
     final double maxRowHeight = math.max(
-      260.0,
+      minRow,
       math.min(
-        920.0,
+        maxRowCap,
         math.min(
-          vh * 0.62,
+          vh * heightFraction,
           vh - reservedAboveRow - reservedBelowRow,
         ),
       ),
@@ -736,7 +743,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                   if (_originalPhotoBytes != null)
                     Image.memory(
                       _originalPhotoBytes!,
-                      fit: BoxFit.contain,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
                       width: double.infinity,
                       height: double.infinity,
                     )
@@ -900,7 +908,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                 const ColoredBox(color: Colors.black),
                 Image.network(
                   image.imageUrl,
-                  fit: BoxFit.contain,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
                   width: double.infinity,
                   height: double.infinity,
                   loadingBuilder: (context, child, loadingProgress) {

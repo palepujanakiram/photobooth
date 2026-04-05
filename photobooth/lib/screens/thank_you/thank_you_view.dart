@@ -51,20 +51,18 @@ class _ThankYouScreenState extends State<ThankYouScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: 96,
-                      height: 96,
+                      constraints: const BoxConstraints(maxWidth: 280, maxHeight: 88),
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.15),
-                        shape: BoxShape.circle,
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: Colors.white.withValues(alpha: 0.35),
                         ),
                       ),
-                      child: ClipOval(
-                        child: Image.asset(
-                          'lib/images/zen_ai_logo.jpeg',
-                          fit: BoxFit.cover,
-                        ),
+                      child: Image.asset(
+                        AppConstants.kBrandLogoAsset,
+                        fit: BoxFit.contain,
                       ),
                     ),
                     const SizedBox(height: 24),
