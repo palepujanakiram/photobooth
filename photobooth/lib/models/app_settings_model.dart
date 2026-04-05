@@ -13,6 +13,7 @@ class AppSettingsModel {
   final bool? upscaleUseAI;
   final int? compressionQuality;
   final int? compressionMaxDimension;
+  /// When true (from `/api/settings`), show generation commentary; also RAM monitor on capture.
   final bool? showGenerationCommentary;
   final String? defaultAiProvider;
   final String? fallbackAiProvider;
