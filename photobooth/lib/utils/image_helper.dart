@@ -116,7 +116,7 @@ class ImageHelper {
       originalImage,
       width: targetWidth,
       height: targetHeight,
-      interpolation: img.Interpolation.linear,
+      interpolation: img.Interpolation.cubic,
     );
     return Uint8List.fromList(
       img.encodeJpg(resized, quality: kCapturedPhotoJpegQuality),
@@ -131,122 +131,221 @@ class ImageHelper {
   /// - Format: JPEG
   ///
   /// Returns base64 encoded data URL: data:image/jpeg;base64,...
+  ///
+  /// All heavy work (decode, resize, encode, base64) runs in a background
+  /// isolate via [compute] so it never blocks the UI thread or inflates
+  /// main-isolate heap (important on 4 GB kiosks where an extra 20–40 MB
+  /// of transient image buffers can push the process into OOM).
   static Future<String> resizeAndEncodeImage(
     XFile imageFile, {
     int maxWidth = 1920,
     int maxHeight = 1920,
     int minWidth = 512,
     int minHeight = 512,
-    int quality = 85, // JPEG quality (0-100)
-    int maxSizeBytes = 4 * 1024 * 1024, // 4MB (for 1920px at good quality)
+    int quality = 85,
+    int maxSizeBytes = 4 * 1024 * 1024,
   }) async {
-    try {
-      // Read image bytes
-      final bytes = await imageFile.readAsBytes();
-      if (bytes.isEmpty) {
-        throw Exception('Image file is empty');
-      }
-
-      // Decode image
-      final originalImage = img.decodeImage(bytes);
-      if (originalImage == null) {
-        throw Exception('Failed to decode image');
-      }
-
-      // Calculate target dimensions while maintaining aspect ratio
-      int targetWidth = originalImage.width;
-      int targetHeight = originalImage.height;
-
-      // Scale down if too large
-      if (targetWidth > maxWidth || targetHeight > maxHeight) {
-        final scale = (targetWidth > targetHeight)
-            ? maxWidth / targetWidth
-            : maxHeight / targetHeight;
-        targetWidth = (targetWidth * scale).round();
-        targetHeight = (targetHeight * scale).round();
-      }
-
-      // Scale up if too small (but maintain aspect ratio)
-      if (targetWidth < minWidth || targetHeight < minHeight) {
-        final scale = (targetWidth < targetHeight)
-            ? minWidth / targetWidth
-            : minHeight / targetHeight;
-        targetWidth = (targetWidth * scale).round();
-        targetHeight = (targetHeight * scale).round();
-      }
-
-      // Resize image
-      final resizedImage = img.copyResize(
-        originalImage,
-        width: targetWidth,
-        height: targetHeight,
-        interpolation: img.Interpolation.linear,
-      );
-
-      // Encode to JPEG with compression
-      int currentQuality = quality;
-      Uint8List? encodedBytes;
-
-      // Try to compress to meet size requirements
-      while (currentQuality >= 50) {
-        encodedBytes = Uint8List.fromList(
-          img.encodeJpg(resizedImage, quality: currentQuality),
-        );
-
-        // Check if size is acceptable
-        if (encodedBytes.length <= maxSizeBytes) {
-          break;
-        }
-
-        // Reduce quality and try again
-        currentQuality -= 10;
-      }
-
-      // If still too large, resize further
-      if (encodedBytes != null && encodedBytes.length > maxSizeBytes) {
-        final additionalScale = (maxSizeBytes / encodedBytes.length) * 0.9; // 90% to be safe
-        final newWidth = (targetWidth * additionalScale).round();
-        final newHeight = (targetHeight * additionalScale).round();
-        
-        final furtherResized = img.copyResize(
-          resizedImage,
-          width: newWidth,
-          height: newHeight,
-          interpolation: img.Interpolation.linear,
-        );
-        
-        encodedBytes = Uint8List.fromList(
-          img.encodeJpg(furtherResized, quality: 75),
-        );
-      }
-
-      if (encodedBytes == null || encodedBytes.isEmpty) {
-        throw Exception('Failed to encode image');
-      }
-
-      // Convert to base64
-      final base64String = base64Encode(encodedBytes);
-
-      // Return data URL
-      return 'data:image/jpeg;base64,$base64String';
-    } catch (e) {
-      throw Exception('Failed to resize and encode image: $e');
+    final bytes = await imageFile.readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception('Image file is empty');
     }
+    return compute(
+      _resizeAndEncodeIsolate,
+      (
+        bytes: bytes,
+        maxWidth: maxWidth,
+        maxHeight: maxHeight,
+        minWidth: minWidth,
+        minHeight: minHeight,
+        quality: quality,
+        maxSizeBytes: maxSizeBytes,
+      ),
+    );
   }
 
-  /// Encodes image for upload with smaller payload (faster upload on slow links).
-  /// Uses max 1600px and quality 80, cap ~120 KB, so upload is typically 2–3× faster
-  /// than sending full capture while keeping good quality for AI/processing.
-  static Future<String> encodeImageForUpload(XFile imageFile) async {
-    return resizeAndEncodeImage(
-      imageFile,
-      maxWidth: 1600,
-      maxHeight: 1080,
-      quality: 80,
-      maxSizeBytes: 120 * 1024, // ~120 KB target
-      minWidth: 320,
-      minHeight: 240,
+  /// Top-level for [compute] — must not reference instance state.
+  static String _resizeAndEncodeIsolate(
+    ({
+      Uint8List bytes,
+      int maxWidth,
+      int maxHeight,
+      int minWidth,
+      int minHeight,
+      int quality,
+      int maxSizeBytes,
+    }) args,
+  ) {
+    final originalImage = img.decodeImage(args.bytes);
+    if (originalImage == null) {
+      throw Exception('Failed to decode image');
+    }
+
+    int targetWidth = originalImage.width;
+    int targetHeight = originalImage.height;
+
+    if (targetWidth > args.maxWidth || targetHeight > args.maxHeight) {
+      final scale = (targetWidth > targetHeight)
+          ? args.maxWidth / targetWidth
+          : args.maxHeight / targetHeight;
+      targetWidth = (targetWidth * scale).round();
+      targetHeight = (targetHeight * scale).round();
+    }
+
+    if (targetWidth < args.minWidth || targetHeight < args.minHeight) {
+      final scale = (targetWidth < targetHeight)
+          ? args.minWidth / targetWidth
+          : args.minHeight / targetHeight;
+      targetWidth = (targetWidth * scale).round();
+      targetHeight = (targetHeight * scale).round();
+    }
+
+    final resizedImage = img.copyResize(
+      originalImage,
+      width: targetWidth,
+      height: targetHeight,
+      interpolation: img.Interpolation.cubic,
     );
+
+    int currentQuality = args.quality;
+    Uint8List? encodedBytes;
+
+    while (currentQuality >= 50) {
+      encodedBytes = Uint8List.fromList(
+        img.encodeJpg(resizedImage, quality: currentQuality),
+      );
+      if (encodedBytes.length <= args.maxSizeBytes) break;
+      currentQuality -= 10;
+    }
+
+    if (encodedBytes != null && encodedBytes.length > args.maxSizeBytes) {
+      final additionalScale =
+          (args.maxSizeBytes / encodedBytes.length) * 0.9;
+      final newWidth = (targetWidth * additionalScale).round();
+      final newHeight = (targetHeight * additionalScale).round();
+      final furtherResized = img.copyResize(
+        resizedImage,
+        width: newWidth,
+        height: newHeight,
+        interpolation: img.Interpolation.cubic,
+      );
+      encodedBytes = Uint8List.fromList(
+        img.encodeJpg(furtherResized, quality: 75),
+      );
+    }
+
+    if (encodedBytes == null || encodedBytes.isEmpty) {
+      throw Exception('Failed to encode image');
+    }
+
+    final base64String = base64Encode(encodedBytes);
+    return 'data:image/jpeg;base64,$base64String';
+  }
+
+  /// Encodes image for upload to Gemini AI → DNP 6×4 print pipeline.
+  ///
+  /// **Why crop to 3:2 first?**
+  /// The 1080p camera captures at 16:9 (1920×1080). The DNP printer outputs
+  /// 6"×4" (3:2 = 1.5:1). If Gemini receives 16:9, it composes the AI scene
+  /// in that ratio — then printing crops the top/bottom, potentially cutting
+  /// off AI-generated content (hats, backgrounds, etc.). Cropping to 3:2
+  /// *before* Gemini ensures the AI composes within the actual print frame.
+  ///
+  /// **Dimensions**: 1536×1024 is exactly 3:2 and gives Gemini enough detail
+  /// for a sharp 6×4 print (256 DPI on the 6" side). At quality 90 this is
+  /// typically 300–500 KB — well within the 600 KB cap.
+  ///
+  /// **Cubic interpolation** in the resize path preserves facial detail and
+  /// edges better than linear when downscaling from 1080p.
+  static Future<String> encodeImageForUpload(XFile imageFile) async {
+    final bytes = await imageFile.readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception('Image file is empty');
+    }
+    return compute(
+      _cropAndEncodeForPrintIsolate,
+      (
+        bytes: bytes,
+        targetAspect: 3.0 / 2.0, // 6×4 print = 3:2
+        maxWidth: 1536,
+        maxHeight: 1024,
+        quality: 90,
+        maxSizeBytes: 600 * 1024,
+      ),
+    );
+  }
+
+  /// Isolate entry: center-crop to target aspect ratio, resize, encode JPEG,
+  /// return base64 data URL. All heavy work off the UI thread.
+  static String _cropAndEncodeForPrintIsolate(
+    ({
+      Uint8List bytes,
+      double targetAspect,
+      int maxWidth,
+      int maxHeight,
+      int quality,
+      int maxSizeBytes,
+    }) args,
+  ) {
+    final original = img.decodeImage(args.bytes);
+    if (original == null) {
+      throw Exception('Failed to decode image');
+    }
+
+    // ── 1. Center-crop to target aspect ratio ──────────────────────────
+    final srcAspect = original.width / original.height;
+    img.Image cropped;
+    if ((srcAspect - args.targetAspect).abs() < 0.01) {
+      // Already at target aspect — skip crop
+      cropped = original;
+    } else if (srcAspect > args.targetAspect) {
+      // Source is wider (e.g. 16:9 → 3:2): crop sides
+      final newWidth = (original.height * args.targetAspect).round();
+      final xOffset = ((original.width - newWidth) / 2).round();
+      cropped = img.copyCrop(original,
+          x: xOffset, y: 0, width: newWidth, height: original.height);
+    } else {
+      // Source is taller: crop top/bottom
+      final newHeight = (original.width / args.targetAspect).round();
+      final yOffset = ((original.height - newHeight) / 2).round();
+      cropped = img.copyCrop(original,
+          x: 0, y: yOffset, width: original.width, height: newHeight);
+    }
+
+    // ── 2. Resize to target dimensions (maintain aspect, fit in box) ───
+    int targetWidth = cropped.width;
+    int targetHeight = cropped.height;
+    if (targetWidth > args.maxWidth || targetHeight > args.maxHeight) {
+      final scale = (targetWidth > targetHeight)
+          ? args.maxWidth / targetWidth
+          : args.maxHeight / targetHeight;
+      targetWidth = (targetWidth * scale).round();
+      targetHeight = (targetHeight * scale).round();
+    }
+
+    final resized = img.copyResize(
+      cropped,
+      width: targetWidth,
+      height: targetHeight,
+      interpolation: img.Interpolation.cubic,
+    );
+
+    // ── 3. Encode JPEG, stepping down quality only if over budget ──────
+    int currentQuality = args.quality;
+    Uint8List? encoded;
+    while (currentQuality >= 70) {
+      encoded = Uint8List.fromList(
+        img.encodeJpg(resized, quality: currentQuality),
+      );
+      if (encoded.length <= args.maxSizeBytes) break;
+      currentQuality -= 5; // Smaller steps to avoid over-compressing
+    }
+
+    if (encoded == null || encoded.isEmpty) {
+      throw Exception('Failed to encode image');
+    }
+
+    final base64String = base64Encode(encoded);
+    return 'data:image/jpeg;base64,$base64String';
   }
 
   /// Converts image file to base64 data URL without resizing
@@ -268,37 +367,37 @@ class ImageHelper {
     }
   }
 
-  /// Rotates an image 180 degrees and overwrites the original file
-  /// Returns a new XFile pointing to the rotated image
+  /// Rotates an image 180 degrees and overwrites the original file.
+  /// Heavy work runs in a background isolate to avoid main-thread heap spikes.
+  /// Returns a new XFile pointing to the rotated image.
   static Future<XFile> rotateImage180(XFile imageFile) async {
-    try {
-      final bytes = await imageFile.readAsBytes();
-      if (bytes.isEmpty) {
-        throw Exception('Image file is empty');
-      }
-
-      final originalImage = img.decodeImage(bytes);
-      if (originalImage == null) {
-        throw Exception('Failed to decode image');
-      }
-
-      final rotatedImage = img.copyRotate(originalImage, angle: 180);
-      final extension = imageFile.path.toLowerCase().split('.').last;
-
-      Uint8List encodedBytes;
-      if (extension == 'png') {
-        encodedBytes = Uint8List.fromList(img.encodePng(rotatedImage));
-      } else {
-        encodedBytes = Uint8List.fromList(img.encodeJpg(rotatedImage, quality: 95));
-      }
-
-      final file = FileHelper.createFile(imageFile.path);
-      await (file as dynamic).writeAsBytes(encodedBytes);
-
-      return XFile((file as dynamic).path);
-    } catch (e) {
-      throw Exception('Failed to rotate image: $e');
+    final bytes = await imageFile.readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception('Image file is empty');
     }
+    final ext = imageFile.path.toLowerCase().split('.').last;
+    final encodedBytes = await compute(
+      _rotateImage180Isolate,
+      (bytes: bytes, extension: ext),
+    );
+    final file = FileHelper.createFile(imageFile.path);
+    await (file as dynamic).writeAsBytes(encodedBytes);
+    return XFile((file as dynamic).path);
+  }
+
+  /// Top-level for [compute].
+  static Uint8List _rotateImage180Isolate(
+    ({Uint8List bytes, String extension}) args,
+  ) {
+    final originalImage = img.decodeImage(args.bytes);
+    if (originalImage == null) {
+      throw Exception('Failed to decode image');
+    }
+    final rotated = img.copyRotate(originalImage, angle: 180);
+    if (args.extension == 'png') {
+      return Uint8List.fromList(img.encodePng(rotated));
+    }
+    return Uint8List.fromList(img.encodeJpg(rotated, quality: 95));
   }
 }
 

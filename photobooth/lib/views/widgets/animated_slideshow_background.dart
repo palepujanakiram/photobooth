@@ -1,9 +1,28 @@
 import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 
-/// Asset paths for slideshow: assets/slideshow/slideshow_1.png through slideshow_19.png.
+/// Asset paths for slideshow images.
+/// Images 1–10 are JPG (resized to 512×512 for low GPU RAM); 11–18 are small PNGs; 19 is JPG.
 final List<String> kSlideshowAssetPaths = [
-  for (int i = 1; i <= 19; i++) 'assets/slideshow/slideshow_$i.png',
+  'assets/slideshow/slideshow_1.jpg',
+  'assets/slideshow/slideshow_2.jpg',
+  'assets/slideshow/slideshow_3.jpg',
+  'assets/slideshow/slideshow_4.jpg',
+  'assets/slideshow/slideshow_5.jpg',
+  'assets/slideshow/slideshow_6.jpg',
+  'assets/slideshow/slideshow_7.jpg',
+  'assets/slideshow/slideshow_8.jpg',
+  'assets/slideshow/slideshow_9.jpg',
+  'assets/slideshow/slideshow_10.jpg',
+  'assets/slideshow/slideshow_11.png',
+  'assets/slideshow/slideshow_12.png',
+  'assets/slideshow/slideshow_13.png',
+  'assets/slideshow/slideshow_14.png',
+  'assets/slideshow/slideshow_15.png',
+  'assets/slideshow/slideshow_16.png',
+  'assets/slideshow/slideshow_17.png',
+  'assets/slideshow/slideshow_18.png',
+  'assets/slideshow/slideshow_19.jpg',
 ];
 
 /// Transition type when changing the image in a card.
@@ -288,11 +307,19 @@ class _CardImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Decode at display size (not source size) to avoid GPU memory waste.
+    // A 4096×4096 PNG decoded at full size = 64 MB GPU RAM; cacheWidth/Height
+    // tells the codec to resize during decode so only ~1 MB is held.
+    final cw = (width * MediaQuery.devicePixelRatioOf(context)).ceil();
+    final ch = (height * MediaQuery.devicePixelRatioOf(context)).ceil();
     return Image.asset(
       assetPath,
       fit: BoxFit.cover,
       width: width,
       height: height,
+      cacheWidth: cw,
+      cacheHeight: ch,
+      filterQuality: FilterQuality.low,
       errorBuilder: (_, __, ___) => Container(
         width: width,
         height: height,

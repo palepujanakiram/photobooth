@@ -590,8 +590,11 @@ class CaptureViewModel extends ChangeNotifier {
 
       // [max] still capture asks the device for the largest photo buffers; on 4 GB kiosks that
       // plus preview ([veryHigh] when capture is max in vendored camera_android_camerax) can add
-      // ~1.5–2 GB and trigger OOM. [kLowMemoryKioskMode] keeps [high] still + [medium] preview via
-      // the fork; uploads are still resized in [ImageHelper.encodeImageForUpload].
+      // ~1.5–2 GB and trigger OOM. [kLowMemoryKioskMode] uses [high] (1080p) — the sweet spot:
+      // enough resolution for sharp AI transformation (upload resized to 1024×1024 for Gemini)
+      // while keeping native heap ~400–600 MB below [max]/4K.
+      // RAM budget cleared by: slideshow JPG resize (-333 MB), camera dispose before nav
+      // (-300–600 MB), cacheWidth on all Image widgets (-40 MB).
       const preset = AppConstants.kLowMemoryKioskMode
           ? ResolutionPreset.high
           : ResolutionPreset.max;
@@ -1100,7 +1103,7 @@ class CaptureViewModel extends ChangeNotifier {
       
       ErrorReportingManager.log('📦 Encoding image for upload (upload-optimized size)');
       
-      // Encode in background with smaller payload (~120 KB target) for faster upload on slow links.
+      // Encode in background — 1024×1024 @ quality 90, ~200–400 KB (optimized for Gemini AI).
       final base64Image = await compute(
         _encodeImageForUploadInBackground,
         imageFile.path,
@@ -1220,13 +1223,21 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  /// Eagerly releases camera native buffers. Call before navigating away
+  /// so the next screen doesn't overlap with camera heap on low-RAM devices.
+  void disposeCamera() {
+    try {
+      _cameraController?.removeListener(_onCameraControllerUpdate);
+      _cameraController?.dispose();
+    } catch (_) {}
+    _cameraController = null;
+  }
+
   /// Disposes the camera controller
   @override
   void dispose() {
     _stopUploadTimer();
-    _cameraController?.removeListener(_onCameraControllerUpdate);
-    _cameraController?.dispose();
-    _cameraController = null;
+    disposeCamera();
     super.dispose();
   }
 }
