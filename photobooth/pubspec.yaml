@@ -68,9 +68,11 @@ dev_dependencies:
   json_serializable: ^6.7.1
   flutter_launcher_icons: ^0.13.1
 
-# Force a recent CameraX plugin for external/USB camera support and rotation fixes.
+# Vendored fork: preview/ImageAnalysis use one preset lower than capture to cut
+# preview RAM; ImageCapture keeps full [ResolutionPreset] (see package README).
 dependency_overrides:
-  camera_android_camerax: 0.7.1
+  camera_android_camerax:
+    path: packages/camera_android_camerax
 
 flutter:
   uses-material-design: true

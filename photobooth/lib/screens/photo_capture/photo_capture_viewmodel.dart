@@ -569,7 +569,9 @@ class CaptureViewModel extends ChangeNotifier {
       }
       // Brief delay only when we actually released a camera (lets system free resources)
       if (hadController) {
-        await Future.delayed(const Duration(milliseconds: 100));
+        await Future.delayed(
+          const Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
+        );
       }
 
       // Debug: Log which camera is being initialized
@@ -586,7 +588,10 @@ class CaptureViewModel extends ChangeNotifier {
       ));
       ErrorReportingManager.log('Initializing camera: ${camera.name}');
 
-      // Single preset for fast preview; veryHigh (1080p) is widely supported.
+      // Always [high] for usable capture/preview quality on kiosk TV. [medium] was
+      // tried under [kLowMemoryKioskMode] but visibly degraded photos; native camera
+      // init still causes a short RAM spike (buffers). Downstream we still resize for
+      // upload ([ImageHelper.encodeImageForUpload]) so network/RAM stay bounded.
       const preset = ResolutionPreset.high;
       _cameraController = CameraController(
         cameraToUse,
@@ -983,7 +988,7 @@ class CaptureViewModel extends ChangeNotifier {
         source: ImageSource.gallery,
         maxWidth: 1920,
         maxHeight: 1080,
-        imageQuality: 95,
+        imageQuality: AppConstants.kGalleryPickerImageQuality,
       );
 
       if (imageFile == null) {

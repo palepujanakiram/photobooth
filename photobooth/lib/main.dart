@@ -33,6 +33,12 @@ import 'services/payment_push_coordinator.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  if (AppConstants.kLowMemoryKioskMode) {
+    final ic = PaintingBinding.instance.imageCache;
+    ic.maximumSize = AppConstants.kFlutterImageCacheMaxCount;
+    ic.maximumSizeBytes = AppConstants.kFlutterImageCacheMaxBytes;
+  }
+
   if (DefaultFirebaseOptions.isFirebaseConfigured) {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,

@@ -35,7 +35,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     _captureViewModel = CaptureViewModel();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      _captureViewModel.loadPreviewRotation();
+      // Await prefs before camera so SharedPreferences I/O does not overlap native
+      // camera enumeration / CameraController.initialize (reduces peak contention on 2 GB devices).
+      await _captureViewModel.loadPreviewRotation();
+      if (!mounted) return;
       await _resetAndInitializeCameras();
     });
   }
@@ -46,13 +49,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   Future<void> _resetAndInitializeCameras({bool forceRefresh = false}) async {
     if (!mounted) return;
     _captureViewModel.setDeviceType(null);
-    final deviceTypeFuture = DeviceClassifier.getDeviceType(context);
     await _captureViewModel.resetAndInitializeCameras(
       forceRefresh: forceRefresh,
     );
     if (!mounted) return;
+    // Run after camera: device_info + MediaQuery — avoids overlapping with
+    // availableCameras() / initialize() native heap spike.
     try {
-      final deviceType = await deviceTypeFuture;
+      final deviceType = await DeviceClassifier.getDeviceType(context);
       if (mounted) _captureViewModel.setDeviceType(deviceType);
     } catch (_) {}
   }
@@ -341,7 +345,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               currentZoom: viewModel.currentZoom,
             ),
           ),
-        if (hasCapturedPhoto)
+        if (hasCapturedPhoto &&
+            (AppConstants.kShowNativeCameraInfoPane ||
+                AppConstants.kShowCapturedPhotoMetadataOverlay))
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Column(
@@ -360,8 +366,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                       style: const TextStyle(color: Colors.white70, fontSize: 11),
                     ),
                   ),
-                if (AppConstants.kShowNativeCameraInfoPane) const SizedBox(height: 6),
-                if (AppConstants.kShowNativeCameraInfoPane)
+                if (AppConstants.kShowNativeCameraInfoPane &&
+                    AppConstants.kShowCapturedPhotoMetadataOverlay)
+                  const SizedBox(height: 6),
+                if (AppConstants.kShowCapturedPhotoMetadataOverlay)
                   _buildCapturedPhotoDetailsOverlay(context, viewModel),
               ],
             ),

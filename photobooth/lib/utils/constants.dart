@@ -79,8 +79,44 @@ class AppConstants {
   static const double kGeneratePhotoZoomedScale = 1.3;
   static const String kContinueButtonText = 'Continue';
 
+  /// When true, optimizes for low-RAM Android TV / kiosk (2 GB): tighter image
+  /// caches, no photo metadata overlay, lighter gallery pick, smaller theme disk cache.
+  /// Does **not** lower camera [ResolutionPreset] — quality is preserved; uploads are
+  /// still resized in [ImageHelper.encodeImageForUpload].
+  static const bool kLowMemoryKioskMode = true;
+
+  /// Extra delay after releasing a [CameraController] before opening the next (ms).
+  /// Gives CameraX / HAL time to free buffers on slow 2 GB TV boxes when switching cams.
+  static const int kCameraDisposeToReopenDelayMs =
+      kLowMemoryKioskMode ? 160 : 100;
+
+  /// Camera / kiosk (operational — not enforced in code):
+  /// - A short RAM spike when opening the camera is normal (native preview buffers).
+  /// - Android uses a **vendored** `camera_android_camerax` fork: preview/ImageAnalysis run
+  ///   one [ResolutionPreset] **below** still capture to save preview RAM; see
+  ///   `packages/camera_android_camerax/lib/src/android_camera_camerax.dart`.
+  /// - Prefer powered USB hubs and one external webcam; avoid enumerating many unused devices.
+  /// - Close other apps using the camera; reboot kiosk if enumeration hangs after OOM.
+  /// - For extreme OOM only, consider `android:largeHeap="true"` in the Android manifest
+  ///   (trade-off: harder to catch real leaks).
+
   /// When true, shows an overlay above Cancel/Continue with photo metadata (size, format).
-  static const bool kShowCapturedPhotoMetadataOverlay = true;
+  /// Off when [kLowMemoryKioskMode] is true (avoids full-image decode on the UI isolate).
+  static bool get kShowCapturedPhotoMetadataOverlay => !kLowMemoryKioskMode;
+
+  /// Theme image disk cache ceiling (MB); lower on kiosk.
+  static const int kThemeDiskCacheMaxSizeMB = kLowMemoryKioskMode ? 40 : 100;
+
+  /// Flutter in-memory [ImageCache] — max entries when [kLowMemoryKioskMode].
+  static const int kFlutterImageCacheMaxCount = kLowMemoryKioskMode ? 40 : 100;
+
+  /// Flutter in-memory [ImageCache] — max total bytes when [kLowMemoryKioskMode].
+  static const int kFlutterImageCacheMaxBytes = kLowMemoryKioskMode
+      ? 50 * 1024 * 1024
+      : 100 * 1024 * 1024;
+
+  /// Gallery picker JPEG quality before normalization (lower = less work / smaller temp file).
+  static const int kGalleryPickerImageQuality = kLowMemoryKioskMode ? 85 : 95;
 
   /// When true, shows the native camera info pane (preview size, active array, zoom, etc.) on Capture Photo screen.
   static const bool kShowNativeCameraInfoPane = false;
