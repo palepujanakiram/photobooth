@@ -8,7 +8,7 @@ class AppConfig {
   /// Base URL for the API endpoints
   /// 
   /// For development with CORS issues, you can use:
-  /// - A CORS proxy: 'https://cors-anywhere.herokuapp.com/https://zenai-labs.replit.app'
+  /// - A CORS proxy: 'https://cors-anywhere.herokuapp.com/https://fotozenai.fly.dev'
   /// - A local proxy server: 'http://localhost:8080/api'
   /// 
   /// For production, ensure the server has proper CORS headers configured.

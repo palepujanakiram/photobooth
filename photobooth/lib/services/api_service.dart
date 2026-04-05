@@ -599,6 +599,11 @@ class ApiService {
       }
 
       final raw = await _apiClient.initiatePayment(body);
+      if (raw is! Map<String, dynamic>) {
+        throw ApiException(
+          '${AppConstants.kErrorApiCall}: unexpected payment response',
+        );
+      }
       return PaymentInitiateResult.fromJson(raw);
     } on DioException catch (e) {
       _handleWebNetworkError(e);

@@ -81,14 +81,10 @@ class _WebViewScreenState extends State<WebViewScreen> {
           ),
         );
 
+      controller.loadRequest(Uri.parse(widget.url));
+
       setState(() {
         _controller = controller;
-      });
-
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted && _controller != null) {
-          _controller!.loadRequest(Uri.parse(widget.url));
-        }
       });
     } catch (e) {
       if (mounted) {

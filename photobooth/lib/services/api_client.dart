@@ -79,8 +79,10 @@ abstract class ApiClient {
   );
 
   /// Starts a payment and returns a link to encode as UPI QR.
+  /// Return type is [dynamic] so retrofit_generator does not emit invalid
+  /// `Map` parsing (`dynamic.fromJson`); callers cast to [Map<String, dynamic>].
   @POST('/api/payment/initiate')
-  Future<Map<String, dynamic>> initiatePayment(
+  Future<dynamic> initiatePayment(
     @Body() Map<String, dynamic> body,
   );
 }

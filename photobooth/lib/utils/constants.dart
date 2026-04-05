@@ -1,6 +1,13 @@
+import 'package:flutter/widgets.dart';
+
 import 'app_config.dart';
 
 class AppConstants {
+  // Branding
+  static const String kBrandName = 'Fotozen AI';
+  static const String kBrandAppTitle = 'Fotozen AI Photo Booth';
+  static const String kBrandLogoAsset = 'lib/images/fotozen_ai_logo.png';
+
   // API Configuration
   static const String kBaseUrl = AppConfig.baseUrl;
   // Extended timeout for image uploads and AI generation
@@ -35,9 +42,28 @@ class AppConstants {
   static const double kTabletBreakpoint = 600.0;
   static const double kTouchTargetSize = 48.0;
 
-  /// Width : height for the centered (selected) theme card in the theme carousel.
-  /// Keep in sync with `isCenter ? 3 / 4.5` in [ThemeSelectionScreen] carousel.
+  /// Width : height for theme/generate cards in **portrait** device orientation.
+  /// Slightly shorter than raw 9:16 for legacy grid harmony.
   static const double kThemeSelectedCardAspectRatio = 3 / 4.5;
+
+  /// Typical phone portrait capture & AI output (width : height). Use in **landscape**
+  /// / kiosk layouts so card slots match portrait photos and avoid letterboxing.
+  static const double kPortraitCaptureAspectRatio = 9 / 16;
+
+  /// Center hero card in theme carousel: portrait UI uses [kThemeSelectedCardAspectRatio];
+  /// landscape / kiosk uses [kPortraitCaptureAspectRatio] to match captured images.
+  static double themeCardSlotAspectRatio(BuildContext context) {
+    return MediaQuery.orientationOf(context) == Orientation.landscape
+        ? kPortraitCaptureAspectRatio
+        : kThemeSelectedCardAspectRatio;
+  }
+
+  /// Non-center carousel pages: a touch wider than center for depth (landscape still portrait-shaped).
+  static double themeCarouselSideAspectRatio(BuildContext context) {
+    return MediaQuery.orientationOf(context) == Orientation.landscape
+        ? 9 / 15.5
+        : 3 / 4;
+  }
 
   /// Default [PageController.viewportFraction] for very wide layouts; phones use ~0.76 in code.
   static const double kThemeCarouselViewportFraction = 0.38;
@@ -90,7 +116,12 @@ class AppConstants {
   static const bool kEnableLogOutput = false;
 
   /// Terms & Conditions page (WebView via [WebViewScreen]). Defaults to
-  /// [AppConfig.baseUrl]/terms; replace with any absolute URL if hosted elsewhere.
+  /// [AppConfig.baseUrl]/terms.
+  ///
+  /// **Performance:** If that URL serves the same heavy SPA shell (large JS bundle,
+  /// Google Fonts CSS, etc.) as the main site, the WebView will feel slow until all
+  /// assets load. For a fast legal page, host a **static** HTML document (or a
+  /// minimal route) and point this constant at that URL instead.
   static const String kTermsAndConditionsUrl = '${AppConfig.baseUrl}/terms';
 
   // Routes

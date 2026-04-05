@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:share_plus/share_plus.dart';
+import '../utils/constants.dart';
 import '../utils/exceptions.dart';
 
 class ShareService {
@@ -17,7 +18,7 @@ class ShareService {
         ShareParams(
           files: [imageFile],
           text: text,
-          subject: 'Photo Booth Image',
+          subject: '${AppConstants.kBrandName} image',
           sharePositionOrigin: sharePositionOrigin,
         ),
       );
@@ -44,7 +45,7 @@ class ShareService {
         ShareParams(
           files: [imageFile],
           text: text ?? 'Check out my photo!',
-          subject: 'Photo Booth Image',
+          subject: '${AppConstants.kBrandName} image',
           sharePositionOrigin: origin,
         ),
       );
@@ -73,7 +74,7 @@ class ShareService {
         ShareParams(
           files: imageFiles,
           text: text ?? 'Check out my ${imageFiles.length} AI generated photo${imageFiles.length > 1 ? 's' : ''}!',
-          subject: 'Photo Booth Images',
+          subject: '${AppConstants.kBrandName} images',
           sharePositionOrigin: origin,
         ),
       );
