@@ -5,6 +5,10 @@ on:
       - main
   pull_request:
     types: [opened, synchronize, reopened]
+defaults:
+  run:
+    working-directory: photobooth
+
 jobs:
   sonarqube:
     name: SonarQube
@@ -31,6 +35,7 @@ jobs:
       - name: Build App
         run: flutter build apk
       - name: SonarQube Scan
+        working-directory: photobooth
         uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
