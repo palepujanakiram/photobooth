@@ -823,7 +823,6 @@ class MockCamera2CameraInfo extends _i1.Mock implements _i2.Camera2CameraInfo {
 /// A class which mocks [CameraImageData].
 ///
 /// See the documentation for Mockito's code generation for more information.
-// ignore: must_be_immutable
 class MockCameraImageData extends _i1.Mock implements _i4.CameraImageData {
   @override
   _i4.CameraImageFormat get format =>
