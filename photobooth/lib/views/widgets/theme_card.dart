@@ -182,7 +182,7 @@ class ThemeCard extends StatelessWidget {
                             ),
                             child: Text(
                               actionButtonLabel,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 color: CupertinoColors.white,
                                 fontWeight: FontWeight.w600,
                                 fontSize: 10,
