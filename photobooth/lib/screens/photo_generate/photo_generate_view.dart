@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' show ImmutableBuffer, instantiateImageCodecFromBuffer;
 import 'package:flutter/cupertino.dart' show CupertinoButton, CupertinoColors, CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -32,6 +33,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   late PhotoGenerateViewModel _viewModel;
   bool _viewModelCreated = false;
   Uint8List? _originalPhotoBytes;
+  double? _originalPhotoAspect;
+  final Map<String, double> _generatedAspectById = {};
   bool _isInitialized = false;
   final GlobalKey _contentKey = GlobalKey();
   /// Sentinel when the captured photo slot is zoomed (vs a [GeneratedImage.id]).
@@ -86,9 +89,41 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
           _originalPhotoBytes = Uint8List.fromList(bytes);
         });
       }
+      // Decode just the first frame to get pixel aspect ratio for adaptive layout.
+      final buffer = await ImmutableBuffer.fromUint8List(bytes);
+      final codec = await instantiateImageCodecFromBuffer(buffer);
+      final frame = await codec.getNextFrame();
+      final w = frame.image.width.toDouble();
+      final h = frame.image.height.toDouble();
+      frame.image.dispose();
+      codec.dispose();
+      if (!mounted) return;
+      if (w > 0 && h > 0) {
+        setState(() => _originalPhotoAspect = (w / h).clamp(0.35, 2.85));
+      }
     } catch (e) {
       // Handle error silently
     }
+  }
+
+  void _ensureGeneratedAspect(String id, ImageProvider provider) {
+    if (_generatedAspectById.containsKey(id)) return;
+    final stream = provider.resolve(const ImageConfiguration());
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (info, _) {
+        final w = info.image.width.toDouble();
+        final h = info.image.height.toDouble();
+        if (w > 0 && h > 0 && mounted) {
+          setState(() => _generatedAspectById[id] = (w / h).clamp(0.35, 2.85));
+        }
+        stream.removeListener(listener);
+      },
+      onError: (_, __) {
+        stream.removeListener(listener);
+      },
+    );
+    stream.addListener(listener);
   }
 
   void _showCancelConfirmation(BuildContext context) {
@@ -506,10 +541,10 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
 
     const double lightningWidth = 36.0;
     const double cardGap = 12.0;
-    // Landscape / kiosk: match portrait capture (9:16). Portrait phone: theme card ratio.
-    final double aspect = isLandscape
-        ? AppConstants.kPortraitCaptureAspectRatio
-        : AppConstants.kThemeSelectedCardAspectRatio;
+    // Portrait uses the theme card ratio. Landscape uses per-image aspect to avoid black bars.
+    const double portraitAspect = AppConstants.kThemeSelectedCardAspectRatio;
+    const double fallbackLandscapeAspect = 16 / 9;
+    final double aspect = isLandscape ? fallbackLandscapeAspect : portraitAspect;
 
     /// Matches centered theme card: carousel page width × peak center scale.
     final double themeReferenceCardWidth = screenWidth *
@@ -542,6 +577,20 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         ),
       ),
     );
+
+    if (isLandscape) {
+      return _buildLandscapeAdaptivePhotos(
+        context,
+        viewModel,
+        appColors,
+        screenWidth: screenWidth,
+        maxRowHeight: maxRowHeight,
+        cardGap: cardGap,
+        lightningWidth: lightningWidth,
+        fallbackAspect: fallbackLandscapeAspect,
+        fixedFooterOutside: fixedFooterOutside,
+      );
+    }
 
     final int gapCount = 1 + transformedSlotCount;
     double cardWidth = (screenWidth - lightningWidth - cardGap * gapCount) /
@@ -584,6 +633,23 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       cardHeight,
       genZoomId,
     );
+
+    // When multiple outputs are shown (especially on wide web/kiosk), a scrolling Row
+    // wastes space and feels boxed. Switch to a responsive grid that sizes itself
+    // based on how many slots are visible.
+    final bool useGridLayout = screenWidth >= 820 && transformedSlotCount >= 2;
+    if (useGridLayout) {
+      return _buildResponsivePhotosGrid(
+        context,
+        viewModel,
+        appColors,
+        screenWidth: screenWidth,
+        aspect: aspect,
+        maxRowHeight: maxRowHeight,
+        lightningWidth: lightningWidth,
+        fixedFooterOutside: fixedFooterOutside,
+      );
+    }
 
     final double rowIntrinsicWidth = _intrinsicPhotoRowWidth(
       cardWidth: cardWidth,
@@ -669,6 +735,399 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     );
   }
 
+  Widget _buildLandscapeAdaptivePhotos(
+    BuildContext context,
+    PhotoGenerateViewModel viewModel,
+    AppColors appColors, {
+    required double screenWidth,
+    required double maxRowHeight,
+    required double cardGap,
+    required double lightningWidth,
+    required double fallbackAspect,
+    required bool fixedFooterOutside,
+  }) {
+    const double innerGap = 12.0;
+
+    final bool isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
+    final bool isLoadingMore = viewModel.isLoadingMore;
+    final bool hasResult = viewModel.generatedImages.isNotEmpty;
+    final bool isGeneratingOrLoading = isGenerating || isLoadingMore;
+
+    // Proactively resolve generated image sizes so aspect becomes accurate quickly.
+    for (final img in viewModel.generatedImages) {
+      _ensureGeneratedAspect(img.id, NetworkImage(img.imageUrl));
+    }
+
+    final double origAspect = _originalPhotoAspect ?? fallbackAspect;
+    double slotH = maxRowHeight.clamp(220.0, 520.0);
+
+    double origW = slotH * origAspect;
+    final List<double> transformedAspects = [];
+    if (!hasResult) {
+      transformedAspects.add(fallbackAspect);
+    } else {
+      if (isLoadingMore) transformedAspects.add(fallbackAspect);
+      for (final img in viewModel.generatedImages) {
+        transformedAspects.add(_generatedAspectById[img.id] ?? fallbackAspect);
+      }
+    }
+    final List<double> transformedWs =
+        transformedAspects.map((a) => slotH * a).toList();
+
+    // Scale down uniformly to fit within screen width (no horizontal scrolling).
+    final double desiredW = origW +
+        cardGap +
+        lightningWidth +
+        cardGap +
+        transformedWs.fold(0.0, (s, w) => s + w) +
+        (transformedWs.isEmpty ? 0.0 : innerGap * (transformedWs.length - 1));
+    if (desiredW > screenWidth) {
+      final scale = (screenWidth / desiredW).clamp(0.55, 1.0);
+      slotH *= scale;
+      origW *= scale;
+      for (var i = 0; i < transformedWs.length; i++) {
+        transformedWs[i] = transformedWs[i] * scale;
+      }
+    }
+
+    final String messageBelow = isGeneratingOrLoading
+        ? (isLoadingMore ? 'Adding your new style...' : 'Please wait while we create your masterpiece')
+        : hasResult
+            ? 'Your masterpiece is ready'
+            : '';
+
+    final Widget originalCard = _buildCaptureCard(
+      cardWidth: origW,
+      cardHeight: slotH,
+      isZoomed: _zoomedSlotId == _kZoomOriginalSlotId,
+    );
+
+    final Widget lightningIcon = SizedBox(
+      width: lightningWidth,
+      child: Center(
+        child: Icon(
+          CupertinoIcons.bolt_fill,
+          size: 36,
+          color: Colors.amber.shade400,
+        ),
+      ),
+    );
+
+    final transformedWidgets = <Widget>[];
+    int wIndex = 0;
+    if (isGenerating && !hasResult) {
+      transformedWidgets.add(
+        _transformedSlotFrame(
+          cardWidth: transformedWs.isNotEmpty ? transformedWs.first : slotH * fallbackAspect,
+          cardHeight: slotH,
+          child: _buildTransformedLoadingPlaceholder(viewModel, appColors),
+        ),
+      );
+    } else if (!hasResult) {
+      transformedWidgets.add(
+        _transformedSlotFrame(
+          cardWidth: transformedWs.isNotEmpty ? transformedWs.first : slotH * fallbackAspect,
+          cardHeight: slotH,
+          child: const Center(
+            child: Icon(
+              Icons.photo_outlined,
+              size: 48,
+              color: Colors.white54,
+            ),
+          ),
+        ),
+      );
+    } else {
+      if (isLoadingMore) {
+        transformedWidgets.add(
+          _transformedSlotFrame(
+            cardWidth: transformedWs[wIndex++],
+            cardHeight: slotH,
+            child: _buildTransformedLoadingPlaceholder(viewModel, appColors),
+          ),
+        );
+      }
+      for (final img in viewModel.generatedImages) {
+        if (transformedWidgets.isNotEmpty) {
+          transformedWidgets.add(const SizedBox(width: innerGap));
+        }
+        transformedWidgets.add(
+          _buildOneTransformedImageCard(
+            context,
+            viewModel,
+            img,
+            transformedWs[wIndex++],
+            slotH,
+            effectiveZoomId: null,
+            showRemoveButton: false,
+          ),
+        );
+      }
+    }
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (messageBelow.isNotEmpty) ...[
+            Text(
+              messageBelow,
+              style: const TextStyle(
+                fontSize: 16,
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 24),
+          ],
+          AnimatedSize(
+            duration: _kZoomLayoutAnimationDuration,
+            curve: _kZoomLayoutAnimationCurve,
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                originalCard,
+                SizedBox(width: cardGap),
+                lightningIcon,
+                SizedBox(width: cardGap),
+                ...transformedWidgets,
+              ],
+            ),
+          ),
+          if ((hasResult || isGenerating) && !fixedFooterOutside) ...[
+            const SizedBox(height: 24),
+            _buildPhotosActionFooter(context, viewModel, appColors),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResponsivePhotosGrid(
+    BuildContext context,
+    PhotoGenerateViewModel viewModel,
+    AppColors appColors, {
+    required double screenWidth,
+    required double aspect,
+    required double maxRowHeight,
+    required double lightningWidth,
+    required bool fixedFooterOutside,
+  }) {
+    const double outerGap = 12.0;
+    const double innerGap = 12.0;
+
+    final bool isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
+    final bool isLoadingMore = viewModel.isLoadingMore;
+    final bool hasResult = viewModel.generatedImages.isNotEmpty;
+    final bool isGeneratingOrLoading = isGenerating || isLoadingMore;
+
+    final int transformedSlotCount = !hasResult
+        ? 1
+        : viewModel.generatedImages.length + (isLoadingMore ? 1 : 0);
+
+    final String? genZoomId = _zoomedSlotId != null &&
+            _zoomedSlotId != _kZoomOriginalSlotId &&
+            viewModel.generatedImages.any((e) => e.id == _zoomedSlotId)
+        ? _zoomedSlotId
+        : null;
+
+    // 1 slot → 1 column; 2–4 slots → 2 columns; 5+ → 3 columns (clamped later by width).
+    int cols = transformedSlotCount <= 1
+        ? 1
+        : (transformedSlotCount <= 4 ? 2 : 3);
+    cols = cols.clamp(1, 3);
+    final int rows = ((transformedSlotCount + cols - 1) / cols).floor();
+
+    // Height budget goes to the transformed grid; original matches grid height for balance.
+    double gridH = maxRowHeight;
+    double cardH = (gridH - innerGap * (rows - 1)) / rows;
+    cardH = cardH.clamp(180.0, maxRowHeight);
+    double cardW = cardH * aspect;
+
+    double gridW = cols * cardW + innerGap * (cols - 1);
+    double originalH = gridH;
+    double originalW = originalH * aspect;
+
+    // Scale down uniformly if the row would overflow.
+    final double desiredW = originalW + outerGap + lightningWidth + outerGap + gridW;
+    if (desiredW > screenWidth) {
+      final scale = (screenWidth / desiredW).clamp(0.55, 1.0);
+      originalW *= scale;
+      originalH *= scale;
+      cardW *= scale;
+      cardH *= scale;
+      gridW = cols * cardW + innerGap * (cols - 1);
+      gridH = rows * cardH + innerGap * (rows - 1);
+    } else {
+      // Recompute gridH to match the actual rows/cardH after clamps.
+      gridH = rows * cardH + innerGap * (rows - 1);
+      originalH = gridH;
+      originalW = originalH * aspect;
+    }
+
+    final Widget originalCard = _buildCaptureCard(
+      cardWidth: originalW,
+      cardHeight: originalH,
+      isZoomed: _zoomedSlotId == _kZoomOriginalSlotId,
+    );
+
+    final Widget lightningIcon = SizedBox(
+      width: lightningWidth,
+      child: Center(
+        child: Icon(
+          CupertinoIcons.bolt_fill,
+          size: 36,
+          color: Colors.amber.shade400,
+        ),
+      ),
+    );
+
+    final slots = _buildTransformedSlotWidgets(
+      context,
+      viewModel,
+      appColors,
+      cardW,
+      cardH,
+      genZoomId,
+    );
+
+    final String messageBelow = isGeneratingOrLoading
+        ? (isLoadingMore ? 'Adding your new style...' : 'Please wait while we create your masterpiece')
+        : hasResult
+            ? 'Your masterpiece is ready'
+            : '';
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (messageBelow.isNotEmpty) ...[
+            Text(
+              messageBelow,
+              style: const TextStyle(
+                fontSize: 16,
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 24),
+          ],
+          AnimatedSize(
+            duration: _kZoomLayoutAnimationDuration,
+            curve: _kZoomLayoutAnimationCurve,
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            child: SizedBox(
+              width: screenWidth,
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    originalCard,
+                    const SizedBox(width: outerGap),
+                    lightningIcon,
+                    const SizedBox(width: outerGap),
+                    SizedBox(
+                      width: gridW,
+                      height: gridH,
+                      child: Wrap(
+                        spacing: innerGap,
+                        runSpacing: innerGap,
+                        children: slots,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if ((hasResult || isGenerating) && !fixedFooterOutside) ...[
+            const SizedBox(height: 24),
+            _buildPhotosActionFooter(context, viewModel, appColors),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildTransformedSlotWidgets(
+    BuildContext context,
+    PhotoGenerateViewModel viewModel,
+    AppColors appColors,
+    double cardWidth,
+    double cardHeight,
+    String? effectiveZoomId,
+  ) {
+    final isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
+    final isLoadingMore = viewModel.isLoadingMore;
+    final images = viewModel.generatedImages;
+    final hasImages = images.isNotEmpty;
+
+    if (isGenerating && !hasImages) {
+      return [
+        _transformedSlotFrame(
+          cardWidth: cardWidth,
+          cardHeight: cardHeight,
+          child: _buildTransformedLoadingPlaceholder(viewModel, appColors),
+        ),
+      ];
+    }
+
+    if (!hasImages) {
+      return [
+        _transformedSlotFrame(
+          cardWidth: cardWidth,
+          cardHeight: cardHeight,
+          child: const Center(
+            child: Icon(
+              Icons.photo_outlined,
+              size: 48,
+              color: Colors.white54,
+            ),
+          ),
+        ),
+      ];
+    }
+
+    const bool showRemoveButton = false;
+    final out = <Widget>[];
+    if (isLoadingMore) {
+      out.add(
+        _transformedSlotFrame(
+          cardWidth: cardWidth,
+          cardHeight: cardHeight,
+          child: _buildTransformedLoadingPlaceholder(viewModel, appColors),
+        ),
+      );
+    }
+    for (final image in images) {
+      out.add(
+        _buildOneTransformedImageCard(
+          context,
+          viewModel,
+          image,
+          cardWidth,
+          cardHeight,
+          effectiveZoomId: effectiveZoomId,
+          showRemoveButton: showRemoveButton,
+        ),
+      );
+    }
+    return out;
+  }
+
   /// Total width of [original][gap][lightning][gap][transformed…] for centering / scroll.
   double _intrinsicPhotoRowWidth({
     required double cardWidth,
@@ -743,7 +1202,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                   if (_originalPhotoBytes != null)
                     Image.memory(
                       _originalPhotoBytes!,
-                      fit: BoxFit.cover,
+                      // Show the full capture in-frame (no crop), consistent with Capture screen.
+                      fit: BoxFit.contain,
                       alignment: Alignment.center,
                       width: double.infinity,
                       height: double.infinity,
@@ -908,7 +1368,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                 const ColoredBox(color: Colors.black),
                 Image.network(
                   image.imageUrl,
-                  fit: BoxFit.cover,
+                  // Show the full generation in-frame (no crop).
+                  fit: BoxFit.contain,
                   alignment: Alignment.center,
                   width: double.infinity,
                   height: double.infinity,

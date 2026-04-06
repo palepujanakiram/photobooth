@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:ui' show Size;
+import 'dart:ui'
+    show Size, ImmutableBuffer, instantiateImageCodecFromBuffer;
 import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, compute, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/services.dart' show DeviceOrientation, MethodChannel;
 import 'package:camera/camera.dart';
@@ -41,6 +42,8 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
   PhotoModel? _capturedPhoto;
+  /// Decoded pixel size of [_capturedPhoto] (for UI card aspect). Null until decode finishes.
+  Size? _capturedImagePixelSize;
   List<CameraDescription> _availableCameras = [];
   CameraDescription? _currentCamera;
   AppDeviceType? _deviceType;
@@ -84,8 +87,14 @@ class CaptureViewModel extends ChangeNotifier {
 
   CameraController? get cameraController => _cameraController;
   PhotoModel? get capturedPhoto => _capturedPhoto;
+  Size? get capturedImagePixelSize => _capturedImagePixelSize;
+
   set capturedPhoto(PhotoModel? photo) {
     _capturedPhoto = photo;
+    _capturedImagePixelSize = null;
+    if (photo != null) {
+      unawaited(_refreshCapturedImagePixelSize(photo.imageFile));
+    }
     notifyListeners();
   }
   List<CameraDescription> get availableCameras => _availableCameras;
@@ -450,6 +459,7 @@ class CaptureViewModel extends ChangeNotifier {
 
     // Clear any captured photo
     _capturedPhoto = null;
+    _capturedImagePixelSize = null;
     
     // Dispose current camera controller
     if (_cameraController != null) {
@@ -909,7 +919,9 @@ class CaptureViewModel extends ChangeNotifier {
         capturedAt: DateTime.now(),
         cameraId: cameraId,
       );
-      
+      _capturedImagePixelSize = null;
+      unawaited(_refreshCapturedImagePixelSize(imageFile));
+
       // Track successful photo capture
       await ErrorReportingManager.setPhotoCaptureContext(
         photoId: photoId,
@@ -1024,7 +1036,9 @@ class CaptureViewModel extends ChangeNotifier {
         capturedAt: DateTime.now(),
         cameraId: cameraId,
       );
-      
+      _capturedImagePixelSize = null;
+      unawaited(_refreshCapturedImagePixelSize(normalizedFile));
+
       // Track successful photo selection
       await ErrorReportingManager.setPhotoCaptureContext(
         photoId: photoId,
@@ -1071,8 +1085,37 @@ class CaptureViewModel extends ChangeNotifier {
   /// Clears the captured photo and any error messages
   void clearCapturedPhoto() {
     _capturedPhoto = null;
+    _capturedImagePixelSize = null;
     _errorMessage = null;
     notifyListeners();
+  }
+
+  Future<void> _refreshCapturedImagePixelSize(XFile file) async {
+    final path = file.path;
+    try {
+      final bytes = await file.readAsBytes();
+      final buffer = await ImmutableBuffer.fromUint8List(bytes);
+      final codec = await instantiateImageCodecFromBuffer(buffer);
+      final frame = await codec.getNextFrame();
+      if (_capturedPhoto?.imageFile.path != path) {
+        frame.image.dispose();
+        codec.dispose();
+        return;
+      }
+      _capturedImagePixelSize = Size(
+        frame.image.width.toDouble(),
+        frame.image.height.toDouble(),
+      );
+      frame.image.dispose();
+      codec.dispose();
+      notifyListeners();
+    } catch (e) {
+      AppLogger.debug('Could not read captured image pixel size: $e');
+      if (_capturedPhoto?.imageFile.path == path) {
+        _capturedImagePixelSize = null;
+        notifyListeners();
+      }
+    }
   }
 
   /// Uploads photo to session (Step 3)

@@ -415,14 +415,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 
-  /// Preview / captured still: [ThemeCard]-style shell (12px radius, border, elevation) and
-  /// [AppConstants.themeCardSlotAspectRatio] so shape matches the theme carousel hero.
+  /// Preview / captured still: [ThemeCard]-style shell. Card **aspect** follows the stream or file
+  /// when known (landscape webcam → landscape frame; portrait → portrait) so web/mobile avoid
+  /// heavy letterboxing. Falls back to [AppConstants.themeCardSlotAspectRatio] if size unknown.
   ///
-  /// In **device landscape**, the slot is still **portrait-shaped** (9:16) so output matches
-  /// phone-style booth photos. Webcams often save **landscape** JPEGs; the still uses
-  /// [BoxFit.cover] so the card fills without side letterboxing (center crop).
-  ///
-  /// Size is capped on width/height so landscape kiosks get a smaller card (not full [Expanded] height).
+  /// Size is capped on width/height so landscape kiosks get a bounded card.
   Widget _buildCapturePreviewCard(
     BuildContext context,
     CaptureViewModel viewModel,
@@ -434,7 +431,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         final media = MediaQuery.sizeOf(context);
         final isLandscape =
             MediaQuery.orientationOf(context) == Orientation.landscape;
-        final aspect = AppConstants.themeCardSlotAspectRatio(context);
+        final fallbackAspect = AppConstants.themeCardSlotAspectRatio(context);
+        final aspect = _captureCardAspectRatio(
+          context,
+          viewModel,
+          hasCapturedPhoto,
+          fallbackAspect,
+        );
 
         final widthCapFrac = isLandscape
             ? AppConstants.kCapturePreviewCardMaxWidthFractionLandscape
@@ -482,7 +485,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                             viewModel.capturedPhoto!.imageFile,
                             cardW,
                             cardH,
-                            fit: BoxFit.cover,
+                            fit: BoxFit.contain,
                           )
                         : previewWidget,
                   ),
@@ -515,6 +518,58 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 
+  /// Display size of the live preview after rotation (same math as the inner [SizedBox] below).
+  Size? _livePreviewDisplaySize(CaptureViewModel viewModel) {
+    final controller = viewModel.cameraController;
+    if (controller == null || !controller.value.isInitialized) {
+      return null;
+    }
+
+    final previewSize = controller.value.previewSize;
+    final baseAspectRatio = controller.value.aspectRatio;
+    final autoQuarterTurns = _androidTvPreviewQuarterTurns(viewModel);
+    final manualQuarterTurns = (viewModel.previewRotationDegrees ~/ 90) % 4;
+    final effectiveQuarterTurns =
+        (autoQuarterTurns + manualQuarterTurns) % 4;
+
+    final displayAspectRatio =
+        effectiveQuarterTurns.isOdd ? 1 / baseAspectRatio : baseAspectRatio;
+    final width = previewSize == null
+        ? (effectiveQuarterTurns.isOdd ? 1.0 : displayAspectRatio)
+        : (effectiveQuarterTurns.isOdd
+            ? previewSize.height
+            : previewSize.width);
+    final height = previewSize == null
+        ? (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1.0)
+        : (effectiveQuarterTurns.isOdd
+            ? previewSize.width
+            : previewSize.height);
+
+    if (width <= 0 || height <= 0) return null;
+    return Size(width, height);
+  }
+
+  /// Width/height ratio for the capture card: decoded still, live preview, or [fallbackAspect].
+  double _captureCardAspectRatio(
+    BuildContext context,
+    CaptureViewModel viewModel,
+    bool hasCapturedPhoto,
+    double fallbackAspect,
+  ) {
+    if (hasCapturedPhoto) {
+      final pixels = viewModel.capturedImagePixelSize;
+      if (pixels != null && pixels.height > 0) {
+        return (pixels.width / pixels.height).clamp(0.35, 2.85);
+      }
+    } else {
+      final live = _livePreviewDisplaySize(viewModel);
+      if (live != null && live.height > 0) {
+        return (live.width / live.height).clamp(0.35, 2.85);
+      }
+    }
+    return fallbackAspect;
+  }
+
   /// Builds camera preview and applies Android TV/external-camera correction
   /// plus any user-selected manual rotation.
   Widget _buildCameraPreviewWithRotation(BuildContext context, CaptureViewModel viewModel) {
@@ -543,20 +598,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       );
     }
 
-    final previewSize = controller.value.previewSize;
+    final displaySize = _livePreviewDisplaySize(viewModel);
     final baseAspectRatio = controller.value.aspectRatio;
     final displayAspectRatio =
         effectiveQuarterTurns.isOdd ? 1 / baseAspectRatio : baseAspectRatio;
-    final width = previewSize == null
-        ? (effectiveQuarterTurns.isOdd ? 1.0 : displayAspectRatio)
-        : (effectiveQuarterTurns.isOdd
-            ? previewSize.height
-            : previewSize.width);
-    final height = previewSize == null
-        ? (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1.0)
-        : (effectiveQuarterTurns.isOdd
-            ? previewSize.width
-            : previewSize.height);
+    final width = displaySize?.width ??
+        (effectiveQuarterTurns.isOdd ? 1.0 : displayAspectRatio);
+    final height = displaySize?.height ??
+        (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1.0);
 
     // [BoxFit.contain] keeps sensor aspect ratio (webcam/TV); avoids stretch from [BoxFit.fill].
     return Center(
