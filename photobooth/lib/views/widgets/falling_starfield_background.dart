@@ -3,7 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-/// Full-screen overlay: drifting star dots plus diagonal shooting-star streaks.
+/// Full-screen overlay: drifting star dots plus a single occasional shooting-star streak
+/// (random direction each pass, short fast sweep, sparse timing).
 class FallingStarfieldBackground extends StatefulWidget {
   const FallingStarfieldBackground({super.key});
 
@@ -15,18 +16,50 @@ class FallingStarfieldBackground extends StatefulWidget {
 class _FallingStarfieldBackgroundState extends State<FallingStarfieldBackground>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
+  final math.Random _rng = math.Random();
+
+  /// Travel direction (radians), refreshed when the animation loop wraps.
+  double _meteorAngleRad = 0.7;
+
+  /// Lateral offset along the perpendicular axis, normalized ~[-0.5, 0.5].
+  double _lateralNorm = 0;
+
+  /// Shifts when in the 25s loop the meteor appears ([0,1)).
+  double _phase = 0;
+
+  double _prevProgress = 0;
+
+  /// Fraction of each loop where the meteor is visible (rest = idle). Smaller = faster crossing.
+  static const double _visibleFraction = 0.018;
 
   @override
   void initState() {
     super.initState();
+    _meteorAngleRad = _rng.nextDouble() * 2 * math.pi;
+    _lateralNorm = _rng.nextDouble() - 0.5;
+    _phase = _rng.nextDouble();
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 25),
     )..repeat();
+    _controller.addListener(_onTick);
+  }
+
+  void _onTick() {
+    final v = _controller.value;
+    if (v < _prevProgress) {
+      setState(() {
+        _meteorAngleRad = _rng.nextDouble() * 2 * math.pi;
+        _lateralNorm = _rng.nextDouble() - 0.5;
+        _phase = _rng.nextDouble();
+      });
+    }
+    _prevProgress = v;
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_onTick);
     _controller.dispose();
     super.dispose();
   }
@@ -37,7 +70,13 @@ class _FallingStarfieldBackgroundState extends State<FallingStarfieldBackground>
       animation: _controller,
       builder: (context, _) {
         return CustomPaint(
-          painter: _StarfieldPainter(progress: _controller.value),
+          painter: _StarfieldPainter(
+            progress: _controller.value,
+            meteorAngleRad: _meteorAngleRad,
+            lateralNorm: _lateralNorm,
+            phase: _phase,
+            visibleFraction: _visibleFraction,
+          ),
           size: Size.infinite,
         );
       },
@@ -46,17 +85,26 @@ class _FallingStarfieldBackgroundState extends State<FallingStarfieldBackground>
 }
 
 class _StarfieldPainter extends CustomPainter {
-  _StarfieldPainter({required this.progress});
+  _StarfieldPainter({
+    required this.progress,
+    required this.meteorAngleRad,
+    required this.lateralNorm,
+    required this.phase,
+    required this.visibleFraction,
+  });
 
   final double progress;
+  final double meteorAngleRad;
+  final double lateralNorm;
+  final double phase;
+  final double visibleFraction;
 
   static const int _dotCount = 120;
-  static const int _meteorCount = 4;
 
   @override
   void paint(Canvas canvas, Size size) {
     _paintFallingDots(canvas, size);
-    _paintShootingStars(canvas, size);
+    _paintShootingStar(canvas, size);
   }
 
   void _paintFallingDots(Canvas canvas, Size size) {
@@ -77,46 +125,38 @@ class _StarfieldPainter extends CustomPainter {
     }
   }
 
-  void _paintShootingStars(Canvas canvas, Size size) {
-    for (int i = 0; i < _meteorCount; i++) {
-      _paintOneShootingStar(canvas, size, i);
-    }
-  }
+  void _paintShootingStar(Canvas canvas, Size size) {
+    final p = (progress + phase) % 1.0;
+    if (p >= visibleFraction) return;
 
-  void _paintOneShootingStar(Canvas canvas, Size size, int index) {
-    final rnd = _SeededRandom(9001 + index * 131);
-    final phase = rnd.nextDouble();
-    final speed = 0.55 + rnd.nextDouble() * 0.65;
-    final t = (progress * speed + phase) % 1.0;
-
-    // Diagonal trail: upper-left → lower-right with per-star variation ("trailblaze").
-    final startX = (-0.18 - rnd.nextDouble() * 0.12) * size.width;
-    final startY = (-0.12 - rnd.nextDouble() * 0.18) * size.height;
-    final endX = (1.06 + rnd.nextDouble() * 0.14) * size.width;
-    final endY = (1.04 + rnd.nextDouble() * 0.12) * size.height;
-    final dx = endX - startX;
-    final dy = endY - startY;
-    final dist = math.sqrt(dx * dx + dy * dy);
-    if (dist < 1) return;
-    final ux = dx / dist;
-    final uy = dy / dist;
-
-    final headX = startX + dx * t;
-    final headY = startY + dy * t;
-    final head = Offset(headX, headY);
+    final t = (p / visibleFraction).clamp(0.0, 1.0);
+    final rnd = _SeededRandom(9001);
+    final ux = math.cos(meteorAngleRad);
+    final uy = math.sin(meteorAngleRad);
+    final px = -uy;
+    final py = ux;
 
     final short = math.min(size.width, size.height);
+    final travel = math.max(size.width, size.height) * 1.75;
+    final lateral = lateralNorm * short * 0.55;
+
+    final cx = size.width / 2 + px * lateral;
+    final cy = size.height / 2 + py * lateral;
+
+    final headX = cx + ux * travel * (t - 0.5);
+    final headY = cy + uy * travel * (t - 0.5);
+    final head = Offset(headX, headY);
+
     final tailLen =
-        (48 + rnd.nextDouble() * 72) * (short / 420).clamp(0.75, 1.35);
+        (44 + rnd.nextDouble() * 40) * (short / 420).clamp(0.7, 1.25);
     final tail = Offset(headX - ux * tailLen, headY - uy * tailLen);
 
-    // Soft outer glow (wider, faint).
     final glowPaint = Paint()
-      ..color = const Color(0xFFB8E0FF).withValues(alpha: 0.14)
-      ..strokeWidth = 5.5
+      ..color = const Color(0xFFB8E0FF).withValues(alpha: 0.09)
+      ..strokeWidth = 4.5
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5);
     canvas.drawLine(tail, head, glowPaint);
 
     final corePaint = Paint()
@@ -125,27 +165,31 @@ class _StarfieldPainter extends CustomPainter {
         head,
         [
           Colors.white.withValues(alpha: 0.0),
-          const Color(0xFF7EC8FF).withValues(alpha: 0.35),
-          const Color(0xFFE8F4FF).withValues(alpha: 0.9),
-          Colors.white.withValues(alpha: 1.0),
+          const Color(0xFF7EC8FF).withValues(alpha: 0.28),
+          const Color(0xFFE8F4FF).withValues(alpha: 0.75),
+          Colors.white.withValues(alpha: 0.88),
         ],
         const [0.0, 0.38, 0.78, 1.0],
       )
-      ..strokeWidth = 1.6 + rnd.nextDouble() * 0.9
+      ..strokeWidth = 1.4 + rnd.nextDouble() * 0.5
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
     canvas.drawLine(tail, head, corePaint);
 
     canvas.drawCircle(
       head,
-      1.9,
-      Paint()..color = Colors.white.withValues(alpha: 0.95),
+      1.6,
+      Paint()..color = Colors.white.withValues(alpha: 0.85),
     );
   }
 
   @override
   bool shouldRepaint(covariant _StarfieldPainter old) =>
-      old.progress != progress;
+      old.progress != progress ||
+      old.meteorAngleRad != meteorAngleRad ||
+      old.lateralNorm != lateralNorm ||
+      old.phase != phase ||
+      old.visibleFraction != visibleFraction;
 }
 
 class _SeededRandom {
