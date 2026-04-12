@@ -369,14 +369,13 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   }
 
   /// Toggle selection of a generated image (multi-select).
-  /// The newest image ([newestGeneratedImageId]) cannot be deselected; at least one stays selected.
+  /// At least one image must remain selected.
   void toggleImageSelection(String imageId) {
     final idx = _generatedImages.indexWhere((img) => img.id == imageId);
     if (idx < 0) return;
     final targetImage = _generatedImages[idx];
 
     if (targetImage.isSelected) {
-      if (idx == 0) return;
       final currentSelectedCount =
           _generatedImages.where((img) => img.isSelected).length;
       if (currentSelectedCount <= 1) return;
@@ -388,8 +387,22 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       }
       return img;
     }).toList();
-    _ensureNewestAlwaysSelected();
     notifyListeners();
+  }
+
+  int get initialPrintPrice =>
+      _appSettingsManager?.settings?.initialPrice ??
+      AppConstants.kDefaultInitialPrintPrice;
+
+  int get additionalPrintPrice =>
+      _appSettingsManager?.settings?.additionalPrintPrice ??
+      AppConstants.kDefaultAdditionalPrintPrice;
+
+  /// Total price based on how many generated images are selected.
+  int get selectedTotalPrice {
+    final count = selectedCount;
+    if (count <= 0) return 0;
+    return initialPrintPrice + (count > 1 ? (count - 1) * additionalPrintPrice : 0);
   }
 
   /// Remove a generated image by id. No-op if only one remains (keep at least one).

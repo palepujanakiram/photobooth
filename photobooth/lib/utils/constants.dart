@@ -6,7 +6,8 @@ class AppConstants {
   // Branding
   static const String kBrandName = 'Fotozen AI';
   static const String kBrandAppTitle = 'Fotozen AI Photo Booth';
-  static const String kBrandLogoAsset = 'lib/images/fotozen_ai_logo.png';
+  /// Wordmark used on terms/thank-you screens.
+  static const String kBrandLogoAsset = 'lib/images/fotozen_wordmark.png';
 
   // API Configuration
   static const String kBaseUrl = AppConfig.baseUrl;
@@ -85,6 +86,10 @@ class AppConstants {
   static const double kCapturePreviewCardMaxHeightFractionLandscape = 0.50;
 
   static const double kCapturePreviewCardMaxHeightFractionPortrait = 0.58;
+
+  /// Phone portrait: allow more vertical space for the capture card than [kCapturePreviewCardMaxHeightFractionPortrait]
+  /// (theme/kiosk value) so preview matches the usable viewport instead of a short strip.
+  static const double kCapturePreviewCardMaxHeightFractionPhonePortrait = 0.78;
 
   /// On Generate Photo, generated-image cards scale to this factor when toggled (tap again restores 1.0).
   static const double kGeneratePhotoZoomedScale = 1.3;
