@@ -483,6 +483,20 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               ),
             ),
           ),
+          if (viewModel.selectedCount > 0) ...[
+            const SizedBox(height: 10),
+            Center(
+              child: Text(
+                'Total: ₹${viewModel.selectedTotalPrice}'
+                '${viewModel.selectedCount > 1 ? '  (+₹${(viewModel.selectedCount - 1) * viewModel.additionalPrintPrice})' : ''}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.78),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
           if (canAddMoreStyle) ...[
             const SizedBox(height: 8),
             Center(
@@ -782,7 +796,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         transformedWs.fold(0.0, (s, w) => s + w) +
         (transformedWs.isEmpty ? 0.0 : innerGap * (transformedWs.length - 1));
     if (desiredW > screenWidth) {
-      final scale = (screenWidth / desiredW).clamp(0.55, 1.0);
+      // Allow scaling down further on narrow landscape web so we never overflow (no yellow/black stripes).
+      final scale = (screenWidth / desiredW).clamp(0.25, 1.0);
       slotH *= scale;
       origW *= scale;
       for (var i = 0; i < transformedWs.length; i++) {
@@ -889,16 +904,25 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
             curve: _kZoomLayoutAnimationCurve,
             alignment: Alignment.center,
             clipBehavior: Clip.none,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                originalCard,
-                SizedBox(width: cardGap),
-                lightningIcon,
-                SizedBox(width: cardGap),
-                ...transformedWidgets,
-              ],
+            // Always scale down to fit the available width to avoid overflow stripes
+            // on web when rounding/border/shadow causes a 1–2px mismatch.
+            child: SizedBox(
+              width: screenWidth,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.center,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    originalCard,
+                    SizedBox(width: cardGap),
+                    lightningIcon,
+                    SizedBox(width: cardGap),
+                    ...transformedWidgets,
+                  ],
+                ),
+              ),
             ),
           ),
           if ((hasResult || isGenerating) && !fixedFooterOutside) ...[
@@ -1428,9 +1452,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                     child: InkWell(
                       customBorder: const CircleBorder(),
                       onTap: () {
-                        if (!viewModel.isNewestGeneratedImage(image.id)) {
-                          viewModel.toggleImageSelection(image.id);
-                        }
+                        viewModel.toggleImageSelection(image.id);
                       },
                       child: Padding(
                         padding: const EdgeInsets.all(6),

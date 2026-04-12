@@ -432,11 +432,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         final isLandscape =
             MediaQuery.orientationOf(context) == Orientation.landscape;
         final fallbackAspect = AppConstants.themeCardSlotAspectRatio(context);
+        final isPhonePortrait = !isLandscape &&
+            media.shortestSide < AppConstants.kTabletBreakpoint;
         final aspect = _captureCardAspectRatio(
           context,
           viewModel,
           hasCapturedPhoto,
           fallbackAspect,
+          constraints,
         );
 
         final widthCapFrac = isLandscape
@@ -444,7 +447,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             : AppConstants.kCapturePreviewCardMaxWidthFractionPortrait;
         final heightCapFrac = isLandscape
             ? AppConstants.kCapturePreviewCardMaxHeightFractionLandscape
-            : AppConstants.kCapturePreviewCardMaxHeightFractionPortrait;
+            : (isPhonePortrait
+                ? AppConstants.kCapturePreviewCardMaxHeightFractionPhonePortrait
+                : AppConstants.kCapturePreviewCardMaxHeightFractionPortrait);
 
         final maxW = math.min(constraints.maxWidth, media.width * widthCapFrac);
         final maxH = math.min(constraints.maxHeight, media.height * heightCapFrac);
@@ -549,24 +554,49 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     return Size(width, height);
   }
 
-  /// Width/height ratio for the capture card: decoded still, live preview, or [fallbackAspect].
+  /// Width/height ratio for the capture card: decoded still, live preview, viewport slot on phones, or [fallbackAspect].
+  ///
+  /// On **phone portrait**, if the stream has not reported [CameraValue.previewSize] yet (common briefly on
+  /// Android front cameras), the theme hero ratio (3:4.5) is a poor match — use [layoutConstraints] so
+  /// the card tracks the Expanded preview area instead.
   double _captureCardAspectRatio(
     BuildContext context,
     CaptureViewModel viewModel,
     bool hasCapturedPhoto,
     double fallbackAspect,
+    BoxConstraints layoutConstraints,
   ) {
+    bool phonePortrait() {
+      return MediaQuery.orientationOf(context) == Orientation.portrait &&
+          MediaQuery.sizeOf(context).shortestSide < AppConstants.kTabletBreakpoint;
+    }
+
+    double viewportSlotAspect() {
+      final w = layoutConstraints.maxWidth;
+      final h = layoutConstraints.maxHeight;
+      if (w <= 0 || h <= 0) return fallbackAspect;
+      return (w / h).clamp(0.28, 0.92);
+    }
+
     if (hasCapturedPhoto) {
       final pixels = viewModel.capturedImagePixelSize;
       if (pixels != null && pixels.height > 0) {
         return (pixels.width / pixels.height).clamp(0.35, 2.85);
       }
-    } else {
-      final live = _livePreviewDisplaySize(viewModel);
-      if (live != null && live.height > 0) {
-        return (live.width / live.height).clamp(0.35, 2.85);
-      }
+      if (phonePortrait()) return viewportSlotAspect();
+      return fallbackAspect;
     }
+
+    final controller = viewModel.cameraController;
+    final previewSize = controller?.value.previewSize;
+    final live = _livePreviewDisplaySize(viewModel);
+    if (live != null && live.height > 0) {
+      if (phonePortrait() && previewSize == null) {
+        return viewportSlotAspect();
+      }
+      return (live.width / live.height).clamp(0.35, 2.85);
+    }
+    if (phonePortrait()) return viewportSlotAspect();
     return fallbackAspect;
   }
 

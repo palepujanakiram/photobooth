@@ -78,6 +78,11 @@ class ImageHelper {
   /// Standard: JPEG, max [kCapturedPhotoMaxDimension] px, [kCapturedPhotoJpegQuality]% quality.
   /// Heavy work (decode/resize/encode) runs in a background isolate to keep UI responsive.
   static Future<XFile> normalizeAndSaveCapturedPhoto(XFile sourceFile) async {
+    // Web can't write to a temp directory. For web, just return the picked file as-is.
+    // Upload resizing happens later in [resizeAndEncodeImage] (bytes-only), which is web-safe.
+    if (kIsWeb) {
+      return sourceFile;
+    }
     final bytes = await sourceFile.readAsBytes();
     if (bytes.isEmpty) {
       throw Exception('Captured image is empty');
