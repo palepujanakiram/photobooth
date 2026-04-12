@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'theme_model.dart';
 import '../../services/theme_manager.dart';
+import '../../utils/constants.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
@@ -100,6 +102,28 @@ class ThemeViewModel extends ChangeNotifier {
   /// Current carousel center index (for filtered themes).
   int get carouselIndex => _carouselIndex;
   int _carouselIndex = 0;
+
+  /// When true, Select Theme shows a scrollable card grid; when false, the 3D carousel + thumbnails.
+  bool get useCardGridLayout => _useCardGridLayout;
+  bool _useCardGridLayout = false;
+
+  /// Loads [useCardGridLayout] from local storage (web + mobile).
+  Future<void> loadLayoutPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getBool(AppConstants.kPrefsThemeSelectionCardLayout);
+    if (v != null && v != _useCardGridLayout) {
+      _useCardGridLayout = v;
+      notifyListeners();
+    }
+  }
+
+  Future<void> setUseCardGridLayout(bool value) async {
+    if (_useCardGridLayout == value) return;
+    _useCardGridLayout = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(AppConstants.kPrefsThemeSelectionCardLayout, value);
+  }
 
   void selectCategory(String id) {
     _selectedCategoryId = id;

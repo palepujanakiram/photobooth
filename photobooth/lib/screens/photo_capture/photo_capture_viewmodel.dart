@@ -275,7 +275,8 @@ class CaptureViewModel extends ChangeNotifier {
     return 'Camera';
   }
 
-  /// Picks the default camera: prefer real external (UUID/by name), then by direction, then first.
+  /// Picks the default camera: prefer real external (HDMI/USB), then built-in **front** when
+  /// both front and back exist (kiosk selfie tablets), else back, else first.
   /// On iPad the plugin can misreport built-in as external, so we prefer by name (UUID) first.
   CameraDescription _pickDefaultCamera(List<CameraDescription> cameras) {
     if (cameras.isEmpty) {
@@ -286,13 +287,24 @@ class CaptureViewModel extends ChangeNotifier {
     if (byName.isNotEmpty) {
       return byName.first;
     }
-    // 2) Then by lensDirection.external
+    // 2) Then by lensDirection.external (HDMI capture card, USB webcam, etc.)
     final byDirection = cameras.where(
       (c) => c.lensDirection == CameraLensDirection.external,
     ).toList();
     if (byDirection.isNotEmpty) {
       return byDirection.first;
     }
+    // 3) Built-in only: prefer front when both front and back exist (kiosk / tablet selfie)
+    final fronts = cameras
+        .where((c) => c.lensDirection == CameraLensDirection.front)
+        .toList();
+    final backs =
+        cameras.where((c) => c.lensDirection == CameraLensDirection.back).toList();
+    if (fronts.isNotEmpty && backs.isNotEmpty) {
+      return fronts.first;
+    }
+    if (fronts.isNotEmpty) return fronts.first;
+    if (backs.isNotEmpty) return backs.first;
     return cameras.first;
   }
 
@@ -605,9 +617,17 @@ class CaptureViewModel extends ChangeNotifier {
       // while keeping native heap ~400–600 MB below [max]/4K.
       // RAM budget cleared by: slideshow JPG resize (-333 MB), camera dispose before nav
       // (-300–600 MB), cacheWidth on all Image widgets (-40 MB).
-      const preset = AppConstants.kLowMemoryKioskMode
+      //
+      // External (HDMI capture card / UVC): avoid [max] — many devices mis-handle max JPEG
+      // vs preview (garbled / banded stills). [high] aligns better with typical 1080p HDMI.
+      final bool isExternal = camera.lensDirection ==
+              CameraLensDirection.external ||
+          _looksLikeExternalCameraName(camera.name);
+      final ResolutionPreset preset = isExternal
           ? ResolutionPreset.high
-          : ResolutionPreset.max;
+          : (AppConstants.kLowMemoryKioskMode
+              ? ResolutionPreset.high
+              : ResolutionPreset.max);
       _cameraController = CameraController(
         cameraToUse,
         preset,
@@ -712,7 +732,11 @@ class CaptureViewModel extends ChangeNotifier {
       AppLogger.debug('   Display rotation: $rotation');
 
       // Best-effort capture lock for cameras that report 0/180 sensor orientation.
-      if (!kIsWeb &&
+      // Skip for external/UVC (HDMI capture cards): locking can distort or break still JPEGs.
+      final isExternal = camera.lensDirection == CameraLensDirection.external ||
+          _looksLikeExternalCameraName(camera.name);
+      if (!isExternal &&
+          !kIsWeb &&
           defaultTargetPlatform == TargetPlatform.android &&
           rotation == 1) {
         final so = camera.sensorOrientation;

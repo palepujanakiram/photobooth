@@ -43,6 +43,9 @@ class AppConstants {
   static const double kTabletBreakpoint = 600.0;
   static const double kTouchTargetSize = 48.0;
 
+  /// [SharedPreferences] key: theme list uses card grid vs carousel on Select Theme.
+  static const String kPrefsThemeSelectionCardLayout = 'theme_selection_use_card_layout';
+
   /// Width : height for theme/generate cards in **portrait** device orientation.
   /// Slightly shorter than raw 9:16 for legacy grid harmony.
   static const double kThemeSelectedCardAspectRatio = 3 / 4.5;
@@ -111,6 +114,8 @@ class AppConstants {
   /// - Android uses a **vendored** `camera_android_camerax` fork: preview/ImageAnalysis run
   ///   one [ResolutionPreset] **below** still capture to save preview RAM; see
   ///   `packages/camera_android_camerax/lib/src/android_camera_camerax.dart`.
+  /// - HDMI capture cards / UVC: still use [ResolutionPreset.high] in code (not max) to reduce
+  ///   preview vs JPEG mismatch; enable **clean HDMI** on the DSLR and match 1080p progressive when possible.
   /// - Prefer powered USB hubs and one external webcam; avoid enumerating many unused devices.
   /// - Close other apps using the camera; reboot kiosk if enumeration hangs after OOM.
   /// - For extreme OOM only, consider `android:largeHeap="true"` in the Android manifest
