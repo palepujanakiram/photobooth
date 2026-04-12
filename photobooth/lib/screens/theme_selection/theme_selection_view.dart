@@ -16,6 +16,7 @@ import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/bottom_safe_area.dart';
+import '../../views/widgets/falling_starfield_background.dart';
 import '../../services/theme_manager.dart';
 import 'theme_model.dart';
 
@@ -500,7 +501,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
           ),
         ),
         const Positioned.fill(
-          child: _FallingDotsBackground(),
+          child: FallingStarfieldBackground(),
         ),
       ],
     );
@@ -937,91 +938,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     );
   }
 
-}
-
-class _FallingDotsBackground extends StatefulWidget {
-  const _FallingDotsBackground();
-
-  @override
-  State<_FallingDotsBackground> createState() => _FallingDotsBackgroundState();
-}
-
-class _FallingDotsBackgroundState extends State<_FallingDotsBackground>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 25),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        return CustomPaint(
-          painter: _FallingStarfieldPainter(progress: _controller.value),
-          size: Size.infinite,
-        );
-      },
-    );
-  }
-}
-
-class _FallingStarfieldPainter extends CustomPainter {
-  _FallingStarfieldPainter({required this.progress});
-
-  final double progress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rnd = _SeededRandom(42);
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.5)
-      ..style = PaintingStyle.fill;
-
-    for (int i = 0; i < 120; i++) {
-      final x = rnd.nextDouble() * size.width;
-      final baseY = rnd.nextDouble();
-      final pixelY =
-          ((baseY + progress) * (size.height + 100)) % (size.height + 100);
-      if (pixelY >= 0 && pixelY <= size.height) {
-        final r = 1.0 + rnd.nextDouble();
-        canvas.drawCircle(Offset(x, pixelY), r, paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _FallingStarfieldPainter old) =>
-      old.progress != progress;
-}
-
-class _SeededRandom {
-  _SeededRandom(int seed)
-      : _state = BigInt.from(seed) & _mask;
-
-  BigInt _state;
-
-  static final BigInt _a = BigInt.parse('6364136223846793005');
-  static final BigInt _c = BigInt.parse('1442695040888963407');
-  static final BigInt _mask = BigInt.parse('9223372036854775807'); // 0x7fffffffffffffff
-
-  double nextDouble() {
-    _state = (_a * _state + _c) & _mask;
-    return _state.toDouble() / _mask.toDouble();
-  }
 }
 
 class _ThemeThumbImage extends StatelessWidget {
