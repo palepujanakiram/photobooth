@@ -150,6 +150,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         viewModel.updateFromCache();
       }
       viewModel.loadThemes();
+      viewModel.loadLayoutPreference();
     });
   }
 
@@ -276,8 +277,32 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                   }
                 },
               ),
-              // Alice (ant) overlaps category chips on narrow phones; keep it on tablets / wide layouts.
+              // Layout toggle (web + mobile); Alice on wider layouts only.
               actions: [
+                Selector<ThemeViewModel, bool>(
+                  selector: (_, vm) => vm.useCardGridLayout,
+                  builder: (context, useGrid, _) {
+                    return IconButton(
+                      icon: Icon(
+                        useGrid ? Icons.view_carousel_outlined : Icons.grid_view,
+                      ),
+                      tooltip: useGrid ? 'Carousel layout' : 'Card grid layout',
+                      color: Colors.white,
+                      onPressed: () async {
+                        final vm = context.read<ThemeViewModel>();
+                        final next = !vm.useCardGridLayout;
+                        if (next) {
+                          _stopCarouselTimer();
+                          _pageController?.dispose();
+                          _pageController = null;
+                          _carouselViewportFraction = null;
+                        }
+                        await vm.setUseCardGridLayout(next);
+                        if (mounted) setState(() {});
+                      },
+                    );
+                  },
+                ),
                 if (MediaQuery.sizeOf(context).width >= 520)
                   const AppBarAliceAction(),
               ],
@@ -565,6 +590,10 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                     borderRadius: BorderRadius.circular(20),
                     child: InkWell(
                       onTap: () {
+                        setState(() {
+                          _armedThemeId = null;
+                          _pendingArmThemeId = null;
+                        });
                         viewModel.selectCategory(id);
                         if (_pageController != null &&
                             viewModel.filteredThemes.isNotEmpty) {
@@ -608,6 +637,100 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     );
   }
 
+  /// Responsive columns for card-grid theme list (web + Android).
+  int _themeGridCrossAxisCount(BuildContext context, bool isLandscape) {
+    final w = MediaQuery.sizeOf(context).width;
+    if (w >= 1200) return isLandscape ? 5 : 4;
+    if (w >= 900) return 4;
+    if (w >= 700) return 3;
+    return 2;
+  }
+
+  Widget _buildThemeContinueButton(
+    BuildContext context,
+    ThemeViewModel viewModel,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+      child: SizedBox(
+        width: double.infinity,
+        child: CupertinoButton(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          color: (viewModel.selectedTheme != null &&
+                  _armedThemeId == viewModel.selectedTheme!.id &&
+                  !_isGenerating &&
+                  !viewModel.isUpdatingSession)
+              ? CupertinoColors.systemBlue
+              : CupertinoColors.systemGrey,
+          borderRadius: BorderRadius.circular(12),
+          onPressed: (viewModel.selectedTheme != null &&
+                  _armedThemeId == viewModel.selectedTheme!.id &&
+                  !_isGenerating &&
+                  !viewModel.isUpdatingSession)
+              ? () => _onContinue(context, viewModel)
+              : null,
+          child: const Text(
+            'Continue',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              color: CupertinoColors.white,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCardGridLayout(
+    BuildContext context,
+    ThemeViewModel viewModel,
+    bool isLandscape,
+  ) {
+    final filtered = viewModel.filteredThemes;
+    final crossAxis = _themeGridCrossAxisCount(context, isLandscape);
+    return Column(
+      children: [
+        Expanded(
+          child: GridView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxis,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 0.72,
+            ),
+            itemCount: filtered.length,
+            itemBuilder: (context, index) {
+              final theme = filtered[index];
+              final isSelected = viewModel.selectedTheme?.id == theme.id;
+              return ThemeCard(
+                theme: theme,
+                isSelected: isSelected,
+                selectedBorderWidth:
+                    isSelected && _armedThemeId == theme.id ? 4.0 : 2.0,
+                onTap: () {
+                  viewModel.setCarouselIndex(index);
+                  viewModel.selectTheme(theme);
+                  setState(() {
+                    _armedThemeId = theme.id;
+                    _pendingArmThemeId = null;
+                  });
+                  _pauseAutoScrollTemporarily();
+                },
+                showSelectedLabel: _addOneMoreStyle &&
+                    _usedThemeIds.contains(theme.id),
+                onSelectPressed: null,
+              );
+            },
+          ),
+        ),
+        _buildThemeContinueButton(context, viewModel),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
   Widget _buildCarouselAndThumbnails(
     BuildContext context,
     ThemeViewModel viewModel,
@@ -617,6 +740,11 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     if (filtered.isEmpty) {
       _stopCarouselTimer();
       return const Center(child: Text('No themes in this category'));
+    }
+
+    if (viewModel.useCardGridLayout) {
+      _stopCarouselTimer();
+      return _buildCardGridLayout(context, viewModel, isLandscape);
     }
 
     _syncCarouselTimer(viewModel);
@@ -758,36 +886,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
             },
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-          child: SizedBox(
-            width: double.infinity,
-            child: CupertinoButton(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            color: (viewModel.selectedTheme != null &&
-                    _armedThemeId == viewModel.selectedTheme!.id &&
-                    !_isGenerating &&
-                    !viewModel.isUpdatingSession)
-                ? CupertinoColors.systemBlue
-                : CupertinoColors.systemGrey,
-            borderRadius: BorderRadius.circular(12),
-            onPressed: (viewModel.selectedTheme != null &&
-                    _armedThemeId == viewModel.selectedTheme!.id &&
-                    !_isGenerating &&
-                    !viewModel.isUpdatingSession)
-                ? () => _onContinue(context, viewModel)
-                : null,
-            child: const Text(
-              'Continue',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-                color: CupertinoColors.white,
-              ),
-            ),
-          ),
-          ),
-        ),
+        _buildThemeContinueButton(context, viewModel),
         const SizedBox(height: 8),
         _buildThumbnails(context, viewModel, isLandscape),
       ],
