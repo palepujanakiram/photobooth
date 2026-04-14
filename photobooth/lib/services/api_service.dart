@@ -16,6 +16,8 @@ import 'api_client.dart';
 import 'file_helper.dart';
 import 'api_logging_interceptor.dart';
 import 'alice_inspector.dart';
+import 'kiosk_manager.dart';
+import 'session_manager.dart';
 
 // Conditional import for web Dio configuration
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
@@ -46,10 +48,7 @@ class ApiService {
     if (kDebugMode == true) {
       // Add logging interceptor to log all API calls
       _dio.interceptors.add(ApiLoggingInterceptor());
-      final alice = AliceInspector.instance;
-      if (alice != null) {
-        _dio.interceptors.add(alice.getDioInterceptor());
-      }
+      _dio.interceptors.add(AliceDioProxyInterceptor());
     }
 
     // Add error interceptor for web compatibility
@@ -169,10 +168,7 @@ class ApiService {
         ));
         if (kDebugMode == true) {
           dio.interceptors.add(ApiLoggingInterceptor());
-          final alice = AliceInspector.instance;
-          if (alice != null) {
-            dio.interceptors.add(alice.getDioInterceptor());
-          }
+          dio.interceptors.add(AliceDioProxyInterceptor());
         }
 
         // Configure browser adapter for web (critical for web platform)
@@ -301,8 +297,36 @@ class ApiService {
   /// Returns only themes where isActive is true
   Future<List<ThemeModel>> getThemes() async {
     try {
-      final themes = await _apiClient.getThemes();
-      return themes.toList();
+      // Kiosk-aware themes: pass kiosk identifiers when available.
+      // Backend may ignore these params if not implemented; safe no-op.
+      final kioskCode = await KioskManager().getKioskCode();
+      final kioskId = SessionManager().currentSession?.kioskId;
+
+      final qp = <String, dynamic>{};
+      if (kioskCode != null && kioskCode.isNotEmpty) {
+        qp['kioskCode'] = kioskCode;
+      }
+      if (kioskId != null && kioskId.isNotEmpty) {
+        qp['kioskId'] = kioskId;
+      }
+
+      final r = await _dio.get<dynamic>(
+        '/api/themes',
+        queryParameters: qp.isEmpty ? null : qp,
+        options: Options(
+          responseType: ResponseType.json,
+        ),
+      );
+
+      final data = r.data;
+      if (data is List) {
+        return data
+            .whereType<Map>()
+            .map((e) => ThemeModel.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+
+      throw ApiException('Unexpected themes response from API');
       // Filter themes where isActive is true
       // return themes.where((theme) => theme.isActive == true).toList();
     } on DioException catch (e) {
@@ -338,6 +362,32 @@ class ApiService {
         rethrow;
       }
       throw ApiException('Failed to fetch themes: $e');
+    }
+  }
+
+  /// Validates a kiosk code by attempting a kiosk-filtered themes fetch.
+  ///
+  /// Returns true if the server returns at least one theme for that kiosk code.
+  /// If the backend returns an error or an empty list, treat it as invalid/unprovisioned.
+  Future<bool> validateKioskCode(String kioskCode) async {
+    final code = kioskCode.trim().toUpperCase();
+    if (code.isEmpty) return false;
+    try {
+      final r = await _dio.get<dynamic>(
+        '/api/themes',
+        queryParameters: {'kioskCode': code},
+        options: Options(responseType: ResponseType.json),
+      );
+      final data = r.data;
+      if (data is List) {
+        return data.isNotEmpty;
+      }
+      return false;
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      return false;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -673,10 +723,7 @@ class ApiService {
 
     if (kDebugMode == true) {
       dioWithTimeout.interceptors.add(ApiLoggingInterceptor());
-      final alice = AliceInspector.instance;
-      if (alice != null) {
-        dioWithTimeout.interceptors.add(alice.getDioInterceptor());
-      }
+      dioWithTimeout.interceptors.add(AliceDioProxyInterceptor());
     }
 
     final apiClientWithTimeout =
@@ -863,10 +910,7 @@ class ApiService {
 
     if (kDebugMode == true) {
       dio.interceptors.add(ApiLoggingInterceptor());
-      final alice = AliceInspector.instance;
-      if (alice != null) {
-        dio.interceptors.add(alice.getDioInterceptor());
-      }
+      dio.interceptors.add(AliceDioProxyInterceptor());
     }
 
     final slots = List<String>.filled(count, '');
@@ -996,10 +1040,7 @@ class ApiService {
     configureDioForWeb(dio);
     if (kDebugMode == true) {
       dio.interceptors.add(ApiLoggingInterceptor());
-      final alice = AliceInspector.instance;
-      if (alice != null) {
-        dio.interceptors.add(alice.getDioInterceptor());
-      }
+      dio.interceptors.add(AliceDioProxyInterceptor());
     }
 
     AppLogger.debug('📥 Downloading image from: $imageUrl');

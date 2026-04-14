@@ -8,22 +8,26 @@ class ThemeCard extends StatelessWidget {
   final ThemeModel theme;
   final bool isSelected;
   final VoidCallback onTap;
+  final VoidCallback? onPreview;
   /// When set and [isSelected] is true, shows a "Select" button to proceed (e.g. to next screen).
   final VoidCallback? onSelectPressed;
   final String actionButtonLabel;
   final double selectedBorderWidth;
   /// When true and [isSelected], shows "Selected" label in blue instead of the Select button (e.g. add-one-more flow).
   final bool showSelectedLabel;
+  final bool showPreviewIcon;
 
   const ThemeCard({
     super.key,
     required this.theme,
     required this.isSelected,
     required this.onTap,
+    this.onPreview,
     this.onSelectPressed,
     this.showSelectedLabel = false,
     this.actionButtonLabel = 'Select',
     this.selectedBorderWidth = 1.0,
+    this.showPreviewIcon = true,
   });
 
   String _getImageUrl() {
@@ -66,6 +70,7 @@ class ThemeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final imageUrl = _getImageUrl();
+    final isWide = MediaQuery.sizeOf(context).width >= 520;
     
     return Card(
       elevation: isSelected ? 14 : 6,
@@ -89,44 +94,69 @@ class ThemeCard extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             // Image fills the complete box
-            imageUrl.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: imageUrl,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: double.infinity,
-                    cacheWidth: 480,
-                    cacheHeight: 720,
-                    filterQuality: FilterQuality.medium,
-                    placeholder: Container(
-                      color: Colors.grey[200],
-                      child: const Center(
-                        child: CircularProgressIndicator(
-                          color: CupertinoColors.systemBlue,
+            Hero(
+              tag: 'theme-preview-${theme.id}',
+              child: imageUrl.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      cacheWidth: 480,
+                      cacheHeight: 720,
+                      filterQuality: FilterQuality.medium,
+                      placeholder: Container(
+                        color: Colors.grey[200],
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            color: CupertinoColors.systemBlue,
+                          ),
                         ),
                       ),
-                    ),
-                    errorWidget: Container(
+                      errorWidget: Container(
+                        color: Colors.grey[200],
+                        child: const Center(
+                          child: Icon(
+                            Icons.image_not_supported,
+                            size: 48,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ),
+                    )
+                  : Container(
                       color: Colors.grey[200],
                       child: const Center(
                         child: Icon(
-                          Icons.image_not_supported,
+                          CupertinoIcons.paintbrush,
                           size: 48,
                           color: Colors.grey,
                         ),
                       ),
                     ),
-                  )
-                : Container(
-                    color: Colors.grey[200],
-                    child: const Center(
+            ),
+
+            if (showPreviewIcon && onPreview != null)
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Material(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    onTap: onPreview,
+                    borderRadius: BorderRadius.circular(10),
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
                       child: Icon(
-                        CupertinoIcons.paintbrush,
-                        size: 48,
-                        color: Colors.grey,
+                        CupertinoIcons.fullscreen,
+                        size: 16,
+                        color: Colors.white,
                       ),
                     ),
                   ),
+                ),
+              ),
             // Bottom bar: name left, Select button right (sleek, no description)
             Positioned(
               bottom: 0,
@@ -146,7 +176,7 @@ class ThemeCard extends StatelessWidget {
                         child: Text(
                           theme.name,
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: isWide ? 13 : 12,
                             height: 1.2,
                             fontWeight: isSelected
                                 ? FontWeight.bold

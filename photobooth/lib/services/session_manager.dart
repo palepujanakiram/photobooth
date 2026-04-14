@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import '../utils/logger.dart';
 
 /// Session data model matching API response
 class SessionData {
@@ -107,19 +107,20 @@ class SessionManager {
   /// Store session data
   void setSession(SessionData session) {
     _currentSession = session;
-    debugPrint('Session stored: ${session.id} (expires at: ${session.expiresAt})');
+    AppLogger.debug(
+        'Session stored: ${session.id} (expires at: ${session.expiresAt})');
   }
 
   /// Store session data from API response
   void setSessionFromResponse(Map<String, dynamic> response) {
     _currentSession = SessionData.fromJson(response);
-    debugPrint('Session stored from API: ${_currentSession!.id}');
+    AppLogger.debug('Session stored from API: ${_currentSession!.id}');
   }
 
   /// Clear session data
   void clearSession() {
     _currentSession = null;
-    debugPrint('Session cleared');
+    AppLogger.debug('Session cleared');
   }
 }
 

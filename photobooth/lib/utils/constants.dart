@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import 'app_config.dart';
+import 'app_runtime_config.dart';
 
 class AppConstants {
   // Branding
@@ -98,15 +99,19 @@ class AppConstants {
   static const double kGeneratePhotoZoomedScale = 1.3;
   static const String kContinueButtonText = 'Continue';
 
-  /// When true, optimizes for low-RAM Android TV / kiosk (2 GB): tighter image
-  /// caches, no photo metadata overlay, lighter gallery pick, smaller theme disk cache.
+  /// When true (from `/api/settings` → `showGenerationCommentary`), optimizes for
+  /// low-RAM Android TV / kiosk (2 GB): tighter image caches, no photo metadata overlay,
+  /// lighter gallery pick, smaller theme disk cache.
   /// Does **not** lower camera [ResolutionPreset] — quality is preserved; uploads are
   /// still resized in [ImageHelper.encodeImageForUpload].
-  static const bool kLowMemoryKioskMode = true;
+  ///
+  /// Default is **false** until settings load; enable commentary on the server to turn this on.
+  static bool get kLowMemoryKioskMode =>
+      AppRuntimeConfig.instance.showGenerationCommentary;
 
   /// Extra delay after releasing a [CameraController] before opening the next (ms).
   /// Gives CameraX / HAL time to free buffers on slow 2 GB TV boxes when switching cams.
-  static const int kCameraDisposeToReopenDelayMs =
+  static int get kCameraDisposeToReopenDelayMs =>
       kLowMemoryKioskMode ? 160 : 100;
 
   /// Camera / kiosk (operational — not enforced in code):
@@ -123,31 +128,36 @@ class AppConstants {
 
   /// When true, shows an overlay above Cancel/Continue with photo metadata (size, format).
   /// Off when [kLowMemoryKioskMode] is true (avoids full-image decode on the UI isolate).
-  static bool get kShowCapturedPhotoMetadataOverlay => !kLowMemoryKioskMode;
+  static bool get kShowCapturedPhotoMetadataOverlay => false;
 
   /// Theme image disk cache ceiling (MB); lower on kiosk.
-  static const int kThemeDiskCacheMaxSizeMB = kLowMemoryKioskMode ? 40 : 100;
+  static int get kThemeDiskCacheMaxSizeMB =>
+      kLowMemoryKioskMode ? 40 : 100;
 
   /// Flutter in-memory [ImageCache] — max entries when [kLowMemoryKioskMode].
-  static const int kFlutterImageCacheMaxCount = kLowMemoryKioskMode ? 40 : 100;
+  static int get kFlutterImageCacheMaxCount =>
+      kLowMemoryKioskMode ? 40 : 100;
 
   /// Flutter in-memory [ImageCache] — max total bytes when [kLowMemoryKioskMode].
-  static const int kFlutterImageCacheMaxBytes = kLowMemoryKioskMode
+  static int get kFlutterImageCacheMaxBytes => kLowMemoryKioskMode
       ? 50 * 1024 * 1024
       : 100 * 1024 * 1024;
 
   /// Gallery picker JPEG quality before normalization (lower = less work / smaller temp file).
-  static const int kGalleryPickerImageQuality = kLowMemoryKioskMode ? 85 : 95;
+  static int get kGalleryPickerImageQuality =>
+      kLowMemoryKioskMode ? 85 : 95;
 
-  /// When true, shows the native camera info pane (preview size, active array, zoom, etc.) on Capture Photo screen.
-  static const bool kShowNativeCameraInfoPane = false;
+  /// When true (same as `showGenerationCommentary`), shows the native camera info pane on Capture Photo.
+  static bool get kShowNativeCameraInfoPane =>
+      AppRuntimeConfig.instance.showGenerationCommentary;
 
   /// When true, shows the Print & Share Options section (Printer IP, Silent Print, Print, Share) on Complete Payment / Result screen.
   static const bool kShowResultPrintSection = false;
 
-  /// When true, full-screen loaders show status text, elapsed timer, subtitle, and current-process line.
-  /// When false, only the spinner (and any optional loader hint) are shown so the panel height follows content.
-  static const bool kshowDebugInfo = false;
+  /// When true (same as `showGenerationCommentary`), full-screen loaders show status text,
+  /// elapsed timer, subtitle, and current-process line.
+  static bool get kshowDebugInfo =>
+      AppRuntimeConfig.instance.showGenerationCommentary;
 
   /// SharedPreferences key for camera preview rotation (0, 90, 180, 270 degrees).
   static const String kCameraPreviewRotationKey = 'camera_preview_rotation_degrees';
@@ -169,8 +179,9 @@ class AppConstants {
   static const int kCaptureCountdownSeconds = 3;
 
   // Logging
-  // Controls console logs and breadcrumb logs (Bugsnag)
-  static const bool kEnableLogOutput = false;
+  // Controls console logs and breadcrumb logs (Bugsnag). Tied to `showGenerationCommentary`.
+  static bool get kEnableLogOutput =>
+      AppRuntimeConfig.instance.showGenerationCommentary;
 
   /// Terms & Conditions page (WebView via [WebViewScreen]). Defaults to
   /// [AppConfig.baseUrl]/terms.

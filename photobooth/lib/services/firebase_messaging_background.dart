@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../firebase_options.dart';
+import '../utils/logger.dart';
 import 'fcm_payment_pending_store.dart';
 
 /// Must be a top-level function. Registers with [FirebaseMessaging.onBackgroundMessage].
@@ -23,7 +24,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     name: 'fotozen.fcm',
   );
   if (kDebugMode) {
-    debugPrint(
+    AppLogger.debug(
       'FCM background isolate messageId=${message.messageId} data=${message.data}',
     );
   }

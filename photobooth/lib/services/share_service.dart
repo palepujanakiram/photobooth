@@ -4,6 +4,29 @@ import '../utils/constants.dart';
 import '../utils/exceptions.dart';
 
 class ShareService {
+  Future<void> shareText(
+    String text, {
+    Rect? sharePositionOrigin,
+    String? subject,
+  }) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      throw ShareException('Nothing to share');
+    }
+    try {
+      final origin = sharePositionOrigin ?? _getDefaultSharePosition();
+      await SharePlus.instance.share(
+        ShareParams(
+          text: trimmed,
+          subject: subject ?? AppConstants.kBrandName,
+          sharePositionOrigin: origin,
+        ),
+      );
+    } catch (e) {
+      throw ShareException('Failed to share: $e');
+    }
+  }
+
   /// Shares an image file via WhatsApp or other sharing options
   /// Works with XFile on all platforms (iOS, Android, Web)
   /// 

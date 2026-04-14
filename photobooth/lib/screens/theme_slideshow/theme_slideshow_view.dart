@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../../utils/logger.dart';
 import 'package:provider/provider.dart';
 import 'theme_slideshow_viewmodel.dart';
 import '../terms_and_conditions/terms_and_conditions_view.dart';
@@ -152,7 +153,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
         }
       } catch (e) {
         // ViewModel might be disposed, cancel timer
-        debugPrint('Error in slideshow timer: $e');
+        AppLogger.debug('Error in slideshow timer: $e');
         timer.cancel();
       }
     });
@@ -252,7 +253,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
     final imageUrls = _viewModel.preloadedImageUrls.isNotEmpty
         ? _viewModel.preloadedImageUrls
         : _viewModel.getSampleImageUrls();
-    Navigator.pushReplacement(
+    Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => TermsAndConditionsScreen(
@@ -337,7 +338,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
                             CupertinoButton(
                               onPressed: () {
                                 if (!mounted) return;
-                                Navigator.of(context).pushReplacementNamed(
+                                Navigator.of(context).pushNamed(
                                   AppConstants.kRouteTerms,
                                 );
                               },

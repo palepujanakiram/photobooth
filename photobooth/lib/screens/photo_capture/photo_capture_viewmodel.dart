@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, co
 import 'package:flutter/services.dart' show DeviceOrientation, MethodChannel;
 import 'package:camera/camera.dart';
 import 'package:camera/camera.dart' as cam show availableCameras;
-import 'package:flutter/material.dart' show debugPrint;
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -592,7 +591,7 @@ class CaptureViewModel extends ChangeNotifier {
       // Brief delay only when we actually released a camera (lets system free resources)
       if (hadController) {
         await Future.delayed(
-          const Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
+          Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
         );
       }
 
@@ -810,7 +809,7 @@ class CaptureViewModel extends ChangeNotifier {
     } on CameraException {
       // Zoom not supported
     } on TimeoutException {
-      debugPrint('Zoom level load timed out');
+      AppLogger.debug('Zoom level load timed out');
     } catch (_) {}
     _minZoom = minZ;
     _maxZoom = maxZ;
@@ -835,7 +834,7 @@ class CaptureViewModel extends ChangeNotifier {
       _currentZoom = clamped;
       notifyListeners();
     } on CameraException catch (e) {
-      debugPrint('setZoomLevel failed: $e');
+      AppLogger.debug('setZoomLevel failed: $e');
     }
   }
 

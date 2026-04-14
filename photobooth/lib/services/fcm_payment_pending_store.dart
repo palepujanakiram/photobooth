@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/logger.dart';
 
 /// Writes FCM payloads from [FirebaseMessaging.onBackgroundMessage] so the main
 /// isolate can apply payment UI after resume.
@@ -29,14 +30,14 @@ class FcmPaymentPendingStore {
       }
       await prefs.setString(_prefsKey, jsonEncode(payload));
       if (kDebugMode) {
-        debugPrint(
+        AppLogger.debug(
           'FCM background: stored pending payload for main isolate '
           '(data keys: ${message.data.keys.toList()})',
         );
       }
     } catch (e, st) {
       if (kDebugMode) {
-        debugPrint('FCM background persist failed: $e\n$st');
+        AppLogger.debug('FCM background persist failed: $e\n$st');
       }
     }
   }
@@ -47,11 +48,11 @@ class FcmPaymentPendingStore {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefsKey, jsonEncode(pending));
       if (kDebugMode) {
-        debugPrint('FCM: restored pending payment payload for retry');
+        AppLogger.debug('FCM: restored pending payment payload for retry');
       }
     } catch (e, st) {
       if (kDebugMode) {
-        debugPrint('FCM restore pending failed: $e\n$st');
+        AppLogger.debug('FCM restore pending failed: $e\n$st');
       }
     }
   }
@@ -69,7 +70,7 @@ class FcmPaymentPendingStore {
       return null;
     } catch (e, st) {
       if (kDebugMode) {
-        debugPrint('FCM takePending failed: $e\n$st');
+        AppLogger.debug('FCM takePending failed: $e\n$st');
       }
       return null;
     }

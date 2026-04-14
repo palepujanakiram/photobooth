@@ -2,6 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
 import 'fcm_token_store.dart';
+import '../utils/logger.dart';
 
 /// Resolves the device FCM registration token when Firebase is initialized (native only).
 ///
@@ -23,7 +24,7 @@ class FcmService {
       );
       if (settings.authorizationStatus == AuthorizationStatus.denied) {
         if (kDebugMode) {
-          debugPrint('FCM FcmService.getToken: permission denied');
+          AppLogger.debug('FCM getToken: permission denied');
         }
         return null;
       }
@@ -34,14 +35,12 @@ class FcmService {
       }
       final cached = await FcmTokenStore.getCached();
       if (cached != null && kDebugMode) {
-        debugPrint(
-          'FCM FcmService.getToken: Firebase returned empty; using cached token',
-        );
+        AppLogger.debug('FCM getToken: Firebase returned empty; using cached token');
       }
       return cached;
     } catch (e, st) {
       if (kDebugMode) {
-        debugPrint('FCM FcmService.getToken failed: $e\n$st');
+        AppLogger.debug('FCM getToken failed: $e\n$st');
       }
       return await FcmTokenStore.getCached();
     }

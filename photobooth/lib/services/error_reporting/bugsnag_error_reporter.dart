@@ -1,6 +1,8 @@
 import 'package:bugsnag_flutter/bugsnag_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'error_reporting_service.dart';
+import '../../utils/constants.dart';
+import '../../utils/logger.dart';
 
 /// Bugsnag implementation of ErrorReportingService
 class BugsnagErrorReporter implements ErrorReportingService {
@@ -12,11 +14,16 @@ class BugsnagErrorReporter implements ErrorReportingService {
       // Bugsnag is initialized in main.dart with bugsnag.start()
       // This method is called after start() to confirm initialization
       if (kDebugMode) {
-        print('Bugsnag error reporter initialized (enabled: $_isEnabled)');
+        if (AppConstants.kEnableLogOutput) {
+          AppLogger.debug(
+              'Bugsnag error reporter initialized (enabled: $_isEnabled)');
+        }
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Failed to initialize Bugsnag: $e');
+        if (AppConstants.kEnableLogOutput) {
+          AppLogger.debug('Failed to initialize Bugsnag: $e');
+        }
       }
     }
   }
@@ -29,7 +36,9 @@ class BugsnagErrorReporter implements ErrorReportingService {
       bugsnag.leaveBreadcrumb(message);
     } catch (e) {
       if (kDebugMode) {
-        print('Failed to log breadcrumb to Bugsnag: $e');
+        if (AppConstants.kEnableLogOutput) {
+          AppLogger.debug('Failed to log breadcrumb to Bugsnag: $e');
+        }
       }
     }
   }
@@ -73,7 +82,9 @@ class BugsnagErrorReporter implements ErrorReportingService {
       );
     } catch (e) {
       if (kDebugMode) {
-        print('Failed to record error to Bugsnag: $e');
+        if (AppConstants.kEnableLogOutput) {
+          AppLogger.debug('Failed to record error to Bugsnag: $e');
+        }
       }
     }
   }
@@ -86,7 +97,9 @@ class BugsnagErrorReporter implements ErrorReportingService {
       bugsnag.setUser(id: userId);
     } catch (e) {
       if (kDebugMode) {
-        print('Failed to set user ID in Bugsnag: $e');
+        if (AppConstants.kEnableLogOutput) {
+          AppLogger.debug('Failed to set user ID in Bugsnag: $e');
+        }
       }
     }
   }
@@ -99,7 +112,9 @@ class BugsnagErrorReporter implements ErrorReportingService {
       bugsnag.addMetadata('custom', {key: value});
     } catch (e) {
       if (kDebugMode) {
-        print('Failed to set custom key in Bugsnag: $e');
+        if (AppConstants.kEnableLogOutput) {
+          AppLogger.debug('Failed to set custom key in Bugsnag: $e');
+        }
       }
     }
   }
@@ -115,7 +130,9 @@ class BugsnagErrorReporter implements ErrorReportingService {
       bugsnag.addMetadata('custom', metadata);
     } catch (e) {
       if (kDebugMode) {
-        print('Failed to set custom keys in Bugsnag: $e');
+        if (AppConstants.kEnableLogOutput) {
+          AppLogger.debug('Failed to set custom keys in Bugsnag: $e');
+        }
       }
     }
   }
@@ -130,7 +147,9 @@ class BugsnagErrorReporter implements ErrorReportingService {
       bugsnag.clearMetadata('custom');
     } catch (e) {
       if (kDebugMode) {
-        print('Failed to clear Bugsnag context: $e');
+        if (AppConstants.kEnableLogOutput) {
+          AppLogger.debug('Failed to clear Bugsnag context: $e');
+        }
       }
     }
   }
@@ -144,7 +163,10 @@ class BugsnagErrorReporter implements ErrorReportingService {
     // Note: Bugsnag doesn't have a runtime enable/disable method
     // We control it through the _isEnabled flag
     if (kDebugMode) {
-      print('Bugsnag collection ${enabled ? "enabled" : "disabled"}');
+      if (AppConstants.kEnableLogOutput) {
+        AppLogger.debug(
+            'Bugsnag collection ${enabled ? "enabled" : "disabled"}');
+      }
     }
   }
 }

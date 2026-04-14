@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 
 import '../utils/constants.dart';
+import '../utils/logger.dart';
 
 /// Service for caching theme images to disk for persistent storage
 class ImageCacheService {
@@ -70,7 +70,7 @@ class ImageCacheService {
 
       return true;
     } catch (e) {
-      debugPrint('Error checking cache: $e');
+      AppLogger.debug('ImageCacheService: error checking cache: $e');
       return false;
     }
   }
@@ -86,7 +86,7 @@ class ImageCacheService {
       }
       return null;
     } catch (e) {
-      debugPrint('Error getting cached file: $e');
+      AppLogger.debug('ImageCacheService: error getting cached file: $e');
       return null;
     }
   }
@@ -101,7 +101,7 @@ class ImageCacheService {
       }
 
       // Download image
-      debugPrint('Downloading and caching image: $imageUrl');
+      AppLogger.debug('ImageCacheService: downloading and caching image: $imageUrl');
       final response = await http.get(Uri.parse(imageUrl)).timeout(
         const Duration(seconds: 30),
         onTimeout: () {
@@ -120,10 +120,10 @@ class ImageCacheService {
       // Check cache size and clean if needed
       await _cleanCacheIfNeeded();
 
-      debugPrint('Image cached successfully: ${cacheFile.path}');
+      AppLogger.debug('ImageCacheService: image cached successfully: ${cacheFile.path}');
       return cacheFile;
     } catch (e) {
-      debugPrint('Error caching image: $e');
+      AppLogger.debug('ImageCacheService: error caching image: $e');
       return null;
     }
   }
@@ -158,7 +158,7 @@ class ImageCacheService {
         }
       }
 
-      const maxSizeBytes =
+      final maxSizeBytes =
           AppConstants.kThemeDiskCacheMaxSizeMB * 1024 * 1024;
       
       if (totalSize > maxSizeBytes) {
@@ -174,15 +174,15 @@ class ImageCacheService {
             if (await info.file.exists()) {
               await info.file.delete();
               currentSize -= info.stat.size;
-              debugPrint('Deleted old cache file: ${info.file.path}');
+              AppLogger.debug('ImageCacheService: deleted old cache file: ${info.file.path}');
             }
           } catch (e) {
-            debugPrint('Error deleting cache file: $e');
+            AppLogger.debug('ImageCacheService: error deleting cache file: $e');
           }
         }
       }
     } catch (e) {
-      debugPrint('Error cleaning cache: $e');
+      AppLogger.debug('ImageCacheService: error cleaning cache: $e');
     }
   }
 
@@ -194,10 +194,10 @@ class ImageCacheService {
       if (await _cacheDir!.exists()) {
         await _cacheDir!.delete(recursive: true);
         await _cacheDir!.create(recursive: true);
-        debugPrint('Cache cleared');
+        AppLogger.debug('ImageCacheService: cache cleared');
       }
     } catch (e) {
-      debugPrint('Error clearing cache: $e');
+      AppLogger.debug('ImageCacheService: error clearing cache: $e');
     }
   }
 
@@ -218,7 +218,7 @@ class ImageCacheService {
       
       return totalSize;
     } catch (e) {
-      debugPrint('Error getting cache size: $e');
+      AppLogger.debug('ImageCacheService: error getting cache size: $e');
       return 0;
     }
   }
