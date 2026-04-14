@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:async';
 
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
@@ -11,8 +12,8 @@ import 'package:camera/camera.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_viewmodel.dart';
 import 'photo_image_from_xfile_io.dart' if (dart.library.html) 'photo_image_from_xfile_web.dart' as photo_image;
+import '../../utils/app_runtime_config.dart';
 import '../../utils/constants.dart';
-import '../../utils/image_helper.dart';
 import '../../utils/device_classifier.dart';
 import '../../services/app_settings_manager.dart';
 import '../../views/widgets/app_colors.dart';
@@ -21,6 +22,8 @@ import '../../views/widgets/theme_background.dart';
 import '../../views/widgets/debug_ram_monitor_overlay.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import 'photo_capture_rotation_screen.dart';
+import '../../services/hardware_key_service.dart';
+import '../../utils/route_args.dart';
 
 class PhotoCaptureScreen extends StatefulWidget {
   const PhotoCaptureScreen({super.key});
@@ -31,6 +34,7 @@ class PhotoCaptureScreen extends StatefulWidget {
 
 class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   late CaptureViewModel _captureViewModel;
+  StreamSubscription<HardwareKeyEvent>? _hardwareKeySub;
 
   @override
   void initState() {
@@ -38,6 +42,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     _captureViewModel = CaptureViewModel();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+      await HardwareKeyService.setEnabled(true);
+      _hardwareKeySub?.cancel();
+      _hardwareKeySub = HardwareKeyService.events.listen((e) async {
+        // Volume up/down from Bluetooth clickers usually maps to these.
+        if (!e.isActionDown) return;
+        if (e.keyCode != 24 && e.keyCode != 25) return;
+        // Don't interrupt after a photo is already captured.
+        if (_captureViewModel.capturedPhoto != null) return;
+        await _captureViewModel.capturePhotoWithCountdown();
+      });
       // Await prefs before camera so SharedPreferences I/O does not overlap native
       // camera enumeration / CameraController.initialize (reduces peak contention on 2 GB devices).
       await _captureViewModel.loadPreviewRotation();
@@ -66,6 +80,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
   @override
   void dispose() {
+    HardwareKeyService.setEnabled(false);
+    _hardwareKeySub?.cancel();
     _captureViewModel.dispose();
     super.dispose();
   }
@@ -129,7 +145,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       value: _captureViewModel,
       child: Consumer<CaptureViewModel>(
         builder: (context, viewModel, child) {
-          return Scaffold(
+          return ListenableBuilder(
+            listenable: AppRuntimeConfig.instance,
+            builder: (context, _) {
+              return Scaffold(
                 backgroundColor: Colors.transparent,
                 extendBodyBehindAppBar: true,
                 appBar: AppBar(
@@ -329,6 +348,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                   ],
                 ),
               );
+            },
+          );
         },
       ),
     );
@@ -361,8 +382,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             ),
           ),
         if (hasCapturedPhoto &&
-            (AppConstants.kShowNativeCameraInfoPane ||
-                AppConstants.kShowCapturedPhotoMetadataOverlay))
+            AppConstants.kShowNativeCameraInfoPane)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Column(
@@ -381,11 +401,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                       style: const TextStyle(color: Colors.white70, fontSize: 11),
                     ),
                   ),
-                if (AppConstants.kShowNativeCameraInfoPane &&
-                    AppConstants.kShowCapturedPhotoMetadataOverlay)
-                  const SizedBox(height: 6),
-                if (AppConstants.kShowCapturedPhotoMetadataOverlay)
-                  _buildCapturedPhotoDetailsOverlay(context, viewModel),
               ],
             ),
           ),
@@ -431,6 +446,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         final media = MediaQuery.sizeOf(context);
         final isLandscape =
             MediaQuery.orientationOf(context) == Orientation.landscape;
+        final isTablet = media.shortestSide >= AppConstants.kTabletBreakpoint;
         final fallbackAspect = AppConstants.themeCardSlotAspectRatio(context);
         final isPhonePortrait = !isLandscape &&
             media.shortestSide < AppConstants.kTabletBreakpoint;
@@ -451,8 +467,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                 ? AppConstants.kCapturePreviewCardMaxHeightFractionPhonePortrait
                 : AppConstants.kCapturePreviewCardMaxHeightFractionPortrait);
 
-        final maxW = math.min(constraints.maxWidth, media.width * widthCapFrac);
-        final maxH = math.min(constraints.maxHeight, media.height * heightCapFrac);
+        // Tablets: use the full canvas available for a cleaner kiosk-style preview.
+        final maxW = isTablet
+            ? constraints.maxWidth
+            : math.min(constraints.maxWidth, media.width * widthCapFrac);
+        final maxH = isTablet
+            ? constraints.maxHeight
+            : math.min(constraints.maxHeight, media.height * heightCapFrac);
 
         late double cardW;
         late double cardH;
@@ -490,7 +511,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                             viewModel.capturedPhoto!.imageFile,
                             cardW,
                             cardH,
-                            fit: BoxFit.contain,
+                            // Use full canvas without distortion (crop instead of stretch).
+                            fit: BoxFit.cover,
                           )
                         : previewWidget,
                   ),
@@ -578,7 +600,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       return (w / h).clamp(0.28, 0.92);
     }
 
+    // Keep the capture card size consistent before/after capture by preferring the
+    // live preview aspect ratio even after the still is taken. This avoids a
+    // visible "jump" in placeholder size when switching from preview → still.
     if (hasCapturedPhoto) {
+      final live = _livePreviewDisplaySize(viewModel);
+      if (live != null && live.height > 0) {
+        return (live.width / live.height).clamp(0.35, 2.85);
+      }
       final pixels = viewModel.capturedImagePixelSize;
       if (pixels != null && pixels.height > 0) {
         return (pixels.width / pixels.height).clamp(0.35, 2.85);
@@ -637,15 +666,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     final height = displaySize?.height ??
         (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1.0);
 
-    // [BoxFit.contain] keeps sensor aspect ratio (webcam/TV); avoids stretch from [BoxFit.fill].
-    return Center(
-      child: FittedBox(
-        fit: BoxFit.contain,
-        alignment: Alignment.center,
-        child: SizedBox(
-          width: width,
-          height: height,
-          child: preview,
+    // Always preserve aspect ratio and avoid stretching:
+    // - Clip to the card bounds
+    // - Use BoxFit.cover so the placeholder looks "full bleed" and premium
+    //   (cropping is preferable to letterboxed tiny previews on tablets / landscape).
+    return ClipRect(
+      child: Center(
+        child: FittedBox(
+          fit: BoxFit.cover,
+          alignment: Alignment.center,
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: AspectRatio(
+              aspectRatio: displayAspectRatio,
+              child: preview,
+            ),
+          ),
         ),
       ),
     );
@@ -756,59 +793,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 
-  /// Captured photo info (resolution, file size). Shown only after photo is captured.
-  Widget _buildCapturedPhotoDetailsOverlay(
-    BuildContext context,
-    CaptureViewModel viewModel,
-  ) {
-    final photo = viewModel.capturedPhoto;
-    if (photo == null) return const SizedBox.shrink();
-
-    return FutureBuilder<ImageMetadata?>(
-      future: ImageHelper.getImageMetadata(photo.imageFile),
-      builder: (context, snapshot) {
-        final meta = snapshot.data;
-        if (meta == null && snapshot.connectionState != ConnectionState.done) {
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'Loading…',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-          );
-        }
-        if (meta == null) return const SizedBox.shrink();
-
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.black54,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Resolution: ${meta.width} × ${meta.height}',
-                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'File size: ${ImageHelper.formatFileSize(meta.fileSizeBytes)}',
-                style: const TextStyle(color: Colors.white70, fontSize: 13),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   /// Builds the countdown overlay (3, 2, 1)
   Widget _buildCountdownOverlay(BuildContext context, int countdownValue) {
     return Container(
@@ -878,12 +862,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                     // navigating so the next screen doesn't overlap with
                     // camera heap on a 4 GB kiosk.
                     viewModel.disposeCamera();
-                    Navigator.pushNamedAndRemoveUntil(
+                    final photo = viewModel.capturedPhoto!;
+                    await Navigator.pushNamed(
                       currentContext,
                       AppConstants.kRouteHome,
-                      (route) => false,
-                      arguments: {'photo': viewModel.capturedPhoto},
+                      arguments: ThemeSelectionArgs(photo: photo),
                     );
+                    // User came back (Back from ThemeSelection). Re-initialize camera.
+                    if (!mounted || !currentContext.mounted) return;
+                    await _resetAndInitializeCameras();
                   }
                 },
           child: viewModel.isUploading

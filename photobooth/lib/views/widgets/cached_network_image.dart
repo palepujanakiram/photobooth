@@ -3,6 +3,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../services/image_cache_service.dart';
+import '../../utils/logger.dart';
+import '../../utils/secure_image_url.dart';
 
 /// Widget that displays a network image with disk caching
 /// Falls back to network image if cache fails
@@ -64,6 +66,7 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
     });
 
     try {
+      final securedUrl = SecureImageUrl.withSessionId(widget.imageUrl);
       // On web, skip file caching and use network image directly
       if (kIsWeb) {
         if (mounted) {
@@ -76,7 +79,7 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
 
       // Try to get cached file first (fast check) - mobile only
       // Note: getCachedFile returns dart:io.File, but we need to handle it carefully
-      final cachedFile = await _cacheService.getCachedFile(widget.imageUrl);
+      final cachedFile = await _cacheService.getCachedFile(securedUrl);
       
       if (cachedFile != null && !kIsWeb) {
         // On mobile, check if file exists
@@ -103,7 +106,7 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
 
       // Cache in background - don't block UI (mobile only)
       if (!kIsWeb) {
-        _cacheService.cacheImage(widget.imageUrl).then((cachedFile) {
+        _cacheService.cacheImage(securedUrl).then((cachedFile) {
           // If caching succeeded and we got a file, update state
           if (mounted && cachedFile != null && !kIsWeb) {
             // cachedFile is dart:io.File from the service
@@ -116,11 +119,11 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
           }
         }).catchError((e) {
           // Silently fail - network image will be shown
-          debugPrint('Background cache failed for ${widget.imageUrl}: $e');
+          AppLogger.debug('Background cache failed for $securedUrl: $e');
         });
       }
     } catch (e) {
-      debugPrint('Error loading cached image: $e');
+      AppLogger.debug('Error loading cached image: $e');
       if (mounted) {
         setState(() {
           _hasError = false; // Don't show error, just use network
@@ -132,6 +135,7 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
 
   @override
   Widget build(BuildContext context) {
+    final securedUrl = SecureImageUrl.withSessionId(widget.imageUrl);
     if (_isLoading && widget.placeholder != null) {
       return widget.placeholder!;
     }
@@ -159,7 +163,7 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
           errorBuilder: (context, error, stackTrace) {
             // If cached file fails, fall back to network
             return Image.network(
-              widget.imageUrl,
+              securedUrl,
               fit: widget.fit,
               width: widget.width,
               height: widget.height,
@@ -192,7 +196,7 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
 
     // Fall back to network image
     return Image.network(
-      widget.imageUrl,
+      securedUrl,
       fit: widget.fit,
       width: widget.width,
       height: widget.height,

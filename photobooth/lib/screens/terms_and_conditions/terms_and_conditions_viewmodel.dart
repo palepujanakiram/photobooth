@@ -1,31 +1,53 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../services/api_service.dart';
+import '../../services/kiosk_manager.dart';
 import '../../services/session_manager.dart';
 import '../../services/file_helper.dart';
 import '../../utils/exceptions.dart';
 
 class TermsAndConditionsViewModel extends ChangeNotifier {
   final ApiService _apiService;
+  final KioskManager _kioskManager;
   bool _isAgreed = false;
   bool _isSubmitting = false;
   String? _errorMessage;
   String _kioskName = '';
+  String? _kioskCode;
+  bool _kioskCodeLoaded = false;
   
   // Timer tracking
   Timer? _timer;
   int _elapsedSeconds = 0;
 
-  TermsAndConditionsViewModel({ApiService? apiService})
-      : _apiService = apiService ?? ApiService();
+  TermsAndConditionsViewModel({
+    ApiService? apiService,
+    KioskManager? kioskManager,
+  })  : _apiService = apiService ?? ApiService(),
+        _kioskManager = kioskManager ?? KioskManager() {
+    unawaited(_loadKioskCode());
+  }
 
   bool get isAgreed => _isAgreed;
   bool get isSubmitting => _isSubmitting;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
   String get kioskName => _kioskName;
+  String? get kioskCode => _kioskCode;
+  bool get kioskCodeLoaded => _kioskCodeLoaded;
   bool get canSubmit => _isAgreed && !_isSubmitting;
   int get elapsedSeconds => _elapsedSeconds;
+
+  Future<void> _loadKioskCode() async {
+    try {
+      _kioskCode = await _kioskManager.getKioskCode();
+      _kioskCodeLoaded = true;
+      notifyListeners();
+    } catch (_) {
+      _kioskCodeLoaded = true;
+      notifyListeners();
+    }
+  }
 
   void _startTimer() {
     _elapsedSeconds = 0;
@@ -59,6 +81,39 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
     _kioskName = name;
     _errorMessage = null;
     notifyListeners();
+  }
+
+  /// Updates kiosk code (persisted, optional).
+  Future<void> updateKioskCode(String? code) async {
+    final trimmed = code?.trim();
+    _kioskCode =
+        (trimmed == null || trimmed.isEmpty) ? null : trimmed.toUpperCase();
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      await _kioskManager.setKioskCode(_kioskCode);
+    } catch (_) {}
+  }
+
+  /// Validates [code] against the backend before persisting it.
+  /// Returns true when valid and saved.
+  Future<bool> validateAndSetKioskCode(String code) async {
+    final normalized = code.trim().toUpperCase();
+    if (normalized.isEmpty) {
+      _errorMessage = 'Please enter a kiosk code';
+      notifyListeners();
+      return false;
+    }
+    _errorMessage = null;
+    notifyListeners();
+    final ok = await _apiService.validateKioskCode(normalized);
+    if (!ok) {
+      _errorMessage = 'Invalid kiosk code. Please check and try again.';
+      notifyListeners();
+      return false;
+    }
+    await updateKioskCode(normalized);
+    return true;
   }
 
   /// Submits the terms acceptance and creates a session

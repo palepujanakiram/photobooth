@@ -5,12 +5,15 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private var hardwareKeysEnabled: Boolean = false
+    private var hardwareKeysChannel: MethodChannel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,5 +44,41 @@ class MainActivity : FlutterActivity() {
                     result.notImplemented()
                 }
             }
+
+        hardwareKeysChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "photobooth/hardware_keys"
+        ).apply {
+            setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "setEnabled" -> {
+                        val args = call.arguments as? Map<*, *>
+                        val enabled = args?.get("enabled") as? Boolean ?: false
+                        hardwareKeysEnabled = enabled
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (hardwareKeysEnabled) {
+            val code = event.keyCode
+            if (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                // Forward to Flutter. Consume so system volume UI doesn't show.
+                hardwareKeysChannel?.invokeMethod(
+                    "onKey",
+                    mapOf(
+                        "keyCode" to code,
+                        "action" to event.action,
+                        "timestampMs" to event.eventTime
+                    )
+                )
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 }

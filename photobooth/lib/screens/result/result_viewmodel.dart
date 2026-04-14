@@ -1,17 +1,19 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../photo_capture/photo_model.dart';
 import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
+import '../../services/file_helper.dart';
 import '../../services/print_service.dart';
 import '../../services/session_manager.dart';
 import '../../services/share_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/logger.dart';
 import '../../services/fcm_service.dart';
 import '../../services/payment_push_coordinator.dart';
 
@@ -176,7 +178,7 @@ class ResultViewModel extends ChangeNotifier {
       final fcmToken = await FcmService.getToken();
       if (kDebugMode) {
         final len = fcmToken?.length ?? 0;
-        debugPrint(
+        AppLogger.debug(
           'Payment initiate: fcmToken length=$len'
           '${len == 0 ? " — server cannot send FCM; check permission / Play services" : ""}',
         );
@@ -188,7 +190,7 @@ class ResultViewModel extends ChangeNotifier {
         fcmToken: fcmToken ?? '',
       );
       if (kDebugMode) {
-        debugPrint(
+        AppLogger.debug(
           'Payment initiate OK: id=${result.id} status=${result.status} — '
           'confirm backend stores token + sends FCM from same Firebase project as the app',
         );
@@ -354,6 +356,17 @@ class ResultViewModel extends ChangeNotifier {
     _sessionManager.clearSession();
   }
 
+  /// Kiosk privacy wipe: clears local session + temp image files so the next user cannot access prior photos.
+  ///
+  /// This does **not** delete anything on the server (transactions/audit can remain).
+  Future<void> privacyWipeLocal() async {
+    _paymentPollTimer?.cancel();
+    _paymentPollTimer = null;
+    _downloadedFiles.clear();
+    _sessionManager.clearSession();
+    await FileHelper.cleanupTempImages();
+  }
+
   /// Download all images to temp files for print/share
   Future<bool> _ensureAllFilesDownloaded(String forAction) async {
     if (_isDownloading) return false;
@@ -468,8 +481,43 @@ class ResultViewModel extends ChangeNotifier {
 
   /// Share all images
   Future<void> shareImages({Rect? sharePositionOrigin}) async {
+    // Web share: share the URLs (no filesystem downloads / file sharing).
+    if (kIsWeb) {
+      final urls = _generatedImages.map((e) => e.imageUrl).where((u) => u.trim().isNotEmpty).toList();
+      if (urls.isEmpty) {
+        _errorMessage = 'No images to share';
+        notifyListeners();
+        return;
+      }
+      _isSharing = true;
+      _errorMessage = null;
+      notifyListeners();
+      try {
+        await _shareService.shareText(
+          urls.join('\n'),
+          sharePositionOrigin: sharePositionOrigin,
+          subject: '${AppConstants.kBrandName} photos',
+        );
+      } on ShareException catch (e) {
+        // Many browsers don't support Web Share API for desktops.
+        // Fall back to copying the link(s) so operators can paste into WhatsApp.
+        try {
+          await Clipboard.setData(ClipboardData(text: urls.join('\n')));
+          _errorMessage = 'Sharing not supported in this browser. Link copied.';
+        } catch (_) {
+          _errorMessage = e.message;
+        }
+      } catch (e) {
+        _errorMessage = 'Failed to share: $e';
+      } finally {
+        _isSharing = false;
+        notifyListeners();
+      }
+      return;
+    }
+
     // Download files first if needed
-    if (!kIsWeb && _downloadedFilesList.length != _generatedImages.length) {
+    if (_downloadedFilesList.length != _generatedImages.length) {
       final success = await _ensureAllFilesDownloaded('share');
       if (!success) return;
     }
@@ -480,6 +528,9 @@ class ResultViewModel extends ChangeNotifier {
 
     try {
       final files = _downloadedFilesList;
+      if (files.isEmpty) {
+        throw ShareException('No images to share (download did not produce any files)');
+      }
       // Share all images using the multiple images method
       await _shareService.shareMultipleImages(
         files,

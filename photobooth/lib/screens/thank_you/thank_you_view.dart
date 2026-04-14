@@ -15,16 +15,22 @@ class ThankYouScreen extends StatefulWidget {
 class _ThankYouScreenState extends State<ThankYouScreen> {
   Timer? _redirectTimer;
 
+  Future<void> _exit() async {
+    if (!mounted) return;
+    final popped = await Navigator.of(context).maybePop();
+    if (popped) return;
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      AppConstants.kRouteTerms,
+      (route) => false,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     _redirectTimer = Timer(const Duration(seconds: 12), () {
-      if (!mounted) return;
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        AppConstants.kRouteTerms,
-        (route) => false,
-      );
+      unawaited(_exit());
     });
   }
 
@@ -44,47 +50,51 @@ class _ThankYouScreenState extends State<ThankYouScreen> {
             child: ThemeBackground(),
           ),
           SafeArea(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      constraints: const BoxConstraints(maxWidth: 280, maxHeight: 88),
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.35),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _exit,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        constraints: const BoxConstraints(maxWidth: 280, maxHeight: 88),
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: Image.asset(
+                          AppConstants.kBrandLogoAsset,
+                          fit: BoxFit.contain,
                         ),
                       ),
-                      child: Image.asset(
-                        AppConstants.kBrandLogoAsset,
-                        fit: BoxFit.contain,
+                      const SizedBox(height: 24),
+                      const Text(
+                        '🎉 Thanks for Visiting!',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      '🎉 Thanks for Visiting!',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                      const SizedBox(height: 12),
+                      Text(
+                        'We hope you enjoyed our photobooth experience. Come back soon and strike another pose!',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white.withValues(alpha: 0.85),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'We hope you enjoyed our photobooth experience. Come back soon and strike another pose!',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.white.withValues(alpha: 0.85),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
