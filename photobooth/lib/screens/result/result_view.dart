@@ -9,6 +9,7 @@ import '../../utils/constants.dart';
 import '../../utils/logger.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
+import '../../views/widgets/centered_max_width.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../views/widgets/payment_link_qr.dart';
@@ -212,11 +213,30 @@ class _ResultScreenState extends State<ResultScreen> {
               forceMaterialTransparency: true,
               centerTitle: true,
               title: const Text(
-                'Scan to Pay',
+                'PAY',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
-                  fontSize: 17,
+                  fontSize: 22,
+                ),
+              ),
+              bottom: PreferredSize(
+                // Give the subtitle enough height on tablets / large text scales
+                // so it never collides with the title.
+                preferredSize: const Size.fromHeight(22),
+                child: const Padding(
+                  padding: EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    'Scan to complete your purchase',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
               leading: IconButton(
@@ -233,40 +253,53 @@ class _ResultScreenState extends State<ResultScreen> {
                 SafeArea(
                   top: false,
                   child: Padding(
-                    padding: const EdgeInsets.only(top: kToolbarHeight),
+                    // Body is behind the app bar; account for title + subtitle height.
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.paddingOf(context).top +
+                          kToolbarHeight +
+                          22 +
+                          6,
+                    ),
                     child: Center(
                       child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 18),
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 520),
+                          constraints: const BoxConstraints(maxWidth: 480),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               _buildTitleSection(appColors),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 10),
                               _buildPaymentCard(context, viewModel, appColors),
                               if (viewModel.hasError) _buildErrorBanner(viewModel),
-                              const SizedBox(height: 14),
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.blueGrey.shade800,
-                                    padding: const EdgeInsets.symmetric(vertical: 14),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
+                              const SizedBox(height: 16),
+                              CenteredMaxWidth(
+                                maxWidth: 360,
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blueGrey.shade800,
+                                      foregroundColor: Colors.white,
+                                      minimumSize:
+                                          const Size(double.infinity, 56),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 16,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                      textStyle: const TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
-                                  ),
-                                  onPressed: _navigateToStart,
-                                  child: Text(
-                                    viewModel.fcmPaymentPushSuccess == false &&
-                                            _failureSecondsLeft > 0
-                                        ? 'Back to start (${_failureSecondsLeft}s)'
-                                        : 'Back to start',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
+                                    onPressed: _navigateToStart,
+                                    child: Text(
+                                      viewModel.fcmPaymentPushSuccess == false &&
+                                              _failureSecondsLeft > 0
+                                          ? 'Back to start (${_failureSecondsLeft}s)'
+                                          : 'Back to start',
                                     ),
                                   ),
                                 ),
@@ -288,11 +321,11 @@ class _ResultScreenState extends State<ResultScreen> {
 
   Widget _buildTitleSection(AppColors appColors) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.only(top: 0, bottom: 2),
       child: Text(
-        'Scan the QR with any UPI app.\nPrinting starts automatically after payment is approved.',
+        'Scan the QR code to pay with UPI.\nPrinting starts automatically after payment is approved.',
         style: TextStyle(
-          fontSize: 13,
+          fontSize: 14,
           color: Colors.white.withValues(alpha: 0.8),
           height: 1.35,
         ),
@@ -335,7 +368,7 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   /// Fixed height for the QR panel (kiosk-friendly).
-  static const double _resultBoxHeight = 420;
+  static const double _resultBoxHeight = 400;
 
   static const TextStyle _resultBoxTitleStyle = TextStyle(
     fontSize: 32,
@@ -398,73 +431,85 @@ class _ResultScreenState extends State<ResultScreen> {
           ),
         ],
       ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Pay via UPI',
-              style: _resultBoxTitleStyle,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '₹$totalPrice',
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Keep the QR comfortably centered with even breathing room above/below.
+          const headerAndFooterReserve = 160.0;
+          final maxSideFromWidth =
+              (constraints.maxWidth - 24).clamp(180.0, 260.0);
+          final maxSideFromHeight = (constraints.maxHeight - headerAndFooterReserve)
+              .clamp(160.0, 260.0);
+          final side = (maxSideFromWidth < maxSideFromHeight)
+              ? maxSideFromWidth
+              : maxSideFromHeight;
+
+          return Column(
+            children: [
+              const Text(
+                'Pay via UPI',
+                style: _resultBoxTitleStyle,
               ),
-            ),
-            const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final side = (constraints.maxWidth - 24).clamp(180.0, 260.0);
-              return Container(
-                width: side,
-                height: side,
-                decoration: BoxDecoration(
+              const SizedBox(height: 6),
+              Text(
+                '₹$totalPrice',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
                 ),
-                clipBehavior: Clip.antiAlias,
-                alignment: Alignment.center,
-                child: _buildPaymentQrArea(viewModel, side),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          Text(
-            viewModel.fcmPaymentPushSuccess == false
-                ? 'Payment failed. Please try again.\nYou will return to start automatically.'
-                : viewModel.fcmPaymentPushSuccess == true
-                    ? 'Payment confirmed. Printing...'
-                    : 'Waiting for payment confirmation...',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              height: 1.35,
-              fontWeight: FontWeight.w600,
-              color: viewModel.fcmPaymentPushSuccess == false
-                  ? Colors.red.shade200
-                  : (viewModel.fcmPaymentPushSuccess == true
-                      ? Colors.green.shade200
-                      : Colors.white.withValues(alpha: 0.85)),
-            ),
-          ),
-          if (viewModel.fcmPaymentPushSuccess == false && _failureSecondsLeft > 0) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Returning to start in ${_failureSecondsLeft}s',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.white.withValues(alpha: 0.78),
               ),
-            ),
-          ],
-        ],
-      ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: Center(
+                  child: Container(
+                    width: side,
+                    height: side,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    alignment: Alignment.center,
+                    child: _buildPaymentQrArea(viewModel, side),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                viewModel.fcmPaymentPushSuccess == false
+                    ? 'Payment failed. Please try again.\nYou will return to start automatically.'
+                    : viewModel.fcmPaymentPushSuccess == true
+                        ? 'Payment confirmed. Printing...'
+                        : 'Waiting for payment confirmation...',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                  color: viewModel.fcmPaymentPushSuccess == false
+                      ? Colors.red.shade200
+                      : (viewModel.fcmPaymentPushSuccess == true
+                          ? Colors.green.shade200
+                          : Colors.white.withValues(alpha: 0.85)),
+                ),
+              ),
+              if (viewModel.fcmPaymentPushSuccess == false &&
+                  _failureSecondsLeft > 0) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Returning to start in ${_failureSecondsLeft}s',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white.withValues(alpha: 0.78),
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }

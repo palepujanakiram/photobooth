@@ -17,6 +17,7 @@ import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/bottom_safe_area.dart';
 import '../../views/widgets/falling_starfield_background.dart';
+import '../../views/widgets/centered_max_width.dart';
 import '../../services/theme_manager.dart';
 import 'theme_model.dart';
 import 'theme_preview_screen.dart';
@@ -282,11 +283,26 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
               centerTitle: true,
               iconTheme: const IconThemeData(color: Colors.white),
               title: const Text(
-                'Select a theme',
+                'PICK',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
-                  fontSize: 17,
+                  fontSize: 22,
+                ),
+              ),
+              bottom: const PreferredSize(
+                preferredSize: Size.fromHeight(22),
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    'Choose a style that speaks to you',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
               leading: IconButton(
@@ -403,8 +419,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                         padding: EdgeInsets.only(bottom: reducedBottomInset),
                         child: Column(
                           children: [
-                            _buildCategoryTabs(context, viewModel),
-                            const SizedBox(height: 2),
                             Expanded(
                               child: _buildCarouselAndThumbnails(
                                 context,
@@ -554,10 +568,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     );
   }
 
-  static const double _categorySidePadding = 24.0;
-  static const double _categoryChipGap = 8.0;
-  static const double _categoryChipRowHeight = 48.0;
-  static const int _maxVisibleCategoryChips = 5;
+  // Category chips hidden by request. Keep constants/method removed to avoid dead code.
 
   /// Larger fraction on phone portrait so the hero card uses the screen; smaller on tablet / landscape.
   double _carouselViewportFractionFor(BuildContext context) {
@@ -573,88 +584,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     return AppConstants.kThemeCarouselViewportFraction;
   }
 
-  Widget _buildCategoryTabs(BuildContext context, ThemeViewModel viewModel) {
-    final ids = viewModel.categoryIds;
-    final screenW = MediaQuery.sizeOf(context).width;
-    final chipW = screenW < 400 ? 78.0 : 90.0;
-    final itemExtent = chipW + _categoryChipGap;
-    final maxRowWidth = _maxVisibleCategoryChips * itemExtent;
-    final rowW = math.min(maxRowWidth, screenW - _categorySidePadding * 2);
-
-    return Padding(
-      padding: const EdgeInsets.only(
-        top: 8,
-        bottom: 12,
-        left: _categorySidePadding,
-        right: _categorySidePadding,
-      ),
-      child: Center(
-        child: SizedBox(
-          width: rowW,
-          height: _categoryChipRowHeight,
-          child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          itemCount: ids.length,
-          itemBuilder: (context, index) {
-          final id = ids[index];
-          final isActive = viewModel.selectedCategoryId == id;
-          return SizedBox(
-            width: itemExtent,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                width: chipW,
-                child: Center(
-                  child: Material(
-                    color: isActive
-                        ? const Color(0xFF2A6DF4)
-                        : Colors.white.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(20),
-                    child: InkWell(
-                      onTap: () {
-                        viewModel.clearArmedTheme();
-                        viewModel.selectCategory(id);
-                        if (_pageController != null &&
-                            viewModel.filteredThemes.isNotEmpty) {
-                          _pageController!.animateToPage(
-                            0,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeOut,
-                          );
-                        }
-                      },
-                      borderRadius: BorderRadius.circular(20),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 9,
-                        ),
-                        child: Center(
-                          child: Text(
-                            viewModel.getCategoryDisplayName(id),
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: screenW < 400 ? 13 : 14,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-          ),
-        ),
-      ),
-    );
-  }
+  // _buildCategoryTabs removed
 
   /// Responsive columns for card-grid theme list (web + Android).
   int _themeGridCrossAxisCount(BuildContext context, bool isLandscape) {
@@ -677,21 +607,24 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
-        child: SizedBox(
-          width: double.infinity,
-          child: CupertinoButton(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            color: enabled
-                ? CupertinoColors.systemBlue
-                : CupertinoColors.systemGrey,
-            borderRadius: BorderRadius.circular(14),
-            onPressed: enabled ? () => _onContinue(context, viewModel) : null,
-            child: const Text(
-              'Continue',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-                color: CupertinoColors.white,
+        child: CenteredMaxWidth(
+          maxWidth: 360,
+          child: SizedBox(
+            width: double.infinity,
+            child: CupertinoButton(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              color: enabled
+                  ? CupertinoColors.systemBlue
+                  : CupertinoColors.systemGrey,
+              borderRadius: BorderRadius.circular(14),
+              onPressed: enabled ? () => _onContinue(context, viewModel) : null,
+              child: const Text(
+                'Continue',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: CupertinoColors.white,
+                ),
               ),
             ),
           ),

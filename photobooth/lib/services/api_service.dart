@@ -1029,6 +1029,8 @@ class ApiService {
       return XFile(imageUrl);
     }
 
+    final resolvedUrl = _resolveImageUrl(imageUrl);
+
     // Use a dedicated Dio instance with AI timeout for large downloads
     final dio = Dio(
       BaseOptions(
@@ -1043,8 +1045,8 @@ class ApiService {
       dio.interceptors.add(AliceDioProxyInterceptor());
     }
 
-    AppLogger.debug('📥 Downloading image from: $imageUrl');
-    final extension = imageUrl.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+    AppLogger.debug('📥 Downloading image from: $resolvedUrl');
+    final extension = resolvedUrl.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
     final tempDirPath = await FileHelper.getTempDirectoryPath();
     final fileName = 'transformed_${_uuid.v4()}.$extension';
     final filePath = '$tempDirPath/$fileName';
@@ -1053,7 +1055,7 @@ class ApiService {
     onProgress?.call('Downloading result...');
     int lastReportedPercent = -1;
     await dio.download(
-      imageUrl,
+      resolvedUrl,
       (file as dynamic).path,
       onReceiveProgress: (received, total) {
         if (total <= 0) {
@@ -1081,6 +1083,27 @@ class ApiService {
     final savedPath = (file as dynamic).path;
     AppLogger.debug('✅ Saved transformed image: $savedPath ($fileSize bytes)');
     return XFile(savedPath);
+  }
+
+  /// Ensures URLs returned by the backend can be used by Dio.
+  ///
+  /// Backend may return relative paths like `/api/img/generated/...jpg` (or
+  /// occasionally paths with whitespace/newlines). Dio requires an absolute URI.
+  static String _resolveImageUrl(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return trimmed;
+
+    // Remove any whitespace/newlines accidentally included in the URL.
+    final compact = trimmed.replaceAll(RegExp(r'\s+'), '');
+
+    if (compact.startsWith('http://') || compact.startsWith('https://')) {
+      return compact;
+    }
+
+    // Treat as relative to API base.
+    final base = Uri.parse(AppConstants.kBaseUrl);
+    // Uri.resolve handles leading slashes correctly.
+    return base.resolve(compact).toString();
   }
 
   /// Preprocesses image (validation, compression, person detection)

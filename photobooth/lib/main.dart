@@ -11,6 +11,8 @@ import 'package:bugsnag_flutter/bugsnag_flutter.dart';
 import 'package:flutter_alice/alice.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
 import 'screens/theme_slideshow/theme_slideshow_view.dart';
+import 'screens/splash/app_splash_screen.dart';
+import 'screens/splash/bootstrap_route_args.dart';
 import 'screens/terms_and_conditions/terms_and_conditions_view.dart';
 import 'screens/webview/webview_screen.dart';
 import 'screens/theme_selection/theme_selection_view.dart';
@@ -383,12 +385,24 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: const [Locale('en')],
-        initialRoute: AppConstants.kRouteTerms,
+        initialRoute: AppConstants.kRouteSplash,
         routes: {
           AppConstants.kRouteSlideshow: (context) =>
               const ThemeSlideshowScreen(),
-          AppConstants.kRouteTerms: (context) =>
-              const TermsAndConditionsScreen(),
+          AppConstants.kRouteSplash: (context) {
+            final raw = ModalRoute.of(context)?.settings.arguments;
+            final args = raw is SplashRouteArgs
+                ? raw
+                : const SplashRouteArgs();
+            return AppSplashScreen(args: args);
+          },
+          AppConstants.kRouteTerms: (context) {
+            final raw = ModalRoute.of(context)?.settings.arguments;
+            final urls =
+                raw is TermsRouteArgs ? raw.backgroundImageUrls : null;
+            final bg = (urls != null && urls.isNotEmpty) ? urls : null;
+            return TermsAndConditionsScreen(backgroundImageUrls: bg);
+          },
           AppConstants.kRouteHome: (context) => const ThemeSelectionScreen(),
           AppConstants.kRouteCapture: (context) => const PhotoCaptureScreen(),
           AppConstants.kRouteGenerate: (context) => const PhotoGenerateScreen(),

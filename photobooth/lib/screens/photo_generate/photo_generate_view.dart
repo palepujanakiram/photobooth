@@ -194,11 +194,26 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               forceMaterialTransparency: true,
               centerTitle: true,
               title: const Text(
-                'Generate Photo',
+                'BEHOLD',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
-                  fontSize: 17,
+                  fontSize: 22,
+                ),
+              ),
+              bottom: const PreferredSize(
+                preferredSize: Size.fromHeight(22),
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    'Your AI-transformed portrait awaits',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
               leading: IconButton(
@@ -549,6 +564,77 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final hasImages = images.isNotEmpty;
 
     final totalSlots = (hasImages ? images.length : 1) + (isLoadingMore ? 1 : 0);
+
+    // When we only have a single slot (initial placeholder or one image),
+    // size it like the POSE capture card so the "main image placeholder" feels consistent.
+    if (totalSlots == 1) {
+      // Use the same aspect-fit sizing as POSE, but don't over-cap on BEHOLD:
+      // `maxRowHeight` already accounts for reserved header/footer space.
+      final maxW = screenWidth;
+      final maxH = maxRowHeight;
+
+      late double cardW;
+      late double cardH;
+      if (maxW / maxH > aspect) {
+        cardH = maxH;
+        cardW = cardH * aspect;
+      } else {
+        cardW = maxW;
+        cardH = cardW / aspect;
+      }
+
+      final String? genZoomId = _zoomedSlotId != null &&
+              viewModel.generatedImages.any((e) => e.id == _zoomedSlotId)
+          ? _zoomedSlotId
+          : null;
+
+      final slots = _buildTransformedSlotWidgets(
+        context,
+        viewModel,
+        appColors,
+        cardW,
+        cardH,
+        genZoomId,
+      );
+
+      final isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
+      final isLoadingMore = viewModel.isLoadingMore;
+      final message = isGeneratingOrLoading
+          ? (isLoadingMore
+              ? 'Adding your new style...'
+              : 'Please wait while we create your masterpiece')
+          : hasImages
+              ? 'Your masterpiece is ready'
+              : '';
+
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (message.isNotEmpty) ...[
+              Text(
+                message,
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 18),
+            ],
+            Center(child: slots.first),
+            if ((hasImages || isGenerating || isLoadingMore) &&
+                !fixedFooterOutside) ...[
+              const SizedBox(height: 18),
+              _buildPhotosActionFooter(context, viewModel, appColors),
+            ],
+          ],
+        ),
+      );
+    }
 
     // Responsive grid: 1 -> 1 col, 2 -> 2 cols, 3+ -> 3 cols (clamped by width).
     int cols = totalSlots <= 1 ? 1 : (totalSlots == 2 ? 2 : 3);
