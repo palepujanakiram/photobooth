@@ -17,8 +17,6 @@ class _ThankYouScreenState extends State<ThankYouScreen> {
 
   Future<void> _exit() async {
     if (!mounted) return;
-    final popped = await Navigator.of(context).maybePop();
-    if (popped) return;
     Navigator.pushNamedAndRemoveUntil(
       context,
       AppConstants.kRouteTerms,

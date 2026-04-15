@@ -237,7 +237,13 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                 SafeArea(
                   top: false,
                   child: Padding(
-                    padding: const EdgeInsets.only(top: kToolbarHeight),
+                    padding: EdgeInsets.only(
+                      // Body is behind the app bar; account for app bar + subtitle height.
+                      top: MediaQuery.paddingOf(context).top +
+                          kToolbarHeight +
+                          22 +
+                          6,
+                    ),
                     child: Column(
                       children: [
                         Expanded(

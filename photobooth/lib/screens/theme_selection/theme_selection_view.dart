@@ -357,7 +357,11 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                   top: false,
                   child: Padding(
                     padding: EdgeInsets.only(
-                      top: MediaQuery.paddingOf(context).top + kToolbarHeight,
+                      // Body is behind the app bar; account for app bar + subtitle height.
+                      top: MediaQuery.paddingOf(context).top +
+                          kToolbarHeight +
+                          22 +
+                          6,
                     ),
                     child: Consumer<ThemeViewModel>(
                       builder: (context, viewModel, child) {

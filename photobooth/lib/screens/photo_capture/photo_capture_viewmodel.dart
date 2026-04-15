@@ -161,6 +161,15 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  /// Refresh display rotation (0–3) after orientation changes (Android).
+  Future<void> refreshDisplayRotation() async {
+    final r = await _fetchDisplayRotation();
+    if (r == _displayRotation) return;
+    _displayRotation = r;
+    unawaited(_applyDefaultPreviewRotationForDevice());
+    notifyListeners();
+  }
+
   /// Loads saved preview rotation from preferences (call when screen opens).
   Future<void> loadPreviewRotation() async {
     try {
@@ -333,9 +342,13 @@ class CaptureViewModel extends ChangeNotifier {
     if (_isPreviewRotationConfiguredByUser) return;
     if (!shouldUseLandscapePreviewRotationWorkaround) return;
 
-    final desiredRotation = _displayRotation == 0
-        ? 270
-        : AppConstants.kCameraPreviewRotationDefault;
+    // Android TV devices often report ROTATION_0 even though the physical display
+    // is landscape. Tablets generally report real rotation and should follow the
+    // device orientation (no forced default rotation).
+    final desiredRotation =
+        _deviceType == AppDeviceType.androidTv && _displayRotation == 0
+            ? 270
+            : AppConstants.kCameraPreviewRotationDefault;
     if (_previewRotationDegrees == desiredRotation) return;
 
     _previewRotationDegrees = desiredRotation;
@@ -623,14 +636,11 @@ class CaptureViewModel extends ChangeNotifier {
       //
       // External (HDMI capture card / UVC): avoid [max] — many devices mis-handle max JPEG
       // vs preview (garbled / banded stills). [high] aligns better with typical 1080p HDMI.
-      final bool isExternal = camera.lensDirection ==
-              CameraLensDirection.external ||
-          _looksLikeExternalCameraName(camera.name);
-      final ResolutionPreset preset = isExternal
-          ? ResolutionPreset.high
-          : (AppConstants.kLowMemoryKioskMode
-              ? ResolutionPreset.high
-              : ResolutionPreset.max);
+      // Use [high] for built-in cameras as the default sweet spot:
+      // - Much faster takePicture() on many Android tablets vs [max]
+      // - Lower memory pressure (avoids slowdowns / OOM on kiosk devices)
+      // - Still plenty of detail for downstream AI (upload is resized anyway)
+      final ResolutionPreset preset = ResolutionPreset.high;
       _cameraController = CameraController(
         cameraToUse,
         preset,
@@ -934,20 +944,26 @@ class CaptureViewModel extends ChangeNotifier {
       ErrorReportingManager.log('✅ Photo captured');
       AppLogger.debug('✅ Photo captured successfully');
 
-      // Use raw capture at very high quality (no resize/normalize)
-      AppLogger.debug('✅ Photo captured (raw, very high quality)');
+      final isFrontCamera = _currentCamera?.lensDirection == CameraLensDirection.front;
+      // Normalize + bake EXIF orientation so tablets handle rotation reliably, and
+      // un-mirror front camera captures so saved photos match the real world.
+      final XFile savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
+        imageFile,
+        flipHorizontal: isFrontCamera,
+      );
+      AppLogger.debug('✅ Photo normalized and saved');
 
       // Get camera ID from either standard controller or current camera
       final cameraId = _cameraController?.description.name ?? _currentCamera?.name;
       final photoId = _uuid.v4();
       _capturedPhoto = PhotoModel(
         id: photoId,
-        imageFile: imageFile,
+        imageFile: savedFile,
         capturedAt: DateTime.now(),
         cameraId: cameraId,
       );
       _capturedImagePixelSize = null;
-      unawaited(_refreshCapturedImagePixelSize(imageFile));
+      unawaited(_refreshCapturedImagePixelSize(savedFile));
 
       // Track successful photo capture
       await ErrorReportingManager.setPhotoCaptureContext(
