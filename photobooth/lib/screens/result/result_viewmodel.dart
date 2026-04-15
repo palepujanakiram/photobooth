@@ -222,6 +222,9 @@ class ResultViewModel extends ChangeNotifier {
       if (_activePaymentId != null) {
         _startPaymentStatusPolling();
       }
+      // Backup: also poll session by sessionId (React Query style) so approval can
+      // still be detected even if paymentId polling/FCM is missing.
+      _startSessionApprovalPolling(sessionId);
     } on ApiException catch (e) {
       _paymentInitError = e.message;
     } catch (e) {
@@ -232,8 +235,8 @@ class ResultViewModel extends ChangeNotifier {
     }
   }
 
-  /// Backend recommends polling every 3–5s; use 4s.
-  static const _paymentPollInterval = Duration(seconds: 4);
+  /// Kiosk polling backup cadence: every 3 seconds.
+  static const _paymentPollInterval = Duration(seconds: 3);
 
   void _startPaymentStatusPolling() {
     _paymentPollTimer?.cancel();
