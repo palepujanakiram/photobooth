@@ -429,6 +429,7 @@ class _ResultScreenState extends State<ResultScreen> {
   );
 
   Widget _buildPaymentQrArea(ResultViewModel viewModel, double side) {
+    final gatewayEnabled = viewModel.isPaymentGatewayEnabled;
     if (viewModel.paymentInitInProgress) {
       return SizedBox(
         width: side,
@@ -452,6 +453,17 @@ class _ResultScreenState extends State<ResultScreen> {
       );
     }
     final link = viewModel.paymentLink;
+    if (!gatewayEnabled) {
+      // When payment gateway is disabled, show the static UPI QR instead of a dummy.
+      return Padding(
+        padding: const EdgeInsets.all(8),
+        child: Image.asset(
+          'lib/images/upi_qr_fallback.png',
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+        ),
+      );
+    }
     if (link == null || link.isEmpty) {
       return Icon(
         CupertinoIcons.qrcode,

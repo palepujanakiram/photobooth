@@ -93,6 +93,8 @@ class ResultViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
   String get printerHost => _printerHost;
+  bool get isPaymentGatewayEnabled =>
+      _appSettingsManager?.settings?.paymentGatewayEnabled ?? true;
 
   static String _defaultPrinterHost(AppSettingsManager? manager) {
     final fromApi = manager?.settings?.printerHost?.trim();
