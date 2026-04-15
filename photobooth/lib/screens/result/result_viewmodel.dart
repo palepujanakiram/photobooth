@@ -159,26 +159,6 @@ class ResultViewModel extends ChangeNotifier {
   /// Loads UPI payment link from POST /api/payment/initiate and exposes it for QR display.
   Future<void> loadPaymentQr({String? customerPhone}) async {
     if (_paymentInitInProgress || _paymentLink != null) return;
-    if (!isPaymentGatewayEnabled) {
-      // Static QR mode: no gateway init/paymentId. Poll session for admin approval.
-      _paymentInitError = null;
-      _activePaymentId = null;
-      _paymentPollTimer?.cancel();
-      _paymentPollTicks = 0;
-      _pollNullStreak = 0;
-      _paymentOutcomeHandled = false;
-      notifyListeners();
-
-      final sessionId = _sessionManager.sessionId;
-      if (sessionId == null || sessionId.isEmpty) {
-        _paymentInitError = 'No session for payment. Go back and try again.';
-        notifyListeners();
-        return;
-      }
-      _startSessionApprovalPolling(sessionId);
-      return;
-    }
-
     final sessionId = _sessionManager.sessionId;
     if (sessionId == null || sessionId.isEmpty) {
       _paymentInitError = 'No session for payment. Go back and try again.';
@@ -216,6 +196,8 @@ class ResultViewModel extends ChangeNotifier {
           'confirm backend stores token + sends FCM from same Firebase project as the app',
         );
       }
+      // For manual/static QR mode, backend may omit paymentLink but should still
+      // create a transaction with an id that admin can approve/reject.
       _paymentLink = result.paymentLink;
       final pid = result.id.trim();
       _activePaymentId = pid.isNotEmpty ? pid : null;
