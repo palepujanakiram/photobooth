@@ -1031,19 +1031,15 @@ class ApiService {
 
     final resolvedUrl = _resolveImageUrl(imageUrl);
 
-    // Use a dedicated Dio instance with AI timeout for large downloads
-    final dio = Dio(
-      BaseOptions(
-        connectTimeout: AppConstants.kAiGenerationTimeout,
-        receiveTimeout: AppConstants.kAiGenerationTimeout,
-      ),
+    // Use the app's authenticated Dio instance (some image endpoints are protected and
+    // can return 403 without auth headers). Override timeouts for large downloads.
+    final dio = _dio;
+    final previousConnectTimeout = dio.options.connectTimeout;
+    final previousReceiveTimeout = dio.options.receiveTimeout;
+    dio.options = dio.options.copyWith(
+      connectTimeout: AppConstants.kAiGenerationTimeout,
+      receiveTimeout: AppConstants.kAiGenerationTimeout,
     );
-
-    configureDioForWeb(dio);
-    if (kDebugMode == true) {
-      dio.interceptors.add(ApiLoggingInterceptor());
-      dio.interceptors.add(AliceDioProxyInterceptor());
-    }
 
     AppLogger.debug('📥 Downloading image from: $resolvedUrl');
     final extension = resolvedUrl.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
@@ -1054,21 +1050,42 @@ class ApiService {
 
     onProgress?.call('Downloading result...');
     int lastReportedPercent = -1;
-    await dio.download(
-      resolvedUrl,
-      (file as dynamic).path,
-      onReceiveProgress: (received, total) {
-        if (total <= 0) {
-          return;
-        }
-        final percent = ((received / total) * 100).floor();
-        if (percent >= lastReportedPercent + 5 || percent == 100) {
-          lastReportedPercent = percent;
-          onProgress?.call('Downloading result... $percent%');
-        }
-      },
-      deleteOnError: true,
-    );
+    try {
+      await dio.download(
+        resolvedUrl,
+        (file as dynamic).path,
+        onReceiveProgress: (received, total) {
+          if (total <= 0) {
+            return;
+          }
+          final percent = ((received / total) * 100).floor();
+          if (percent >= lastReportedPercent + 5 || percent == 100) {
+            lastReportedPercent = percent;
+            onProgress?.call('Downloading result... $percent%');
+          }
+        },
+        options: Options(
+          // Ensure we send the same auth headers as normal API calls.
+          headers: dio.options.headers,
+          // Keep default status validation (non-2xx throws), but we will surface a better message below.
+        ),
+        deleteOnError: true,
+      );
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      final body = e.response?.data;
+      AppLogger.debug('❌ Image download failed ($status): $body');
+      throw ApiException(
+        'Failed to download image (${status ?? "unknown"}): ${body ?? e.message ?? e}',
+        status,
+      );
+    } finally {
+      // Restore global timeouts so other requests keep their intended behavior.
+      dio.options = dio.options.copyWith(
+        connectTimeout: previousConnectTimeout,
+        receiveTimeout: previousReceiveTimeout,
+      );
+    }
 
     // Verify the file was written correctly
     if (!(file as dynamic).existsSync()) {
