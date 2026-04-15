@@ -194,6 +194,8 @@ class AppConstants {
 
   // Routes
   static const String kRouteSlideshow = '/';
+  /// Branded splash: kiosk check, optional theme preload, then terms.
+  static const String kRouteSplash = '/splash';
   static const String kRouteTerms = '/terms';
   static const String kRouteHome = '/theme-selection';
   static const String kRouteCapture = '/capture';

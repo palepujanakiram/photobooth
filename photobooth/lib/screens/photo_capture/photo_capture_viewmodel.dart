@@ -124,6 +124,10 @@ class CaptureViewModel extends ChangeNotifier {
   /// Display rotation from device (0–3). Used for preview orientation correction (Android).
   int get displayRotation => _displayRotation;
 
+  /// Increments to force preview subtree remounts (useful on web where platform views can be sticky).
+  int get previewNonce => _previewNonce;
+  int _previewNonce = 0;
+
   /// Listener for controller updates (aligned with camera package example).
   void _onCameraControllerUpdate() {
     final ctrl = _cameraController;
@@ -1107,9 +1111,24 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Clears the captured photo and any error messages
   void clearCapturedPhoto() {
+    // Treat "Retake" as a hard reset of any in-flight UI state so the user can
+    // always return to live preview, even if an upload/countdown was running.
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    _countdownValue = null;
+
+    _uploadTimer?.cancel();
+    _uploadTimer = null;
+    _uploadElapsedSeconds = 0;
+    _isUploading = false;
+
+    _isCapturing = false;
+    _isSelectingFromGallery = false;
+
     _capturedPhoto = null;
     _capturedImagePixelSize = null;
     _errorMessage = null;
+    _previewNonce++;
     notifyListeners();
   }
 

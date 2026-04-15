@@ -257,7 +257,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => TermsAndConditionsScreen(
-          carouselImages: imageUrls,
+          backgroundImageUrls: imageUrls.isNotEmpty ? imageUrls : null,
         ),
       ),
     );

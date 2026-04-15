@@ -4,19 +4,21 @@ import 'package:flutter/material.dart'
 import 'package:provider/provider.dart';
 import 'terms_and_conditions_viewmodel.dart';
 import '../../utils/constants.dart';
+import '../splash/bootstrap_route_args.dart';
 import '../webview/webview_screen.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/animated_slideshow_background.dart';
-import '../../services/session_manager.dart';
+import '../../views/widgets/centered_max_width.dart';
 
 class TermsAndConditionsScreen extends StatefulWidget {
-  final List<String>? carouselImages;
+  /// Theme sample image URLs for the animated background; null uses default assets.
+  final List<String>? backgroundImageUrls;
 
   const TermsAndConditionsScreen({
     super.key,
-    this.carouselImages,
+    this.backgroundImageUrls,
   });
 
   @override
@@ -60,105 +62,17 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
-  Future<void> _showKioskSettings(BuildContext context) async {
-    final vm = _viewModel;
-    final current = (vm.kioskCode ?? '').trim();
-
-    Future<void> connectOrChange({required String initial}) async {
-      final controller = TextEditingController(text: initial);
-      final result = await showCupertinoDialog<String?>(
-        context: context,
-        builder: (ctx) {
-          return CupertinoAlertDialog(
-            title: Text(current.isEmpty ? 'Connect kiosk' : 'Change kiosk'),
-            content: Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: CupertinoTextField(
-                controller: controller,
-                placeholder: 'Enter kiosk code',
-                autofocus: true,
-                autocorrect: false,
-                enableSuggestions: false,
-                textCapitalization: TextCapitalization.characters,
-                onChanged: (v) {
-                  final up = v.toUpperCase();
-                  if (up == v) return;
-                  controller.value = controller.value.copyWith(
-                    text: up,
-                    selection:
-                        TextSelection.collapsed(offset: up.length),
-                    composing: TextRange.empty,
-                  );
-                },
-              ),
-            ),
-            actions: [
-              CupertinoDialogAction(
-                onPressed: () => Navigator.pop(ctx, null),
-                child: const Text('Cancel'),
-              ),
-              CupertinoDialogAction(
-                isDefaultAction: true,
-                onPressed: () => Navigator.pop(ctx, controller.text),
-                child: const Text('Save'),
-              ),
-            ],
-          );
-        },
-      );
-      if (!context.mounted) return;
-      if (result == null) return;
-      final ok = await vm.validateAndSetKioskCode(result);
-      if (!ok) {
-        if (!context.mounted) return;
-        AppSnackBar.showError(context, vm.errorMessage ?? 'Invalid kiosk code');
-        return;
-      }
-      SessionManager().clearSession();
-      if (!context.mounted) return;
-      AppSnackBar.showSuccess(context, 'Kiosk updated');
-    }
-
-    if (current.isEmpty) {
-      await connectOrChange(initial: '');
-      return;
-    }
-
-    final action = await showCupertinoModalPopup<String?>(
-      context: context,
-      builder: (ctx) {
-        return CupertinoActionSheet(
-          title: const Text('Kiosk'),
-          message: Text('Connected to: $current'),
-          actions: [
-            CupertinoActionSheetAction(
-              onPressed: () => Navigator.pop(ctx, 'change'),
-              child: const Text('Change kiosk'),
-            ),
-            CupertinoActionSheetAction(
-              isDestructiveAction: true,
-              onPressed: () => Navigator.pop(ctx, 'disconnect'),
-              child: const Text('Disconnect'),
-            ),
-          ],
-          cancelButton: CupertinoActionSheetAction(
-            onPressed: () => Navigator.pop(ctx, null),
-            child: const Text('Cancel'),
-          ),
-        );
-      },
+  Future<void> _openKioskManagement(BuildContext context) async {
+    await Navigator.of(context).pushNamed(
+      AppConstants.kRouteSplash,
+      arguments: const SplashRouteArgs(manageKiosk: true),
     );
-    if (!context.mounted || action == null) return;
-    if (action == 'disconnect') {
-      await vm.updateKioskCode(null);
-      SessionManager().clearSession();
-      if (!context.mounted) return;
-      AppSnackBar.showSuccess(context, 'Kiosk disconnected');
-      return;
-    }
-    if (action == 'change') {
-      await connectOrChange(initial: current);
-    }
+    if (!mounted) return;
+    await _viewModel.reloadKioskFromStorage();
+  }
+
+  void _goToSplashLinkDevice() {
+    Navigator.of(context).pushReplacementNamed(AppConstants.kRouteSplash);
   }
 
   @override
@@ -180,9 +94,11 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         body: SafeArea(
           child: Stack(
             children: [
-              // Animated slideshow background (behind consent UI)
-              const Positioned.fill(
-                child: AnimatedSlideshowBackground(),
+              // Animated slideshow (theme samples when provided, else default assets)
+              Positioned.fill(
+                child: AnimatedSlideshowBackground(
+                  assetPaths: widget.backgroundImageUrls,
+                ),
               ),
               // Main content (no top logo; card has logo in header)
               Column(
@@ -293,7 +209,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Quick Consent',
+                    'Terms',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -305,7 +221,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                 ),
                 CupertinoButton(
                   padding: EdgeInsets.zero,
-                  onPressed: () => _showKioskSettings(context),
+                  onPressed: () => _openKioskManagement(context),
                   child: Icon(
                     CupertinoIcons.gear_alt_fill,
                     color: appColors.textColor.withValues(alpha: 0.9),
@@ -377,53 +293,93 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     BuildContext context,
     AppColors appColors,
   ) {
+    const cardPadding = 20.0;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 26),
       decoration: BoxDecoration(
-        color: appColors.cardBackgroundColor.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(18),
+        color: appColors.cardBackgroundColor,
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: appColors.shadowColor.withValues(alpha: 0.12),
-            blurRadius: 22,
-            offset: const Offset(0, 10),
+            color: appColors.shadowColor.withValues(alpha: 0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Kiosk Setup Required',
-            style: TextStyle(
-              color: appColors.textColor,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(cardPadding, cardPadding, cardPadding, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 132,
+                  height: 40,
+                  child: Image.asset(
+                    AppConstants.kBrandLogoAsset,
+                    fit: BoxFit.contain,
+                    alignment: Alignment.centerLeft,
+                    errorBuilder: (_, __, ___) => Icon(
+                      CupertinoIcons.device_phone_portrait,
+                      size: 40,
+                      color: appColors.textColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Link this device',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: appColors.textColor,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 10),
-          Text(
-            'This device needs to be provisioned before use. Please enter the kiosk code.',
-            style: TextStyle(
-              color: appColors.secondaryTextColor,
-              fontSize: 13,
-              height: 1.35,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: 240,
-            child: CupertinoButton(
-              color: CupertinoColors.systemBlue,
-              borderRadius: BorderRadius.circular(12),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              onPressed: () => _showKioskSettings(context),
-              child: const Text(
-                'Link Device to Kiosk',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(cardPadding, 16, cardPadding, cardPadding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'This booth needs a kiosk code before guests can use it. Use the code from your venue or admin dashboard.',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: appColors.secondaryTextColor,
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                Semantics(
+                  button: true,
+                  label: 'Enter kiosk code',
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton(
+                      color: CupertinoColors.systemBlue,
+                      borderRadius: BorderRadius.circular(12),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      onPressed: _goToSplashLinkDevice,
+                      child: const Text(
+                        'Enter kiosk code',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: CupertinoColors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -436,7 +392,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'By using this AI Photo Booth, you agree to:',
+          'Review and accept to get started.',
           style: TextStyle(
             fontSize: 15,
             color: appColors.secondaryTextColor,
@@ -535,31 +491,34 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Widget _buildActionButtons(TermsAndConditionsViewModel viewModel, AppColors appColors) {
-    return SizedBox(
-      width: double.infinity,
-      child: CupertinoButton(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        color: viewModel.canSubmit
-            ? CupertinoColors.systemBlue
-            : CupertinoColors.systemGrey,
-        borderRadius: BorderRadius.circular(12),
-        onPressed: viewModel.canSubmit ? _handleAccept : null,
-        child: viewModel.isSubmitting
-            ? const CupertinoActivityIndicator(
-                color: CupertinoColors.white,
-              )
-            : Text(
-                'Start Your Experience',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: viewModel.canSubmit
-                      ? CupertinoColors.white
-                      : appColors.isDarkMode
-                          ? CupertinoColors.white
-                          : CupertinoColors.black,
+    return CenteredMaxWidth(
+      maxWidth: 360,
+      child: SizedBox(
+        width: double.infinity,
+        child: CupertinoButton(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          color: viewModel.canSubmit
+              ? CupertinoColors.systemBlue
+              : CupertinoColors.systemGrey,
+          borderRadius: BorderRadius.circular(12),
+          onPressed: viewModel.canSubmit ? _handleAccept : null,
+          child: viewModel.isSubmitting
+              ? const CupertinoActivityIndicator(
+                  color: CupertinoColors.white,
+                )
+              : Text(
+                  'Start Your Experience',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: viewModel.canSubmit
+                        ? CupertinoColors.white
+                        : appColors.isDarkMode
+                            ? CupertinoColors.white
+                            : CupertinoColors.black,
+                  ),
                 ),
-              ),
+        ),
       ),
     );
   }

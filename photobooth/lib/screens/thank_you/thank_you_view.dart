@@ -76,7 +76,7 @@ class _ThankYouScreenState extends State<ThankYouScreen> {
                       ),
                       const SizedBox(height: 24),
                       const Text(
-                        '🎉 Thanks for Visiting!',
+                        'PRINT',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 28,
@@ -86,7 +86,7 @@ class _ThankYouScreenState extends State<ThankYouScreen> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'We hope you enjoyed our photobooth experience. Come back soon and strike another pose!',
+                        'Grab your photo and enjoy',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,

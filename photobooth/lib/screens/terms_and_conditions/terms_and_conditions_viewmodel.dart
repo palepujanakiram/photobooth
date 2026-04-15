@@ -49,6 +49,17 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
     }
   }
 
+  /// Reload kiosk code from storage (e.g. after returning from splash kiosk management).
+  Future<void> reloadKioskFromStorage() async {
+    _errorMessage = null;
+    try {
+      _kioskCode = await _kioskManager.getKioskCode();
+      notifyListeners();
+    } catch (_) {
+      notifyListeners();
+    }
+  }
+
   void _startTimer() {
     _elapsedSeconds = 0;
     _timer?.cancel();
