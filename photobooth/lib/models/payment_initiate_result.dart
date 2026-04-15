@@ -2,24 +2,20 @@
 class PaymentInitiateResult {
   PaymentInitiateResult({
     required this.id,
-    required this.paymentLink,
+    this.paymentLink,
     required this.status,
   });
 
   final String id;
-  final String paymentLink;
+  /// UPI deep link to encode as QR (may be null/empty for manual/static QR mode).
+  final String? paymentLink;
   final String status;
 
   factory PaymentInitiateResult.fromJson(Map<String, dynamic> json) {
-    final link = json['paymentLink'] as String?;
-    if (link == null || link.isEmpty) {
-      throw const FormatException(
-        'paymentLink missing in payment initiate response',
-      );
-    }
+    final link = (json['paymentLink'] as String?)?.trim();
     return PaymentInitiateResult(
       id: json['id'] as String? ?? '',
-      paymentLink: link,
+      paymentLink: (link != null && link.isNotEmpty) ? link : null,
       status: json['status'] as String? ?? 'PENDING',
     );
   }
