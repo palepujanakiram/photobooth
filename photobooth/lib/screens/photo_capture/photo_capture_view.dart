@@ -33,13 +33,15 @@ class PhotoCaptureScreen extends StatefulWidget {
   State<PhotoCaptureScreen> createState() => _PhotoCaptureScreenState();
 }
 
-class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
+class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
+    with WidgetsBindingObserver {
   late CaptureViewModel _captureViewModel;
   StreamSubscription<HardwareKeyEvent>? _hardwareKeySub;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _captureViewModel = CaptureViewModel();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -81,10 +83,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     HardwareKeyService.setEnabled(false);
     _hardwareKeySub?.cancel();
     _captureViewModel.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    // On some Android tablets, orientation changes don't reliably update camera preview
+    // unless we refresh rotation metadata. Keep this lightweight.
+    _captureViewModel.refreshDisplayRotation();
   }
 
   void _showCameraSelectionDialog(BuildContext context, CaptureViewModel viewModel) {
