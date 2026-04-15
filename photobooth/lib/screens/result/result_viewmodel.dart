@@ -159,6 +159,13 @@ class ResultViewModel extends ChangeNotifier {
   /// Loads UPI payment link from POST /api/payment/initiate and exposes it for QR display.
   Future<void> loadPaymentQr({String? customerPhone}) async {
     if (_paymentInitInProgress || _paymentLink != null) return;
+    if (!isPaymentGatewayEnabled) {
+      // Static QR mode: don't initiate gateway payments.
+      _paymentInitError = null;
+      _paymentInitInProgress = false;
+      notifyListeners();
+      return;
+    }
 
     final sessionId = _sessionManager.sessionId;
     if (sessionId == null || sessionId.isEmpty) {
