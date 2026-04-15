@@ -31,6 +31,7 @@ class _ResultScreenState extends State<ResultScreen> {
   Timer? _failureIdleTimer;
   int _failureSecondsLeft = 0;
   bool _navigatingAway = false;
+  bool _retryingPrint = false;
 
   @override
   void initState() {
@@ -188,6 +189,25 @@ class _ResultScreenState extends State<ResultScreen> {
     Navigator.pushReplacementNamed(context, AppConstants.kRouteThankYou);
   }
 
+  Future<void> _retryPrint(ResultViewModel viewModel) async {
+    if (!mounted || _didNavigateToThankYou || _retryingPrint) return;
+    if (viewModel.fcmPaymentPushSuccess != true) return;
+    _retryingPrint = true;
+    try {
+      viewModel.clearError();
+      await viewModel.silentPrintToNetwork();
+      if (!mounted) return;
+      if (viewModel.hasError) {
+        AppSnackBar.showError(context, viewModel.errorMessage!);
+        return;
+      }
+      AppSnackBar.showSuccess(context, 'Print job sent successfully!');
+      await _navigateToThankYouIfEligible(viewModel);
+    } finally {
+      _retryingPrint = false;
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -274,6 +294,43 @@ class _ResultScreenState extends State<ResultScreen> {
                               const SizedBox(height: 10),
                               _buildPaymentCard(context, viewModel, appColors),
                               if (viewModel.hasError) _buildErrorBanner(viewModel),
+                              if (viewModel.fcmPaymentPushSuccess == true &&
+                                  viewModel.hasError) ...[
+                                const SizedBox(height: 14),
+                                CenteredMaxWidth(
+                                  maxWidth: 360,
+                                  child: SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.blue,
+                                        foregroundColor: Colors.white,
+                                        minimumSize:
+                                            const Size(double.infinity, 56),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 16,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(14),
+                                        ),
+                                        textStyle: const TextStyle(
+                                          fontSize: 17,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      onPressed: _retryingPrint
+                                          ? null
+                                          : () => _retryPrint(viewModel),
+                                      child: Text(
+                                        _retryingPrint
+                                            ? 'Retrying...'
+                                            : 'Retry print',
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 16),
                               CenteredMaxWidth(
                                 maxWidth: 360,

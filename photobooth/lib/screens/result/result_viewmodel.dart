@@ -418,7 +418,12 @@ class ResultViewModel extends ChangeNotifier {
       _fcmPaymentPushSuccess = true;
       _fcmPaymentStatusDetail = _fcmApprovedDetailText(payload);
       notifyListeners();
-      await silentPrintToNetwork();
+      try {
+        await silentPrintToNetwork().timeout(const Duration(minutes: 2));
+      } on TimeoutException {
+        _errorMessage =
+            'Printing is taking longer than expected. Please check the printer connection and try again.';
+      }
       notifyListeners();
       return;
     }
