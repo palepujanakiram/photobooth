@@ -1029,7 +1029,7 @@ class ApiService {
       return XFile(imageUrl);
     }
 
-    final resolvedUrl = _resolveImageUrl(imageUrl);
+    final resolvedUrl = _withSessionIdIfMissing(_resolveImageUrl(imageUrl));
 
     // Use the app's authenticated Dio instance (some image endpoints are protected and
     // can return 403 without auth headers). Override timeouts for large downloads.
@@ -1152,6 +1152,25 @@ class ApiService {
     final base = Uri.parse(AppConstants.kBaseUrl);
     // Uri.resolve handles leading slashes correctly.
     return base.resolve(compact).toString();
+  }
+
+  /// Adds session context for protected image endpoints when needed.
+  ///
+  /// Some backends protect generated images and require `sessionId` as a query param
+  /// (in addition to, or instead of, bearer auth). This keeps the client compatible
+  /// with both public and signed/protected URL modes.
+  static String _withSessionIdIfMissing(String url) {
+    final sessionId = SessionManager().sessionId;
+    if (sessionId == null || sessionId.isEmpty) return url;
+
+    final uri = Uri.tryParse(url);
+    if (uri == null) return url;
+    if (!uri.path.startsWith('/api/img/generated/')) return url;
+    if (uri.queryParameters.containsKey('sessionId')) return url;
+
+    final qp = Map<String, String>.from(uri.queryParameters);
+    qp['sessionId'] = sessionId;
+    return uri.replace(queryParameters: qp).toString();
   }
 
   /// Preprocesses image (validation, compression, person detection)
