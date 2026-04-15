@@ -629,6 +629,26 @@ class ApiService {
     }
   }
 
+  /// GET `/api/sessions/{sessionId}` — used to poll approval state when gateway is disabled.
+  Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
+    if (sessionId.trim().isEmpty) return null;
+    try {
+      final raw = await _apiClient.getSession(sessionId.trim());
+      if (raw is Map<String, dynamic>) return raw;
+      if (raw is Map) return Map<String, dynamic>.from(raw);
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      if (kDebugMode) {
+        AppLogger.debug('fetchSession: ${e.message}');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        AppLogger.debug('fetchSession: $e');
+      }
+    }
+    return null;
+  }
+
   /// POST /api/payment/initiate — returns payment link for UPI QR.
   Future<PaymentInitiateResult> initiatePayment({
     required String sessionId,

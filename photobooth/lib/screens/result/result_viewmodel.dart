@@ -160,10 +160,22 @@ class ResultViewModel extends ChangeNotifier {
   Future<void> loadPaymentQr({String? customerPhone}) async {
     if (_paymentInitInProgress || _paymentLink != null) return;
     if (!isPaymentGatewayEnabled) {
-      // Static QR mode: don't initiate gateway payments.
+      // Static QR mode: no gateway init/paymentId. Poll session for admin approval.
       _paymentInitError = null;
-      _paymentInitInProgress = false;
+      _activePaymentId = null;
+      _paymentPollTimer?.cancel();
+      _paymentPollTicks = 0;
+      _pollNullStreak = 0;
+      _paymentOutcomeHandled = false;
       notifyListeners();
+
+      final sessionId = _sessionManager.sessionId;
+      if (sessionId == null || sessionId.isEmpty) {
+        _paymentInitError = 'No session for payment. Go back and try again.';
+        notifyListeners();
+        return;
+      }
+      _startSessionApprovalPolling(sessionId);
       return;
     }
 
@@ -231,6 +243,102 @@ class ResultViewModel extends ChangeNotifier {
       _paymentPollInterval,
       _onPaymentPollTick,
     );
+  }
+
+  void _startSessionApprovalPolling(String sessionId) {
+    _paymentPollTimer?.cancel();
+    _paymentPollTicks = 0;
+    _pollNullStreak = 0;
+    _paymentPollTimer = Timer.periodic(
+      _paymentPollInterval,
+      (t) => _onSessionPollTick(t, sessionId),
+    );
+  }
+
+  Future<void> _onSessionPollTick(Timer t, String sessionId) async {
+    if (_paymentOutcomeHandled) {
+      t.cancel();
+      return;
+    }
+    if (++_paymentPollTicks > 180) {
+      // 12 minutes max.
+      t.cancel();
+      return;
+    }
+
+    final raw = await _apiService.fetchSession(sessionId);
+    if (_paymentOutcomeHandled) {
+      t.cancel();
+      return;
+    }
+    if (raw == null) {
+      if (++_pollNullStreak >= 8) {
+        t.cancel();
+      }
+      return;
+    }
+    _pollNullStreak = 0;
+
+    final verdict = _verdictFromSession(raw);
+    switch (verdict) {
+      case _PollVerdict.approved:
+        t.cancel();
+        await onFcmPaymentPush(
+          PaymentPushPayload(
+            type: PaymentPushCoordinator.typeApproved,
+            paymentId: sessionId,
+            title: 'Payment confirmed',
+            body: 'Payment approved. Printing...',
+          ),
+        );
+      case _PollVerdict.failed:
+        t.cancel();
+        await onFcmPaymentPush(
+          PaymentPushPayload(
+            type: PaymentPushCoordinator.typeFailed,
+            paymentId: sessionId,
+            title: 'Payment not completed',
+            body: 'Payment failed. Try again or use another method.',
+          ),
+        );
+      case _PollVerdict.pending:
+      case null:
+        break;
+    }
+  }
+
+  static _PollVerdict? _verdictFromSession(Map<String, dynamic> raw) {
+    dynamic pick(List<String> keys) {
+      for (final k in keys) {
+        if (raw.containsKey(k)) return raw[k];
+      }
+      return null;
+    }
+
+    final paidFlag = pick(const [
+      'paymentApproved',
+      'payment_approved',
+      'isPaid',
+      'paid',
+      'paymentConfirmed',
+    ]);
+    if (paidFlag is bool) {
+      return paidFlag ? _PollVerdict.approved : _PollVerdict.pending;
+    }
+
+    final status = pick(const [
+      'paymentStatus',
+      'payment_status',
+      'status',
+    ])?.toString().trim().toUpperCase();
+    if (status == null || status.isEmpty) return null;
+    if (status == 'APPROVED' || status == 'PAID' || status == 'CONFIRMED') {
+      return _PollVerdict.approved;
+    }
+    if (status == 'FAILED' || status == 'DECLINED' || status == 'REJECTED') {
+      return _PollVerdict.failed;
+    }
+    return _PollVerdict.pending;
   }
 
   Future<void> _onPaymentPollTick(Timer t) async {
