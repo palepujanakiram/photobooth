@@ -1050,7 +1050,7 @@ class ApiService {
 
     onProgress?.call('Downloading result...');
     int lastReportedPercent = -1;
-    try {
+    Future<void> attemptDownload({required Map<String, dynamic>? headers}) async {
       await dio.download(
         resolvedUrl,
         (file as dynamic).path,
@@ -1064,19 +1064,50 @@ class ApiService {
             onProgress?.call('Downloading result... $percent%');
           }
         },
-        options: Options(
-          // Ensure we send the same auth headers as normal API calls.
-          headers: dio.options.headers,
-          // Keep default status validation (non-2xx throws), but we will surface a better message below.
-        ),
+        options: Options(headers: headers),
         deleteOnError: true,
       );
+    }
+
+    try {
+      // First attempt: authenticated headers (some endpoints require this).
+      await attemptDownload(headers: dio.options.headers);
     } on DioException catch (e) {
       final status = e.response?.statusCode;
       final body = e.response?.data;
-      AppLogger.debug('❌ Image download failed ($status): $body');
+      AppLogger.debug('❌ Image download failed ($status) for $resolvedUrl: $body');
+
+      // Some image/CDN endpoints reject bearer headers and respond with 403.
+      // Retry once without Authorization before surfacing the error.
+      if (status == 403) {
+        try {
+          final unauthHeaders = Map<String, dynamic>.from(dio.options.headers);
+          unauthHeaders.remove('Authorization');
+          unauthHeaders.remove('authorization');
+          lastReportedPercent = -1;
+          onProgress?.call('Retrying download...');
+          try {
+            if ((file as dynamic).existsSync()) {
+              await (file as dynamic).delete();
+            }
+          } catch (_) {}
+          await attemptDownload(headers: unauthHeaders);
+          return XFile((file as dynamic).path);
+        } on DioException catch (retry) {
+          final rStatus = retry.response?.statusCode;
+          final rBody = retry.response?.data;
+          AppLogger.debug(
+            '❌ Image download retry (no auth) failed ($rStatus) for $resolvedUrl: $rBody',
+          );
+          throw ApiException(
+            'Failed to download image (${rStatus ?? status ?? "unknown"}): ${rBody ?? body ?? retry.message ?? retry}\nURL: $resolvedUrl',
+            rStatus ?? status,
+          );
+        }
+      }
+
       throw ApiException(
-        'Failed to download image (${status ?? "unknown"}): ${body ?? e.message ?? e}',
+        'Failed to download image (${status ?? "unknown"}): ${body ?? e.message ?? e}\nURL: $resolvedUrl',
         status,
       );
     } finally {

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'result_viewmodel.dart';
 import '../../services/app_settings_manager.dart';
@@ -335,6 +336,7 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   Widget _buildErrorBanner(ResultViewModel viewModel) {
+    final message = viewModel.errorMessage ?? 'Unknown error';
     return Container(
       margin: const EdgeInsets.only(top: 16),
       padding: const EdgeInsets.all(12),
@@ -342,25 +344,75 @@ class _ResultScreenState extends State<ResultScreen> {
         color: Colors.red.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(
-            CupertinoIcons.exclamationmark_triangle,
-            color: Colors.red,
-            size: 20,
+          Row(
+            children: [
+              const Icon(
+                CupertinoIcons.exclamationmark_triangle,
+                color: Colors.red,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Error',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () => viewModel.clearError(),
+                icon:
+                    const Icon(CupertinoIcons.xmark, color: Colors.red, size: 18),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              viewModel.errorMessage!,
-              style: const TextStyle(color: Colors.red, fontSize: 13),
+          const SizedBox(height: 8),
+          Container(
+            constraints: const BoxConstraints(maxHeight: 160),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.red.withValues(alpha: 0.25)),
+            ),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                message,
+                style: const TextStyle(
+                  color: Colors.red,
+                  fontSize: 12,
+                  height: 1.25,
+                ),
+              ),
             ),
           ),
-          IconButton(
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            onPressed: () => viewModel.clearError(),
-            icon: const Icon(CupertinoIcons.xmark, color: Colors.red, size: 18),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: message));
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Copied error details')),
+                );
+              },
+              icon: const Icon(CupertinoIcons.doc_on_doc, size: 16),
+              label: const Text('Copy'),
+            ),
           ),
         ],
       ),
