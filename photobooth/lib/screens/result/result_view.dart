@@ -31,6 +31,7 @@ class _ResultScreenState extends State<ResultScreen> {
   Timer? _failureIdleTimer;
   int _failureSecondsLeft = 0;
   bool _navigatingAway = false;
+  bool _manualPrintInProgress = false;
 
   @override
   void initState() {
@@ -188,6 +189,30 @@ class _ResultScreenState extends State<ResultScreen> {
     Navigator.pushReplacementNamed(context, AppConstants.kRouteThankYou);
   }
 
+  Future<void> _manualPrintAndFinish(ResultViewModel viewModel) async {
+    if (!mounted || _didNavigateToThankYou || _manualPrintInProgress) return;
+    _manualPrintInProgress = true;
+    try {
+      await viewModel.silentPrintToNetwork();
+      if (!mounted) return;
+      if (viewModel.hasError) {
+        AppSnackBar.showError(context, viewModel.errorMessage ?? 'Print failed');
+        return;
+      }
+      AppSnackBar.showSuccess(context, 'Print job sent successfully!');
+      _didNavigateToThankYou = true;
+      try {
+        await viewModel.privacyWipeLocal();
+      } catch (e, st) {
+        AppLogger.debug('Privacy wipe (thankyou) failed: $e\n$st');
+      }
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, AppConstants.kRouteThankYou);
+    } finally {
+      _manualPrintInProgress = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final appColors = AppColors.of(context);
@@ -273,6 +298,42 @@ class _ResultScreenState extends State<ResultScreen> {
                               const SizedBox(height: 10),
                               _buildPaymentCard(context, viewModel, appColors),
                               if (viewModel.hasError) _buildErrorBanner(viewModel),
+                              if (!viewModel.isPaymentGatewayEnabled) ...[
+                                const SizedBox(height: 14),
+                                CenteredMaxWidth(
+                                  maxWidth: 360,
+                                  child: SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.blue,
+                                        foregroundColor: Colors.white,
+                                        minimumSize:
+                                            const Size(double.infinity, 56),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 16,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(14),
+                                        ),
+                                        textStyle: const TextStyle(
+                                          fontSize: 17,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      onPressed: _manualPrintInProgress
+                                          ? null
+                                          : () => _manualPrintAndFinish(viewModel),
+                                      child: Text(
+                                        _manualPrintInProgress
+                                            ? 'Printing...'
+                                            : 'Print',
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 16),
                               CenteredMaxWidth(
                                 maxWidth: 360,
@@ -543,21 +604,25 @@ class _ResultScreenState extends State<ResultScreen> {
               ),
               const SizedBox(height: 10),
               Text(
-                viewModel.fcmPaymentPushSuccess == false
-                    ? 'Payment failed. Please try again.\nYou will return to start automatically.'
-                    : viewModel.fcmPaymentPushSuccess == true
-                        ? 'Payment confirmed. Printing...'
-                        : 'Waiting for payment confirmation...',
+                !viewModel.isPaymentGatewayEnabled
+                    ? 'After payment is completed, tap Print to continue.'
+                    : (viewModel.fcmPaymentPushSuccess == false
+                        ? 'Payment failed. Please try again.\nYou will return to start automatically.'
+                        : viewModel.fcmPaymentPushSuccess == true
+                            ? 'Payment confirmed. Printing...'
+                            : 'Waiting for payment confirmation...'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13,
                   height: 1.35,
                   fontWeight: FontWeight.w600,
-                  color: viewModel.fcmPaymentPushSuccess == false
-                      ? Colors.red.shade200
-                      : (viewModel.fcmPaymentPushSuccess == true
-                          ? Colors.green.shade200
-                          : Colors.white.withValues(alpha: 0.85)),
+                  color: !viewModel.isPaymentGatewayEnabled
+                      ? Colors.white.withValues(alpha: 0.85)
+                      : (viewModel.fcmPaymentPushSuccess == false
+                          ? Colors.red.shade200
+                          : (viewModel.fcmPaymentPushSuccess == true
+                              ? Colors.green.shade200
+                              : Colors.white.withValues(alpha: 0.85))),
                 ),
               ),
               if (viewModel.fcmPaymentPushSuccess == false &&
