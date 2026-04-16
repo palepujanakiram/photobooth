@@ -21,6 +21,8 @@ import 'screens/photo_generate/photo_generate_view.dart';
 import 'screens/photo_review/photo_review_view.dart';
 import 'screens/result/result_view.dart';
 import 'screens/thank_you/thank_you_view.dart';
+import 'screens/staff/staff_login_view.dart';
+import 'screens/staff/staff_payments_view.dart';
 import 'utils/app_runtime_config.dart';
 import 'utils/constants.dart';
 import 'utils/logger.dart';
@@ -409,6 +411,9 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
           AppConstants.kRouteReview: (context) => const PhotoReviewScreen(),
           AppConstants.kRouteResult: (context) => const ResultScreen(),
           AppConstants.kRouteThankYou: (context) => const ThankYouScreen(),
+          AppConstants.kRouteStaffLogin: (context) => const StaffLoginScreen(),
+          AppConstants.kRouteStaffPayments: (context) =>
+              const StaffPaymentsScreen(),
           AppConstants.kRouteWebView: (context) => WebViewScreen.fromRouteSettings(
                 ModalRoute.of(context)?.settings,
               ),
