@@ -224,6 +224,17 @@ class _ResultScreenState extends State<ResultScreen> {
       value: _viewModel!,
       child: Consumer2<ResultViewModel, AppSettingsManager>(
         builder: (context, viewModel, _, child) {
+          // Approval can arrive via FCM *or* polling (session/payment status). When polling
+          // drives the state, we still need to auto-advance once printing completes.
+          if (!_didNavigateToThankYou &&
+              viewModel.fcmPaymentPushSuccess == true &&
+              !viewModel.hasError &&
+              !viewModel.isPrinting) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              unawaited(_navigateToThankYouIfEligible(viewModel));
+            });
+          }
           return Scaffold(
             backgroundColor: Colors.transparent,
             extendBodyBehindAppBar: true,
