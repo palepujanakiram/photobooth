@@ -207,6 +207,10 @@ class AppConstants {
   /// `arguments`: a URL [String], or a [Map] with `url` ([String]).
   static const String kRouteWebView = '/webview';
 
+  // Staff routes
+  static const String kRouteStaffLogin = '/staff/login';
+  static const String kRouteStaffPayments = '/staff/payments';
+
   // Error Messages
   static const String kErrorCameraPermission = 'Camera permission denied';
   static const String kErrorCameraInitialization =

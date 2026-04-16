@@ -716,6 +716,28 @@ class _AppSplashScreenState extends State<AppSplashScreen>
                                         ),
                                       ),
                                     ),
+                                    const SizedBox(height: 14),
+                                    CupertinoButton(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 14,
+                                      ),
+                                      color: CupertinoColors.systemGrey
+                                          .resolveFrom(context)
+                                          .withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(12),
+                                      onPressed: _busy
+                                          ? null
+                                          : () => Navigator.of(context)
+                                              .pushNamed(AppConstants.kRouteStaffLogin),
+                                      child: Text(
+                                        'Staff login',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w800,
+                                          color: appColors.textColor,
+                                        ),
+                                      ),
+                                    ),
                                     ],
                                   ],
                                 ],
