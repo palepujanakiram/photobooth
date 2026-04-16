@@ -39,18 +39,20 @@ class ImageCacheService {
     final uri = Uri.parse(imageUrl);
     final normalizedUrl = '${uri.scheme}://${uri.host}${uri.path}';
     
-    // Create a safe filename from normalized URL
-    final bytes = utf8.encode(normalizedUrl);
-    final hash = bytes.fold<int>(0, (prev, byte) => prev + byte);
-    // Use a combination of hash and normalized URL length for better uniqueness
-    final urlHash = '${hash.toRadixString(36)}_${normalizedUrl.length}';
+    // Create a safe, collision-resistant filename from normalized URL.
+    //
+    // The previous implementation used a simple byte-sum hash which can collide,
+    // causing a theme to display another theme's cached image.
+    final b64 = base64UrlEncode(utf8.encode(normalizedUrl)).replaceAll('=', '');
+    // Avoid overly long filenames (most filesystems cap at 255 bytes).
+    final safeKey = b64.length <= 140 ? b64 : '${b64.substring(0, 70)}_${b64.substring(b64.length - 70)}';
     
     // Get extension from URL path or default to jpg
     final extension = path.extension(uri.path).isEmpty 
         ? '.jpg' 
         : path.extension(uri.path);
     
-    return path.join(_cacheDir!.path, '$urlHash$extension');
+    return path.join(_cacheDir!.path, '${normalizedUrl.length}_$safeKey$extension');
   }
 
   /// Check if image is cached

@@ -299,7 +299,7 @@ class ApiService {
     try {
       // Kiosk-aware themes: pass kiosk identifiers when available.
       // Backend may ignore these params if not implemented; safe no-op.
-      final kioskCode = await KioskManager().getKioskCode();
+      final kioskCode = (await KioskManager().getKioskCode())?.trim().toUpperCase();
       final kioskId = SessionManager().currentSession?.kioskId;
 
       final qp = <String, dynamic>{};
