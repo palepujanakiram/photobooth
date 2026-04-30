@@ -16,6 +16,7 @@ import '../../views/widgets/theme_background.dart';
 import '../../views/widgets/payment_link_qr.dart';
 import '../../services/payment_push_coordinator.dart';
 import '../../utils/route_args.dart';
+import '../../models/kiosk_share_link_model.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -170,6 +171,7 @@ class _ResultScreenState extends State<ResultScreen> {
     } catch (e, st) {
       AppLogger.debug('Privacy wipe (start) failed: $e\n$st');
     }
+    if (!mounted) return;
     Navigator.pushNamedAndRemoveUntil(
       context,
       AppConstants.kRouteTerms,
@@ -181,12 +183,27 @@ class _ResultScreenState extends State<ResultScreen> {
     if (!mounted || _didNavigateToThankYou) return;
     if (viewModel.fcmPaymentPushSuccess != true || viewModel.hasError) return;
     _didNavigateToThankYou = true;
+    KioskShareLinkModel? share;
     try {
-      await viewModel.privacyWipeLocal();
+      // Mint share link before wiping local session (ThankYou screen needs only the URL).
+      share = await viewModel.mintCustomerShareLink();
     } catch (e, st) {
-      AppLogger.debug('Privacy wipe (thankyou) failed: $e\n$st');
+      AppLogger.debug('Share link mint failed: $e\n$st');
     }
-    Navigator.pushReplacementNamed(context, AppConstants.kRouteThankYou);
+    if (!mounted) return;
+    // Keep the session alive for a short window so operators can print/share.
+    // QrShareScreen will wipe locally and reset back to Terms after 60s.
+    Navigator.pushReplacementNamed(
+      context,
+      AppConstants.kRouteQrShare,
+      arguments: QrShareArgs(
+        generatedImages: viewModel.generatedImages,
+        originalPhoto: viewModel.originalPhoto,
+        shareUrl: share?.url,
+        shareLongUrl: share?.longUrl,
+        shareExpiresAt: share?.expiresAt,
+      ),
+    );
   }
 
   Future<void> _retryPrint(ResultViewModel viewModel) async {
@@ -253,11 +270,11 @@ class _ResultScreenState extends State<ResultScreen> {
                   fontSize: 22,
                 ),
               ),
-              bottom: PreferredSize(
+              bottom: const PreferredSize(
                 // Give the subtitle enough height on tablets / large text scales
                 // so it never collides with the title.
-                preferredSize: const Size.fromHeight(22),
-                child: const Padding(
+                preferredSize: Size.fromHeight(22),
+                child: Padding(
                   padding: EdgeInsets.only(bottom: 6),
                   child: Text(
                     'Scan to complete your purchase',
@@ -473,9 +490,10 @@ class _ResultScreenState extends State<ResultScreen> {
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
                 await Clipboard.setData(ClipboardData(text: message));
                 if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   const SnackBar(content: Text('Copied error details')),
                 );
               },

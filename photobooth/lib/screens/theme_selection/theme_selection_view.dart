@@ -63,7 +63,8 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
 
   void _startCarouselTimer(ThemeViewModel viewModel) {
     _carouselTimer?.cancel();
-    _carouselTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) {
+    _carouselTimer =
+        Timer.periodic(AppConstants.kThemeCarouselAutoScrollInterval, (_) {
       if (!mounted) return;
       if (_isAutoScrollPaused) return;
       final list = viewModel.filteredThemes;
@@ -78,33 +79,43 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     });
   }
 
+  /// Restarts the periodic timer so the next auto-advance is a full interval away
+  /// (e.g. after user idle time ends).
+  void _restartCarouselTimer(ThemeViewModel viewModel) {
+    final count = viewModel.filteredThemes.length;
+    if (count <= 1) {
+      _lastCarouselThemeCount = count;
+      _stopCarouselTimer();
+      return;
+    }
+    _lastCarouselThemeCount = count;
+    _startCarouselTimer(viewModel);
+  }
+
   void _stopCarouselTimer() {
     _carouselTimer?.cancel();
     _carouselTimer = null;
   }
 
-  void _pauseAutoScrollTemporarily() {
+  void _pauseAutoScrollTemporarily(ThemeViewModel viewModel) {
     _isAutoScrollPaused = true;
     _autoScrollResumeTimer?.cancel();
     _autoScrollResumeTimer = Timer(
       AppConstants.kThemeCarouselAutoScrollPauseDuration,
       () {
-      if (!mounted) return;
-      setState(() {
-        _isAutoScrollPaused = false;
-      });
-    },
+        if (!mounted) return;
+        setState(() {
+          _isAutoScrollPaused = false;
+        });
+        if (!viewModel.useCardGridLayout) {
+          _restartCarouselTimer(viewModel);
+        }
+      },
     );
   }
 
   void _clearArmedSelection(ThemeViewModel viewModel) {
-    _autoScrollResumeTimer?.cancel();
     viewModel.clearArmedTheme();
-    if (mounted) {
-      setState(() {
-        _isAutoScrollPaused = false;
-      });
-    }
   }
 
   void _syncCarouselTimer(ThemeViewModel viewModel) {
@@ -243,7 +254,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
               viewModel.setCarouselIndex(index);
               viewModel.selectTheme(theme);
               viewModel.armTheme(theme);
-              _pauseAutoScrollTemporarily();
+              _pauseAutoScrollTemporarily(viewModel);
               Navigator.of(context).pop();
             },
           );
@@ -668,7 +679,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                   viewModel.setCarouselIndex(index);
                   viewModel.selectTheme(theme);
                   viewModel.armTheme(theme);
-                  _pauseAutoScrollTemporarily();
+                  _pauseAutoScrollTemporarily(viewModel);
                 },
                 onPreview: () => _openThemePreview(context, viewModel, theme, index),
                 showSelectedLabel: _addOneMoreStyle &&
@@ -800,7 +811,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                   if (isCurrentCenter) {
                                     viewModel.selectTheme(theme);
                                     viewModel.armTheme(theme);
-                                    _pauseAutoScrollTemporarily();
+                                    _pauseAutoScrollTemporarily(viewModel);
                                     return;
                                   }
                                   _clearArmedSelection(viewModel);
@@ -811,6 +822,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                     duration: const Duration(milliseconds: 400),
                                     curve: Curves.easeOut,
                                   );
+                                  _pauseAutoScrollTemporarily(viewModel);
                                 },
                                 onPreview: () => _openThemePreview(context, viewModel, theme, index),
                                 showSelectedLabel: _addOneMoreStyle &&
@@ -901,6 +913,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                             duration: const Duration(milliseconds: 300),
                             curve: Curves.easeOut,
                           );
+                          _pauseAutoScrollTemporarily(viewModel);
                         },
                         child: Container(
                           width: _thumbWidth,

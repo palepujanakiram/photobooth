@@ -147,6 +147,7 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
       const createSessionTimeout = Duration(seconds: 30);
       final response = await _apiService.acceptTermsAndCreateSession(
         kioskCode: kioskCode,
+        source: kIsWeb ? 'web' : 'mobile',
       ).timeout(
         createSessionTimeout,
         onTimeout: () => throw TimeoutException(

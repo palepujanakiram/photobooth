@@ -92,6 +92,17 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       return;
     }
 
+    // On web, allow the booth to provision itself via URL query, e.g.
+    // `...?kioskCode=ABCD&source=kiosk` so analytics can distinguish kiosk vs web.
+    if (kIsWeb) {
+      final qp = Uri.base.queryParameters;
+      final fromUrl = (qp['kioskCode'] ?? qp['code'] ?? '').trim().toUpperCase();
+      if (fromUrl.isNotEmpty) {
+        await _kiosk.setKioskCode(fromUrl);
+        SessionManager().clearSession();
+      }
+    }
+
     final raw = await _kiosk.getKioskCode();
     final trimmed = (raw ?? '').trim();
     if (!mounted) return;
