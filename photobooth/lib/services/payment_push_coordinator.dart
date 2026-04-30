@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'fcm_payment_pending_store.dart';
+import '../utils/logger.dart';
 
 /// Payload from FCM `data` + optional `notification` for payment updates.
 ///
@@ -64,7 +65,7 @@ class PaymentPushPayload {
   }) {
     final flat = _flattenFcmData(data);
     if (kDebugMode) {
-      debugPrint('FCM flat data: $flat');
+      AppLogger.debug('FCM flat data: $flat');
     }
 
     var type = _resolveTypeFromFields(flat);
@@ -290,7 +291,7 @@ class PaymentPushCoordinator {
       name: 'fotozen.fcm',
     );
     if (kDebugMode) {
-      debugPrint(
+      AppLogger.debug(
         'FCM rx messageId=${message.messageId} '
         'collapse=${message.collapseKey} data=${message.data} '
         'title=${message.notification?.title}',
@@ -318,7 +319,7 @@ class PaymentPushCoordinator {
     }
 
     if (kDebugMode) {
-      debugPrint(
+      AppLogger.debug(
         'FCM flush pending from storage keys=${data.keys.toList()} '
         'title=$title',
       );
@@ -336,7 +337,7 @@ class PaymentPushCoordinator {
         name: 'fotozen.fcm',
       );
       if (kDebugMode) {
-        debugPrint(
+        AppLogger.debug(
           'FCM flush: stored pending is not a payment payload; see fotozen.fcm log',
         );
       }
@@ -359,7 +360,7 @@ class PaymentPushCoordinator {
   }) {
     if (!_isPaymentPayload(payload)) {
       if (kDebugMode) {
-        debugPrint(
+        AppLogger.debug(
           'FCM: push arrived but not handled as payment — type="${payload.type}" '
           'title="${payload.title}" body="${payload.body}" dataKeys=${dataKeys ?? []}. '
           'Add `type`/`status` in `data`, or notification text mentioning payment success/fail.',
@@ -370,12 +371,12 @@ class PaymentPushCoordinator {
 
     final id = payload.paymentId;
     if (id != null && id.isNotEmpty && id == _lastHandledPaymentId) {
-      debugPrint('FCM: duplicate paymentId ignored: $id');
+      AppLogger.debug('FCM: duplicate paymentId ignored: $id');
       return true;
     }
 
     if (kDebugMode) {
-      debugPrint(
+      AppLogger.debug(
         'FCM payment → type=${payload.type} paymentId=${payload.paymentId} '
         'callback=${_resultScreenCallback != null}',
       );
@@ -391,7 +392,7 @@ class PaymentPushCoordinator {
 
     final ctx = _navigatorKey?.currentContext;
     if (ctx == null || !ctx.mounted) {
-      debugPrint(
+      AppLogger.debug(
         'FCM: no navigator context for payment dialog — will retry when ready',
       );
       return false;

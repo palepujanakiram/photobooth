@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 
 import '../utils/constants.dart';
+import '../utils/logger.dart';
 
 /// Service for caching theme images to disk for persistent storage
 class ImageCacheService {
@@ -39,18 +39,20 @@ class ImageCacheService {
     final uri = Uri.parse(imageUrl);
     final normalizedUrl = '${uri.scheme}://${uri.host}${uri.path}';
     
-    // Create a safe filename from normalized URL
-    final bytes = utf8.encode(normalizedUrl);
-    final hash = bytes.fold<int>(0, (prev, byte) => prev + byte);
-    // Use a combination of hash and normalized URL length for better uniqueness
-    final urlHash = '${hash.toRadixString(36)}_${normalizedUrl.length}';
+    // Create a safe, collision-resistant filename from normalized URL.
+    //
+    // The previous implementation used a simple byte-sum hash which can collide,
+    // causing a theme to display another theme's cached image.
+    final b64 = base64UrlEncode(utf8.encode(normalizedUrl)).replaceAll('=', '');
+    // Avoid overly long filenames (most filesystems cap at 255 bytes).
+    final safeKey = b64.length <= 140 ? b64 : '${b64.substring(0, 70)}_${b64.substring(b64.length - 70)}';
     
     // Get extension from URL path or default to jpg
     final extension = path.extension(uri.path).isEmpty 
         ? '.jpg' 
         : path.extension(uri.path);
     
-    return path.join(_cacheDir!.path, '$urlHash$extension');
+    return path.join(_cacheDir!.path, '${normalizedUrl.length}_$safeKey$extension');
   }
 
   /// Check if image is cached
@@ -70,7 +72,7 @@ class ImageCacheService {
 
       return true;
     } catch (e) {
-      debugPrint('Error checking cache: $e');
+      AppLogger.debug('ImageCacheService: error checking cache: $e');
       return false;
     }
   }
@@ -86,7 +88,7 @@ class ImageCacheService {
       }
       return null;
     } catch (e) {
-      debugPrint('Error getting cached file: $e');
+      AppLogger.debug('ImageCacheService: error getting cached file: $e');
       return null;
     }
   }
@@ -101,7 +103,7 @@ class ImageCacheService {
       }
 
       // Download image
-      debugPrint('Downloading and caching image: $imageUrl');
+      AppLogger.debug('ImageCacheService: downloading and caching image: $imageUrl');
       final response = await http.get(Uri.parse(imageUrl)).timeout(
         const Duration(seconds: 30),
         onTimeout: () {
@@ -120,10 +122,10 @@ class ImageCacheService {
       // Check cache size and clean if needed
       await _cleanCacheIfNeeded();
 
-      debugPrint('Image cached successfully: ${cacheFile.path}');
+      AppLogger.debug('ImageCacheService: image cached successfully: ${cacheFile.path}');
       return cacheFile;
     } catch (e) {
-      debugPrint('Error caching image: $e');
+      AppLogger.debug('ImageCacheService: error caching image: $e');
       return null;
     }
   }
@@ -158,7 +160,7 @@ class ImageCacheService {
         }
       }
 
-      const maxSizeBytes =
+      final maxSizeBytes =
           AppConstants.kThemeDiskCacheMaxSizeMB * 1024 * 1024;
       
       if (totalSize > maxSizeBytes) {
@@ -174,15 +176,15 @@ class ImageCacheService {
             if (await info.file.exists()) {
               await info.file.delete();
               currentSize -= info.stat.size;
-              debugPrint('Deleted old cache file: ${info.file.path}');
+              AppLogger.debug('ImageCacheService: deleted old cache file: ${info.file.path}');
             }
           } catch (e) {
-            debugPrint('Error deleting cache file: $e');
+            AppLogger.debug('ImageCacheService: error deleting cache file: $e');
           }
         }
       }
     } catch (e) {
-      debugPrint('Error cleaning cache: $e');
+      AppLogger.debug('ImageCacheService: error cleaning cache: $e');
     }
   }
 
@@ -194,10 +196,10 @@ class ImageCacheService {
       if (await _cacheDir!.exists()) {
         await _cacheDir!.delete(recursive: true);
         await _cacheDir!.create(recursive: true);
-        debugPrint('Cache cleared');
+        AppLogger.debug('ImageCacheService: cache cleared');
       }
     } catch (e) {
-      debugPrint('Error clearing cache: $e');
+      AppLogger.debug('ImageCacheService: error clearing cache: $e');
     }
   }
 
@@ -218,7 +220,7 @@ class ImageCacheService {
       
       return totalSize;
     } catch (e) {
-      debugPrint('Error getting cache size: $e');
+      AppLogger.debug('ImageCacheService: error getting cache size: $e');
       return 0;
     }
   }

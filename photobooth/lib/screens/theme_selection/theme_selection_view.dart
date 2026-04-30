@@ -16,8 +16,12 @@ import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/bottom_safe_area.dart';
+import '../../views/widgets/falling_starfield_background.dart';
+import '../../views/widgets/centered_max_width.dart';
 import '../../services/theme_manager.dart';
 import 'theme_model.dart';
+import 'theme_preview_screen.dart';
+import '../../utils/route_args.dart';
 
 class ThemeSelectionScreen extends StatefulWidget {
   const ThemeSelectionScreen({super.key});
@@ -41,8 +45,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   bool _thumbScrollLayoutDone = false;
   int _lastCarouselThemeCount = 0;
   bool _isAutoScrollPaused = false;
-  String? _armedThemeId;
-  String? _pendingArmThemeId;
   /// Tracks [PageController.viewportFraction] so we can rebuild when phone vs tablet layout changes.
   double? _carouselViewportFraction;
 
@@ -61,7 +63,8 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
 
   void _startCarouselTimer(ThemeViewModel viewModel) {
     _carouselTimer?.cancel();
-    _carouselTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) {
+    _carouselTimer =
+        Timer.periodic(AppConstants.kThemeCarouselAutoScrollInterval, (_) {
       if (!mounted) return;
       if (_isAutoScrollPaused) return;
       final list = viewModel.filteredThemes;
@@ -76,40 +79,43 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     });
   }
 
+  /// Restarts the periodic timer so the next auto-advance is a full interval away
+  /// (e.g. after user idle time ends).
+  void _restartCarouselTimer(ThemeViewModel viewModel) {
+    final count = viewModel.filteredThemes.length;
+    if (count <= 1) {
+      _lastCarouselThemeCount = count;
+      _stopCarouselTimer();
+      return;
+    }
+    _lastCarouselThemeCount = count;
+    _startCarouselTimer(viewModel);
+  }
+
   void _stopCarouselTimer() {
     _carouselTimer?.cancel();
     _carouselTimer = null;
   }
 
-  void _pauseAutoScrollTemporarily() {
+  void _pauseAutoScrollTemporarily(ThemeViewModel viewModel) {
     _isAutoScrollPaused = true;
     _autoScrollResumeTimer?.cancel();
     _autoScrollResumeTimer = Timer(
       AppConstants.kThemeCarouselAutoScrollPauseDuration,
       () {
-      if (!mounted) return;
-      setState(() {
-        _isAutoScrollPaused = false;
-        _armedThemeId = null;
-      });
-    },
+        if (!mounted) return;
+        setState(() {
+          _isAutoScrollPaused = false;
+        });
+        if (!viewModel.useCardGridLayout) {
+          _restartCarouselTimer(viewModel);
+        }
+      },
     );
   }
 
-  void _clearArmedSelection() {
-    if (_armedThemeId == null &&
-        _pendingArmThemeId == null &&
-        !_isAutoScrollPaused) {
-      return;
-    }
-    _autoScrollResumeTimer?.cancel();
-    if (mounted) {
-      setState(() {
-        _armedThemeId = null;
-        _pendingArmThemeId = null;
-        _isAutoScrollPaused = false;
-      });
-    }
+  void _clearArmedSelection(ThemeViewModel viewModel) {
+    viewModel.clearArmedTheme();
   }
 
   void _syncCarouselTimer(ThemeViewModel viewModel) {
@@ -149,20 +155,18 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         viewModel.updateFromCache();
       }
       viewModel.loadThemes();
+      viewModel.loadLayoutPreference();
     });
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final args = ModalRoute.of(context)?.settings.arguments;
-    if (args != null && args is Map) {
-      final photo = args['photo'] as PhotoModel?;
-      final addOneMore = args['addOneMoreStyle'] == true;
-      final used = args['usedThemeIds'];
-      final usedIds = used is List
-          ? used.map((e) => e.toString()).toList()
-          : <String>[];
+    final parsed = ThemeSelectionArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
+    if (parsed != null) {
+      final photo = parsed.photo;
+      final addOneMore = parsed.addOneMoreStyle;
+      final usedIds = parsed.usedThemeIds;
       if (_photoFromCapture != photo ||
           _addOneMoreStyle != addOneMore ||
           _usedThemeIds.length != usedIds.length ||
@@ -177,7 +181,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
 
   Future<void> _onContinue(
       BuildContext context, ThemeViewModel viewModel) async {
-    final selectedTheme = viewModel.selectedTheme;
+    final selectedTheme = viewModel.armedTheme ?? viewModel.selectedTheme;
     if (selectedTheme == null) return;
 
     if (_addOneMoreStyle) {
@@ -221,15 +225,52 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         if (mounted) setState(() => _isGenerating = false);
       }
     } else {
-      Navigator.pushNamed(currentContext, AppConstants.kRouteCapture).then((result) {
-        if (!mounted || !currentContext.mounted || result == null || result is! PhotoModel) return;
-        Navigator.pushReplacementNamed(
-          currentContext,
-          AppConstants.kRouteHome,
-          arguments: {'photo': result},
-        );
-      });
+      final result = await Navigator.pushNamed(
+        currentContext,
+        AppConstants.kRouteCapture,
+      );
+      if (!mounted || !currentContext.mounted) return;
+      if (result == null || result is! PhotoModel) return;
+      setState(() => _photoFromCapture = result);
     }
+  }
+
+  Future<void> _openThemePreview(
+    BuildContext context,
+    ThemeViewModel viewModel,
+    ThemeModel theme,
+    int index,
+  ) async {
+    final imageUrl = ThemePreviewScreen.resolveSampleImageUrl(theme);
+    await Navigator.of(context).push<void>(
+      PageRouteBuilder<void>(
+        opaque: false,
+        barrierColor: Colors.black.withValues(alpha: 0.85),
+        pageBuilder: (_, __, ___) {
+          return ThemePreviewScreen(
+            theme: theme,
+            imageUrl: imageUrl,
+            onSelect: () {
+              viewModel.setCarouselIndex(index);
+              viewModel.selectTheme(theme);
+              viewModel.armTheme(theme);
+              _pauseAutoScrollTemporarily(viewModel);
+              Navigator.of(context).pop();
+            },
+          );
+        },
+        transitionsBuilder: (_, animation, __, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: child,
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -238,12 +279,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         MediaQuery.orientationOf(context) == Orientation.landscape;
 
     return PopScope(
-      canPop: _addOneMoreStyle,
-      onPopInvokedWithResult: (bool didPop, dynamic result) {
-        if (!didPop && !_addOneMoreStyle) {
-          Navigator.pushNamed(context, AppConstants.kRouteTerms);
-        }
-      },
+      canPop: true,
       child: Stack(
         children: [
           Scaffold(
@@ -258,25 +294,63 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
               centerTitle: true,
               iconTheme: const IconThemeData(color: Colors.white),
               title: const Text(
-                'Select a theme',
+                'PICK',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
-                  fontSize: 17,
+                  fontSize: 22,
+                ),
+              ),
+              bottom: const PreferredSize(
+                preferredSize: Size.fromHeight(22),
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    'Choose a style that speaks to you',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
               leading: IconButton(
                 icon: const Icon(CupertinoIcons.back, color: Colors.white),
-                onPressed: () {
-                  if (_addOneMoreStyle) {
-                    Navigator.of(context).pop();
-                  } else {
+                onPressed: () async {
+                  final popped = await Navigator.of(context).maybePop();
+                  if (!popped && context.mounted) {
                     Navigator.pushNamed(context, AppConstants.kRouteTerms);
                   }
                 },
               ),
-              // Alice (ant) overlaps category chips on narrow phones; keep it on tablets / wide layouts.
+              // Layout toggle (web + mobile); Alice on wider layouts only.
               actions: [
+                Selector<ThemeViewModel, bool>(
+                  selector: (_, vm) => vm.useCardGridLayout,
+                  builder: (context, useGrid, _) {
+                    return IconButton(
+                      icon: Icon(
+                        useGrid ? Icons.view_carousel_outlined : Icons.grid_view,
+                      ),
+                      tooltip: useGrid ? 'Carousel layout' : 'Card grid layout',
+                      color: Colors.white,
+                      onPressed: () async {
+                        final vm = context.read<ThemeViewModel>();
+                        final next = !vm.useCardGridLayout;
+                        if (next) {
+                          _stopCarouselTimer();
+                          _pageController?.dispose();
+                          _pageController = null;
+                          _carouselViewportFraction = null;
+                        }
+                        await vm.setUseCardGridLayout(next);
+                        if (mounted) setState(() {});
+                      },
+                    );
+                  },
+                ),
                 if (MediaQuery.sizeOf(context).width >= 520)
                   const AppBarAliceAction(),
               ],
@@ -294,7 +368,11 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                   top: false,
                   child: Padding(
                     padding: EdgeInsets.only(
-                      top: MediaQuery.paddingOf(context).top + kToolbarHeight,
+                      // Body is behind the app bar; account for app bar + subtitle height.
+                      top: MediaQuery.paddingOf(context).top +
+                          kToolbarHeight +
+                          22 +
+                          6,
                     ),
                     child: Consumer<ThemeViewModel>(
                       builder: (context, viewModel, child) {
@@ -356,7 +434,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                         padding: EdgeInsets.only(bottom: reducedBottomInset),
                         child: Column(
                           children: [
-                            _buildCategoryTabs(context, viewModel),
                             Expanded(
                               child: _buildCarouselAndThumbnails(
                                 context,
@@ -500,16 +577,13 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
           ),
         ),
         const Positioned.fill(
-          child: _FallingDotsBackground(),
+          child: FallingStarfieldBackground(),
         ),
       ],
     );
   }
 
-  static const double _categorySidePadding = 24.0;
-  static const double _categoryChipGap = 8.0;
-  static const double _categoryChipRowHeight = 48.0;
-  static const int _maxVisibleCategoryChips = 5;
+  // Category chips hidden by request. Keep constants/method removed to avoid dead code.
 
   /// Larger fraction on phone portrait so the hero card uses the screen; smaller on tablet / landscape.
   double _carouselViewportFractionFor(BuildContext context) {
@@ -525,85 +599,99 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     return AppConstants.kThemeCarouselViewportFraction;
   }
 
-  Widget _buildCategoryTabs(BuildContext context, ThemeViewModel viewModel) {
-    final ids = viewModel.categoryIds;
-    final screenW = MediaQuery.sizeOf(context).width;
-    final chipW = screenW < 400 ? 78.0 : 90.0;
-    final itemExtent = chipW + _categoryChipGap;
-    final maxRowWidth = _maxVisibleCategoryChips * itemExtent;
-    final rowW = math.min(maxRowWidth, screenW - _categorySidePadding * 2);
+  // _buildCategoryTabs removed
 
-    return Padding(
-      padding: const EdgeInsets.only(
-        top: 4,
-        bottom: 10,
-        left: _categorySidePadding,
-        right: _categorySidePadding,
-      ),
-      child: Center(
-        child: SizedBox(
-          width: rowW,
-          height: _categoryChipRowHeight,
-          child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          itemCount: ids.length,
-          itemBuilder: (context, index) {
-          final id = ids[index];
-          final isActive = viewModel.selectedCategoryId == id;
-          return SizedBox(
-            width: itemExtent,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                width: chipW,
-                child: Center(
-                  child: Material(
-                    color: isActive
-                        ? const Color(0xFF2A6DF4)
-                        : Colors.white.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(20),
-                    child: InkWell(
-                      onTap: () {
-                        viewModel.selectCategory(id);
-                        if (_pageController != null &&
-                            viewModel.filteredThemes.isNotEmpty) {
-                          _pageController!.animateToPage(
-                            0,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeOut,
-                          );
-                        }
-                      },
-                      borderRadius: BorderRadius.circular(20),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        child: Center(
-                          child: Text(
-                            viewModel.getCategoryDisplayName(id),
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: screenW < 400 ? 13 : 14,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+  /// Responsive columns for card-grid theme list (web + Android).
+  int _themeGridCrossAxisCount(BuildContext context, bool isLandscape) {
+    final w = MediaQuery.sizeOf(context).width;
+    if (w >= 1200) return isLandscape ? 5 : 4;
+    if (w >= 900) return 4;
+    if (w >= 700) return 3;
+    return 2;
+  }
+
+  Widget _buildThemeContinueButton(
+    BuildContext context,
+    ThemeViewModel viewModel,
+  ) {
+    final enabled = viewModel.armedTheme != null &&
+        !_isGenerating &&
+        !viewModel.isUpdatingSession;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+        child: CenteredMaxWidth(
+          maxWidth: 360,
+          child: SizedBox(
+            width: double.infinity,
+            child: CupertinoButton(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              color: enabled
+                  ? CupertinoColors.systemBlue
+                  : CupertinoColors.systemGrey,
+              borderRadius: BorderRadius.circular(14),
+              onPressed: enabled ? () => _onContinue(context, viewModel) : null,
+              child: const Text(
+                'Continue',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: CupertinoColors.white,
                 ),
               ),
             ),
-          );
-        },
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildCardGridLayout(
+    BuildContext context,
+    ThemeViewModel viewModel,
+    bool isLandscape,
+  ) {
+    final filtered = viewModel.filteredThemes;
+    final crossAxis = _themeGridCrossAxisCount(context, isLandscape);
+    return Column(
+      children: [
+        Expanded(
+          child: GridView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxis,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 0.72,
+            ),
+            itemCount: filtered.length,
+            itemBuilder: (context, index) {
+              final theme = filtered[index];
+              final isSelected = viewModel.selectedTheme?.id == theme.id;
+              return ThemeCard(
+                theme: theme,
+                isSelected: isSelected,
+                selectedBorderWidth:
+                    isSelected && viewModel.armedTheme?.id == theme.id ? 4.0 : 2.0,
+                onTap: () {
+                  viewModel.setCarouselIndex(index);
+                  viewModel.selectTheme(theme);
+                  viewModel.armTheme(theme);
+                  _pauseAutoScrollTemporarily(viewModel);
+                },
+                onPreview: () => _openThemePreview(context, viewModel, theme, index),
+                showSelectedLabel: _addOneMoreStyle &&
+                    _usedThemeIds.contains(theme.id),
+                onSelectPressed: null,
+              );
+            },
+          ),
+        ),
+        _buildThemeContinueButton(context, viewModel),
+        const SizedBox(height: 8),
+      ],
     );
   }
 
@@ -618,7 +706,10 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       return const Center(child: Text('No themes in this category'));
     }
 
-    _syncCarouselTimer(viewModel);
+    if (viewModel.useCardGridLayout) {
+      _stopCarouselTimer();
+      return _buildCardGridLayout(context, viewModel, isLandscape);
+    }
 
     final vf = _carouselViewportFractionFor(context);
     if (_pageController == null || _carouselViewportFraction != vf) {
@@ -630,6 +721,12 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       );
       _carouselViewportFraction = vf;
     }
+
+    // Start/stop carousel timer only after controllers are stable for this build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _syncCarouselTimer(viewModel);
+    });
 
     if (_prevCategoryId != viewModel.selectedCategoryId) {
       _prevCategoryId = viewModel.selectedCategoryId;
@@ -644,21 +741,11 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     return Column(
       children: [
         Expanded(
-          flex: 6,
+          flex: 7,
           child: PageView.builder(
             controller: _pageController,
             itemCount: filtered.length,
             onPageChanged: (i) {
-              final currentTheme = filtered[i];
-              if (_pendingArmThemeId == currentTheme.id) {
-                setState(() {
-                  _pendingArmThemeId = null;
-                  _armedThemeId = currentTheme.id;
-                });
-                _pauseAutoScrollTemporarily();
-              } else {
-                _clearArmedSelection();
-              }
               viewModel.setCarouselIndex(i);
             },
             itemBuilder: (context, index) {
@@ -694,7 +781,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                       transform: matrix,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 4, vertical: 16),
+                            horizontal: 6, vertical: 14),
                         child: Center(
                           child: AspectRatio(
                             aspectRatio: aspectRatio,
@@ -715,7 +802,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                 theme: theme,
                                 isSelected: isSelected,
                                 selectedBorderWidth: isSelected &&
-                                        _armedThemeId == theme.id
+                                        viewModel.armedTheme?.id == theme.id
                                     ? 4.0
                                     : 2.0,
                                 onTap: () {
@@ -723,17 +810,11 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                       viewModel.carouselIndex == index;
                                   if (isCurrentCenter) {
                                     viewModel.selectTheme(theme);
-                                    setState(() {
-                                      _pendingArmThemeId = null;
-                                      _armedThemeId = theme.id;
-                                    });
-                                    _pauseAutoScrollTemporarily();
+                                    viewModel.armTheme(theme);
+                                    _pauseAutoScrollTemporarily(viewModel);
                                     return;
                                   }
-                                  _clearArmedSelection();
-                                  setState(() {
-                                    _pendingArmThemeId = theme.id;
-                                  });
+                                  _clearArmedSelection(viewModel);
                                   viewModel.selectTheme(theme);
                                   viewModel.setCarouselIndex(index);
                                   _pageController?.animateToPage(
@@ -741,7 +822,9 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                                     duration: const Duration(milliseconds: 400),
                                     curve: Curves.easeOut,
                                   );
+                                  _pauseAutoScrollTemporarily(viewModel);
                                 },
+                                onPreview: () => _openThemePreview(context, viewModel, theme, index),
                                 showSelectedLabel: _addOneMoreStyle &&
                                     _usedThemeIds.contains(theme.id),
                                 onSelectPressed: null,
@@ -757,44 +840,15 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
             },
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-          child: SizedBox(
-            width: double.infinity,
-            child: CupertinoButton(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            color: (viewModel.selectedTheme != null &&
-                    _armedThemeId == viewModel.selectedTheme!.id &&
-                    !_isGenerating &&
-                    !viewModel.isUpdatingSession)
-                ? CupertinoColors.systemBlue
-                : CupertinoColors.systemGrey,
-            borderRadius: BorderRadius.circular(12),
-            onPressed: (viewModel.selectedTheme != null &&
-                    _armedThemeId == viewModel.selectedTheme!.id &&
-                    !_isGenerating &&
-                    !viewModel.isUpdatingSession)
-                ? () => _onContinue(context, viewModel)
-                : null,
-            child: const Text(
-              'Continue',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-                color: CupertinoColors.white,
-              ),
-            ),
-          ),
-          ),
-        ),
-        const SizedBox(height: 8),
+        _buildThemeContinueButton(context, viewModel),
+        const SizedBox(height: 4),
         _buildThumbnails(context, viewModel, isLandscape),
       ],
     );
   }
 
-  static const double _thumbWidth = 70;
-  static const double _thumbSpacing = 10;
+  static const double _thumbWidth = 56;
+  static const double _thumbSpacing = 8;
   static const double _thumbScrollAmount = 240;
 
   Widget _buildThumbnails(
@@ -818,9 +872,9 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       });
     }
 
-    const double thumbHeight = 72.0;
-    const double verticalPadding = 8.0;
-    const double borderMargin = 4.0;
+    const double thumbHeight = 60.0;
+    const double verticalPadding = 4.0;
+    const double borderMargin = 3.0;
     const rowHeight =
         thumbHeight + borderMargin * 2 + verticalPadding * 2;
 
@@ -852,13 +906,14 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                       ),
                       child: GestureDetector(
                         onTap: () {
-                          _clearArmedSelection();
+                          _clearArmedSelection(viewModel);
                           viewModel.setCarouselIndex(index);
                           _pageController?.animateToPage(
                             index,
                             duration: const Duration(milliseconds: 300),
                             curve: Curves.easeOut,
                           );
+                          _pauseAutoScrollTemporarily(viewModel);
                         },
                         child: Container(
                           width: _thumbWidth,
@@ -937,91 +992,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     );
   }
 
-}
-
-class _FallingDotsBackground extends StatefulWidget {
-  const _FallingDotsBackground();
-
-  @override
-  State<_FallingDotsBackground> createState() => _FallingDotsBackgroundState();
-}
-
-class _FallingDotsBackgroundState extends State<_FallingDotsBackground>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 25),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        return CustomPaint(
-          painter: _FallingStarfieldPainter(progress: _controller.value),
-          size: Size.infinite,
-        );
-      },
-    );
-  }
-}
-
-class _FallingStarfieldPainter extends CustomPainter {
-  _FallingStarfieldPainter({required this.progress});
-
-  final double progress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rnd = _SeededRandom(42);
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.5)
-      ..style = PaintingStyle.fill;
-
-    for (int i = 0; i < 120; i++) {
-      final x = rnd.nextDouble() * size.width;
-      final baseY = rnd.nextDouble();
-      final pixelY =
-          ((baseY + progress) * (size.height + 100)) % (size.height + 100);
-      if (pixelY >= 0 && pixelY <= size.height) {
-        final r = 1.0 + rnd.nextDouble();
-        canvas.drawCircle(Offset(x, pixelY), r, paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _FallingStarfieldPainter old) =>
-      old.progress != progress;
-}
-
-class _SeededRandom {
-  _SeededRandom(int seed)
-      : _state = BigInt.from(seed) & _mask;
-
-  BigInt _state;
-
-  static final BigInt _a = BigInt.parse('6364136223846793005');
-  static final BigInt _c = BigInt.parse('1442695040888963407');
-  static final BigInt _mask = BigInt.parse('9223372036854775807'); // 0x7fffffffffffffff
-
-  double nextDouble() {
-    _state = (_a * _state + _c) & _mask;
-    return _state.toDouble() / _mask.toDouble();
-  }
 }
 
 class _ThemeThumbImage extends StatelessWidget {

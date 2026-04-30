@@ -1,20 +1,24 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart' show Colors, Divider, Orientation, Scaffold;
+import 'package:flutter/material.dart'
+    show Colors, Divider, Orientation, Scaffold, CircularProgressIndicator;
 import 'package:provider/provider.dart';
 import 'terms_and_conditions_viewmodel.dart';
 import '../../utils/constants.dart';
+import '../splash/bootstrap_route_args.dart';
 import '../webview/webview_screen.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/animated_slideshow_background.dart';
+import '../../views/widgets/centered_max_width.dart';
 
 class TermsAndConditionsScreen extends StatefulWidget {
-  final List<String>? carouselImages;
+  /// Theme sample image URLs for the animated background; null uses default assets.
+  final List<String>? backgroundImageUrls;
 
   const TermsAndConditionsScreen({
     super.key,
-    this.carouselImages,
+    this.backgroundImageUrls,
   });
 
   @override
@@ -38,7 +42,8 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Future<void> _handleAccept() async {
-    final success = await _viewModel.acceptTermsAndCreateSession(null);
+    final success =
+        await _viewModel.acceptTermsAndCreateSession(_viewModel.kioskCode);
 
     if (success && mounted) {
       Navigator.pushNamed(context, AppConstants.kRouteCapture);
@@ -55,6 +60,19 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       context,
       url: AppConstants.kTermsAndConditionsUrl,
     );
+  }
+
+  Future<void> _openKioskManagement(BuildContext context) async {
+    await Navigator.of(context).pushNamed(
+      AppConstants.kRouteSplash,
+      arguments: const SplashRouteArgs(manageKiosk: true),
+    );
+    if (!mounted) return;
+    await _viewModel.reloadKioskFromStorage();
+  }
+
+  void _goToSplashLinkDevice() {
+    Navigator.of(context).pushReplacementNamed(AppConstants.kRouteSplash);
   }
 
   @override
@@ -76,9 +94,11 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         body: SafeArea(
           child: Stack(
             children: [
-              // Animated slideshow background (behind consent UI)
-              const Positioned.fill(
-                child: AnimatedSlideshowBackground(),
+              // Animated slideshow (theme samples when provided, else default assets)
+              Positioned.fill(
+                child: AnimatedSlideshowBackground(
+                  assetPaths: widget.backgroundImageUrls,
+                ),
               ),
               // Main content (no top logo; card has logo in header)
               Column(
@@ -92,6 +112,29 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                         ),
                         child: Consumer<TermsAndConditionsViewModel>(
                           builder: (context, viewModel, child) {
+                            // Gate the whole flow until the kiosk is provisioned.
+                            final kioskCode = (viewModel.kioskCode ?? '').trim();
+                            if (!viewModel.kioskCodeLoaded) {
+                              return ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: cardMaxWidth),
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    color: appColors.primaryColor,
+                                  ),
+                                ),
+                              );
+                            }
+                            if (kioskCode.isEmpty) {
+                              return ConstrainedBox(
+                                constraints:
+                                    BoxConstraints(maxWidth: cardMaxWidth),
+                                child: _buildKioskSetupRequired(
+                                  context,
+                                  appColors,
+                                ),
+                              );
+                            }
                             return ConstrainedBox(
                               constraints: BoxConstraints(maxWidth: cardMaxWidth),
                               child: _buildConsentCard(viewModel, appColors, isLandscape),
@@ -166,7 +209,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Quick Consent',
+                    'Terms',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -174,6 +217,15 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                     ),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
+                  ),
+                ),
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: () => _openKioskManagement(context),
+                  child: Icon(
+                    CupertinoIcons.gear_alt_fill,
+                    color: appColors.textColor.withValues(alpha: 0.9),
+                    size: 22,
                   ),
                 ),
               ],
@@ -186,7 +238,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           // Content
           Padding(
             padding: EdgeInsets.all(cardPadding),
-            child: _buildQuickConsentContent(appColors),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildQuickConsentContent(appColors),
+              ],
+            ),
           ),
           
           // Checkbox section
@@ -232,12 +289,110 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
+  Widget _buildKioskSetupRequired(
+    BuildContext context,
+    AppColors appColors,
+  ) {
+    const cardPadding = 20.0;
+    return Container(
+      decoration: BoxDecoration(
+        color: appColors.cardBackgroundColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: appColors.shadowColor.withValues(alpha: 0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(cardPadding, cardPadding, cardPadding, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 132,
+                  height: 40,
+                  child: Image.asset(
+                    AppConstants.kBrandLogoAsset,
+                    fit: BoxFit.contain,
+                    alignment: Alignment.centerLeft,
+                    errorBuilder: (_, __, ___) => Icon(
+                      CupertinoIcons.device_phone_portrait,
+                      size: 40,
+                      color: appColors.textColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Link this device',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: appColors.textColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(cardPadding, 16, cardPadding, cardPadding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'This booth needs a kiosk code before guests can use it. Use the code from your venue or admin dashboard.',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: appColors.secondaryTextColor,
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                Semantics(
+                  button: true,
+                  label: 'Enter kiosk code',
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton(
+                      color: CupertinoColors.systemBlue,
+                      borderRadius: BorderRadius.circular(12),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      onPressed: _goToSplashLinkDevice,
+                      child: const Text(
+                        'Enter kiosk code',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: CupertinoColors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildQuickConsentContent(AppColors appColors) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'By using this AI Photo Booth, you agree to:',
+          'Review and accept to get started.',
           style: TextStyle(
             fontSize: 15,
             color: appColors.secondaryTextColor,
@@ -336,31 +491,34 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Widget _buildActionButtons(TermsAndConditionsViewModel viewModel, AppColors appColors) {
-    return SizedBox(
-      width: double.infinity,
-      child: CupertinoButton(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        color: viewModel.canSubmit
-            ? CupertinoColors.systemBlue
-            : CupertinoColors.systemGrey,
-        borderRadius: BorderRadius.circular(12),
-        onPressed: viewModel.canSubmit ? _handleAccept : null,
-        child: viewModel.isSubmitting
-            ? const CupertinoActivityIndicator(
-                color: CupertinoColors.white,
-              )
-            : Text(
-                'Start Your Experience',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: viewModel.canSubmit
-                      ? CupertinoColors.white
-                      : appColors.isDarkMode
-                          ? CupertinoColors.white
-                          : CupertinoColors.black,
+    return CenteredMaxWidth(
+      maxWidth: 360,
+      child: SizedBox(
+        width: double.infinity,
+        child: CupertinoButton(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          color: viewModel.canSubmit
+              ? CupertinoColors.systemBlue
+              : CupertinoColors.systemGrey,
+          borderRadius: BorderRadius.circular(12),
+          onPressed: viewModel.canSubmit ? _handleAccept : null,
+          child: viewModel.isSubmitting
+              ? const CupertinoActivityIndicator(
+                  color: CupertinoColors.white,
+                )
+              : Text(
+                  'Start Your Experience',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: viewModel.canSubmit
+                        ? CupertinoColors.white
+                        : appColors.isDarkMode
+                            ? CupertinoColors.white
+                            : CupertinoColors.black,
+                  ),
                 ),
-              ),
+        ),
       ),
     );
   }

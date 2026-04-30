@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import '../models/app_settings_model.dart';
+import '../utils/app_runtime_config.dart';
 import '../utils/logger.dart';
+import 'alice_inspector.dart';
 import 'api_service.dart';
 
 class AppSettingsManager extends ChangeNotifier {
@@ -37,6 +39,9 @@ class AppSettingsManager extends ChangeNotifier {
       _settings = response;
       _lastFetchedAt = DateTime.now();
       _errorMessage = null;
+      AppRuntimeConfig.instance.applyFromSettings(_settings);
+      applyFlutterImageCacheLimits();
+      AliceInspector.syncWithRuntimeConfig();
     } catch (e) {
       _errorMessage = e.toString();
       AppLogger.error('Failed to fetch app settings: $e');

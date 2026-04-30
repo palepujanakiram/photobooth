@@ -4,6 +4,7 @@ import '../../services/theme_manager.dart';
 import '../../services/image_cache_service.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/app_config.dart';
+import '../../utils/logger.dart';
 import '../theme_selection/theme_model.dart';
 
 class ThemeSlideshowViewModel extends ChangeNotifier {
@@ -176,7 +177,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
               Uri.parse(imageUrl);
               return imageUrl;
             } catch (e) {
-              debugPrint('Invalid absolute URL format: $imageUrl');
+              AppLogger.debug('Invalid absolute URL format: $imageUrl');
               return null;
             }
           }
@@ -192,7 +193,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
             Uri.parse(fullUrl);
             return fullUrl;
           } catch (e) {
-            debugPrint('Invalid constructed URL format: $fullUrl');
+            AppLogger.debug('Invalid constructed URL format: $fullUrl');
             return null;
           }
         })
@@ -231,7 +232,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
               await _imageCacheService.cacheImage(imageUrls[0]).timeout(
             const Duration(seconds: 10),
             onTimeout: () {
-              debugPrint('First image cache timeout');
+              AppLogger.debug('First image cache timeout');
               throw TimeoutException(
                   'First image cache timeout', const Duration(seconds: 10));
             },
@@ -255,7 +256,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
             }
           } catch (e) {
             // Precache failure is not critical - image will load when displayed
-            debugPrint('Precache failed for first image: $e');
+            AppLogger.debug('Precache failed for first image: $e');
           }
 
           _isFirstImageLoaded = true;
@@ -263,7 +264,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
           notifyListeners();
         } catch (e) {
           if (_isDisposed) return;
-          debugPrint(
+          AppLogger.debug(
               'Failed to cache/preload first image: ${imageUrls[0]} - Error: $e');
           // Continue anyway - image might still load when displayed
           _isFirstImageLoaded = true;
@@ -284,7 +285,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
             final cachedFile = await _imageCacheService.cacheImage(url).timeout(
               const Duration(seconds: 10),
               onTimeout: () {
-                debugPrint('Image cache timeout for: $url');
+                AppLogger.debug('Image cache timeout for: $url');
                 throw TimeoutException(
                     'Image cache timeout', const Duration(seconds: 10));
               },
@@ -307,13 +308,13 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
               }
             } catch (e) {
               // Precache failure is not critical - image will load when displayed
-              debugPrint('Precache failed for $url: $e');
+              AppLogger.debug('Precache failed for $url: $e');
             }
 
             return url; // Return URL if successful
           } catch (e) {
             // Log error but don't fail the entire preload
-            debugPrint('Failed to cache/preload image: $url - Error: $e');
+            AppLogger.debug('Failed to cache/preload image: $url - Error: $e');
             return null; // Return null for failed images
           }
         }).toList();
@@ -344,7 +345,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
     } catch (e) {
       if (_isDisposed) return;
       // Fallback: use all URLs even if preload failed
-      debugPrint('Error during image preloading: $e');
+      AppLogger.debug('Error during image preloading: $e');
       _preloadedImageUrls = imageUrls;
       _isFirstImageLoaded = imageUrls.isNotEmpty;
       _areAllImagesLoaded = true; // Mark as done so animation can start

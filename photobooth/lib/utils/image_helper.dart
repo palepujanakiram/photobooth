@@ -77,14 +77,22 @@ class ImageHelper {
   /// Used only when the standard Flutter camera plugin is used (custom plugin normalizes at native level).
   /// Standard: JPEG, max [kCapturedPhotoMaxDimension] px, [kCapturedPhotoJpegQuality]% quality.
   /// Heavy work (decode/resize/encode) runs in a background isolate to keep UI responsive.
-  static Future<XFile> normalizeAndSaveCapturedPhoto(XFile sourceFile) async {
+  static Future<XFile> normalizeAndSaveCapturedPhoto(
+    XFile sourceFile, {
+    bool flipHorizontal = false,
+  }) async {
+    // Web can't write to a temp directory. For web, just return the picked file as-is.
+    // Upload resizing happens later in [resizeAndEncodeImage] (bytes-only), which is web-safe.
+    if (kIsWeb) {
+      return sourceFile;
+    }
     final bytes = await sourceFile.readAsBytes();
     if (bytes.isEmpty) {
       throw Exception('Captured image is empty');
     }
     final normalizedBytes = await compute(
       _normalizeToStandardJpegBytes,
-      bytes,
+      (bytes: bytes, flipHorizontal: flipHorizontal),
     );
     final tempDir = await FileHelper.getTempDirectoryPath();
     const photosSubdir = 'photos';
@@ -98,13 +106,20 @@ class ImageHelper {
   }
 
   /// Top-level/static for compute(): decode, resize to standard max, encode JPEG. No file I/O.
-  static Uint8List _normalizeToStandardJpegBytes(Uint8List bytes) {
-    final originalImage = img.decodeImage(bytes);
+  static Uint8List _normalizeToStandardJpegBytes(
+    ({Uint8List bytes, bool flipHorizontal}) args,
+  ) {
+    final originalImage = img.decodeImage(args.bytes);
     if (originalImage == null) {
       throw Exception('Failed to decode captured image');
     }
-    int targetWidth = originalImage.width;
-    int targetHeight = originalImage.height;
+    // Apply EXIF orientation so saved photos are upright everywhere.
+    var normalized = img.bakeOrientation(originalImage);
+    if (args.flipHorizontal) {
+      normalized = img.flipHorizontal(normalized);
+    }
+    int targetWidth = normalized.width;
+    int targetHeight = normalized.height;
     if (targetWidth > kCapturedPhotoMaxDimension || targetHeight > kCapturedPhotoMaxDimension) {
       final scale = (targetWidth > targetHeight)
           ? kCapturedPhotoMaxDimension / targetWidth
@@ -113,7 +128,7 @@ class ImageHelper {
       targetHeight = (targetHeight * scale).round();
     }
     final resized = img.copyResize(
-      originalImage,
+      normalized,
       width: targetWidth,
       height: targetHeight,
       interpolation: img.Interpolation.cubic,

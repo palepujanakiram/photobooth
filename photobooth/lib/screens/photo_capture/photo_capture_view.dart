@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:async';
 
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
@@ -11,16 +12,19 @@ import 'package:camera/camera.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_viewmodel.dart';
 import 'photo_image_from_xfile_io.dart' if (dart.library.html) 'photo_image_from_xfile_web.dart' as photo_image;
+import '../../utils/app_runtime_config.dart';
 import '../../utils/constants.dart';
-import '../../utils/image_helper.dart';
 import '../../utils/device_classifier.dart';
 import '../../services/app_settings_manager.dart';
 import '../../views/widgets/app_colors.dart';
+import '../../views/widgets/centered_max_width.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../views/widgets/debug_ram_monitor_overlay.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import 'photo_capture_rotation_screen.dart';
+import '../../services/hardware_key_service.dart';
+import '../../utils/route_args.dart';
 
 class PhotoCaptureScreen extends StatefulWidget {
   const PhotoCaptureScreen({super.key});
@@ -29,15 +33,28 @@ class PhotoCaptureScreen extends StatefulWidget {
   State<PhotoCaptureScreen> createState() => _PhotoCaptureScreenState();
 }
 
-class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
+class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
+    with WidgetsBindingObserver {
   late CaptureViewModel _captureViewModel;
+  StreamSubscription<HardwareKeyEvent>? _hardwareKeySub;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _captureViewModel = CaptureViewModel();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+      await HardwareKeyService.setEnabled(true);
+      _hardwareKeySub?.cancel();
+      _hardwareKeySub = HardwareKeyService.events.listen((e) async {
+        // Volume up/down from Bluetooth clickers usually maps to these.
+        if (!e.isActionDown) return;
+        if (e.keyCode != 24 && e.keyCode != 25) return;
+        // Don't interrupt after a photo is already captured.
+        if (_captureViewModel.capturedPhoto != null) return;
+        await _captureViewModel.capturePhotoWithCountdown();
+      });
       // Await prefs before camera so SharedPreferences I/O does not overlap native
       // camera enumeration / CameraController.initialize (reduces peak contention on 2 GB devices).
       await _captureViewModel.loadPreviewRotation();
@@ -66,8 +83,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    HardwareKeyService.setEnabled(false);
+    _hardwareKeySub?.cancel();
     _captureViewModel.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    // On some Android tablets, orientation changes don't reliably update camera preview
+    // unless we refresh rotation metadata. Keep this lightweight.
+    _captureViewModel.refreshDisplayRotation();
   }
 
   void _showCameraSelectionDialog(BuildContext context, CaptureViewModel viewModel) {
@@ -129,7 +156,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       value: _captureViewModel,
       child: Consumer<CaptureViewModel>(
         builder: (context, viewModel, child) {
-          return Scaffold(
+          return ListenableBuilder(
+            listenable: AppRuntimeConfig.instance,
+            builder: (context, _) {
+              return Scaffold(
                 backgroundColor: Colors.transparent,
                 extendBodyBehindAppBar: true,
                 appBar: AppBar(
@@ -144,11 +174,26 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                     systemNavigationBarColor: Colors.transparent,
                   ),
                   title: const Text(
-                    'Capture Photo',
+                    'POSE',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
-                      fontSize: 17,
+                      fontSize: 22,
+                    ),
+                  ),
+                  bottom: const PreferredSize(
+                    preferredSize: Size.fromHeight(22),
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: 6),
+                      child: Text(
+                        'Step in front of the camera and strike your best look',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
                   ),
                   leading: IconButton(
@@ -204,7 +249,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                       bottom: false,
                       child: Padding(
                         padding: EdgeInsets.only(
-                          top: MediaQuery.paddingOf(context).top + kToolbarHeight,
+                          // Body is behind the app bar; account for app bar + subtitle height.
+                          top: MediaQuery.paddingOf(context).top +
+                              kToolbarHeight +
+                              22 +
+                              6,
                         ),
                         child: Builder(
                           builder: (context) {
@@ -329,6 +378,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                   ],
                 ),
               );
+            },
+          );
         },
       ),
     );
@@ -361,8 +412,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             ),
           ),
         if (hasCapturedPhoto &&
-            (AppConstants.kShowNativeCameraInfoPane ||
-                AppConstants.kShowCapturedPhotoMetadataOverlay))
+            AppConstants.kShowNativeCameraInfoPane)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Column(
@@ -381,23 +431,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                       style: const TextStyle(color: Colors.white70, fontSize: 11),
                     ),
                   ),
-                if (AppConstants.kShowNativeCameraInfoPane &&
-                    AppConstants.kShowCapturedPhotoMetadataOverlay)
-                  const SizedBox(height: 6),
-                if (AppConstants.kShowCapturedPhotoMetadataOverlay)
-                  _buildCapturedPhotoDetailsOverlay(context, viewModel),
               ],
             ),
           ),
-        // 2. Buttons in a Row
-        if (!hasCapturedPhoto) ...[
-          _buildGalleryCaptureButtonsRow(context, viewModel),
-          const SizedBox(height: 12),
-        ] else ...[
-          _buildCapturedPhotoControlsRow(context, viewModel),
-          const SizedBox(height: 12),
-        ],
-        // 3. Preview or captured photo: same aspect as theme hero card; size capped so landscape matches carousel scale.
+        // 2. Preview or captured photo: same aspect as theme hero card; size capped so landscape matches carousel scale.
         Expanded(
           child: _buildCapturePreviewCard(
             context,
@@ -406,11 +443,22 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             hasCapturedPhoto,
           ),
         ),
+        // 3. Inline error (pre-capture) above bottom actions.
         if (!hasCapturedPhoto && viewModel.hasError && viewModel.errorMessage != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: _buildCaptureErrorSection(context, viewModel),
           ),
+        // 4. Bottom actions (consistent placement).
+        Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 8),
+          child: CenteredMaxWidth(
+            maxWidth: 360,
+            child: hasCapturedPhoto
+                ? _buildCapturedPhotoControlsRow(context, viewModel)
+                : _buildGalleryCaptureButtonsRow(context, viewModel),
+          ),
+        ),
       ],
     );
   }
@@ -431,12 +479,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         final media = MediaQuery.sizeOf(context);
         final isLandscape =
             MediaQuery.orientationOf(context) == Orientation.landscape;
+        final isTablet = media.shortestSide >= AppConstants.kTabletBreakpoint;
         final fallbackAspect = AppConstants.themeCardSlotAspectRatio(context);
+        final isPhonePortrait = !isLandscape &&
+            media.shortestSide < AppConstants.kTabletBreakpoint;
         final aspect = _captureCardAspectRatio(
           context,
           viewModel,
           hasCapturedPhoto,
           fallbackAspect,
+          constraints,
         );
 
         final widthCapFrac = isLandscape
@@ -444,10 +496,17 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             : AppConstants.kCapturePreviewCardMaxWidthFractionPortrait;
         final heightCapFrac = isLandscape
             ? AppConstants.kCapturePreviewCardMaxHeightFractionLandscape
-            : AppConstants.kCapturePreviewCardMaxHeightFractionPortrait;
+            : (isPhonePortrait
+                ? AppConstants.kCapturePreviewCardMaxHeightFractionPhonePortrait
+                : AppConstants.kCapturePreviewCardMaxHeightFractionPortrait);
 
-        final maxW = math.min(constraints.maxWidth, media.width * widthCapFrac);
-        final maxH = math.min(constraints.maxHeight, media.height * heightCapFrac);
+        // Tablets: use the full canvas available for a cleaner kiosk-style preview.
+        final maxW = isTablet
+            ? constraints.maxWidth
+            : math.min(constraints.maxWidth, media.width * widthCapFrac);
+        final maxH = isTablet
+            ? constraints.maxHeight
+            : math.min(constraints.maxHeight, media.height * heightCapFrac);
 
         late double cardW;
         late double cardH;
@@ -480,14 +539,27 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                 children: [
                   ColoredBox(
                     color: Colors.black,
-                    child: viewModel.capturedPhoto != null
-                        ? photo_image.imageFromXFileSized(
-                            viewModel.capturedPhoto!.imageFile,
-                            cardW,
-                            cardH,
-                            fit: BoxFit.contain,
-                          )
-                        : previewWidget,
+                    child: KeyedSubtree(
+                      key: ValueKey<String>(
+                        viewModel.capturedPhoto?.id ?? 'live-preview',
+                      ),
+                      child: viewModel.capturedPhoto != null
+                          ? photo_image.imageFromXFileSized(
+                              viewModel.capturedPhoto!.imageFile,
+                              cardW,
+                              cardH,
+                              // Match live preview: contain in portrait (no crop), cover on landscape kiosks.
+                              fit: MediaQuery.orientationOf(context) == Orientation.portrait
+                                  ? BoxFit.contain
+                                  : BoxFit.cover,
+                            )
+                          : KeyedSubtree(
+                              // Web builds can aggressively reuse platform views / textures.
+                              // Force the camera preview subtree to remount on retake.
+                              key: ValueKey<int>(viewModel.previewNonce),
+                              child: previewWidget,
+                            ),
+                    ),
                   ),
                   if (!hasCapturedPhoto && AppConstants.kShowNativeCameraInfoPane)
                     Positioned(
@@ -549,24 +621,56 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     return Size(width, height);
   }
 
-  /// Width/height ratio for the capture card: decoded still, live preview, or [fallbackAspect].
+  /// Width/height ratio for the capture card: decoded still, live preview, viewport slot on phones, or [fallbackAspect].
+  ///
+  /// On **phone portrait**, if the stream has not reported [CameraValue.previewSize] yet (common briefly on
+  /// Android front cameras), the theme hero ratio (3:4.5) is a poor match — use [layoutConstraints] so
+  /// the card tracks the Expanded preview area instead.
   double _captureCardAspectRatio(
     BuildContext context,
     CaptureViewModel viewModel,
     bool hasCapturedPhoto,
     double fallbackAspect,
+    BoxConstraints layoutConstraints,
   ) {
+    bool phonePortrait() {
+      return MediaQuery.orientationOf(context) == Orientation.portrait &&
+          MediaQuery.sizeOf(context).shortestSide < AppConstants.kTabletBreakpoint;
+    }
+
+    double viewportSlotAspect() {
+      final w = layoutConstraints.maxWidth;
+      final h = layoutConstraints.maxHeight;
+      if (w <= 0 || h <= 0) return fallbackAspect;
+      return (w / h).clamp(0.28, 0.92);
+    }
+
+    // Keep the capture card size consistent before/after capture by preferring the
+    // live preview aspect ratio even after the still is taken. This avoids a
+    // visible "jump" in placeholder size when switching from preview → still.
     if (hasCapturedPhoto) {
-      final pixels = viewModel.capturedImagePixelSize;
-      if (pixels != null && pixels.height > 0) {
-        return (pixels.width / pixels.height).clamp(0.35, 2.85);
-      }
-    } else {
       final live = _livePreviewDisplaySize(viewModel);
       if (live != null && live.height > 0) {
         return (live.width / live.height).clamp(0.35, 2.85);
       }
+      final pixels = viewModel.capturedImagePixelSize;
+      if (pixels != null && pixels.height > 0) {
+        return (pixels.width / pixels.height).clamp(0.35, 2.85);
+      }
+      if (phonePortrait()) return viewportSlotAspect();
+      return fallbackAspect;
     }
+
+    final controller = viewModel.cameraController;
+    final previewSize = controller?.value.previewSize;
+    final live = _livePreviewDisplaySize(viewModel);
+    if (live != null && live.height > 0) {
+      if (phonePortrait() && previewSize == null) {
+        return viewportSlotAspect();
+      }
+      return (live.width / live.height).clamp(0.35, 2.85);
+    }
+    if (phonePortrait()) return viewportSlotAspect();
     return fallbackAspect;
   }
 
@@ -607,15 +711,28 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     final height = displaySize?.height ??
         (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1.0);
 
-    // [BoxFit.contain] keeps sensor aspect ratio (webcam/TV); avoids stretch from [BoxFit.fill].
-    return Center(
-      child: FittedBox(
-        fit: BoxFit.contain,
-        alignment: Alignment.center,
-        child: SizedBox(
-          width: width,
-          height: height,
-          child: preview,
+    // Always preserve aspect ratio and avoid stretching.
+    //
+    // In portrait capture flows, prefer showing the full frame (contain) so users
+    // can see their entire pose; on landscape kiosks/tablets, prefer full-bleed
+    // (cover) for a premium look.
+    final isPortrait =
+        MediaQuery.orientationOf(context) == Orientation.portrait;
+    final fit = isPortrait ? BoxFit.contain : BoxFit.cover;
+
+    return ClipRect(
+      child: Center(
+        child: FittedBox(
+          fit: fit,
+          alignment: Alignment.center,
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: AspectRatio(
+              aspectRatio: displayAspectRatio,
+              child: preview,
+            ),
+          ),
         ),
       ),
     );
@@ -726,59 +843,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 
-  /// Captured photo info (resolution, file size). Shown only after photo is captured.
-  Widget _buildCapturedPhotoDetailsOverlay(
-    BuildContext context,
-    CaptureViewModel viewModel,
-  ) {
-    final photo = viewModel.capturedPhoto;
-    if (photo == null) return const SizedBox.shrink();
-
-    return FutureBuilder<ImageMetadata?>(
-      future: ImageHelper.getImageMetadata(photo.imageFile),
-      builder: (context, snapshot) {
-        final meta = snapshot.data;
-        if (meta == null && snapshot.connectionState != ConnectionState.done) {
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'Loading…',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-          );
-        }
-        if (meta == null) return const SizedBox.shrink();
-
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.black54,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Resolution: ${meta.width} × ${meta.height}',
-                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'File size: ${ImageHelper.formatFileSize(meta.fileSizeBytes)}',
-                style: const TextStyle(color: Colors.white70, fontSize: 13),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   /// Builds the countdown overlay (3, 2, 1)
   Widget _buildCountdownOverlay(BuildContext context, int countdownValue) {
     return Container(
@@ -820,51 +884,76 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       foregroundColor: Colors.white,
       disabledBackgroundColor: Colors.grey.shade600,
       disabledForegroundColor: Colors.white70,
+      minimumSize: const Size(double.infinity, 56),
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
     );
   }
 
   /// Retake and Continue buttons in a Row (post-capture).
   Widget _buildCapturedPhotoControlsRow(BuildContext context, CaptureViewModel viewModel) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        ElevatedButton(
-          style: _captureScreenButtonStyle(secondary: true),
-          onPressed: () => viewModel.clearCapturedPhoto(),
-          child: const Text('Retake'),
-        ),
-        const SizedBox(width: 12),
-        ElevatedButton(
-          style: _captureScreenButtonStyle(),
-          onPressed: (viewModel.isCapturing || viewModel.isUploading)
-              ? null
-              : () async {
-                  final currentContext = context;
-                  if (!mounted || !currentContext.mounted) return;
-                  final success = await viewModel.uploadPhotoToSession();
-                  if (!mounted || !currentContext.mounted) return;
-                  if (success && viewModel.capturedPhoto != null) {
-                    // Release camera native buffers (~300–600 MB) BEFORE
-                    // navigating so the next screen doesn't overlap with
-                    // camera heap on a 4 GB kiosk.
-                    viewModel.disposeCamera();
-                    Navigator.pushNamedAndRemoveUntil(
-                      currentContext,
-                      AppConstants.kRouteHome,
-                      (route) => false,
-                      arguments: {'photo': viewModel.capturedPhoto},
-                    );
-                  }
-                },
-          child: viewModel.isUploading
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                )
-              : const Text('Continue'),
-        ),
-      ],
+    return SizedBox(
+      width: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ElevatedButton(
+            style: _captureScreenButtonStyle(secondary: true),
+            onPressed: () async {
+              // Web camera streams can get sticky even after widget swaps.
+              // Recreate the whole screen so it behaves like a fresh Capture entry.
+              if (kIsWeb) {
+                viewModel.disposeCamera();
+                if (!mounted) return;
+                await Navigator.of(context).pushReplacementNamed(
+                  AppConstants.kRouteCapture,
+                );
+                return;
+              }
+              viewModel.clearCapturedPhoto();
+            },
+            child: const Text('Retake'),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            style: _captureScreenButtonStyle(),
+            onPressed: (viewModel.isCapturing || viewModel.isUploading)
+                ? null
+                : () async {
+                    final currentContext = context;
+                    if (!mounted || !currentContext.mounted) return;
+                    final success = await viewModel.uploadPhotoToSession();
+                    if (!mounted || !currentContext.mounted) return;
+                    if (success && viewModel.capturedPhoto != null) {
+                      // Release camera native buffers (~300–600 MB) BEFORE
+                      // navigating so the next screen doesn't overlap with
+                      // camera heap on a 4 GB kiosk.
+                      viewModel.disposeCamera();
+                      final photo = viewModel.capturedPhoto!;
+                      await Navigator.pushNamed(
+                        currentContext,
+                        AppConstants.kRouteHome,
+                        arguments: ThemeSelectionArgs(photo: photo),
+                      );
+                      // User came back (Back from ThemeSelection). Re-initialize camera.
+                      if (!mounted || !currentContext.mounted) return;
+                      await _resetAndInitializeCameras();
+                    }
+                  },
+            child: viewModel.isUploading
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Text('Continue'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -910,40 +999,53 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       (settingsManager) => settingsManager.settings?.photoUploadAllowed == true,
     );
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        if (isPhotoUploadAllowed)
+    return SizedBox(
+      width: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (isPhotoUploadAllowed) ...[
+            ElevatedButton.icon(
+              style: _captureScreenButtonStyle(secondary: true),
+              onPressed:
+                  (viewModel.isCapturing || viewModel.isSelectingFromGallery)
+                      ? null
+                      : () async => await viewModel.selectFromGallery(),
+              icon: viewModel.isSelectingFromGallery
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(CupertinoIcons.photo, size: 20),
+              label: const Text('Gallery'),
+            ),
+            const SizedBox(height: 12),
+          ],
           ElevatedButton.icon(
             style: _captureScreenButtonStyle(),
-            onPressed: (viewModel.isCapturing || viewModel.isSelectingFromGallery)
+            onPressed: (viewModel.isCapturing ||
+                    viewModel.isSelectingFromGallery ||
+                    viewModel.isCountingDown)
                 ? null
-                : () async => await viewModel.selectFromGallery(),
-            icon: viewModel.isSelectingFromGallery
+                : () async => await viewModel.capturePhotoWithCountdown(),
+            icon: viewModel.isCapturing
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
                   )
-                : const Icon(CupertinoIcons.photo, size: 20),
-            label: const Text('Gallery'),
+                : const Icon(CupertinoIcons.camera, size: 20),
+            label: const Text('Capture'),
           ),
-        if (isPhotoUploadAllowed) const SizedBox(width: 12),
-        ElevatedButton.icon(
-          style: _captureScreenButtonStyle(),
-          onPressed: (viewModel.isCapturing || viewModel.isSelectingFromGallery || viewModel.isCountingDown)
-              ? null
-              : () async => await viewModel.capturePhotoWithCountdown(),
-          icon: viewModel.isCapturing
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                )
-              : const Icon(CupertinoIcons.camera, size: 20),
-          label: const Text('Capture'),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

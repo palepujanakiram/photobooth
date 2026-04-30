@@ -139,11 +139,8 @@ class PrintService {
         );
         configureDioForWeb(downloadDio);
         if (kDebugMode == true) {
-            downloadDio.interceptors.add(ApiLoggingInterceptor());
-            final alice = AliceInspector.instance;
-            if (alice != null) {
-              downloadDio.interceptors.add(alice.getDioInterceptor());
-            }
+          downloadDio.interceptors.add(ApiLoggingInterceptor());
+          downloadDio.interceptors.add(AliceDioProxyInterceptor());
         }
 
         final response = await downloadDio.get<List<int>>(
@@ -190,10 +187,7 @@ class PrintService {
       
       if (kDebugMode == true) {
         dio.interceptors.add(ApiLoggingInterceptor());
-        final alice = AliceInspector.instance;
-        if (alice != null) {
-          dio.interceptors.add(alice.getDioInterceptor());
-        }
+        dio.interceptors.add(AliceDioProxyInterceptor());
       }
 
       // Create Retrofit client for printer API

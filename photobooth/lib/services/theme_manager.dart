@@ -2,7 +2,9 @@ import 'package:flutter/foundation.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/exceptions.dart';
 import '../utils/app_config.dart';
+import '../utils/logger.dart';
 import 'api_service.dart';
+import 'kiosk_manager.dart';
 
 /// Singleton class responsible for fetching, caching, and providing themes
 /// to all screens that need them.
@@ -20,6 +22,7 @@ class ThemeManager {
 
   // Cached themes
   List<ThemeModel> _cachedThemes = [];
+  String _cachedThemesKioskKey = '';
   
   // Loading state
   bool _isLoading = false;
@@ -59,6 +62,16 @@ class ThemeManager {
   /// [forceRefresh] - If true, forces a fresh fetch from API
   /// Returns the list of themes (cached or freshly fetched)
   Future<List<ThemeModel>> fetchThemes({bool forceRefresh = false}) async {
+    // Invalidate cache automatically when kiosk changes.
+    final kioskCode = await KioskManager().getKioskCode();
+    final kioskKey = (kioskCode ?? '').trim();
+    if (_cachedThemes.isNotEmpty && _cachedThemesKioskKey != kioskKey) {
+      _cachedThemes = [];
+      _lastFetchTime = null;
+      _errorMessage = null;
+      _cachedThemesKioskKey = kioskKey;
+    }
+
     // Return cached themes if available and not forcing refresh
     if (!forceRefresh && _cachedThemes.isNotEmpty && !_isLoading) {
       return List.unmodifiable(_cachedThemes);
@@ -86,6 +99,8 @@ class ThemeManager {
     try {
       final themes = await _apiService.getThemes();
       _cachedThemes = themes;
+      final kioskCode = await KioskManager().getKioskCode();
+      _cachedThemesKioskKey = (kioskCode ?? '').trim();
       _lastFetchTime = DateTime.now();
       _errorMessage = null;
       _isLoading = false;
@@ -159,7 +174,7 @@ class ThemeManager {
               Uri.parse(imageUrl);
               return imageUrl;
             } catch (e) {
-              debugPrint('Invalid absolute URL format: $imageUrl');
+              AppLogger.debug('Invalid absolute URL format: $imageUrl');
               return null;
             }
           }
@@ -174,7 +189,7 @@ class ThemeManager {
             Uri.parse(fullUrl);
             return fullUrl;
           } catch (e) {
-            debugPrint('Invalid constructed URL format: $fullUrl');
+            AppLogger.debug('Invalid constructed URL format: $fullUrl');
             return null;
           }
         })
@@ -210,7 +225,7 @@ class ThemeManager {
         listener();
       } catch (e) {
         // Ignore errors from listeners
-        debugPrint('Error in ThemeManager listener: $e');
+        AppLogger.debug('Error in ThemeManager listener: $e');
       }
     }
   }

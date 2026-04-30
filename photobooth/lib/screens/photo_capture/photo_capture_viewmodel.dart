@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, co
 import 'package:flutter/services.dart' show DeviceOrientation, MethodChannel;
 import 'package:camera/camera.dart';
 import 'package:camera/camera.dart' as cam show availableCameras;
-import 'package:flutter/material.dart' show debugPrint;
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -125,6 +124,10 @@ class CaptureViewModel extends ChangeNotifier {
   /// Display rotation from device (0–3). Used for preview orientation correction (Android).
   int get displayRotation => _displayRotation;
 
+  /// Increments to force preview subtree remounts (useful on web where platform views can be sticky).
+  int get previewNonce => _previewNonce;
+  int _previewNonce = 0;
+
   /// Listener for controller updates (aligned with camera package example).
   void _onCameraControllerUpdate() {
     final ctrl = _cameraController;
@@ -156,6 +159,15 @@ class CaptureViewModel extends ChangeNotifier {
     } catch (_) {
       return 0;
     }
+  }
+
+  /// Refresh display rotation (0–3) after orientation changes (Android).
+  Future<void> refreshDisplayRotation() async {
+    final r = await _fetchDisplayRotation();
+    if (r == _displayRotation) return;
+    _displayRotation = r;
+    unawaited(_applyDefaultPreviewRotationForDevice());
+    notifyListeners();
   }
 
   /// Loads saved preview rotation from preferences (call when screen opens).
@@ -275,7 +287,8 @@ class CaptureViewModel extends ChangeNotifier {
     return 'Camera';
   }
 
-  /// Picks the default camera: prefer real external (UUID/by name), then by direction, then first.
+  /// Picks the default camera: prefer real external (HDMI/USB), then built-in **front** when
+  /// both front and back exist (kiosk selfie tablets), else back, else first.
   /// On iPad the plugin can misreport built-in as external, so we prefer by name (UUID) first.
   CameraDescription _pickDefaultCamera(List<CameraDescription> cameras) {
     if (cameras.isEmpty) {
@@ -286,13 +299,24 @@ class CaptureViewModel extends ChangeNotifier {
     if (byName.isNotEmpty) {
       return byName.first;
     }
-    // 2) Then by lensDirection.external
+    // 2) Then by lensDirection.external (HDMI capture card, USB webcam, etc.)
     final byDirection = cameras.where(
       (c) => c.lensDirection == CameraLensDirection.external,
     ).toList();
     if (byDirection.isNotEmpty) {
       return byDirection.first;
     }
+    // 3) Built-in only: prefer front when both front and back exist (kiosk / tablet selfie)
+    final fronts = cameras
+        .where((c) => c.lensDirection == CameraLensDirection.front)
+        .toList();
+    final backs =
+        cameras.where((c) => c.lensDirection == CameraLensDirection.back).toList();
+    if (fronts.isNotEmpty && backs.isNotEmpty) {
+      return fronts.first;
+    }
+    if (fronts.isNotEmpty) return fronts.first;
+    if (backs.isNotEmpty) return backs.first;
     return cameras.first;
   }
 
@@ -318,9 +342,13 @@ class CaptureViewModel extends ChangeNotifier {
     if (_isPreviewRotationConfiguredByUser) return;
     if (!shouldUseLandscapePreviewRotationWorkaround) return;
 
-    final desiredRotation = _displayRotation == 0
-        ? 270
-        : AppConstants.kCameraPreviewRotationDefault;
+    // Android TV devices often report ROTATION_0 even though the physical display
+    // is landscape. Tablets generally report real rotation and should follow the
+    // device orientation (no forced default rotation).
+    final desiredRotation =
+        _deviceType == AppDeviceType.androidTv && _displayRotation == 0
+            ? 270
+            : AppConstants.kCameraPreviewRotationDefault;
     if (_previewRotationDegrees == desiredRotation) return;
 
     _previewRotationDegrees = desiredRotation;
@@ -580,7 +608,7 @@ class CaptureViewModel extends ChangeNotifier {
       // Brief delay only when we actually released a camera (lets system free resources)
       if (hadController) {
         await Future.delayed(
-          const Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
+          Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
         );
       }
 
@@ -605,9 +633,14 @@ class CaptureViewModel extends ChangeNotifier {
       // while keeping native heap ~400–600 MB below [max]/4K.
       // RAM budget cleared by: slideshow JPG resize (-333 MB), camera dispose before nav
       // (-300–600 MB), cacheWidth on all Image widgets (-40 MB).
-      const preset = AppConstants.kLowMemoryKioskMode
-          ? ResolutionPreset.high
-          : ResolutionPreset.max;
+      //
+      // External (HDMI capture card / UVC): avoid [max] — many devices mis-handle max JPEG
+      // vs preview (garbled / banded stills). [high] aligns better with typical 1080p HDMI.
+      // Use [high] for built-in cameras as the default sweet spot:
+      // - Much faster takePicture() on many Android tablets vs [max]
+      // - Lower memory pressure (avoids slowdowns / OOM on kiosk devices)
+      // - Still plenty of detail for downstream AI (upload is resized anyway)
+      final ResolutionPreset preset = ResolutionPreset.high;
       _cameraController = CameraController(
         cameraToUse,
         preset,
@@ -712,7 +745,11 @@ class CaptureViewModel extends ChangeNotifier {
       AppLogger.debug('   Display rotation: $rotation');
 
       // Best-effort capture lock for cameras that report 0/180 sensor orientation.
-      if (!kIsWeb &&
+      // Skip for external/UVC (HDMI capture cards): locking can distort or break still JPEGs.
+      final isExternal = camera.lensDirection == CameraLensDirection.external ||
+          _looksLikeExternalCameraName(camera.name);
+      if (!isExternal &&
+          !kIsWeb &&
           defaultTargetPlatform == TargetPlatform.android &&
           rotation == 1) {
         final so = camera.sensorOrientation;
@@ -786,7 +823,7 @@ class CaptureViewModel extends ChangeNotifier {
     } on CameraException {
       // Zoom not supported
     } on TimeoutException {
-      debugPrint('Zoom level load timed out');
+      AppLogger.debug('Zoom level load timed out');
     } catch (_) {}
     _minZoom = minZ;
     _maxZoom = maxZ;
@@ -811,7 +848,7 @@ class CaptureViewModel extends ChangeNotifier {
       _currentZoom = clamped;
       notifyListeners();
     } on CameraException catch (e) {
-      debugPrint('setZoomLevel failed: $e');
+      AppLogger.debug('setZoomLevel failed: $e');
     }
   }
 
@@ -907,20 +944,26 @@ class CaptureViewModel extends ChangeNotifier {
       ErrorReportingManager.log('✅ Photo captured');
       AppLogger.debug('✅ Photo captured successfully');
 
-      // Use raw capture at very high quality (no resize/normalize)
-      AppLogger.debug('✅ Photo captured (raw, very high quality)');
+      final isFrontCamera = _currentCamera?.lensDirection == CameraLensDirection.front;
+      // Normalize + bake EXIF orientation so tablets handle rotation reliably, and
+      // un-mirror front camera captures so saved photos match the real world.
+      final XFile savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
+        imageFile,
+        flipHorizontal: isFrontCamera,
+      );
+      AppLogger.debug('✅ Photo normalized and saved');
 
       // Get camera ID from either standard controller or current camera
       final cameraId = _cameraController?.description.name ?? _currentCamera?.name;
       final photoId = _uuid.v4();
       _capturedPhoto = PhotoModel(
         id: photoId,
-        imageFile: imageFile,
+        imageFile: savedFile,
         capturedAt: DateTime.now(),
         cameraId: cameraId,
       );
       _capturedImagePixelSize = null;
-      unawaited(_refreshCapturedImagePixelSize(imageFile));
+      unawaited(_refreshCapturedImagePixelSize(savedFile));
 
       // Track successful photo capture
       await ErrorReportingManager.setPhotoCaptureContext(
@@ -1084,9 +1127,24 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Clears the captured photo and any error messages
   void clearCapturedPhoto() {
+    // Treat "Retake" as a hard reset of any in-flight UI state so the user can
+    // always return to live preview, even if an upload/countdown was running.
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    _countdownValue = null;
+
+    _uploadTimer?.cancel();
+    _uploadTimer = null;
+    _uploadElapsedSeconds = 0;
+    _isUploading = false;
+
+    _isCapturing = false;
+    _isSelectingFromGallery = false;
+
     _capturedPhoto = null;
     _capturedImagePixelSize = null;
     _errorMessage = null;
+    _previewNonce++;
     notifyListeners();
   }
 
