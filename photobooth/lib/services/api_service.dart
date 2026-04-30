@@ -16,6 +16,8 @@ import 'api_client.dart';
 import 'file_helper.dart';
 import 'api_logging_interceptor.dart';
 import 'alice_inspector.dart';
+import 'kiosk_manager.dart';
+import 'session_manager.dart';
 
 // Conditional import for web Dio configuration
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
@@ -46,10 +48,7 @@ class ApiService {
     if (kDebugMode == true) {
       // Add logging interceptor to log all API calls
       _dio.interceptors.add(ApiLoggingInterceptor());
-      final alice = AliceInspector.instance;
-      if (alice != null) {
-        _dio.interceptors.add(alice.getDioInterceptor());
-      }
+      _dio.interceptors.add(AliceDioProxyInterceptor());
     }
 
     // Add error interceptor for web compatibility
@@ -87,6 +86,68 @@ class ApiService {
     ));
 
     _apiClient = ApiClient(_dio, baseUrl: AppConstants.kBaseUrl);
+  }
+
+  /// POST `/api/kiosk/shares` — mint a short-lived share link for a session.
+  ///
+  /// Kiosk-callable (no admin auth). Backend validates kiosk owns the session.
+  /// Returns a map with: token, url (short `/s/:token`), longUrl (fallback), expiresAt.
+  Future<Map<String, dynamic>> createKioskShareLink({
+    required String kioskCode,
+    required String sessionId,
+    int? ttlMinutes,
+    int? imageIndex,
+  }) async {
+    final code = kioskCode.trim().toUpperCase();
+    final sid = sessionId.trim();
+    if (code.isEmpty) {
+      throw ApiException('kioskCode is required');
+    }
+    if (sid.isEmpty) {
+      throw ApiException('sessionId is required');
+    }
+
+    try {
+      final body = <String, dynamic>{
+        'kioskCode': code,
+        'sessionId': sid,
+        if (ttlMinutes != null) 'ttlMinutes': ttlMinutes,
+        if (imageIndex != null) 'imageIndex': imageIndex,
+      };
+
+      final r = await _dio.post<dynamic>(
+        '/api/kiosk/shares',
+        data: body,
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+      final data = r.data;
+      if (r.statusCode != null && r.statusCode! >= 400) {
+        if (data is Map<String, dynamic>) {
+          throw ApiException(
+            data['error']?.toString() ??
+                data['message']?.toString() ??
+                'Failed to create share link (${r.statusCode})',
+            r.statusCode,
+          );
+        }
+        throw ApiException(
+          'Failed to create share link (${r.statusCode}): ${data ?? ''}',
+          r.statusCode,
+        );
+      }
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+      throw ApiException('Unexpected share link response from API');
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      throw ApiException(
+        'Failed to create share link: ${e.message}',
+        e.response?.statusCode,
+      );
+    }
   }
 
   /// GET `/api/payments/status/{paymentId}` — `{ "status": "PENDING" | "APPROVED" | "FAILED" }`.
@@ -169,10 +230,7 @@ class ApiService {
         ));
         if (kDebugMode == true) {
           dio.interceptors.add(ApiLoggingInterceptor());
-          final alice = AliceInspector.instance;
-          if (alice != null) {
-            dio.interceptors.add(alice.getDioInterceptor());
-          }
+          dio.interceptors.add(AliceDioProxyInterceptor());
         }
 
         // Configure browser adapter for web (critical for web platform)
@@ -301,8 +359,36 @@ class ApiService {
   /// Returns only themes where isActive is true
   Future<List<ThemeModel>> getThemes() async {
     try {
-      final themes = await _apiClient.getThemes();
-      return themes.toList();
+      // Kiosk-aware themes: pass kiosk identifiers when available.
+      // Backend may ignore these params if not implemented; safe no-op.
+      final kioskCode = (await KioskManager().getKioskCode())?.trim().toUpperCase();
+      final kioskId = SessionManager().currentSession?.kioskId;
+
+      final qp = <String, dynamic>{};
+      if (kioskCode != null && kioskCode.isNotEmpty) {
+        qp['kioskCode'] = kioskCode;
+      }
+      if (kioskId != null && kioskId.isNotEmpty) {
+        qp['kioskId'] = kioskId;
+      }
+
+      final r = await _dio.get<dynamic>(
+        '/api/themes',
+        queryParameters: qp.isEmpty ? null : qp,
+        options: Options(
+          responseType: ResponseType.json,
+        ),
+      );
+
+      final data = r.data;
+      if (data is List) {
+        return data
+            .whereType<Map>()
+            .map((e) => ThemeModel.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+
+      throw ApiException('Unexpected themes response from API');
       // Filter themes where isActive is true
       // return themes.where((theme) => theme.isActive == true).toList();
     } on DioException catch (e) {
@@ -338,6 +424,32 @@ class ApiService {
         rethrow;
       }
       throw ApiException('Failed to fetch themes: $e');
+    }
+  }
+
+  /// Validates a kiosk code by attempting a kiosk-filtered themes fetch.
+  ///
+  /// Returns true if the server returns at least one theme for that kiosk code.
+  /// If the backend returns an error or an empty list, treat it as invalid/unprovisioned.
+  Future<bool> validateKioskCode(String kioskCode) async {
+    final code = kioskCode.trim().toUpperCase();
+    if (code.isEmpty) return false;
+    try {
+      final r = await _dio.get<dynamic>(
+        '/api/themes',
+        queryParameters: {'kioskCode': code},
+        options: Options(responseType: ResponseType.json),
+      );
+      final data = r.data;
+      if (data is List) {
+        return data.isNotEmpty;
+      }
+      return false;
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      return false;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -430,10 +542,12 @@ class ApiService {
   /// Returns session data including sessionId
   Future<Map<String, dynamic>> acceptTermsAndCreateSession({
     String? kioskCode,
+    String? source,
   }) async {
     try {
       final response = await _apiClient.acceptTermsAndCreateSession({
         if (kioskCode != null && kioskCode.isNotEmpty) 'kioskCode': kioskCode,
+        if (source != null && source.isNotEmpty) 'source': source,
       });
       return response;
     } on DioException catch (e) {
@@ -579,6 +693,26 @@ class ApiService {
     }
   }
 
+  /// GET `/api/sessions/{sessionId}` — used to poll approval state when gateway is disabled.
+  Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
+    if (sessionId.trim().isEmpty) return null;
+    try {
+      final raw = await _apiClient.getSession(sessionId.trim());
+      if (raw is Map<String, dynamic>) return raw;
+      if (raw is Map) return Map<String, dynamic>.from(raw);
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      if (kDebugMode) {
+        AppLogger.debug('fetchSession: ${e.message}');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        AppLogger.debug('fetchSession: $e');
+      }
+    }
+    return null;
+  }
+
   /// POST /api/payment/initiate — returns payment link for UPI QR.
   Future<PaymentInitiateResult> initiatePayment({
     required String sessionId,
@@ -673,10 +807,7 @@ class ApiService {
 
     if (kDebugMode == true) {
       dioWithTimeout.interceptors.add(ApiLoggingInterceptor());
-      final alice = AliceInspector.instance;
-      if (alice != null) {
-        dioWithTimeout.interceptors.add(alice.getDioInterceptor());
-      }
+      dioWithTimeout.interceptors.add(AliceDioProxyInterceptor());
     }
 
     final apiClientWithTimeout =
@@ -863,10 +994,7 @@ class ApiService {
 
     if (kDebugMode == true) {
       dio.interceptors.add(ApiLoggingInterceptor());
-      final alice = AliceInspector.instance;
-      if (alice != null) {
-        dio.interceptors.add(alice.getDioInterceptor());
-      }
+      dio.interceptors.add(AliceDioProxyInterceptor());
     }
 
     final slots = List<String>.filled(count, '');
@@ -985,25 +1113,20 @@ class ApiService {
       return XFile(imageUrl);
     }
 
-    // Use a dedicated Dio instance with AI timeout for large downloads
-    final dio = Dio(
-      BaseOptions(
-        connectTimeout: AppConstants.kAiGenerationTimeout,
-        receiveTimeout: AppConstants.kAiGenerationTimeout,
-      ),
+    final resolvedUrl = _withSessionIdIfMissing(_resolveImageUrl(imageUrl));
+
+    // Use the app's authenticated Dio instance (some image endpoints are protected and
+    // can return 403 without auth headers). Override timeouts for large downloads.
+    final dio = _dio;
+    final previousConnectTimeout = dio.options.connectTimeout;
+    final previousReceiveTimeout = dio.options.receiveTimeout;
+    dio.options = dio.options.copyWith(
+      connectTimeout: AppConstants.kAiGenerationTimeout,
+      receiveTimeout: AppConstants.kAiGenerationTimeout,
     );
 
-    configureDioForWeb(dio);
-    if (kDebugMode == true) {
-      dio.interceptors.add(ApiLoggingInterceptor());
-      final alice = AliceInspector.instance;
-      if (alice != null) {
-        dio.interceptors.add(alice.getDioInterceptor());
-      }
-    }
-
-    AppLogger.debug('📥 Downloading image from: $imageUrl');
-    final extension = imageUrl.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+    AppLogger.debug('📥 Downloading image from: $resolvedUrl');
+    final extension = resolvedUrl.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
     final tempDirPath = await FileHelper.getTempDirectoryPath();
     final fileName = 'transformed_${_uuid.v4()}.$extension';
     final filePath = '$tempDirPath/$fileName';
@@ -1011,21 +1134,73 @@ class ApiService {
 
     onProgress?.call('Downloading result...');
     int lastReportedPercent = -1;
-    await dio.download(
-      imageUrl,
-      (file as dynamic).path,
-      onReceiveProgress: (received, total) {
-        if (total <= 0) {
-          return;
+    Future<void> attemptDownload({required Map<String, dynamic>? headers}) async {
+      await dio.download(
+        resolvedUrl,
+        (file as dynamic).path,
+        onReceiveProgress: (received, total) {
+          if (total <= 0) {
+            return;
+          }
+          final percent = ((received / total) * 100).floor();
+          if (percent >= lastReportedPercent + 5 || percent == 100) {
+            lastReportedPercent = percent;
+            onProgress?.call('Downloading result... $percent%');
+          }
+        },
+        options: Options(headers: headers),
+        deleteOnError: true,
+      );
+    }
+
+    try {
+      // First attempt: authenticated headers (some endpoints require this).
+      await attemptDownload(headers: dio.options.headers);
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      final body = e.response?.data;
+      AppLogger.debug('❌ Image download failed ($status) for $resolvedUrl: $body');
+
+      // Some image/CDN endpoints reject bearer headers and respond with 403.
+      // Retry once without Authorization before surfacing the error.
+      if (status == 403) {
+        try {
+          final unauthHeaders = Map<String, dynamic>.from(dio.options.headers);
+          unauthHeaders.remove('Authorization');
+          unauthHeaders.remove('authorization');
+          lastReportedPercent = -1;
+          onProgress?.call('Retrying download...');
+          try {
+            if ((file as dynamic).existsSync()) {
+              await (file as dynamic).delete();
+            }
+          } catch (_) {}
+          await attemptDownload(headers: unauthHeaders);
+          return XFile((file as dynamic).path);
+        } on DioException catch (retry) {
+          final rStatus = retry.response?.statusCode;
+          final rBody = retry.response?.data;
+          AppLogger.debug(
+            '❌ Image download retry (no auth) failed ($rStatus) for $resolvedUrl: $rBody',
+          );
+          throw ApiException(
+            'Failed to download image (${rStatus ?? status ?? "unknown"}): ${rBody ?? body ?? retry.message ?? retry}\nURL: $resolvedUrl',
+            rStatus ?? status,
+          );
         }
-        final percent = ((received / total) * 100).floor();
-        if (percent >= lastReportedPercent + 5 || percent == 100) {
-          lastReportedPercent = percent;
-          onProgress?.call('Downloading result... $percent%');
-        }
-      },
-      deleteOnError: true,
-    );
+      }
+
+      throw ApiException(
+        'Failed to download image (${status ?? "unknown"}): ${body ?? e.message ?? e}\nURL: $resolvedUrl',
+        status,
+      );
+    } finally {
+      // Restore global timeouts so other requests keep their intended behavior.
+      dio.options = dio.options.copyWith(
+        connectTimeout: previousConnectTimeout,
+        receiveTimeout: previousReceiveTimeout,
+      );
+    }
 
     // Verify the file was written correctly
     if (!(file as dynamic).existsSync()) {
@@ -1040,6 +1215,46 @@ class ApiService {
     final savedPath = (file as dynamic).path;
     AppLogger.debug('✅ Saved transformed image: $savedPath ($fileSize bytes)');
     return XFile(savedPath);
+  }
+
+  /// Ensures URLs returned by the backend can be used by Dio.
+  ///
+  /// Backend may return relative paths like `/api/img/generated/...jpg` (or
+  /// occasionally paths with whitespace/newlines). Dio requires an absolute URI.
+  static String _resolveImageUrl(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return trimmed;
+
+    // Remove any whitespace/newlines accidentally included in the URL.
+    final compact = trimmed.replaceAll(RegExp(r'\s+'), '');
+
+    if (compact.startsWith('http://') || compact.startsWith('https://')) {
+      return compact;
+    }
+
+    // Treat as relative to API base.
+    final base = Uri.parse(AppConstants.kBaseUrl);
+    // Uri.resolve handles leading slashes correctly.
+    return base.resolve(compact).toString();
+  }
+
+  /// Adds session context for protected image endpoints when needed.
+  ///
+  /// Some backends protect generated images and require `sessionId` as a query param
+  /// (in addition to, or instead of, bearer auth). This keeps the client compatible
+  /// with both public and signed/protected URL modes.
+  static String _withSessionIdIfMissing(String url) {
+    final sessionId = SessionManager().sessionId;
+    if (sessionId == null || sessionId.isEmpty) return url;
+
+    final uri = Uri.tryParse(url);
+    if (uri == null) return url;
+    if (!uri.path.startsWith('/api/img/generated/')) return url;
+    if (uri.queryParameters.containsKey('sessionId')) return url;
+
+    final qp = Map<String, String>.from(uri.queryParameters);
+    qp['sessionId'] = sessionId;
+    return uri.replace(queryParameters: qp).toString();
   }
 
   /// Preprocesses image (validation, compression, person detection)

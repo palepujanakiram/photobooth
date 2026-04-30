@@ -16,5 +16,9 @@ class AppConfig {
   /// Base URL for the API endpoints
   /// NOTE: For web development, you MUST run Chrome with CORS disabled
   /// See QUICK_CORS_FIX.md or run: ./run_chrome_dev.sh
-  static const String baseUrl = 'https://fotozenai.fly.dev';
+  /// Override for local/dev: `--dart-define=BASE_URL=http://10.0.2.2:5000` (Android emulator → host).
+  static const String baseUrl = String.fromEnvironment(
+    'BASE_URL',
+    defaultValue: 'https://fotozenai.fly.dev',
+  );
 }

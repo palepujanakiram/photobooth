@@ -12,6 +12,7 @@ import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/bottom_safe_area.dart';
+import '../../utils/route_args.dart';
 
 class PhotoReviewScreen extends StatefulWidget {
   const PhotoReviewScreen({super.key});
@@ -31,17 +32,15 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_isInitialized) return;
-    final args = ModalRoute.of(context)?.settings.arguments as Map?;
-    if (args == null) return;
-    final photo = args['photo'] as PhotoModel?;
-    final theme = args['theme'] as ThemeModel?;
-    if (photo != null && theme != null) {
-      _photo = photo;
-      _theme = theme;
-      _reviewViewModel = ReviewViewModel(photo: photo, theme: theme);
-      _photoBytesFuture = photo.imageFile.readAsBytes();
-      _isInitialized = true;
-    }
+    final parsed = GenerateArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
+    if (parsed == null) return;
+    final photo = parsed.photo;
+    final theme = parsed.theme;
+    _photo = photo;
+    _theme = theme;
+    _reviewViewModel = ReviewViewModel(photo: photo, theme: theme);
+    _photoBytesFuture = photo.imageFile.readAsBytes();
+    _isInitialized = true;
   }
 
   @override

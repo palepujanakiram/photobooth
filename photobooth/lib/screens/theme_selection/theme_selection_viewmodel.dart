@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'theme_model.dart';
 import '../../services/theme_manager.dart';
+import '../../utils/constants.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
@@ -13,6 +15,7 @@ class ThemeViewModel extends ChangeNotifier {
   final SessionManager _sessionManager;
   List<ThemeModel> _themes = [];
   ThemeModel? _selectedTheme;
+  ThemeModel? _armedTheme;
   bool _isLoading = false;
   bool _isUpdatingSession = false;
   String? _errorMessage;
@@ -41,6 +44,8 @@ class ThemeViewModel extends ChangeNotifier {
 
   List<ThemeModel> get themes => _themes;
   ThemeModel? get selectedTheme => _selectedTheme;
+  ThemeModel? get armedTheme => _armedTheme;
+  bool get hasArmedTheme => _armedTheme != null;
   bool get isLoading => _isLoading;
   bool get isUpdatingSession => _isUpdatingSession;
   String? get errorMessage => _errorMessage;
@@ -101,11 +106,34 @@ class ThemeViewModel extends ChangeNotifier {
   int get carouselIndex => _carouselIndex;
   int _carouselIndex = 0;
 
+  /// When true, Select Theme shows a scrollable card grid; when false, the 3D carousel + thumbnails.
+  bool get useCardGridLayout => _useCardGridLayout;
+  bool _useCardGridLayout = false;
+
+  /// Loads [useCardGridLayout] from local storage (web + mobile).
+  Future<void> loadLayoutPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getBool(AppConstants.kPrefsThemeSelectionCardLayout);
+    if (v != null && v != _useCardGridLayout) {
+      _useCardGridLayout = v;
+      notifyListeners();
+    }
+  }
+
+  Future<void> setUseCardGridLayout(bool value) async {
+    if (_useCardGridLayout == value) return;
+    _useCardGridLayout = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(AppConstants.kPrefsThemeSelectionCardLayout, value);
+  }
+
   void selectCategory(String id) {
     _selectedCategoryId = id;
     _carouselIndex = 0;
     final list = filteredThemes;
     _selectedTheme = list.isEmpty ? null : list[0];
+    _armedTheme = null;
     notifyListeners();
   }
 
@@ -137,6 +165,9 @@ class ThemeViewModel extends ChangeNotifier {
       _selectedTheme = list[0];
     } else if (list.isNotEmpty && _selectedTheme == null) {
       _selectedTheme = list[0];
+    }
+    if (_armedTheme != null && !_themes.any((t) => t.id == _armedTheme!.id)) {
+      _armedTheme = null;
     }
     notifyListeners();
   }
@@ -197,9 +228,23 @@ class ThemeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Explicitly confirms a theme. This remains stable even if [selectedTheme] changes due to carousel auto-scroll.
+  void armTheme(ThemeModel theme) {
+    _armedTheme = theme;
+    _errorMessage = null;
+    notifyListeners();
+  }
+
+  void clearArmedTheme() {
+    if (_armedTheme == null) return;
+    _armedTheme = null;
+    notifyListeners();
+  }
+
   /// Clears the selected theme
   void clearSelection() {
     _selectedTheme = null;
+    _armedTheme = null;
     notifyListeners();
   }
 
@@ -220,7 +265,8 @@ class ThemeViewModel extends ChangeNotifier {
   /// Called when user taps "Continue" button after selecting a theme
   /// Makes PATCH /api/sessions/{sessionId} with only selectedThemeId
   Future<bool> updateSessionWithTheme() async {
-    if (_selectedTheme == null) {
+    final theme = _armedTheme ?? _selectedTheme;
+    if (theme == null) {
       _errorMessage = 'No theme selected. Please select a theme first.';
       notifyListeners();
       return false;
@@ -244,7 +290,7 @@ class ThemeViewModel extends ChangeNotifier {
       const updateTimeout = Duration(seconds: 30);
       final response = await _apiService.updateSession(
         sessionId: sessionId,
-        selectedThemeId: _selectedTheme!.id,
+        selectedThemeId: theme.id,
         // userImageUrl is not provided - photo already uploaded in Step 3
       ).timeout(
         updateTimeout,

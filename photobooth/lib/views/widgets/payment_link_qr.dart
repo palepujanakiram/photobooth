@@ -16,15 +16,31 @@ class PaymentLinkQr extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (kIsWeb) {
+    // Prefer QR rendered by pure-Dart widget for reliability (handles long UPI URIs
+    // better than some native encoders). Use ZXing only when it successfully encodes.
+    Widget dartQr() {
       return QrImageView(
         data: paymentLink,
         size: size,
         backgroundColor: Colors.white,
+        // If encoding fails, show the message inline instead of throwing.
+        errorStateBuilder: (ctx, err) => SizedBox(
+          width: size,
+          height: size,
+          child: Center(
+            child: Text(
+              err.toString(),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+            ),
+          ),
+        ),
       );
     }
 
-    // ZXing returns raw 1-channel matrix bytes, not PNG. Image.memory needs PNG (see WriterWidget in flutter_zxing).
+    if (kIsWeb) return dartQr();
+
+    // ZXing returns raw 1-channel matrix bytes, not PNG. Image.memory needs PNG.
     final w = size.round().clamp(64, 512);
     final h = size.round().clamp(64, 512);
     final encode = zx.encodeBarcode(
@@ -38,17 +54,7 @@ class PaymentLinkQr extends StatelessWidget {
     );
 
     if (!encode.isValid || encode.data == null) {
-      return SizedBox(
-        width: size,
-        height: size,
-        child: Center(
-          child: Text(
-            encode.error ?? 'Could not create QR code',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
-          ),
-        ),
-      );
+      return dartQr();
     }
 
     try {
@@ -60,18 +66,8 @@ class PaymentLinkQr extends StatelessWidget {
         fit: BoxFit.contain,
         gaplessPlayback: true,
       );
-    } catch (e) {
-      return SizedBox(
-        width: size,
-        height: size,
-        child: Center(
-          child: Text(
-            e.toString(),
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
-          ),
-        ),
-      );
+    } catch (_) {
+      return dartQr();
     }
   }
 }

@@ -78,7 +78,11 @@ class _AnimatedSlideshowBackgroundState extends State<AnimatedSlideshowBackgroun
     if (!_precached && _paths.isNotEmpty) {
       _precached = true;
       for (final path in _paths) {
-        precacheImage(AssetImage(path), context);
+        if (_isNetworkImagePath(path)) {
+          precacheImage(NetworkImage(path), context);
+        } else {
+          precacheImage(AssetImage(path), context);
+        }
       }
     }
   }
@@ -293,6 +297,11 @@ class _FlipTransition extends StatelessWidget {
   }
 }
 
+bool _isNetworkImagePath(String path) {
+  final p = path.trim().toLowerCase();
+  return p.startsWith('http://') || p.startsWith('https://');
+}
+
 class _CardImage extends StatelessWidget {
   const _CardImage({
     super.key,
@@ -312,6 +321,33 @@ class _CardImage extends StatelessWidget {
     // tells the codec to resize during decode so only ~1 MB is held.
     final cw = (width * MediaQuery.devicePixelRatioOf(context)).ceil();
     final ch = (height * MediaQuery.devicePixelRatioOf(context)).ceil();
+    final placeholder = Container(
+      width: width,
+      height: height,
+      color: CupertinoColors.systemGrey5,
+      child: Icon(
+        CupertinoIcons.photo,
+        color: CupertinoColors.systemGrey2,
+        size: height * 0.4,
+      ),
+    );
+    if (_isNetworkImagePath(assetPath)) {
+      return Image.network(
+        assetPath,
+        fit: BoxFit.cover,
+        width: width,
+        height: height,
+        cacheWidth: cw,
+        cacheHeight: ch,
+        filterQuality: FilterQuality.low,
+        gaplessPlayback: true,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return placeholder;
+        },
+        errorBuilder: (_, __, ___) => placeholder,
+      );
+    }
     return Image.asset(
       assetPath,
       fit: BoxFit.cover,
@@ -320,16 +356,7 @@ class _CardImage extends StatelessWidget {
       cacheWidth: cw,
       cacheHeight: ch,
       filterQuality: FilterQuality.low,
-      errorBuilder: (_, __, ___) => Container(
-        width: width,
-        height: height,
-        color: CupertinoColors.systemGrey5,
-        child: Icon(
-          CupertinoIcons.photo,
-          color: CupertinoColors.systemGrey2,
-          size: height * 0.4,
-        ),
-      ),
+      errorBuilder: (_, __, ___) => placeholder,
     );
   }
 }

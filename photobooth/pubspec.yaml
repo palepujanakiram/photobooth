@@ -83,13 +83,13 @@ flutter:
 
 flutter_launcher_icons:
   android: true
-  ios: false
-  image_path: "lib/images/fotozen_ai_logo.png"
+  ios: true
+  image_path: "lib/images/fotozen_app_icon.png"
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "lib/images/fotozen_ai_logo.png"
+  adaptive_icon_foreground: "lib/images/fotozen_app_icon.png"
   web:
     generate: true
-    image_path: "lib/images/fotozen_ai_logo.png"
+    image_path: "lib/images/fotozen_app_icon.png"
     background_color: "#FFFFFF"
     theme_color: "#0088CC"
 

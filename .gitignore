@@ -58,6 +58,22 @@ fastlane/test_output
 .env
 .env.local
 
+# Local business/docs artifacts (do not commit)
+*.xlsx
+*.pptx
+*.docx
+*.html
+.~lock.*#
+fotOzen_*.png
+fotozen_*.png
+
+# Local temp/work folders
+photobooth/.tmp/
+
+# Repo-local folders that are not part of this app repo
+website/
+zenai/
+
 # Build artifacts
 *.apk
 *.aab

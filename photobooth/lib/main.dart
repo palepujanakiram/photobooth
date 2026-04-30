@@ -11,6 +11,8 @@ import 'package:bugsnag_flutter/bugsnag_flutter.dart';
 import 'package:flutter_alice/alice.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
 import 'screens/theme_slideshow/theme_slideshow_view.dart';
+import 'screens/splash/app_splash_screen.dart';
+import 'screens/splash/bootstrap_route_args.dart';
 import 'screens/terms_and_conditions/terms_and_conditions_view.dart';
 import 'screens/webview/webview_screen.dart';
 import 'screens/theme_selection/theme_selection_view.dart';
@@ -18,7 +20,11 @@ import 'screens/photo_capture/photo_capture_view.dart';
 import 'screens/photo_generate/photo_generate_view.dart';
 import 'screens/photo_review/photo_review_view.dart';
 import 'screens/result/result_view.dart';
+import 'screens/qr_share/qr_share_view.dart';
 import 'screens/thank_you/thank_you_view.dart';
+import 'screens/staff/staff_login_view.dart';
+import 'screens/staff/staff_payments_view.dart';
+import 'utils/app_runtime_config.dart';
 import 'utils/constants.dart';
 import 'utils/logger.dart';
 import 'services/error_reporting/error_reporting_manager.dart';
@@ -33,11 +39,8 @@ import 'services/payment_push_coordinator.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (AppConstants.kLowMemoryKioskMode) {
-    final ic = PaintingBinding.instance.imageCache;
-    ic.maximumSize = AppConstants.kFlutterImageCacheMaxCount;
-    ic.maximumSizeBytes = AppConstants.kFlutterImageCacheMaxBytes;
-  }
+  // Generous defaults until `/api/settings` loads; [AppSettingsManager] reapplies limits.
+  applyFlutterImageCacheLimits();
 
   if (DefaultFirebaseOptions.isFirebaseConfigured) {
     await Firebase.initializeApp(
@@ -154,15 +157,15 @@ Future<void> main() async {
   };
 
   if (kDebugMode) {
-    print('✅ Error reporting initialized successfully');
-    print('   Active services: ${ErrorReportingManager.serviceCount}');
-    print('   - Bugsnag: enabled');
+    if (AppConstants.kEnableLogOutput) {
+      AppLogger.debug('✅ Error reporting initialized successfully');
+      AppLogger.debug(
+          'Active services: ${ErrorReportingManager.serviceCount} (Bugsnag: enabled)');
+    }
   }
 
   final navigatorKey = GlobalKey<NavigatorState>();
-  if (kDebugMode) {
-    AliceInspector.initialize(navigatorKey);
-  }
+  AliceInspector.initialize(navigatorKey);
 
   runApp(PhotoBoothApp(navigatorKey: navigatorKey));
 }
@@ -204,7 +207,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
     _fcmOpenedAppSub = FirebaseMessaging.onMessageOpenedApp.listen(
       (message) {
         if (kDebugMode) {
-          debugPrint(
+          AppLogger.debug(
             'FCM onMessageOpenedApp (background/killed: user likely tapped notification)',
           );
         }
@@ -212,7 +215,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
       },
       onError: (e, st) {
         if (kDebugMode) {
-          debugPrint('FCM onMessageOpenedApp error: $e');
+          AppLogger.debug('FCM onMessageOpenedApp error: $e');
         }
       },
     );
@@ -220,7 +223,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
     _fcmForegroundSub = FirebaseMessaging.onMessage.listen(
       (message) {
         if (kDebugMode) {
-          debugPrint(
+          AppLogger.debug(
             'FCM onMessage FOREGROUND (push reached Dart): '
             'data=${message.data} title=${message.notification?.title}',
           );
@@ -229,7 +232,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
       },
       onError: (e, st) {
         if (kDebugMode) {
-          debugPrint('FCM onMessage error: $e');
+          AppLogger.debug('FCM onMessage error: $e');
         }
       },
     );
@@ -239,7 +242,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
       (token) {
         unawaited(FcmTokenStore.save(token));
         if (kDebugMode) {
-          debugPrint(
+          AppLogger.debug(
             'FCM token refreshed; persisted locally. Use this token on the next '
             'POST /api/payment/initiate (or backend token-update if you add one): $token',
           );
@@ -249,20 +252,20 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
 
     if (kDebugMode) {
       if (defaultTargetPlatform == TargetPlatform.android) {
-        debugPrint(
+        AppLogger.debug(
           'FCM Firebase project (server Admin SDK must match): '
           '${DefaultFirebaseOptions.android.projectId}',
         );
-        debugPrint(
+        AppLogger.debug(
           'FCM Android appId: ${DefaultFirebaseOptions.android.appId}',
         );
       } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-        debugPrint(
+        AppLogger.debug(
           'FCM Firebase project (server Admin SDK must match): '
           '${DefaultFirebaseOptions.ios.projectId}',
         );
       }
-      debugPrint(
+      AppLogger.debug(
         'FCM: listeners registered. If you never see "FCM rx message" after paying, '
         'the message is not reaching the device (wrong Firebase project, token not stored server-side, '
         'or not sent). Android: notification-led pushes skip onMessage while backgrounded unless user '
@@ -280,7 +283,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
       sound: true,
     );
     if (kDebugMode) {
-      debugPrint('FCM permission: ${perm.authorizationStatus}');
+      AppLogger.debug('FCM permission: ${perm.authorizationStatus}');
     }
 
     try {
@@ -290,14 +293,14 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
       }
       if (kDebugMode) {
         if (token != null) {
-          debugPrint('FCM registration token (use in payment init & server): $token');
+          AppLogger.debug('FCM registration token (use in payment init & server): $token');
         } else {
-          debugPrint('FCM registration token: null');
+          AppLogger.debug('FCM registration token: null');
         }
       }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('FCM getToken failed: $e');
+        AppLogger.debug('FCM getToken failed: $e');
       }
     }
 
@@ -311,7 +314,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
 
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (kDebugMode) {
-      debugPrint(
+      AppLogger.debug(
         'FCM getInitialMessage: ${initial != null ? "message present (cold start from notif)" : "null"}',
       );
     }
@@ -356,9 +359,15 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
         ChangeNotifierProvider<AppSettingsManager>.value(
           value: _appSettingsManager,
         ),
-        Provider<Alice?>.value(value: AliceInspector.instance),
       ],
-      child: MaterialApp(
+      child: Consumer<AppSettingsManager>(
+        builder: (context, _, __) {
+          AliceInspector.syncWithRuntimeConfig();
+          return MultiProvider(
+            providers: [
+              Provider<Alice?>.value(value: AliceInspector.instance),
+            ],
+            child: MaterialApp(
         navigatorKey: widget.navigatorKey,
         title: AppConstants.kBrandName,
         debugShowCheckedModeBanner: false,
@@ -379,21 +388,40 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: const [Locale('en')],
-        initialRoute: AppConstants.kRouteTerms,
+        initialRoute: AppConstants.kRouteSplash,
         routes: {
           AppConstants.kRouteSlideshow: (context) =>
               const ThemeSlideshowScreen(),
-          AppConstants.kRouteTerms: (context) =>
-              const TermsAndConditionsScreen(),
+          AppConstants.kRouteSplash: (context) {
+            final raw = ModalRoute.of(context)?.settings.arguments;
+            final args = raw is SplashRouteArgs
+                ? raw
+                : const SplashRouteArgs();
+            return AppSplashScreen(args: args);
+          },
+          AppConstants.kRouteTerms: (context) {
+            final raw = ModalRoute.of(context)?.settings.arguments;
+            final urls =
+                raw is TermsRouteArgs ? raw.backgroundImageUrls : null;
+            final bg = (urls != null && urls.isNotEmpty) ? urls : null;
+            return TermsAndConditionsScreen(backgroundImageUrls: bg);
+          },
           AppConstants.kRouteHome: (context) => const ThemeSelectionScreen(),
           AppConstants.kRouteCapture: (context) => const PhotoCaptureScreen(),
           AppConstants.kRouteGenerate: (context) => const PhotoGenerateScreen(),
           AppConstants.kRouteReview: (context) => const PhotoReviewScreen(),
           AppConstants.kRouteResult: (context) => const ResultScreen(),
+          AppConstants.kRouteQrShare: (context) => const QrShareScreen(),
           AppConstants.kRouteThankYou: (context) => const ThankYouScreen(),
+          AppConstants.kRouteStaffLogin: (context) => const StaffLoginScreen(),
+          AppConstants.kRouteStaffPayments: (context) =>
+              const StaffPaymentsScreen(),
           AppConstants.kRouteWebView: (context) => WebViewScreen.fromRouteSettings(
                 ModalRoute.of(context)?.settings,
               ),
+        },
+            ),
+          );
         },
       ),
     );

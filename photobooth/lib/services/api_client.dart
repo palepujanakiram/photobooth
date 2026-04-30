@@ -59,6 +59,12 @@ abstract class ApiClient {
     @Body() Map<String, dynamic> body,
   );
 
+  /// Fetches session details (including payment/admin approval state).
+  @GET('/api/sessions/{sessionId}')
+  Future<dynamic> getSession(
+    @Path('sessionId') String sessionId,
+  );
+
   /// Deletes the session and associated data
   @DELETE('/api/sessions/{sessionId}')
   Future<void> deleteSession(

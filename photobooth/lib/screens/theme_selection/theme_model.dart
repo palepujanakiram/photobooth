@@ -81,6 +81,20 @@ class ThemeModel {
   }
 
   factory ThemeModel.fromJson(Map<String, dynamic> json) {
+    String? stringOrNull(dynamic v) {
+      if (v == null) return null;
+      if (v is String) return v;
+      return v.toString();
+    }
+
+    // Backends sometimes rename this field (sampleImageUrl vs imageUrl, etc.).
+    // Keep a single `sampleImageUrl` surface in the app by accepting common aliases.
+    final sample = stringOrNull(json['sampleImageUrl']) ??
+        stringOrNull(json['imageUrl']) ??
+        stringOrNull(json['image_url']) ??
+        stringOrNull(json['themeImageUrl']) ??
+        stringOrNull(json['theme_image_url']);
+
     return ThemeModel(
       id: json['id'] as String,
       categoryId: json['categoryId'] as String,
@@ -89,7 +103,7 @@ class ThemeModel {
       description: json['description'] as String,
       promptText: json['promptText'] as String,
       negativePrompt: json['negativePrompt'] as String?,
-      sampleImageUrl: json['sampleImageUrl'] as String?,
+      sampleImageUrl: sample,
       isActive: json['isActive'] as bool?,
       displayOrder: json['displayOrder'] as int?,
       backgroundColor: json['backgroundColor'] as String?,

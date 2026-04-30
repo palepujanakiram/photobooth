@@ -1,19 +1,23 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../photo_capture/photo_model.dart';
 import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
+import '../../services/file_helper.dart';
 import '../../services/print_service.dart';
 import '../../services/session_manager.dart';
 import '../../services/share_service.dart';
+import '../../services/kiosk_manager.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/logger.dart';
 import '../../services/fcm_service.dart';
 import '../../services/payment_push_coordinator.dart';
+import '../../models/kiosk_share_link_model.dart';
 
 enum _PollVerdict { approved, failed, pending }
 
@@ -25,6 +29,7 @@ class ResultViewModel extends ChangeNotifier {
   final ApiService _apiService;
   final SessionManager _sessionManager;
   final AppSettingsManager? _appSettingsManager;
+  final KioskManager _kioskManager;
 
   final bool _isProcessing = false;
   String? _errorMessage;
@@ -76,6 +81,7 @@ class ResultViewModel extends ChangeNotifier {
     ApiService? apiService,
     SessionManager? sessionManager,
     AppSettingsManager? appSettingsManager,
+    KioskManager? kioskManager,
   })  : _generatedImages = generatedImages,
         _originalPhoto = originalPhoto,
         _printService = printService ?? PrintService(),
@@ -83,6 +89,7 @@ class ResultViewModel extends ChangeNotifier {
         _apiService = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager(),
         _appSettingsManager = appSettingsManager,
+        _kioskManager = kioskManager ?? KioskManager(),
         _printerHost = _defaultPrinterHost(appSettingsManager);
 
   List<GeneratedImage> get generatedImages => _generatedImages;
@@ -91,6 +98,8 @@ class ResultViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
   String get printerHost => _printerHost;
+  bool get isPaymentGatewayEnabled =>
+      _appSettingsManager?.settings?.paymentGatewayEnabled ?? true;
 
   static String _defaultPrinterHost(AppSettingsManager? manager) {
     final fromApi = manager?.settings?.printerHost?.trim();
@@ -155,7 +164,6 @@ class ResultViewModel extends ChangeNotifier {
   /// Loads UPI payment link from POST /api/payment/initiate and exposes it for QR display.
   Future<void> loadPaymentQr({String? customerPhone}) async {
     if (_paymentInitInProgress || _paymentLink != null) return;
-
     final sessionId = _sessionManager.sessionId;
     if (sessionId == null || sessionId.isEmpty) {
       _paymentInitError = 'No session for payment. Go back and try again.';
@@ -176,7 +184,7 @@ class ResultViewModel extends ChangeNotifier {
       final fcmToken = await FcmService.getToken();
       if (kDebugMode) {
         final len = fcmToken?.length ?? 0;
-        debugPrint(
+        AppLogger.debug(
           'Payment initiate: fcmToken length=$len'
           '${len == 0 ? " — server cannot send FCM; check permission / Play services" : ""}',
         );
@@ -188,17 +196,22 @@ class ResultViewModel extends ChangeNotifier {
         fcmToken: fcmToken ?? '',
       );
       if (kDebugMode) {
-        debugPrint(
+        AppLogger.debug(
           'Payment initiate OK: id=${result.id} status=${result.status} — '
           'confirm backend stores token + sends FCM from same Firebase project as the app',
         );
       }
+      // For manual/static QR mode, backend may omit paymentLink but should still
+      // create a transaction with an id that admin can approve/reject.
       _paymentLink = result.paymentLink;
       final pid = result.id.trim();
       _activePaymentId = pid.isNotEmpty ? pid : null;
       if (_activePaymentId != null) {
         _startPaymentStatusPolling();
       }
+      // Backup: also poll session by sessionId (React Query style) so approval can
+      // still be detected even if paymentId polling/FCM is missing.
+      _startSessionApprovalPolling(sessionId);
     } on ApiException catch (e) {
       _paymentInitError = e.message;
     } catch (e) {
@@ -209,8 +222,8 @@ class ResultViewModel extends ChangeNotifier {
     }
   }
 
-  /// Backend recommends polling every 3–5s; use 4s.
-  static const _paymentPollInterval = Duration(seconds: 4);
+  /// Kiosk polling backup cadence: every 3 seconds.
+  static const _paymentPollInterval = Duration(seconds: 3);
 
   void _startPaymentStatusPolling() {
     _paymentPollTimer?.cancel();
@@ -220,6 +233,102 @@ class ResultViewModel extends ChangeNotifier {
       _paymentPollInterval,
       _onPaymentPollTick,
     );
+  }
+
+  void _startSessionApprovalPolling(String sessionId) {
+    _paymentPollTimer?.cancel();
+    _paymentPollTicks = 0;
+    _pollNullStreak = 0;
+    _paymentPollTimer = Timer.periodic(
+      _paymentPollInterval,
+      (t) => _onSessionPollTick(t, sessionId),
+    );
+  }
+
+  Future<void> _onSessionPollTick(Timer t, String sessionId) async {
+    if (_paymentOutcomeHandled) {
+      t.cancel();
+      return;
+    }
+    if (++_paymentPollTicks > 180) {
+      // 12 minutes max.
+      t.cancel();
+      return;
+    }
+
+    final raw = await _apiService.fetchSession(sessionId);
+    if (_paymentOutcomeHandled) {
+      t.cancel();
+      return;
+    }
+    if (raw == null) {
+      if (++_pollNullStreak >= 8) {
+        t.cancel();
+      }
+      return;
+    }
+    _pollNullStreak = 0;
+
+    final verdict = _verdictFromSession(raw);
+    switch (verdict) {
+      case _PollVerdict.approved:
+        t.cancel();
+        await onFcmPaymentPush(
+          PaymentPushPayload(
+            type: PaymentPushCoordinator.typeApproved,
+            paymentId: sessionId,
+            title: 'Payment confirmed',
+            body: 'Payment approved. Printing...',
+          ),
+        );
+      case _PollVerdict.failed:
+        t.cancel();
+        await onFcmPaymentPush(
+          PaymentPushPayload(
+            type: PaymentPushCoordinator.typeFailed,
+            paymentId: sessionId,
+            title: 'Payment not completed',
+            body: 'Payment failed. Try again or use another method.',
+          ),
+        );
+      case _PollVerdict.pending:
+      case null:
+        break;
+    }
+  }
+
+  static _PollVerdict? _verdictFromSession(Map<String, dynamic> raw) {
+    dynamic pick(List<String> keys) {
+      for (final k in keys) {
+        if (raw.containsKey(k)) return raw[k];
+      }
+      return null;
+    }
+
+    final paidFlag = pick(const [
+      'paymentApproved',
+      'payment_approved',
+      'isPaid',
+      'paid',
+      'paymentConfirmed',
+    ]);
+    if (paidFlag is bool) {
+      return paidFlag ? _PollVerdict.approved : _PollVerdict.pending;
+    }
+
+    final status = pick(const [
+      'paymentStatus',
+      'payment_status',
+      'status',
+    ])?.toString().trim().toUpperCase();
+    if (status == null || status.isEmpty) return null;
+    if (status == 'APPROVED' || status == 'PAID' || status == 'CONFIRMED') {
+      return _PollVerdict.approved;
+    }
+    if (status == 'FAILED' || status == 'DECLINED' || status == 'REJECTED') {
+      return _PollVerdict.failed;
+    }
+    return _PollVerdict.pending;
   }
 
   Future<void> _onPaymentPollTick(Timer t) async {
@@ -314,7 +423,12 @@ class ResultViewModel extends ChangeNotifier {
       _fcmPaymentPushSuccess = true;
       _fcmPaymentStatusDetail = _fcmApprovedDetailText(payload);
       notifyListeners();
-      await silentPrintToNetwork();
+      try {
+        await silentPrintToNetwork().timeout(const Duration(minutes: 2));
+      } on TimeoutException {
+        _errorMessage =
+            'Printing is taking longer than expected. Please check the printer connection and try again.';
+      }
       notifyListeners();
       return;
     }
@@ -352,6 +466,44 @@ class ResultViewModel extends ChangeNotifier {
     if (sessionId == null) return;
     await _apiService.deleteSession(sessionId);
     _sessionManager.clearSession();
+  }
+
+  /// Kiosk privacy wipe: clears local session + temp image files so the next user cannot access prior photos.
+  ///
+  /// This does **not** delete anything on the server (transactions/audit can remain).
+  Future<void> privacyWipeLocal() async {
+    _paymentPollTimer?.cancel();
+    _paymentPollTimer = null;
+    _downloadedFiles.clear();
+    _sessionManager.clearSession();
+    await FileHelper.cleanupTempImages();
+  }
+
+  /// Mints a short-lived customer share link for this session (for QR bridge).
+  ///
+  /// Returns null if kiosk/session context is missing or the backend rejects it.
+  Future<KioskShareLinkModel?> mintCustomerShareLink({
+    int? ttlMinutes,
+    int? imageIndex,
+  }) async {
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null || sessionId.trim().isEmpty) return null;
+    final kioskCode = await _kioskManager.getKioskCode();
+    if (kioskCode == null || kioskCode.trim().isEmpty) return null;
+
+    try {
+      final raw = await _apiService.createKioskShareLink(
+        kioskCode: kioskCode,
+        sessionId: sessionId,
+        ttlMinutes: ttlMinutes,
+        imageIndex: imageIndex,
+      );
+      final model = KioskShareLinkModel.fromJson(raw);
+      return model.isValid ? model : null;
+    } catch (e, st) {
+      AppLogger.debug('mintCustomerShareLink failed: $e\n$st');
+      return null;
+    }
   }
 
   /// Download all images to temp files for print/share
@@ -468,8 +620,43 @@ class ResultViewModel extends ChangeNotifier {
 
   /// Share all images
   Future<void> shareImages({Rect? sharePositionOrigin}) async {
+    // Web share: share the URLs (no filesystem downloads / file sharing).
+    if (kIsWeb) {
+      final urls = _generatedImages.map((e) => e.imageUrl).where((u) => u.trim().isNotEmpty).toList();
+      if (urls.isEmpty) {
+        _errorMessage = 'No images to share';
+        notifyListeners();
+        return;
+      }
+      _isSharing = true;
+      _errorMessage = null;
+      notifyListeners();
+      try {
+        await _shareService.shareText(
+          urls.join('\n'),
+          sharePositionOrigin: sharePositionOrigin,
+          subject: '${AppConstants.kBrandName} photos',
+        );
+      } on ShareException catch (e) {
+        // Many browsers don't support Web Share API for desktops.
+        // Fall back to copying the link(s) so operators can paste into WhatsApp.
+        try {
+          await Clipboard.setData(ClipboardData(text: urls.join('\n')));
+          _errorMessage = 'Sharing not supported in this browser. Link copied.';
+        } catch (_) {
+          _errorMessage = e.message;
+        }
+      } catch (e) {
+        _errorMessage = 'Failed to share: $e';
+      } finally {
+        _isSharing = false;
+        notifyListeners();
+      }
+      return;
+    }
+
     // Download files first if needed
-    if (!kIsWeb && _downloadedFilesList.length != _generatedImages.length) {
+    if (_downloadedFilesList.length != _generatedImages.length) {
       final success = await _ensureAllFilesDownloaded('share');
       if (!success) return;
     }
@@ -480,6 +667,9 @@ class ResultViewModel extends ChangeNotifier {
 
     try {
       final files = _downloadedFilesList;
+      if (files.isEmpty) {
+        throw ShareException('No images to share (download did not produce any files)');
+      }
       // Share all images using the multiple images method
       await _shareService.shareMultipleImages(
         files,
