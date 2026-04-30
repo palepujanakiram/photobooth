@@ -76,9 +76,15 @@ class AppConstants {
   /// Peak scale of the centered card in the theme carousel 3D transform (clamped in carousel).
   static const double kThemeCarouselCenterMaxScale = 1.15;
 
-  /// Pause duration after user taps a theme before auto-scroll resumes.
+  /// Time between automatic carousel advances when the user is idle.
+  static const Duration kThemeCarouselAutoScrollInterval =
+      Duration(seconds: 5);
+
+  /// Idle time after the user interacts (tap carousel, thumb, or grid) before
+  /// auto-scroll resumes; timer phase resets so the next advance is a full
+  /// [kThemeCarouselAutoScrollInterval] away.
   static const Duration kThemeCarouselAutoScrollPauseDuration =
-      Duration(seconds: 4);
+      Duration(seconds: 8);
 
   /// Capture / preview card: max width as a fraction of screen width (landscape aligns ~theme carousel hero ~0.42–0.44).
   static const double kCapturePreviewCardMaxWidthFractionLandscape = 0.44;
@@ -203,6 +209,8 @@ class AppConstants {
   static const String kRouteReview = '/review';
   static const String kRouteResult = '/result';
   static const String kRouteThankYou = '/thank-you';
+  /// Post-payment QR bridge + optional print/share actions (kiosk).
+  static const String kRouteQrShare = '/qr-share';
   /// Push [WebViewScreen] (full-screen, close button only; no app bar) using
   /// `arguments`: a URL [String], or a [Map] with `url` ([String]).
   static const String kRouteWebView = '/webview';

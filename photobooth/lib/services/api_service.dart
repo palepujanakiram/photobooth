@@ -88,6 +88,68 @@ class ApiService {
     _apiClient = ApiClient(_dio, baseUrl: AppConstants.kBaseUrl);
   }
 
+  /// POST `/api/kiosk/shares` — mint a short-lived share link for a session.
+  ///
+  /// Kiosk-callable (no admin auth). Backend validates kiosk owns the session.
+  /// Returns a map with: token, url (short `/s/:token`), longUrl (fallback), expiresAt.
+  Future<Map<String, dynamic>> createKioskShareLink({
+    required String kioskCode,
+    required String sessionId,
+    int? ttlMinutes,
+    int? imageIndex,
+  }) async {
+    final code = kioskCode.trim().toUpperCase();
+    final sid = sessionId.trim();
+    if (code.isEmpty) {
+      throw ApiException('kioskCode is required');
+    }
+    if (sid.isEmpty) {
+      throw ApiException('sessionId is required');
+    }
+
+    try {
+      final body = <String, dynamic>{
+        'kioskCode': code,
+        'sessionId': sid,
+        if (ttlMinutes != null) 'ttlMinutes': ttlMinutes,
+        if (imageIndex != null) 'imageIndex': imageIndex,
+      };
+
+      final r = await _dio.post<dynamic>(
+        '/api/kiosk/shares',
+        data: body,
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+      final data = r.data;
+      if (r.statusCode != null && r.statusCode! >= 400) {
+        if (data is Map<String, dynamic>) {
+          throw ApiException(
+            data['error']?.toString() ??
+                data['message']?.toString() ??
+                'Failed to create share link (${r.statusCode})',
+            r.statusCode,
+          );
+        }
+        throw ApiException(
+          'Failed to create share link (${r.statusCode}): ${data ?? ''}',
+          r.statusCode,
+        );
+      }
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+      throw ApiException('Unexpected share link response from API');
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      throw ApiException(
+        'Failed to create share link: ${e.message}',
+        e.response?.statusCode,
+      );
+    }
+  }
+
   /// GET `/api/payments/status/{paymentId}` — `{ "status": "PENDING" | "APPROVED" | "FAILED" }`.
   /// Poll when FCM is unavailable; returns that map or null on error / non-JSON.
   Future<Map<String, dynamic>?> fetchPaymentStatus(String paymentId) async {
@@ -480,10 +542,12 @@ class ApiService {
   /// Returns session data including sessionId
   Future<Map<String, dynamic>> acceptTermsAndCreateSession({
     String? kioskCode,
+    String? source,
   }) async {
     try {
       final response = await _apiClient.acceptTermsAndCreateSession({
         if (kioskCode != null && kioskCode.isNotEmpty) 'kioskCode': kioskCode,
+        if (source != null && source.isNotEmpty) 'source': source,
       });
       return response;
     } on DioException catch (e) {

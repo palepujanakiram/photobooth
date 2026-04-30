@@ -11,11 +11,13 @@ import '../../services/file_helper.dart';
 import '../../services/print_service.dart';
 import '../../services/session_manager.dart';
 import '../../services/share_service.dart';
+import '../../services/kiosk_manager.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
 import '../../services/fcm_service.dart';
 import '../../services/payment_push_coordinator.dart';
+import '../../models/kiosk_share_link_model.dart';
 
 enum _PollVerdict { approved, failed, pending }
 
@@ -27,6 +29,7 @@ class ResultViewModel extends ChangeNotifier {
   final ApiService _apiService;
   final SessionManager _sessionManager;
   final AppSettingsManager? _appSettingsManager;
+  final KioskManager _kioskManager;
 
   final bool _isProcessing = false;
   String? _errorMessage;
@@ -78,6 +81,7 @@ class ResultViewModel extends ChangeNotifier {
     ApiService? apiService,
     SessionManager? sessionManager,
     AppSettingsManager? appSettingsManager,
+    KioskManager? kioskManager,
   })  : _generatedImages = generatedImages,
         _originalPhoto = originalPhoto,
         _printService = printService ?? PrintService(),
@@ -85,6 +89,7 @@ class ResultViewModel extends ChangeNotifier {
         _apiService = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager(),
         _appSettingsManager = appSettingsManager,
+        _kioskManager = kioskManager ?? KioskManager(),
         _printerHost = _defaultPrinterHost(appSettingsManager);
 
   List<GeneratedImage> get generatedImages => _generatedImages;
@@ -472,6 +477,33 @@ class ResultViewModel extends ChangeNotifier {
     _downloadedFiles.clear();
     _sessionManager.clearSession();
     await FileHelper.cleanupTempImages();
+  }
+
+  /// Mints a short-lived customer share link for this session (for QR bridge).
+  ///
+  /// Returns null if kiosk/session context is missing or the backend rejects it.
+  Future<KioskShareLinkModel?> mintCustomerShareLink({
+    int? ttlMinutes,
+    int? imageIndex,
+  }) async {
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null || sessionId.trim().isEmpty) return null;
+    final kioskCode = await _kioskManager.getKioskCode();
+    if (kioskCode == null || kioskCode.trim().isEmpty) return null;
+
+    try {
+      final raw = await _apiService.createKioskShareLink(
+        kioskCode: kioskCode,
+        sessionId: sessionId,
+        ttlMinutes: ttlMinutes,
+        imageIndex: imageIndex,
+      );
+      final model = KioskShareLinkModel.fromJson(raw);
+      return model.isValid ? model : null;
+    } catch (e, st) {
+      AppLogger.debug('mintCustomerShareLink failed: $e\n$st');
+      return null;
+    }
   }
 
   /// Download all images to temp files for print/share
