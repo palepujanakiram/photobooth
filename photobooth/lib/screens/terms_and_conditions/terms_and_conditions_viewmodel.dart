@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../services/api_service.dart';
+import '../../services/fcm_service.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/session_manager.dart';
 import '../../services/file_helper.dart';
@@ -158,6 +159,15 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
       // Store session data in SessionManager from API response
       final sessionManager = SessionManager();
       sessionManager.setSessionFromResponse(response);
+
+      // Bind kiosk session to device FCM token early (silent pushes: WhatsApp status, etc.).
+      if (!kIsWeb) {
+        final sid = sessionManager.sessionId;
+        final token = await FcmService.getToken();
+        if (sid != null && sid.trim().isNotEmpty && token != null && token.trim().isNotEmpty) {
+          await _apiService.registerSessionFcmToken(sessionId: sid, fcmToken: token);
+        }
+      }
       
       return true;
     } on TimeoutException {

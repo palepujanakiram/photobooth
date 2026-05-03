@@ -17,6 +17,7 @@ import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
 import '../../services/fcm_service.dart';
 import '../../services/payment_push_coordinator.dart';
+import '../../services/whatsapp_push_coordinator.dart';
 import '../../models/kiosk_share_link_model.dart';
 
 enum _PollVerdict { approved, failed, pending }
@@ -30,6 +31,10 @@ class ResultViewModel extends ChangeNotifier {
   final SessionManager _sessionManager;
   final AppSettingsManager? _appSettingsManager;
   final KioskManager _kioskManager;
+
+  final String? _customerName;
+  final String? _customerPhone;
+  final bool _customerWhatsappOptIn;
 
   final bool _isProcessing = false;
   String? _errorMessage;
@@ -63,6 +68,21 @@ class ResultViewModel extends ChangeNotifier {
   int _pollNullStreak = 0;
   bool _paymentOutcomeHandled = false;
 
+  bool _postPaymentSharePrepared = false;
+  String? _receiptShareUrl;
+  String? _receiptShareLongUrl;
+  DateTime? _receiptShareExpiresAt;
+  String? _kioskFallbackShareUrl;
+  String? _kioskFallbackShareLongUrl;
+  DateTime? _kioskFallbackShareExpiresAt;
+  String? _receiptPdfUrl;
+  bool _whatsappQueued = false;
+
+  String? _whatsappDeliveryStatus;
+  String? _whatsappDeliveryDetail;
+  Timer? _whatsappPollTimer;
+  int _whatsappPollTicks = 0;
+
   String? get paymentLink => _paymentLink;
   String? get paymentInitError => _paymentInitError;
   bool get paymentInitInProgress => _paymentInitInProgress;
@@ -73,6 +93,28 @@ class ResultViewModel extends ChangeNotifier {
   bool get hasFcmPaymentStatus =>
       _fcmPaymentStatusDetail != null && _fcmPaymentStatusDetail!.isNotEmpty;
 
+  String? get customerName => _customerName;
+  String? get customerPhone => _customerPhone;
+  bool get customerWhatsappOptIn => _customerWhatsappOptIn;
+
+  /// WhatsApp queue is only meaningful when a phone exists and the user opted in.
+  bool get effectiveWhatsappOptIn {
+    final p = _customerPhone?.trim() ?? '';
+    return p.isNotEmpty && _customerWhatsappOptIn;
+  }
+
+  String? get receiptShareUrl => _receiptShareUrl;
+  String? get receiptShareLongUrl => _receiptShareLongUrl;
+  DateTime? get receiptShareExpiresAt => _receiptShareExpiresAt;
+  String? get kioskFallbackShareUrl => _kioskFallbackShareUrl;
+  String? get kioskFallbackShareLongUrl => _kioskFallbackShareLongUrl;
+  DateTime? get kioskFallbackShareExpiresAt => _kioskFallbackShareExpiresAt;
+  String? get receiptPdfUrl => _receiptPdfUrl;
+  bool get whatsappQueued => _whatsappQueued;
+
+  String? get whatsappDeliveryStatus => _whatsappDeliveryStatus;
+  String? get whatsappDeliveryDetail => _whatsappDeliveryDetail;
+
   ResultViewModel({
     required List<GeneratedImage> generatedImages,
     PhotoModel? originalPhoto,
@@ -82,6 +124,9 @@ class ResultViewModel extends ChangeNotifier {
     SessionManager? sessionManager,
     AppSettingsManager? appSettingsManager,
     KioskManager? kioskManager,
+    String? customerName,
+    String? customerPhone,
+    bool customerWhatsappOptIn = false,
   })  : _generatedImages = generatedImages,
         _originalPhoto = originalPhoto,
         _printService = printService ?? PrintService(),
@@ -90,6 +135,9 @@ class ResultViewModel extends ChangeNotifier {
         _sessionManager = sessionManager ?? SessionManager(),
         _appSettingsManager = appSettingsManager,
         _kioskManager = kioskManager ?? KioskManager(),
+        _customerName = customerName,
+        _customerPhone = customerPhone,
+        _customerWhatsappOptIn = customerWhatsappOptIn,
         _printerHost = _defaultPrinterHost(appSettingsManager);
 
   List<GeneratedImage> get generatedImages => _generatedImages;
@@ -474,9 +522,222 @@ class ResultViewModel extends ChangeNotifier {
   Future<void> privacyWipeLocal() async {
     _paymentPollTimer?.cancel();
     _paymentPollTimer = null;
+    stopWhatsappDeliveryPolling();
     _downloadedFiles.clear();
     _sessionManager.clearSession();
     await FileHelper.cleanupTempImages();
+  }
+
+  static String? _firstNonEmptyString(dynamic v) {
+    final s = v?.toString().trim() ?? '';
+    return s.isEmpty ? null : s;
+  }
+
+  static DateTime? _parseDate(dynamic v) {
+    if (v == null) return null;
+    if (v is DateTime) return v;
+    return DateTime.tryParse(v.toString());
+  }
+
+  static Map<String, dynamic>? _asStringKeyedMap(dynamic v) {
+    if (v is Map<String, dynamic>) return v;
+    if (v is Map) return Map<String, dynamic>.from(v);
+    return null;
+  }
+
+  static String? _pickWhatsappDeliveryStatus(Map<String, dynamic> raw) {
+    const keys = [
+      'whatsappDeliveryStatus',
+      'whatsapp_delivery_status',
+      'waDeliveryStatus',
+      'wa_delivery_status',
+    ];
+    for (final k in keys) {
+      final s = _firstNonEmptyString(raw[k]);
+      if (s != null) return s;
+    }
+    final session = _asStringKeyedMap(raw['session']);
+    if (session == null) return null;
+    for (final k in keys) {
+      final s = _firstNonEmptyString(session[k]);
+      if (s != null) return s;
+    }
+    return null;
+  }
+
+  void _applyWhatsappDeliveryStatus(String? status, {String? detail}) {
+    final next = status?.trim();
+    if (next == null || next.isEmpty) return;
+    if (_whatsappDeliveryStatus == next &&
+        (detail == null || detail == _whatsappDeliveryDetail)) {
+      return;
+    }
+    _whatsappDeliveryStatus = next;
+    if (detail != null) {
+      _whatsappDeliveryDetail = detail;
+    }
+    notifyListeners();
+  }
+
+  void applyWhatsappStatusPush(WhatsAppStatusPayload payload) {
+    final sid = _sessionManager.sessionId?.trim() ?? '';
+    if (sid.isEmpty || sid != payload.sessionId.trim()) return;
+    _applyWhatsappDeliveryStatus(
+      payload.status,
+      detail: payload.error,
+    );
+    final upper = payload.status.trim().toUpperCase();
+    if (_isTerminalWhatsappStatus(upper)) {
+      stopWhatsappDeliveryPolling();
+    }
+  }
+
+  bool _isTerminalWhatsappStatus(String upper) {
+    switch (upper) {
+      case 'DELIVERED':
+      case 'READ':
+      case 'FAILED':
+      case 'SKIPPED':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  Future<void> refreshWhatsappDeliveryStatusFromSession() async {
+    final sid = _sessionManager.sessionId;
+    if (sid == null || sid.trim().isEmpty) return;
+    final raw = await _apiService.fetchSession(sid);
+    if (raw == null) return;
+    final st = _pickWhatsappDeliveryStatus(raw);
+    _applyWhatsappDeliveryStatus(st);
+    final upper = st?.trim().toUpperCase() ?? '';
+    if (_isTerminalWhatsappStatus(upper)) {
+      stopWhatsappDeliveryPolling();
+    }
+  }
+
+  void startWhatsappDeliveryPolling() {
+    if (kIsWeb) return;
+    if (!effectiveWhatsappOptIn) return;
+    _whatsappPollTimer?.cancel();
+    _whatsappPollTicks = 0;
+    _whatsappPollTimer = Timer.periodic(const Duration(seconds: 3), (t) async {
+      if (++_whatsappPollTicks > 120) {
+        t.cancel();
+        _whatsappPollTimer = null;
+        return;
+      }
+      await refreshWhatsappDeliveryStatusFromSession();
+    });
+  }
+
+  void stopWhatsappDeliveryPolling() {
+    _whatsappPollTimer?.cancel();
+    _whatsappPollTimer = null;
+    _whatsappPollTicks = 0;
+  }
+
+  void _ingestReceiptShareFields(Map<String, dynamic> raw) {
+    final share = _asStringKeyedMap(raw['share']) ??
+        _asStringKeyedMap(raw['digitalCopy']) ??
+        _asStringKeyedMap(raw['digital_copy']);
+
+    final String? url = _firstNonEmptyString(raw['shareUrl']) ??
+        _firstNonEmptyString(raw['url']) ??
+        _firstNonEmptyString(share?['url']) ??
+        _firstNonEmptyString(share?['shortUrl']) ??
+        _firstNonEmptyString(share?['short_url']);
+
+    final String? longUrl = _firstNonEmptyString(raw['shareLongUrl']) ??
+        _firstNonEmptyString(raw['longUrl']) ??
+        _firstNonEmptyString(share?['longUrl']) ??
+        _firstNonEmptyString(share?['long_url']);
+
+    final DateTime? exp = _parseDate(raw['shareExpiresAt']) ??
+        _parseDate(raw['expiresAt']) ??
+        _parseDate(share?['expiresAt']) ??
+        _parseDate(share?['expires_at']);
+
+    final pdf = _firstNonEmptyString(raw['receiptPdfUrl']) ??
+        _firstNonEmptyString(raw['pdfUrl']) ??
+        _firstNonEmptyString(raw['receiptPdf']) ??
+        _firstNonEmptyString(_asStringKeyedMap(raw['receipt'])?['pdfUrl']);
+
+    if (url != null) _receiptShareUrl = url;
+    if (longUrl != null) _receiptShareLongUrl = longUrl;
+    if (exp != null) _receiptShareExpiresAt = exp;
+    if (pdf != null) _receiptPdfUrl = pdf;
+
+    final waQueuedFlag = raw['whatsappQueued'] == true ||
+        raw['whatsapp_queued'] == true ||
+        raw['whatsappRequested'] == true ||
+        raw['whatsapp_requested'] == true;
+    if (waQueuedFlag) {
+      _whatsappQueued = true;
+    }
+
+    final st = _pickWhatsappDeliveryStatus(raw);
+    if (st != null) {
+      _whatsappDeliveryStatus = st;
+    }
+  }
+
+  /// After payment approval: request canonical receipt/share link + mint kiosk fallback.
+  Future<void> ensurePostPaymentShareArtifacts() async {
+    if (_postPaymentSharePrepared) return;
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null || sessionId.trim().isEmpty) {
+      _postPaymentSharePrepared = true;
+      return;
+    }
+
+    KioskShareLinkModel? kiosk;
+    try {
+      kiosk = await mintCustomerShareLink();
+      if (kiosk != null && kiosk.isValid) {
+        _kioskFallbackShareUrl = kiosk.url;
+        _kioskFallbackShareLongUrl = kiosk.longUrl;
+        _kioskFallbackShareExpiresAt = kiosk.expiresAt;
+      }
+    } catch (e, st) {
+      AppLogger.debug('post-payment kiosk share mint failed: $e\n$st');
+    }
+
+    try {
+      final fcmToken = kIsWeb ? null : await FcmService.getToken();
+      final receipt = await _apiService.postSessionReceipt(
+        sessionId: sessionId,
+        customerName: _customerName,
+        customerPhone: _customerPhone,
+        whatsappOptIn: effectiveWhatsappOptIn,
+        transactionRef: _activePaymentId,
+        fcmToken: fcmToken,
+      );
+      _ingestReceiptShareFields(receipt);
+      if (effectiveWhatsappOptIn) {
+        _whatsappQueued = true;
+      }
+    } catch (e, st) {
+      AppLogger.debug('postSessionReceipt failed: $e\n$st');
+    }
+
+    // If receipt didn't include a share URL, fall back to kiosk mint (if any).
+    final ru = _receiptShareUrl?.trim() ?? '';
+    if (ru.isEmpty) {
+      final ku = _kioskFallbackShareUrl?.trim() ?? '';
+      if (ku.isNotEmpty) {
+        _receiptShareUrl = _kioskFallbackShareUrl;
+        if ((_receiptShareLongUrl?.trim() ?? '').isEmpty) {
+          _receiptShareLongUrl = _kioskFallbackShareLongUrl;
+        }
+        _receiptShareExpiresAt ??= _kioskFallbackShareExpiresAt;
+      }
+    }
+
+    _postPaymentSharePrepared = true;
+    await refreshWhatsappDeliveryStatusFromSession();
+    notifyListeners();
   }
 
   /// Mints a short-lived customer share link for this session (for QR bridge).
@@ -689,6 +950,7 @@ class ResultViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _paymentPollTimer?.cancel();
+    stopWhatsappDeliveryPolling();
     super.dispose();
   }
 }

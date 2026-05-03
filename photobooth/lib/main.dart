@@ -35,6 +35,8 @@ import 'firebase_options.dart';
 import 'services/fcm_token_store.dart';
 import 'services/firebase_messaging_background.dart';
 import 'services/payment_push_coordinator.dart';
+import 'services/api_service.dart';
+import 'services/session_manager.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -241,6 +243,15 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
     _fcmTokenRefreshSub = FirebaseMessaging.instance.onTokenRefresh.listen(
       (token) {
         unawaited(FcmTokenStore.save(token));
+        final sessionId = SessionManager().sessionId;
+        if (sessionId != null && sessionId.trim().isNotEmpty) {
+          unawaited(
+            ApiService().registerSessionFcmToken(
+              sessionId: sessionId,
+              fcmToken: token,
+            ),
+          );
+        }
         if (kDebugMode) {
           AppLogger.debug(
             'FCM token refreshed; persisted locally. Use this token on the next '

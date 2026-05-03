@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../services/app_settings_manager.dart';
+import '../../services/whatsapp_push_coordinator.dart';
 import '../../utils/constants.dart';
 import '../../utils/logger.dart';
 import '../../utils/route_args.dart';
@@ -23,10 +24,17 @@ class QrShareScreen extends StatefulWidget {
 
 class _QrShareScreenState extends State<QrShareScreen> {
   ResultViewModel? _viewModel;
+  bool _ownsViewModel = false;
   bool _initialized = false;
   Timer? _timer;
   int _secondsLeft = 60;
   bool _exiting = false;
+
+  void _onWhatsappStatusFromFcm(WhatsAppStatusPayload payload) {
+    _viewModel?.applyWhatsappStatusPush(payload);
+    if (!mounted) return;
+    setState(() {});
+  }
 
   @override
   void didChangeDependencies() {
@@ -36,12 +44,22 @@ class _QrShareScreenState extends State<QrShareScreen> {
         QrShareArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
     if (parsed == null) return;
 
-    _viewModel = ResultViewModel(
-      generatedImages: parsed.generatedImages,
-      originalPhoto: parsed.originalPhoto,
-      appSettingsManager: context.read<AppSettingsManager>(),
-    );
+    final vmArg = parsed.resultViewModel;
+    if (vmArg is ResultViewModel) {
+      _viewModel = vmArg;
+      _ownsViewModel = false;
+    } else {
+      _viewModel = ResultViewModel(
+        generatedImages: parsed.generatedImages,
+        originalPhoto: parsed.originalPhoto,
+        appSettingsManager: context.read<AppSettingsManager>(),
+      );
+      _ownsViewModel = true;
+    }
     _initialized = true;
+
+    WhatsAppPushCoordinator.instance.registerCallback(_onWhatsappStatusFromFcm);
+    _viewModel?.startWhatsappDeliveryPolling();
 
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
@@ -57,7 +75,11 @@ class _QrShareScreenState extends State<QrShareScreen> {
   @override
   void dispose() {
     _timer?.cancel();
-    _viewModel?.dispose();
+    WhatsAppPushCoordinator.instance.registerCallback(null);
+    _viewModel?.stopWhatsappDeliveryPolling();
+    if (_ownsViewModel) {
+      _viewModel?.dispose();
+    }
     super.dispose();
   }
 
@@ -83,6 +105,8 @@ class _QrShareScreenState extends State<QrShareScreen> {
     final appColors = AppColors.of(context);
     final parsed = QrShareArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
     final shareUrl = (parsed?.shareUrl ?? '').trim();
+    final kioskUrl = (parsed?.kioskShareUrl ?? '').trim();
+    final qrData = shareUrl.isNotEmpty ? shareUrl : kioskUrl;
     final longUrl = (parsed?.shareLongUrl ?? '').trim();
     final expiresAt = parsed?.shareExpiresAt;
 
@@ -105,8 +129,18 @@ class _QrShareScreenState extends State<QrShareScreen> {
       value: _viewModel!,
       child: Consumer<ResultViewModel>(
         builder: (context, viewModel, _) {
-          final canShowQr = shareUrl.isNotEmpty;
+          final canShowQr = qrData.isNotEmpty;
           final expiry = expiryText();
+          final phone = (parsed.customerPhone ?? '').trim();
+          final waRequested = viewModel.effectiveWhatsappOptIn;
+          final vmStatus = (viewModel.whatsappDeliveryStatus ?? '').trim();
+          final headline = waRequested && phone.isNotEmpty
+              ? 'We also sent your receipt and digital copy to $phone on WhatsApp. '
+                  'Anyone can still scan this QR to download a digital copy.'
+              : 'Scan this QR on your phone to download a digital copy.';
+          final waLine = vmStatus.isNotEmpty
+              ? 'WhatsApp delivery: ${vmStatus.toUpperCase()}'
+              : (waRequested ? 'WhatsApp delivery: updating…' : '');
           return Scaffold(
             backgroundColor: Colors.transparent,
             extendBodyBehindAppBar: true,
@@ -142,9 +176,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              canShowQr
-                                  ? 'Scan this QR on your phone to download and share.'
-                                  : 'Preparing your share link…',
+                              canShowQr ? headline : 'Preparing your share link…',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 14,
@@ -162,6 +194,19 @@ class _QrShareScreenState extends State<QrShareScreen> {
                                   fontSize: 12,
                                   height: 1.25,
                                   color: Colors.white.withValues(alpha: 0.78),
+                                ),
+                              ),
+                            ],
+                            if (waLine.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                waLine,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.25,
+                                  color: Colors.white.withValues(alpha: 0.78),
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ],
@@ -186,7 +231,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
                               ),
                               child: canShowQr
                                   ? QrImageView(
-                                      data: shareUrl,
+                                      data: qrData,
                                       backgroundColor: Colors.white,
                                       errorStateBuilder: (ctx, err) => Center(
                                         child: Text(

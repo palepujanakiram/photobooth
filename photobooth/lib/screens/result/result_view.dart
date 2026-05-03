@@ -16,7 +16,6 @@ import '../../views/widgets/theme_background.dart';
 import '../../views/widgets/payment_link_qr.dart';
 import '../../services/payment_push_coordinator.dart';
 import '../../utils/route_args.dart';
-import '../../models/kiosk_share_link_model.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -29,6 +28,9 @@ class _ResultScreenState extends State<ResultScreen> {
   ResultViewModel? _viewModel;
   bool _isInitialized = false;
   bool _didNavigateToThankYou = false;
+  String? _customerName;
+  String? _customerPhone;
+  bool _customerWhatsappOptIn = false;
   Timer? _failureIdleTimer;
   int _failureSecondsLeft = 0;
   bool _navigatingAway = false;
@@ -49,6 +51,9 @@ class _ResultScreenState extends State<ResultScreen> {
 
     final generatedImages = parsed.generatedImages;
     final originalPhoto = parsed.originalPhoto;
+    _customerName = parsed.customerName;
+    _customerPhone = parsed.customerPhone;
+    _customerWhatsappOptIn = parsed.customerWhatsappOptIn;
 
     if (generatedImages.isEmpty) return;
 
@@ -56,6 +61,9 @@ class _ResultScreenState extends State<ResultScreen> {
       generatedImages: generatedImages,
       originalPhoto: originalPhoto,
       appSettingsManager: context.read<AppSettingsManager>(),
+      customerName: _customerName,
+      customerPhone: _customerPhone,
+      customerWhatsappOptIn: _customerWhatsappOptIn,
     );
     _isInitialized = true;
 
@@ -64,7 +72,7 @@ class _ResultScreenState extends State<ResultScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(PaymentPushCoordinator.instance.flushPendingStoragePayment());
-      _viewModel?.loadPaymentQr();
+      _viewModel?.loadPaymentQr(customerPhone: _customerPhone);
     });
   }
 
@@ -72,7 +80,10 @@ class _ResultScreenState extends State<ResultScreen> {
   void dispose() {
     PaymentPushCoordinator.instance.registerResultScreenCallback(null);
     _failureIdleTimer?.cancel();
-    _viewModel?.dispose();
+    // QrShareScreen reuses the same ResultViewModel for print/share + WhatsApp status.
+    if (!_didNavigateToThankYou) {
+      _viewModel?.dispose();
+    }
     super.dispose();
   }
 
@@ -183,12 +194,10 @@ class _ResultScreenState extends State<ResultScreen> {
     if (!mounted || _didNavigateToThankYou) return;
     if (viewModel.fcmPaymentPushSuccess != true || viewModel.hasError) return;
     _didNavigateToThankYou = true;
-    KioskShareLinkModel? share;
     try {
-      // Mint share link before wiping local session (ThankYou screen needs only the URL).
-      share = await viewModel.mintCustomerShareLink();
+      await viewModel.ensurePostPaymentShareArtifacts();
     } catch (e, st) {
-      AppLogger.debug('Share link mint failed: $e\n$st');
+      AppLogger.debug('Post-payment share preparation failed: $e\n$st');
     }
     if (!mounted) return;
     // Keep the session alive for a short window so operators can print/share.
@@ -199,9 +208,15 @@ class _ResultScreenState extends State<ResultScreen> {
       arguments: QrShareArgs(
         generatedImages: viewModel.generatedImages,
         originalPhoto: viewModel.originalPhoto,
-        shareUrl: share?.url,
-        shareLongUrl: share?.longUrl,
-        shareExpiresAt: share?.expiresAt,
+        resultViewModel: viewModel,
+        shareUrl: viewModel.receiptShareUrl,
+        shareLongUrl: viewModel.receiptShareLongUrl,
+        shareExpiresAt: viewModel.receiptShareExpiresAt,
+        kioskShareUrl: viewModel.kioskFallbackShareUrl,
+        whatsappQueued: viewModel.whatsappQueued,
+        customerWhatsappOptIn: viewModel.customerWhatsappOptIn,
+        customerPhone: viewModel.customerPhone,
+        receiptPdfUrl: viewModel.receiptPdfUrl,
       ),
     );
   }

@@ -12,6 +12,7 @@ import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../utils/route_args.dart';
 import '../../utils/secure_image_url.dart';
+import '../../views/widgets/contact_before_pay_sheet.dart';
 
 class PhotoGenerateScreen extends StatefulWidget {
   const PhotoGenerateScreen({super.key});
@@ -415,19 +416,27 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                 : CupertinoColors.systemGrey,
             borderRadius: BorderRadius.circular(12),
             onPressed: (!isGeneratingOrLoading && viewModel.hasSelectedImages)
-                ? () {
+                ? () async {
                     _clearPhotoZoom();
                     final selectedImages = viewModel.selectedGeneratedImages;
-                    if (selectedImages.isNotEmpty) {
-                      Navigator.pushNamed(
-                        context,
-                        AppConstants.kRouteResult,
-                        arguments: {
-                          'generatedImages': selectedImages,
-                          'originalPhoto': viewModel.originalPhoto,
-                        },
-                      );
-                    }
+                    if (selectedImages.isEmpty) return;
+
+                    final routerContext = context;
+                    final contact = await showContactBeforePaySheet(routerContext);
+                    if (!routerContext.mounted) return;
+                    if (contact == null) return;
+
+                    await Navigator.pushNamed(
+                      routerContext,
+                      AppConstants.kRouteResult,
+                      arguments: {
+                        'generatedImages': selectedImages,
+                        'originalPhoto': viewModel.originalPhoto,
+                        'customerName': contact.customerName,
+                        'customerPhone': contact.customerPhone,
+                        'customerWhatsappOptIn': contact.whatsappOptIn,
+                      },
+                    );
                   }
                 : null,
             child: Text(

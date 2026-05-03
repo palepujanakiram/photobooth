@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'fcm_payment_pending_store.dart';
+import 'whatsapp_push_coordinator.dart';
 import '../utils/logger.dart';
 
 /// Payload from FCM `data` + optional `notification` for payment updates.
@@ -285,6 +286,10 @@ class PaymentPushCoordinator {
   }
 
   void handleRemoteMessage(RemoteMessage message) {
+    if (WhatsAppPushCoordinator.instance.handleRemoteMessage(message)) {
+      return;
+    }
+
     developer.log(
       'handleRemoteMessage id=${message.messageId} dataKeys=${message.data.keys.toList()} '
       'title=${message.notification?.title}',
