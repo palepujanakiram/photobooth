@@ -150,6 +150,98 @@ class ApiService {
     }
   }
 
+  /// POST `/api/sessions/:id/fcm-token` — bind device token to session for silent pushes.
+  Future<void> registerSessionFcmToken({
+    required String sessionId,
+    required String fcmToken,
+  }) async {
+    final sid = sessionId.trim();
+    final token = fcmToken.trim();
+    if (sid.isEmpty || token.isEmpty) return;
+
+    try {
+      await _dio.post<dynamic>(
+        '/api/sessions/$sid/fcm-token',
+        data: {'fcmToken': token},
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        AppLogger.debug('registerSessionFcmToken failed: ${e.message}');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        AppLogger.debug('registerSessionFcmToken failed: $e');
+      }
+    }
+  }
+
+  /// POST `/api/sessions/:id/receipt` — create/update receipt + optional WhatsApp queue.
+  ///
+  /// Requires `session.paymentStatus == APPROVED` server-side.
+  Future<Map<String, dynamic>> postSessionReceipt({
+    required String sessionId,
+    String? customerName,
+    String? customerPhone,
+    bool? whatsappOptIn,
+    String? transactionRef,
+    String? fcmToken,
+  }) async {
+    final sid = sessionId.trim();
+    if (sid.isEmpty) {
+      throw ApiException('sessionId is required');
+    }
+
+    final body = <String, dynamic>{
+      if (customerName != null && customerName.trim().isNotEmpty)
+        'customerName': customerName.trim(),
+      if (customerPhone != null && customerPhone.trim().isNotEmpty)
+        'customerPhone': customerPhone.trim(),
+      if (whatsappOptIn != null) 'whatsappOptIn': whatsappOptIn,
+      if (transactionRef != null && transactionRef.trim().isNotEmpty)
+        'transactionRef': transactionRef.trim(),
+      if (fcmToken != null && fcmToken.trim().isNotEmpty) 'fcmToken': fcmToken.trim(),
+    };
+
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/sessions/$sid/receipt',
+        data: body,
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+      final data = r.data;
+      if (r.statusCode != null && r.statusCode! >= 400) {
+        if (data is Map<String, dynamic>) {
+          throw ApiException(
+            data['error']?.toString() ??
+                data['message']?.toString() ??
+                'Receipt request failed (${r.statusCode})',
+            r.statusCode,
+          );
+        }
+        throw ApiException(
+          'Receipt request failed (${r.statusCode}): ${data ?? ''}',
+          r.statusCode,
+        );
+      }
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+      throw ApiException('Unexpected receipt response from API');
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      throw ApiException(
+        'Failed to request receipt: ${e.message}',
+        e.response?.statusCode,
+      );
+    }
+  }
+
   /// GET `/api/payments/status/{paymentId}` — `{ "status": "PENDING" | "APPROVED" | "FAILED" }`.
   /// Poll when FCM is unavailable; returns that map or null on error / non-JSON.
   Future<Map<String, dynamic>?> fetchPaymentStatus(String paymentId) async {
