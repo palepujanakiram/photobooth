@@ -1118,15 +1118,19 @@ class ApiService {
         throw ApiException('Unexpected response for parallel generation stream');
       }
 
-      var buffer = '';
+      final buffer = StringBuffer();
       try {
         await for (final chunk in utf8.decoder.bind(body.stream)) {
-          buffer += chunk;
+          buffer.write(chunk);
           while (true) {
-            final sep = buffer.indexOf('\n\n');
+            final current = buffer.toString();
+            final sep = current.indexOf('\n\n');
             if (sep < 0) break;
-            var block = buffer.substring(0, sep);
-            buffer = buffer.substring(sep + 2);
+            var block = current.substring(0, sep);
+            final remaining = current.substring(sep + 2);
+            buffer
+              ..clear()
+              ..write(remaining);
             if (block.endsWith('\r')) {
               block = block.substring(0, block.length - 1);
             }
@@ -1142,9 +1146,10 @@ class ApiService {
             }
           }
         }
-        if (buffer.trim().isNotEmpty) {
+        final remaining = buffer.toString();
+        if (remaining.trim().isNotEmpty) {
           _dispatchParallelSseBlock(
-            buffer,
+            remaining,
             slots: slots,
             qualityByIndex: qualityByIndex,
             completer: completer,
