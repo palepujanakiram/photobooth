@@ -14,7 +14,7 @@ class FallingStarfieldBackground extends StatefulWidget {
 }
 
 class _FallingStarfieldBackgroundState extends State<FallingStarfieldBackground>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _controller;
   final math.Random _rng = math.Random();
 
@@ -35,6 +35,7 @@ class _FallingStarfieldBackgroundState extends State<FallingStarfieldBackground>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _meteorAngleRad = _rng.nextDouble() * 2 * math.pi;
     _lateralNorm = _rng.nextDouble() - 0.5;
     _phase = _rng.nextDouble();
@@ -43,6 +44,17 @@ class _FallingStarfieldBackgroundState extends State<FallingStarfieldBackground>
       duration: const Duration(seconds: 25),
     )..repeat();
     _controller.addListener(_onTick);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (!_controller.isAnimating) {
+        _controller.repeat();
+      }
+    } else {
+      _controller.stop();
+    }
   }
 
   void _onTick() {
@@ -59,6 +71,7 @@ class _FallingStarfieldBackgroundState extends State<FallingStarfieldBackground>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.removeListener(_onTick);
     _controller.dispose();
     super.dispose();
@@ -66,20 +79,22 @@ class _FallingStarfieldBackgroundState extends State<FallingStarfieldBackground>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        return CustomPaint(
-          painter: _StarfieldPainter(
-            progress: _controller.value,
-            meteorAngleRad: _meteorAngleRad,
-            lateralNorm: _lateralNorm,
-            phase: _phase,
-            visibleFraction: _visibleFraction,
-          ),
-          size: Size.infinite,
-        );
-      },
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          return CustomPaint(
+            painter: _StarfieldPainter(
+              progress: _controller.value,
+              meteorAngleRad: _meteorAngleRad,
+              lateralNorm: _lateralNorm,
+              phase: _phase,
+              visibleFraction: _visibleFraction,
+            ),
+            size: Size.infinite,
+          );
+        },
+      ),
     );
   }
 }
@@ -99,7 +114,7 @@ class _StarfieldPainter extends CustomPainter {
   final double phase;
   final double visibleFraction;
 
-  static const int _dotCount = 120;
+  static const int _dotCount = 60;
 
   @override
   void paint(Canvas canvas, Size size) {
