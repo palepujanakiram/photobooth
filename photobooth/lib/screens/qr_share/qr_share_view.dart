@@ -205,11 +205,13 @@ class _QrShareScreenState extends State<QrShareScreen> {
               : 'Scan this QR on your phone to download a digital copy.';
           // WhatsApp status line only makes sense when the message actually
           // queued — otherwise we'd show "updating…" forever for a send that
-          // will never happen.
+          // will never happen. Status is rendered via friendlyWhatsappStatus
+          // so customers see "Sending…" / "Delivered" / "Read", not raw enum
+          // strings like "SENT" / "PENDING".
           final waLine = waActuallyQueued
               ? (vmStatus.isNotEmpty
-                  ? 'WhatsApp delivery: ${vmStatus.toUpperCase()}'
-                  : (waRequested ? 'WhatsApp delivery: updating…' : ''))
+                  ? 'WhatsApp: ${ResultViewModel.friendlyWhatsappStatus(vmStatus)}'
+                  : (waRequested ? 'WhatsApp: Updating…' : ''))
               : '';
           return Scaffold(
             backgroundColor: Colors.transparent,
