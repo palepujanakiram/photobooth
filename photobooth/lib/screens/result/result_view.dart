@@ -36,6 +36,11 @@ class _ResultScreenState extends State<ResultScreen> {
   bool _navigatingAway = false;
   bool _retryingPrint = false;
 
+  /// True while the dead-polling [Refresh] CTA's one-shot fetch is in flight.
+  /// Prevents double-taps on slow connections and lets us swap the button
+  /// label for an inline spinner.
+  bool _refreshingPolling = false;
+
   @override
   void initState() {
     super.initState();
@@ -712,10 +717,33 @@ class _ResultScreenState extends State<ResultScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        onPressed: () async {
-                          await viewModel.refreshPaymentPolling();
-                        },
-                        child: const Text('Refresh'),
+                        // Disable while a refresh is in flight to avoid
+                        // double-taps on slow connections.
+                        onPressed: _refreshingPolling
+                            ? null
+                            : () async {
+                                if (!mounted) return;
+                                setState(() => _refreshingPolling = true);
+                                try {
+                                  await viewModel.refreshPaymentPolling();
+                                } finally {
+                                  if (mounted) {
+                                    setState(() => _refreshingPolling = false);
+                                  }
+                                }
+                              },
+                        child: _refreshingPolling
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              )
+                            : const Text('Refresh'),
                       ),
                     ),
                     const SizedBox(width: 10),
