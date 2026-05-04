@@ -110,7 +110,14 @@ class ShareService {
   /// Used when sharePositionOrigin is not provided on iOS
   Rect _getDefaultSharePosition() {
     // Get screen size from PlatformDispatcher
-    final view = PlatformDispatcher.instance.views.first;
+    final view = PlatformDispatcher.instance.views.isEmpty
+        ? null
+        : PlatformDispatcher.instance.views.first;
+    if (view == null) {
+      // Fallback: a 1×1 rect at origin. Share sheet positioning is best-effort
+      // when no view is available; the share UI still functions.
+      return const Rect.fromLTWH(0, 0, 1, 1);
+    }
     final size = view.physicalSize / view.devicePixelRatio;
     
     // Return a rect in the center of the screen

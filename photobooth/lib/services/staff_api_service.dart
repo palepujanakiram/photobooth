@@ -268,6 +268,9 @@ class StaffApiService {
   static Map<String, dynamic> _asJsonMap(dynamic data) {
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return Map<String, dynamic>.from(data);
+    AppLogger.error(
+      'Staff endpoint returned non-Map response: ${data.runtimeType}',
+    );
     return const <String, dynamic>{};
   }
 
