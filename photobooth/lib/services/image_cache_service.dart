@@ -147,16 +147,15 @@ class ImageCacheService {
   Future<void> _cleanCacheIfNeeded() async {
     try {
       await _ensureCacheDir();
-      
-      final files = await _cacheDir!.list().toList();
+
       int totalSize = 0;
       final fileInfo = <({File file, FileStat stat})>[];
 
-      for (var file in files) {
-        if (file is File) {
-          final stat = await file.stat();
+      await for (final entity in _cacheDir!.list()) {
+        if (entity is File) {
+          final stat = await entity.stat();
           totalSize += stat.size;
-          fileInfo.add((file: file, stat: stat));
+          fileInfo.add((file: entity, stat: stat));
         }
       }
 

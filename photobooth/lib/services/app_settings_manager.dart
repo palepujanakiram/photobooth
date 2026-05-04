@@ -30,7 +30,10 @@ class AppSettingsManager extends ChangeNotifier {
 
     // If a request is already in-flight, reuse it to avoid stacking calls on
     // flaky networks / rapid lifecycle changes.
-    if (_inflightFetch != null) {
+    //
+    // If caller explicitly forces refresh, allow starting a new request even if
+    // a non-forced fetch is in flight (last write wins; endpoint is idempotent).
+    if (!forceRefresh && _inflightFetch != null) {
       return _inflightFetch!;
     }
 
