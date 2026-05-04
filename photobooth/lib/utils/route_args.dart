@@ -47,8 +47,17 @@ class GenerateArgs {
 class ResultArgs {
   final List<GeneratedImage> generatedImages;
   final PhotoModel? originalPhoto;
+  final String? customerName;
+  final String? customerPhone;
+  final bool customerWhatsappOptIn;
 
-  const ResultArgs({required this.generatedImages, this.originalPhoto});
+  const ResultArgs({
+    required this.generatedImages,
+    this.originalPhoto,
+    this.customerName,
+    this.customerPhone,
+    this.customerWhatsappOptIn = false,
+  });
 
   static ResultArgs? tryParse(Object? args) {
     if (args is ResultArgs) return args;
@@ -56,7 +65,16 @@ class ResultArgs {
       final generatedImages = args['generatedImages'] as List<GeneratedImage>?;
       final originalPhoto = args['originalPhoto'] as PhotoModel?;
       if (generatedImages == null || generatedImages.isEmpty) return null;
-      return ResultArgs(generatedImages: generatedImages, originalPhoto: originalPhoto);
+      final name = args['customerName']?.toString();
+      final phone = args['customerPhone']?.toString();
+      final wa = args['customerWhatsappOptIn'] == true;
+      return ResultArgs(
+        generatedImages: generatedImages,
+        originalPhoto: originalPhoto,
+        customerName: name,
+        customerPhone: phone,
+        customerWhatsappOptIn: wa,
+      );
     }
     return null;
   }
@@ -98,16 +116,29 @@ class ThankYouArgs {
 class QrShareArgs {
   final List<GeneratedImage> generatedImages;
   final PhotoModel? originalPhoto;
+  /// Optional [ResultViewModel] from Pay & Collect (not JSON-serializable).
+  final Object? resultViewModel;
   final String? shareUrl;
   final String? shareLongUrl;
   final DateTime? shareExpiresAt;
+  final String? kioskShareUrl;
+  final bool whatsappQueued;
+  final bool customerWhatsappOptIn;
+  final String? customerPhone;
+  final String? receiptPdfUrl;
 
   const QrShareArgs({
     required this.generatedImages,
     this.originalPhoto,
+    this.resultViewModel,
     this.shareUrl,
     this.shareLongUrl,
     this.shareExpiresAt,
+    this.kioskShareUrl,
+    this.whatsappQueued = false,
+    this.customerWhatsappOptIn = false,
+    this.customerPhone,
+    this.receiptPdfUrl,
   });
 
   static QrShareArgs? tryParse(Object? args) {
@@ -116,6 +147,7 @@ class QrShareArgs {
       final generatedImages = args['generatedImages'] as List<GeneratedImage>?;
       if (generatedImages == null || generatedImages.isEmpty) return null;
       final originalPhoto = args['originalPhoto'] as PhotoModel?;
+      final vm = args['resultViewModel'];
       final url = args['shareUrl']?.toString();
       final longUrl = args['shareLongUrl']?.toString();
       final expiresRaw = args['shareExpiresAt'];
@@ -125,12 +157,23 @@ class QrShareArgs {
       } else if (expiresRaw != null) {
         expiresAt = DateTime.tryParse(expiresRaw.toString());
       }
+      final kioskUrl = args['kioskShareUrl']?.toString();
+      final waQueued = args['whatsappQueued'] == true;
+      final waOptIn = args['customerWhatsappOptIn'] == true;
+      final phone = args['customerPhone']?.toString();
+      final pdf = args['receiptPdfUrl']?.toString();
       return QrShareArgs(
         generatedImages: generatedImages,
         originalPhoto: originalPhoto,
+        resultViewModel: vm,
         shareUrl: url,
         shareLongUrl: longUrl,
         shareExpiresAt: expiresAt,
+        kioskShareUrl: kioskUrl,
+        whatsappQueued: waQueued,
+        customerWhatsappOptIn: waOptIn,
+        customerPhone: phone,
+        receiptPdfUrl: pdf,
       );
     }
     return null;

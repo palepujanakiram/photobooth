@@ -150,6 +150,98 @@ class ApiService {
     }
   }
 
+  /// POST `/api/sessions/:id/fcm-token` — bind device token to session for silent pushes.
+  Future<void> registerSessionFcmToken({
+    required String sessionId,
+    required String fcmToken,
+  }) async {
+    final sid = sessionId.trim();
+    final token = fcmToken.trim();
+    if (sid.isEmpty || token.isEmpty) return;
+
+    try {
+      await _dio.post<dynamic>(
+        '/api/sessions/$sid/fcm-token',
+        data: {'fcmToken': token},
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+    } on DioException catch (e) {
+      AppLogger.error(
+        'registerSessionFcmToken failed: ${e.message}',
+        error: e,
+        stackTrace: e.stackTrace,
+      );
+    } catch (e) {
+      AppLogger.error('registerSessionFcmToken failed: $e', error: e);
+    }
+  }
+
+  /// POST `/api/sessions/:id/receipt` — create/update receipt + optional WhatsApp queue.
+  ///
+  /// Requires `session.paymentStatus == APPROVED` server-side.
+  Future<Map<String, dynamic>> postSessionReceipt({
+    required String sessionId,
+    String? customerName,
+    String? customerPhone,
+    bool? whatsappOptIn,
+    String? transactionRef,
+    String? fcmToken,
+  }) async {
+    final sid = sessionId.trim();
+    if (sid.isEmpty) {
+      throw ApiException('sessionId is required');
+    }
+
+    final body = <String, dynamic>{
+      if (customerName != null && customerName.trim().isNotEmpty)
+        'customerName': customerName.trim(),
+      if (customerPhone != null && customerPhone.trim().isNotEmpty)
+        'customerPhone': customerPhone.trim(),
+      if (whatsappOptIn != null) 'whatsappOptIn': whatsappOptIn,
+      if (transactionRef != null && transactionRef.trim().isNotEmpty)
+        'transactionRef': transactionRef.trim(),
+      if (fcmToken != null && fcmToken.trim().isNotEmpty) 'fcmToken': fcmToken.trim(),
+    };
+
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/sessions/$sid/receipt',
+        data: body,
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+      final data = r.data;
+      if (r.statusCode != null && r.statusCode! >= 400) {
+        if (data is Map<String, dynamic>) {
+          throw ApiException(
+            data['error']?.toString() ??
+                data['message']?.toString() ??
+                'Receipt request failed (${r.statusCode})',
+            r.statusCode,
+          );
+        }
+        throw ApiException(
+          'Receipt request failed (${r.statusCode}): ${data ?? ''}',
+          r.statusCode,
+        );
+      }
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+      throw ApiException('Unexpected receipt response from API');
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      throw ApiException(
+        'Failed to request receipt: ${e.message}',
+        e.response?.statusCode,
+      );
+    }
+  }
+
   /// GET `/api/payments/status/{paymentId}` — `{ "status": "PENDING" | "APPROVED" | "FAILED" }`.
   /// Poll when FCM is unavailable; returns that map or null on error / non-JSON.
   Future<Map<String, dynamic>?> fetchPaymentStatus(String paymentId) async {
@@ -167,11 +259,15 @@ class ApiService {
       if (data is Map) return Map<String, dynamic>.from(data);
     } on DioException catch (e) {
       if (kDebugMode) {
-        AppLogger.debug('fetchPaymentStatus: ${e.message}');
+        AppLogger.error(
+          'fetchPaymentStatus failed: ${e.message}',
+          error: e,
+          stackTrace: e.stackTrace,
+        );
       }
     } catch (e) {
       if (kDebugMode) {
-        AppLogger.debug('fetchPaymentStatus: $e');
+        AppLogger.error('fetchPaymentStatus failed: $e', error: e);
       }
     }
     return null;
@@ -703,11 +799,15 @@ class ApiService {
     } on DioException catch (e) {
       _handleWebNetworkError(e);
       if (kDebugMode) {
-        AppLogger.debug('fetchSession: ${e.message}');
+        AppLogger.error(
+          'fetchSession failed: ${e.message}',
+          error: e,
+          stackTrace: e.stackTrace,
+        );
       }
     } catch (e) {
       if (kDebugMode) {
-        AppLogger.debug('fetchSession: $e');
+        AppLogger.error('fetchSession failed: $e', error: e);
       }
     }
     return null;
@@ -1159,7 +1259,11 @@ class ApiService {
     } on DioException catch (e) {
       final status = e.response?.statusCode;
       final body = e.response?.data;
-      AppLogger.debug('❌ Image download failed ($status) for $resolvedUrl: $body');
+      AppLogger.error(
+        'Image download failed ($status) for $resolvedUrl: $body',
+        error: e,
+        stackTrace: e.stackTrace,
+      );
 
       // Some image/CDN endpoints reject bearer headers and respond with 403.
       // Retry once without Authorization before surfacing the error.
@@ -1272,7 +1376,7 @@ class ApiService {
       AppLogger.debug('✅ Preprocess image completed');
     }).catchError((error) {
       // Silently ignore errors - this is a background optimization
-      AppLogger.debug('⚠️ Preprocess image failed (non-critical): $error');
+      AppLogger.error('Preprocess image failed (non-critical): $error', error: error);
     });
   }
 }

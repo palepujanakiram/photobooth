@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../photo_capture/photo_model.dart';
+import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
 import 'photo_review_viewmodel.dart';
 import '../../utils/constants.dart';
@@ -13,6 +14,7 @@ import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/bottom_safe_area.dart';
 import '../../utils/route_args.dart';
+import '../../views/widgets/contact_before_pay_sheet.dart';
 
 class PhotoReviewScreen extends StatefulWidget {
   const PhotoReviewScreen({super.key});
@@ -265,14 +267,37 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
                                         }
 
                                         if (transformedImage != null) {
-                                          // Navigate to result screen on success
-                                          Navigator.pushNamed(
+                                          final theme = viewModel.theme;
+                                          final photo = viewModel.photo;
+                                          if (theme == null || photo == null) {
+                                            return;
+                                          }
+
+                                          final generated = GeneratedImage(
+                                            id: transformedImage.id,
+                                            imageUrl: transformedImage.imageUrl,
+                                            theme: theme,
+                                            isSelected: true,
+                                          );
+
+                                          final contact =
+                                              await showContactBeforePaySheet(
+                                            currentContext,
+                                          );
+                                          if (!mounted || !currentContext.mounted) {
+                                            return;
+                                          }
+                                          if (contact == null) return;
+
+                                          await Navigator.pushNamed(
                                             currentContext,
                                             AppConstants.kRouteResult,
                                             arguments: {
-                                              'transformedImage':
-                                                  transformedImage,
-                                              'transformationTime': viewModel.elapsedSeconds,
+                                              'generatedImages': <GeneratedImage>[generated],
+                                              'originalPhoto': photo,
+                                              'customerName': contact.customerName,
+                                              'customerPhone': contact.customerPhone,
+                                              'customerWhatsappOptIn': contact.whatsappOptIn,
                                             },
                                           );
                                         } else if (viewModel.hasError) {

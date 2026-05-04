@@ -15,7 +15,9 @@ import 'photo_image_from_xfile_io.dart' if (dart.library.html) 'photo_image_from
 import '../../utils/app_runtime_config.dart';
 import '../../utils/constants.dart';
 import '../../utils/device_classifier.dart';
+import '../../utils/logger.dart';
 import '../../services/app_settings_manager.dart';
+import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/centered_max_width.dart';
 import '../../views/widgets/full_screen_loader.dart';
@@ -37,24 +39,28 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     with WidgetsBindingObserver {
   late CaptureViewModel _captureViewModel;
   StreamSubscription<HardwareKeyEvent>? _hardwareKeySub;
+  bool _hardwareKeysEnabled = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _captureViewModel = CaptureViewModel();
+
+    _hardwareKeySub?.cancel();
+    _hardwareKeySub = HardwareKeyService.events.listen((e) async {
+      // Volume up/down from Bluetooth clickers usually maps to these.
+      if (!e.isActionDown) return;
+      if (e.keyCode != 24 && e.keyCode != 25) return;
+      // Don't interrupt after a photo is already captured.
+      if (_captureViewModel.capturedPhoto != null) return;
+      await _captureViewModel.capturePhotoWithCountdown();
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       await HardwareKeyService.setEnabled(true);
-      _hardwareKeySub?.cancel();
-      _hardwareKeySub = HardwareKeyService.events.listen((e) async {
-        // Volume up/down from Bluetooth clickers usually maps to these.
-        if (!e.isActionDown) return;
-        if (e.keyCode != 24 && e.keyCode != 25) return;
-        // Don't interrupt after a photo is already captured.
-        if (_captureViewModel.capturedPhoto != null) return;
-        await _captureViewModel.capturePhotoWithCountdown();
-      });
+      _hardwareKeysEnabled = true;
       // Await prefs before camera so SharedPreferences I/O does not overlap native
       // camera enumeration / CameraController.initialize (reduces peak contention on 2 GB devices).
       await _captureViewModel.loadPreviewRotation();
@@ -78,14 +84,29 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     try {
       final deviceType = await DeviceClassifier.getDeviceType(context);
       if (mounted) _captureViewModel.setDeviceType(deviceType);
-    } catch (_) {}
+    } catch (e, st) {
+      AppLogger.error(
+        'Failed to detect device type',
+        error: e,
+        stackTrace: st,
+      );
+      await ErrorReportingManager.recordError(
+        e,
+        st,
+        reason: 'getDeviceType failed',
+        fatal: false,
+      );
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    HardwareKeyService.setEnabled(false);
     _hardwareKeySub?.cancel();
+    _hardwareKeySub = null;
+    if (_hardwareKeysEnabled) {
+      HardwareKeyService.setEnabled(false);
+    }
     _captureViewModel.dispose();
     super.dispose();
   }

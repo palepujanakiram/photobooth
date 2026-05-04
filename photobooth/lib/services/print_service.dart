@@ -12,6 +12,7 @@ import 'alice_inspector.dart';
 import 'printer_api_client.dart';
 import 'file_helper.dart';
 import 'error_reporting/error_reporting_manager.dart';
+import 'print_file.dart';
 
 Uri _printerHttpBaseUri(String host, int port) {
   final h = host.trim();
@@ -61,7 +62,7 @@ class PrintService {
       AppLogger.debug('✅ Print dialog completed successfully');
       ErrorReportingManager.log('✅ Print dialog completed');
     } catch (e, stackTrace) {
-      AppLogger.debug('❌ Print dialog error: $e');
+      AppLogger.error('Print dialog error', error: e, stackTrace: stackTrace);
       ErrorReportingManager.log('❌ Print dialog failed: $e');
       
       await ErrorReportingManager.recordError(
@@ -85,7 +86,11 @@ class PrintService {
       AppLogger.debug('🖨️ Can print: $canPrint');
       return canPrint;
     } catch (e, stackTrace) {
-      AppLogger.debug('⚠️ Error checking print availability: $e');
+      AppLogger.error(
+        'Error checking print availability',
+        error: e,
+        stackTrace: stackTrace,
+      );
       ErrorReportingManager.log('⚠️ Error checking print availability: $e');
       
       await ErrorReportingManager.recordError(
@@ -195,7 +200,6 @@ class PrintService {
 
       // Save image bytes to temp file for Retrofit (which expects File type)
       // On web, we'll use a workaround
-      dynamic tempFile;
       if (kIsWeb) {
         // On web, we need to use Dio directly since Retrofit doesn't support web File well
         // But we'll still use the same Dio instance with logging
@@ -226,15 +230,15 @@ class PrintService {
         final tempDirPath = await FileHelper.getTempDirectoryPath();
         final fileName = 'print_${DateTime.now().millisecondsSinceEpoch}.jpg';
         final filePath = '$tempDirPath/$fileName';
-        tempFile = FileHelper.createFile(filePath);
-        await (tempFile as dynamic).writeAsBytes(imageBytes);
+        final PrintFile tempFile = createPrintFile(filePath);
+        await tempFile.writeAsBytes(imageBytes);
 
         AppLogger.debug('🖨️ Sending print request to $baseUrl/api/PrintImage');
 
         try {
           // Use Retrofit to make the print request
           await printerClient.printImage(
-            tempFile as dynamic,
+            tempFile.retrofitFile,
             's4x6',
             1,
             false,
@@ -245,8 +249,8 @@ class PrintService {
           ErrorReportingManager.log('✅ Network print completed successfully (mobile)');
         } finally {
           // Clean up temp file
-          if ((tempFile as dynamic).existsSync()) {
-            await (tempFile as dynamic).delete();
+          if (tempFile.existsSync()) {
+            await tempFile.delete();
           }
         }
       }
@@ -267,14 +271,18 @@ class PrintService {
         errorType = 'http_error';
         errorMessage = 'Print request failed: ${e.response?.statusCode}';
         if (e.response?.data != null) {
-          AppLogger.debug('Print error response: ${e.response?.data}');
+          AppLogger.error(
+            'Print error response: ${e.response?.data}',
+            error: e,
+            stackTrace: stackTrace,
+          );
         }
       } else {
         errorType = 'dio_error';
         errorMessage = 'Print request failed: ${e.message ?? "Unknown error"}';
       }
       
-      AppLogger.debug('❌ Print error: $errorMessage');
+      AppLogger.error('Print error: $errorMessage', error: e, stackTrace: stackTrace);
       ErrorReportingManager.log('❌ Network print failed: $errorType - $errorMessage');
       
       await ErrorReportingManager.recordError(
@@ -297,7 +305,7 @@ class PrintService {
         rethrow;
       }
       
-      AppLogger.debug('❌ Unexpected print error: $e');
+      AppLogger.error('Unexpected print error', error: e, stackTrace: stackTrace);
       ErrorReportingManager.log('❌ Unexpected network print error: $e');
       
       await ErrorReportingManager.recordError(
