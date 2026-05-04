@@ -23,6 +23,39 @@ import '../../models/kiosk_share_link_model.dart';
 
 enum _PollVerdict { approved, failed, pending }
 
+/// Outcome of the post-payment receipt POST, derived from the backend's
+/// `{ whatsappQueued, whatsappSkipReason, pdfError, ... }` response.
+///
+/// Drives the one-shot UX toast on the QR share screen.
+enum PostReceiptOutcome {
+  /// Receipt POST hasn't completed yet (or not started). UI shows nothing.
+  pending,
+
+  /// Receipt POST never returned a usable response (after retries). Already
+  /// reported to Bugsnag in [ResultViewModel._postSessionReceiptWithRetry].
+  receiptFailed,
+
+  /// WhatsApp queued + PDF OK + share URL ready. Silent success.
+  allOk,
+
+  /// WhatsApp queued, but PDF generation failed server-side.
+  /// → "Message sent — receipt is delayed."
+  whatsappOkPdfFailed,
+
+  /// WhatsApp not queued because the customer didn't opt in (or didn't enter a
+  /// number). Silent — by design.
+  whatsappSkippedOptOut,
+
+  /// WhatsApp not queued because the backend rejected the phone (E.164 valid
+  /// at the client but backend's stricter check failed).
+  /// → "That number didn't work" + QR fallback.
+  whatsappSkippedInvalidPhone,
+
+  /// WhatsApp not queued because the backend never received a phone number.
+  /// → "No number entered" + QR fallback.
+  whatsappSkippedNoPhone,
+}
+
 class ResultViewModel extends ChangeNotifier {
   final List<GeneratedImage> _generatedImages;
   final PhotoModel? _originalPhoto;
@@ -70,6 +103,8 @@ class ResultViewModel extends ChangeNotifier {
   int _sessionPollTicks = 0;
   int _paymentIdNullStreak = 0;
   int _sessionNullStreak = 0;
+  int _paymentIdConsecutiveFailureTicks = 0;
+  int _sessionConsecutiveFailureTicks = 0;
   bool _paymentOutcomeHandled = false;
 
   bool _postPaymentSharePrepared = false;
@@ -83,6 +118,19 @@ class ResultViewModel extends ChangeNotifier {
   String? _receiptPdfUrl;
   bool _whatsappQueued = false;
 
+  /// Server-emitted skip reason ("opted_out" / "no_phone" / "invalid_phone")
+  /// when [whatsappQueued] is false. Null when queued or when backend didn't
+  /// say.
+  String? _whatsappSkipReason;
+
+  /// Server-emitted PDF generation error string. Null on success.
+  String? _pdfError;
+
+  /// Set true once the receipt POST returns a non-null body. Distinguishes
+  /// "WhatsApp not queued because server said so" from "we never got a server
+  /// response at all (retries exhausted)".
+  bool _receiptResponseReceived = false;
+
   String? _whatsappDeliveryStatus;
   String? _whatsappDeliveryDetail;
   Timer? _whatsappPollTimer;
@@ -94,6 +142,16 @@ class ResultViewModel extends ChangeNotifier {
 
   String? get fcmPaymentStatusDetail => _fcmPaymentStatusDetail;
   bool? get fcmPaymentPushSuccess => _fcmPaymentPushSuccess;
+
+  /// Client-only UX fallback: polling appears "stuck" (consecutive failures)
+  /// for roughly 30 seconds on both payment status and session polling.
+  bool get isDeadPollingFallbackVisible {
+    if (_paymentOutcomeHandled) return false;
+    if (_fcmPaymentPushSuccess != null) return false;
+    // Poll interval is 3s; 10 consecutive failures ≈ 30s.
+    return _paymentIdConsecutiveFailureTicks >= 10 &&
+        _sessionConsecutiveFailureTicks >= 10;
+  }
 
   bool get hasFcmPaymentStatus =>
       _fcmPaymentStatusDetail != null && _fcmPaymentStatusDetail!.isNotEmpty;
@@ -116,6 +174,40 @@ class ResultViewModel extends ChangeNotifier {
   DateTime? get kioskFallbackShareExpiresAt => _kioskFallbackShareExpiresAt;
   String? get receiptPdfUrl => _receiptPdfUrl;
   bool get whatsappQueued => _whatsappQueued;
+  String? get whatsappSkipReason => _whatsappSkipReason;
+  String? get pdfError => _pdfError;
+
+  /// Computed UX outcome the QR share screen uses to pick a toast.
+  /// Stays [PostReceiptOutcome.pending] until the receipt POST completes.
+  PostReceiptOutcome get postReceiptOutcome {
+    if (!_postPaymentSharePrepared) return PostReceiptOutcome.pending;
+    if (!_receiptResponseReceived) return PostReceiptOutcome.receiptFailed;
+
+    if (_whatsappQueued) {
+      if ((_pdfError ?? '').trim().isNotEmpty) {
+        return PostReceiptOutcome.whatsappOkPdfFailed;
+      }
+      return PostReceiptOutcome.allOk;
+    }
+
+    // WhatsApp not queued — branch on server-supplied skip reason.
+    switch ((_whatsappSkipReason ?? '').toLowerCase()) {
+      case 'invalid_phone':
+        return PostReceiptOutcome.whatsappSkippedInvalidPhone;
+      case 'no_phone':
+        return PostReceiptOutcome.whatsappSkippedNoPhone;
+      case 'opted_out':
+        return PostReceiptOutcome.whatsappSkippedOptOut;
+      default:
+        // Server didn't say. Fall back to client opt-in state: if the user
+        // never opted in, treat as opted_out (silent). Otherwise treat as
+        // success (PDF + share URL still useful).
+        if (!effectiveWhatsappOptIn) {
+          return PostReceiptOutcome.whatsappSkippedOptOut;
+        }
+        return PostReceiptOutcome.allOk;
+    }
+  }
 
   String? get whatsappDeliveryStatus => _whatsappDeliveryStatus;
   String? get whatsappDeliveryDetail => _whatsappDeliveryDetail;
@@ -233,6 +325,8 @@ class ResultViewModel extends ChangeNotifier {
     _sessionPollTicks = 0;
     _paymentIdNullStreak = 0;
     _sessionNullStreak = 0;
+    _paymentIdConsecutiveFailureTicks = 0;
+    _sessionConsecutiveFailureTicks = 0;
     _paymentOutcomeHandled = false;
     notifyListeners();
 
@@ -285,6 +379,7 @@ class ResultViewModel extends ChangeNotifier {
     _paymentIdPollTimer?.cancel();
     _paymentIdPollTicks = 0;
     _paymentIdNullStreak = 0;
+    _paymentIdConsecutiveFailureTicks = 0;
     _paymentIdPollTimer = Timer.periodic(
       _paymentPollInterval,
       _onPaymentPollTick,
@@ -295,6 +390,7 @@ class ResultViewModel extends ChangeNotifier {
     _sessionPollTimer?.cancel();
     _sessionPollTicks = 0;
     _sessionNullStreak = 0;
+    _sessionConsecutiveFailureTicks = 0;
     _sessionPollTimer = Timer.periodic(
       _paymentPollInterval,
       (t) => _onSessionPollTick(t, sessionId),
@@ -312,18 +408,26 @@ class ResultViewModel extends ChangeNotifier {
       return;
     }
 
-    final raw = await _apiService.fetchSession(sessionId);
+    Map<String, dynamic>? raw;
+    try {
+      raw = await _apiService.fetchSession(sessionId);
+    } catch (_) {
+      raw = null;
+    }
     if (_paymentOutcomeHandled) {
       t.cancel();
       return;
     }
     if (raw == null) {
       if (++_sessionNullStreak >= 8) {
-        t.cancel();
+        // Keep polling, but allow UI to surface a "stuck" fallback.
       }
+      _sessionConsecutiveFailureTicks += 1;
+      if (_sessionConsecutiveFailureTicks == 10) notifyListeners();
       return;
     }
     _sessionNullStreak = 0;
+    _sessionConsecutiveFailureTicks = 0;
 
     final verdict = _verdictFromSession(raw);
     switch (verdict) {
@@ -402,18 +506,26 @@ class ResultViewModel extends ChangeNotifier {
       return;
     }
 
-    final raw = await _apiService.fetchPaymentStatus(id);
+    Map<String, dynamic>? raw;
+    try {
+      raw = await _apiService.fetchPaymentStatus(id);
+    } catch (_) {
+      raw = null;
+    }
     if (_paymentOutcomeHandled) {
       t.cancel();
       return;
     }
     if (raw == null) {
       if (++_paymentIdNullStreak >= 8) {
-        t.cancel();
+        // Keep polling, but allow UI to surface a "stuck" fallback.
       }
+      _paymentIdConsecutiveFailureTicks += 1;
+      if (_paymentIdConsecutiveFailureTicks == 10) notifyListeners();
       return;
     }
     _paymentIdNullStreak = 0;
+    _paymentIdConsecutiveFailureTicks = 0;
 
     final verdict = _verdictFromPaymentStatusResponse(raw);
     switch (verdict) {
@@ -470,6 +582,60 @@ class ResultViewModel extends ChangeNotifier {
     _sessionPollTimer?.cancel();
     _sessionPollTimer = null;
     return true;
+  }
+
+  /// CTA: force a client-side refresh of polling state.
+  ///
+  /// Does not re-initiate payment (no new payment id); it just resets failure
+  /// streaks and restarts the timers so operators can recover from transient
+  /// connectivity / backend hiccups.
+  Future<void> refreshPaymentPolling() async {
+    if (_paymentOutcomeHandled) return;
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null || sessionId.trim().isEmpty) return;
+
+    _paymentIdConsecutiveFailureTicks = 0;
+    _sessionConsecutiveFailureTicks = 0;
+    _paymentIdNullStreak = 0;
+    _sessionNullStreak = 0;
+    notifyListeners();
+
+    // Fire a one-shot refresh first (gives instant feedback), then restart cadence.
+    try {
+      final raw = await _apiService.fetchSession(sessionId);
+      if (raw != null) {
+        final verdict = _verdictFromSession(raw);
+        if (verdict == _PollVerdict.approved) {
+          await onFcmPaymentPush(
+            PaymentPushPayload(
+              type: PaymentPushCoordinator.typeApproved,
+              paymentId: sessionId,
+              title: 'Payment confirmed',
+              body: 'Payment approved. Printing...',
+            ),
+          );
+          return;
+        }
+        if (verdict == _PollVerdict.failed) {
+          await onFcmPaymentPush(
+            PaymentPushPayload(
+              type: PaymentPushCoordinator.typeFailed,
+              paymentId: sessionId,
+              title: 'Payment not completed',
+              body: 'Payment failed. Try again or use another method.',
+            ),
+          );
+          return;
+        }
+      }
+    } catch (_) {
+      // ignore (fallback is just a restart)
+    }
+
+    _startSessionApprovalPolling(sessionId);
+    if (_activePaymentId != null && _activePaymentId!.trim().isNotEmpty) {
+      _startPaymentStatusPolling();
+    }
   }
 
   /// FCM or poll: updates inline Pay & Collect; on approval runs [silentPrintToNetwork] once.
@@ -627,32 +793,60 @@ class ResultViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> refreshWhatsappDeliveryStatusFromSession() async {
+  Future<bool> refreshWhatsappDeliveryStatusFromSession() async {
     final sid = _sessionManager.sessionId;
-    if (sid == null || sid.trim().isEmpty) return;
-    final raw = await _apiService.fetchSession(sid);
-    if (raw == null) return;
+    if (sid == null || sid.trim().isEmpty) return false;
+    Map<String, dynamic>? raw;
+    try {
+      raw = await _apiService.fetchSession(sid);
+    } catch (_) {
+      raw = null;
+    }
+    if (raw == null) return false;
     final st = _pickWhatsappDeliveryStatus(raw);
     _applyWhatsappDeliveryStatus(st);
     final upper = st?.trim().toUpperCase() ?? '';
     if (_isTerminalWhatsappStatus(upper)) {
       stopWhatsappDeliveryPolling();
     }
+    return true;
   }
 
   void startWhatsappDeliveryPolling() {
     if (kIsWeb) return;
     if (!effectiveWhatsappOptIn) return;
-    _whatsappPollTimer?.cancel();
+    stopWhatsappDeliveryPolling();
     _whatsappPollTicks = 0;
-    _whatsappPollTimer = Timer.periodic(const Duration(seconds: 3), (t) async {
-      if (++_whatsappPollTicks > 120) {
-        t.cancel();
-        _whatsappPollTimer = null;
-        return;
-      }
-      await refreshWhatsappDeliveryStatusFromSession();
-    });
+
+    var consecutiveFailures = 0;
+    Duration nextDelay = const Duration(seconds: 3);
+
+    void scheduleNext() {
+      _whatsappPollTimer?.cancel();
+      _whatsappPollTimer = Timer(nextDelay, () async {
+        if (++_whatsappPollTicks > 120) {
+          stopWhatsappDeliveryPolling();
+          return;
+        }
+
+        final ok = await refreshWhatsappDeliveryStatusFromSession();
+        if (_whatsappPollTimer == null) return; // stopped due to terminal status
+
+        if (ok) {
+          consecutiveFailures = 0;
+          nextDelay = const Duration(seconds: 3);
+        } else {
+          consecutiveFailures += 1;
+          final factor = 1 << (consecutiveFailures.clamp(0, 4));
+          final seconds = (3 * factor).clamp(3, 30);
+          nextDelay = Duration(seconds: seconds);
+        }
+
+        scheduleNext();
+      });
+    }
+
+    scheduleNext();
   }
 
   void stopWhatsappDeliveryPolling() {
@@ -692,12 +886,28 @@ class ResultViewModel extends ChangeNotifier {
     if (exp != null) _receiptShareExpiresAt = exp;
     if (pdf != null) _receiptPdfUrl = pdf;
 
-    final waQueuedFlag = raw['whatsappQueued'] == true ||
-        raw['whatsapp_queued'] == true ||
-        raw['whatsappRequested'] == true ||
-        raw['whatsapp_requested'] == true;
-    if (waQueuedFlag) {
-      _whatsappQueued = true;
+    // Trust the server's explicit `whatsappQueued` boolean (true OR false).
+    // Backend now returns this on every receipt response. Only fall back to
+    // the older `whatsappRequested` field if `whatsappQueued` isn't present.
+    final waQueuedRaw = raw['whatsappQueued'] ?? raw['whatsapp_queued'];
+    if (waQueuedRaw is bool) {
+      _whatsappQueued = waQueuedRaw;
+    } else {
+      final legacy = raw['whatsappRequested'] == true ||
+          raw['whatsapp_requested'] == true;
+      if (legacy) _whatsappQueued = true;
+    }
+
+    final skipReason = _firstNonEmptyString(raw['whatsappSkipReason']) ??
+        _firstNonEmptyString(raw['whatsapp_skip_reason']);
+    if (skipReason != null) {
+      _whatsappSkipReason = skipReason.toLowerCase();
+    }
+
+    final pdfErr = _firstNonEmptyString(raw['pdfError']) ??
+        _firstNonEmptyString(raw['pdf_error']);
+    if (pdfErr != null) {
+      _pdfError = pdfErr;
     }
 
     final st = _pickWhatsappDeliveryStatus(raw);
@@ -747,10 +957,13 @@ class ResultViewModel extends ChangeNotifier {
         fcmToken: fcmToken,
       );
       if (receipt != null) {
+        _receiptResponseReceived = true;
         _ingestReceiptShareFields(receipt);
-        if (effectiveWhatsappOptIn) {
-          _whatsappQueued = true;
-        }
+        // NOTE: do NOT override _whatsappQueued from the client-side opt-in
+        // here — the server is now authoritative on whether WhatsApp was
+        // actually queued (it can refuse for invalid_phone / no_phone even
+        // when the user opted in). _ingestReceiptShareFields already sets
+        // _whatsappQueued from the response.
       }
     } catch (e, st) {
       // _postSessionReceiptWithRetry already reports + logs; this is a safety net.

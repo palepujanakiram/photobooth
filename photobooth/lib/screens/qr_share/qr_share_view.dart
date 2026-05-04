@@ -30,6 +30,10 @@ class _QrShareScreenState extends State<QrShareScreen> {
   int _secondsLeft = 60;
   bool _exiting = false;
 
+  /// One-shot toast guard: we show the post-receipt outcome dialog at most once
+  /// per QR share screen lifecycle.
+  bool _postReceiptToastShown = false;
+
   void _onWhatsappStatusFromFcm(WhatsAppStatusPayload payload) {
     _viewModel?.applyWhatsappStatusPush(payload);
     if (!mounted) return;
@@ -61,6 +65,12 @@ class _QrShareScreenState extends State<QrShareScreen> {
     WhatsAppPushCoordinator.instance.registerCallback(_onWhatsappStatusFromFcm);
     _viewModel?.startWhatsappDeliveryPolling();
 
+    // Listen for the receipt POST to settle, then surface a one-shot toast.
+    // The receipt POST may have already completed by the time this screen
+    // mounts (it fires from onFcmPaymentPush), so check immediately too.
+    _viewModel?.addListener(_maybeShowPostReceiptToast);
+    _maybeShowPostReceiptToast();
+
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
       if (_secondsLeft <= 1) {
@@ -76,11 +86,63 @@ class _QrShareScreenState extends State<QrShareScreen> {
   void dispose() {
     _timer?.cancel();
     WhatsAppPushCoordinator.instance.registerCallback(null);
+    _viewModel?.removeListener(_maybeShowPostReceiptToast);
     _viewModel?.stopWhatsappDeliveryPolling();
     if (_ownsViewModel) {
       _viewModel?.dispose();
     }
     super.dispose();
+  }
+
+  /// Watches [ResultViewModel.postReceiptOutcome] and shows the spec'd toast
+  /// once when the value transitions out of [PostReceiptOutcome.pending].
+  void _maybeShowPostReceiptToast() {
+    if (_postReceiptToastShown) return;
+    final vm = _viewModel;
+    if (vm == null) return;
+    final outcome = vm.postReceiptOutcome;
+    if (outcome == PostReceiptOutcome.pending) return;
+    _postReceiptToastShown = true;
+
+    // Defer to next frame so we never call showCupertinoDialog mid-build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _showToastFor(outcome);
+    });
+  }
+
+  void _showToastFor(PostReceiptOutcome outcome) {
+    switch (outcome) {
+      case PostReceiptOutcome.allOk:
+      case PostReceiptOutcome.whatsappSkippedOptOut:
+      case PostReceiptOutcome.pending:
+        // Silent: success or by-design no-WhatsApp.
+        return;
+      case PostReceiptOutcome.whatsappOkPdfFailed:
+        AppSnackBar.showSuccess(
+          context,
+          'Message sent — receipt is delayed.',
+        );
+        return;
+      case PostReceiptOutcome.whatsappSkippedInvalidPhone:
+        AppSnackBar.showError(
+          context,
+          "That number didn't work. Scan the QR code on this screen to get your copy.",
+        );
+        return;
+      case PostReceiptOutcome.whatsappSkippedNoPhone:
+        AppSnackBar.showError(
+          context,
+          'No number entered. Scan the QR code on this screen to get your copy.',
+        );
+        return;
+      case PostReceiptOutcome.receiptFailed:
+        AppSnackBar.showError(
+          context,
+          'Could not finalize your receipt. Please show this screen to staff.',
+        );
+        return;
+    }
   }
 
   Future<void> _exitToStart() async {
@@ -133,14 +195,22 @@ class _QrShareScreenState extends State<QrShareScreen> {
           final expiry = expiryText();
           final phone = (parsed.customerPhone ?? '').trim();
           final waRequested = viewModel.effectiveWhatsappOptIn;
+          // Server-confirmed: only true once the backend tells us the message
+          // was actually queued (WhatsApp send was not skipped/rejected).
+          final waActuallyQueued = viewModel.whatsappQueued;
           final vmStatus = (viewModel.whatsappDeliveryStatus ?? '').trim();
-          final headline = waRequested && phone.isNotEmpty
+          final headline = (waActuallyQueued && phone.isNotEmpty)
               ? 'We also sent your receipt and digital copy to $phone on WhatsApp. '
                   'Anyone can still scan this QR to download a digital copy.'
               : 'Scan this QR on your phone to download a digital copy.';
-          final waLine = vmStatus.isNotEmpty
-              ? 'WhatsApp delivery: ${vmStatus.toUpperCase()}'
-              : (waRequested ? 'WhatsApp delivery: updating…' : '');
+          // WhatsApp status line only makes sense when the message actually
+          // queued — otherwise we'd show "updating…" forever for a send that
+          // will never happen.
+          final waLine = waActuallyQueued
+              ? (vmStatus.isNotEmpty
+                  ? 'WhatsApp delivery: ${vmStatus.toUpperCase()}'
+                  : (waRequested ? 'WhatsApp delivery: updating…' : ''))
+              : '';
           return Scaffold(
             backgroundColor: Colors.transparent,
             extendBodyBehindAppBar: true,

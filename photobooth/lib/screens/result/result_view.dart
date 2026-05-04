@@ -240,6 +240,28 @@ class _ResultScreenState extends State<ResultScreen> {
     }
   }
 
+  Future<void> _showGetHelpDialog(ResultViewModel viewModel) async {
+    if (!mounted) return;
+    // Prefer a simple operator-facing help dialog (no deep linking).
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Need help?'),
+        content: const Text(
+          'If your payment went through but printing didn’t start, tap Refresh.\n\n'
+          'If it still doesn’t work, please contact staff at the counter.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+    AppLogger.debug('Pay&Collect: help dialog shown');
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -664,6 +686,57 @@ class _ResultScreenState extends State<ResultScreen> {
                           : Colors.white.withValues(alpha: 0.85)),
                 ),
               ),
+              if (viewModel.isDeadPollingFallbackVisible) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Did your payment go through?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.95),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.35),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: () async {
+                          await viewModel.refreshPaymentPolling();
+                        },
+                        child: const Text('Refresh'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white.withValues(alpha: 0.16),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: () => _showGetHelpDialog(viewModel),
+                        child: const Text('Get help'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               if (viewModel.fcmPaymentPushSuccess == false &&
                   _failureSecondsLeft > 0) ...[
                 const SizedBox(height: 8),
