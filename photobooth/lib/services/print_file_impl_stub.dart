@@ -10,7 +10,11 @@ class _UnsupportedPrintFile implements PrintFile {
   bool existsSync() => false;
 
   @override
-  Future<void> delete() async {}
+  Future<void> delete() async {
+    throw UnsupportedError(
+      'PrintFile.delete is not supported on this platform.',
+    );
+  }
 
   @override
   String get path => _path;
@@ -19,6 +23,11 @@ class _UnsupportedPrintFile implements PrintFile {
   dynamic get retrofitFile => null;
 
   @override
-  Future<void> writeAsBytes(List<int> bytes) async {}
+  Future<void> writeAsBytes(List<int> bytes) async {
+    throw UnsupportedError(
+      'PrintFile.writeAsBytes is not supported on this platform; '
+      'use the bytes-direct print path instead.',
+    );
+  }
 }
 
