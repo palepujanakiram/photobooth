@@ -136,6 +136,13 @@ class ResultViewModel extends ChangeNotifier {
   Timer? _whatsappPollTimer;
   int _whatsappPollTicks = 0;
 
+  /// Set true in [dispose]. All post-await callbacks should bail out before
+  /// mutating state once this flips. [notifyListeners] is also overridden to
+  /// be a safe no-op after dispose, so existing call sites don't need
+  /// individual guards (they just become harmless).
+  bool _disposed = false;
+  bool get isDisposed => _disposed;
+
   String? get paymentLink => _paymentLink;
   String? get paymentInitError => _paymentInitError;
   bool get paymentInitInProgress => _paymentInitInProgress;
@@ -414,6 +421,10 @@ class ResultViewModel extends ChangeNotifier {
     } catch (_) {
       raw = null;
     }
+    if (_disposed) {
+      t.cancel();
+      return;
+    }
     if (_paymentOutcomeHandled) {
       t.cancel();
       return;
@@ -512,6 +523,10 @@ class ResultViewModel extends ChangeNotifier {
     } catch (_) {
       raw = null;
     }
+    if (_disposed) {
+      t.cancel();
+      return;
+    }
     if (_paymentOutcomeHandled) {
       t.cancel();
       return;
@@ -603,6 +618,7 @@ class ResultViewModel extends ChangeNotifier {
     // Fire a one-shot refresh first (gives instant feedback), then restart cadence.
     try {
       final raw = await _apiService.fetchSession(sessionId);
+      if (_disposed) return;
       if (raw != null) {
         final verdict = _verdictFromSession(raw);
         if (verdict == _PollVerdict.approved) {
@@ -631,6 +647,7 @@ class ResultViewModel extends ChangeNotifier {
     } catch (_) {
       // ignore (fallback is just a restart)
     }
+    if (_disposed) return;
 
     _startSessionApprovalPolling(sessionId);
     if (_activePaymentId != null && _activePaymentId!.trim().isNotEmpty) {
@@ -781,6 +798,21 @@ class ResultViewModel extends ChangeNotifier {
     }
   }
 
+  /// Backend's canonical WhatsApp delivery status set is a Postgres enum with
+  /// exactly 6 values, normalized from MSG91's raw vocabulary by the server's
+  /// `mapMsg91Status()` before any DB write:
+  ///
+  ///   PENDING   — receipt endpoint queued the dispatch (initial)
+  ///   SENT      — MSG91 ACK'd; awaiting delivery webhook (intermediate)
+  ///   DELIVERED — MSG91 reported delivered (terminal for our polling)
+  ///   READ      — MSG91 reported read; backfills whatsappDeliveredAt
+  ///   FAILED    — dispatch rejected / webhook reported failure (ignored
+  ///               server-side once status reached DELIVERED or READ)
+  ///   SKIPPED   — opted out / no phone (terminal, set once)
+  ///
+  /// State machine is monotonic forward (PENDING → SENT → DELIVERED → READ),
+  /// so we treat anything past SENT as terminal for *polling* purposes — even
+  /// though READ can still arrive later, it'll come via FCM push.
   bool _isTerminalWhatsappStatus(String upper) {
     switch (upper) {
       case 'DELIVERED':
@@ -793,6 +825,29 @@ class ResultViewModel extends ChangeNotifier {
     }
   }
 
+  /// Maps the 6 canonical statuses to short, customer-facing labels. Anything
+  /// unrecognized falls through to a generic "Updating…" so a stray value
+  /// doesn't leak raw enum strings into the UI.
+  static String friendlyWhatsappStatus(String? raw) {
+    final upper = (raw ?? '').trim().toUpperCase();
+    switch (upper) {
+      case 'PENDING':
+        return 'Queued';
+      case 'SENT':
+        return 'Sending…';
+      case 'DELIVERED':
+        return 'Delivered';
+      case 'READ':
+        return 'Read';
+      case 'FAILED':
+        return "Couldn't deliver";
+      case 'SKIPPED':
+        return 'Skipped';
+      default:
+        return 'Updating…';
+    }
+  }
+
   Future<bool> refreshWhatsappDeliveryStatusFromSession() async {
     final sid = _sessionManager.sessionId;
     if (sid == null || sid.trim().isEmpty) return false;
@@ -802,6 +857,7 @@ class ResultViewModel extends ChangeNotifier {
     } catch (_) {
       raw = null;
     }
+    if (_disposed) return false;
     if (raw == null) return false;
     final st = _pickWhatsappDeliveryStatus(raw);
     _applyWhatsappDeliveryStatus(st);
@@ -941,6 +997,7 @@ class ResultViewModel extends ChangeNotifier {
     KioskShareLinkModel? kiosk;
     try {
       kiosk = await mintCustomerShareLink();
+      if (_disposed) return;
       if (kiosk != null && kiosk.isValid) {
         _kioskFallbackShareUrl = kiosk.url;
         _kioskFallbackShareLongUrl = kiosk.longUrl;
@@ -949,13 +1006,16 @@ class ResultViewModel extends ChangeNotifier {
     } catch (e, st) {
       AppLogger.debug('post-payment kiosk share mint failed: $e\n$st');
     }
+    if (_disposed) return;
 
     try {
       final fcmToken = kIsWeb ? null : await FcmService.getToken();
+      if (_disposed) return;
       final receipt = await _postSessionReceiptWithRetry(
         sessionId: sessionId,
         fcmToken: fcmToken,
       );
+      if (_disposed) return;
       if (receipt != null) {
         _receiptResponseReceived = true;
         _ingestReceiptShareFields(receipt);
@@ -969,6 +1029,7 @@ class ResultViewModel extends ChangeNotifier {
       // _postSessionReceiptWithRetry already reports + logs; this is a safety net.
       AppLogger.debug('postSessionReceipt failed (outer): $e\n$st');
     }
+    if (_disposed) return;
 
     // If receipt didn't include a share URL, fall back to kiosk mint (if any).
     final ru = _receiptShareUrl?.trim() ?? '';
@@ -1270,8 +1331,18 @@ class ResultViewModel extends ChangeNotifier {
     }
   }
 
+  /// No-op once [_disposed] flips — keeps callers that resolve a Future after
+  /// the screen has navigated away from triggering "A ChangeNotifier was used
+  /// after being disposed" assertions in debug.
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
   @override
   void dispose() {
+    _disposed = true;
     _paymentIdPollTimer?.cancel();
     _sessionPollTimer?.cancel();
     stopWhatsappDeliveryPolling();
