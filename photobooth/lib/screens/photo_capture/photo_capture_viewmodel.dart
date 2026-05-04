@@ -232,7 +232,22 @@ class CaptureViewModel extends ChangeNotifier {
         );
       }
       notifyListeners();
-    } catch (_) {}
+    } catch (e, st) {
+      AppLogger.error(
+        'Failed to load preview rotation; using defaults',
+        error: e,
+        stackTrace: st,
+      );
+      await ErrorReportingManager.recordError(
+        e,
+        st,
+        reason: 'loadPreviewRotation failed',
+        extraInfo: {
+          'defaultRotation': AppConstants.kCameraPreviewRotationDefault,
+        },
+        fatal: false,
+      );
+    }
   }
 
   /// Saves and applies preview rotation (0, 90, 180, 270). Persists across sessions.
@@ -247,7 +262,20 @@ class CaptureViewModel extends ChangeNotifier {
         AppConstants.kCameraPreviewRotationConfiguredKey,
         true,
       );
-    } catch (_) {}
+    } catch (e, st) {
+      AppLogger.error(
+        'Failed to persist preview rotation',
+        error: e,
+        stackTrace: st,
+      );
+      await ErrorReportingManager.recordError(
+        e,
+        st,
+        reason: 'setPreviewRotation failed',
+        extraInfo: {'degrees': degrees},
+        fatal: false,
+      );
+    }
     notifyListeners();
   }
 
@@ -576,7 +604,9 @@ class CaptureViewModel extends ChangeNotifier {
       CameraDescription cameraToUse = camera;
       try {
         cameraToUse = _availableCameras.firstWhere((c) => c.name == camera.name);
-      } catch (_) {}
+      } catch (_) {
+        // Best-effort; use the passed camera.
+      }
 
       // Aligned with camera package example: try setDescription when switching (no full reinit)
       if (_cameraController != null && _cameraController!.value.isInitialized) {
@@ -640,7 +670,7 @@ class CaptureViewModel extends ChangeNotifier {
       // - Much faster takePicture() on many Android tablets vs [max]
       // - Lower memory pressure (avoids slowdowns / OOM on kiosk devices)
       // - Still plenty of detail for downstream AI (upload is resized anyway)
-      final ResolutionPreset preset = ResolutionPreset.high;
+      const ResolutionPreset preset = ResolutionPreset.high;
       _cameraController = CameraController(
         cameraToUse,
         preset,
@@ -824,7 +854,15 @@ class CaptureViewModel extends ChangeNotifier {
       // Zoom not supported
     } on TimeoutException {
       AppLogger.debug('Zoom level load timed out');
-    } catch (_) {}
+    } catch (e, st) {
+      AppLogger.error('Zoom load failed', error: e, stackTrace: st);
+      await ErrorReportingManager.recordError(
+        e,
+        st,
+        reason: 'loadZoomInBackground failed',
+        fatal: false,
+      );
+    }
     _minZoom = minZ;
     _maxZoom = maxZ;
     if (minZ != null && maxZ != null) {
@@ -870,6 +908,9 @@ class CaptureViewModel extends ChangeNotifier {
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (_countdownValue == null) {
         timer.cancel();
+        if (identical(_countdownTimer, timer)) {
+          _countdownTimer = null;
+        }
         return;
       }
       
@@ -879,6 +920,9 @@ class CaptureViewModel extends ChangeNotifier {
       } else {
         // Countdown finished, capture the photo
         timer.cancel();
+        if (identical(_countdownTimer, timer)) {
+          _countdownTimer = null;
+        }
         _countdownValue = null;
         notifyListeners();
         
@@ -1330,7 +1374,10 @@ class CaptureViewModel extends ChangeNotifier {
     try {
       _cameraController?.removeListener(_onCameraControllerUpdate);
       _cameraController?.dispose();
-    } catch (_) {}
+    } catch (e, st) {
+      // Best-effort; do not throw from dispose paths.
+      AppLogger.error('disposeCamera failed', error: e, stackTrace: st);
+    }
     _cameraController = null;
   }
 

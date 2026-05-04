@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../services/app_settings_manager.dart';
+import '../../services/whatsapp_push_coordinator.dart';
 import '../../utils/constants.dart';
 import '../../utils/logger.dart';
 import '../../utils/route_args.dart';
@@ -23,10 +24,21 @@ class QrShareScreen extends StatefulWidget {
 
 class _QrShareScreenState extends State<QrShareScreen> {
   ResultViewModel? _viewModel;
+  bool _ownsViewModel = false;
   bool _initialized = false;
   Timer? _timer;
   int _secondsLeft = 60;
   bool _exiting = false;
+
+  /// One-shot toast guard: we show the post-receipt outcome dialog at most once
+  /// per QR share screen lifecycle.
+  bool _postReceiptToastShown = false;
+
+  void _onWhatsappStatusFromFcm(WhatsAppStatusPayload payload) {
+    _viewModel?.applyWhatsappStatusPush(payload);
+    if (!mounted) return;
+    setState(() {});
+  }
 
   @override
   void didChangeDependencies() {
@@ -36,12 +48,28 @@ class _QrShareScreenState extends State<QrShareScreen> {
         QrShareArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
     if (parsed == null) return;
 
-    _viewModel = ResultViewModel(
-      generatedImages: parsed.generatedImages,
-      originalPhoto: parsed.originalPhoto,
-      appSettingsManager: context.read<AppSettingsManager>(),
-    );
+    final vmArg = parsed.resultViewModel;
+    if (vmArg is ResultViewModel) {
+      _viewModel = vmArg;
+      _ownsViewModel = false;
+    } else {
+      _viewModel = ResultViewModel(
+        generatedImages: parsed.generatedImages,
+        originalPhoto: parsed.originalPhoto,
+        appSettingsManager: context.read<AppSettingsManager>(),
+      );
+      _ownsViewModel = true;
+    }
     _initialized = true;
+
+    WhatsAppPushCoordinator.instance.registerCallback(_onWhatsappStatusFromFcm);
+    _viewModel?.startWhatsappDeliveryPolling();
+
+    // Listen for the receipt POST to settle, then surface a one-shot toast.
+    // The receipt POST may have already completed by the time this screen
+    // mounts (it fires from onFcmPaymentPush), so check immediately too.
+    _viewModel?.addListener(_maybeShowPostReceiptToast);
+    _maybeShowPostReceiptToast();
 
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
@@ -57,8 +85,64 @@ class _QrShareScreenState extends State<QrShareScreen> {
   @override
   void dispose() {
     _timer?.cancel();
-    _viewModel?.dispose();
+    WhatsAppPushCoordinator.instance.registerCallback(null);
+    _viewModel?.removeListener(_maybeShowPostReceiptToast);
+    _viewModel?.stopWhatsappDeliveryPolling();
+    if (_ownsViewModel) {
+      _viewModel?.dispose();
+    }
     super.dispose();
+  }
+
+  /// Watches [ResultViewModel.postReceiptOutcome] and shows the spec'd toast
+  /// once when the value transitions out of [PostReceiptOutcome.pending].
+  void _maybeShowPostReceiptToast() {
+    if (_postReceiptToastShown) return;
+    final vm = _viewModel;
+    if (vm == null) return;
+    final outcome = vm.postReceiptOutcome;
+    if (outcome == PostReceiptOutcome.pending) return;
+    _postReceiptToastShown = true;
+
+    // Defer to next frame so we never call showCupertinoDialog mid-build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _showToastFor(outcome);
+    });
+  }
+
+  void _showToastFor(PostReceiptOutcome outcome) {
+    switch (outcome) {
+      case PostReceiptOutcome.allOk:
+      case PostReceiptOutcome.whatsappSkippedOptOut:
+      case PostReceiptOutcome.pending:
+        // Silent: success or by-design no-WhatsApp.
+        return;
+      case PostReceiptOutcome.whatsappOkPdfFailed:
+        AppSnackBar.showSuccess(
+          context,
+          'Message sent — receipt is delayed.',
+        );
+        return;
+      case PostReceiptOutcome.whatsappSkippedInvalidPhone:
+        AppSnackBar.showError(
+          context,
+          "That number didn't work. Scan the QR code on this screen to get your copy.",
+        );
+        return;
+      case PostReceiptOutcome.whatsappSkippedNoPhone:
+        AppSnackBar.showError(
+          context,
+          'No number entered. Scan the QR code on this screen to get your copy.',
+        );
+        return;
+      case PostReceiptOutcome.receiptFailed:
+        AppSnackBar.showError(
+          context,
+          'Could not finalize your receipt. Please show this screen to staff.',
+        );
+        return;
+    }
   }
 
   Future<void> _exitToStart() async {
@@ -83,6 +167,8 @@ class _QrShareScreenState extends State<QrShareScreen> {
     final appColors = AppColors.of(context);
     final parsed = QrShareArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
     final shareUrl = (parsed?.shareUrl ?? '').trim();
+    final kioskUrl = (parsed?.kioskShareUrl ?? '').trim();
+    final qrData = shareUrl.isNotEmpty ? shareUrl : kioskUrl;
     final longUrl = (parsed?.shareLongUrl ?? '').trim();
     final expiresAt = parsed?.shareExpiresAt;
 
@@ -105,8 +191,28 @@ class _QrShareScreenState extends State<QrShareScreen> {
       value: _viewModel!,
       child: Consumer<ResultViewModel>(
         builder: (context, viewModel, _) {
-          final canShowQr = shareUrl.isNotEmpty;
+          final canShowQr = qrData.isNotEmpty;
           final expiry = expiryText();
+          final phone = (parsed.customerPhone ?? '').trim();
+          final waRequested = viewModel.effectiveWhatsappOptIn;
+          // Server-confirmed: only true once the backend tells us the message
+          // was actually queued (WhatsApp send was not skipped/rejected).
+          final waActuallyQueued = viewModel.whatsappQueued;
+          final vmStatus = (viewModel.whatsappDeliveryStatus ?? '').trim();
+          final headline = (waActuallyQueued && phone.isNotEmpty)
+              ? 'We also sent your receipt and digital copy to $phone on WhatsApp. '
+                  'Anyone can still scan this QR to download a digital copy.'
+              : 'Scan this QR on your phone to download a digital copy.';
+          // WhatsApp status line only makes sense when the message actually
+          // queued — otherwise we'd show "updating…" forever for a send that
+          // will never happen. Status is rendered via friendlyWhatsappStatus
+          // so customers see "Sending…" / "Delivered" / "Read", not raw enum
+          // strings like "SENT" / "PENDING".
+          final waLine = waActuallyQueued
+              ? (vmStatus.isNotEmpty
+                  ? 'WhatsApp: ${ResultViewModel.friendlyWhatsappStatus(vmStatus)}'
+                  : (waRequested ? 'WhatsApp: Updating…' : ''))
+              : '';
           return Scaffold(
             backgroundColor: Colors.transparent,
             extendBodyBehindAppBar: true,
@@ -142,9 +248,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              canShowQr
-                                  ? 'Scan this QR on your phone to download and share.'
-                                  : 'Preparing your share link…',
+                              canShowQr ? headline : 'Preparing your share link…',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 14,
@@ -162,6 +266,19 @@ class _QrShareScreenState extends State<QrShareScreen> {
                                   fontSize: 12,
                                   height: 1.25,
                                   color: Colors.white.withValues(alpha: 0.78),
+                                ),
+                              ),
+                            ],
+                            if (waLine.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                waLine,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.25,
+                                  color: Colors.white.withValues(alpha: 0.78),
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ],
@@ -186,7 +303,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
                               ),
                               child: canShowQr
                                   ? QrImageView(
-                                      data: shareUrl,
+                                      data: qrData,
                                       backgroundColor: Colors.white,
                                       errorStateBuilder: (ctx, err) => Center(
                                         child: Text(

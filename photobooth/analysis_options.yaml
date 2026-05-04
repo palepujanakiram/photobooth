@@ -17,6 +17,11 @@ analyzer:
     - "**/*.freezed.dart"
     - "**/build/**"
     - "**/.dart_tool/**"
+    # Vendored fork of Flutter's official camera_android_camerax plugin.
+    # Constant names (SD/HD/FHD/UHD, _0DegreesClockwise, etc.) match the
+    # upstream Android CameraX SDK and pigeon-generated code; "fixing" them
+    # would create merge conflicts on rebase. Excluded from analyzer noise.
+    - "packages/camera_android_camerax/**"
   errors:
     invalid_annotation_target: ignore
 

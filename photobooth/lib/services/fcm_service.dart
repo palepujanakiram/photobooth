@@ -39,9 +39,8 @@ class FcmService {
       }
       return cached;
     } catch (e, st) {
-      if (kDebugMode) {
-        AppLogger.debug('FCM getToken failed: $e\n$st');
-      }
+      // Error path should be visible in release logs too.
+      AppLogger.error('FCM getToken failed: $e', error: e, stackTrace: st);
       return await FcmTokenStore.getCached();
     }
   }

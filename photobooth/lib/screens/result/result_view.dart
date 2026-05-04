@@ -16,7 +16,6 @@ import '../../views/widgets/theme_background.dart';
 import '../../views/widgets/payment_link_qr.dart';
 import '../../services/payment_push_coordinator.dart';
 import '../../utils/route_args.dart';
-import '../../models/kiosk_share_link_model.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -29,10 +28,18 @@ class _ResultScreenState extends State<ResultScreen> {
   ResultViewModel? _viewModel;
   bool _isInitialized = false;
   bool _didNavigateToThankYou = false;
+  String? _customerName;
+  String? _customerPhone;
+  bool _customerWhatsappOptIn = false;
   Timer? _failureIdleTimer;
   int _failureSecondsLeft = 0;
   bool _navigatingAway = false;
   bool _retryingPrint = false;
+
+  /// True while the dead-polling [Refresh] CTA's one-shot fetch is in flight.
+  /// Prevents double-taps on slow connections and lets us swap the button
+  /// label for an inline spinner.
+  bool _refreshingPolling = false;
 
   @override
   void initState() {
@@ -49,6 +56,9 @@ class _ResultScreenState extends State<ResultScreen> {
 
     final generatedImages = parsed.generatedImages;
     final originalPhoto = parsed.originalPhoto;
+    _customerName = parsed.customerName;
+    _customerPhone = parsed.customerPhone;
+    _customerWhatsappOptIn = parsed.customerWhatsappOptIn;
 
     if (generatedImages.isEmpty) return;
 
@@ -56,6 +66,9 @@ class _ResultScreenState extends State<ResultScreen> {
       generatedImages: generatedImages,
       originalPhoto: originalPhoto,
       appSettingsManager: context.read<AppSettingsManager>(),
+      customerName: _customerName,
+      customerPhone: _customerPhone,
+      customerWhatsappOptIn: _customerWhatsappOptIn,
     );
     _isInitialized = true;
 
@@ -64,7 +77,7 @@ class _ResultScreenState extends State<ResultScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(PaymentPushCoordinator.instance.flushPendingStoragePayment());
-      _viewModel?.loadPaymentQr();
+      _viewModel?.loadPaymentQr(customerPhone: _customerPhone);
     });
   }
 
@@ -72,7 +85,10 @@ class _ResultScreenState extends State<ResultScreen> {
   void dispose() {
     PaymentPushCoordinator.instance.registerResultScreenCallback(null);
     _failureIdleTimer?.cancel();
-    _viewModel?.dispose();
+    // QrShareScreen reuses the same ResultViewModel for print/share + WhatsApp status.
+    if (!_didNavigateToThankYou) {
+      _viewModel?.dispose();
+    }
     super.dispose();
   }
 
@@ -183,12 +199,10 @@ class _ResultScreenState extends State<ResultScreen> {
     if (!mounted || _didNavigateToThankYou) return;
     if (viewModel.fcmPaymentPushSuccess != true || viewModel.hasError) return;
     _didNavigateToThankYou = true;
-    KioskShareLinkModel? share;
     try {
-      // Mint share link before wiping local session (ThankYou screen needs only the URL).
-      share = await viewModel.mintCustomerShareLink();
+      await viewModel.ensurePostPaymentShareArtifacts();
     } catch (e, st) {
-      AppLogger.debug('Share link mint failed: $e\n$st');
+      AppLogger.debug('Post-payment share preparation failed: $e\n$st');
     }
     if (!mounted) return;
     // Keep the session alive for a short window so operators can print/share.
@@ -199,9 +213,15 @@ class _ResultScreenState extends State<ResultScreen> {
       arguments: QrShareArgs(
         generatedImages: viewModel.generatedImages,
         originalPhoto: viewModel.originalPhoto,
-        shareUrl: share?.url,
-        shareLongUrl: share?.longUrl,
-        shareExpiresAt: share?.expiresAt,
+        resultViewModel: viewModel,
+        shareUrl: viewModel.receiptShareUrl,
+        shareLongUrl: viewModel.receiptShareLongUrl,
+        shareExpiresAt: viewModel.receiptShareExpiresAt,
+        kioskShareUrl: viewModel.kioskFallbackShareUrl,
+        whatsappQueued: viewModel.whatsappQueued,
+        customerWhatsappOptIn: viewModel.customerWhatsappOptIn,
+        customerPhone: viewModel.customerPhone,
+        receiptPdfUrl: viewModel.receiptPdfUrl,
       ),
     );
   }
@@ -223,6 +243,28 @@ class _ResultScreenState extends State<ResultScreen> {
     } finally {
       _retryingPrint = false;
     }
+  }
+
+  Future<void> _showGetHelpDialog(ResultViewModel viewModel) async {
+    if (!mounted) return;
+    // Prefer a simple operator-facing help dialog (no deep linking).
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Need help?'),
+        content: const Text(
+          'If your payment went through but printing didn’t start, tap Refresh.\n\n'
+          'If it still doesn’t work, please contact staff at the counter.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+    AppLogger.debug('Pay&Collect: help dialog shown');
   }
 
 
@@ -649,6 +691,80 @@ class _ResultScreenState extends State<ResultScreen> {
                           : Colors.white.withValues(alpha: 0.85)),
                 ),
               ),
+              if (viewModel.isDeadPollingFallbackVisible) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Did your payment go through?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.95),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.35),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        // Disable while a refresh is in flight to avoid
+                        // double-taps on slow connections.
+                        onPressed: _refreshingPolling
+                            ? null
+                            : () async {
+                                if (!mounted) return;
+                                setState(() => _refreshingPolling = true);
+                                try {
+                                  await viewModel.refreshPaymentPolling();
+                                } finally {
+                                  if (mounted) {
+                                    setState(() => _refreshingPolling = false);
+                                  }
+                                }
+                              },
+                        child: _refreshingPolling
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              )
+                            : const Text('Refresh'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white.withValues(alpha: 0.16),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: () => _showGetHelpDialog(viewModel),
+                        child: const Text('Get help'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               if (viewModel.fcmPaymentPushSuccess == false &&
                   _failureSecondsLeft > 0) ...[
                 const SizedBox(height: 8),

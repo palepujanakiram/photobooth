@@ -12,8 +12,12 @@ void configureDioForWeb(Dio dio) {
     try {
       dio.httpClientAdapter = BrowserHttpClientAdapter();
       AppLogger.debug('✅ Configured Dio with BrowserHttpClientAdapter for web');
-    } catch (e) {
-      AppLogger.debug('❌ Failed to configure BrowserHttpClientAdapter: $e');
+    } catch (e, st) {
+      AppLogger.error(
+        'Failed to configure BrowserHttpClientAdapter',
+        error: e,
+        stackTrace: st,
+      );
       rethrow;
     }
   } else {
