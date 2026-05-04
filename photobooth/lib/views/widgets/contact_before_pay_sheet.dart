@@ -1,6 +1,13 @@
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
+/// Strips ASCII control chars (U+0000–U+001F, U+007F) and common zero-width /
+/// bidi / line+paragraph separator marks from user-entered names. These
+/// can break WhatsApp template variable rendering.
+final RegExp _kNameSanitizer = RegExp(
+  '[\u0000-\u001F\u007F\u200B-\u200F\u2028-\u2029\u202A-\u202E\uFEFF]',
+);
+
 class ContactBeforePayResult {
   const ContactBeforePayResult({
     required this.customerName,
@@ -47,6 +54,18 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
   late final FocusNode _nameFocus;
   late final FocusNode _phoneFocus;
   bool _waOptIn = false;
+  String? _phoneError;
+
+  /// E.164: leading '+' followed by 10–15 digits.
+  /// (Min 10 digits matches India mobile + country code; ITU max is 15.)
+  static final RegExp _e164 = RegExp(r'^\+\d{10,15}$');
+
+  /// Strips spaces, dashes, parentheses, and dots. Keeps a leading '+'.
+  static String _normalizePhone(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return '';
+    return trimmed.replaceAll(RegExp(r'[\s\-().]'), '');
+  }
 
   @override
   void initState() {
@@ -79,15 +98,45 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
       );
       return;
     }
-    final name = _nameCtrl.text.trim();
-    final p = _phoneCtrl.text.trim();
-    final wa = p.isNotEmpty && _waOptIn;
+    // Light name sanitization: strip control chars (newlines, tabs, DEL) and
+    // common zero-width / bidi marks so they don't end up rendered in WhatsApp
+    // template variables.
+    final name = _nameCtrl.text
+        .replaceAll(_kNameSanitizer, '')
+        .trim();
+    final p = _normalizePhone(_phoneCtrl.text);
+
+    // Empty phone => proceed without WhatsApp (same behavior as before).
+    if (p.isEmpty) {
+      Navigator.pop(
+        context,
+        ContactBeforePayResult(
+          customerName: name,
+          customerPhone: '',
+          whatsappOptIn: false,
+          skipped: false,
+        ),
+      );
+      return;
+    }
+
+    // Non-empty phone: must be valid E.164. Show inline error and don't pop.
+    if (!_e164.hasMatch(p)) {
+      setState(() {
+        _phoneError =
+            'Enter mobile in international format, e.g. +9198xxxxxx00';
+      });
+      _phoneFocus.requestFocus();
+      return;
+    }
+
+    setState(() => _phoneError = null);
     Navigator.pop(
       context,
       ContactBeforePayResult(
         customerName: name,
         customerPhone: p,
-        whatsappOptIn: wa,
+        whatsappOptIn: _waOptIn,
         skipped: false,
       ),
     );
@@ -123,12 +172,17 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
           if (_phoneCtrl.text.trim().isEmpty) {
             _waOptIn = false;
           }
+          // Clear validation error as the user edits.
+          if (_phoneError != null) {
+            _phoneError = null;
+          }
         });
       },
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         labelText: 'WhatsApp mobile (optional)',
         hintText: '+9198xxxxxx00',
-        border: OutlineInputBorder(),
+        border: const OutlineInputBorder(),
+        errorText: _phoneError,
       ),
     );
 
