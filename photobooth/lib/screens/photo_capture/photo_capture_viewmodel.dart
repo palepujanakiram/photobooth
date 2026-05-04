@@ -640,7 +640,7 @@ class CaptureViewModel extends ChangeNotifier {
       // - Much faster takePicture() on many Android tablets vs [max]
       // - Lower memory pressure (avoids slowdowns / OOM on kiosk devices)
       // - Still plenty of detail for downstream AI (upload is resized anyway)
-      final ResolutionPreset preset = ResolutionPreset.high;
+      const ResolutionPreset preset = ResolutionPreset.high;
       _cameraController = CameraController(
         cameraToUse,
         preset,
