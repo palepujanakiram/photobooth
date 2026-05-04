@@ -15,6 +15,7 @@ import '../../services/kiosk_manager.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
+import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/fcm_service.dart';
 import '../../services/payment_push_coordinator.dart';
 import '../../services/whatsapp_push_coordinator.dart';
@@ -63,12 +64,16 @@ class ResultViewModel extends ChangeNotifier {
 
   /// Server payment id from initiate; used to poll when FCM is missing (emulator / tray only).
   String? _activePaymentId;
-  Timer? _paymentPollTimer;
-  int _paymentPollTicks = 0;
-  int _pollNullStreak = 0;
+  Timer? _paymentIdPollTimer;
+  Timer? _sessionPollTimer;
+  int _paymentIdPollTicks = 0;
+  int _sessionPollTicks = 0;
+  int _paymentIdNullStreak = 0;
+  int _sessionNullStreak = 0;
   bool _paymentOutcomeHandled = false;
 
   bool _postPaymentSharePrepared = false;
+  Future<void>? _postPaymentInflight;
   String? _receiptShareUrl;
   String? _receiptShareLongUrl;
   DateTime? _receiptShareExpiresAt;
@@ -222,9 +227,12 @@ class ResultViewModel extends ChangeNotifier {
     _paymentInitInProgress = true;
     _paymentInitError = null;
     _activePaymentId = null;
-    _paymentPollTimer?.cancel();
-    _paymentPollTicks = 0;
-    _pollNullStreak = 0;
+    _paymentIdPollTimer?.cancel();
+    _sessionPollTimer?.cancel();
+    _paymentIdPollTicks = 0;
+    _sessionPollTicks = 0;
+    _paymentIdNullStreak = 0;
+    _sessionNullStreak = 0;
     _paymentOutcomeHandled = false;
     notifyListeners();
 
@@ -274,20 +282,20 @@ class ResultViewModel extends ChangeNotifier {
   static const _paymentPollInterval = Duration(seconds: 3);
 
   void _startPaymentStatusPolling() {
-    _paymentPollTimer?.cancel();
-    _paymentPollTicks = 0;
-    _pollNullStreak = 0;
-    _paymentPollTimer = Timer.periodic(
+    _paymentIdPollTimer?.cancel();
+    _paymentIdPollTicks = 0;
+    _paymentIdNullStreak = 0;
+    _paymentIdPollTimer = Timer.periodic(
       _paymentPollInterval,
       _onPaymentPollTick,
     );
   }
 
   void _startSessionApprovalPolling(String sessionId) {
-    _paymentPollTimer?.cancel();
-    _paymentPollTicks = 0;
-    _pollNullStreak = 0;
-    _paymentPollTimer = Timer.periodic(
+    _sessionPollTimer?.cancel();
+    _sessionPollTicks = 0;
+    _sessionNullStreak = 0;
+    _sessionPollTimer = Timer.periodic(
       _paymentPollInterval,
       (t) => _onSessionPollTick(t, sessionId),
     );
@@ -298,7 +306,7 @@ class ResultViewModel extends ChangeNotifier {
       t.cancel();
       return;
     }
-    if (++_paymentPollTicks > 180) {
+    if (++_sessionPollTicks > 180) {
       // 12 minutes max.
       t.cancel();
       return;
@@ -310,12 +318,12 @@ class ResultViewModel extends ChangeNotifier {
       return;
     }
     if (raw == null) {
-      if (++_pollNullStreak >= 8) {
+      if (++_sessionNullStreak >= 8) {
         t.cancel();
       }
       return;
     }
-    _pollNullStreak = 0;
+    _sessionNullStreak = 0;
 
     final verdict = _verdictFromSession(raw);
     switch (verdict) {
@@ -384,7 +392,7 @@ class ResultViewModel extends ChangeNotifier {
       t.cancel();
       return;
     }
-    if (++_paymentPollTicks > 90) {
+    if (++_paymentIdPollTicks > 90) {
       t.cancel();
       return;
     }
@@ -400,12 +408,12 @@ class ResultViewModel extends ChangeNotifier {
       return;
     }
     if (raw == null) {
-      if (++_pollNullStreak >= 8) {
+      if (++_paymentIdNullStreak >= 8) {
         t.cancel();
       }
       return;
     }
-    _pollNullStreak = 0;
+    _paymentIdNullStreak = 0;
 
     final verdict = _verdictFromPaymentStatusResponse(raw);
     switch (verdict) {
@@ -457,12 +465,18 @@ class ResultViewModel extends ChangeNotifier {
   bool _tryClaimPaymentOutcome() {
     if (_paymentOutcomeHandled) return false;
     _paymentOutcomeHandled = true;
-    _paymentPollTimer?.cancel();
-    _paymentPollTimer = null;
+    _paymentIdPollTimer?.cancel();
+    _paymentIdPollTimer = null;
+    _sessionPollTimer?.cancel();
+    _sessionPollTimer = null;
     return true;
   }
 
   /// FCM or poll: updates inline Pay & Collect; on approval runs [silentPrintToNetwork] once.
+  ///
+  /// Also kicks off [ensurePostPaymentShareArtifacts] in parallel with print, so the
+  /// receipt POST + WhatsApp queue happens the moment payment is approved — even if
+  /// the user/operator never reaches the QR/Thank You navigation step.
   Future<void> onFcmPaymentPush(PaymentPushPayload payload) async {
     if (!payload.isApproved && !payload.isFailed) return;
     if (!_tryClaimPaymentOutcome()) return;
@@ -471,6 +485,13 @@ class ResultViewModel extends ChangeNotifier {
       _fcmPaymentPushSuccess = true;
       _fcmPaymentStatusDetail = _fcmApprovedDetailText(payload);
       notifyListeners();
+
+      // Fire-and-forget: queue receipt + WhatsApp send in parallel with print.
+      // ensurePostPaymentShareArtifacts is internally idempotent
+      // (_postPaymentSharePrepared) so calling it again from
+      // _navigateToThankYouIfEligible is a no-op.
+      unawaited(ensurePostPaymentShareArtifacts());
+
       try {
         await silentPrintToNetwork().timeout(const Duration(minutes: 2));
       } on TimeoutException {
@@ -520,8 +541,10 @@ class ResultViewModel extends ChangeNotifier {
   ///
   /// This does **not** delete anything on the server (transactions/audit can remain).
   Future<void> privacyWipeLocal() async {
-    _paymentPollTimer?.cancel();
-    _paymentPollTimer = null;
+    _paymentIdPollTimer?.cancel();
+    _paymentIdPollTimer = null;
+    _sessionPollTimer?.cancel();
+    _sessionPollTimer = null;
     stopWhatsappDeliveryPolling();
     _downloadedFiles.clear();
     _sessionManager.clearSession();
@@ -684,8 +707,21 @@ class ResultViewModel extends ChangeNotifier {
   }
 
   /// After payment approval: request canonical receipt/share link + mint kiosk fallback.
-  Future<void> ensurePostPaymentShareArtifacts() async {
-    if (_postPaymentSharePrepared) return;
+  ///
+  /// Concurrent-safe: callers from both [onFcmPaymentPush] and the navigation path
+  /// share a single in-flight Future, so the receipt POST never fires twice.
+  Future<void> ensurePostPaymentShareArtifacts() {
+    if (_postPaymentSharePrepared) return Future<void>.value();
+    final inflight = _postPaymentInflight;
+    if (inflight != null) return inflight;
+    final fut = _runPostPaymentShareArtifacts();
+    _postPaymentInflight = fut;
+    return fut.whenComplete(() {
+      _postPaymentInflight = null;
+    });
+  }
+
+  Future<void> _runPostPaymentShareArtifacts() async {
     final sessionId = _sessionManager.sessionId;
     if (sessionId == null || sessionId.trim().isEmpty) {
       _postPaymentSharePrepared = true;
@@ -706,20 +742,19 @@ class ResultViewModel extends ChangeNotifier {
 
     try {
       final fcmToken = kIsWeb ? null : await FcmService.getToken();
-      final receipt = await _apiService.postSessionReceipt(
+      final receipt = await _postSessionReceiptWithRetry(
         sessionId: sessionId,
-        customerName: _customerName,
-        customerPhone: _customerPhone,
-        whatsappOptIn: effectiveWhatsappOptIn,
-        transactionRef: _activePaymentId,
         fcmToken: fcmToken,
       );
-      _ingestReceiptShareFields(receipt);
-      if (effectiveWhatsappOptIn) {
-        _whatsappQueued = true;
+      if (receipt != null) {
+        _ingestReceiptShareFields(receipt);
+        if (effectiveWhatsappOptIn) {
+          _whatsappQueued = true;
+        }
       }
     } catch (e, st) {
-      AppLogger.debug('postSessionReceipt failed: $e\n$st');
+      // _postSessionReceiptWithRetry already reports + logs; this is a safety net.
+      AppLogger.debug('postSessionReceipt failed (outer): $e\n$st');
     }
 
     // If receipt didn't include a share URL, fall back to kiosk mint (if any).
@@ -738,6 +773,81 @@ class ResultViewModel extends ChangeNotifier {
     _postPaymentSharePrepared = true;
     await refreshWhatsappDeliveryStatusFromSession();
     notifyListeners();
+  }
+
+  /// Posts the receipt with retry + error reporting.
+  ///
+  /// - Retries on transient failures (network, timeout, 5xx, no statusCode).
+  /// - Does **not** retry on 4xx (bad input / server rule violation — won't recover).
+  /// - On terminal failure, reports to [ErrorReportingManager] (Bugsnag) with context
+  ///   so we can alert/debug, instead of silently dropping the WhatsApp send.
+  Future<Map<String, dynamic>?> _postSessionReceiptWithRetry({
+    required String sessionId,
+    String? fcmToken,
+    int maxAttempts = 3,
+  }) async {
+    Object? lastError;
+    StackTrace? lastStack;
+    int? lastStatus;
+
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await _apiService.postSessionReceipt(
+          sessionId: sessionId,
+          customerName: _customerName,
+          customerPhone: _customerPhone,
+          whatsappOptIn: effectiveWhatsappOptIn,
+          transactionRef: _activePaymentId,
+          fcmToken: fcmToken,
+        );
+      } on ApiException catch (e, st) {
+        lastError = e;
+        lastStack = st;
+        lastStatus = e.statusCode;
+
+        final transient = e.statusCode == null ||
+            (e.statusCode != null && e.statusCode! >= 500);
+        if (!transient || attempt == maxAttempts) {
+          break;
+        }
+        // Exponential backoff: 500ms, 1s, 2s
+        final delayMs = 500 * (1 << (attempt - 1));
+        AppLogger.debug(
+          'postSessionReceipt transient failure (status=${e.statusCode}, '
+          'attempt=$attempt/$maxAttempts), retrying in ${delayMs}ms: ${e.message}',
+        );
+        await Future<void>.delayed(Duration(milliseconds: delayMs));
+      } catch (e, st) {
+        lastError = e;
+        lastStack = st;
+        // Unknown errors: treat as transient up to maxAttempts.
+        if (attempt == maxAttempts) break;
+        final delayMs = 500 * (1 << (attempt - 1));
+        AppLogger.debug(
+          'postSessionReceipt unknown failure (attempt=$attempt/$maxAttempts), '
+          'retrying in ${delayMs}ms: $e',
+        );
+        await Future<void>.delayed(Duration(milliseconds: delayMs));
+      }
+    }
+
+    // All attempts exhausted (or hit a non-retryable 4xx). Report and surface.
+    AppLogger.debug('postSessionReceipt giving up: $lastError');
+    await ErrorReportingManager.recordError(
+      lastError ?? Exception('postSessionReceipt unknown failure'),
+      lastStack,
+      reason: 'postSessionReceipt failed after retries',
+      extraInfo: {
+        'sessionId': sessionId,
+        'transactionRef': _activePaymentId,
+        'whatsappOptIn': effectiveWhatsappOptIn,
+        'hasCustomerPhone': (_customerPhone?.trim().isNotEmpty ?? false),
+        'hasFcmToken': (fcmToken?.isNotEmpty ?? false),
+        'lastStatusCode': lastStatus,
+        'maxAttempts': maxAttempts,
+      },
+    );
+    return null;
   }
 
   /// Mints a short-lived customer share link for this session (for QR bridge).
@@ -949,7 +1059,8 @@ class ResultViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
-    _paymentPollTimer?.cancel();
+    _paymentIdPollTimer?.cancel();
+    _sessionPollTimer?.cancel();
     stopWhatsappDeliveryPolling();
     super.dispose();
   }
