@@ -98,6 +98,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _timer = null;
     _viewModel.removeListener(_onViewModelChanged);
     _viewModel.dispose();
     super.dispose();
@@ -115,6 +116,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
 
     // Cancel any existing timer
     _timer?.cancel();
+    _timer = null;
 
     // Only start animation timer if all images are loaded
     if (!_viewModel.areAllImagesLoaded) {
@@ -124,6 +126,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
     _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
       if (!mounted) {
         timer.cancel();
+        if (identical(_timer, timer)) _timer = null;
         return;
       }
 
@@ -132,6 +135,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
         // Check if all images are still loaded
         if (!_viewModel.areAllImagesLoaded) {
           timer.cancel();
+          if (identical(_timer, timer)) _timer = null;
           return;
         }
 
@@ -140,6 +144,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
             : _viewModel.getSampleImageUrls();
         if (imageUrls.isEmpty) {
           timer.cancel();
+          if (identical(_timer, timer)) _timer = null;
           return;
         }
 
@@ -155,6 +160,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
         // ViewModel might be disposed, cancel timer
         AppLogger.debug('Error in slideshow timer: $e');
         timer.cancel();
+        if (identical(_timer, timer)) _timer = null;
       }
     });
   }

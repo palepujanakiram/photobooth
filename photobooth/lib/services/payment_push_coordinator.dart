@@ -6,8 +6,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'fcm_payment_pending_store.dart';
+import 'error_reporting/error_reporting_manager.dart';
 import 'whatsapp_push_coordinator.dart';
 import '../utils/logger.dart';
+import 'session_manager.dart';
 
 /// Payload from FCM `data` + optional `notification` for payment updates.
 ///
@@ -265,9 +267,12 @@ class PaymentPushCoordinator {
   GlobalKey<NavigatorState>? _navigatorKey;
   PaymentPushCallback? _resultScreenCallback;
   String? _lastHandledPaymentId;
+  PaymentPushPayload? _queuedPaymentPayload;
+  List<String>? _queuedPaymentDataKeys;
 
   void attachNavigator(GlobalKey<NavigatorState> key) {
     _navigatorKey = key;
+    _drainQueuedPayment();
   }
 
   /// Set when [ResultScreen] is visible; cleared on dispose.
@@ -278,6 +283,32 @@ class PaymentPushCoordinator {
     // consumed state incorrectly.
     if (callback != null) {
       _lastHandledPaymentId = null;
+      _drainQueuedPayment();
+    }
+  }
+
+  /// Queue a message for later delivery when UI is ready.
+  ///
+  /// Used for cold-start `getInitialMessage()` so the payload isn't dispatched to
+  /// the wrong screen while navigation is still settling.
+  void queueRemoteMessage(RemoteMessage message) {
+    final payload = PaymentPushPayload.fromRemoteMessage(message);
+    if (!_isPaymentPayload(payload)) return;
+    _queuedPaymentPayload = payload;
+    _queuedPaymentDataKeys = message.data.keys.toList();
+    _drainQueuedPayment();
+  }
+
+  void _drainQueuedPayment() {
+    final p = _queuedPaymentPayload;
+    if (p == null) return;
+    final applied = dispatchParsedPayload(
+      p,
+      dataKeys: _queuedPaymentDataKeys,
+    );
+    if (applied) {
+      _queuedPaymentPayload = null;
+      _queuedPaymentDataKeys = null;
     }
   }
 
@@ -315,6 +346,38 @@ class PaymentPushCoordinator {
     final dataRaw = pending['data'];
     if (dataRaw is! Map) return;
     final data = Map<String, dynamic>.from(dataRaw);
+
+    // If we persisted an origin sessionId, verify it matches the currently restored session.
+    // When originSessionId is absent (older payloads / backend doesn't send session id), keep legacy behavior.
+    final originSessionId = pending['originSessionId']?.toString().trim();
+    final currentSessionId = SessionManager().sessionId?.trim();
+    if (originSessionId != null &&
+        originSessionId.isNotEmpty &&
+        currentSessionId != null &&
+        currentSessionId.isNotEmpty &&
+        originSessionId != currentSessionId) {
+      developer.log(
+        'flush dropped pending: session mismatch origin=$originSessionId current=$currentSessionId',
+        name: 'fotozen.fcm',
+      );
+      if (kDebugMode) {
+        AppLogger.debug(
+          'FCM flush: dropped pending payload due to session mismatch '
+          '(origin=$originSessionId current=$currentSessionId)',
+        );
+      }
+      await ErrorReportingManager.recordError(
+        Exception('Cross-session FCM payload dropped'),
+        StackTrace.current,
+        reason: 'FCM pending payload origin sessionId does not match current',
+        extraInfo: {
+          'originSessionId': originSessionId,
+          'currentSessionId': currentSessionId,
+        },
+        fatal: false,
+      );
+      return;
+    }
     String? title;
     String? body;
     final notif = pending['notification'];
