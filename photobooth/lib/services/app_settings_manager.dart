@@ -15,6 +15,7 @@ class AppSettingsManager extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
   DateTime? _lastFetchedAt;
+  Future<void>? _inflightFetch;
 
   AppSettingsModel? get settings => _settings;
   bool get hasSettings => _settings != null;
@@ -23,31 +24,45 @@ class AppSettingsManager extends ChangeNotifier {
   DateTime? get lastFetchedAt => _lastFetchedAt;
 
   Future<void> fetchSettings({bool forceRefresh = false}) async {
-    if (_isLoading) {
-      return;
-    }
     if (!forceRefresh && _settings != null) {
       return;
+    }
+
+    // If a request is already in-flight, reuse it to avoid stacking calls on
+    // flaky networks / rapid lifecycle changes.
+    if (_inflightFetch != null) {
+      return _inflightFetch!;
     }
 
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
+    final f = () async {
+      try {
+        final response = await _apiService.getAppSettings();
+        _settings = response;
+        _lastFetchedAt = DateTime.now();
+        _errorMessage = null;
+        AppRuntimeConfig.instance.applyFromSettings(_settings);
+        applyFlutterImageCacheLimits();
+        AliceInspector.syncWithRuntimeConfig();
+      } catch (e) {
+        _errorMessage = e.toString();
+        AppLogger.error('Failed to fetch app settings: $e');
+      } finally {
+        _isLoading = false;
+        notifyListeners();
+      }
+    }();
+
+    _inflightFetch = f;
     try {
-      final response = await _apiService.getAppSettings();
-      _settings = response;
-      _lastFetchedAt = DateTime.now();
-      _errorMessage = null;
-      AppRuntimeConfig.instance.applyFromSettings(_settings);
-      applyFlutterImageCacheLimits();
-      AliceInspector.syncWithRuntimeConfig();
-    } catch (e) {
-      _errorMessage = e.toString();
-      AppLogger.error('Failed to fetch app settings: $e');
+      await f;
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (identical(_inflightFetch, f)) {
+        _inflightFetch = null;
+      }
     }
   }
 }

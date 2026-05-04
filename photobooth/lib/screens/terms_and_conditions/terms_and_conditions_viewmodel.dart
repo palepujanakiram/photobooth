@@ -6,6 +6,8 @@ import '../../services/kiosk_manager.dart';
 import '../../services/session_manager.dart';
 import '../../services/file_helper.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/logger.dart';
+import '../../services/error_reporting/error_reporting_manager.dart';
 
 class TermsAndConditionsViewModel extends ChangeNotifier {
   final ApiService _apiService;
@@ -44,7 +46,14 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
       _kioskCode = await _kioskManager.getKioskCode();
       _kioskCodeLoaded = true;
       notifyListeners();
-    } catch (_) {
+    } catch (e, st) {
+      AppLogger.error('Failed to load kiosk code', error: e, stackTrace: st);
+      await ErrorReportingManager.recordError(
+        e,
+        st,
+        reason: 'loadKioskCode failed',
+        fatal: false,
+      );
       _kioskCodeLoaded = true;
       notifyListeners();
     }
@@ -56,7 +65,14 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
     try {
       _kioskCode = await _kioskManager.getKioskCode();
       notifyListeners();
-    } catch (_) {
+    } catch (e, st) {
+      AppLogger.error('Failed to reload kiosk code', error: e, stackTrace: st);
+      await ErrorReportingManager.recordError(
+        e,
+        st,
+        reason: 'reloadKioskFromStorage failed',
+        fatal: false,
+      );
       notifyListeners();
     }
   }
@@ -104,7 +120,16 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       await _kioskManager.setKioskCode(_kioskCode);
-    } catch (_) {}
+    } catch (e, st) {
+      AppLogger.error('Failed to persist kiosk code', error: e, stackTrace: st);
+      await ErrorReportingManager.recordError(
+        e,
+        st,
+        reason: 'updateKioskCode persist failed',
+        extraInfo: {'kioskCodePresent': _kioskCode != null},
+        fatal: false,
+      );
+    }
   }
 
   /// Validates [code] against the backend before persisting it.

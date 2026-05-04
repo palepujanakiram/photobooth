@@ -223,9 +223,9 @@ class ThemeManager {
     for (final listener in _listeners) {
       try {
         listener();
-      } catch (e) {
+      } catch (e, st) {
         // Ignore errors from listeners
-        AppLogger.debug('Error in ThemeManager listener: $e');
+        AppLogger.error('Error in ThemeManager listener', error: e, stackTrace: st);
       }
     }
   }

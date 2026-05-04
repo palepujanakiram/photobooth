@@ -169,13 +169,13 @@ class ApiService {
         ),
       );
     } on DioException catch (e) {
-      if (kDebugMode) {
-        AppLogger.debug('registerSessionFcmToken failed: ${e.message}');
-      }
+      AppLogger.error(
+        'registerSessionFcmToken failed: ${e.message}',
+        error: e,
+        stackTrace: e.stackTrace,
+      );
     } catch (e) {
-      if (kDebugMode) {
-        AppLogger.debug('registerSessionFcmToken failed: $e');
-      }
+      AppLogger.error('registerSessionFcmToken failed: $e', error: e);
     }
   }
 
@@ -259,11 +259,15 @@ class ApiService {
       if (data is Map) return Map<String, dynamic>.from(data);
     } on DioException catch (e) {
       if (kDebugMode) {
-        AppLogger.debug('fetchPaymentStatus: ${e.message}');
+        AppLogger.error(
+          'fetchPaymentStatus failed: ${e.message}',
+          error: e,
+          stackTrace: e.stackTrace,
+        );
       }
     } catch (e) {
       if (kDebugMode) {
-        AppLogger.debug('fetchPaymentStatus: $e');
+        AppLogger.error('fetchPaymentStatus failed: $e', error: e);
       }
     }
     return null;
@@ -795,11 +799,15 @@ class ApiService {
     } on DioException catch (e) {
       _handleWebNetworkError(e);
       if (kDebugMode) {
-        AppLogger.debug('fetchSession: ${e.message}');
+        AppLogger.error(
+          'fetchSession failed: ${e.message}',
+          error: e,
+          stackTrace: e.stackTrace,
+        );
       }
     } catch (e) {
       if (kDebugMode) {
-        AppLogger.debug('fetchSession: $e');
+        AppLogger.error('fetchSession failed: $e', error: e);
       }
     }
     return null;
@@ -1251,7 +1259,11 @@ class ApiService {
     } on DioException catch (e) {
       final status = e.response?.statusCode;
       final body = e.response?.data;
-      AppLogger.debug('❌ Image download failed ($status) for $resolvedUrl: $body');
+      AppLogger.error(
+        'Image download failed ($status) for $resolvedUrl: $body',
+        error: e,
+        stackTrace: e.stackTrace,
+      );
 
       // Some image/CDN endpoints reject bearer headers and respond with 403.
       // Retry once without Authorization before surfacing the error.
@@ -1364,7 +1376,7 @@ class ApiService {
       AppLogger.debug('✅ Preprocess image completed');
     }).catchError((error) {
       // Silently ignore errors - this is a background optimization
-      AppLogger.debug('⚠️ Preprocess image failed (non-critical): $error');
+      AppLogger.error('Preprocess image failed (non-critical): $error', error: error);
     });
   }
 }

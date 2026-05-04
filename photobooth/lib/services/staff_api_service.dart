@@ -130,10 +130,12 @@ class StaffApiService {
           ),
         );
       }
-    } catch (e) {
-      if (kDebugMode) {
-        AppLogger.debug('Staff logout error (ignored): $e');
-      }
+    } catch (e, st) {
+      AppLogger.error(
+        'Staff logout error (non-fatal, ignored)',
+        error: e,
+        stackTrace: st,
+      );
     } finally {
       await _sessionManager.clear();
     }

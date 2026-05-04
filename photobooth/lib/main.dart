@@ -38,6 +38,16 @@ import 'services/payment_push_coordinator.dart';
 import 'services/api_service.dart';
 import 'services/session_manager.dart';
 
+const String _kBugsnagApiKey = String.fromEnvironment('BUGSNAG_API_KEY');
+
+bool _isFilteredImageError(Object e) {
+  final errorString = e.toString().toLowerCase();
+  return errorString.contains('image decoding') ||
+      errorString.contains('failed to submit image decoding command buffer') ||
+      errorString.contains('codec failed to produce an image') ||
+      errorString.contains('failed to load network image');
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -63,17 +73,24 @@ Future<void> main() async {
   // Initialize Bugsnag only when native plugin is available (iOS/Android; not on web/tests)
   if (!kIsWeb) {
     try {
-      await bugsnag.start(
-        apiKey: '73ebb791c48ae8c4821b511fb286ca23',
-        enabledBreadcrumbTypes: const {
-          BugsnagEnabledBreadcrumbType.error,
-          BugsnagEnabledBreadcrumbType.navigation,
-          BugsnagEnabledBreadcrumbType.request,
-          BugsnagEnabledBreadcrumbType.state,
-          BugsnagEnabledBreadcrumbType.user,
-        },
-        maxBreadcrumbs: 50,
-      );
+      if (_kBugsnagApiKey.isNotEmpty) {
+        await bugsnag.start(
+          apiKey: _kBugsnagApiKey,
+          enabledBreadcrumbTypes: const {
+            BugsnagEnabledBreadcrumbType.error,
+            BugsnagEnabledBreadcrumbType.navigation,
+            BugsnagEnabledBreadcrumbType.request,
+            BugsnagEnabledBreadcrumbType.state,
+            BugsnagEnabledBreadcrumbType.user,
+          },
+          maxBreadcrumbs: 50,
+        );
+      } else if (kDebugMode) {
+        AppLogger.error(
+          'BUGSNAG_API_KEY not provided; Bugsnag disabled. '
+          'Pass via --dart-define=BUGSNAG_API_KEY=...',
+        );
+      }
     } on MissingPluginException catch (_) {
       // Native Bugsnag plugin not available (e.g. unit tests, or platform not linked)
     }
@@ -91,16 +108,14 @@ Future<void> main() async {
   FlutterError.onError = (errorDetails) {
     // Filter out non-fatal image decoding errors
     // These are handled by Image.errorBuilder widgets
-    final errorString = errorDetails.exception.toString().toLowerCase();
-    if (errorString.contains('image decoding') ||
-        errorString
-            .contains('failed to submit image decoding command buffer') ||
-        errorString.contains('codec failed to produce an image') ||
-        errorString.contains('failed to load network image')) {
+    if (_isFilteredImageError(errorDetails.exception)) {
       // Log to console in debug mode but don't report to Bugsnag
       if (kDebugMode) {
-        AppLogger.debug(
-            'Image loading error (non-fatal, handled by UI): ${errorDetails.exception}');
+        AppLogger.error(
+          'Image loading error (non-fatal, handled by UI): ${errorDetails.exception}',
+          error: errorDetails.exception,
+          stackTrace: errorDetails.stack,
+        );
       }
       return;
     }
@@ -126,16 +141,14 @@ Future<void> main() async {
   PlatformDispatcher.instance.onError = (error, stack) {
     // Filter out non-fatal image decoding errors
     // These are handled by Image.errorBuilder widgets
-    final errorString = error.toString().toLowerCase();
-    if (errorString.contains('image decoding') ||
-        errorString
-            .contains('failed to submit image decoding command buffer') ||
-        errorString.contains('codec failed to produce an image') ||
-        errorString.contains('failed to load network image')) {
+    if (_isFilteredImageError(error)) {
       // Log to console in debug mode but don't report to Bugsnag
       if (kDebugMode) {
-        AppLogger.debug(
-            'Image loading error (non-fatal, handled by UI): $error');
+        AppLogger.error(
+          'Image loading error (non-fatal, handled by UI): $error',
+          error: error,
+          stackTrace: stack,
+        );
       }
       return true; // Mark as handled
     }
@@ -157,6 +170,10 @@ Future<void> main() async {
     }
     return true;
   };
+
+  // Restore persisted session (best-effort) after error reporting + handlers are set up,
+  // but still before runApp so first-frame reads can see rehydrated state.
+  await SessionManager().restore();
 
   if (kDebugMode) {
     if (AppConstants.kEnableLogOutput) {
@@ -329,10 +346,9 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
         'FCM getInitialMessage: ${initial != null ? "message present (cold start from notif)" : "null"}',
       );
     }
-    if (initial != null && mounted) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        PaymentPushCoordinator.instance.handleRemoteMessage(initial);
-      });
+    if (initial != null) {
+      // Queue for delivery when the payment UI is ready (avoids post-frame routing races).
+      PaymentPushCoordinator.instance.queueRemoteMessage(initial);
     }
 
     if (mounted) {
@@ -366,22 +382,25 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider<SessionManager>.value(value: SessionManager()),
         ChangeNotifierProvider(create: (_) => ThemeViewModel()),
         ChangeNotifierProvider<AppSettingsManager>.value(
           value: _appSettingsManager,
         ),
+        Provider<Alice?>.value(value: AliceInspector.instance),
       ],
-      child: Consumer<AppSettingsManager>(
-        builder: (context, _, __) {
-          AliceInspector.syncWithRuntimeConfig();
-          return MultiProvider(
-            providers: [
-              Provider<Alice?>.value(value: AliceInspector.instance),
-            ],
-            child: MaterialApp(
+      child: MaterialApp(
         navigatorKey: widget.navigatorKey,
         title: AppConstants.kBrandName,
         debugShowCheckedModeBanner: false,
+        builder: (context, child) {
+          return Consumer<AppSettingsManager>(
+            builder: (context, _, __) {
+              AliceInspector.syncWithRuntimeConfig();
+              return child ?? const SizedBox.shrink();
+            },
+          );
+        },
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
               seedColor: Colors.blue, brightness: Brightness.light),
@@ -427,12 +446,10 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
           AppConstants.kRouteStaffLogin: (context) => const StaffLoginScreen(),
           AppConstants.kRouteStaffPayments: (context) =>
               const StaffPaymentsScreen(),
-          AppConstants.kRouteWebView: (context) => WebViewScreen.fromRouteSettings(
-                ModalRoute.of(context)?.settings,
-              ),
-        },
-            ),
-          );
+          AppConstants.kRouteWebView: (context) =>
+              WebViewScreen.fromRouteSettings(
+            ModalRoute.of(context)?.settings,
+          ),
         },
       ),
     );

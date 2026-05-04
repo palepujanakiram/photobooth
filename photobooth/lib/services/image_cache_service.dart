@@ -71,8 +71,8 @@ class ImageCacheService {
       }
 
       return true;
-    } catch (e) {
-      AppLogger.debug('ImageCacheService: error checking cache: $e');
+    } catch (e, st) {
+      AppLogger.error('ImageCacheService: error checking cache', error: e, stackTrace: st);
       return false;
     }
   }
@@ -87,8 +87,8 @@ class ImageCacheService {
         return cacheFile;
       }
       return null;
-    } catch (e) {
-      AppLogger.debug('ImageCacheService: error getting cached file: $e');
+    } catch (e, st) {
+      AppLogger.error('ImageCacheService: error getting cached file', error: e, stackTrace: st);
       return null;
     }
   }
@@ -124,8 +124,8 @@ class ImageCacheService {
 
       AppLogger.debug('ImageCacheService: image cached successfully: ${cacheFile.path}');
       return cacheFile;
-    } catch (e) {
-      AppLogger.debug('ImageCacheService: error caching image: $e');
+    } catch (e, st) {
+      AppLogger.error('ImageCacheService: error caching image', error: e, stackTrace: st);
       return null;
     }
   }
@@ -178,13 +178,21 @@ class ImageCacheService {
               currentSize -= info.stat.size;
               AppLogger.debug('ImageCacheService: deleted old cache file: ${info.file.path}');
             }
-          } catch (e) {
-            AppLogger.debug('ImageCacheService: error deleting cache file: $e');
+          } catch (e, st) {
+            AppLogger.error(
+              'ImageCacheService: error deleting cache file',
+              error: e,
+              stackTrace: st,
+            );
           }
         }
       }
-    } catch (e) {
-      AppLogger.debug('ImageCacheService: error cleaning cache: $e');
+    } catch (e, st) {
+      AppLogger.error(
+        'ImageCacheService: error cleaning cache',
+        error: e,
+        stackTrace: st,
+      );
     }
   }
 
@@ -198,8 +206,12 @@ class ImageCacheService {
         await _cacheDir!.create(recursive: true);
         AppLogger.debug('ImageCacheService: cache cleared');
       }
-    } catch (e) {
-      AppLogger.debug('ImageCacheService: error clearing cache: $e');
+    } catch (e, st) {
+      AppLogger.error(
+        'ImageCacheService: error clearing cache',
+        error: e,
+        stackTrace: st,
+      );
     }
   }
 
@@ -219,8 +231,12 @@ class ImageCacheService {
       }
       
       return totalSize;
-    } catch (e) {
-      AppLogger.debug('ImageCacheService: error getting cache size: $e');
+    } catch (e, st) {
+      AppLogger.error(
+        'ImageCacheService: error getting cache size',
+        error: e,
+        stackTrace: st,
+      );
       return 0;
     }
   }
