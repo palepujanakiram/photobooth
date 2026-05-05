@@ -60,11 +60,40 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
   /// (Min 10 digits matches India mobile + country code; ITU max is 15.)
   static final RegExp _e164 = RegExp(r'^\+\d{10,15}$');
 
+  static const String _defaultDialCode = '+91';
+
   /// Strips spaces, dashes, parentheses, and dots. Keeps a leading '+'.
+  /// If user enters a local number without country code, defaults to [_defaultDialCode].
   static String _normalizePhone(String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return '';
-    return trimmed.replaceAll(RegExp(r'[\s\-().]'), '');
+    final compact = trimmed.replaceAll(RegExp(r'[\s\-().]'), '');
+    if (compact.isEmpty) return '';
+
+    // If user explicitly typed a country code, trust it (still validated as E.164 later).
+    if (compact.startsWith('+')) return compact;
+
+    // Keep digits only for local-format inputs.
+    var digits = compact.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return '';
+
+    // Common India input: leading 0 trunk prefix.
+    if (digits.length == 11 && digits.startsWith('0')) {
+      digits = digits.substring(1);
+    }
+
+    // If they typed 91XXXXXXXXXX (without '+'), normalize to +91.
+    if (digits.length == 12 && digits.startsWith('91')) {
+      return '+$digits';
+    }
+
+    // Default: if it looks like a local mobile number, treat as India.
+    if (digits.length == 10) {
+      return '$_defaultDialCode$digits';
+    }
+
+    // Fallback: don't guess for other lengths; validation will show an error.
+    return digits;
   }
 
   @override
@@ -124,7 +153,7 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
     if (!_e164.hasMatch(p)) {
       setState(() {
         _phoneError =
-            'Enter mobile in international format, e.g. +9198xxxxxx00';
+            'Enter mobile number (10 digits) or include country code, e.g. +9198xxxxxx00';
       });
       _phoneFocus.requestFocus();
       return;
@@ -180,7 +209,7 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
       },
       decoration: InputDecoration(
         labelText: 'WhatsApp mobile (optional)',
-        hintText: '+9198xxxxxx00',
+        hintText: '98xxxxxx00',
         border: const OutlineInputBorder(),
         errorText: _phoneError,
       ),

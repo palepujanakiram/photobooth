@@ -1,4 +1,5 @@
 import 'dart:developer' as developer;
+import 'package:flutter/foundation.dart';
 import 'constants.dart';
 
 /// Log levels matching CocoaLumberjack-style logging
@@ -31,6 +32,15 @@ enum LogLevel {
 /// AppLogger.error('Error message');
 /// ```
 class AppLogger {
+  /// In-memory ring buffer for on-device UI debugging (Android TV/kiosk).
+  /// Keeps the most recent log lines so we can show them without logcat.
+  static const int _maxBufferedLines = 250;
+  static final ValueNotifier<List<String>> _recentLines =
+      ValueNotifier<List<String>>(<String>[]);
+
+  /// Listen to recent log lines (new list instance per update).
+  static ValueListenable<List<String>> get recentLinesListenable => _recentLines;
+
   /// Main logging function that takes log level and message
   /// Automatically extracts file name, function name, and line number from stack trace
   static void log(
@@ -106,6 +116,21 @@ class AppLogger {
         : 'unknown';
     
     final formattedMessage = '[${level.label}] $fileInfo - $message';
+
+    // Always buffer logs for UI debugging (even if output is disabled).
+    // Keep bounded memory by truncating to [_maxBufferedLines].
+    final current = _recentLines.value;
+    final next = <String>[
+      ...current,
+      formattedMessage,
+      if (error != null) '    ↳ error: $error',
+      if (stackTrace != null) '    ↳ stack: ${stackTrace.toString().split('\n').first}',
+    ];
+    if (next.length > _maxBufferedLines) {
+      _recentLines.value = next.sublist(next.length - _maxBufferedLines);
+    } else {
+      _recentLines.value = next;
+    }
     
     if (AppConstants.kEnableLogOutput) {
       developer.log(
