@@ -23,6 +23,7 @@ import '../../views/widgets/centered_max_width.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../views/widgets/debug_ram_monitor_overlay.dart';
+import '../../views/widgets/debug_log_overlay.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import 'photo_capture_rotation_screen.dart';
 import '../../services/hardware_key_service.dart';
@@ -393,6 +394,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                           left: 10,
                           top: MediaQuery.paddingOf(context).top + kToolbarHeight + 6,
                           child: const DebugRamMonitorOverlay(),
+                        );
+                      },
+                    ),
+                    Consumer<AppSettingsManager>(
+                      builder: (context, appSettings, _) {
+                        if (appSettings.settings?.showGenerationCommentary != true) {
+                          return const SizedBox.shrink();
+                        }
+                        return Positioned(
+                          left: 10,
+                          top: MediaQuery.paddingOf(context).top + kToolbarHeight + 6 + 52,
+                          child: const DebugLogOverlay(),
                         );
                       },
                     ),

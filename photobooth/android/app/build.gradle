@@ -63,6 +63,10 @@ android {
     buildTypes {
         release {
             signingConfig signingConfigs.debug
+            // Workaround: R8 can crash (NPE) while shrinking some Kotlin coroutines jars
+            // on certain toolchain combinations. Disable minification until upstream fixes.
+            minifyEnabled false
+            shrinkResources false
         }
     }
 

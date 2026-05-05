@@ -125,7 +125,11 @@ class ImageCacheService {
       AppLogger.debug('ImageCacheService: image cached successfully: ${cacheFile.path}');
       return cacheFile;
     } catch (e, st) {
-      AppLogger.error('ImageCacheService: error caching image', error: e, stackTrace: st);
+      AppLogger.error(
+        'ImageCacheService: error caching image ($imageUrl)',
+        error: e,
+        stackTrace: st,
+      );
       return null;
     }
   }
@@ -178,6 +182,14 @@ class ImageCacheService {
               AppLogger.debug('ImageCacheService: deleted old cache file: ${info.file.path}');
             }
           } catch (e, st) {
+            // It's normal for cache files to disappear between `exists()` and `delete()`
+            // (race with another cleanup / OS eviction). Treat "no such file" as a no-op.
+            if (e is FileSystemException && e.osError?.errorCode == 2) {
+              continue;
+            }
+            if (e is PathNotFoundException) {
+              continue;
+            }
             AppLogger.error(
               'ImageCacheService: error deleting cache file',
               error: e,
