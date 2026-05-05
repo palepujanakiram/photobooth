@@ -163,7 +163,17 @@ class CaptureViewModel extends ChangeNotifier {
       // CameraX can emit recoverable errors asynchronously (not always through takePicture()).
       // If we see that state, attempt a controlled re-init so capture can succeed.
       // IMPORTANT: do not dispose/re-init while a capture or stream fallback is running.
-      if (!_isCapturing && desc != null && _looksLikeCameraXRecoverableError(desc)) {
+      final camera = _currentCamera;
+      final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+      final isExternal = camera?.lensDirection == CameraLensDirection.external ||
+          (camera != null && _looksLikeExternalCameraName(camera.name));
+      final streamOnlyCapture =
+          isAndroid && (isExternal || _deviceType == AppDeviceType.androidTv);
+
+      if (!_isCapturing &&
+          !streamOnlyCapture &&
+          desc != null &&
+          _looksLikeCameraXRecoverableError(desc)) {
         unawaited(_recoverCamera(reason: 'controller.hasError(recoverable)', details: desc));
       }
     }
@@ -1041,13 +1051,34 @@ class CaptureViewModel extends ChangeNotifier {
       AppLogger.debug('📸 Capturing photo...');
       ErrorReportingManager.log('📸 Photo capture started');
       XFile imageFile;
-      try {
-        imageFile = await _takePictureWithRecovery();
-      } on TimeoutException catch (e) {
-        // Fallback: some external/Android TV camera stacks fail to produce stills via ImageCapture.
-        imageFile = await _captureSingleFrameFallback(reason: 'takePicture timeout', details: e.toString());
-      } on CameraException catch (e) {
-        imageFile = await _captureSingleFrameFallback(reason: 'takePicture CameraException', details: e.toString());
+      final camera = _currentCamera;
+      final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+      final isExternal = camera?.lensDirection == CameraLensDirection.external ||
+          (camera != null && _looksLikeExternalCameraName(camera.name));
+      final streamOnlyCapture =
+          isAndroid && (isExternal || _deviceType == AppDeviceType.androidTv);
+
+      if (streamOnlyCapture) {
+        // External / Android TV camera stacks frequently fail still JPEG capture (CameraX recoverable errors).
+        // Use a single-frame stream grab deterministically for reliability.
+        imageFile = await _captureSingleFrameFallback(
+          reason: 'streamOnlyCapture',
+          details: 'android=${_deviceType?.toString()} external=$isExternal',
+        );
+      } else {
+        try {
+          imageFile = await _takePictureWithRecovery();
+        } on TimeoutException catch (e) {
+          imageFile = await _captureSingleFrameFallback(
+            reason: 'takePicture timeout',
+            details: e.toString(),
+          );
+        } on CameraException catch (e) {
+          imageFile = await _captureSingleFrameFallback(
+            reason: 'takePicture CameraException',
+            details: e.toString(),
+          );
+        }
       }
       ErrorReportingManager.log('✅ Photo captured');
       AppLogger.debug('✅ Photo captured successfully');
