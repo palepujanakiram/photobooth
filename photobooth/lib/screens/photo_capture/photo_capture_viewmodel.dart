@@ -63,6 +63,20 @@ class CaptureViewModel extends ChangeNotifier {
   Completer<void>? _cameraRecoveryCompleter;
   static const Duration _takePictureTimeout = Duration(seconds: 12);
   static const Duration _singleFrameStreamTimeout = Duration(seconds: 3);
+
+  // Serializes camera operations (dispose/init/capture/stream) to avoid races on Android TV.
+  Future<void> _cameraOp = Future<void>.value();
+  int _cameraGeneration = 0;
+
+  Future<T> _withCameraLock<T>(Future<T> Function() fn) {
+    final next = Completer<void>();
+    final prev = _cameraOp;
+    _cameraOp = next.future;
+    return prev
+        .catchError((_) {})
+        .then((_) => fn())
+        .whenComplete(() => next.complete());
+  }
   
   // Timer tracking for upload
   Timer? _uploadTimer;
@@ -148,7 +162,8 @@ class CaptureViewModel extends ChangeNotifier {
       _errorMessage = desc;
       // CameraX can emit recoverable errors asynchronously (not always through takePicture()).
       // If we see that state, attempt a controlled re-init so capture can succeed.
-      if (desc != null && _looksLikeCameraXRecoverableError(desc)) {
+      // IMPORTANT: do not dispose/re-init while a capture or stream fallback is running.
+      if (!_isCapturing && desc != null && _looksLikeCameraXRecoverableError(desc)) {
         unawaited(_recoverCamera(reason: 'controller.hasError(recoverable)', details: desc));
       }
     }
@@ -617,11 +632,12 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Initializes the camera with the selected camera
   Future<void> initializeCamera(CameraDescription camera) async {
-    _isInitializing = true;
-    _errorMessage = null;
-    notifyListeners();
+    await _withCameraLock(() async {
+      _isInitializing = true;
+      _errorMessage = null;
+      notifyListeners();
 
-    try {
+      try {
       _minZoom = null;
       _maxZoom = null;
       _currentZoom = 1.0;
@@ -660,6 +676,7 @@ class CaptureViewModel extends ChangeNotifier {
         }
         _cameraController = null;
       }
+      _cameraGeneration++;
       // Brief delay only when we actually released a camera (lets system free resources)
       if (hadController) {
         await Future.delayed(
@@ -801,6 +818,7 @@ class CaptureViewModel extends ChangeNotifier {
       _isInitializing = false;
       notifyListeners();
     }
+    });
   }
 
   Future<void> _finishCameraSetup(CameraDescription camera) async {
@@ -1124,80 +1142,93 @@ class CaptureViewModel extends ChangeNotifier {
     required String reason,
     required String details,
   }) async {
-    final ctrl = _cameraController;
-    final camera = _currentCamera;
-    final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-    final isExternal = camera?.lensDirection == CameraLensDirection.external ||
-        (camera != null && _looksLikeExternalCameraName(camera.name));
+    return _withCameraLock(() async {
+      final ctrl = _cameraController;
+      final camera = _currentCamera;
+      final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+      final isExternal = camera?.lensDirection == CameraLensDirection.external ||
+          (camera != null && _looksLikeExternalCameraName(camera.name));
 
-    // Only use this fallback on Android external/TV where it is known to help.
-    if (!isAndroid || camera == null || (!isExternal && _deviceType != AppDeviceType.androidTv)) {
-      throw CameraException('captureFailed', 'Still capture failed ($reason): $details');
-    }
+      // Only use this fallback on Android external/TV where it is known to help.
+      if (!isAndroid || camera == null || (!isExternal && _deviceType != AppDeviceType.androidTv)) {
+        throw CameraException('captureFailed', 'Still capture failed ($reason): $details');
+      }
 
-    // Avoid fighting an in-progress recovery.
-    final inFlightRecovery = _cameraRecoveryCompleter;
-    if (inFlightRecovery != null) {
-      try {
-        await inFlightRecovery.future.timeout(const Duration(seconds: 4));
-      } catch (_) {}
-    }
-
-    if (ctrl == null || !ctrl.value.isInitialized) {
-      throw CameraException('cameraNotReady', 'Camera not initialized for fallback capture');
-    }
-
-    ErrorReportingManager.log('🧯 Fallback capture: grabbing single streamed frame');
-    await ErrorReportingManager.setCustomKeys({
-      'camera_fallback_capture': true,
-      'camera_fallback_reason': reason,
-      'camera_fallback_details': details,
-      'camera_fallback_camera': camera.name,
-    });
-
-    final completer = Completer<CameraImage>();
-    bool streaming = false;
-    try {
-      streaming = true;
-      await ctrl.startImageStream((CameraImage image) {
-        if (completer.isCompleted) return;
-        completer.complete(image);
-      });
-      final frame = await completer.future.timeout(_singleFrameStreamTimeout);
-      await ctrl.stopImageStream();
-      streaming = false;
-
-      final jpegBytes = await compute(_cameraImageToJpegBytesIsolate, frame);
-      final tempDir = await FileHelper.getTempDirectoryPath();
-      const photosSubdir = 'photos';
-      final photosDir = '$tempDir/$photosSubdir';
-      await FileHelper.ensureDirectory(photosDir);
-      final ts = DateTime.now().millisecondsSinceEpoch;
-      final savePath = '$photosDir/streamcap_$ts.jpg';
-      final file = FileHelper.createFile(savePath);
-      await (file as dynamic).writeAsBytes(jpegBytes);
-      return XFile((file as dynamic).path);
-    } catch (e, st) {
-      AppLogger.error('Fallback single-frame capture failed', error: e, stackTrace: st);
-      await ErrorReportingManager.recordError(
-        e,
-        st,
-        reason: 'fallback single-frame capture failed',
-        extraInfo: {
-          'fallback_reason': reason,
-          'fallback_details': details,
-          'camera': camera.name,
-        },
-        fatal: false,
-      );
-      rethrow;
-    } finally {
-      if (streaming) {
+      // Avoid fighting an in-progress recovery.
+      final inFlightRecovery = _cameraRecoveryCompleter;
+      if (inFlightRecovery != null) {
         try {
-          await ctrl.stopImageStream();
+          await inFlightRecovery.future.timeout(const Duration(seconds: 4));
         } catch (_) {}
       }
-    }
+
+      if (ctrl == null || !ctrl.value.isInitialized) {
+        throw CameraException('cameraNotReady', 'Camera not initialized for fallback capture');
+      }
+
+      final gen = _cameraGeneration;
+
+      ErrorReportingManager.log('🧯 Fallback capture: grabbing single streamed frame');
+      await ErrorReportingManager.setCustomKeys({
+        'camera_fallback_capture': true,
+        'camera_fallback_reason': reason,
+        'camera_fallback_details': details,
+        'camera_fallback_camera': camera.name,
+      });
+
+      final completer = Completer<CameraImage>();
+      bool streaming = false;
+      try {
+        streaming = true;
+        await ctrl.startImageStream((CameraImage image) {
+          if (completer.isCompleted) return;
+          completer.complete(image);
+        });
+        final frame = await completer.future.timeout(_singleFrameStreamTimeout);
+
+        // If camera was disposed/re-inited, abort to avoid calling stop on disposed controller.
+        if (_cameraGeneration != gen || !identical(_cameraController, ctrl)) {
+          throw CameraException('cameraRestarted', 'Camera restarted during fallback capture');
+        }
+
+        await ctrl.stopImageStream();
+        streaming = false;
+
+        final jpegBytes = await compute(_cameraImageToJpegBytesIsolate, frame);
+        final tempDir = await FileHelper.getTempDirectoryPath();
+        const photosSubdir = 'photos';
+        final photosDir = '$tempDir/$photosSubdir';
+        await FileHelper.ensureDirectory(photosDir);
+        final ts = DateTime.now().millisecondsSinceEpoch;
+        final savePath = '$photosDir/streamcap_$ts.jpg';
+        final file = FileHelper.createFile(savePath);
+        await (file as dynamic).writeAsBytes(jpegBytes);
+        return XFile((file as dynamic).path);
+      } catch (e, st) {
+        AppLogger.error('Fallback single-frame capture failed', error: e, stackTrace: st);
+        await ErrorReportingManager.recordError(
+          e,
+          st,
+          reason: 'fallback single-frame capture failed',
+          extraInfo: {
+            'fallback_reason': reason,
+            'fallback_details': details,
+            'camera': camera.name,
+          },
+          fatal: false,
+        );
+        rethrow;
+      } finally {
+        if (streaming) {
+          // Only attempt stop if controller is still the same generation.
+          if (identical(_cameraController, ctrl)) {
+            try {
+              await ctrl.stopImageStream();
+            } catch (_) {}
+          }
+        }
+      }
+    });
   }
 
   /// Isolate helper: converts a YUV420 [CameraImage] into JPEG bytes.
@@ -1351,52 +1382,56 @@ class CaptureViewModel extends ChangeNotifier {
     final camera = _currentCamera;
     if (camera == null) return;
 
-    _isRecoveringCamera = true;
-    final completer = Completer<void>();
-    _cameraRecoveryCompleter = completer;
-    _lastCameraRecoveryAt = now;
-    ErrorReportingManager.log('🛠️ Camera recovery started ($reason)');
-    await ErrorReportingManager.setCustomKeys({
-      'camera_recovery_reason': reason,
-      'camera_recovery_details': details,
-      'camera_recovery_camera': camera.name,
-      'camera_recovery_deviceType': _deviceType?.toString(),
-    });
+    // Serialize recovery so we don't dispose while another camera operation is active.
+    await _withCameraLock(() async {
+      _isRecoveringCamera = true;
+      final completer = Completer<void>();
+      _cameraRecoveryCompleter = completer;
+      _lastCameraRecoveryAt = now;
+      ErrorReportingManager.log('🛠️ Camera recovery started ($reason)');
+      await ErrorReportingManager.setCustomKeys({
+        'camera_recovery_reason': reason,
+        'camera_recovery_details': details,
+        'camera_recovery_camera': camera.name,
+        'camera_recovery_deviceType': _deviceType?.toString(),
+      });
 
-    try {
-      // Best-effort full reset.
       try {
-        _cameraController?.removeListener(_onCameraControllerUpdate);
-        await _cameraController?.dispose();
-      } catch (_) {
-        // ignore
-      } finally {
-        _cameraController = null;
-      }
+        // Best-effort full reset.
+        try {
+          _cameraController?.removeListener(_onCameraControllerUpdate);
+          await _cameraController?.dispose();
+        } catch (_) {
+          // ignore
+        } finally {
+          _cameraController = null;
+        }
+        _cameraGeneration++;
 
-      await Future.delayed(
-        Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
-      );
-      await initializeCamera(camera);
-      _errorMessage = null;
-      notifyListeners();
-      ErrorReportingManager.log('✅ Camera recovery completed');
-    } catch (e, st) {
-      AppLogger.error('Camera recovery failed', error: e, stackTrace: st);
-      await ErrorReportingManager.recordError(
-        e,
-        st,
-        reason: 'camera recovery failed',
-        extraInfo: {'reason': reason, 'details': details},
-        fatal: false,
-      );
-    } finally {
-      _isRecoveringCamera = false;
-      completer.complete();
-      if (identical(_cameraRecoveryCompleter, completer)) {
-        _cameraRecoveryCompleter = null;
+        await Future.delayed(
+          Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
+        );
+        await initializeCamera(camera);
+        _errorMessage = null;
+        notifyListeners();
+        ErrorReportingManager.log('✅ Camera recovery completed');
+      } catch (e, st) {
+        AppLogger.error('Camera recovery failed', error: e, stackTrace: st);
+        await ErrorReportingManager.recordError(
+          e,
+          st,
+          reason: 'camera recovery failed',
+          extraInfo: {'reason': reason, 'details': details},
+          fatal: false,
+        );
+      } finally {
+        _isRecoveringCamera = false;
+        completer.complete();
+        if (identical(_cameraRecoveryCompleter, completer)) {
+          _cameraRecoveryCompleter = null;
+        }
       }
-    }
+    });
   }
 
   /// Selects a photo from the device gallery
