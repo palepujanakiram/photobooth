@@ -52,6 +52,10 @@ class CaptureViewModel extends ChangeNotifier {
   bool _isSelectingFromGallery = false;
   bool _isUploading = false;
   String? _errorMessage;
+
+  /// Prevents infinite re-init loops on flaky CameraX devices.
+  DateTime? _lastCameraRecoveryAt;
+  static const Duration _cameraRecoveryCooldown = Duration(seconds: 8);
   
   // Timer tracking for upload
   Timer? _uploadTimer;
@@ -670,7 +674,14 @@ class CaptureViewModel extends ChangeNotifier {
       // - Much faster takePicture() on many Android tablets vs [max]
       // - Lower memory pressure (avoids slowdowns / OOM on kiosk devices)
       // - Still plenty of detail for downstream AI (upload is resized anyway)
-      const ResolutionPreset preset = ResolutionPreset.high;
+      final bool isExternal = camera.lensDirection == CameraLensDirection.external ||
+          _looksLikeExternalCameraName(camera.name);
+      // Android TV + UVC/HDMI stacks are far more sensitive to multi-usecase / large buffers.
+      // Prefer a lower preset to keep CameraX stable. Upload is resized anyway.
+      final ResolutionPreset preset =
+          (_deviceType == AppDeviceType.androidTv || isExternal)
+              ? ResolutionPreset.medium
+              : ResolutionPreset.high;
       _cameraController = CameraController(
         cameraToUse,
         preset,
@@ -984,7 +995,7 @@ class CaptureViewModel extends ChangeNotifier {
     try {
       AppLogger.debug('📸 Capturing photo...');
       ErrorReportingManager.log('📸 Photo capture started');
-      final XFile imageFile = await _cameraController!.takePicture();
+      final XFile imageFile = await _takePictureWithRecovery();
       ErrorReportingManager.log('✅ Photo captured');
       AppLogger.debug('✅ Photo captured successfully');
 
@@ -1071,6 +1082,70 @@ class CaptureViewModel extends ChangeNotifier {
     } finally {
       _isCapturing = false;
       notifyListeners();
+    }
+  }
+
+  Future<XFile> _takePictureWithRecovery() async {
+    final ctrl = _cameraController;
+    if (ctrl == null || !ctrl.value.isInitialized) {
+      throw CameraException('cameraNotReady', 'Camera controller not initialized');
+    }
+
+    // Attempt 1
+    try {
+      return await ctrl.takePicture();
+    } on CameraException catch (e) {
+      // Attempt 2 (single recovery + retry) for known CameraX flaky states.
+      final msg = e.toString().toLowerCase();
+      final bool looksRecoverable =
+          msg.contains('recoverable') ||
+          msg.contains('otherrecoverableerror') ||
+          msg.contains('camera is closed') ||
+          msg.contains('cameradeviceimpl.close') ||
+          msg.contains('camera2') ||
+          msg.contains('capture failed');
+
+      if (!looksRecoverable) rethrow;
+      if (_isCapturing == false) {
+        // capturePhoto() sets _isCapturing true before calling; if not, don’t recover here.
+        rethrow;
+      }
+
+      final now = DateTime.now();
+      final last = _lastCameraRecoveryAt;
+      if (last != null && now.difference(last) < _cameraRecoveryCooldown) {
+        rethrow;
+      }
+      _lastCameraRecoveryAt = now;
+
+      final camera = _currentCamera;
+      if (camera == null) rethrow;
+
+      ErrorReportingManager.log('🔁 CameraX recoverable error; re-initializing camera and retrying takePicture');
+      await ErrorReportingManager.setCustomKeys({
+        'camera_recovery_attempted': true,
+        'camera_recovery_error': e.toString(),
+        'camera_recovery_camera': camera.name,
+      });
+
+      try {
+        // Hard reset the camera controller and re-init the same camera.
+        _cameraController?.removeListener(_onCameraControllerUpdate);
+        await _cameraController?.dispose();
+      } catch (_) {
+        // Best-effort.
+      } finally {
+        _cameraController = null;
+      }
+
+      // Small delay to let CameraX fully close/rebind (helps on Android TV).
+      await Future.delayed(
+        Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
+      );
+      await initializeCamera(camera);
+      final ctrl2 = _cameraController;
+      if (ctrl2 == null || !ctrl2.value.isInitialized) rethrow;
+      return await ctrl2.takePicture();
     }
   }
 
