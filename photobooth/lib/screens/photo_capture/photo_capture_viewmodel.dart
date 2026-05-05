@@ -56,6 +56,8 @@ class CaptureViewModel extends ChangeNotifier {
   /// Prevents infinite re-init loops on flaky CameraX devices.
   DateTime? _lastCameraRecoveryAt;
   static const Duration _cameraRecoveryCooldown = Duration(seconds: 8);
+  bool _isRecoveringCamera = false;
+  static const Duration _takePictureTimeout = Duration(seconds: 12);
   
   // Timer tracking for upload
   Timer? _uploadTimer;
@@ -137,9 +139,23 @@ class CaptureViewModel extends ChangeNotifier {
     final ctrl = _cameraController;
     if (ctrl == null) return;
     if (ctrl.value.hasError) {
-      _errorMessage = ctrl.value.errorDescription;
+      final desc = ctrl.value.errorDescription;
+      _errorMessage = desc;
+      // CameraX can emit recoverable errors asynchronously (not always through takePicture()).
+      // If we see that state, attempt a controlled re-init so capture can succeed.
+      if (desc != null && _looksLikeCameraXRecoverableError(desc)) {
+        unawaited(_recoverCamera(reason: 'controller.hasError(recoverable)', details: desc));
+      }
     }
     notifyListeners();
+  }
+
+  bool _looksLikeCameraXRecoverableError(String message) {
+    final m = message.toLowerCase();
+    return m.contains('recoverable error') ||
+        m.contains('otherrecoverableerror') ||
+        m.contains('will attempt to recover') ||
+        m.contains('camera device has encountered a recoverable error');
   }
 
   /// Resolution preset currently in use (after init). Null if camera not initialized.
@@ -678,10 +694,9 @@ class CaptureViewModel extends ChangeNotifier {
           _looksLikeExternalCameraName(camera.name);
       // Android TV + UVC/HDMI stacks are far more sensitive to multi-usecase / large buffers.
       // Prefer a lower preset to keep CameraX stable. Upload is resized anyway.
-      final ResolutionPreset preset =
-          (_deviceType == AppDeviceType.androidTv || isExternal)
-              ? ResolutionPreset.medium
-              : ResolutionPreset.high;
+      final ResolutionPreset preset = _deviceType == AppDeviceType.androidTv
+          ? ResolutionPreset.low
+          : (isExternal ? ResolutionPreset.medium : ResolutionPreset.high);
       _cameraController = CameraController(
         cameraToUse,
         preset,
@@ -1093,7 +1108,10 @@ class CaptureViewModel extends ChangeNotifier {
 
     // Attempt 1
     try {
-      return await ctrl.takePicture();
+      return await ctrl.takePicture().timeout(
+        _takePictureTimeout,
+        onTimeout: () => throw TimeoutException('takePicture timeout'),
+      );
     } on CameraException catch (e) {
       // Attempt 2 (single recovery + retry) for known CameraX flaky states.
       final msg = e.toString().toLowerCase();
@@ -1145,7 +1163,75 @@ class CaptureViewModel extends ChangeNotifier {
       await initializeCamera(camera);
       final ctrl2 = _cameraController;
       if (ctrl2 == null || !ctrl2.value.isInitialized) rethrow;
-      return await ctrl2.takePicture();
+      return await ctrl2.takePicture().timeout(
+        _takePictureTimeout,
+        onTimeout: () => throw TimeoutException('takePicture timeout (retry)'),
+      );
+    } on TimeoutException catch (e) {
+      // Some CameraX failures show up as async errors and cause takePicture() to hang.
+      // Treat timeouts as recoverable once, then retry.
+      final camera = _currentCamera;
+      if (camera == null) rethrow;
+      await _recoverCamera(reason: 'takePicture timeout', details: e.toString());
+      final ctrl2 = _cameraController;
+      if (ctrl2 == null || !ctrl2.value.isInitialized) rethrow;
+      return await ctrl2.takePicture().timeout(
+        _takePictureTimeout,
+        onTimeout: () => throw TimeoutException('takePicture timeout (post-recovery retry)'),
+      );
+    }
+  }
+
+  Future<void> _recoverCamera({
+    required String reason,
+    required String details,
+  }) async {
+    if (_isRecoveringCamera) return;
+    final now = DateTime.now();
+    final last = _lastCameraRecoveryAt;
+    if (last != null && now.difference(last) < _cameraRecoveryCooldown) return;
+    final camera = _currentCamera;
+    if (camera == null) return;
+
+    _isRecoveringCamera = true;
+    _lastCameraRecoveryAt = now;
+    ErrorReportingManager.log('🛠️ Camera recovery started ($reason)');
+    await ErrorReportingManager.setCustomKeys({
+      'camera_recovery_reason': reason,
+      'camera_recovery_details': details,
+      'camera_recovery_camera': camera.name,
+      'camera_recovery_deviceType': _deviceType?.toString(),
+    });
+
+    try {
+      // Best-effort full reset.
+      try {
+        _cameraController?.removeListener(_onCameraControllerUpdate);
+        await _cameraController?.dispose();
+      } catch (_) {
+        // ignore
+      } finally {
+        _cameraController = null;
+      }
+
+      await Future.delayed(
+        Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
+      );
+      await initializeCamera(camera);
+      _errorMessage = null;
+      notifyListeners();
+      ErrorReportingManager.log('✅ Camera recovery completed');
+    } catch (e, st) {
+      AppLogger.error('Camera recovery failed', error: e, stackTrace: st);
+      await ErrorReportingManager.recordError(
+        e,
+        st,
+        reason: 'camera recovery failed',
+        extraInfo: {'reason': reason, 'details': details},
+        fatal: false,
+      );
+    } finally {
+      _isRecoveringCamera = false;
     }
   }
 
