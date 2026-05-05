@@ -18,17 +18,21 @@ class DebugLogOverlay extends StatefulWidget {
 
 class _DebugLogOverlayState extends State<DebugLogOverlay> {
   bool _collapsed = true;
+  bool _errorsOnly = true;
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<List<String>>(
       valueListenable: AppLogger.recentLinesListenable,
       builder: (context, lines, _) {
-        final visible = _collapsed
-            ? (lines.length > widget.maxVisibleLines
-                ? lines.sublist(lines.length - widget.maxVisibleLines)
-                : lines)
+        final filtered = _errorsOnly
+            ? lines.where((l) => l.startsWith('[ERROR]') || l.startsWith('[WARNING]')).toList()
             : lines;
+        final visible = _collapsed
+            ? (filtered.length > widget.maxVisibleLines
+                ? filtered.sublist(filtered.length - widget.maxVisibleLines)
+                : filtered)
+            : filtered;
 
         final text = visible.isEmpty ? '— logs will appear here —' : visible.join('\n');
 
@@ -58,6 +62,18 @@ class _DebugLogOverlayState extends State<DebugLogOverlay> {
                         ),
                       ),
                       const Spacer(),
+                      TextButton(
+                        onPressed: () => setState(() => _errorsOnly = !_errorsOnly),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          _errorsOnly ? 'Errors' : 'All',
+                          style: const TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                      ),
                       TextButton(
                         onPressed: () => setState(() => _collapsed = !_collapsed),
                         style: TextButton.styleFrom(
