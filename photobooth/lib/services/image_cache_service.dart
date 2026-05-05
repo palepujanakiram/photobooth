@@ -125,7 +125,11 @@ class ImageCacheService {
       AppLogger.debug('ImageCacheService: image cached successfully: ${cacheFile.path}');
       return cacheFile;
     } catch (e, st) {
-      AppLogger.error('ImageCacheService: error caching image', error: e, stackTrace: st);
+      AppLogger.error(
+        'ImageCacheService: error caching image ($imageUrl)',
+        error: e,
+        stackTrace: st,
+      );
       return null;
     }
   }
