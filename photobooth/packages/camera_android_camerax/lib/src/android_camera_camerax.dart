@@ -458,8 +458,9 @@ class AndroidCameraCameraX extends CameraPlatform {
   /// Specifically, this method:
   ///  * Configures the [ImageAnalysis] instance according to the specified
   ///   [imageFormatGroup]
-  ///  * Binds the configured [Preview], [ImageCapture], and [ImageAnalysis]
-  ///    instances to the [ProcessCameraProvider] instance.
+  ///  * Binds the configured [Preview] and [ImageCapture] instances to the
+  ///    [ProcessCameraProvider] instance.
+  ///  * Defers binding [ImageAnalysis] until image streaming starts.
   ///  * Retrieves information about the camera and sends a [CameraInitializedEvent].
   ///
   /// [imageFormatGroup] is used to specify the image format used for image
@@ -490,10 +491,11 @@ class AndroidCameraCameraX extends CameraPlatform {
 
     // Bind configured UseCases to ProcessCameraProvider instance & mark Preview
     // instance as bound but not paused. Video capture is bound at first use
-    // instead of here.
+    // instead of here. ImageAnalysis is also deferred until image streaming
+    // starts (see onStreamedFrameAvailable -> _configureImageAnalysis).
     camera = await processCameraProvider!.bindToLifecycle(
       cameraSelector!,
-      <UseCase>[preview!, imageCapture!, imageAnalysis!],
+      <UseCase>[preview!, imageCapture!],
     );
     await _updateCameraInfoAndLiveCameraState(_flutterSurfaceTextureId);
     previewInitiallyBound = true;
