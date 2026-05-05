@@ -1,16 +1,19 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:ui'
     show Size, ImmutableBuffer, instantiateImageCodecFromBuffer;
 import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, compute, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/services.dart' show DeviceOrientation, MethodChannel;
 import 'package:camera/camera.dart';
 import 'package:camera/camera.dart' as cam show availableCameras;
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'photo_model.dart';
 import '../../services/api_service.dart';
+import '../../services/file_helper.dart';
 import '../../services/session_manager.dart';
 import '../../utils/constants.dart';
 import '../../utils/device_classifier.dart';
@@ -57,7 +60,9 @@ class CaptureViewModel extends ChangeNotifier {
   DateTime? _lastCameraRecoveryAt;
   static const Duration _cameraRecoveryCooldown = Duration(seconds: 8);
   bool _isRecoveringCamera = false;
+  Completer<void>? _cameraRecoveryCompleter;
   static const Duration _takePictureTimeout = Duration(seconds: 12);
+  static const Duration _singleFrameStreamTimeout = Duration(seconds: 3);
   
   // Timer tracking for upload
   Timer? _uploadTimer;
@@ -697,11 +702,18 @@ class CaptureViewModel extends ChangeNotifier {
       final ResolutionPreset preset = _deviceType == AppDeviceType.androidTv
           ? ResolutionPreset.low
           : (isExternal ? ResolutionPreset.medium : ResolutionPreset.high);
+
+      // For Android TV / external cameras, prefer YUV streaming so we can fall back
+      // to a single-frame capture when still JPEG capture is flaky.
+      final ImageFormatGroup streamFormat =
+          (!kIsWeb && defaultTargetPlatform == TargetPlatform.android && (_deviceType == AppDeviceType.androidTv || isExternal))
+              ? ImageFormatGroup.yuv420
+              : ImageFormatGroup.jpeg;
       _cameraController = CameraController(
         cameraToUse,
         preset,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
+        imageFormatGroup: streamFormat,
       );
       _cameraController!.addListener(_onCameraControllerUpdate);
       await _cameraController!.initialize().timeout(
@@ -1010,7 +1022,15 @@ class CaptureViewModel extends ChangeNotifier {
     try {
       AppLogger.debug('📸 Capturing photo...');
       ErrorReportingManager.log('📸 Photo capture started');
-      final XFile imageFile = await _takePictureWithRecovery();
+      XFile imageFile;
+      try {
+        imageFile = await _takePictureWithRecovery();
+      } on TimeoutException catch (e) {
+        // Fallback: some external/Android TV camera stacks fail to produce stills via ImageCapture.
+        imageFile = await _captureSingleFrameFallback(reason: 'takePicture timeout', details: e.toString());
+      } on CameraException catch (e) {
+        imageFile = await _captureSingleFrameFallback(reason: 'takePicture CameraException', details: e.toString());
+      }
       ErrorReportingManager.log('✅ Photo captured');
       AppLogger.debug('✅ Photo captured successfully');
 
@@ -1100,10 +1120,148 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  Future<XFile> _captureSingleFrameFallback({
+    required String reason,
+    required String details,
+  }) async {
+    final ctrl = _cameraController;
+    final camera = _currentCamera;
+    final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    final isExternal = camera?.lensDirection == CameraLensDirection.external ||
+        (camera != null && _looksLikeExternalCameraName(camera.name));
+
+    // Only use this fallback on Android external/TV where it is known to help.
+    if (!isAndroid || camera == null || (!isExternal && _deviceType != AppDeviceType.androidTv)) {
+      throw CameraException('captureFailed', 'Still capture failed ($reason): $details');
+    }
+
+    // Avoid fighting an in-progress recovery.
+    final inFlightRecovery = _cameraRecoveryCompleter;
+    if (inFlightRecovery != null) {
+      try {
+        await inFlightRecovery.future.timeout(const Duration(seconds: 4));
+      } catch (_) {}
+    }
+
+    if (ctrl == null || !ctrl.value.isInitialized) {
+      throw CameraException('cameraNotReady', 'Camera not initialized for fallback capture');
+    }
+
+    ErrorReportingManager.log('🧯 Fallback capture: grabbing single streamed frame');
+    await ErrorReportingManager.setCustomKeys({
+      'camera_fallback_capture': true,
+      'camera_fallback_reason': reason,
+      'camera_fallback_details': details,
+      'camera_fallback_camera': camera.name,
+    });
+
+    final completer = Completer<CameraImage>();
+    bool streaming = false;
+    try {
+      streaming = true;
+      await ctrl.startImageStream((CameraImage image) {
+        if (completer.isCompleted) return;
+        completer.complete(image);
+      });
+      final frame = await completer.future.timeout(_singleFrameStreamTimeout);
+      await ctrl.stopImageStream();
+      streaming = false;
+
+      final jpegBytes = await compute(_cameraImageToJpegBytesIsolate, frame);
+      final tempDir = await FileHelper.getTempDirectoryPath();
+      const photosSubdir = 'photos';
+      final photosDir = '$tempDir/$photosSubdir';
+      await FileHelper.ensureDirectory(photosDir);
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final savePath = '$photosDir/streamcap_$ts.jpg';
+      final file = FileHelper.createFile(savePath);
+      await (file as dynamic).writeAsBytes(jpegBytes);
+      return XFile((file as dynamic).path);
+    } catch (e, st) {
+      AppLogger.error('Fallback single-frame capture failed', error: e, stackTrace: st);
+      await ErrorReportingManager.recordError(
+        e,
+        st,
+        reason: 'fallback single-frame capture failed',
+        extraInfo: {
+          'fallback_reason': reason,
+          'fallback_details': details,
+          'camera': camera.name,
+        },
+        fatal: false,
+      );
+      rethrow;
+    } finally {
+      if (streaming) {
+        try {
+          await ctrl.stopImageStream();
+        } catch (_) {}
+      }
+    }
+  }
+
+  /// Isolate helper: converts a YUV420 [CameraImage] into JPEG bytes.
+  static Uint8List _cameraImageToJpegBytesIsolate(CameraImage image) {
+    // Expect 3 planes: Y, U, V (YUV_420_888)
+    if (image.planes.length < 3) {
+      throw Exception('Unexpected CameraImage planes: ${image.planes.length}');
+    }
+    final width = image.width;
+    final height = image.height;
+    final yPlane = image.planes[0];
+    final uPlane = image.planes[1];
+    final vPlane = image.planes[2];
+
+    final yBytes = yPlane.bytes;
+    final uBytes = uPlane.bytes;
+    final vBytes = vPlane.bytes;
+
+    final yRowStride = yPlane.bytesPerRow;
+    final uvRowStride = uPlane.bytesPerRow;
+    final uvPixelStride = uPlane.bytesPerPixel ?? 1;
+
+    final out = img.Image(width: width, height: height);
+
+    int clamp(int v) => v < 0 ? 0 : (v > 255 ? 255 : v);
+
+    for (int y = 0; y < height; y++) {
+      final yRowOffset = yRowStride * y;
+      final uvRowOffset = uvRowStride * (y >> 1);
+      for (int x = 0; x < width; x++) {
+        final yIndex = yRowOffset + x;
+        final uvIndex = uvRowOffset + (x >> 1) * uvPixelStride;
+
+        final Y = yBytes[yIndex] & 0xFF;
+        final U = (uBytes[uvIndex] & 0xFF) - 128;
+        final V = (vBytes[uvIndex] & 0xFF) - 128;
+
+        // BT.601 conversion
+        final int r = (Y + 1.402 * V).round();
+        final int g = (Y - 0.344136 * U - 0.714136 * V).round();
+        final int b = (Y + 1.772 * U).round();
+
+        out.setPixelRgb(x, y, clamp(r), clamp(g), clamp(b));
+      }
+    }
+
+    return Uint8List.fromList(img.encodeJpg(out, quality: 85));
+  }
+
   Future<XFile> _takePictureWithRecovery() async {
     final ctrl = _cameraController;
     if (ctrl == null || !ctrl.value.isInitialized) {
       throw CameraException('cameraNotReady', 'Camera controller not initialized');
+    }
+
+    // If a recovery is already in progress (async CameraX error), wait briefly so we
+    // don't start a capture against a closing camera.
+    final inFlightRecovery = _cameraRecoveryCompleter;
+    if (inFlightRecovery != null) {
+      try {
+        await inFlightRecovery.future.timeout(const Duration(seconds: 4));
+      } catch (_) {
+        // Best-effort; continue.
+      }
     }
 
     // Attempt 1
@@ -1194,6 +1352,8 @@ class CaptureViewModel extends ChangeNotifier {
     if (camera == null) return;
 
     _isRecoveringCamera = true;
+    final completer = Completer<void>();
+    _cameraRecoveryCompleter = completer;
     _lastCameraRecoveryAt = now;
     ErrorReportingManager.log('🛠️ Camera recovery started ($reason)');
     await ErrorReportingManager.setCustomKeys({
@@ -1232,6 +1392,10 @@ class CaptureViewModel extends ChangeNotifier {
       );
     } finally {
       _isRecoveringCamera = false;
+      completer.complete();
+      if (identical(_cameraRecoveryCompleter, completer)) {
+        _cameraRecoveryCompleter = null;
+      }
     }
   }
 
