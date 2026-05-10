@@ -100,43 +100,41 @@ class _AnimatedSlideshowBackgroundState extends State<AnimatedSlideshowBackgroun
         final hSpacing = widget.horizontalSpacing;
         final vSpacing = widget.verticalSpacing;
 
-        // Use floor so total height/width never exceed available space (avoids overflow)
-        final totalVSpacing = (rows - 1) * vSpacing;
-        final totalHSpacing = (cols - 1) * hSpacing;
-        var cellHeight = (h - totalVSpacing) / rows;
-        var cellWidth = (w - totalHSpacing) / cols;
-        cellHeight = cellHeight.isFinite && cellHeight > 0
-            ? cellHeight.floorToDouble()
-            : 1.0;
-        cellWidth =
-            cellWidth.isFinite && cellWidth > 0 ? cellWidth.floorToDouble() : 1.0;
+        if (!w.isFinite || !h.isFinite || w <= 0 || h <= 0) {
+          return const SizedBox.shrink();
+        }
 
+        // Fill the viewport exactly with equal cells — no floored sizes (those left
+        // gaps and made the grid feel misaligned). Spacing is fixed between tracks.
         return RepaintBoundary(
           child: ClipRect(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (int row = 0; row < rows; row++) ...[
-                  if (row > 0) SizedBox(height: vSpacing),
-                  Row(
-                    children: [
-                      for (int col = 0; col < cols; col++) ...[
-                        if (col > 0) SizedBox(width: hSpacing),
-                        SizedBox(
-                          width: cellWidth,
-                          height: cellHeight,
-                          child: _SlideshowCard(
-                            assetPaths: _paths,
-                            cellWidth: cellWidth,
-                            cellHeight: cellHeight,
-                            seed: row * cols + col,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+            child: SizedBox(
+              width: w,
+              height: h,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (int row = 0; row < rows; row++) ...[
+                    if (row > 0) SizedBox(height: vSpacing),
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (int col = 0; col < cols; col++) ...[
+                            if (col > 0) SizedBox(width: hSpacing),
+                            Expanded(
+                              child: _SlideshowCard(
+                                assetPaths: _paths,
+                                seed: row * cols + col,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         );
@@ -150,14 +148,10 @@ class _AnimatedSlideshowBackgroundState extends State<AnimatedSlideshowBackgroun
 class _SlideshowCard extends StatefulWidget {
   const _SlideshowCard({
     required this.assetPaths,
-    required this.cellWidth,
-    required this.cellHeight,
     required this.seed,
   });
 
   final List<String> assetPaths;
-  final double cellWidth;
-  final double cellHeight;
   final int seed;
 
   @override
@@ -210,34 +204,40 @@ class _SlideshowCardState extends State<_SlideshowCard> {
   @override
   Widget build(BuildContext context) {
     final path = widget.assetPaths[_currentIndex];
-    return Container(
-      width: widget.cellWidth,
-      height: widget.cellHeight,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: CupertinoColors.black.withValues(alpha: 0.15),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cw = constraints.maxWidth;
+        final ch = constraints.maxHeight;
+        return Container(
+          width: cw,
+          height: ch,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: CupertinoColors.black.withValues(alpha: 0.15),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 600),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        transitionBuilder: (child, animation) {
-          return _buildTransition(animation, child);
-        },
-        child: _CardImage(
-          key: ValueKey(path),
-          assetPath: path,
-          width: widget.cellWidth,
-          height: widget.cellHeight,
-        ),
-      ),
+          clipBehavior: Clip.antiAlias,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 600),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, animation) {
+              return _buildTransition(animation, child);
+            },
+            child: _CardImage(
+              key: ValueKey(path),
+              assetPath: path,
+              width: cw,
+              height: ch,
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -316,11 +316,11 @@ class _CardImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Decode at display size (not source size) to avoid GPU memory waste.
-    // A 4096×4096 PNG decoded at full size = 64 MB GPU RAM; cacheWidth/Height
-    // tells the codec to resize during decode so only ~1 MB is held.
-    final cw = (width * MediaQuery.devicePixelRatioOf(context)).ceil();
-    final ch = (height * MediaQuery.devicePixelRatioOf(context)).ceil();
+    // Decode budget: scale by device pixel ratio, cap for kiosk RAM. Use only
+    // [cacheWidth] so aspect ratio is preserved in decode (setting both width
+    // and height can produce visibly squashed theme samples on some backends).
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final decodeW = (width * dpr).ceil().clamp(64, 2048);
     final placeholder = Container(
       width: width,
       height: height,
@@ -328,18 +328,18 @@ class _CardImage extends StatelessWidget {
       child: Icon(
         CupertinoIcons.photo,
         color: CupertinoColors.systemGrey2,
-        size: height * 0.4,
+        size: math.min(width, height) * 0.4,
       ),
     );
     if (_isNetworkImagePath(assetPath)) {
       return Image.network(
         assetPath,
         fit: BoxFit.cover,
+        alignment: Alignment.center,
         width: width,
         height: height,
-        cacheWidth: cw,
-        cacheHeight: ch,
-        filterQuality: FilterQuality.low,
+        cacheWidth: decodeW,
+        filterQuality: FilterQuality.medium,
         gaplessPlayback: true,
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) return child;
@@ -351,11 +351,11 @@ class _CardImage extends StatelessWidget {
     return Image.asset(
       assetPath,
       fit: BoxFit.cover,
+      alignment: Alignment.center,
       width: width,
       height: height,
-      cacheWidth: cw,
-      cacheHeight: ch,
-      filterQuality: FilterQuality.low,
+      cacheWidth: decodeW,
+      filterQuality: FilterQuality.medium,
       errorBuilder: (_, __, ___) => placeholder,
     );
   }

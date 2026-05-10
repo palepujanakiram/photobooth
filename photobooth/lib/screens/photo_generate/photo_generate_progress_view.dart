@@ -8,7 +8,6 @@ import '../../services/app_settings_manager.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../utils/constants.dart';
 import '../../utils/route_args.dart';
-import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
 import '../../views/widgets/cached_network_image.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
@@ -212,18 +211,7 @@ class _PhotoGenerateProgressScreenState
     String headline = 'Got it';
     String description = 'Frozen frame, framing applied';
     String? imageUrl;
-    bool checker = false;
-    Widget? localFallback;
     Widget? bottomAccessory;
-
-    if (vm.originalPhoto != null) {
-      localFallback = photo_image.imageFromXFileSized(
-        vm.originalPhoto!.imageFile,
-        1280,
-        1280,
-        fit: BoxFit.contain,
-      );
-    }
 
     if (aiUrl != null) {
       index = 3;
@@ -238,7 +226,6 @@ class _PhotoGenerateProgressScreenState
       headline = 'Background removed';
       description = 'Subject isolated, ready to render';
       imageUrl = bgUrl;
-      checker = true;
     } else if (preprocessUrl != null) {
       index = 1;
       stageTitle = '2 · CAPTURE';
@@ -250,22 +237,6 @@ class _PhotoGenerateProgressScreenState
       stageTitle = '1 · DETECT';
       headline = 'Face locked';
       description = 'Live preview';
-    }
-
-    Widget imageLayer() {
-      if (imageUrl != null) {
-        return CachedNetworkImage(
-          imageUrl: SecureImageUrl.withSessionId(imageUrl),
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.medium,
-          placeholder: localFallback ??
-              const Center(
-                child: CircularProgressIndicator(color: Colors.white),
-              ),
-          errorWidget: localFallback,
-        );
-      }
-      return localFallback ?? const SizedBox.shrink();
     }
 
     // Match PhotoGenerateScreen: photo frame is image-only; status lives outside.
@@ -306,10 +277,7 @@ class _PhotoGenerateProgressScreenState
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (checker)
-                    _checkerboardBackground()
-                  else
-                    const ColoredBox(color: Colors.black),
+                  const ColoredBox(color: Colors.black),
                   Positioned.fill(
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 260),
@@ -329,7 +297,13 @@ class _PhotoGenerateProgressScreenState
                       },
                       child: KeyedSubtree(
                         key: ValueKey<String>(imageUrl ?? 'local_$index'),
-                        child: imageLayer(),
+                        child: _buildProgressHeroStageImage(
+                          context,
+                          vm,
+                          imageUrl: imageUrl,
+                          width: width,
+                          height: height,
+                        ),
                       ),
                     ),
                   ),
@@ -544,6 +518,79 @@ class _PhotoGenerateProgressScreenState
     );
   }
 
+  /// Fills the hero [width]×[height] frame: explicit decode bounds, black mat,
+  /// no checkerboard (isolates read as a “second frame” vs CAPTURE/REVEAL).
+  Widget _buildProgressHeroStageImage(
+    BuildContext context,
+    PhotoGenerateViewModel vm, {
+    required String? imageUrl,
+    required double width,
+    required double height,
+  }) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final cacheW = (width * dpr).ceil().clamp(64, 2048);
+    final loading = ColoredBox(
+      color: Colors.black,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: const Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              color: Colors.white,
+              strokeWidth: 2,
+            ),
+          ),
+        ),
+      ),
+    );
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      // FittedBox + intrinsic Image size fixes web/desktop layouts where explicit
+      // width/height + cacheWidth left the bitmap small inside the black frame (REVEAL, etc.).
+      final err = SizedBox(
+        width: width,
+        height: height,
+        child: vm.originalPhoto != null
+            ? photo_image.imageFromXFileSized(
+                vm.originalPhoto!.imageFile,
+                width,
+                height,
+                fit: BoxFit.cover,
+              )
+            : loading,
+      );
+      return SizedBox(
+        width: width,
+        height: height,
+        child: ClipRect(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            alignment: Alignment.center,
+            child: CachedNetworkImage(
+              imageUrl: imageUrl.trim(),
+              fit: BoxFit.cover,
+              cacheWidth: cacheW,
+              filterQuality: FilterQuality.medium,
+              placeholder: loading,
+              errorWidget: err,
+            ),
+          ),
+        ),
+      );
+    }
+    if (vm.originalPhoto != null) {
+      return photo_image.imageFromXFileSized(
+        vm.originalPhoto!.imageFile,
+        width,
+        height,
+        fit: BoxFit.cover,
+      );
+    }
+    return loading;
+  }
+
   Widget _storyboardTopBars({required int activeIndex}) {
     const total = 4;
     return SizedBox(
@@ -571,29 +618,4 @@ class _PhotoGenerateProgressScreenState
     );
   }
 
-  Widget _checkerboardBackground() {
-    return CustomPaint(
-      painter: _CheckerPainter(),
-      child: const SizedBox.expand(),
-    );
-  }
 }
-
-class _CheckerPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    const cell = 22.0;
-    final paintA = Paint()..color = const Color(0xFF2A2A2A);
-    final paintB = Paint()..color = const Color(0xFF1E1E1E);
-    for (double y = 0; y < size.height; y += cell) {
-      for (double x = 0; x < size.width; x += cell) {
-        final isA = ((x / cell).floor() + (y / cell).floor()) % 2 == 0;
-        canvas.drawRect(Rect.fromLTWH(x, y, cell, cell), isA ? paintA : paintB);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
