@@ -22,6 +22,8 @@ class SessionData {
   final String? userImageUrl; // Base64 encoded image from PATCH /api/sessions/{sessionId}
   final String? selectedThemeId; // Theme ID selected by user
   final String? selectedCategoryId; // Category ID of selected theme
+  /// Frame id, `"none"` if customer declined, or null if unset / auto-resolve later.
+  final String? selectedFrameId;
 
   SessionData({
     required this.id,
@@ -37,6 +39,7 @@ class SessionData {
     this.userImageUrl,
     this.selectedThemeId,
     this.selectedCategoryId,
+    this.selectedFrameId,
   });
 
   /// Get sessionId (alias for id)
@@ -57,6 +60,7 @@ class SessionData {
       'userImageUrl': userImageUrl,
       'selectedThemeId': selectedThemeId,
       'selectedCategoryId': selectedCategoryId,
+      'selectedFrameId': selectedFrameId,
     };
   }
 
@@ -89,6 +93,7 @@ class SessionData {
       userImageUrl: json['userImageUrl'] as String?,
       selectedThemeId: json['selectedThemeId'] as String?,
       selectedCategoryId: json['selectedCategoryId'] as String?,
+      selectedFrameId: json['selectedFrameId'] as String?,
     );
   }
 }
@@ -149,7 +154,8 @@ class SessionManager extends ChangeNotifier {
       await prefs.remove(_prefsKey);
       return;
     }
-    await prefs.setString(_prefsKey, jsonEncode(s.toJson()));
+    final map = s.toJson()..remove('userImageUrl');
+    await prefs.setString(_prefsKey, jsonEncode(map));
   }
 
   void _clearSessionInternal({required String reason}) {
@@ -171,7 +177,12 @@ class SessionManager extends ChangeNotifier {
 
   /// Store session data from API response
   void setSessionFromResponse(Map<String, dynamic> response) {
-    _currentSession = SessionData.fromJson(response);
+    // PATCH often echoes `userImageUrl` as a huge data URL. Holding and
+    // jsonEncoding it for SharedPreferences blows web localStorage quota / RAM
+    // and can surface as an uncaught async error right after photo upload.
+    // The app already carries pixels in [PhotoModel]; server retains the image.
+    final slim = Map<String, dynamic>.from(response)..remove('userImageUrl');
+    _currentSession = SessionData.fromJson(slim);
     AppLogger.debug('Session stored from API: ${_currentSession!.id}');
     unawaited(_persistCurrentSession());
     notifyListeners();

@@ -30,6 +30,12 @@ class PayloadSanitizer {
 
   /// Redacts or truncates large strings (especially base64 images).
   String sanitizeString(String value) {
+    // Never call toLowerCase() on multi‑MB data URLs — it blocks the UI thread.
+    if (value.length > 256 &&
+        value.startsWith('data:image') &&
+        value.contains('base64,')) {
+      return '<base64 image omitted (${value.length} chars)>';
+    }
     final lower = value.toLowerCase();
     if (lower.startsWith('data:image') && value.contains('base64,')) {
       return '<base64 image omitted (${value.length} chars)>';

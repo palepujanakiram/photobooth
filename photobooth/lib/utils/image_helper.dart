@@ -4,16 +4,78 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:camera/camera.dart';
 import '../services/file_helper.dart';
+import 'session_user_image_validation.dart';
+import 'web_flow_trace.dart';
 
 /// Standard format/size for all captured photos (any camera, any platform).
 /// Ensures one common format and dimensions regardless of Flutter vs custom plugin.
 const int kCapturedPhotoMaxDimension = 1920;
 const int kCapturedPhotoJpegQuality = 85;
 
+/// `PATCH /api/sessions/:id` `userImageUrl`: long edge cap and quality (API contract).
+const int kSessionPatchUserImageMaxLongEdgePx = 1536;
+const int kSessionPatchUserImageJpegQuality = 85;
+
 /// Metadata returned for a photo (dimensions, format label, and file size in bytes).
 typedef ImageMetadata = ({int width, int height, String format, int fileSizeBytes});
 
 typedef _ImageMetadataIsolateArgs = ({Uint8List bytes, String path});
+
+/// Isolate: decode, orient, scale to ≤ [kSessionPatchUserImageMaxLongEdgePx] on long edge,
+/// JPEG [kSessionPatchUserImageJpegQuality], ensure data URL ≤ [SessionUserImageValidation.maxDataUrlCharacterLength].
+String _encodeSessionPatchUserImageUrlIsolate(Uint8List bytes) {
+  final original = img.decodeImage(bytes);
+  if (original == null) {
+    throw Exception('Failed to decode image for session upload');
+  }
+  var work = img.bakeOrientation(original);
+  const cap = kSessionPatchUserImageMaxLongEdgePx;
+  int w = work.width;
+  int h = work.height;
+  if (w > cap || h > cap) {
+    final scale = (w > h) ? cap / w : cap / h;
+    w = (w * scale).round();
+    h = (h * scale).round();
+  }
+  work = img.copyResize(
+    work,
+    width: w,
+    height: h,
+    interpolation: img.Interpolation.cubic,
+  );
+
+  var quality = kSessionPatchUserImageJpegQuality;
+  const maxChars = SessionUserImageValidation.maxDataUrlCharacterLength;
+
+  while (true) {
+    final enc = Uint8List.fromList(img.encodeJpg(work, quality: quality));
+    final url = 'data:image/jpeg;base64,${base64Encode(enc)}';
+    if (url.length <= maxChars) {
+      return url;
+    }
+    quality -= 10;
+    if (quality >= 55) {
+      continue;
+    }
+    w = (w * 0.88).round().clamp(320, w);
+    h = (h * 0.88).round().clamp(320, h);
+    work = img.copyResize(
+      work,
+      width: w,
+      height: h,
+      interpolation: img.Interpolation.cubic,
+    );
+    quality = kSessionPatchUserImageJpegQuality;
+    if (w <= 360 && h <= 360) {
+      final enc2 = Uint8List.fromList(img.encodeJpg(work, quality: 65));
+      final url2 = 'data:image/jpeg;base64,${base64Encode(enc2)}';
+      if (url2.length > maxChars) {
+        throw Exception('Could not compress image under upload size limit');
+      }
+      return url2;
+    }
+  }
+}
 
 String _extensionFormatLabel(String ext) {
   switch (ext) {
@@ -256,111 +318,29 @@ class ImageHelper {
     return 'data:image/jpeg;base64,$base64String';
   }
 
-  /// Encodes image for upload to Gemini AI → DNP 6×4 print pipeline.
+  /// Encodes the capture for `PATCH /api/sessions/:id` field **`userImageUrl`**.
   ///
-  /// **Why crop to 3:2 first?**
-  /// The 1080p camera captures at 16:9 (1920×1080). The DNP printer outputs
-  /// 6"×4" (3:2 = 1.5:1). If Gemini receives 16:9, it composes the AI scene
-  /// in that ratio — then printing crops the top/bottom, potentially cutting
-  /// off AI-generated content (hats, backgrounds, etc.). Cropping to 3:2
-  /// *before* Gemini ensures the AI composes within the actual print frame.
-  ///
-  /// **Dimensions**: 1536×1024 is exactly 3:2 and gives Gemini enough detail
-  /// for a sharp 6×4 print (256 DPI on the 6" side). At quality 90 this is
-  /// typically 300–500 KB — well within the 600 KB cap.
-  ///
-  /// **Cubic interpolation** in the resize path preserves facial detail and
-  /// edges better than linear when downscaling from 1080p.
+  /// Contract: **`data:image/jpeg;base64,...`** only, long edge ≤ **1536** px,
+  /// JPEG quality **85**, size checked against [SessionUserImageValidation] after encode.
+  /// Heavy work runs in a [compute] isolate (web + native).
   static Future<String> encodeImageForUpload(XFile imageFile) async {
+    WebFlowTrace.log('ENCODE_IMPL', 'readAsBytes_start');
     final bytes = await imageFile.readAsBytes();
+    WebFlowTrace.log('ENCODE_IMPL', 'readAsBytes_done len=${bytes.length}');
     if (bytes.isEmpty) {
       throw Exception('Image file is empty');
     }
-    return compute(
-      _cropAndEncodeForPrintIsolate,
-      (
-        bytes: bytes,
-        targetAspect: 3.0 / 2.0, // 6×4 print = 3:2
-        maxWidth: 1536,
-        maxHeight: 1024,
-        quality: 90,
-        maxSizeBytes: 600 * 1024,
-      ),
-    );
-  }
 
-  /// Isolate entry: center-crop to target aspect ratio, resize, encode JPEG,
-  /// return base64 data URL. All heavy work off the UI thread.
-  static String _cropAndEncodeForPrintIsolate(
-    ({
-      Uint8List bytes,
-      double targetAspect,
-      int maxWidth,
-      int maxHeight,
-      int quality,
-      int maxSizeBytes,
-    }) args,
-  ) {
-    final original = img.decodeImage(args.bytes);
-    if (original == null) {
-      throw Exception('Failed to decode image');
+    if (kIsWeb) {
+      await Future<void>.delayed(Duration.zero);
+      WebFlowTrace.log('ENCODE_IMPL', 'post_read_yield_done');
     }
 
-    // ── 1. Center-crop to target aspect ratio ──────────────────────────
-    final srcAspect = original.width / original.height;
-    img.Image cropped;
-    if ((srcAspect - args.targetAspect).abs() < 0.01) {
-      // Already at target aspect — skip crop
-      cropped = original;
-    } else if (srcAspect > args.targetAspect) {
-      // Source is wider (e.g. 16:9 → 3:2): crop sides
-      final newWidth = (original.height * args.targetAspect).round();
-      final xOffset = ((original.width - newWidth) / 2).round();
-      cropped = img.copyCrop(original,
-          x: xOffset, y: 0, width: newWidth, height: original.height);
-    } else {
-      // Source is taller: crop top/bottom
-      final newHeight = (original.width / args.targetAspect).round();
-      final yOffset = ((original.height - newHeight) / 2).round();
-      cropped = img.copyCrop(original,
-          x: 0, y: yOffset, width: original.width, height: newHeight);
-    }
-
-    // ── 2. Resize to target dimensions (maintain aspect, fit in box) ───
-    int targetWidth = cropped.width;
-    int targetHeight = cropped.height;
-    if (targetWidth > args.maxWidth || targetHeight > args.maxHeight) {
-      final scale = (targetWidth > targetHeight)
-          ? args.maxWidth / targetWidth
-          : args.maxHeight / targetHeight;
-      targetWidth = (targetWidth * scale).round();
-      targetHeight = (targetHeight * scale).round();
-    }
-
-    final resized = img.copyResize(
-      cropped,
-      width: targetWidth,
-      height: targetHeight,
-      interpolation: img.Interpolation.cubic,
-    );
-
-    // ── 3. Encode JPEG, stepping down quality only if over budget ──────
-    int currentQuality = args.quality;
-    Uint8List? encoded;
-    while (currentQuality >= 70) {
-      encoded = Uint8List.fromList(
-        img.encodeJpg(resized, quality: currentQuality),
-      );
-      if (encoded.length <= args.maxSizeBytes) break;
-      currentQuality -= 5; // Smaller steps to avoid over-compressing
-    }
-
-    if (encoded == null || encoded.isEmpty) {
-      throw Exception('Failed to encode image');
-    }
-
-    final base64String = base64Encode(encoded);
-    return 'data:image/jpeg;base64,$base64String';
+    WebFlowTrace.log('ENCODE_IMPL', 'branch session_patch_encode longEdge=$kSessionPatchUserImageMaxLongEdgePx');
+    final out = await compute(_encodeSessionPatchUserImageUrlIsolate, bytes);
+    WebFlowTrace.log('ENCODE_IMPL', 'session_patch_encode_done outLen=${out.length}');
+    SessionUserImageValidation.assertValidForSessionPatch(out);
+    return out;
   }
 
   /// Converts image file to base64 data URL without resizing

@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show ChangeNotifier, kIsWeb;
 import 'package:flutter/painting.dart';
 
 import '../models/app_settings_model.dart';
@@ -6,8 +6,9 @@ import '../models/app_settings_model.dart';
 /// Runtime flags driven by [AppSettingsModel.showGenerationCommentary] from `/api/settings`.
 ///
 /// Default is **off** until settings load. When `showGenerationCommentary == true`:
-/// - "Low memory kiosk" optimizations ([AppConstants.kLowMemoryKioskMode])
-/// - Verbose logging, API logging, loader debug lines, native camera info pane, etc.
+/// - **Native:** "Low memory kiosk" optimizations ([AppConstants.kLowMemoryKioskMode])
+/// - **Web:** logging / loader debug only — RAM overlays and kiosk cache limits stay off (see [applyFlutterImageCacheLimits]).
+/// - Verbose logging, API logging, loader debug lines, native camera info pane (non-web), etc.
 class AppRuntimeConfig extends ChangeNotifier {
   AppRuntimeConfig._();
   static final AppRuntimeConfig instance = AppRuntimeConfig._();
@@ -27,9 +28,16 @@ class AppRuntimeConfig extends ChangeNotifier {
 
 /// Applies [PaintingBinding.instance.imageCache] limits from [AppRuntimeConfig.showGenerationCommentary].
 /// Call after [WidgetsFlutterBinding.ensureInitialized] (defaults to **generous** limits until settings load).
+///
+/// **Web:** always generous — low limits after settings load would evict capture previews mid-upload.
 void applyFlutterImageCacheLimits() {
-  final low = AppRuntimeConfig.instance.showGenerationCommentary;
   final ic = PaintingBinding.instance.imageCache;
+  if (kIsWeb) {
+    ic.maximumSize = 100;
+    ic.maximumSizeBytes = 100 * 1024 * 1024;
+    return;
+  }
+  final low = AppRuntimeConfig.instance.showGenerationCommentary;
   if (low) {
     ic.maximumSize = 40;
     ic.maximumSizeBytes = 50 * 1024 * 1024;

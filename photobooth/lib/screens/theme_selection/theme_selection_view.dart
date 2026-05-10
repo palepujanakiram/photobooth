@@ -167,15 +167,22 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       final photo = parsed.photo;
       final addOneMore = parsed.addOneMoreStyle;
       final usedIds = parsed.usedThemeIds;
-      if (_photoFromCapture != photo ||
-          _addOneMoreStyle != addOneMore ||
+
+      var changed = false;
+      // Route args that omit `photo` (e.g. "add one more style") must not clear
+      // an existing capture — only explicit non-null updates replace it.
+      if (photo != null && _photoFromCapture != photo) {
+        _photoFromCapture = photo;
+        changed = true;
+      }
+      if (_addOneMoreStyle != addOneMore ||
           _usedThemeIds.length != usedIds.length ||
           !listEquals(_usedThemeIds, usedIds)) {
-        _photoFromCapture = photo;
         _addOneMoreStyle = addOneMore;
         _usedThemeIds = usedIds;
-        if (mounted) setState(() {});
+        changed = true;
       }
+      if (changed && mounted) setState(() {});
     }
   }
 
@@ -198,14 +205,62 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         success = await viewModel.updateSessionWithTheme();
         if (!mounted || !currentContext.mounted) return;
         if (success) {
-          Navigator.pushNamed(
-            currentContext,
-            AppConstants.kRouteGenerate,
-            arguments: {
-              'photo': _photoFromCapture,
-              'theme': selectedTheme,
-            },
-          );
+          final photo = _photoFromCapture!;
+          try {
+            final frames = await viewModel.fetchKioskFramesList();
+            if (!mounted || !currentContext.mounted) return;
+            if (frames.length >= 2) {
+              await Navigator.pushNamed(
+                currentContext,
+                AppConstants.kRouteFrameSelect,
+                arguments: {
+                  'photo': photo,
+                  'theme': selectedTheme,
+                },
+              );
+            } else if (frames.length == 1) {
+              final frameOk =
+                  await viewModel.syncSingleFrameSelection(frames.single.id);
+              if (!mounted || !currentContext.mounted) return;
+              if (!frameOk) {
+                AppSnackBar.showError(
+                  currentContext,
+                  viewModel.errorMessage ?? 'Could not prepare generation.',
+                );
+                return;
+              }
+              await Navigator.pushNamed(
+                currentContext,
+                AppConstants.kRouteGenerateProgress,
+                arguments: GenerateArgs(photo: photo, theme: selectedTheme),
+              );
+            } else {
+              final frameOk = await viewModel.syncAutoSkippedFrameSelection();
+              if (!mounted || !currentContext.mounted) return;
+              if (!frameOk) {
+                AppSnackBar.showError(
+                  currentContext,
+                  viewModel.errorMessage ?? 'Could not prepare generation.',
+                );
+                return;
+              }
+              await Navigator.pushNamed(
+                currentContext,
+                AppConstants.kRouteGenerateProgress,
+                arguments: GenerateArgs(photo: photo, theme: selectedTheme),
+              );
+            }
+          } catch (_) {
+            if (!mounted || !currentContext.mounted) return;
+            await Navigator.pushNamed(
+              currentContext,
+              AppConstants.kRouteFrameSelect,
+              arguments: {
+                'photo': photo,
+                'theme': selectedTheme,
+              },
+            );
+          }
         } else {
           AppSnackBar.showError(
             currentContext,

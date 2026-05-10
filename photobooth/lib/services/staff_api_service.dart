@@ -9,6 +9,7 @@ import '../utils/logger.dart';
 import 'api_logging_interceptor.dart';
 import 'alice_inspector.dart';
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
+import 'client_identification.dart';
 import 'staff_session_manager.dart';
 
 class StaffApiService {
@@ -21,10 +22,10 @@ class StaffApiService {
       baseUrl: AppConstants.kBaseUrl,
       connectTimeout: const Duration(seconds: 20),
       receiveTimeout: const Duration(seconds: 20),
-      headers: const {
+      headers: ClientIdentification.mergeHeaders({
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-      },
+      }),
     );
 
     configureDioForWeb(_dio);

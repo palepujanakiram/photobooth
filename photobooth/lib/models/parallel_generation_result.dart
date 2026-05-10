@@ -5,6 +5,8 @@ class ParallelGenerationResult {
     this.success = true,
     this.timingTotalMs,
     Map<int, double>? qualityScoreByIndex,
+    this.runId,
+    this.selectedIndex,
   }) : qualityScoreByIndex = qualityScoreByIndex ?? const {};
 
   /// One entry per requested slot; empty string means that slot failed or was omitted.
@@ -12,6 +14,12 @@ class ParallelGenerationResult {
   final bool success;
   final int? timingTotalMs;
   final Map<int, double> qualityScoreByIndex;
+
+  /// Present when the server includes it on the SSE `complete` event or POST generate response.
+  final String? runId;
+
+  /// Preferred slot from the server when parallel options complete.
+  final int? selectedIndex;
 
   String? get firstImageUrl {
     for (final u in imageUrlsBySlot) {
