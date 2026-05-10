@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 import 'dart:math' as math;
 import 'package:flutter/cupertino.dart' show CupertinoButton, CupertinoColors, CupertinoIcons;
 import 'package:flutter/material.dart';
@@ -18,6 +19,9 @@ import '../../utils/transformation_step_display.dart';
 import '../transformation_details/transformation_details_view.dart';
 import '../../views/widgets/contact_before_pay_sheet.dart';
 import '../../views/widgets/cached_network_image.dart';
+import '../photo_capture/photo_model.dart';
+import '../photo_capture/photo_image_from_xfile_io.dart'
+    if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart' as photo_image;
 
 class PhotoGenerateScreen extends StatefulWidget {
   const PhotoGenerateScreen({super.key});
@@ -34,6 +38,15 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
 
   /// Reserved height for Continue + “Or add one more style” so the bar stays fixed when cards zoom.
   static const double _kGenerateFooterSlotHeight = 140.0;
+
+  /// AppBar [bottom]: subtitle line + optional stamp strip (must match [PreferredSize]).
+  static const double _kBeholdSubtitleBlockHeight = 28.0;
+  static const double _kBeholdStampStripExtraHeight = 62.0;
+
+  double _beholdAppBarBelowTitleHeight(PhotoGenerateViewModel vm) {
+    if (!vm.showProgressStampStrip) return _kBeholdSubtitleBlockHeight;
+    return _kBeholdSubtitleBlockHeight + _kBeholdStampStripExtraHeight;
+  }
 
   late PhotoGenerateViewModel _viewModel;
   bool _viewModelCreated = false;
@@ -217,20 +230,11 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                   fontSize: 22,
                 ),
               ),
-              bottom: const PreferredSize(
-                preferredSize: Size.fromHeight(22),
-                child: Padding(
-                  padding: EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    'Your AI-transformed portrait awaits',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
+              bottom: PreferredSize(
+                preferredSize: Size.fromHeight(
+                  _beholdAppBarBelowTitleHeight(viewModel),
                 ),
+                child: _buildBeholdAppBarBottom(context, viewModel),
               ),
               leading: IconButton(
                 icon: const Icon(CupertinoIcons.back, color: Colors.white),
@@ -246,29 +250,16 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               actions: [
                 IconButton(
                   tooltip: viewModel.useProgressiveGenerationUi
-                      ? 'Use simple progress (default)'
-                      : 'Stage previews (test)',
+                      ? 'Switch to simple progress'
+                      : 'Switch to stage previews',
                   icon: Icon(
                     viewModel.useProgressiveGenerationUi
                         ? Icons.view_compact
                         : Icons.view_timeline,
                     color: Colors.white,
                   ),
-                  onPressed: () async {
+                    onPressed: () async {
                     await viewModel.toggleProgressiveGenerationUi();
-                    if (!context.mounted) return;
-                    if (viewModel.useProgressiveGenerationUi &&
-                        viewModel.parallelImageSlotCount <= 1) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Stage previews work when parallel image count is above 1 '
-                            'in Settings. Your choice is saved for the next run.',
-                          ),
-                          duration: Duration(seconds: 4),
-                        ),
-                      );
-                    }
                   },
                 ),
                 const AppBarAliceAction(),
@@ -283,11 +274,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                   top: false,
                   child: Padding(
                     padding: EdgeInsets.only(
-                      // Body is behind the app bar; account for app bar + subtitle height.
                       top: MediaQuery.paddingOf(context).top +
                           kToolbarHeight +
-                          22 +
-                          6,
+                          _beholdAppBarBelowTitleHeight(viewModel),
                     ),
                     child: Column(
                       children: [
@@ -315,6 +304,536 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         },
       ),
     );
+  }
+
+  Widget _buildBeholdAppBarBottom(
+    BuildContext context,
+    PhotoGenerateViewModel viewModel,
+  ) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(bottom: 6),
+          child: Text(
+            'Your AI-transformed portrait awaits',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        if (viewModel.showProgressStampStrip) ...[
+          Padding(
+            padding: const EdgeInsets.only(left: 4, right: 4, bottom: 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  height: 48,
+                  child: _buildProgressStampRow(context, viewModel),
+                ),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: () {
+                      if (viewModel.parallelImageSlotCount > 1 &&
+                          viewModel.liveProgress > 0) {
+                        return (viewModel.liveProgress / 100).clamp(0.0, 1.0);
+                      }
+                      return viewModel.generationRunDetailsProgress;
+                    }(),
+                    minHeight: 4,
+                    backgroundColor: Colors.white24,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildProgressStampRow(
+    BuildContext context,
+    PhotoGenerateViewModel viewModel,
+  ) {
+    final chips = <Widget>[];
+    final photo = viewModel.originalPhoto;
+    if (photo != null) {
+      chips.add(
+        _heroStampTile(
+          viewModel,
+          stampId: 'source',
+          tooltip: 'Your photo — tap to show full size in the frame',
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: photo_image.imageFromXFileSized(
+                photo.imageFile,
+                48,
+                48,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    for (var i = 0; i < viewModel.generationRunStepPreviews.length; i++) {
+      final step = viewModel.generationRunStepPreviews[i];
+      chips.add(
+        _runDetailStepStamp(viewModel, index: i, step: step),
+      );
+    }
+    if (viewModel.showSyntheticProgressStamps && photo != null) {
+      final h = viewModel.syntheticProgressHighlightIndex;
+      for (var i = 0; i < 4; i++) {
+        chips.add(
+          _syntheticHeroStampTile(
+            viewModel,
+            photo: photo,
+            phaseIndex: i,
+            highlightIndex: h,
+            tooltip: viewModel.syntheticStampTooltip(i),
+          ),
+        );
+      }
+    }
+    for (final stage in viewModel.progressivePipelineStages) {
+      final url = stage.previewImageUrl;
+      chips.add(
+        _heroStampTile(
+          viewModel,
+          stampId: 'stage:${stage.stepKey}',
+          tooltip: transformationStepDisplayLabel(stage.stepKey),
+          child: url != null && url.isNotEmpty
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: CachedNetworkImage(
+                    imageUrl: SecureImageUrl.withSessionId(url),
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.low,
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+      );
+    }
+    if (viewModel.liveSlotCount > 0) {
+      for (var i = 0; i < viewModel.liveSlots.length; i++) {
+        final slot = viewModel.liveSlots[i];
+        final url = slot.imageUrl;
+        chips.add(
+          _heroStampTile(
+            viewModel,
+            stampId: 'live:$i',
+            tooltip: slot.loading
+                ? 'Output ${i + 1} — generating'
+                : 'Output ${i + 1} — tap to preview',
+            child: slot.loading
+                ? _miniStampPlaceholderForLive(loading: true)
+                : slot.failed
+                    ? const Icon(Icons.error_outline,
+                        color: Colors.redAccent, size: 28)
+                    : url != null && url.isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: CachedNetworkImage(
+                              imageUrl: SecureImageUrl.withSessionId(url),
+                              width: 48,
+                              height: 48,
+                              fit: BoxFit.cover,
+                              filterQuality: FilterQuality.low,
+                            ),
+                          )
+                        : _miniStampPlaceholderForLive(loading: false),
+          ),
+        );
+      }
+    }
+
+    final finalUrl = viewModel.newestGeneratedImageUrl;
+    if (finalUrl != null && finalUrl.trim().isNotEmpty) {
+      chips.add(
+        _heroStampTile(
+          viewModel,
+          stampId: 'final',
+          tooltip: 'Final — tap to preview',
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: CachedNetworkImage(
+              imageUrl: SecureImageUrl.withSessionId(finalUrl.trim()),
+              width: 48,
+              height: 48,
+              fit: BoxFit.cover,
+              filterQuality: FilterQuality.low,
+            ),
+          ),
+        ),
+      );
+    }
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      itemCount: chips.length,
+      separatorBuilder: (_, __) => const SizedBox(width: 8),
+      itemBuilder: (_, i) => chips[i],
+    );
+  }
+
+  Widget _runDetailStepStamp(
+    PhotoGenerateViewModel viewModel, {
+    required int index,
+    required GenerationRunStepPreview step,
+  }) {
+    final stampId = 'runDetail:$index';
+    final selected = viewModel.selectedHeroStampId == stampId;
+    final url = step.previewUrl;
+    final label = transformationStepDisplayLabel(step.stage);
+    final borderColor = selected
+        ? CupertinoColors.systemBlue
+        : step.isFinished
+            ? Colors.lightGreenAccent.withValues(alpha: 0.85)
+            : step.isActive
+                ? CupertinoColors.activeBlue
+                : Colors.white30;
+    final borderW = selected ? 2.5 : (step.isActive ? 2.0 : 1.0);
+    late final Widget inner;
+    if (url != null && url.isNotEmpty) {
+      inner = ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: CachedNetworkImage(
+          imageUrl: SecureImageUrl.withSessionId(url),
+          width: 48,
+          height: 48,
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.low,
+        ),
+      );
+    } else if (step.isFinished) {
+      inner = const Icon(Icons.check_circle,
+          color: Colors.lightGreenAccent, size: 28);
+    } else if (step.isActive) {
+      inner = const Center(
+        child: SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Colors.white,
+          ),
+        ),
+      );
+    } else {
+      inner = Icon(Icons.hourglass_empty,
+          color: Colors.white.withValues(alpha: 0.45), size: 24);
+    }
+    return Tooltip(
+      message: '$label — ${step.status}',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => viewModel.toggleHeroStamp(stampId),
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: 52,
+            height: 52,
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(width: borderW, color: borderColor),
+              color: Colors.black.withValues(alpha: 0.35),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: ColoredBox(
+                color: Colors.black45,
+                child: inner,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Blurred / tinted miniatures of the capture so single-slot runs still show “in-between” visuals.
+  Widget _syntheticMiniThumb(
+    PhotoModel photo,
+    int phaseIndex,
+    int highlightIndex,
+  ) {
+    final isPast = phaseIndex < highlightIndex;
+    final isFuture = phaseIndex > highlightIndex;
+    final sigma = 0.35 + phaseIndex * 0.85;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+          child: ColorFiltered(
+            colorFilter: ColorFilter.mode(
+              Colors.deepPurple.withValues(alpha: isFuture ? 0.06 : 0.14),
+              BlendMode.softLight,
+            ),
+            child: Opacity(
+              opacity: isFuture ? 0.38 : 1.0,
+              child: photo_image.imageFromXFileSized(
+                photo.imageFile,
+                48,
+                48,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+        ),
+        if (isPast)
+          const Center(
+            child: Icon(
+              Icons.check_circle,
+              color: Colors.lightGreenAccent,
+              size: 22,
+            ),
+          ),
+        if (phaseIndex == highlightIndex)
+          const Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _syntheticHeroStampTile(
+    PhotoGenerateViewModel viewModel, {
+    required PhotoModel photo,
+    required int phaseIndex,
+    required int highlightIndex,
+    required String tooltip,
+  }) {
+    final stampId = 'synthetic:$phaseIndex';
+    final selected = viewModel.selectedHeroStampId == stampId;
+    final isCurrent = phaseIndex == highlightIndex;
+    final isPast = phaseIndex < highlightIndex;
+    final borderColor = selected
+        ? CupertinoColors.systemBlue
+        : isCurrent
+            ? CupertinoColors.activeBlue
+            : isPast
+                ? Colors.lightGreenAccent.withValues(alpha: 0.85)
+                : Colors.white30;
+    final borderW = selected ? 2.5 : (isCurrent ? 2.2 : 1.0);
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => viewModel.toggleHeroStamp(stampId),
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: 52,
+            height: 52,
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(width: borderW, color: borderColor),
+              color: Colors.black.withValues(alpha: 0.35),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: ColoredBox(
+                color: Colors.black45,
+                child: _syntheticMiniThumb(photo, phaseIndex, highlightIndex),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _syntheticFullBleedHero(PhotoModel photo, int phaseIndex) {
+    final sigma = 1.2 + phaseIndex * 1.35;
+    return ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+          child: ColorFiltered(
+            colorFilter: ColorFilter.mode(
+              Colors.deepPurple.withValues(alpha: 0.18 + phaseIndex * 0.04),
+              BlendMode.softLight,
+            ),
+            child: photo_image.imageFromXFileSized(
+              photo.imageFile,
+              720,
+              1280,
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _heroStampTile(
+    PhotoGenerateViewModel viewModel, {
+    required String stampId,
+    required String tooltip,
+    required Widget child,
+  }) {
+    final selected = viewModel.selectedHeroStampId == stampId;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => viewModel.toggleHeroStamp(stampId),
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: 52,
+            height: 52,
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                width: selected ? 2.5 : 1,
+                color: selected
+                    ? CupertinoColors.systemBlue
+                    : Colors.white30,
+              ),
+              color: Colors.black.withValues(alpha: 0.35),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: ColoredBox(
+                color: Colors.black45,
+                child: child,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _miniStampPlaceholderForLive({required bool loading}) {
+    if (loading) {
+      return const Center(
+        child: SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Colors.white,
+          ),
+        ),
+      );
+    }
+    return Icon(Icons.image_outlined,
+        color: Colors.white.withValues(alpha: 0.4), size: 26);
+  }
+
+  Widget? _generatingHeroUnderlay(PhotoGenerateViewModel vm) {
+    final id = vm.selectedHeroStampId;
+    if (id == null) return null;
+    if (id == 'source' && vm.originalPhoto != null) {
+      return ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: photo_image.imageFromXFileSized(
+            vm.originalPhoto!.imageFile,
+            720,
+            1280,
+            fit: BoxFit.contain,
+          ),
+        ),
+      );
+    }
+    if (id.startsWith('stage:')) {
+      final key = id.substring(6);
+      for (final s in vm.progressivePipelineStages) {
+        if (s.stepKey == key) {
+          final url = s.previewImageUrl;
+          if (url != null && url.isNotEmpty) {
+            return ColoredBox(
+              color: Colors.black,
+              child: Center(
+                child: CachedNetworkImage(
+                  imageUrl: SecureImageUrl.withSessionId(url),
+                  fit: BoxFit.contain,
+                ),
+              ),
+            );
+          }
+        }
+      }
+    }
+    if (id.startsWith('live:')) {
+      final idx = int.tryParse(id.substring(5));
+      if (idx != null &&
+          idx >= 0 &&
+          idx < vm.liveSlots.length &&
+          !vm.liveSlots[idx].loading) {
+        final url = vm.liveSlots[idx].imageUrl;
+        if (url != null && url.isNotEmpty) {
+          return ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: CachedNetworkImage(
+                imageUrl: SecureImageUrl.withSessionId(url),
+                fit: BoxFit.contain,
+              ),
+            ),
+          );
+        }
+      }
+    }
+    if (id.startsWith('synthetic:')) {
+      final phase = int.tryParse(id.substring(10));
+      if (phase != null &&
+          phase >= 0 &&
+          phase <= 3 &&
+          vm.originalPhoto != null) {
+        return _syntheticFullBleedHero(vm.originalPhoto!, phase);
+      }
+    }
+    if (id.startsWith('runDetail:')) {
+      final idx = int.tryParse(id.substring(10));
+      if (idx != null &&
+          idx >= 0 &&
+          idx < vm.generationRunStepPreviews.length) {
+        final url = vm.generationRunStepPreviews[idx].previewUrl;
+        if (url != null && url.isNotEmpty) {
+          return ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: CachedNetworkImage(
+                imageUrl: SecureImageUrl.withSessionId(url),
+                fit: BoxFit.contain,
+              ),
+            ),
+          );
+        }
+      }
+    }
+    return null;
   }
 
   Widget _buildMainContent(
@@ -555,6 +1074,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                           context,
                           AppConstants.kRouteHome,
                           arguments: {
+                            if (viewModel.originalPhoto != null)
+                              'photo': viewModel.originalPhoto,
                             'addOneMoreStyle': true,
                             'usedThemeIds': List<String>.from(
                               viewModel.generatedImages
@@ -710,7 +1231,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (hideCompactHeader && isGeneratingOrLoading) ...[
+            if (hideCompactHeader &&
+                isGeneratingOrLoading &&
+                !viewModel.showProgressStampStrip) ...[
               _buildProgressivePipelineSection(context, viewModel),
               const SizedBox(height: 12),
             ] else if (!hideCompactHeader &&
@@ -784,7 +1307,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (hideCompactHeader && isGeneratingOrLoading) ...[
+          if (hideCompactHeader &&
+              isGeneratingOrLoading &&
+              !viewModel.showProgressStampStrip) ...[
             _buildProgressivePipelineSection(context, viewModel),
             const SizedBox(height: 12),
           ] else if (!hideCompactHeader &&
@@ -1460,39 +1985,65 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final message = viewModel.progressMessage.isNotEmpty
         ? viewModel.progressMessage
         : (viewModel.isLoadingMore ? 'Adding new style...' : 'Creating...');
+    final underlay = _generatingHeroUnderlay(viewModel);
+    final hint = viewModel.selectedHeroStampId != null &&
+            underlay == null
+        ? 'Preview not ready for this step yet'
+        : null;
     return SizedBox.expand(
-      child: ColoredBox(
-        color: Colors.black26,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircularProgressIndicator(color: Colors.white),
-                const SizedBox(height: 12),
-                Text(
-                  message,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.white70,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${viewModel.elapsedSeconds}s',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.white70,
-                  ),
-                ),
-              ],
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (underlay != null) Positioned.fill(child: underlay),
+          Positioned.fill(
+            child: ColoredBox(
+              color: underlay != null
+                  ? Colors.black.withValues(alpha: 0.42)
+                  : Colors.black26,
             ),
           ),
-        ),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(color: Colors.white),
+                  const SizedBox(height: 12),
+                  Text(
+                    message,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white70,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (hint != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      hint,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.65),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(
+                    '${viewModel.elapsedSeconds}s',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

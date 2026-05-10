@@ -12,6 +12,7 @@ import '../models/parallel_generation_result.dart';
 import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/exceptions.dart';
+import '../utils/app_config.dart';
 import '../utils/constants.dart';
 import '../utils/session_user_image_validation.dart';
 import '../utils/logger.dart';
@@ -167,8 +168,7 @@ class ApiService {
         sendTimeout: AppConstants.kApiTimeout,
         headers: ClientIdentification.mergeHeaders({
           'Content-Type': 'application/json',
-          'Authorization':
-              'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
+          ...AppConfig.authorizationBearerHeader,
         }),
       ),
     );
@@ -455,8 +455,7 @@ class ApiService {
           receiveTimeout: AppConstants.kApiTimeout,
           sendTimeout: AppConstants.kApiTimeout,
           headers: ClientIdentification.mergeHeaders({
-            'Authorization':
-                'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
+            ...AppConfig.authorizationBearerHeader,
           }),
         ));
         if (kDebugMode == true) {
@@ -1244,8 +1243,7 @@ class ApiService {
         sendTimeout: AppConstants.kAiGenerationTimeout,
         headers: ClientIdentification.mergeHeaders({
           'Content-Type': 'application/json',
-          'Authorization':
-              'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
+          ...AppConfig.authorizationBearerHeader,
         }),
       ),
     );
@@ -1473,8 +1471,7 @@ class ApiService {
         sendTimeout: AppConstants.kAiGenerationTimeout,
         headers: ClientIdentification.mergeHeaders({
           'Accept': 'text/event-stream',
-          'Authorization':
-              'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
+          ...AppConfig.authorizationBearerHeader,
         }),
       ),
     );
