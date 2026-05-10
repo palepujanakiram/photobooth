@@ -10,7 +10,28 @@ import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
 import '../../utils/secure_image_url.dart';
+import '../../utils/transformation_step_display.dart';
+import '../../services/generation_display_preferences.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
+
+/// One pipeline stage row for the progressive (filmstrip) generate layout.
+class ProgressivePipelineStage {
+  const ProgressivePipelineStage({
+    required this.stepKey,
+    this.active = false,
+    this.complete = false,
+    this.skipped = false,
+    this.durationMs,
+    this.previewImageUrl,
+  });
+
+  final String stepKey;
+  final bool active;
+  final bool complete;
+  final bool skipped;
+  final int? durationMs;
+  final String? previewImageUrl;
+}
 
 /// In-flight slot while SSE parallel generation is streaming.
 class LiveGenerationSlotState {
@@ -93,6 +114,10 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   List<LiveGenerationSlotState> _liveSlots = [];
   String? _lastTransformationRunId;
 
+  bool _useProgressiveGenerationUi = false;
+  bool _progressivePrefLoaded = false;
+  List<ProgressivePipelineStage> _progressivePipelineStages = [];
+
   PhotoGenerateViewModel({
     ApiService? apiService,
     SessionManager? sessionManager,
@@ -131,6 +156,52 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       List<LiveGenerationSlotState>.unmodifiable(_liveSlots);
   int get liveSlotCount => _liveSlots.length;
   String? get lastTransformationRunId => _lastTransformationRunId;
+
+  bool get useProgressiveGenerationUi => _useProgressiveGenerationUi;
+
+  /// Progressive filmstrip + stage thumbs: only when pref is on **and** SSE runs (parallel > 1).
+  bool get useProgressiveGenerationLayoutForSession =>
+      _useProgressiveGenerationUi && _parallelSlotCount > 1;
+
+  int get parallelImageSlotCount => _parallelSlotCount;
+
+  List<ProgressivePipelineStage> get progressivePipelineStages =>
+      List<ProgressivePipelineStage>.unmodifiable(_progressivePipelineStages);
+
+  /// One line under the filmstrip: commentary, active step, or progress message.
+  String? get progressiveOneLiner {
+    final commentaryAllowed =
+        _appSettingsManager?.settings?.showGenerationCommentary == true;
+    if (commentaryAllowed &&
+        _liveCommentary != null &&
+        _liveCommentary!.trim().isNotEmpty) {
+      return _liveCommentary!.trim();
+    }
+    final step = _liveCurrentStep;
+    if (step != null && step.isNotEmpty) {
+      return 'Working on: ${transformationStepDisplayLabel(step)}';
+    }
+    final m = _progressMessage.trim();
+    return m.isNotEmpty ? m : null;
+  }
+
+  Future<void> loadProgressiveDisplayPreference() async {
+    if (_progressivePrefLoaded) return;
+    final v = await GenerationDisplayPreferences.getUseProgressiveGenerationUi();
+    _useProgressiveGenerationUi = v;
+    _progressivePrefLoaded = true;
+    notifyListeners();
+  }
+
+  Future<void> setProgressiveGenerationUi(bool value) async {
+    _useProgressiveGenerationUi = value;
+    await GenerationDisplayPreferences.setUseProgressiveGenerationUi(value);
+    notifyListeners();
+  }
+
+  Future<void> toggleProgressiveGenerationUi() async {
+    await setProgressiveGenerationUi(!_useProgressiveGenerationUi);
+  }
   
   // Check if any operation is in progress
   bool get isOperationInProgress => _isGenerating || _isLoadingMore;
@@ -220,6 +291,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _liveCommentary = null;
     _liveSlots = [];
     _lastTransformationRunId = null;
+    _progressivePipelineStages = [];
   }
 
   void _clearLiveGenerationUi() {
@@ -231,6 +303,64 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _liveLastScore = null;
     _liveCommentary = null;
     _liveSlots = [];
+    _progressivePipelineStages = [];
+  }
+
+  String? _extractStepPreviewUrl(Map<String, dynamic> data) {
+    for (final key in ['thumbnailUrl', 'previewUrl', 'imageUrl']) {
+      final v = data[key];
+      if (v is String && v.trim().isNotEmpty) {
+        return SecureImageUrl.absolutize(v.trim());
+      }
+    }
+    final od = data['outputData'];
+    if (od is Map) {
+      final m = Map<String, dynamic>.from(od);
+      for (final key in ['thumbnailUrl', 'previewUrl', 'imageUrl', 'url']) {
+        final v = m[key];
+        if (v is String && v.trim().isNotEmpty) {
+          return SecureImageUrl.absolutize(v.trim());
+        }
+      }
+    }
+    final id = data['inputData'];
+    if (id is Map) {
+      final m = Map<String, dynamic>.from(id);
+      for (final key in ['thumbnailUrl', 'previewUrl', 'imageUrl', 'url']) {
+        final v = m[key];
+        if (v is String && v.trim().isNotEmpty) {
+          return SecureImageUrl.absolutize(v.trim());
+        }
+      }
+    }
+    return null;
+  }
+
+  void _upsertProgressiveStage(
+    String step, {
+    bool? active,
+    bool? complete,
+    bool? skipped,
+    int? durationMs,
+    String? previewUrl,
+  }) {
+    final i = _progressivePipelineStages.indexWhere((e) => e.stepKey == step);
+    final prev = i >= 0 ? _progressivePipelineStages[i] : null;
+    final next = ProgressivePipelineStage(
+      stepKey: step,
+      active: active ?? prev?.active ?? false,
+      complete: complete ?? prev?.complete ?? false,
+      skipped: skipped ?? prev?.skipped ?? false,
+      durationMs: durationMs ?? prev?.durationMs,
+      previewImageUrl: previewUrl ?? prev?.previewImageUrl,
+    );
+    if (i >= 0) {
+      final list = List<ProgressivePipelineStage>.from(_progressivePipelineStages);
+      list[i] = next;
+      _progressivePipelineStages = list;
+    } else {
+      _progressivePipelineStages = [..._progressivePipelineStages, next];
+    }
   }
 
   void _handleGenerationSseEvent(String event, Map<String, dynamic> data) {
@@ -254,15 +384,38 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       case 'step':
         final step = data['step'] as String?;
         final st = data['status'] as String?;
+        final previewUrl = step != null ? _extractStepPreviewUrl(data) : null;
         if (step != null && st == 'active') {
           _liveCurrentStep = step;
+          _upsertProgressiveStage(
+            step,
+            active: true,
+            complete: false,
+            previewUrl: previewUrl,
+          );
         }
-        if (step != null && st == 'complete' && data['skipped'] != true) {
-          final ms = data['durationMs'];
-          if (ms is int) {
-            _liveStepDurationsMs[step] = ms;
-          } else if (ms is num) {
-            _liveStepDurationsMs[step] = ms.toInt();
+        if (step != null && st == 'complete') {
+          final skipped = data['skipped'] == true;
+          int? ms;
+          final rawMs = data['durationMs'];
+          if (rawMs is int) {
+            ms = rawMs;
+          } else if (rawMs is num) {
+            ms = rawMs.toInt();
+          }
+          if (!skipped) {
+            _liveStepDurationsMs[step] = ms ?? _liveStepDurationsMs[step] ?? 0;
+          }
+          _upsertProgressiveStage(
+            step,
+            active: false,
+            complete: !skipped,
+            skipped: skipped,
+            durationMs: ms,
+            previewUrl: previewUrl,
+          );
+          if (_liveCurrentStep == step) {
+            _liveCurrentStep = null;
           }
         }
         break;

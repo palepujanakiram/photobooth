@@ -58,6 +58,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         appSettingsManager: context.read<AppSettingsManager>(),
       );
       _viewModelCreated = true;
+      unawaited(_viewModel.loadProgressiveDisplayPreference());
       unawaited(_loadPaymentEnablement());
     }
     if (!_isInitialized) {
@@ -242,7 +243,36 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                   }
                 },
               ),
-              actions: const [AppBarAliceAction()],
+              actions: [
+                IconButton(
+                  tooltip: viewModel.useProgressiveGenerationUi
+                      ? 'Use simple progress (default)'
+                      : 'Stage previews (test)',
+                  icon: Icon(
+                    viewModel.useProgressiveGenerationUi
+                        ? Icons.view_compact
+                        : Icons.view_timeline,
+                    color: Colors.white,
+                  ),
+                  onPressed: () async {
+                    await viewModel.toggleProgressiveGenerationUi();
+                    if (!context.mounted) return;
+                    if (viewModel.useProgressiveGenerationUi &&
+                        viewModel.parallelImageSlotCount <= 1) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Stage previews work when parallel image count is above 1 '
+                            'in Settings. Your choice is saved for the next run.',
+                          ),
+                          duration: Duration(seconds: 4),
+                        ),
+                      );
+                    }
+                  },
+                ),
+                const AppBarAliceAction(),
+              ],
             ),
             body: Stack(
               children: [
@@ -624,6 +654,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final isLoadingMore = viewModel.isLoadingMore;
     final images = viewModel.generatedImages;
     final hasImages = images.isNotEmpty;
+    final hideCompactHeader = viewModel.useProgressiveGenerationLayoutForSession &&
+        isGeneratingOrLoading;
 
     final int baseSlotCount = hasImages
         ? images.length
@@ -678,7 +710,12 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (isGenerating && viewModel.liveSlotCount > 0) ...[
+            if (hideCompactHeader && isGeneratingOrLoading) ...[
+              _buildProgressivePipelineSection(context, viewModel),
+              const SizedBox(height: 12),
+            ] else if (!hideCompactHeader &&
+                isGenerating &&
+                viewModel.liveSlotCount > 0) ...[
               _buildLiveGenerationHeader(context, viewModel),
               const SizedBox(height: 12),
             ],
@@ -747,7 +784,12 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (isGenerating && viewModel.liveSlotCount > 0) ...[
+          if (hideCompactHeader && isGeneratingOrLoading) ...[
+            _buildProgressivePipelineSection(context, viewModel),
+            const SizedBox(height: 12),
+          ] else if (!hideCompactHeader &&
+              isGenerating &&
+              viewModel.liveSlotCount > 0) ...[
             _buildLiveGenerationHeader(context, viewModel),
             const SizedBox(height: 12),
           ],
@@ -1105,6 +1147,184 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
           ),
         ),
       ),
+      ),
+    );
+  }
+
+  Widget _buildProgressivePipelineSection(
+    BuildContext context,
+    PhotoGenerateViewModel viewModel,
+  ) {
+    final stages = viewModel.progressivePipelineStages;
+    final progress = (viewModel.liveProgress / 100).clamp(0.0, 1.0);
+    final caption = viewModel.progressiveOneLiner;
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 620),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress <= 0 ? null : progress,
+              minHeight: 6,
+              backgroundColor: Colors.white24,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 118,
+            child: stages.isEmpty
+                ? Center(
+                    child: Text(
+                      'Pipeline starting — watch each stage appear here.',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.75),
+                        fontSize: 13,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                : ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: stages.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (context, i) {
+                      return _buildProgressiveStageTile(context, stages[i]);
+                    },
+                  ),
+          ),
+          if (caption != null && caption.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              child: Text(
+                caption,
+                key: ValueKey<String>(caption),
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  height: 1.25,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressiveStageTile(
+    BuildContext context,
+    ProgressivePipelineStage stage,
+  ) {
+    final label = transformationStepDisplayLabel(stage.stepKey);
+    final url = stage.previewImageUrl;
+
+    Widget thumb;
+    if (url != null && url.isNotEmpty) {
+      thumb = ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: CachedNetworkImage(
+          imageUrl: SecureImageUrl.withSessionId(url),
+          fit: BoxFit.cover,
+          width: 72,
+          height: 72,
+        ),
+      );
+    } else if (stage.complete && !stage.skipped) {
+      thumb = Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          color: Colors.white12,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: const Icon(Icons.check_circle, color: Colors.lightGreenAccent, size: 36),
+      );
+    } else if (stage.skipped) {
+      thumb = Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          color: Colors.white10,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: const Icon(Icons.skip_next, color: Colors.white38, size: 32),
+      );
+    } else if (stage.active) {
+      thumb = Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          color: Colors.white12,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.amberAccent, width: 2),
+        ),
+        child: const Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      );
+    } else {
+      thumb = Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          color: Colors.white10,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Icon(
+          transformationStepIcon(stage.stepKey),
+          color: Colors.white38,
+          size: 32,
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: 82,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          thumb,
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: stage.skipped ? Colors.white38 : Colors.white70,
+              fontSize: 10,
+              decoration:
+                  stage.skipped ? TextDecoration.lineThrough : TextDecoration.none,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+          if (stage.durationMs != null && stage.complete)
+            Text(
+              '${stage.durationMs} ms',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.45),
+                fontSize: 9,
+              ),
+            ),
+        ],
       ),
     );
   }
