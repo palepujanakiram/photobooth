@@ -55,5 +55,54 @@ class SecureImageUrl {
     qp['sessionId'] = sid;
     return uri.replace(queryParameters: qp).toString();
   }
+
+  /// Best-effort preview URL for a `transformation_steps` row from
+  /// `GET /api/generation-runs/:runId` (CDN JPEG or legacy nested fields).
+  static String? previewUrlFromStepMap(Map<String, dynamic> data) {
+    for (final key in [
+      'previewImageUrl',
+      'thumbnailUrl',
+      'previewUrl',
+      'imageUrl',
+    ]) {
+      final v = data[key];
+      if (v is String && v.trim().isNotEmpty) {
+        return absolutize(v.trim());
+      }
+    }
+    final od = data['outputData'];
+    if (od is Map) {
+      final m = Map<String, dynamic>.from(od);
+      for (final key in [
+        'previewImageUrl',
+        'thumbnailUrl',
+        'previewUrl',
+        'imageUrl',
+        'url',
+      ]) {
+        final v = m[key];
+        if (v is String && v.trim().isNotEmpty) {
+          return absolutize(v.trim());
+        }
+      }
+    }
+    final id = data['inputData'];
+    if (id is Map) {
+      final m = Map<String, dynamic>.from(id);
+      for (final key in [
+        'previewImageUrl',
+        'thumbnailUrl',
+        'previewUrl',
+        'imageUrl',
+        'url',
+      ]) {
+        final v = m[key];
+        if (v is String && v.trim().isNotEmpty) {
+          return absolutize(v.trim());
+        }
+      }
+    }
+    return null;
+  }
 }
 

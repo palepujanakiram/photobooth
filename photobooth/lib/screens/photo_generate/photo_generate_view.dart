@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show ImageFilter;
 import 'dart:math' as math;
 import 'package:flutter/cupertino.dart' show CupertinoButton, CupertinoColors, CupertinoIcons;
 import 'package:flutter/material.dart';
@@ -19,7 +18,6 @@ import '../../utils/transformation_step_display.dart';
 import '../transformation_details/transformation_details_view.dart';
 import '../../views/widgets/contact_before_pay_sheet.dart';
 import '../../views/widgets/cached_network_image.dart';
-import '../photo_capture/photo_model.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
     if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart' as photo_image;
 
@@ -67,6 +65,16 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_viewModelCreated) {
+      final rawArgs = ModalRoute.of(context)?.settings.arguments;
+      if (rawArgs is PhotoGenerateViewModel) {
+        // Result-only route: receive a fully initialized ViewModel from the
+        // progress page (which ran generation).
+        _viewModel = rawArgs;
+        _viewModelCreated = true;
+        _isInitialized = true;
+        unawaited(_loadPaymentEnablement());
+        return;
+      }
       _viewModel = PhotoGenerateViewModel(
         appSettingsManager: context.read<AppSettingsManager>(),
       );
@@ -87,13 +95,18 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   }
 
   void _initializeFromArguments() {
-    final parsed = GenerateArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
+    // `/generate` is now result-only. If someone navigates here with GenerateArgs,
+    // redirect them to the progress route.
+    final raw = ModalRoute.of(context)?.settings.arguments;
+    final parsed = GenerateArgs.tryParse(raw);
     if (parsed == null) return;
-    _viewModel.initialize(parsed.photo, parsed.theme);
-
-    // Start generation automatically
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _viewModel.generateImage();
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(
+        context,
+        AppConstants.kRouteGenerateProgress,
+        arguments: parsed,
+      );
     });
   }
 
@@ -310,10 +323,10 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     BuildContext context,
     PhotoGenerateViewModel viewModel,
   ) {
-    return Column(
+    return const Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Padding(
+        Padding(
           padding: EdgeInsets.only(bottom: 6),
           child: Text(
             'Your AI-transformed portrait awaits',
@@ -325,209 +338,119 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
             textAlign: TextAlign.center,
           ),
         ),
-        if (viewModel.showProgressStampStrip) ...[
-          Padding(
-            padding: const EdgeInsets.only(left: 4, right: 4, bottom: 4),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  height: 48,
-                  child: _buildProgressStampRow(context, viewModel),
-                ),
-                const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: LinearProgressIndicator(
-                    value: () {
-                      if (viewModel.parallelImageSlotCount > 1 &&
-                          viewModel.liveProgress > 0) {
-                        return (viewModel.liveProgress / 100).clamp(0.0, 1.0);
-                      }
-                      return viewModel.generationRunDetailsProgress;
-                    }(),
-                    minHeight: 4,
-                    backgroundColor: Colors.white24,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ],
     );
   }
 
-  Widget _buildProgressStampRow(
-    BuildContext context,
+  /// Device capture (“In frame”) + core API stages + optional Branded/Signed + storage.
+  Widget _funnelPipelineStamp(
     PhotoGenerateViewModel viewModel,
+    PipelineFunnelSlot slot,
+    int index,
   ) {
-    final chips = <Widget>[];
-    final photo = viewModel.originalPhoto;
-    if (photo != null) {
-      chips.add(
-        _heroStampTile(
-          viewModel,
-          stampId: 'source',
-          tooltip: 'Your photo — tap to show full size in the frame',
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              width: 48,
-              height: 48,
-              child: photo_image.imageFromXFileSized(
-                photo.imageFile,
-                48,
-                48,
-                fit: BoxFit.cover,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-    for (var i = 0; i < viewModel.generationRunStepPreviews.length; i++) {
-      final step = viewModel.generationRunStepPreviews[i];
-      chips.add(
-        _runDetailStepStamp(viewModel, index: i, step: step),
-      );
-    }
-    if (viewModel.showSyntheticProgressStamps && photo != null) {
-      final h = viewModel.syntheticProgressHighlightIndex;
-      for (var i = 0; i < 4; i++) {
-        chips.add(
-          _syntheticHeroStampTile(
-            viewModel,
-            photo: photo,
-            phaseIndex: i,
-            highlightIndex: h,
-            tooltip: viewModel.syntheticStampTooltip(i),
-          ),
-        );
-      }
-    }
-    for (final stage in viewModel.progressivePipelineStages) {
-      final url = stage.previewImageUrl;
-      chips.add(
-        _heroStampTile(
-          viewModel,
-          stampId: 'stage:${stage.stepKey}',
-          tooltip: transformationStepDisplayLabel(stage.stepKey),
-          child: url != null && url.isNotEmpty
-              ? ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: CachedNetworkImage(
-                    imageUrl: SecureImageUrl.withSessionId(url),
-                    width: 48,
-                    height: 48,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.low,
-                  ),
-                )
-              : const SizedBox.shrink(),
-        ),
-      );
-    }
-    if (viewModel.liveSlotCount > 0) {
-      for (var i = 0; i < viewModel.liveSlots.length; i++) {
-        final slot = viewModel.liveSlots[i];
-        final url = slot.imageUrl;
-        chips.add(
-          _heroStampTile(
-            viewModel,
-            stampId: 'live:$i',
-            tooltip: slot.loading
-                ? 'Output ${i + 1} — generating'
-                : 'Output ${i + 1} — tap to preview',
-            child: slot.loading
-                ? _miniStampPlaceholderForLive(loading: true)
-                : slot.failed
-                    ? const Icon(Icons.error_outline,
-                        color: Colors.redAccent, size: 28)
-                    : url != null && url.isNotEmpty
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: CachedNetworkImage(
-                              imageUrl: SecureImageUrl.withSessionId(url),
-                              width: 48,
-                              height: 48,
-                              fit: BoxFit.cover,
-                              filterQuality: FilterQuality.low,
-                            ),
-                          )
-                        : _miniStampPlaceholderForLive(loading: false),
-          ),
-        );
-      }
-    }
-
-    final finalUrl = viewModel.newestGeneratedImageUrl;
-    if (finalUrl != null && finalUrl.trim().isNotEmpty) {
-      chips.add(
-        _heroStampTile(
-          viewModel,
-          stampId: 'final',
-          tooltip: 'Final — tap to preview',
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: CachedNetworkImage(
-              imageUrl: SecureImageUrl.withSessionId(finalUrl.trim()),
-              width: 48,
-              height: 48,
-              fit: BoxFit.cover,
-              filterQuality: FilterQuality.low,
-            ),
-          ),
-        ),
-      );
-    }
-    return ListView.separated(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      itemCount: chips.length,
-      separatorBuilder: (_, __) => const SizedBox(width: 8),
-      itemBuilder: (_, i) => chips[i],
-    );
-  }
-
-  Widget _runDetailStepStamp(
-    PhotoGenerateViewModel viewModel, {
-    required int index,
-    required GenerationRunStepPreview step,
-  }) {
-    final stampId = 'runDetail:$index';
+    const thumb = 60.0;
+    const outer = 68.0;
+    final stampId = 'funnel:$index';
     final selected = viewModel.selectedHeroStampId == stampId;
-    final url = step.previewUrl;
-    final label = transformationStepDisplayLabel(step.stage);
+    final url = slot.displayPreviewUrl;
+    final statusLabel = slot.isFinished
+        ? 'done'
+        : slot.isActive
+            ? 'in progress'
+            : slot.isPending
+                ? 'waiting'
+                : 'queued';
     final borderColor = selected
         ? CupertinoColors.systemBlue
-        : step.isFinished
+        : slot.isFinished
             ? Colors.lightGreenAccent.withValues(alpha: 0.85)
-            : step.isActive
+            : slot.isActive
                 ? CupertinoColors.activeBlue
                 : Colors.white30;
-    final borderW = selected ? 2.5 : (step.isActive ? 2.0 : 1.0);
+    final borderW = selected ? 2.5 : (slot.isActive ? 2.0 : 1.0);
+
     late final Widget inner;
-    if (url != null && url.isNotEmpty) {
+    if (slot.isDeviceCapture) {
+      final photo = viewModel.originalPhoto;
+      if (photo != null) {
+        inner = ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: thumb,
+            height: thumb,
+            child: photo_image.imageFromXFileSized(
+              photo.imageFile,
+              thumb,
+              thumb,
+              fit: BoxFit.cover,
+            ),
+          ),
+        );
+      } else {
+        inner = Icon(
+          transformationStepIcon(slot.stageKey),
+          color: Colors.white54,
+          size: 32,
+        );
+      }
+    } else if (url != null && url.isNotEmpty) {
       inner = ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: CachedNetworkImage(
           imageUrl: SecureImageUrl.withSessionId(url),
-          width: 48,
-          height: 48,
+          width: thumb,
+          height: thumb,
           fit: BoxFit.cover,
           filterQuality: FilterQuality.low,
         ),
       );
-    } else if (step.isFinished) {
+    } else if (slot.isMetadataOnlyStage && slot.isFinished) {
+      inner = Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(
+            transformationStepIcon(slot.stageKey),
+            color: Colors.white70,
+            size: 32,
+          ),
+          Positioned(
+            right: 1,
+            bottom: 1,
+            child: Icon(
+              Icons.check_circle,
+              color: Colors.lightGreenAccent.withValues(alpha: 0.95),
+              size: 18,
+            ),
+          ),
+        ],
+      );
+    } else if (slot.isMetadataOnlyStage && slot.isActive) {
+      inner = Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(
+            transformationStepIcon(slot.stageKey),
+            color: Colors.white60,
+            size: 32,
+          ),
+          const SizedBox(
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      );
+    } else if (slot.isFinished) {
       inner = const Icon(Icons.check_circle,
-          color: Colors.lightGreenAccent, size: 28);
-    } else if (step.isActive) {
+          color: Colors.lightGreenAccent, size: 32);
+    } else if (slot.isActive) {
       inner = const Center(
         child: SizedBox(
-          width: 22,
-          height: 22,
+          width: 26,
+          height: 26,
           child: CircularProgressIndicator(
             strokeWidth: 2,
             color: Colors.white,
@@ -535,19 +458,20 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         ),
       );
     } else {
-      inner = Icon(Icons.hourglass_empty,
-          color: Colors.white.withValues(alpha: 0.45), size: 24);
+      inner = Icon(Icons.image_outlined,
+          color: Colors.white.withValues(alpha: 0.35), size: 32);
     }
+
     return Tooltip(
-      message: '$label — ${step.status}',
+      message: '${slot.label} — $statusLabel',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () => viewModel.toggleHeroStamp(stampId),
           borderRadius: BorderRadius.circular(10),
           child: Container(
-            width: 52,
-            height: 52,
+            width: outer,
+            height: outer,
             padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
@@ -565,189 +489,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         ),
       ),
     );
-  }
-
-  /// Blurred / tinted miniatures of the capture so single-slot runs still show “in-between” visuals.
-  Widget _syntheticMiniThumb(
-    PhotoModel photo,
-    int phaseIndex,
-    int highlightIndex,
-  ) {
-    final isPast = phaseIndex < highlightIndex;
-    final isFuture = phaseIndex > highlightIndex;
-    final sigma = 0.35 + phaseIndex * 0.85;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        ImageFiltered(
-          imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-          child: ColorFiltered(
-            colorFilter: ColorFilter.mode(
-              Colors.deepPurple.withValues(alpha: isFuture ? 0.06 : 0.14),
-              BlendMode.softLight,
-            ),
-            child: Opacity(
-              opacity: isFuture ? 0.38 : 1.0,
-              child: photo_image.imageFromXFileSized(
-                photo.imageFile,
-                48,
-                48,
-                fit: BoxFit.cover,
-              ),
-            ),
-          ),
-        ),
-        if (isPast)
-          const Center(
-            child: Icon(
-              Icons.check_circle,
-              color: Colors.lightGreenAccent,
-              size: 22,
-            ),
-          ),
-        if (phaseIndex == highlightIndex)
-          const Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _syntheticHeroStampTile(
-    PhotoGenerateViewModel viewModel, {
-    required PhotoModel photo,
-    required int phaseIndex,
-    required int highlightIndex,
-    required String tooltip,
-  }) {
-    final stampId = 'synthetic:$phaseIndex';
-    final selected = viewModel.selectedHeroStampId == stampId;
-    final isCurrent = phaseIndex == highlightIndex;
-    final isPast = phaseIndex < highlightIndex;
-    final borderColor = selected
-        ? CupertinoColors.systemBlue
-        : isCurrent
-            ? CupertinoColors.activeBlue
-            : isPast
-                ? Colors.lightGreenAccent.withValues(alpha: 0.85)
-                : Colors.white30;
-    final borderW = selected ? 2.5 : (isCurrent ? 2.2 : 1.0);
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => viewModel.toggleHeroStamp(stampId),
-          borderRadius: BorderRadius.circular(10),
-          child: Container(
-            width: 52,
-            height: 52,
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(width: borderW, color: borderColor),
-              color: Colors.black.withValues(alpha: 0.35),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: ColoredBox(
-                color: Colors.black45,
-                child: _syntheticMiniThumb(photo, phaseIndex, highlightIndex),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _syntheticFullBleedHero(PhotoModel photo, int phaseIndex) {
-    final sigma = 1.2 + phaseIndex * 1.35;
-    return ColoredBox(
-      color: Colors.black,
-      child: Center(
-        child: ImageFiltered(
-          imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-          child: ColorFiltered(
-            colorFilter: ColorFilter.mode(
-              Colors.deepPurple.withValues(alpha: 0.18 + phaseIndex * 0.04),
-              BlendMode.softLight,
-            ),
-            child: photo_image.imageFromXFileSized(
-              photo.imageFile,
-              720,
-              1280,
-              fit: BoxFit.contain,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _heroStampTile(
-    PhotoGenerateViewModel viewModel, {
-    required String stampId,
-    required String tooltip,
-    required Widget child,
-  }) {
-    final selected = viewModel.selectedHeroStampId == stampId;
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => viewModel.toggleHeroStamp(stampId),
-          borderRadius: BorderRadius.circular(10),
-          child: Container(
-            width: 52,
-            height: 52,
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                width: selected ? 2.5 : 1,
-                color: selected
-                    ? CupertinoColors.systemBlue
-                    : Colors.white30,
-              ),
-              color: Colors.black.withValues(alpha: 0.35),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: ColoredBox(
-                color: Colors.black45,
-                child: child,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _miniStampPlaceholderForLive({required bool loading}) {
-    if (loading) {
-      return const Center(
-        child: SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: Colors.white,
-          ),
-        ),
-      );
-    }
-    return Icon(Icons.image_outlined,
-        color: Colors.white.withValues(alpha: 0.4), size: 26);
   }
 
   Widget? _generatingHeroUnderlay(PhotoGenerateViewModel vm) {
@@ -805,21 +546,26 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         }
       }
     }
-    if (id.startsWith('synthetic:')) {
-      final phase = int.tryParse(id.substring(10));
-      if (phase != null &&
-          phase >= 0 &&
-          phase <= 3 &&
-          vm.originalPhoto != null) {
-        return _syntheticFullBleedHero(vm.originalPhoto!, phase);
-      }
-    }
-    if (id.startsWith('runDetail:')) {
-      final idx = int.tryParse(id.substring(10));
+    if (id.startsWith('funnel:')) {
+      final idx = int.tryParse(id.substring(7));
       if (idx != null &&
           idx >= 0 &&
-          idx < vm.generationRunStepPreviews.length) {
-        final url = vm.generationRunStepPreviews[idx].previewUrl;
+          idx < vm.pipelineFunnelSlots.length) {
+        final slot = vm.pipelineFunnelSlots[idx];
+        if (slot.isDeviceCapture && vm.originalPhoto != null) {
+          return ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: photo_image.imageFromXFileSized(
+                vm.originalPhoto!.imageFile,
+                720,
+                1280,
+                fit: BoxFit.contain,
+              ),
+            ),
+          );
+        }
+        final url = slot.displayPreviewUrl;
         if (url != null && url.isNotEmpty) {
           return ColoredBox(
             color: Colors.black,
@@ -827,6 +573,41 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               child: CachedNetworkImage(
                 imageUrl: SecureImageUrl.withSessionId(url),
                 fit: BoxFit.contain,
+              ),
+            ),
+          );
+        }
+        if (slot.isMetadataOnlyStage && slot.isFinished) {
+          return ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    transformationStepIcon(slot.stageKey),
+                    color: Colors.white70,
+                    size: 72,
+                  ),
+                  const SizedBox(height: 16),
+                  const Icon(
+                    Icons.check_circle,
+                    color: Colors.lightGreenAccent,
+                    size: 48,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        if (slot.isFinished) {
+          return const ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: Icon(
+                Icons.check_circle,
+                color: Colors.lightGreenAccent,
+                size: 72,
               ),
             ),
           );
@@ -882,64 +663,46 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
 
       return Padding(
         padding: EdgeInsets.all(padding),
-        child: LayoutBuilder(
-          builder: (context, _) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, slot) {
-                      final w = slot.maxWidth.isFinite && slot.maxWidth > 0
-                          ? slot.maxWidth
-                          : maxWidth;
-                      return FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.center,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            ConstrainedBox(
-                              constraints: BoxConstraints(maxWidth: w),
-                              child: Column(
-                                key: _contentKey,
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.stretch,
-                                children: [
-                                  _buildPhotosDisplay(
-                                    context,
-                                    viewModel,
-                                    appColors,
-                                    isLandscape,
-                                    w.isFinite ? w : null,
-                                    viewportHeight,
-                                    true,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                if (hasFooter)
-                  SizedBox(
-                    height: footerH,
-                    child: Center(
-                      child: _buildPhotosActionFooter(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, slot) {
+                  final w = slot.maxWidth.isFinite && slot.maxWidth > 0
+                      ? slot.maxWidth
+                      : maxWidth;
+                  final contentW = w.isFinite ? w : null;
+                  return Align(
+                    alignment: Alignment.topCenter,
+                    child: SizedBox(
+                      width: contentW,
+                      child: _buildPhotosDisplay(
                         context,
                         viewModel,
                         appColors,
+                        isLandscape,
+                        contentW,
+                        viewportHeight,
+                        true,
                       ),
                     ),
+                  );
+                },
+              ),
+            ),
+            if (hasFooter)
+              SizedBox(
+                height: footerH,
+                child: Center(
+                  child: _buildPhotosActionFooter(
+                    context,
+                    viewModel,
+                    appColors,
                   ),
-              ],
-            );
-          },
+                ),
+              ),
+          ],
         ),
       );
     }
@@ -1120,10 +883,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         (MediaQuery.sizeOf(context).width - 2 * sectionPadding).clamp(0.0, double.infinity);
 
     const double cardGap = 10.0;
-    // Portrait uses the theme card ratio. Landscape uses per-image aspect to avoid black bars.
-    const double portraitAspect = AppConstants.kThemeSelectedCardAspectRatio;
-    const double fallbackLandscapeAspect = 16 / 9;
-    final double aspect = isLandscape ? fallbackLandscapeAspect : portraitAspect;
+    // Printing target is 6×4 => 3:2. Keep the generation/review canvas aligned to print.
+    const double aspect = 3 / 2;
 
     final bool isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
     final bool isLoadingMore = viewModel.isLoadingMore;
@@ -1227,6 +988,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               ? 'Your masterpiece is ready'
               : '';
 
+      final wideStoryLayout = MediaQuery.sizeOf(context).width >= 980;
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1254,9 +1016,45 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
+              if (hasImages && !isGeneratingOrLoading) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Generated in ${viewModel.elapsedSeconds}s',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
               const SizedBox(height: 18),
             ],
-            Center(child: slots.first),
+            if (isGeneratingOrLoading && !hasImages) ...[
+              // In-progress uses the same hero card visual language as final output.
+              _buildGenerationProgressHeroCard(
+                context,
+                viewModel,
+                width: maxW,
+                height: cardH,
+              ),
+            ] else if (wideStoryLayout && isGeneratingOrLoading) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Center(child: slots.first),
+                  const SizedBox(width: 18),
+                  _buildGenerationStoryCard(context, viewModel),
+                ],
+              ),
+            ] else ...[
+              Center(child: slots.first),
+              if (isGeneratingOrLoading) ...[
+                const SizedBox(height: 18),
+                _buildGenerationStoryCard(context, viewModel),
+              ],
+            ],
             if ((hasImages || isGenerating || isLoadingMore) &&
                 !fixedFooterOutside) ...[
               const SizedBox(height: 18),
@@ -2048,4 +1846,515 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     );
   }
 
+  Widget _buildGenerationStoryCard(
+    BuildContext context,
+    PhotoGenerateViewModel vm,
+  ) {
+    final slots = vm.pipelineFunnelSlots;
+    if (slots.isEmpty) return const SizedBox.shrink();
+    final screenW = MediaQuery.sizeOf(context).width;
+    final maxW = math.min(screenW * 0.44, 560.0);
+
+    // ThemeCard-like visual language (kiosk presentation).
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxW),
+      child: Card(
+        elevation: 10,
+        shadowColor: CupertinoColors.systemBlue.withValues(alpha: 0.22),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: Color(0xFF4A4A4A), width: 1.5),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.black.withValues(alpha: 0.78),
+                Colors.black.withValues(alpha: 0.52),
+              ],
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Icon(CupertinoIcons.sparkles,
+                        color: Colors.white70, size: 18),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'AI generation',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${(vm.pipelineFunnelProgress * 100).round()}%',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 68,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: slots.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (_, i) => _funnelPipelineStamp(vm, slots[i], i),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: vm.pipelineFunnelProgress,
+                    minHeight: 10,
+                    backgroundColor: Colors.white24,
+                    color: CupertinoColors.systemBlue,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  vm.progressMessage.isNotEmpty
+                      ? vm.progressMessage
+                      : 'Transforming your look…',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    height: 1.2,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.left,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGenerationProgressHeroCard(
+    BuildContext context,
+    PhotoGenerateViewModel vm, {
+    required double width,
+    required double height,
+  }) {
+    // Use the same hero frame as the final image card; swap the "content" inside.
+    final preprocessUrl = _previewForStage(vm, 'preprocessing');
+    final bgUrl = _previewForStage(vm, 'background_removal');
+    final aiUrl = _previewForStage(vm, 'ai_generation');
+
+    int index = 0;
+    String stageTitle = '2 · CAPTURE';
+    String headline = 'Got it';
+    String description = 'Frozen frame, framing applied';
+    String? imageUrl;
+    bool checker = false;
+    Widget? localFallback;
+    Widget? bottomAccessory;
+
+    if (vm.originalPhoto != null) {
+      localFallback = photo_image.imageFromXFileSized(
+        vm.originalPhoto!.imageFile,
+        1280,
+        1280,
+        fit: BoxFit.contain,
+      );
+    }
+
+    if (aiUrl != null) {
+      index = 3;
+      stageTitle = '4 · REVEAL';
+      headline = 'Rendering';
+      description = 'AI is applying your style';
+      imageUrl = aiUrl;
+      bottomAccessory = _buildPostRevealPolishingOverlay(context, vm);
+    } else if (bgUrl != null) {
+      index = 2;
+      stageTitle = '3 · ISOLATE';
+      headline = 'Background removed';
+      description = 'Subject isolated, ready to render';
+      imageUrl = bgUrl;
+      checker = true;
+    } else if (preprocessUrl != null) {
+      index = 1;
+      stageTitle = '2 · CAPTURE';
+      headline = 'Got it';
+      description = 'Frozen frame, framing applied';
+      imageUrl = preprocessUrl;
+    } else {
+      index = 0;
+      stageTitle = '1 · DETECT';
+      headline = 'Face locked';
+      description = 'Live preview';
+    }
+
+    Widget imageLayer() {
+      if (imageUrl != null) {
+        return CachedNetworkImage(
+          imageUrl: SecureImageUrl.withSessionId(imageUrl),
+          // Match final image card behavior: show the full render in-frame.
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.medium,
+          placeholder: localFallback ??
+              const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+          errorWidget: localFallback,
+        );
+      }
+      return localFallback ?? const SizedBox.shrink();
+    }
+
+    // Important UX: keep the photo canvas clean (no UI overlays).
+    // All progress/status UI lives around the canvas, not on top of it.
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: width),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  stageTitle,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                  ),
+                  textAlign: TextAlign.left,
+                ),
+                const SizedBox(height: 8),
+                _storyboardTopBars(activeIndex: index),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: width,
+            height: height,
+            child: _transformedSlotFrame(
+              cardWidth: width,
+              cardHeight: height,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (checker)
+                    _checkerboardBackground()
+                  else
+                    const ColoredBox(color: Colors.black),
+                  Positioned.fill(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeOutCubic,
+                      transitionBuilder: (child, anim) {
+                        final fade = CurvedAnimation(
+                          parent: anim,
+                          curve: Curves.easeOut,
+                        );
+                        final scale =
+                            Tween<double>(begin: 0.985, end: 1.0).animate(fade);
+                        return FadeTransition(
+                          opacity: fade,
+                          child: ScaleTransition(scale: scale, child: child),
+                        );
+                      },
+                      child: KeyedSubtree(
+                        key: ValueKey<String>(imageUrl ?? 'local_$index'),
+                        child: imageLayer(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  headline,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  description,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    height: 1.2,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '${vm.elapsedSeconds}s',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                if (bottomAccessory != null) ...[
+                  const SizedBox(height: 12),
+                  bottomAccessory,
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String? _previewForStage(PhotoGenerateViewModel vm, String stageKey) {
+    final want = stageKey.trim().toLowerCase();
+    for (final s in vm.generationRunStepPreviews) {
+      final key = canonicalPipelineStageKey(s.stage);
+      if (key == want && (s.previewUrl ?? '').trim().isNotEmpty) {
+        return s.previewUrl!.trim();
+      }
+    }
+    return null;
+  }
+
+  Widget _buildPostRevealPolishingOverlay(
+    BuildContext context,
+    PhotoGenerateViewModel vm,
+  ) {
+    // After REVEAL (ai_generation preview), keep users engaged by showing truthful
+    // post-processing mechanics as `steps[]` advances.
+    final steps = vm.generationRunStepPreviews;
+    if (steps.isEmpty) return const SizedBox.shrink();
+
+    final byStage = <String, GenerationRunStepPreview>{};
+    for (final s in steps) {
+      byStage[canonicalPipelineStageKey(s.stage)] = s;
+    }
+
+    const polishOrder = <String>[
+      'scene_lighting',
+      'face_relight',
+      'frame_composite',
+      'upscaling',
+      'exif_stamp',
+      'c2pa_sign',
+      'storage',
+    ];
+
+    String? activeKey;
+    for (final k in polishOrder) {
+      final s = byStage[k];
+      if (s != null && s.isActive) {
+        activeKey = k;
+        break;
+      }
+    }
+    activeKey ??= byStage['storage']?.isFinished == true
+        ? 'storage'
+        : (polishOrder.firstWhere(
+            (k) => byStage[k]?.isFinished != true,
+            orElse: () => 'storage',
+          ));
+
+    String copyFor(String k) {
+      switch (k) {
+        case 'scene_lighting':
+          return 'Matching scene lighting';
+        case 'face_relight':
+          return 'Relighting your face';
+        case 'frame_composite':
+          return 'Adding your frame';
+        case 'upscaling':
+          return 'Sharpening for print';
+        case 'exif_stamp':
+          return 'Branding';
+        case 'c2pa_sign':
+          return 'Signing authenticity';
+        case 'storage':
+          return 'Preparing print file';
+        default:
+          return transformationStepDisplayLabel(k);
+      }
+    }
+
+    Widget stageChip(String k) {
+      final s = byStage[k];
+      final finished = s?.isFinished == true;
+      final active = s?.isActive == true;
+      final color = active
+          ? CupertinoColors.activeBlue
+          : finished
+              ? Colors.lightGreenAccent.withValues(alpha: 0.9)
+              : Colors.white30;
+      final icon = finished
+          ? Icons.check_circle
+          : active
+              ? Icons.autorenew
+              : Icons.more_horiz;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: 0.85), width: 1.2),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Text(
+              copyFor(k),
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Sits in the storyboard’s bottom column (not centered on the photo).
+    // Elapsed time stays on the frame’s corner badge to avoid duplicate timers.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.55),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(CupertinoIcons.wand_stars,
+                      color: Colors.white70, size: 15),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Finishing touches · ${copyFor(activeKey)}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (var i = 0; i < polishOrder.length; i++) ...[
+                      if (i != 0) const SizedBox(width: 8),
+                      stageChip(polishOrder[i]),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _storyboardTopBars({required int activeIndex}) {
+    const total = 4;
+    return SizedBox(
+      height: 10,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (var i = 0; i < total; i++) ...[
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              width: i == activeIndex ? 42 : 22,
+              height: 6,
+              decoration: BoxDecoration(
+                color: i <= activeIndex
+                    ? CupertinoColors.systemBlue
+                    : Colors.white24,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            if (i != total - 1) const SizedBox(width: 10),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _checkerboardBackground() {
+    // Lightweight checkerboard (no assets) for “transparent bg” feel.
+    return CustomPaint(
+      painter: _CheckerPainter(),
+      child: const SizedBox.expand(),
+    );
+  }
+
+}
+
+class _CheckerPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    const cell = 22.0;
+    final paintA = Paint()..color = const Color(0xFF2A2A2A);
+    final paintB = Paint()..color = const Color(0xFF1E1E1E);
+    for (double y = 0; y < size.height; y += cell) {
+      for (double x = 0; x < size.width; x += cell) {
+        final isA = ((x / cell).floor() + (y / cell).floor()) % 2 == 0;
+        canvas.drawRect(Rect.fromLTWH(x, y, cell, cell), isA ? paintA : paintB);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

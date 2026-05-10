@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
+import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import 'transformation_details_viewmodel.dart';
 
@@ -76,6 +78,21 @@ class _RunBody extends StatelessWidget {
             .map((e) => Map<String, dynamic>.from(e))
             .toList()
         : <Map<String, dynamic>>[];
+    steps.sort((a, b) {
+      DateTime? parse(dynamic v) {
+        if (v is String && v.trim().isNotEmpty) {
+          return DateTime.tryParse(v.trim());
+        }
+        return null;
+      }
+
+      final ta = parse(a['startedAt']);
+      final tb = parse(b['startedAt']);
+      if (ta == null && tb == null) return 0;
+      if (ta == null) return 1;
+      if (tb == null) return -1;
+      return ta.compareTo(tb);
+    });
 
     final meta = run['metadata'] is Map
         ? Map<String, dynamic>.from(run['metadata'] as Map)
@@ -201,16 +218,40 @@ class _RunBody extends StatelessWidget {
     final label = transformationStepDisplayLabel(stage);
     final status = s['status']?.toString() ?? '';
     final ms = s['durationMs'];
+    final previewUrl = SecureImageUrl.previewUrlFromStepMap(s);
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ExpansionTile(
-        leading: Icon(transformationStepIcon(stage)),
+        leading: previewUrl != null && previewUrl.isNotEmpty
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CachedNetworkImage(
+                  imageUrl: SecureImageUrl.withSessionId(previewUrl),
+                  width: 48,
+                  height: 48,
+                  fit: BoxFit.cover,
+                  filterQuality: FilterQuality.low,
+                ),
+              )
+            : Icon(transformationStepIcon(stage)),
         title: Text(label),
         subtitle: Text(
           '$status${ms != null ? ' · $ms ms' : ''}',
           style: const TextStyle(fontSize: 12),
         ),
         children: [
+          if (previewUrl != null && previewUrl.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: CachedNetworkImage(
+                  imageUrl: SecureImageUrl.withSessionId(previewUrl),
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          ],
           if (s['inputData'] != null)
             _jsonBlock(context, 'Input', s['inputData']),
           if (s['outputData'] != null)

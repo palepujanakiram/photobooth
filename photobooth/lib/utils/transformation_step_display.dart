@@ -4,19 +4,23 @@ import 'package:flutter/material.dart';
 ///
 /// Unknown stages fall back to the raw [stage] string at call sites.
 const Map<String, String> kTransformationStepDisplayLabels = {
-  'preprocess': 'Preprocessing',
-  'ai': 'AI generation',
-  'ai_generation': 'AI generation',
+  // Leading client-only funnel slot (live capture in the booth frame).
+  'device_capture': 'In frame',
+  // Funnel labels (aligned with backend `stage` strings + per-stage CDN previews).
+  'preprocessing': 'Captured',
+  'preprocess': 'Captured',
+  'background_removal': 'Cut out',
+  'ai': 'AI rendered',
+  'ai_generation': 'AI rendered',
+  'scene_lighting': 'Lit',
+  'face_relight': 'Relit',
+  'frame_composite': 'Framed',
+  'exif_stamp': 'Branded',
+  'c2pa_sign': 'Signed',
+  'storage': 'Ready to print',
   'upscale': 'Upscale',
   'depth_enhance': 'Depth enhance',
-  'scene_lighting': 'Scene lighting',
-  'face_relight': 'Face relight',
   'image_enhance': 'Image enhance',
-  'storage': 'Storage',
-  'background_removal': 'Background removal',
-  'frame_composite': 'Frame composite',
-  'exif_stamp': 'EXIF stamp',
-  'c2pa_sign': 'C2PA signing',
 };
 
 String transformationStepDisplayLabel(String stage) {
@@ -27,8 +31,11 @@ String transformationStepDisplayLabel(String stage) {
 
 IconData transformationStepIcon(String stage) {
   switch (stage.trim()) {
+    case 'device_capture':
+      return Icons.crop_portrait;
+    case 'preprocessing':
     case 'preprocess':
-      return Icons.tune;
+      return Icons.crop_free;
     case 'ai':
     case 'ai_generation':
       return Icons.auto_awesome;

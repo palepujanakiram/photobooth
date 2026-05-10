@@ -20,6 +20,7 @@ import 'screens/theme_selection/theme_selection_view.dart';
 import 'screens/photo_capture/photo_capture_view.dart';
 import 'screens/frame_select/frame_select_view.dart';
 import 'screens/photo_generate/photo_generate_view.dart';
+import 'screens/photo_generate/photo_generate_progress_view.dart';
 import 'screens/photo_review/photo_review_view.dart';
 import 'screens/result/result_view.dart';
 import 'screens/qr_share/qr_share_view.dart';
@@ -447,6 +448,8 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
           AppConstants.kRouteFrameSelect: (context) =>
               const FrameSelectScreen(),
           AppConstants.kRouteGenerate: (context) => const PhotoGenerateScreen(),
+          AppConstants.kRouteGenerateProgress: (context) =>
+              const PhotoGenerateProgressScreen(),
           AppConstants.kRouteReview: (context) => const PhotoReviewScreen(),
           AppConstants.kRouteResult: (context) => const ResultScreen(),
           AppConstants.kRouteQrShare: (context) => const QrShareScreen(),

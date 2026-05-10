@@ -213,6 +213,7 @@ class AppConstants {
   /// Kiosk: choose occasion frame (or none) after theme, before generation.
   static const String kRouteFrameSelect = '/frame-select';
   static const String kRouteGenerate = '/generate';
+  static const String kRouteGenerateProgress = '/generate-progress';
   static const String kRouteReview = '/review';
   static const String kRouteResult = '/result';
   static const String kRouteThankYou = '/thank-you';

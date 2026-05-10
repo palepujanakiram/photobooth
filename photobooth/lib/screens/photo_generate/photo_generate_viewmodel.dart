@@ -15,10 +15,83 @@ import '../../services/generation_display_preferences.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 
 /// Best-effort: session JSON may expose an in-flight generation run id (server-dependent).
+/// Normalizes API `step.stage` to keys in [kPipelineFunnelRecognizedStageKeys].
+String canonicalPipelineStageKey(String raw) {
+  final s = raw.trim().toLowerCase();
+  switch (s) {
+    case 'preprocess':
+      return 'preprocessing';
+    case 'ai':
+      return 'ai_generation';
+    default:
+      return s;
+  }
+}
+
+/// Core API stages always shown (pending until `steps[]` includes them).
+const List<String> kPipelineFunnelCoreStages = [
+  'preprocessing',
+  'background_removal',
+  'ai_generation',
+  'scene_lighting',
+  'face_relight',
+  'frame_composite',
+];
+
+/// Metadata-only stages: only add a stamp if the step exists in `steps[]` (no reserved slot).
+const List<String> kPipelineFunnelOptionalMetadataStages = [
+  'exif_stamp',
+  'c2pa_sign',
+];
+
+const String kPipelineFunnelStorageStage = 'storage';
+
+/// API `stage` keys the funnel strip understands (others ignored).
+const Set<String> kPipelineFunnelRecognizedStageKeys = {
+  ...kPipelineFunnelCoreStages,
+  ...kPipelineFunnelOptionalMetadataStages,
+  kPipelineFunnelStorageStage,
+};
+
+const Set<String> kPipelineFunnelMetadataOnlyStages = {
+  'exif_stamp',
+  'c2pa_sign',
+};
+
+/// Client-only leading slot: booth capture (shown before server `preprocessing`).
+const String kPipelineDeviceCaptureStageKey = 'device_capture';
+
+/// One slot in the pipeline strip (device capture + core + optional metadata + storage).
+class PipelineFunnelSlot {
+  const PipelineFunnelSlot({
+    required this.stageKey,
+    required this.label,
+    this.displayPreviewUrl,
+    required this.isPending,
+    required this.isActive,
+    required this.isFinished,
+    this.isDeviceCapture = false,
+    this.isMetadataOnlyStage = false,
+  });
+
+  final String stageKey;
+  final String label;
+  /// Deduped preview: null if no API image yet, or same pixels as the previous slot.
+  final String? displayPreviewUrl;
+  final bool isPending;
+  final bool isActive;
+  final bool isFinished;
+  /// True for [kPipelineDeviceCaptureStageKey] — use [PhotoModel.imageFile] in the view.
+  final bool isDeviceCapture;
+  /// EXIF / C2PA: usually no [displayPreviewUrl]; show badge UI instead of expecting pixels.
+  final bool isMetadataOnlyStage;
+}
+
 String? parseActiveTransformationRunIdFromSession(Map<String, dynamic>? m) {
   if (m == null) return null;
   for (final key in [
     'activeTransformationRunId',
+    'active_transformation_run_id',
     'currentTransformationRunId',
     'transformationRunId',
     'pendingRunId',
@@ -176,6 +249,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   Timer? _generationRunPollTimer;
   String? _polledTransformationRunId;
   List<GenerationRunStepPreview> _generationRunStepPreviews = [];
+  bool _generationRunPollInFlight = false;
 
   PhotoGenerateViewModel({
     ApiService? apiService,
@@ -220,55 +294,15 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   String? get selectedHeroStampId => _selectedHeroStampId;
 
-  /// Stamp-sized thumbnails under "Your AI-transformed portrait awaits" while generating.
-  /// Not tied to the compact/timeline layout toggle so single-slot runs still get progress UI.
+  /// Fixed pipeline stamps under “Your AI-transformed portrait awaits” (in-frame capture + 7 API stages).
+  /// Stays visible after generation until the user leaves (funnel state is preserved).
   bool get showProgressStampStrip {
     if (_originalPhoto == null) return false;
     if (_isGenerating || _isLoadingMore) return true;
-
-    // Keep the strip visible after completion so users can still “scrub” what happened,
-    // and see the final output thumbnail alongside the pipeline.
-    return _generatedImages.isNotEmpty &&
-        (_generationRunStepPreviews.isNotEmpty ||
-            _progressivePipelineStages.isNotEmpty ||
-            (_lastTransformationRunId != null &&
-                _lastTransformationRunId!.trim().isNotEmpty));
-  }
-
-  static const List<String> _kSyntheticStampTooltips = [
-    'Prep — getting your photo ready',
-    'Analyze — reading pose and light',
-    'Transform — AI is applying your style',
-    'Finish — refining details',
-  ];
-
-  /// POST `/api/generate-image` (parallel count 1) has no SSE step thumbnails — we still show
-  /// a timed “processing” strip using your capture so the screen isn’t empty until the final image.
-  bool get showSyntheticProgressStamps =>
-      (_isGenerating || _isLoadingMore) &&
-      _parallelSlotCount == 1 &&
-      _progressivePipelineStages.isEmpty &&
-      !_hasServerRunDetailThumbnails;
-
-  bool get _hasServerRunDetailThumbnails =>
-      _generationRunStepPreviews.any(
-        (e) => e.previewUrl != null && e.previewUrl!.trim().isNotEmpty,
-      );
-
-  /// Highlighted synthetic step 0..3 from elapsed time (updates every second via generation timer).
-  int get syntheticProgressHighlightIndex {
-    final t = _elapsedSeconds;
-    if (t < 4) return 0;
-    if (t < 14) return 1;
-    if (t < 38) return 2;
-    return 3;
-  }
-
-  String syntheticStampTooltip(int index) {
-    if (index < 0 || index >= _kSyntheticStampTooltips.length) {
-      return 'Processing';
-    }
-    return _kSyntheticStampTooltips[index];
+    return hasGeneratedImages ||
+        _generationRunStepPreviews.isNotEmpty ||
+        (_lastTransformationRunId != null &&
+            _lastTransformationRunId!.trim().isNotEmpty);
   }
 
   List<GenerationRunStepPreview> get generationRunStepPreviews =>
@@ -280,15 +314,81 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     return _generatedImages.first.imageUrl;
   }
 
-  /// 0–1 from transformation run steps (`complete` / `failed` / … count as done).
-  double? get generationRunDetailsProgress {
-    if (_generationRunStepPreviews.isEmpty) return null;
-    final n = _generationRunStepPreviews.length;
-    var done = 0;
-    for (final e in _generationRunStepPreviews) {
-      if (e.isFinished) done++;
+  /// In-frame capture (optional) + core stages + conditional EXIF/C2PA + storage.
+  List<PipelineFunnelSlot> get pipelineFunnelSlots {
+    final byStage = <String, GenerationRunStepPreview>{};
+    for (final s in _generationRunStepPreviews) {
+      final key = canonicalPipelineStageKey(s.stage);
+      if (!kPipelineFunnelRecognizedStageKeys.contains(key)) continue;
+      byStage[key] = s;
     }
-    return (done / n).clamp(0.0, 1.0);
+
+    // Option B: only show stages once we actually *see* them in `steps[]`.
+    // No placeholder slots for stages that never ran / haven't started yet.
+    final stageSequence = <String>[
+      for (final k in kPipelineFunnelCoreStages)
+        if (byStage.containsKey(k)) k,
+      if (byStage.containsKey('exif_stamp')) 'exif_stamp',
+      if (byStage.containsKey('c2pa_sign')) 'c2pa_sign',
+      if (byStage.containsKey(kPipelineFunnelStorageStage))
+        kPipelineFunnelStorageStage,
+    ];
+
+    String? lastShownUrl;
+    final out = <PipelineFunnelSlot>[];
+    if (_originalPhoto != null) {
+      out.add(PipelineFunnelSlot(
+        stageKey: kPipelineDeviceCaptureStageKey,
+        label: transformationStepDisplayLabel(kPipelineDeviceCaptureStageKey),
+        displayPreviewUrl: null,
+        isPending: false,
+        isActive: false,
+        isFinished: true,
+        isDeviceCapture: true,
+      ));
+    }
+    for (final stageKey in stageSequence) {
+      final step = byStage[stageKey];
+      final raw = step?.previewUrl?.trim();
+      final rawNonEmpty = raw != null && raw.isNotEmpty ? raw : null;
+
+      String? display;
+      if (rawNonEmpty != null) {
+        // Don't dedupe the frame overlay and final storage output; even if the URL
+        // coincidentally matches earlier, users expect to “see” these stages.
+        final noDedupe =
+            stageKey == 'frame_composite' || stageKey == kPipelineFunnelStorageStage;
+        if (noDedupe || lastShownUrl == null || rawNonEmpty != lastShownUrl) {
+          display = rawNonEmpty;
+          lastShownUrl = rawNonEmpty;
+        }
+      }
+
+      final isFinished = step?.isFinished ?? false;
+      final isActive = step?.isActive ?? false;
+      final isPending = step == null || (!isFinished && !isActive);
+      final isMeta = kPipelineFunnelMetadataOnlyStages.contains(stageKey);
+
+      out.add(PipelineFunnelSlot(
+        stageKey: stageKey,
+        label: transformationStepDisplayLabel(stageKey),
+        displayPreviewUrl: display,
+        isPending: isPending,
+        isActive: isActive,
+        isFinished: isFinished,
+        isDeviceCapture: false,
+        isMetadataOnlyStage: isMeta,
+      ));
+    }
+    return List<PipelineFunnelSlot>.unmodifiable(out);
+  }
+
+  /// 0–1: finished slots / total slots (dynamic if EXIF/C2PA omitted).
+  double get pipelineFunnelProgress {
+    final slots = pipelineFunnelSlots;
+    if (slots.isEmpty) return 0;
+    final done = slots.where((s) => s.isFinished).length;
+    return (done / slots.length).clamp(0.0, 1.0);
   }
 
   /// Progressive filmstrip + stage thumbs: only when pref is on **and** SSE runs (parallel > 1).
@@ -464,8 +564,10 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   Future<void> _pollGenerationRunTick() async {
     if (!_isGenerating && !_isLoadingMore) return;
+    if (_generationRunPollInFlight) return;
     final sid = _sessionManager.sessionId;
     if (sid == null) return;
+    _generationRunPollInFlight = true;
     try {
       if (_polledTransformationRunId == null ||
           _polledTransformationRunId!.trim().isEmpty) {
@@ -491,6 +593,8 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       }
     } catch (e) {
       AppLogger.debug('Generation run poll: $e');
+    } finally {
+      _generationRunPollInFlight = false;
     }
   }
 
@@ -499,20 +603,34 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   ) {
     final stepsRaw = payload['steps'];
     if (stepsRaw is! List) return [];
-    final out = <GenerationRunStepPreview>[];
+    final rows = <Map<String, dynamic>>[];
     for (final e in stepsRaw) {
       if (e is! Map) continue;
-      final s = Map<String, dynamic>.from(e);
-      final stage = s['stage']?.toString() ?? 'step';
-      final status = s['status']?.toString() ?? '';
-      final url = _extractStepPreviewUrl(s);
-      // Only show stages that have a visible image delta (thumbnail/preview/etc).
-      // If the backend didn't produce a preview for this stage, skip it so the timeline
-      // remains “all stamps, no filler”.
-      if (url == null || url.trim().isEmpty) continue;
-      out.add(GenerationRunStepPreview(stage: stage, status: status, previewUrl: url));
+      rows.add(Map<String, dynamic>.from(e));
     }
-    return out;
+    rows.sort((a, b) {
+      final ta = _parseStepStartedAt(a['startedAt']);
+      final tb = _parseStepStartedAt(b['startedAt']);
+      if (ta == null && tb == null) return 0;
+      if (ta == null) return 1;
+      if (tb == null) return -1;
+      return ta.compareTo(tb);
+    });
+    return [
+      for (final s in rows)
+        GenerationRunStepPreview(
+          stage: s['stage']?.toString() ?? 'step',
+          status: s['status']?.toString() ?? '',
+          previewUrl: SecureImageUrl.previewUrlFromStepMap(s),
+        ),
+    ];
+  }
+
+  DateTime? _parseStepStartedAt(dynamic v) {
+    if (v is String && v.trim().isNotEmpty) {
+      return DateTime.tryParse(v.trim());
+    }
+    return null;
   }
 
   bool _generationRunStepsEqual(
@@ -567,34 +685,43 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _progressivePipelineStages = [];
   }
 
+  /// Clears SSE/live slot noise but keeps [ _generationRunStepPreviews ] for the fixed funnel.
+  void _stopEphemeralGenerationUiPreservingFunnel() {
+    _stopGenerationRunPolling();
+    _polledTransformationRunId = null;
+    _liveProgress = 0;
+    _liveCurrentStep = null;
+    _liveStepDurationsMs.clear();
+    _liveAttempt = null;
+    _liveTotalAttempts = null;
+    _liveLastScore = null;
+    _liveCommentary = null;
+    _liveSlots = [];
+    _progressivePipelineStages = [];
+  }
+
+  Future<void> _refreshGenerationRunStepsNow() async {
+    final runId =
+        (_lastTransformationRunId ?? _polledTransformationRunId)?.trim();
+    if (runId == null || runId.isEmpty) return;
+    if (_generationRunPollInFlight) return;
+    _generationRunPollInFlight = true;
+    try {
+      final payload = await _apiService.fetchGenerationRun(runId);
+      final next = _parseGenerationRunStepsFromPayload(payload);
+      if (!_generationRunStepsEqual(_generationRunStepPreviews, next)) {
+        _generationRunStepPreviews = next;
+        notifyListeners();
+      }
+    } catch (e) {
+      AppLogger.debug('Generation run refresh: $e');
+    } finally {
+      _generationRunPollInFlight = false;
+    }
+  }
+
   String? _extractStepPreviewUrl(Map<String, dynamic> data) {
-    for (final key in ['thumbnailUrl', 'previewUrl', 'imageUrl']) {
-      final v = data[key];
-      if (v is String && v.trim().isNotEmpty) {
-        return SecureImageUrl.absolutize(v.trim());
-      }
-    }
-    final od = data['outputData'];
-    if (od is Map) {
-      final m = Map<String, dynamic>.from(od);
-      for (final key in ['thumbnailUrl', 'previewUrl', 'imageUrl', 'url']) {
-        final v = m[key];
-        if (v is String && v.trim().isNotEmpty) {
-          return SecureImageUrl.absolutize(v.trim());
-        }
-      }
-    }
-    final id = data['inputData'];
-    if (id is Map) {
-      final m = Map<String, dynamic>.from(id);
-      for (final key in ['thumbnailUrl', 'previewUrl', 'imageUrl', 'url']) {
-        final v = m[key];
-        if (v is String && v.trim().isNotEmpty) {
-          return SecureImageUrl.absolutize(v.trim());
-        }
-      }
-    }
-    return null;
+    return SecureImageUrl.previewUrlFromStepMap(data);
   }
 
   void _upsertProgressiveStage(
@@ -772,6 +899,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       return false;
     }
 
+    var succeeded = false;
     _resetCancellation();
     _resetLiveGenerationState();
     _isGenerating = true;
@@ -815,8 +943,21 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
       _stopTimer();
 
+      // If the user pressed back/cancel while the request was in-flight, ignore late results.
+      if (_isCancelled) {
+        AppLogger.debug('🚫 Generation result ignored (cancelled)');
+        return false;
+      }
+
       if (parallel.firstImageUrl != null) {
+        succeeded = true;
         _lastTransformationRunId = parallel.runId;
+        // Refresh run steps ASAP so the storyboard can show REVEAL before we flip to final.
+        // Best-effort and bounded; never blocks completion for long.
+        try {
+          await _refreshGenerationRunStepsNow()
+              .timeout(const Duration(milliseconds: 900));
+        } catch (_) {}
         final newImages = <GeneratedImage>[];
         for (var i = 0; i < parallel.imageUrlsBySlot.length; i++) {
           final url = parallel.imageUrlsBySlot[i];
@@ -862,7 +1003,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       _stopTimer();
       _isGenerating = false;
       _progressMessage = '';
-      _clearLiveGenerationUi();
+      if (succeeded) {
+        unawaited(_refreshGenerationRunStepsNow());
+        _stopEphemeralGenerationUiPreservingFunnel();
+      } else {
+        _clearLiveGenerationUi();
+      }
       notifyListeners();
     }
   }
@@ -882,6 +1028,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     if (_originalPhoto == null) return false;
     if (!_isLoadingMore && !canTryDifferentStyle) return false;
 
+    var succeeded = false;
     _resetCancellation();
     _resetLiveGenerationState();
     _isLoadingMore = true;
@@ -958,8 +1105,19 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
       _stopTimer();
 
+      // If the user pressed back/cancel while the request was in-flight, ignore late results.
+      if (_isCancelled) {
+        AppLogger.debug('🚫 Try-different-style result ignored (cancelled)');
+        return false;
+      }
+
       if (parallel.firstImageUrl != null) {
+        succeeded = true;
         _lastTransformationRunId = parallel.runId;
+        try {
+          await _refreshGenerationRunStepsNow()
+              .timeout(const Duration(milliseconds: 900));
+        } catch (_) {}
         final newImages = <GeneratedImage>[];
         for (var i = 0; i < parallel.imageUrlsBySlot.length; i++) {
           final url = parallel.imageUrlsBySlot[i];
@@ -1003,7 +1161,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       _stopTimer();
       _isLoadingMore = false;
       _progressMessage = '';
-      _clearLiveGenerationUi();
+      if (succeeded) {
+        unawaited(_refreshGenerationRunStepsNow());
+        _stopEphemeralGenerationUiPreservingFunnel();
+      } else {
+        _clearLiveGenerationUi();
+      }
       notifyListeners();
     }
   }
@@ -1095,7 +1258,8 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _isLoadingMore = false;
     _progressMessage = '';
     _clearLiveGenerationUi();
-    _errorMessage = 'Operation cancelled';
+    // User-initiated cancel: don't surface as an error snackbar.
+    _errorMessage = null;
     notifyListeners();
     AppLogger.debug('🚫 Operation cancelled by user');
   }
