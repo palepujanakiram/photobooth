@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../models/app_settings_model.dart';
 import '../utils/app_runtime_config.dart';
+import '../utils/constants.dart';
 import '../utils/logger.dart';
 import 'alice_inspector.dart';
 import 'api_service.dart';
@@ -22,6 +23,15 @@ class AppSettingsManager extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   DateTime? get lastFetchedAt => _lastFetchedAt;
+
+  /// `/api/settings` → `parallelImageCount`, clamped. Drives POST vs parallel SSE in [ApiService.generateImages].
+  int resolveParallelImageCount() {
+    final raw = _settings?.parallelImageCount;
+    final base = (raw != null && raw > 0)
+        ? raw
+        : AppConstants.kAiParallelGenerationCount;
+    return base.clamp(1, AppConstants.kMaxParallelImageSlots);
+  }
 
   Future<void> fetchSettings({bool forceRefresh = false}) async {
     if (!forceRefresh && _settings != null) {

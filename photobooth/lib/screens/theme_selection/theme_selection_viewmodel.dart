@@ -29,16 +29,13 @@ class ThemeViewModel extends ChangeNotifier {
   })  : _themeManager = themeManager ?? ThemeManager(),
         _apiService = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager() {
-    // Listen to ThemeManager updates
+    // Listen to ThemeManager updates; [addListener] returns an unsubscribe callback.
     _themeManagerListener = _themeManager.addListener(_onThemesUpdated);
   }
 
   @override
   void dispose() {
-    // Remove listener when ViewModel is disposed
-    if (_themeManagerListener != null) {
-      _themeManager.removeListener(_themeManagerListener!);
-    }
+    _themeManagerListener?.call();
     super.dispose();
   }
 
@@ -312,6 +309,64 @@ class ThemeViewModel extends ChangeNotifier {
       return false;
     } catch (e) {
       _errorMessage = 'Failed to update session with theme: ${e.toString()}';
+      return false;
+    } finally {
+      _isUpdatingSession = false;
+      notifyListeners();
+    }
+  }
+
+  /// Kiosk frame count for routing after theme. Returns **≥ 0** when the API succeeded;
+  /// **-1** when frames cannot be queried (e.g. missing kiosk context) — caller should open
+  /// [FrameSelectScreen] so existing error UI can run.
+  Future<int> loadKioskFrameCountForGate() async {
+    try {
+      final frames = await _apiService.getKioskFrames();
+      return frames.length;
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  /// Clears occasion frame on the session when we skip the frame picker (&lt; 2 frames).
+  /// Matches [FrameSelectViewModel.patchSelectedFrameAndSyncSession] auto path.
+  Future<bool> syncAutoSkippedFrameSelection() async {
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null) {
+      _errorMessage = 'No active session.';
+      notifyListeners();
+      return false;
+    }
+
+    _isUpdatingSession = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      const updateTimeout = Duration(seconds: 30);
+      final response = await _apiService
+          .updateSession(
+            sessionId: sessionId,
+            includeSelectedFrameId: true,
+            selectedFrameId: null,
+          )
+          .timeout(
+            updateTimeout,
+            onTimeout: () => throw TimeoutException(
+              'Update session timed out after ${updateTimeout.inSeconds} seconds',
+            ),
+          );
+      _sessionManager.setSessionFromResponse(response);
+      return true;
+    } on TimeoutException {
+      _errorMessage =
+          'Request took too long. Please check your connection and try again.';
+      return false;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
       return false;
     } finally {
       _isUpdatingSession = false;

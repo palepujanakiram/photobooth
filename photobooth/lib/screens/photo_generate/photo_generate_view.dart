@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/cupertino.dart' show CupertinoButton, CupertinoColors, CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/app_settings_manager.dart';
+import '../../services/kiosk_manager.dart';
 import 'photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
 import '../../utils/constants.dart';
@@ -35,6 +37,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   bool _isInitialized = false;
   final GlobalKey _contentKey = GlobalKey();
 
+  bool? _paymentsEnabledOverride;
+
   /// At most one zoomed slot: null or a [GeneratedImage.id].
   String? _zoomedSlotId;
 
@@ -51,11 +55,18 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         appSettingsManager: context.read<AppSettingsManager>(),
       );
       _viewModelCreated = true;
+      unawaited(_loadPaymentEnablement());
     }
     if (!_isInitialized) {
       _initializeFromArguments();
       _isInitialized = true;
     }
+  }
+
+  Future<void> _loadPaymentEnablement() async {
+    final v = await KioskManager().getPaymentEnabledOverride();
+    if (!mounted) return;
+    setState(() => _paymentsEnabledOverride = v);
   }
 
   void _initializeFromArguments() {
@@ -397,6 +408,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     PhotoGenerateViewModel viewModel,
     AppColors appColors,
   ) {
+    final paymentsEnabled = _paymentsEnabledOverride ?? true;
     final canAddMoreStyle = viewModel.canShowAddAnotherStyleButton;
     final isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
     final isLoadingMore = viewModel.isLoadingMore;
@@ -422,9 +434,17 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                     if (selectedImages.isEmpty) return;
 
                     final routerContext = context;
-                    final contact = await showContactBeforePaySheet(routerContext);
-                    if (!routerContext.mounted) return;
-                    if (contact == null) return;
+                    String customerName = '';
+                    String customerPhone = '';
+                    bool customerWhatsappOptIn = false;
+                    if (paymentsEnabled) {
+                      final contact = await showContactBeforePaySheet(routerContext);
+                      if (!routerContext.mounted) return;
+                      if (contact == null) return;
+                      customerName = contact.customerName;
+                      customerPhone = contact.customerPhone;
+                      customerWhatsappOptIn = contact.whatsappOptIn;
+                    }
 
                     await Navigator.pushNamed(
                       routerContext,
@@ -432,9 +452,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                       arguments: {
                         'generatedImages': selectedImages,
                         'originalPhoto': viewModel.originalPhoto,
-                        'customerName': contact.customerName,
-                        'customerPhone': contact.customerPhone,
-                        'customerWhatsappOptIn': contact.whatsappOptIn,
+                        'customerName': customerName,
+                        'customerPhone': customerPhone,
+                        'customerWhatsappOptIn': customerWhatsappOptIn,
                       },
                     );
                   }
@@ -450,7 +470,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               ),
             ),
           ),
-          if (viewModel.selectedCount > 0) ...[
+          if (paymentsEnabled && viewModel.selectedCount > 0) ...[
             const SizedBox(height: 10),
             Center(
               child: Text(

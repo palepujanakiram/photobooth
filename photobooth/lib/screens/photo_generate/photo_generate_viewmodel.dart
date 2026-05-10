@@ -6,6 +6,7 @@ import '../../services/session_manager.dart';
 import '../photo_capture/photo_model.dart';
 import '../theme_selection/theme_model.dart';
 import '../../utils/constants.dart';
+import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 
@@ -130,6 +131,14 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         : AppConstants.kDefaultMaxRegenerations;
   }
 
+  /// 1-based attempt for POST `/api/generate-image` when `parallelImageCount` is 1.
+  int get _nextGenerateAttempt =>
+      _maxRegenerationsAllowed - _triesRemaining + 1;
+
+  int get _parallelSlotCount =>
+      _appSettingsManager?.resolveParallelImageCount() ??
+      AppConstants.kAiParallelGenerationCount;
+
   /// Initialize with photo and theme
   void initialize(PhotoModel photo, ThemeModel theme) {
     _refreshMaxRegenerationsFromSettings();
@@ -175,18 +184,22 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _startTimer();
 
     try {
+      try {
+        await _appSettingsManager?.fetchSettings();
+      } catch (_) {
+        // Use [resolveParallelImageCount] fallback if settings unavailable.
+      }
       AppLogger.debug('🎨 Starting image generation with theme: ${_selectedTheme!.name}');
       ErrorReportingManager.log('Starting image generation');
       
       _updateProgress('Transforming your look...');
-      
-      // Parallel SSE generation (GET /api/generate-stream-parallel); legacy POST
-      // /api/generate-image remains on [ApiService.generateImage] if needed later.
+
       const generateTimeout = Duration(seconds: 120);
       final parallel = await _apiService
-          .generateImageParallelStream(
+          .generateImages(
         sessionId: _sessionManager.sessionId!,
-        count: AppConstants.kAiParallelGenerationCount,
+        count: _parallelSlotCount,
+        attempt: _nextGenerateAttempt,
         originalPhotoId: _originalPhoto!.id,
         themeId: _selectedTheme!.id,
         onProgress: (message) {
@@ -239,7 +252,9 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         reason: 'Image generation failed',
       );
       
-      _errorMessage = 'Generation failed: ${e.toString()}';
+      _errorMessage = e is ApiException
+          ? 'Generation failed: ${e.userFacingMessage}'
+          : 'Generation failed: ${e.toString()}';
       return false;
     } finally {
       _stopTimer();
@@ -273,6 +288,9 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _startTimer();
 
     try {
+      try {
+        await _appSettingsManager?.fetchSettings();
+      } catch (_) {}
       // Update session with new theme
       _selectedTheme = newTheme;
       
@@ -299,12 +317,13 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       }
       
       _updateProgress('Transforming your look...');
-      
+
       const generateTimeout = Duration(seconds: 120);
       final parallel = await _apiService
-          .generateImageParallelStream(
+          .generateImages(
         sessionId: _sessionManager.sessionId!,
-        count: AppConstants.kAiParallelGenerationCount,
+        count: _parallelSlotCount,
+        attempt: _nextGenerateAttempt,
         originalPhotoId: _originalPhoto!.id,
         themeId: newTheme.id,
         onProgress: (message) {
@@ -353,12 +372,11 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         reason: 'Try different style failed',
       );
       
-      // Extract cleaner error message for user
-      String errorMsg = e.toString();
-      if (errorMsg.contains('Status 500')) {
-        errorMsg = 'Server error. Please try again or start over.';
-      }
-      _errorMessage = errorMsg;
+      _errorMessage = e is ApiException
+          ? e.userFacingMessage
+          : (e.toString().contains('Status 500')
+              ? 'Server error. Please try again or start over.'
+              : e.toString());
       return false;
     } finally {
       _stopTimer();

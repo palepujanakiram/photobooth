@@ -9,6 +9,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:bugsnag_flutter/bugsnag_flutter.dart';
 import 'package:flutter_alice/alice.dart';
+import 'package:overlay_support/overlay_support.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
 import 'screens/theme_slideshow/theme_slideshow_view.dart';
 import 'screens/splash/app_splash_screen.dart';
@@ -17,6 +18,7 @@ import 'screens/terms_and_conditions/terms_and_conditions_view.dart';
 import 'screens/webview/webview_screen.dart';
 import 'screens/theme_selection/theme_selection_view.dart';
 import 'screens/photo_capture/photo_capture_view.dart';
+import 'screens/frame_select/frame_select_view.dart';
 import 'screens/photo_generate/photo_generate_view.dart';
 import 'screens/photo_review/photo_review_view.dart';
 import 'screens/result/result_view.dart';
@@ -36,6 +38,7 @@ import 'services/fcm_token_store.dart';
 import 'services/firebase_messaging_background.dart';
 import 'services/payment_push_coordinator.dart';
 import 'services/api_service.dart';
+import 'services/client_identification.dart';
 import 'services/session_manager.dart';
 
 const String _kBugsnagApiKey = String.fromEnvironment('BUGSNAG_API_KEY');
@@ -50,6 +53,8 @@ bool _isFilteredImageError(Object e) {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await ClientIdentification.ensureInitialized();
 
   // Generous defaults until `/api/settings` loads; [AppSettingsManager] reapplies limits.
   applyFlutterImageCacheLimits();
@@ -389,37 +394,38 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
         ),
         Provider<Alice?>.value(value: AliceInspector.instance),
       ],
-      child: MaterialApp(
-        navigatorKey: widget.navigatorKey,
-        title: AppConstants.kBrandName,
-        debugShowCheckedModeBanner: false,
-        builder: (context, child) {
-          return Consumer<AppSettingsManager>(
-            builder: (context, _, __) {
-              AliceInspector.syncWithRuntimeConfig();
-              return child ?? const SizedBox.shrink();
-            },
-          );
-        },
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue, brightness: Brightness.light),
-          useMaterial3: true,
-        ),
-        darkTheme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue, brightness: Brightness.dark),
-          useMaterial3: true,
-        ),
-        themeMode: ThemeMode.system,
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: const [Locale('en')],
-        initialRoute: AppConstants.kRouteSplash,
-        routes: {
+      child: OverlaySupport.global(
+        child: MaterialApp(
+          navigatorKey: widget.navigatorKey,
+          title: AppConstants.kBrandName,
+          debugShowCheckedModeBanner: false,
+          builder: (context, child) {
+            return Consumer<AppSettingsManager>(
+              builder: (context, _, __) {
+                AliceInspector.syncWithRuntimeConfig();
+                return child ?? const SizedBox.shrink();
+              },
+            );
+          },
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+                seedColor: Colors.blue, brightness: Brightness.light),
+            useMaterial3: true,
+          ),
+          darkTheme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+                seedColor: Colors.blue, brightness: Brightness.dark),
+            useMaterial3: true,
+          ),
+          themeMode: ThemeMode.system,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('en')],
+          initialRoute: AppConstants.kRouteSplash,
+          routes: {
           AppConstants.kRouteSlideshow: (context) =>
               const ThemeSlideshowScreen(),
           AppConstants.kRouteSplash: (context) {
@@ -438,6 +444,8 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
           },
           AppConstants.kRouteHome: (context) => const ThemeSelectionScreen(),
           AppConstants.kRouteCapture: (context) => const PhotoCaptureScreen(),
+          AppConstants.kRouteFrameSelect: (context) =>
+              const FrameSelectScreen(),
           AppConstants.kRouteGenerate: (context) => const PhotoGenerateScreen(),
           AppConstants.kRouteReview: (context) => const PhotoReviewScreen(),
           AppConstants.kRouteResult: (context) => const ResultScreen(),
@@ -450,7 +458,8 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
               WebViewScreen.fromRouteSettings(
             ModalRoute.of(context)?.settings,
           ),
-        },
+          },
+        ),
       ),
     );
   }

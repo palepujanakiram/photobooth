@@ -113,7 +113,7 @@ class AppSettingsModel {
       printerPort: (json['printerPort'] as num?)?.toInt(),
       wcmPlusEnabled: json['wcmPlusEnabled'] as bool?,
       wcmPlusPath: json['wcmPlusPath'] as String?,
-      parallelImageCount: json['parallelImageCount'] as int?,
+      parallelImageCount: (json['parallelImageCount'] as num?)?.toInt(),
       targetFraming: json['targetFraming'] as String?,
       showFramingGuide: json['showFramingGuide'] as bool?,
       paymentGatewayEnabled: json['paymentGatewayEnabled'] as bool?,
