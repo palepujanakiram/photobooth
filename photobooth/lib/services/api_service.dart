@@ -496,6 +496,7 @@ class ApiService {
           originalPhotoId: originalPhotoId,
           themeId: theme.id,
           transformedAt: DateTime.now(),
+          runId: null,
         );
       } else {
         // On mobile, convert XFile to File for Retrofit
@@ -548,6 +549,7 @@ class ApiService {
           originalPhotoId: originalPhotoId,
           themeId: theme.id,
           transformedAt: DateTime.now(),
+          runId: null,
         );
       }
     } on DioException catch (e) {
@@ -1111,6 +1113,53 @@ class ApiService {
     return null;
   }
 
+  /// GET `/api/generation-runs/:runId` — transformation run + steps (kiosk forensics UI).
+  Future<Map<String, dynamic>> fetchGenerationRun(String runId) async {
+    final id = runId.trim();
+    if (id.isEmpty) {
+      throw ApiException('runId is required');
+    }
+    try {
+      final r = await _dio.get<dynamic>('/api/generation-runs/$id');
+      final data = r.data;
+      if (data is Map<String, dynamic>) {
+        return data;
+      }
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+      throw ApiException('Unexpected generation run response');
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
+      String errorMessage = AppConstants.kErrorApiCall;
+      if (e.response != null) {
+        final responseData = e.response?.data;
+        if (responseData is Map<String, dynamic>) {
+          errorMessage = responseData['error'] as String? ??
+              responseData['message'] as String? ??
+              'API Error: ${e.response?.statusCode}';
+        } else if (responseData is String) {
+          errorMessage = responseData;
+        } else {
+          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
+        }
+      } else {
+        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
+      }
+      throw ApiException(errorMessage, e.response?.statusCode);
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('${AppConstants.kErrorUnknown}: $e');
+    }
+  }
+
   /// POST /api/payment/initiate — returns payment link for UPI QR.
   Future<PaymentInitiateResult> initiatePayment({
     required String sessionId,
@@ -1290,6 +1339,7 @@ class ApiService {
           originalPhotoId: originalPhotoId,
           themeId: themeId,
           transformedAt: DateTime.now(),
+          runId: runId,
         );
       } on DioException catch (e) {
         _handleWebNetworkError(e);
@@ -1372,6 +1422,7 @@ class ApiService {
     required String originalPhotoId,
     required String themeId,
     void Function(String message)? onProgress,
+    void Function(String eventType, Map<String, dynamic> json)? onSseEvent,
   }) async {
     final n = count < 1 ? 1 : count;
     if (n == 1) {
@@ -1384,6 +1435,7 @@ class ApiService {
       );
       return ParallelGenerationResult(
         imageUrlsBySlot: [m.imageUrl],
+        runId: m.runId,
       );
     }
     return generateImageParallelStream(
@@ -1392,6 +1444,7 @@ class ApiService {
       originalPhotoId: originalPhotoId,
       themeId: themeId,
       onProgress: onProgress,
+      onSseEvent: onSseEvent,
     );
   }
 
@@ -1407,6 +1460,7 @@ class ApiService {
     required String originalPhotoId,
     required String themeId,
     void Function(String message)? onProgress,
+    void Function(String eventType, Map<String, dynamic> json)? onSseEvent,
   }) async {
     AppLogger.debug(
         '📡 Parallel SSE generation session=$sessionId photo=$originalPhotoId theme=$themeId count=$count');
@@ -1475,6 +1529,7 @@ class ApiService {
               qualityByIndex: qualityByIndex,
               completer: completer,
               onProgress: onProgress,
+              onSseEvent: onSseEvent,
             );
             if (completer.isCompleted) {
               return await completer.future;
@@ -1489,6 +1544,7 @@ class ApiService {
             qualityByIndex: qualityByIndex,
             completer: completer,
             onProgress: onProgress,
+            onSseEvent: onSseEvent,
           );
         }
       } catch (e) {
@@ -1730,6 +1786,7 @@ void _dispatchParallelSseBlock(
   required Map<int, double> qualityByIndex,
   required Completer<ParallelGenerationResult> completer,
   void Function(String message)? onProgress,
+  void Function(String eventType, Map<String, dynamic> json)? onSseEvent,
 }) {
   String? eventType;
   final dataParts = <String>[];
@@ -1752,7 +1809,20 @@ void _dispatchParallelSseBlock(
     return;
   }
 
-  switch (eventType) {
+  final et = (eventType ?? '').trim();
+  if (et.isNotEmpty) {
+    onSseEvent?.call(et, json);
+  }
+
+  switch (et) {
+    case 'status':
+      final total = json['imageCount'] ?? json['total'];
+      onProgress?.call(
+        total != null
+            ? 'Starting generation ($total options)...'
+            : 'Starting generation...',
+      );
+      break;
     case 'start':
       final total = json['total'];
       onProgress?.call(
@@ -1761,8 +1831,48 @@ void _dispatchParallelSseBlock(
             : 'Starting parallel generation...',
       );
       break;
+    case 'step':
+      final step = json['step'] as String?;
+      final st = json['status'] as String?;
+      if (step != null && st == 'active') {
+        onProgress?.call('Step: $step');
+      }
+      break;
+    case 'attempt_start':
+      final a = json['attempt'];
+      final ta = json['totalAttempts'];
+      if (a != null && ta != null) {
+        onProgress?.call('Attempt $a of $ta...');
+      }
+      break;
+    case 'attempt_complete':
+      final sc = json['score'];
+      if (sc != null) {
+        onProgress?.call('Quality score: $sc');
+      }
+      break;
+    case 'commentary':
+      final m = json['message'] as String?;
+      if (m != null && m.isNotEmpty) {
+        onProgress?.call(m);
+      }
+      break;
+    case 'commentary_clear':
+      break;
+    case 'warning':
+      final w = json['message'] as String?;
+      if (w != null && w.isNotEmpty) {
+        onProgress?.call('Warning: $w');
+      }
+      break;
     case 'image_complete':
-      final idx = json['index'] as int?;
+      int? idx;
+      final rawIdx = json['index'];
+      if (rawIdx is int) {
+        idx = rawIdx;
+      } else if (rawIdx is num) {
+        idx = rawIdx.toInt();
+      }
       final url = json['imageUrl'] as String?;
       final q = json['qualityScore'];
       if (idx != null &&
@@ -1804,6 +1914,14 @@ void _dispatchParallelSseBlock(
       } else if (rawMs is num) {
         totalMs = rawMs.toInt();
       }
+      final runId = json['runId'] as String?;
+      final selRaw = json['selectedIndex'];
+      int? selectedIndex;
+      if (selRaw is int) {
+        selectedIndex = selRaw;
+      } else if (selRaw is num) {
+        selectedIndex = selRaw.toInt();
+      }
       if (!completer.isCompleted) {
         completer.complete(
           ParallelGenerationResult(
@@ -1811,12 +1929,17 @@ void _dispatchParallelSseBlock(
             success: json['success'] == true,
             timingTotalMs: totalMs,
             qualityScoreByIndex: Map<int, double>.from(qualityByIndex),
+            runId: runId,
+            selectedIndex: selectedIndex,
           ),
         );
       }
       break;
+    case 'failure':
     case 'error':
-      final msg = json['error'] as String? ?? 'Generation failed';
+      final msg = json['error'] as String? ??
+          json['message'] as String? ??
+          'Generation failed';
       if (!completer.isCompleted) {
         completer.completeError(ApiException(msg));
       }

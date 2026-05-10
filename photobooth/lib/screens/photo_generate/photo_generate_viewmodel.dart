@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
@@ -8,7 +9,25 @@ import '../theme_selection/theme_model.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
+import '../../utils/secure_image_url.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
+
+/// In-flight slot while SSE parallel generation is streaming.
+class LiveGenerationSlotState {
+  final int index;
+  final bool loading;
+  final bool failed;
+  final String? imageUrl;
+  final double? qualityScore;
+
+  const LiveGenerationSlotState({
+    required this.index,
+    this.loading = true,
+    this.failed = false,
+    this.imageUrl,
+    this.qualityScore,
+  });
+}
 
 /// Model for a generated image
 class GeneratedImage {
@@ -63,6 +82,17 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   // Cancellation flag
   bool _isCancelled = false;
 
+  // Live SSE generation UI (parallel stream)
+  double _liveProgress = 0;
+  String? _liveCurrentStep;
+  final Map<String, int> _liveStepDurationsMs = {};
+  int? _liveAttempt;
+  int? _liveTotalAttempts;
+  double? _liveLastScore;
+  String? _liveCommentary;
+  List<LiveGenerationSlotState> _liveSlots = [];
+  String? _lastTransformationRunId;
+
   PhotoGenerateViewModel({
     ApiService? apiService,
     SessionManager? sessionManager,
@@ -88,6 +118,19 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   int get elapsedSeconds => _elapsedSeconds;
   String get progressMessage => _progressMessage;
   bool get isCancelled => _isCancelled;
+
+  double get liveProgress => _liveProgress;
+  String? get liveCurrentStep => _liveCurrentStep;
+  Map<String, int> get liveStepDurationsMs =>
+      Map<String, int>.unmodifiable(_liveStepDurationsMs);
+  int? get liveAttempt => _liveAttempt;
+  int? get liveTotalAttempts => _liveTotalAttempts;
+  double? get liveLastScore => _liveLastScore;
+  String? get liveCommentary => _liveCommentary;
+  List<LiveGenerationSlotState> get liveSlots =>
+      List<LiveGenerationSlotState>.unmodifiable(_liveSlots);
+  int get liveSlotCount => _liveSlots.length;
+  String? get lastTransformationRunId => _lastTransformationRunId;
   
   // Check if any operation is in progress
   bool get isOperationInProgress => _isGenerating || _isLoadingMore;
@@ -167,6 +210,139 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _resetLiveGenerationState() {
+    _liveProgress = 0;
+    _liveCurrentStep = null;
+    _liveStepDurationsMs.clear();
+    _liveAttempt = null;
+    _liveTotalAttempts = null;
+    _liveLastScore = null;
+    _liveCommentary = null;
+    _liveSlots = [];
+    _lastTransformationRunId = null;
+  }
+
+  void _clearLiveGenerationUi() {
+    _liveProgress = 0;
+    _liveCurrentStep = null;
+    _liveStepDurationsMs.clear();
+    _liveAttempt = null;
+    _liveTotalAttempts = null;
+    _liveLastScore = null;
+    _liveCommentary = null;
+    _liveSlots = [];
+  }
+
+  void _handleGenerationSseEvent(String event, Map<String, dynamic> data) {
+    final commentaryAllowed =
+        _appSettingsManager?.settings?.showGenerationCommentary == true;
+
+    switch (event) {
+      case 'status':
+      case 'start':
+        final count = (data['imageCount'] as num?)?.toInt() ??
+            (data['total'] as num?)?.toInt() ??
+            _parallelSlotCount;
+        if (count > 0) {
+          _liveSlots = List.generate(
+            count,
+            (i) => LiveGenerationSlotState(index: i, loading: true),
+          );
+        }
+        _liveProgress = math.max(_liveProgress, 15.0);
+        break;
+      case 'step':
+        final step = data['step'] as String?;
+        final st = data['status'] as String?;
+        if (step != null && st == 'active') {
+          _liveCurrentStep = step;
+        }
+        if (step != null && st == 'complete' && data['skipped'] != true) {
+          final ms = data['durationMs'];
+          if (ms is int) {
+            _liveStepDurationsMs[step] = ms;
+          } else if (ms is num) {
+            _liveStepDurationsMs[step] = ms.toInt();
+          }
+        }
+        break;
+      case 'attempt_start':
+        _liveAttempt = (data['attempt'] as num?)?.toInt();
+        _liveTotalAttempts = (data['totalAttempts'] as num?)?.toInt();
+        break;
+      case 'attempt_complete':
+        _liveLastScore = (data['score'] as num?)?.toDouble();
+        break;
+      case 'image_complete':
+        int? idx;
+        final rawIdx = data['index'];
+        if (rawIdx is int) {
+          idx = rawIdx;
+        } else if (rawIdx is num) {
+          idx = rawIdx.toInt();
+        }
+        final rawUrl = data['imageUrl'] as String?;
+        final q = (data['qualityScore'] as num?)?.toDouble();
+        if (idx != null &&
+            idx >= 0 &&
+            idx < _liveSlots.length &&
+            rawUrl != null &&
+            rawUrl.isNotEmpty) {
+          final next = List<LiveGenerationSlotState>.from(_liveSlots);
+          final url = SecureImageUrl.absolutize(rawUrl);
+          next[idx] = LiveGenerationSlotState(
+            index: idx,
+            loading: false,
+            failed: false,
+            imageUrl: url,
+            qualityScore: q,
+          );
+          _liveSlots = next;
+        }
+        final c = data['completed'];
+        final t = data['total'];
+        if (c is num && t is num && t > 0) {
+          _liveProgress = math.min(92, 15 + (c / t) * 77);
+        }
+        break;
+      case 'image_failed':
+        int? idx;
+        final rawIdx = data['index'];
+        if (rawIdx is int) {
+          idx = rawIdx;
+        } else if (rawIdx is num) {
+          idx = rawIdx.toInt();
+        }
+        if (idx != null && idx >= 0 && idx < _liveSlots.length) {
+          final prev = _liveSlots[idx];
+          final next = List<LiveGenerationSlotState>.from(_liveSlots);
+          next[idx] = LiveGenerationSlotState(
+            index: idx,
+            loading: false,
+            failed: true,
+            imageUrl: prev.imageUrl,
+            qualityScore: prev.qualityScore,
+          );
+          _liveSlots = next;
+        }
+        break;
+      case 'commentary':
+        if (commentaryAllowed) {
+          _liveCommentary = data['message'] as String?;
+        }
+        break;
+      case 'commentary_clear':
+        _liveCommentary = null;
+        break;
+      case 'complete':
+        _liveProgress = 100;
+        break;
+      default:
+        break;
+    }
+    notifyListeners();
+  }
+
   /// Generate image with the current theme
   Future<bool> generateImage() async {
     if (_selectedTheme == null || _originalPhoto == null) {
@@ -176,6 +352,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     }
 
     _resetCancellation();
+    _resetLiveGenerationState();
     _isGenerating = true;
     _errorMessage = null;
     _progressMessage = 'Preparing transformation...';
@@ -205,6 +382,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         onProgress: (message) {
           _updateProgress(message);
         },
+        onSseEvent: _parallelSlotCount > 1 ? _handleGenerationSseEvent : null,
       )
           .timeout(
         generateTimeout,
@@ -216,6 +394,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       _stopTimer();
 
       if (parallel.firstImageUrl != null) {
+        _lastTransformationRunId = parallel.runId;
         final newImages = <GeneratedImage>[];
         for (var i = 0; i < parallel.imageUrlsBySlot.length; i++) {
           final url = parallel.imageUrlsBySlot[i];
@@ -260,6 +439,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       _stopTimer();
       _isGenerating = false;
       _progressMessage = '';
+      _clearLiveGenerationUi();
       notifyListeners();
     }
   }
@@ -280,6 +460,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     if (!_isLoadingMore && !canTryDifferentStyle) return false;
 
     _resetCancellation();
+    _resetLiveGenerationState();
     _isLoadingMore = true;
     _errorMessage = null;
     _progressMessage = _progressMessage.isNotEmpty ? _progressMessage : 'Trying new style...';
@@ -329,6 +510,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         onProgress: (message) {
           _updateProgress(message);
         },
+        onSseEvent: _parallelSlotCount > 1 ? _handleGenerationSseEvent : null,
       )
           .timeout(
         generateTimeout,
@@ -340,6 +522,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       _stopTimer();
 
       if (parallel.firstImageUrl != null) {
+        _lastTransformationRunId = parallel.runId;
         final newImages = <GeneratedImage>[];
         for (var i = 0; i < parallel.imageUrlsBySlot.length; i++) {
           final url = parallel.imageUrlsBySlot[i];
@@ -382,6 +565,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       _stopTimer();
       _isLoadingMore = false;
       _progressMessage = '';
+      _clearLiveGenerationUi();
       notifyListeners();
     }
   }
@@ -472,6 +656,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _isGenerating = false;
     _isLoadingMore = false;
     _progressMessage = '';
+    _clearLiveGenerationUi();
     _errorMessage = 'Operation cancelled';
     notifyListeners();
     AppLogger.debug('🚫 Operation cancelled by user');

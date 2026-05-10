@@ -14,7 +14,10 @@ import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../utils/route_args.dart';
 import '../../utils/secure_image_url.dart';
+import '../../utils/transformation_step_display.dart';
+import '../transformation_details/transformation_details_view.dart';
 import '../../views/widgets/contact_before_pay_sheet.dart';
+import '../../views/widgets/cached_network_image.dart';
 
 class PhotoGenerateScreen extends StatefulWidget {
   const PhotoGenerateScreen({super.key});
@@ -470,6 +473,30 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               ),
             ),
           ),
+          if (!isGeneratingOrLoading &&
+              viewModel.lastTransformationRunId != null &&
+              viewModel.generatedImages.isNotEmpty) ...[
+            TextButton(
+              onPressed: () {
+                Navigator.push<void>(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => TransformationDetailsScreen(
+                      runId: viewModel.lastTransformationRunId!,
+                    ),
+                  ),
+                );
+              },
+              child: const Text(
+                'Transformation details',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+          ],
           if (paymentsEnabled && viewModel.selectedCount > 0) ...[
             const SizedBox(height: 10),
             Center(
@@ -598,7 +625,12 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final images = viewModel.generatedImages;
     final hasImages = images.isNotEmpty;
 
-    final totalSlots = (hasImages ? images.length : 1) + (isLoadingMore ? 1 : 0);
+    final int baseSlotCount = hasImages
+        ? images.length
+        : (isGenerating && viewModel.liveSlotCount > 0
+            ? viewModel.liveSlotCount
+            : 1);
+    final totalSlots = baseSlotCount + (isLoadingMore ? 1 : 0);
 
     // When we only have a single slot (initial placeholder or one image),
     // size it like the POSE capture card so the "main image placeholder" feels consistent.
@@ -646,6 +678,10 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (isGenerating && viewModel.liveSlotCount > 0) ...[
+              _buildLiveGenerationHeader(context, viewModel),
+              const SizedBox(height: 12),
+            ],
             if (message.isNotEmpty) ...[
               Text(
                 message,
@@ -711,6 +747,10 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (isGenerating && viewModel.liveSlotCount > 0) ...[
+            _buildLiveGenerationHeader(context, viewModel),
+            const SizedBox(height: 12),
+          ],
           if (message.isNotEmpty) ...[
             Text(
               message,
@@ -763,6 +803,22 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final isLoadingMore = viewModel.isLoadingMore;
     final images = viewModel.generatedImages;
     final hasImages = images.isNotEmpty;
+
+    if (isGenerating && !hasImages && viewModel.liveSlotCount > 0) {
+      return viewModel.liveSlots
+          .map(
+            (slot) => _transformedSlotFrame(
+              cardWidth: cardWidth,
+              cardHeight: cardHeight,
+              child: _buildLiveGenerationSlot(
+                viewModel,
+                appColors,
+                slot,
+              ),
+            ),
+          )
+          .toList();
+    }
 
     if (isGenerating && !hasImages) {
       return [
@@ -1050,6 +1106,130 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         ),
       ),
       ),
+    );
+  }
+
+  Widget _buildLiveGenerationHeader(
+    BuildContext context,
+    PhotoGenerateViewModel viewModel,
+  ) {
+    final step = viewModel.liveCurrentStep;
+    final commentary = viewModel.liveCommentary;
+    final attempt = viewModel.liveAttempt;
+    final totalAttempts = viewModel.liveTotalAttempts;
+    final lastScore = viewModel.liveLastScore;
+    final progress = (viewModel.liveProgress / 100).clamp(0.0, 1.0);
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 520),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress <= 0 ? null : progress,
+              minHeight: 6,
+              backgroundColor: Colors.white24,
+              color: Colors.white,
+            ),
+          ),
+          if (step != null && step.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Step: ${transformationStepDisplayLabel(step)}'
+              '${viewModel.liveStepDurationsMs[step] != null ? ' · ${viewModel.liveStepDurationsMs[step]} ms' : ''}',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (attempt != null &&
+              totalAttempts != null &&
+              totalAttempts > 1) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Attempt $attempt of $totalAttempts'
+              '${lastScore != null ? ' · last score ${lastScore.toStringAsFixed(2)}' : ''}',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (commentary != null && commentary.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              child: Text(
+                commentary,
+                key: ValueKey<String>(commentary),
+                style: const TextStyle(
+                  color: Colors.white60,
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveGenerationSlot(
+    PhotoGenerateViewModel viewModel,
+    AppColors appColors,
+    LiveGenerationSlotState slot,
+  ) {
+    if (slot.loading) {
+      return _buildTransformedLoadingPlaceholder(viewModel, appColors);
+    }
+    if (slot.failed) {
+      return const Center(
+        child: Icon(Icons.error_outline, color: Colors.redAccent, size: 40),
+      );
+    }
+    final url = slot.imageUrl;
+    if (url == null || url.isEmpty) {
+      return const Center(
+        child: Icon(Icons.image_not_supported_outlined,
+            color: Colors.white38, size: 40),
+      );
+    }
+    final secureUrl = SecureImageUrl.withSessionId(url);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        CachedNetworkImage(
+          imageUrl: secureUrl,
+          fit: BoxFit.cover,
+        ),
+        if (slot.qualityScore != null)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Text(
+                  slot.qualityScore!.toStringAsFixed(2),
+                  style: const TextStyle(color: Colors.white, fontSize: 11),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 

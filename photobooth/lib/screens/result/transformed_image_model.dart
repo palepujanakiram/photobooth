@@ -7,6 +7,8 @@ class TransformedImageModel {
   final String originalPhotoId;
   final String themeId;
   final DateTime transformedAt;
+  /// Server transformation run id when returned by generate APIs (forensics / details screen).
+  final String? runId;
 
   const TransformedImageModel({
     required this.id,
@@ -15,6 +17,7 @@ class TransformedImageModel {
     required this.originalPhotoId,
     required this.themeId,
     required this.transformedAt,
+    this.runId,
   });
 
   TransformedImageModel copyWith({
@@ -24,6 +27,7 @@ class TransformedImageModel {
     String? originalPhotoId,
     String? themeId,
     DateTime? transformedAt,
+    String? runId,
   }) {
     return TransformedImageModel(
       id: id ?? this.id,
@@ -32,6 +36,7 @@ class TransformedImageModel {
       originalPhotoId: originalPhotoId ?? this.originalPhotoId,
       themeId: themeId ?? this.themeId,
       transformedAt: transformedAt ?? this.transformedAt,
+      runId: runId ?? this.runId,
     );
   }
 
@@ -43,6 +48,7 @@ class TransformedImageModel {
       'originalPhotoId': originalPhotoId,
       'themeId': themeId,
       'transformedAt': transformedAt.toIso8601String(),
+      if (runId != null) 'runId': runId,
     };
   }
 
@@ -55,6 +61,7 @@ class TransformedImageModel {
       originalPhotoId: json['originalPhotoId'] as String,
       themeId: json['themeId'] as String,
       transformedAt: DateTime.parse(json['transformedAt'] as String),
+      runId: json['runId'] as String?,
     );
   }
 }
