@@ -1966,18 +1966,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     String headline = 'Got it';
     String description = 'Frozen frame, framing applied';
     String? imageUrl;
-    bool checker = false;
-    Widget? localFallback;
     Widget? bottomAccessory;
-
-    if (vm.originalPhoto != null) {
-      localFallback = photo_image.imageFromXFileSized(
-        vm.originalPhoto!.imageFile,
-        1280,
-        1280,
-        fit: BoxFit.contain,
-      );
-    }
 
     if (aiUrl != null) {
       index = 3;
@@ -1992,7 +1981,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       headline = 'Background removed';
       description = 'Subject isolated, ready to render';
       imageUrl = bgUrl;
-      checker = true;
     } else if (preprocessUrl != null) {
       index = 1;
       stageTitle = '2 · CAPTURE';
@@ -2004,23 +1992,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       stageTitle = '1 · DETECT';
       headline = 'Face locked';
       description = 'Live preview';
-    }
-
-    Widget imageLayer() {
-      if (imageUrl != null) {
-        return CachedNetworkImage(
-          imageUrl: SecureImageUrl.withSessionId(imageUrl),
-          // Match final image card behavior: show the full render in-frame.
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.medium,
-          placeholder: localFallback ??
-              const Center(
-                child: CircularProgressIndicator(color: Colors.white),
-              ),
-          errorWidget: localFallback,
-        );
-      }
-      return localFallback ?? const SizedBox.shrink();
     }
 
     // Important UX: keep the photo canvas clean (no UI overlays).
@@ -2062,10 +2033,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (checker)
-                    _checkerboardBackground()
-                  else
-                    const ColoredBox(color: Colors.black),
+                  const ColoredBox(color: Colors.black),
                   Positioned.fill(
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 260),
@@ -2085,7 +2053,13 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                       },
                       child: KeyedSubtree(
                         key: ValueKey<String>(imageUrl ?? 'local_$index'),
-                        child: imageLayer(),
+                        child: _buildProgressHeroStageImage(
+                          context,
+                          vm,
+                          imageUrl: imageUrl,
+                          width: width,
+                          height: height,
+                        ),
                       ),
                     ),
                   ),
@@ -2139,6 +2113,75 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildProgressHeroStageImage(
+    BuildContext context,
+    PhotoGenerateViewModel vm, {
+    required String? imageUrl,
+    required double width,
+    required double height,
+  }) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final cacheW = (width * dpr).ceil().clamp(64, 2048);
+    final loading = ColoredBox(
+      color: Colors.black,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: const Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              color: Colors.white,
+              strokeWidth: 2,
+            ),
+          ),
+        ),
+      ),
+    );
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      final err = SizedBox(
+        width: width,
+        height: height,
+        child: vm.originalPhoto != null
+            ? photo_image.imageFromXFileSized(
+                vm.originalPhoto!.imageFile,
+                width,
+                height,
+                fit: BoxFit.cover,
+              )
+            : loading,
+      );
+      return SizedBox(
+        width: width,
+        height: height,
+        child: ClipRect(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            alignment: Alignment.center,
+            child: CachedNetworkImage(
+              imageUrl: imageUrl.trim(),
+              fit: BoxFit.cover,
+              cacheWidth: cacheW,
+              filterQuality: FilterQuality.medium,
+              placeholder: loading,
+              errorWidget: err,
+            ),
+          ),
+        ),
+      );
+    }
+    if (vm.originalPhoto != null) {
+      return photo_image.imageFromXFileSized(
+        vm.originalPhoto!.imageFile,
+        width,
+        height,
+        fit: BoxFit.cover,
+      );
+    }
+    return loading;
   }
 
   String? _previewForStage(PhotoGenerateViewModel vm, String stageKey) {
@@ -2331,30 +2374,5 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     );
   }
 
-  Widget _checkerboardBackground() {
-    // Lightweight checkerboard (no assets) for “transparent bg” feel.
-    return CustomPaint(
-      painter: _CheckerPainter(),
-      child: const SizedBox.expand(),
-    );
-  }
-
 }
 
-class _CheckerPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    const cell = 22.0;
-    final paintA = Paint()..color = const Color(0xFF2A2A2A);
-    final paintB = Paint()..color = const Color(0xFF1E1E1E);
-    for (double y = 0; y < size.height; y += cell) {
-      for (double x = 0; x < size.width; x += cell) {
-        final isA = ((x / cell).floor() + (y / cell).floor()) % 2 == 0;
-        canvas.drawRect(Rect.fromLTWH(x, y, cell, cell), isA ? paintA : paintB);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}

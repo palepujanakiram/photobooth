@@ -47,6 +47,9 @@ class CaptureViewModel extends ChangeNotifier {
   PhotoModel? _capturedPhoto;
   /// Decoded pixel size of [_capturedPhoto] (for UI card aspect). Null until decode finishes.
   Size? _capturedImagePixelSize;
+  /// Aspect ratio (width/height) of the **live preview** at shutter time. Keeps the card
+  /// from resizing when the saved still has different pixel dimensions than the stream.
+  double? _lockedCaptureCardAspectRatio;
   List<CameraDescription> _availableCameras = [];
   CameraDescription? _currentCamera;
   AppDeviceType? _deviceType;
@@ -113,6 +116,7 @@ class CaptureViewModel extends ChangeNotifier {
   CameraController? get cameraController => _cameraController;
   PhotoModel? get capturedPhoto => _capturedPhoto;
   Size? get capturedImagePixelSize => _capturedImagePixelSize;
+  double? get lockedCaptureCardAspectRatio => _lockedCaptureCardAspectRatio;
 
   set capturedPhoto(PhotoModel? photo) {
     _capturedPhoto = photo;
@@ -198,6 +202,74 @@ class CaptureViewModel extends ChangeNotifier {
   /// Actual preview size in use (from controller after init). Null until camera is initialized.
   /// Use this to show or log the resolution the camera is actually using.
   Size? get previewSize => _cameraController?.value.previewSize;
+
+  /// Same math as the capture screen’s live preview display size (after auto + manual rotation).
+  Size? get previewDisplaySizeForCard {
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized) {
+      return null;
+    }
+
+    final previewSize = controller.value.previewSize;
+    final baseAspectRatio = controller.value.aspectRatio;
+    final autoQuarterTurns = _androidTvPreviewQuarterTurns();
+    final manualQuarterTurns = (_previewRotationDegrees ~/ 90) % 4;
+    final effectiveQuarterTurns =
+        (autoQuarterTurns + manualQuarterTurns) % 4;
+
+    final displayAspectRatio =
+        effectiveQuarterTurns.isOdd ? 1 / baseAspectRatio : baseAspectRatio;
+    final width = previewSize == null
+        ? (effectiveQuarterTurns.isOdd ? 1.0 : displayAspectRatio)
+        : (effectiveQuarterTurns.isOdd
+            ? previewSize.height
+            : previewSize.width);
+    final height = previewSize == null
+        ? (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1.0)
+        : (effectiveQuarterTurns.isOdd
+            ? previewSize.width
+            : previewSize.height);
+
+    if (width <= 0 || height <= 0) return null;
+    return Size(width, height);
+  }
+
+  /// Android TV / external camera preview correction in 90° steps.
+  int get previewAutoQuarterTurns => _androidTvPreviewQuarterTurns();
+
+  int _androidTvPreviewQuarterTurns() {
+    final camera = _currentCamera;
+    if (camera == null) return 0;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return 0;
+    if (!shouldUseLandscapePreviewRotationWorkaround &&
+        camera.lensDirection != CameraLensDirection.external) {
+      return 0;
+    }
+
+    final surfaceRotationDegrees = switch (_displayRotation) {
+      1 => 90,
+      2 => 180,
+      3 => 270,
+      _ => 0,
+    };
+
+    final sensorOrientation = camera.sensorOrientation % 360;
+    final rotationDegrees = switch (camera.lensDirection) {
+      CameraLensDirection.front =>
+        (sensorOrientation + surfaceRotationDegrees) % 360,
+      _ => (sensorOrientation - surfaceRotationDegrees + 360) % 360,
+    };
+
+    return ((360 - rotationDegrees) % 360) ~/ 90;
+  }
+
+  void _snapshotLockedCaptureCardAspectFromLivePreview() {
+    final d = previewDisplaySizeForCard;
+    if (d != null && d.height > 0) {
+      _lockedCaptureCardAspectRatio =
+          (d.width / d.height).clamp(0.35, 2.85);
+    }
+  }
 
   /// Native camera characteristics (Android Camera2; default/placeholder on iOS/Web). Fetched after camera init.
   CameraDetails? _nativeCameraDetails;
@@ -569,6 +641,7 @@ class CaptureViewModel extends ChangeNotifier {
     // Clear any captured photo
     _capturedPhoto = null;
     _capturedImagePixelSize = null;
+    _lockedCaptureCardAspectRatio = null;
     
     // Dispose current camera controller
     if (_cameraController != null) {
@@ -1102,6 +1175,7 @@ class CaptureViewModel extends ChangeNotifier {
       // Get camera ID from either standard controller or current camera
       final cameraId = _cameraController?.description.name ?? _currentCamera?.name;
       final photoId = _uuid.v4();
+      _snapshotLockedCaptureCardAspectFromLivePreview();
       _capturedPhoto = PhotoModel(
         id: photoId,
         imageFile: savedFile,
@@ -1517,7 +1591,8 @@ class CaptureViewModel extends ChangeNotifier {
                        _currentCamera?.name ?? 
                        'gallery';
       final photoId = _uuid.v4();
-      
+
+      _lockedCaptureCardAspectRatio = null;
       _capturedPhoto = PhotoModel(
         id: photoId,
         imageFile: normalizedFile,
@@ -1588,6 +1663,7 @@ class CaptureViewModel extends ChangeNotifier {
 
     _capturedPhoto = null;
     _capturedImagePixelSize = null;
+    _lockedCaptureCardAspectRatio = null;
     _errorMessage = null;
     _previewNonce++;
     notifyListeners();

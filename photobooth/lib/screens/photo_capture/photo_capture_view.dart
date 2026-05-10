@@ -1,8 +1,7 @@
 import 'dart:math' as math;
 import 'dart:async';
 
-import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -592,10 +591,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                               viewModel.capturedPhoto!.imageFile,
                               cardW,
                               cardH,
-                              // Match live preview: contain in portrait (no crop), cover on landscape kiosks.
-                              fit: MediaQuery.orientationOf(context) == Orientation.portrait
-                                  ? BoxFit.contain
-                                  : BoxFit.cover,
+                              // Match live preview: full-bleed cover (no black “stencil”), smooth shutter transition.
+                              fit: BoxFit.cover,
                             )
                           : KeyedSubtree(
                               // Web builds can aggressively reuse platform views / textures.
@@ -634,35 +631,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
-  /// Display size of the live preview after rotation (same math as the inner [SizedBox] below).
+  /// Display size of the live preview after rotation (see [CaptureViewModel.previewDisplaySizeForCard]).
   Size? _livePreviewDisplaySize(CaptureViewModel viewModel) {
-    final controller = viewModel.cameraController;
-    if (controller == null || !controller.value.isInitialized) {
-      return null;
-    }
-
-    final previewSize = controller.value.previewSize;
-    final baseAspectRatio = controller.value.aspectRatio;
-    final autoQuarterTurns = _androidTvPreviewQuarterTurns(viewModel);
-    final manualQuarterTurns = (viewModel.previewRotationDegrees ~/ 90) % 4;
-    final effectiveQuarterTurns =
-        (autoQuarterTurns + manualQuarterTurns) % 4;
-
-    final displayAspectRatio =
-        effectiveQuarterTurns.isOdd ? 1 / baseAspectRatio : baseAspectRatio;
-    final width = previewSize == null
-        ? (effectiveQuarterTurns.isOdd ? 1.0 : displayAspectRatio)
-        : (effectiveQuarterTurns.isOdd
-            ? previewSize.height
-            : previewSize.width);
-    final height = previewSize == null
-        ? (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1.0)
-        : (effectiveQuarterTurns.isOdd
-            ? previewSize.width
-            : previewSize.height);
-
-    if (width <= 0 || height <= 0) return null;
-    return Size(width, height);
+    return viewModel.previewDisplaySizeForCard;
   }
 
   /// Width/height ratio for the capture card: decoded still, live preview, viewport slot on phones, or [fallbackAspect].
@@ -689,10 +660,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return (w / h).clamp(0.28, 0.92);
     }
 
-    // Keep the capture card size consistent before/after capture by preferring the
-    // live preview aspect ratio even after the still is taken. This avoids a
-    // visible "jump" in placeholder size when switching from preview → still.
+    // Keep the capture card size consistent before/after capture. Prefer the aspect
+    // locked at shutter (preview stream); decoded still size often differs and caused jumps.
     if (hasCapturedPhoto) {
+      final locked = viewModel.lockedCaptureCardAspectRatio;
+      if (locked != null && locked > 0) {
+        return locked.clamp(0.35, 2.85);
+      }
       final live = _livePreviewDisplaySize(viewModel);
       if (live != null && live.height > 0) {
         return (live.width / live.height).clamp(0.35, 2.85);
@@ -735,7 +709,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     Widget preview = _buildPlatformPreview(controller);
-    final autoQuarterTurns = _androidTvPreviewQuarterTurns(viewModel);
+    final autoQuarterTurns = viewModel.previewAutoQuarterTurns;
     final manualQuarterTurns = (viewModel.previewRotationDegrees ~/ 90) % 4;
     final effectiveQuarterTurns =
         (autoQuarterTurns + manualQuarterTurns) % 4;
@@ -755,19 +729,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final height = displaySize?.height ??
         (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1.0);
 
-    // Always preserve aspect ratio and avoid stretching.
-    //
-    // In portrait capture flows, prefer showing the full frame (contain) so users
-    // can see their entire pose; on landscape kiosks/tablets, prefer full-bleed
-    // (cover) for a premium look.
-    final isPortrait =
-        MediaQuery.orientationOf(context) == Orientation.portrait;
-    final fit = isPortrait ? BoxFit.contain : BoxFit.cover;
-
+    // Full-bleed preview inside the card (same framing as the captured still).
+    // Center + contain left black letterboxing when card aspect matched the stream
+    // but the fitted subtree didn’t fill the stack; expand + cover removes the “stencil”.
     return ClipRect(
-      child: Center(
+      child: SizedBox.expand(
         child: FittedBox(
-          fit: fit,
+          fit: BoxFit.cover,
           alignment: Alignment.center,
           child: SizedBox(
             width: width,
@@ -786,34 +754,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     return CameraPreview(controller);
   }
 
-  int _androidTvPreviewQuarterTurns(CaptureViewModel viewModel) {
-    final camera = viewModel.currentCamera;
-    if (camera == null) return 0;
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return 0;
-    if (!viewModel.shouldUseLandscapePreviewRotationWorkaround &&
-        camera.lensDirection != CameraLensDirection.external) {
-      return 0;
-    }
-
-    final surfaceRotationDegrees = switch (viewModel.displayRotation) {
-      1 => 90,
-      2 => 180,
-      3 => 270,
-      _ => 0,
-    };
-
-    final sensorOrientation = camera.sensorOrientation % 360;
-    final rotationDegrees = switch (camera.lensDirection) {
-      CameraLensDirection.front =>
-        (sensorOrientation + surfaceRotationDegrees) % 360,
-      _ => (sensorOrientation - surfaceRotationDegrees + 360) % 360,
-    };
-
-    return ((360 - rotationDegrees) % 360) ~/ 90;
-  }
-
   String _effectiveRotationLabel(CaptureViewModel viewModel) {
-    final autoTurns = _androidTvPreviewQuarterTurns(viewModel);
+    final autoTurns = viewModel.previewAutoQuarterTurns;
     final manualTurns = (viewModel.previewRotationDegrees ~/ 90) % 4;
     final effectiveTurns = (autoTurns + manualTurns) % 4;
     final rotation = '${effectiveTurns * 90}° (auto ${autoTurns * 90}° + manual ${manualTurns * 90}°)';
