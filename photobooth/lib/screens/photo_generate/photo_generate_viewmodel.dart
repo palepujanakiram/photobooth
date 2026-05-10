@@ -14,6 +14,28 @@ import '../../utils/transformation_step_display.dart';
 import '../../services/generation_display_preferences.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 
+/// Best-effort: session JSON may expose an in-flight generation run id (server-dependent).
+String? parseActiveTransformationRunIdFromSession(Map<String, dynamic>? m) {
+  if (m == null) return null;
+  for (final key in [
+    'activeTransformationRunId',
+    'currentTransformationRunId',
+    'transformationRunId',
+    'pendingRunId',
+    'generationRunId',
+    'activeRunId',
+  ]) {
+    final v = m[key];
+    if (v is String && v.trim().isNotEmpty) return v.trim();
+  }
+  final ar = m['activeRun'];
+  if (ar is Map) {
+    final id = ar['id'];
+    if (id is String && id.trim().isNotEmpty) return id.trim();
+  }
+  return null;
+}
+
 /// One pipeline stage row for the progressive (filmstrip) generate layout.
 class ProgressivePipelineStage {
   const ProgressivePipelineStage({
@@ -79,6 +101,35 @@ class GeneratedImage {
   }
 }
 
+/// One step from `GET /api/generation-runs/:runId` for live progress thumbnails.
+class GenerationRunStepPreview {
+  const GenerationRunStepPreview({
+    required this.stage,
+    required this.status,
+    this.previewUrl,
+  });
+
+  final String stage;
+  final String status;
+  final String? previewUrl;
+
+  bool get isFinished {
+    final s = status.toLowerCase();
+    return s == 'complete' ||
+        s == 'completed' ||
+        s == 'success' ||
+        s == 'succeeded' ||
+        s == 'skipped' ||
+        s == 'failed' ||
+        s == 'error';
+  }
+
+  bool get isActive {
+    final s = status.toLowerCase();
+    return s == 'active' || s == 'running' || s == 'in_progress';
+  }
+}
+
 class PhotoGenerateViewModel extends ChangeNotifier {
   final ApiService _apiService;
   final SessionManager _sessionManager;
@@ -114,9 +165,17 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   List<LiveGenerationSlotState> _liveSlots = [];
   String? _lastTransformationRunId;
 
-  bool _useProgressiveGenerationUi = false;
+  bool _useProgressiveGenerationUi = true;
   bool _progressivePrefLoaded = false;
   List<ProgressivePipelineStage> _progressivePipelineStages = [];
+
+  /// Stamp id under the app-bar subtitle (`source`, `stage:…`, `live:…`). Null = default hero.
+  String? _selectedHeroStampId;
+
+  /// Poll `GET /api/generation-runs/:id` (same payload as Transformation details) during generation.
+  Timer? _generationRunPollTimer;
+  String? _polledTransformationRunId;
+  List<GenerationRunStepPreview> _generationRunStepPreviews = [];
 
   PhotoGenerateViewModel({
     ApiService? apiService,
@@ -159,14 +218,92 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   bool get useProgressiveGenerationUi => _useProgressiveGenerationUi;
 
+  String? get selectedHeroStampId => _selectedHeroStampId;
+
+  /// Stamp-sized thumbnails under "Your AI-transformed portrait awaits" while generating.
+  /// Not tied to the compact/timeline layout toggle so single-slot runs still get progress UI.
+  bool get showProgressStampStrip {
+    if (_originalPhoto == null) return false;
+    if (_isGenerating || _isLoadingMore) return true;
+
+    // Keep the strip visible after completion so users can still “scrub” what happened,
+    // and see the final output thumbnail alongside the pipeline.
+    return _generatedImages.isNotEmpty &&
+        (_generationRunStepPreviews.isNotEmpty ||
+            _progressivePipelineStages.isNotEmpty ||
+            (_lastTransformationRunId != null &&
+                _lastTransformationRunId!.trim().isNotEmpty));
+  }
+
+  static const List<String> _kSyntheticStampTooltips = [
+    'Prep — getting your photo ready',
+    'Analyze — reading pose and light',
+    'Transform — AI is applying your style',
+    'Finish — refining details',
+  ];
+
+  /// POST `/api/generate-image` (parallel count 1) has no SSE step thumbnails — we still show
+  /// a timed “processing” strip using your capture so the screen isn’t empty until the final image.
+  bool get showSyntheticProgressStamps =>
+      (_isGenerating || _isLoadingMore) &&
+      _parallelSlotCount == 1 &&
+      _progressivePipelineStages.isEmpty &&
+      !_hasServerRunDetailThumbnails;
+
+  bool get _hasServerRunDetailThumbnails =>
+      _generationRunStepPreviews.any(
+        (e) => e.previewUrl != null && e.previewUrl!.trim().isNotEmpty,
+      );
+
+  /// Highlighted synthetic step 0..3 from elapsed time (updates every second via generation timer).
+  int get syntheticProgressHighlightIndex {
+    final t = _elapsedSeconds;
+    if (t < 4) return 0;
+    if (t < 14) return 1;
+    if (t < 38) return 2;
+    return 3;
+  }
+
+  String syntheticStampTooltip(int index) {
+    if (index < 0 || index >= _kSyntheticStampTooltips.length) {
+      return 'Processing';
+    }
+    return _kSyntheticStampTooltips[index];
+  }
+
+  List<GenerationRunStepPreview> get generationRunStepPreviews =>
+      List<GenerationRunStepPreview>.unmodifiable(_generationRunStepPreviews);
+
+  /// Final output thumbnail to keep in the stamp strip after completion.
+  String? get newestGeneratedImageUrl {
+    if (_generatedImages.isEmpty) return null;
+    return _generatedImages.first.imageUrl;
+  }
+
+  /// 0–1 from transformation run steps (`complete` / `failed` / … count as done).
+  double? get generationRunDetailsProgress {
+    if (_generationRunStepPreviews.isEmpty) return null;
+    final n = _generationRunStepPreviews.length;
+    var done = 0;
+    for (final e in _generationRunStepPreviews) {
+      if (e.isFinished) done++;
+    }
+    return (done / n).clamp(0.0, 1.0);
+  }
+
   /// Progressive filmstrip + stage thumbs: only when pref is on **and** SSE runs (parallel > 1).
   bool get useProgressiveGenerationLayoutForSession =>
       _useProgressiveGenerationUi && _parallelSlotCount > 1;
 
   int get parallelImageSlotCount => _parallelSlotCount;
 
-  List<ProgressivePipelineStage> get progressivePipelineStages =>
-      List<ProgressivePipelineStage>.unmodifiable(_progressivePipelineStages);
+  List<ProgressivePipelineStage> get progressivePipelineStages {
+    // Only keep stages where we can actually show a thumbnail (no placeholder-only timeline rows).
+    final out = _progressivePipelineStages
+        .where((s) => (s.previewImageUrl ?? '').trim().isNotEmpty)
+        .toList(growable: false);
+    return List<ProgressivePipelineStage>.unmodifiable(out);
+  }
 
   /// One line under the filmstrip: commentary, active step, or progress message.
   String? get progressiveOneLiner {
@@ -258,7 +395,30 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _refreshMaxRegenerationsFromSettings();
     _originalPhoto = photo;
     _selectedTheme = theme;
-    _triesRemaining = _maxRegenerationsAllowed;
+    // Keep POST `/api/generate-image` attempt in sync with the server. After a
+    // completed run, [SessionData.attemptsUsed] advances; resetting tries to
+    // max here would resend attempt 1 and can trigger API errors when re-entering
+    // from theme after backing out of /generate.
+    final used = _sessionManager.currentSession?.attemptsUsed ?? 0;
+    _triesRemaining = (_maxRegenerationsAllowed - used)
+        .clamp(0, _maxRegenerationsAllowed);
+    _selectedHeroStampId = null;
+    notifyListeners();
+  }
+
+  /// Tap a stamp to preview it in the center hero; tap again to clear.
+  void toggleHeroStamp(String stampId) {
+    if (_selectedHeroStampId == stampId) {
+      _selectedHeroStampId = null;
+    } else {
+      _selectedHeroStampId = stampId;
+    }
+    notifyListeners();
+  }
+
+  void _clearHeroStamp() {
+    if (_selectedHeroStampId == null) return;
+    _selectedHeroStampId = null;
     notifyListeners();
   }
 
@@ -276,12 +436,109 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _timer = null;
   }
 
+  void _stopGenerationRunPolling() {
+    _generationRunPollTimer?.cancel();
+    _generationRunPollTimer = null;
+  }
+
+  void _startGenerationRunPolling() {
+    _stopGenerationRunPolling();
+    _generationRunPollTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => unawaited(_pollGenerationRunTick()),
+    );
+    unawaited(_pollGenerationRunTick());
+  }
+
+  void _ingestRunIdFromSsePayload(Map<String, dynamic> data) {
+    final raw = data['runId'];
+    if (raw is! String || raw.trim().isEmpty) return;
+    final id = raw.trim();
+    if (_polledTransformationRunId == id) return;
+    _polledTransformationRunId = id;
+    if (_lastTransformationRunId == null || _lastTransformationRunId!.isEmpty) {
+      _lastTransformationRunId = id;
+    }
+    notifyListeners();
+  }
+
+  Future<void> _pollGenerationRunTick() async {
+    if (!_isGenerating && !_isLoadingMore) return;
+    final sid = _sessionManager.sessionId;
+    if (sid == null) return;
+    try {
+      if (_polledTransformationRunId == null ||
+          _polledTransformationRunId!.trim().isEmpty) {
+        final sessionRaw = await _apiService.fetchSession(sid);
+        final rid = parseActiveTransformationRunIdFromSession(sessionRaw);
+        if (rid != null) {
+          _polledTransformationRunId = rid;
+          if (_lastTransformationRunId == null ||
+              _lastTransformationRunId!.isEmpty) {
+            _lastTransformationRunId = rid;
+          }
+          notifyListeners();
+        }
+      }
+      final runId = _polledTransformationRunId?.trim();
+      if (runId == null || runId.isEmpty) return;
+
+      final payload = await _apiService.fetchGenerationRun(runId);
+      final next = _parseGenerationRunStepsFromPayload(payload);
+      if (!_generationRunStepsEqual(_generationRunStepPreviews, next)) {
+        _generationRunStepPreviews = next;
+        notifyListeners();
+      }
+    } catch (e) {
+      AppLogger.debug('Generation run poll: $e');
+    }
+  }
+
+  List<GenerationRunStepPreview> _parseGenerationRunStepsFromPayload(
+    Map<String, dynamic> payload,
+  ) {
+    final stepsRaw = payload['steps'];
+    if (stepsRaw is! List) return [];
+    final out = <GenerationRunStepPreview>[];
+    for (final e in stepsRaw) {
+      if (e is! Map) continue;
+      final s = Map<String, dynamic>.from(e);
+      final stage = s['stage']?.toString() ?? 'step';
+      final status = s['status']?.toString() ?? '';
+      final url = _extractStepPreviewUrl(s);
+      // Only show stages that have a visible image delta (thumbnail/preview/etc).
+      // If the backend didn't produce a preview for this stage, skip it so the timeline
+      // remains “all stamps, no filler”.
+      if (url == null || url.trim().isEmpty) continue;
+      out.add(GenerationRunStepPreview(stage: stage, status: status, previewUrl: url));
+    }
+    return out;
+  }
+
+  bool _generationRunStepsEqual(
+    List<GenerationRunStepPreview> a,
+    List<GenerationRunStepPreview> b,
+  ) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].stage != b[i].stage ||
+          a[i].status != b[i].status ||
+          a[i].previewUrl != b[i].previewUrl) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   void _updateProgress(String message) {
     _progressMessage = message;
     notifyListeners();
   }
 
   void _resetLiveGenerationState() {
+    _stopGenerationRunPolling();
+    _generationRunStepPreviews = [];
+    _polledTransformationRunId = null;
     _liveProgress = 0;
     _liveCurrentStep = null;
     _liveStepDurationsMs.clear();
@@ -292,9 +549,13 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _liveSlots = [];
     _lastTransformationRunId = null;
     _progressivePipelineStages = [];
+    _selectedHeroStampId = null;
   }
 
   void _clearLiveGenerationUi() {
+    _stopGenerationRunPolling();
+    _generationRunStepPreviews = [];
+    _polledTransformationRunId = null;
     _liveProgress = 0;
     _liveCurrentStep = null;
     _liveStepDurationsMs.clear();
@@ -364,6 +625,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   }
 
   void _handleGenerationSseEvent(String event, Map<String, dynamic> data) {
+    _ingestRunIdFromSsePayload(data);
     final commentaryAllowed =
         _appSettingsManager?.settings?.showGenerationCommentary == true;
 
@@ -503,6 +765,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+    if (_triesRemaining <= 0) {
+      _errorMessage =
+          'No generation attempts remaining for this session. Start a new session to continue.';
+      notifyListeners();
+      return false;
+    }
 
     _resetCancellation();
     _resetLiveGenerationState();
@@ -512,6 +780,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     notifyListeners();
     
     _startTimer();
+    _startGenerationRunPolling();
 
     try {
       try {
@@ -563,6 +832,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         _generatedImages = [...newImages, ..._generatedImages];
         _ensureNewestAlwaysSelected();
         _triesRemaining--;
+        _clearHeroStamp();
         
         AppLogger.debug('✅ Image generated successfully');
         ErrorReportingManager.log('Image generated successfully');
@@ -620,6 +890,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     notifyListeners();
     
     _startTimer();
+    _startGenerationRunPolling();
 
     try {
       try {
@@ -633,20 +904,33 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       // Update session with the new theme (30s timeout)
       const updateTimeout = Duration(seconds: 30);
       try {
-        await _apiService.updateSession(
-          sessionId: _sessionManager.sessionId!,
-          selectedThemeId: newTheme.id,
-        ).timeout(
-          updateTimeout,
-          onTimeout: () => throw TimeoutException(
-            'Update theme timed out after ${updateTimeout.inSeconds} seconds',
-          ),
-        );
+        final patch = await _apiService
+            .updateSession(
+              sessionId: _sessionManager.sessionId!,
+              selectedThemeId: newTheme.id,
+            )
+            .timeout(
+              updateTimeout,
+              onTimeout: () => throw TimeoutException(
+                'Update theme timed out after ${updateTimeout.inSeconds} seconds',
+              ),
+            );
+        _sessionManager.setSessionFromResponse(patch);
+        _refreshMaxRegenerationsFromSettings();
+        final usedAfter = _sessionManager.currentSession?.attemptsUsed ?? 0;
+        _triesRemaining = (_maxRegenerationsAllowed - usedAfter)
+            .clamp(0, _maxRegenerationsAllowed);
       } on TimeoutException {
         _errorMessage = 'Request took too long. Please try again.';
         return false;
       } catch (e) {
         _errorMessage = 'Failed to update theme: $e';
+        return false;
+      }
+
+      if (_triesRemaining <= 0) {
+        _errorMessage =
+            'No generation attempts remaining for this session. Start a new session to continue.';
         return false;
       }
       
@@ -690,6 +974,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         _generatedImages = [...newImages, ..._generatedImages];
         _ensureNewestAlwaysSelected();
         _triesRemaining--;
+        _clearHeroStamp();
         
         return true;
       } else {
@@ -823,6 +1108,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _stopTimer();
+    _stopGenerationRunPolling();
     super.dispose();
   }
 }

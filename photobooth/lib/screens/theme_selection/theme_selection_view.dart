@@ -167,15 +167,22 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       final photo = parsed.photo;
       final addOneMore = parsed.addOneMoreStyle;
       final usedIds = parsed.usedThemeIds;
-      if (_photoFromCapture != photo ||
-          _addOneMoreStyle != addOneMore ||
+
+      var changed = false;
+      // Route args that omit `photo` (e.g. "add one more style") must not clear
+      // an existing capture — only explicit non-null updates replace it.
+      if (photo != null && _photoFromCapture != photo) {
+        _photoFromCapture = photo;
+        changed = true;
+      }
+      if (_addOneMoreStyle != addOneMore ||
           _usedThemeIds.length != usedIds.length ||
           !listEquals(_usedThemeIds, usedIds)) {
-        _photoFromCapture = photo;
         _addOneMoreStyle = addOneMore;
         _usedThemeIds = usedIds;
-        if (mounted) setState(() {});
+        changed = true;
       }
+      if (changed && mounted) setState(() {});
     }
   }
 
