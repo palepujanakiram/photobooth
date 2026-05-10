@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'theme_model.dart';
+import '../../models/kiosk_frame_model.dart';
 import '../../services/theme_manager.dart';
 import '../../utils/constants.dart';
 import '../../services/api_service.dart';
@@ -29,16 +30,13 @@ class ThemeViewModel extends ChangeNotifier {
   })  : _themeManager = themeManager ?? ThemeManager(),
         _apiService = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager() {
-    // Listen to ThemeManager updates
+    // Listen to ThemeManager updates; [addListener] returns an unsubscribe callback.
     _themeManagerListener = _themeManager.addListener(_onThemesUpdated);
   }
 
   @override
   void dispose() {
-    // Remove listener when ViewModel is disposed
-    if (_themeManagerListener != null) {
-      _themeManager.removeListener(_themeManagerListener!);
-    }
+    _themeManagerListener?.call();
     super.dispose();
   }
 
@@ -312,6 +310,102 @@ class ThemeViewModel extends ChangeNotifier {
       return false;
     } catch (e) {
       _errorMessage = 'Failed to update session with theme: ${e.toString()}';
+      return false;
+    } finally {
+      _isUpdatingSession = false;
+      notifyListeners();
+    }
+  }
+
+  /// Active kiosk frames for routing after theme (same API as [FrameSelectScreen]).
+  Future<List<KioskFrameModel>> fetchKioskFramesList() async {
+    return _apiService.getKioskFrames();
+  }
+
+  /// Persists the only available frame when the kiosk has exactly one active frame.
+  Future<bool> syncSingleFrameSelection(String frameId) async {
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null) {
+      _errorMessage = 'No active session.';
+      notifyListeners();
+      return false;
+    }
+
+    _isUpdatingSession = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      const updateTimeout = Duration(seconds: 30);
+      final response = await _apiService
+          .updateSession(
+            sessionId: sessionId,
+            includeSelectedFrameId: true,
+            selectedFrameId: frameId,
+          )
+          .timeout(
+            updateTimeout,
+            onTimeout: () => throw TimeoutException(
+              'Update session timed out after ${updateTimeout.inSeconds} seconds',
+            ),
+          );
+      _sessionManager.setSessionFromResponse(response);
+      return true;
+    } on TimeoutException {
+      _errorMessage =
+          'Request took too long. Please check your connection and try again.';
+      return false;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
+      return false;
+    } finally {
+      _isUpdatingSession = false;
+      notifyListeners();
+    }
+  }
+
+  /// Clears occasion frame on the session when we skip the frame picker (&lt; 2 frames).
+  /// Matches [FrameSelectViewModel.patchSelectedFrameAndSyncSession] auto path.
+  Future<bool> syncAutoSkippedFrameSelection() async {
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null) {
+      _errorMessage = 'No active session.';
+      notifyListeners();
+      return false;
+    }
+
+    _isUpdatingSession = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      const updateTimeout = Duration(seconds: 30);
+      final response = await _apiService
+          .updateSession(
+            sessionId: sessionId,
+            includeSelectedFrameId: true,
+            selectedFrameId: null,
+          )
+          .timeout(
+            updateTimeout,
+            onTimeout: () => throw TimeoutException(
+              'Update session timed out after ${updateTimeout.inSeconds} seconds',
+            ),
+          );
+      _sessionManager.setSessionFromResponse(response);
+      return true;
+    } on TimeoutException {
+      _errorMessage =
+          'Request took too long. Please check your connection and try again.';
+      return false;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
       return false;
     } finally {
       _isUpdatingSession = false;

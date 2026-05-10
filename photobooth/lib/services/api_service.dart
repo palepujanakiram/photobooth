@@ -2,25 +2,156 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'package:flutter/foundation.dart' show compute, kDebugMode, kIsWeb;
 import 'package:uuid/uuid.dart';
 import '../models/app_settings_model.dart';
+import '../models/kiosk_frame_model.dart';
+import '../models/kiosk_info_model.dart';
 import '../models/payment_initiate_result.dart';
 import '../models/parallel_generation_result.dart';
 import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/exceptions.dart';
+import '../utils/app_config.dart';
 import '../utils/constants.dart';
+import '../utils/session_user_image_validation.dart';
 import '../utils/logger.dart';
 import 'api_client.dart';
 import 'file_helper.dart';
 import 'api_logging_interceptor.dart';
 import 'alice_inspector.dart';
+import 'client_identification.dart';
 import 'kiosk_manager.dart';
 import 'session_manager.dart';
 
 // Conditional import for web Dio configuration
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
+
+/// Index of the closing `"` for a JSON string starting at [openQuoteIndex] (`"` itself).
+/// Handles standard escapes (`\"`, `\\`, `\uXXXX`, etc.). Returns -1 if not found.
+int _jsonStringCloseQuoteIndex(String raw, int openQuoteIndex) {
+  var i = openQuoteIndex + 1;
+  while (i < raw.length) {
+    final ch = raw[i];
+    if (ch == r'\') {
+      if (i + 1 >= raw.length) return -1;
+      final n = raw[i + 1];
+      if (n == 'u' && i + 6 <= raw.length) {
+        i += 6;
+        continue;
+      }
+      i += 2;
+      continue;
+    }
+    if (ch == '"') return i;
+    i++;
+  }
+  return -1;
+}
+
+/// Remove echoed `userImageUrl` string value from raw JSON so [jsonDecode] avoids a multi‑MB field.
+/// Uses JSON-aware scanning so escaped `"` inside the value does not truncate early.
+String _stripEchoedUserImageUrlField(String raw) {
+  const key = '"userImageUrl"';
+  final keyIdx = raw.indexOf(key);
+  if (keyIdx < 0) return raw;
+
+  final colon = raw.indexOf(':', keyIdx + key.length);
+  if (colon < 0) return raw;
+
+  var i = colon + 1;
+  while (i < raw.length) {
+    final c = raw.codeUnitAt(i);
+    if (c != 0x20 && c != 0x09 && c != 0x0a && c != 0x0d) break;
+    i++;
+  }
+  if (i >= raw.length || raw[i] != '"') return raw;
+
+  final valueCloseIdx = _jsonStringCloseQuoteIndex(raw, i);
+  if (valueCloseIdx < 0) return raw;
+
+  var removeStart = keyIdx;
+  var before = keyIdx - 1;
+  while (before >= 0) {
+    final c = raw.codeUnitAt(before);
+    if (c == 0x20 || c == 0x09 || c == 0x0a || c == 0x0d) {
+      before--;
+      continue;
+    }
+    if (raw[before] == ',') removeStart = before;
+    break;
+  }
+
+  var removeEnd = valueCloseIdx + 1;
+  while (removeEnd < raw.length) {
+    final c = raw.codeUnitAt(removeEnd);
+    if (c == 0x20 || c == 0x09 || c == 0x0a || c == 0x0d) {
+      removeEnd++;
+      continue;
+    }
+    if (c == 0x2c) removeEnd++;
+    break;
+  }
+
+  return raw.substring(0, removeStart) + raw.substring(removeEnd);
+}
+
+/// Dio may get **HTTP 200 + HTML** (proxy error page, missing route behind gateway).
+/// [jsonDecode] then fails with `Unexpected token '<'…` — surface a clear [ApiException] instead.
+void _assertSessionBodyLooksLikeJson(String raw, String endpointDescription) {
+  final s = raw.trimLeft();
+  if (s.isEmpty) return;
+  if (s.startsWith('<')) {
+    throw ApiException(
+      'Server returned HTML instead of JSON for $endpointDescription. '
+      'Check the API is deployed and the path is correct (got a web page, not JSON).',
+    );
+  }
+  final head = s.length > 9 ? s.substring(0, 9).toLowerCase() : s.toLowerCase();
+  if (head.startsWith('<!doctype') || head.startsWith('<html')) {
+    throw ApiException(
+      'Server returned HTML instead of JSON for $endpointDescription. '
+      'Check the API is deployed and the path is correct.',
+    );
+  }
+  if (!s.startsWith('{') && !s.startsWith('[')) {
+    throw ApiException(
+      'Server returned non-JSON for $endpointDescription. '
+      'Expected a JSON object from the API.',
+    );
+  }
+}
+
+/// Decode session PATCH JSON; server often echoes huge `userImageUrl`.
+Map<String, dynamic> _parseSessionPatchResponseJson(String raw) {
+  _assertSessionBodyLooksLikeJson(raw, 'PATCH /api/sessions/:sessionId');
+  try {
+    final slim = _stripEchoedUserImageUrlField(raw);
+    final decoded = jsonDecode(slim);
+    if (decoded is! Map) {
+      throw const FormatException('Session PATCH: expected a JSON object');
+    }
+    final map = Map<String, dynamic>.from(decoded);
+    map.remove('userImageUrl');
+    return map;
+  } on FormatException {
+    // Strip can fail on unusual server JSON; full parse + drop key still works (may be heavy).
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) {
+        throw ApiException('Session response was not a JSON object.');
+      }
+      final map = Map<String, dynamic>.from(decoded);
+      map.remove('userImageUrl');
+      return map;
+    } on FormatException {
+      throw ApiException(
+        'Could not read session response from the server. '
+        'If you recently changed API routes, confirm PATCH /api/sessions returns JSON.',
+      );
+    }
+  }
+}
 
 class ApiService {
   late final ApiClient _apiClient;
@@ -33,11 +164,12 @@ class ApiService {
         baseUrl: AppConstants.kBaseUrl,
         connectTimeout: AppConstants.kApiTimeout,
         receiveTimeout: AppConstants.kApiTimeout,
-        headers: {
+        // Large PATCH bodies (base64 photo) need an explicit send budget on web.
+        sendTimeout: AppConstants.kApiTimeout,
+        headers: ClientIdentification.mergeHeaders({
           'Content-Type': 'application/json',
-          'Authorization':
-              'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
-        },
+          ...AppConfig.authorizationBearerHeader,
+        }),
       ),
     );
 
@@ -319,10 +451,12 @@ class ApiService {
         // Use Dio directly for web since Retrofit doesn't support web File
         final dio = Dio(BaseOptions(
           baseUrl: AppConstants.kBaseUrl,
-          headers: {
-            'Authorization':
-                'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
-          },
+          connectTimeout: AppConstants.kApiTimeout,
+          receiveTimeout: AppConstants.kApiTimeout,
+          sendTimeout: AppConstants.kApiTimeout,
+          headers: ClientIdentification.mergeHeaders({
+            ...AppConfig.authorizationBearerHeader,
+          }),
         ));
         if (kDebugMode == true) {
           dio.interceptors.add(ApiLoggingInterceptor());
@@ -361,6 +495,7 @@ class ApiService {
           originalPhotoId: originalPhotoId,
           themeId: theme.id,
           transformedAt: DateTime.now(),
+          runId: null,
         );
       } else {
         // On mobile, convert XFile to File for Retrofit
@@ -413,6 +548,7 @@ class ApiService {
           originalPhotoId: originalPhotoId,
           themeId: theme.id,
           transformedAt: DateTime.now(),
+          runId: null,
         );
       }
     } on DioException catch (e) {
@@ -549,6 +685,114 @@ class ApiService {
     }
   }
 
+  /// GET `/api/kiosk/by-code/:code` — kiosk metadata used on initial URL bind.
+  ///
+  /// Returns `null` when the server rejects the code / not found.
+  Future<KioskInfoModel?> fetchKioskByCode(String kioskCode) async {
+    final code = kioskCode.trim().toUpperCase();
+    if (code.isEmpty) return null;
+    try {
+      final r = await _dio.get<dynamic>(
+        '/api/kiosk/by-code/$code',
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+      final data = r.data;
+      if (r.statusCode != null && r.statusCode! >= 400) {
+        return null;
+      }
+      if (data is Map<String, dynamic>) {
+        final m = KioskInfoModel.fromJson(data);
+        return m.isValid ? m : null;
+      }
+      if (data is Map) {
+        final m = KioskInfoModel.fromJson(Map<String, dynamic>.from(data));
+        return m.isValid ? m : null;
+      }
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+    } catch (_) {}
+    return null;
+  }
+
+  /// GET `/api/kiosk/frames` — active occasion frames for the current kiosk session.
+  ///
+  /// Backend requires at least one of `kioskCode` or `kioskId` (same as themes).
+  Future<List<KioskFrameModel>> getKioskFrames() async {
+    try {
+      final kioskCode =
+          (await KioskManager().getKioskCode())?.trim().toUpperCase();
+      final kioskId = SessionManager().currentSession?.kioskId;
+
+      final qp = <String, dynamic>{};
+      if (kioskCode != null && kioskCode.isNotEmpty) {
+        qp['kioskCode'] = kioskCode;
+      }
+      if (kioskId != null && kioskId.isNotEmpty) {
+        qp['kioskId'] = kioskId;
+      }
+      if (qp.isEmpty) {
+        throw ApiException(
+          'Kiosk code or kiosk id is required to load frames. '
+          'Link a kiosk in settings, then try again.',
+        );
+      }
+
+      final r = await _dio.get<dynamic>(
+        '/api/kiosk/frames',
+        queryParameters: qp,
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+      final data = r.data;
+      if (data == null) {
+        return <KioskFrameModel>[];
+      }
+      if (r.statusCode != null && r.statusCode! >= 400) {
+        if (data is Map<String, dynamic>) {
+          throw ApiException(
+            data['error']?.toString() ??
+                data['message']?.toString() ??
+                'Failed to load frames (${r.statusCode})',
+            r.statusCode,
+          );
+        }
+        throw ApiException('Failed to load frames (${r.statusCode})', r.statusCode);
+      }
+      final List<dynamic> raw;
+      if (data is List) {
+        raw = data;
+      } else if (data is Map &&
+          (data['frames'] is List || data['data'] is List)) {
+        final list = (data['frames'] ?? data['data']) as List<dynamic>;
+        raw = list;
+      } else {
+        throw ApiException('Unexpected frames response from API');
+      }
+      return raw
+          .map((e) {
+            if (e is! Map) {
+              throw ApiException('Invalid frame entry in API response');
+            }
+            return KioskFrameModel.fromJson(Map<String, dynamic>.from(e));
+          })
+          .where((f) => f.id.isNotEmpty && f.overlayUrl.isNotEmpty)
+          .toList();
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      throw ApiException(
+        'Failed to load frames: ${e.message}',
+        e.response?.statusCode,
+      );
+    }
+  }
+
   /// Accepts terms and conditions (legacy)
   Future<void> acceptTerms({required String deviceType}) async {
     try {
@@ -639,11 +883,14 @@ class ApiService {
   Future<Map<String, dynamic>> acceptTermsAndCreateSession({
     String? kioskCode,
     String? source,
+    String? selectedFrameId,
+    bool includeSelectedFrameId = false,
   }) async {
     try {
       final response = await _apiClient.acceptTermsAndCreateSession({
         if (kioskCode != null && kioskCode.isNotEmpty) 'kioskCode': kioskCode,
         if (source != null && source.isNotEmpty) 'source': source,
+        if (includeSelectedFrameId) 'selectedFrameId': selectedFrameId,
       });
       return response;
     } on DioException catch (e) {
@@ -681,13 +928,25 @@ class ApiService {
     }
   }
 
-  /// Updates session with user photo and/or selected theme
-  /// Returns updated session data
-  /// Either userImageUrl or selectedThemeId (or both) must be provided
+  /// PATCH `/api/sessions/{sessionId}` — session updates used across the flow:
+  /// 1. Photo: body includes `userImageUrl` (data URL) — step after capture.
+  /// 2. Theme: body includes `selectedThemeId` — after theme selection.
+  /// 3. Frame: `includeSelectedFrameId` + `selectedFrameId` when applicable.
+  ///
+  /// Server contract (no separate upload-photo route): photo is always this PATCH.
+  /// Returns parsed session JSON. At least one of `userImageUrl`, `selectedThemeId`,
+  /// or `selectedFrameId` (with `includeSelectedFrameId`) must be provided.
   Future<Map<String, dynamic>> updateSession({
     required String sessionId,
     String? userImageUrl, // Base64 data URL (optional)
     String? selectedThemeId, // Optional - can be set later
+    /// When true, sends `selectedFrameId` in the body (value may be JSON `null`).
+    bool includeSelectedFrameId = false,
+    String? selectedFrameId,
+    /// Optional face count hint when sending `userImageUrl`.
+    int? personCount,
+    /// Optional framing metadata (recommended with photo upload).
+    Map<String, dynamic>? framingMetadata,
   }) async {
     try {
       final body = <String, dynamic>{};
@@ -698,18 +957,47 @@ class ApiService {
       if (selectedThemeId != null) {
         body['selectedThemeId'] = selectedThemeId;
       }
+      if (includeSelectedFrameId) {
+        body['selectedFrameId'] = selectedFrameId;
+      }
+      if (personCount != null) {
+        body['personCount'] = personCount;
+      }
+      if (framingMetadata != null && framingMetadata.isNotEmpty) {
+        body['framingMetadata'] = framingMetadata;
+      }
+
+      if (userImageUrl != null) {
+        SessionUserImageValidation.assertValidForSessionPatch(userImageUrl);
+      }
 
       // Ensure at least one field is provided
       if (body.isEmpty) {
         throw ApiException(
-            'Either userImageUrl or selectedThemeId must be provided');
+            'At least one of userImageUrl, selectedThemeId, or selectedFrameId '
+            '(with includeSelectedFrameId) must be provided');
       }
 
-      final response = await _apiClient.updateSession(
-        sessionId,
-        body,
+      // Plain text + [compute] so a multi‑MB echoed `userImageUrl` is not jsonDecoded
+      // on the UI thread (was freezing Chrome right after PATCH 200).
+      final httpResponse = await _dio.patch<String>(
+        '/api/sessions/$sessionId',
+        data: body,
+        options: Options(
+          contentType: Headers.jsonContentType,
+          responseType: ResponseType.plain,
+        ),
       );
-      return response;
+
+      final text = httpResponse.data;
+      if (text == null || text.isEmpty) {
+        throw ApiException('Empty session response');
+      }
+      // Web: [compute] does not use a worker — strip huge fields first, then decode here.
+      if (kIsWeb) {
+        return _parseSessionPatchResponseJson(text);
+      }
+      return await compute(_parseSessionPatchResponseJson, text);
     } on DioException catch (e) {
       _handleWebNetworkError(e);
 
@@ -727,7 +1015,18 @@ class ApiService {
               responseData['error'] as String? ??
               'API Error: ${e.response?.statusCode}';
         } else if (responseData is String) {
-          errorMessage = responseData;
+          try {
+            final errObj = jsonDecode(responseData);
+            if (errObj is Map) {
+              errorMessage = errObj['message'] as String? ??
+                  errObj['error'] as String? ??
+                  responseData;
+            } else {
+              errorMessage = responseData;
+            }
+          } catch (_) {
+            errorMessage = responseData;
+          }
         } else {
           errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
         }
@@ -813,6 +1112,53 @@ class ApiService {
     return null;
   }
 
+  /// GET `/api/generation-runs/:runId` — transformation run + steps (kiosk forensics UI).
+  Future<Map<String, dynamic>> fetchGenerationRun(String runId) async {
+    final id = runId.trim();
+    if (id.isEmpty) {
+      throw ApiException('runId is required');
+    }
+    try {
+      final r = await _dio.get<dynamic>('/api/generation-runs/$id');
+      final data = r.data;
+      if (data is Map<String, dynamic>) {
+        return data;
+      }
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+      throw ApiException('Unexpected generation run response');
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
+      String errorMessage = AppConstants.kErrorApiCall;
+      if (e.response != null) {
+        final responseData = e.response?.data;
+        if (responseData is Map<String, dynamic>) {
+          errorMessage = responseData['error'] as String? ??
+              responseData['message'] as String? ??
+              'API Error: ${e.response?.statusCode}';
+        } else if (responseData is String) {
+          errorMessage = responseData;
+        } else {
+          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
+        }
+      } else {
+        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
+      }
+      throw ApiException(errorMessage, e.response?.statusCode);
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('${AppConstants.kErrorUnknown}: $e');
+    }
+  }
+
   /// POST /api/payment/initiate — returns payment link for UPI QR.
   Future<PaymentInitiateResult> initiatePayment({
     required String sessionId,
@@ -894,11 +1240,11 @@ class ApiService {
         baseUrl: AppConstants.kBaseUrl,
         connectTimeout: AppConstants.kAiGenerationTimeout,
         receiveTimeout: AppConstants.kAiGenerationTimeout,
-        headers: {
+        sendTimeout: AppConstants.kAiGenerationTimeout,
+        headers: ClientIdentification.mergeHeaders({
           'Content-Type': 'application/json',
-          'Authorization':
-              'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
-        },
+          ...AppConfig.authorizationBearerHeader,
+        }),
       ),
     );
 
@@ -919,10 +1265,12 @@ class ApiService {
 
     while (retryCount <= maxRetries) {
       try {
+        // Server reads source image from the session (after PATCH photo + PATCH theme).
+        // [originalPhotoId] / [themeId] are for client-side [TransformedImageModel] only.
         final response = await apiClientWithTimeout.generateImage({
           'sessionId': sessionId,
           'attempt': attempt,
-          'trackDetails': true, // Enable detailed tracking
+          'trackDetails': true,
         });
         onProgress?.call('Response received');
 
@@ -978,19 +1326,18 @@ class ApiService {
           }
         }
 
-        // Validate URL format
-        if (!imageUrl.startsWith('http://') &&
-            !imageUrl.startsWith('https://')) {
-          throw ApiException('Invalid image URL format: must be HTTP URL');
-        }
+        // Backend may return a relative path (e.g. `/api/img/generated/...`); resolve
+        // against [AppConstants.kBaseUrl] so [NetworkImage] / Dio always get an absolute URI.
+        final resolvedImageUrl = _resolveImageUrl(imageUrl);
 
         // Just return the URL - no XFile wrapper, no download
         return TransformedImageModel(
           id: _uuid.v4(),
-          imageUrl: imageUrl,
+          imageUrl: resolvedImageUrl,
           originalPhotoId: originalPhotoId,
           themeId: themeId,
           transformedAt: DateTime.now(),
+          runId: runId,
         );
       } on DioException catch (e) {
         _handleWebNetworkError(e);
@@ -1061,6 +1408,44 @@ class ApiService {
     throw ApiException('Failed to generate image after retries');
   }
 
+  /// Server-aligned generation: **count == 1** → POST `/api/generate-image`;
+  /// **count > 1** → GET `/api/generate-stream-parallel?count=…` (SSE).
+  ///
+  /// Pass [count] from `/api/settings` `parallelImageCount` (via [AppSettingsManager.resolveParallelImageCount]).
+  /// [attempt] is only used for the POST path (1-based generation attempt for the session).
+  Future<ParallelGenerationResult> generateImages({
+    required String sessionId,
+    required int count,
+    required int attempt,
+    required String originalPhotoId,
+    required String themeId,
+    void Function(String message)? onProgress,
+    void Function(String eventType, Map<String, dynamic> json)? onSseEvent,
+  }) async {
+    final n = count < 1 ? 1 : count;
+    if (n == 1) {
+      final m = await generateImage(
+        sessionId: sessionId,
+        attempt: attempt,
+        originalPhotoId: originalPhotoId,
+        themeId: themeId,
+        onProgress: onProgress,
+      );
+      return ParallelGenerationResult(
+        imageUrlsBySlot: [m.imageUrl],
+        runId: m.runId,
+      );
+    }
+    return generateImageParallelStream(
+      sessionId: sessionId,
+      count: n,
+      originalPhotoId: originalPhotoId,
+      themeId: themeId,
+      onProgress: onProgress,
+      onSseEvent: onSseEvent,
+    );
+  }
+
   /// Parallel AI generation via GET `/api/generate-stream-parallel` (SSE).
   ///
   /// See product doc: "Parallel Generation with SSE". Uses [sessionId] and [count];
@@ -1073,6 +1458,7 @@ class ApiService {
     required String originalPhotoId,
     required String themeId,
     void Function(String message)? onProgress,
+    void Function(String eventType, Map<String, dynamic> json)? onSseEvent,
   }) async {
     AppLogger.debug(
         '📡 Parallel SSE generation session=$sessionId photo=$originalPhotoId theme=$themeId count=$count');
@@ -1082,11 +1468,11 @@ class ApiService {
         baseUrl: AppConstants.kBaseUrl,
         connectTimeout: AppConstants.kApiTimeout,
         receiveTimeout: AppConstants.kAiGenerationTimeout,
-        headers: {
+        sendTimeout: AppConstants.kAiGenerationTimeout,
+        headers: ClientIdentification.mergeHeaders({
           'Accept': 'text/event-stream',
-          'Authorization':
-              'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
-        },
+          ...AppConfig.authorizationBearerHeader,
+        }),
       ),
     );
 
@@ -1140,6 +1526,7 @@ class ApiService {
               qualityByIndex: qualityByIndex,
               completer: completer,
               onProgress: onProgress,
+              onSseEvent: onSseEvent,
             );
             if (completer.isCompleted) {
               return await completer.future;
@@ -1154,6 +1541,7 @@ class ApiService {
             qualityByIndex: qualityByIndex,
             completer: completer,
             onProgress: onProgress,
+            onSseEvent: onSseEvent,
           );
         }
       } catch (e) {
@@ -1371,12 +1759,15 @@ class ApiService {
   /// Should be called immediately after uploading photo to save 2-3 seconds during AI generation
   void preprocessImage({
     required String sessionId,
+    int? clientFaceCount,
   }) {
     // Fire-and-forget: don't await, don't handle errors
     // If preprocessing fails, the generate endpoint will handle it automatically
-    _apiClient.preprocessImage({
+    final body = <String, dynamic>{
       'sessionId': sessionId,
-    }).then((_) {
+      if (clientFaceCount != null) 'clientFaceCount': clientFaceCount,
+    };
+    _apiClient.preprocessImage(body).then((_) {
       // Success - preprocessing completed
       AppLogger.debug('✅ Preprocess image completed');
     }).catchError((error) {
@@ -1392,6 +1783,7 @@ void _dispatchParallelSseBlock(
   required Map<int, double> qualityByIndex,
   required Completer<ParallelGenerationResult> completer,
   void Function(String message)? onProgress,
+  void Function(String eventType, Map<String, dynamic> json)? onSseEvent,
 }) {
   String? eventType;
   final dataParts = <String>[];
@@ -1414,7 +1806,20 @@ void _dispatchParallelSseBlock(
     return;
   }
 
-  switch (eventType) {
+  final et = (eventType ?? '').trim();
+  if (et.isNotEmpty) {
+    onSseEvent?.call(et, json);
+  }
+
+  switch (et) {
+    case 'status':
+      final total = json['imageCount'] ?? json['total'];
+      onProgress?.call(
+        total != null
+            ? 'Starting generation ($total options)...'
+            : 'Starting generation...',
+      );
+      break;
     case 'start':
       final total = json['total'];
       onProgress?.call(
@@ -1423,8 +1828,48 @@ void _dispatchParallelSseBlock(
             : 'Starting parallel generation...',
       );
       break;
+    case 'step':
+      final step = json['step'] as String?;
+      final st = json['status'] as String?;
+      if (step != null && st == 'active') {
+        onProgress?.call('Step: $step');
+      }
+      break;
+    case 'attempt_start':
+      final a = json['attempt'];
+      final ta = json['totalAttempts'];
+      if (a != null && ta != null) {
+        onProgress?.call('Attempt $a of $ta...');
+      }
+      break;
+    case 'attempt_complete':
+      final sc = json['score'];
+      if (sc != null) {
+        onProgress?.call('Quality score: $sc');
+      }
+      break;
+    case 'commentary':
+      final m = json['message'] as String?;
+      if (m != null && m.isNotEmpty) {
+        onProgress?.call(m);
+      }
+      break;
+    case 'commentary_clear':
+      break;
+    case 'warning':
+      final w = json['message'] as String?;
+      if (w != null && w.isNotEmpty) {
+        onProgress?.call('Warning: $w');
+      }
+      break;
     case 'image_complete':
-      final idx = json['index'] as int?;
+      int? idx;
+      final rawIdx = json['index'];
+      if (rawIdx is int) {
+        idx = rawIdx;
+      } else if (rawIdx is num) {
+        idx = rawIdx.toInt();
+      }
       final url = json['imageUrl'] as String?;
       final q = json['qualityScore'];
       if (idx != null &&
@@ -1432,7 +1877,7 @@ void _dispatchParallelSseBlock(
           idx < slots.length &&
           url != null &&
           url.isNotEmpty) {
-        slots[idx] = url;
+        slots[idx] = ApiService._resolveImageUrl(url);
         if (q is num) {
           qualityByIndex[idx] = q.toDouble();
         }
@@ -1454,7 +1899,7 @@ void _dispatchParallelSseBlock(
         for (var i = 0; i < urls.length && i < slots.length; i++) {
           final u = urls[i];
           if (u is String && u.isNotEmpty) {
-            slots[i] = u;
+            slots[i] = ApiService._resolveImageUrl(u);
           }
         }
       }
@@ -1466,6 +1911,14 @@ void _dispatchParallelSseBlock(
       } else if (rawMs is num) {
         totalMs = rawMs.toInt();
       }
+      final runId = json['runId'] as String?;
+      final selRaw = json['selectedIndex'];
+      int? selectedIndex;
+      if (selRaw is int) {
+        selectedIndex = selRaw;
+      } else if (selRaw is num) {
+        selectedIndex = selRaw.toInt();
+      }
       if (!completer.isCompleted) {
         completer.complete(
           ParallelGenerationResult(
@@ -1473,12 +1926,17 @@ void _dispatchParallelSseBlock(
             success: json['success'] == true,
             timingTotalMs: totalMs,
             qualityScoreByIndex: Map<int, double>.from(qualityByIndex),
+            runId: runId,
+            selectedIndex: selectedIndex,
           ),
         );
       }
       break;
+    case 'failure':
     case 'error':
-      final msg = json['error'] as String? ?? 'Generation failed';
+      final msg = json['error'] as String? ??
+          json['message'] as String? ??
+          'Generation failed';
       if (!completer.isCompleted) {
         completer.completeError(ApiException(msg));
       }

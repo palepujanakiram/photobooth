@@ -10,6 +10,7 @@ import '../theme_selection/theme_preview_screen.dart';
 import 'bootstrap_route_args.dart';
 import 'kiosk_qr_scan_screen.dart';
 import '../../services/api_service.dart';
+import '../../services/client_identification.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/session_manager.dart';
 import '../../utils/constants.dart';
@@ -123,9 +124,9 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       _busy = true;
       _error = null;
     });
-    final ok = await _api.validateKioskCode(code);
+    final kiosk = await _api.fetchKioskByCode(code);
     if (!mounted) return;
-    if (!ok) {
+    if (kiosk == null) {
       setState(() {
         _busy = false;
         _bootstrapDone = true;
@@ -136,6 +137,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       return;
     }
     await _kiosk.setKioskCode(code);
+    await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
     final urls = await _loadThemeBackgroundUrls();
     if (!mounted) return;
     setState(() => _busy = false);
@@ -195,9 +197,9 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       _busy = true;
       _error = null;
     });
-    final ok = await _api.validateKioskCode(code);
+    final kiosk = await _api.fetchKioskByCode(code);
     if (!mounted) return;
-    if (!ok) {
+    if (kiosk == null) {
       setState(() {
         _busy = false;
         _error = 'Invalid kiosk code. Check with your venue and try again.';
@@ -205,6 +207,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       return;
     }
     await _kiosk.setKioskCode(code);
+    await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
     SessionManager().clearSession();
     final urls = await _loadThemeBackgroundUrls();
     if (!mounted) return;
@@ -231,6 +234,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
   Future<void> _disconnect() async {
     setState(() => _busy = true);
     await _kiosk.clearKioskCode();
+    await _kiosk.clearPaymentEnabledOverride();
     SessionManager().clearSession();
     if (!mounted) return;
     setState(() {
@@ -511,6 +515,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
         _bootstrapDone &&
         !_manageEditing &&
         (_storedCode ?? '').isNotEmpty;
+    final versionFooter = ClientIdentification.versionFooterLabel;
 
     return Scaffold(
       backgroundColor: appColors.backgroundColor,
@@ -760,6 +765,21 @@ class _AppSplashScreenState extends State<AppSplashScreen>
                     ),
                   ),
                 ),
+                if (versionFooter.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+                    child: Text(
+                      versionFooter,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.25,
+                        color: appColors.secondaryTextColor
+                            .withValues(alpha: 0.88),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
               ],
             ),
             if (_busy)

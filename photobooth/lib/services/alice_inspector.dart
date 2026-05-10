@@ -1,11 +1,12 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_alice/alice.dart';
 
 import '../utils/app_runtime_config.dart';
 
 /// Forwards to Alice only when `kDebugMode` and `/api/settings` → `showGenerationCommentary`.
+/// **Web:** always a no-op — Alice relies on overlays/navigator patterns that are fragile on web.
 /// Safe to add on every Dio instance: no-ops until those conditions are true.
 class AliceDioProxyInterceptor extends Interceptor {
   @override
@@ -40,6 +41,7 @@ class AliceDioProxyInterceptor extends Interceptor {
 
   Interceptor? _delegate() {
     if (!kDebugMode) return null;
+    if (kIsWeb) return null;
     if (!AppRuntimeConfig.instance.showGenerationCommentary) return null;
     final alice = AliceInspector.instance;
     if (alice == null) return null;
@@ -49,7 +51,7 @@ class AliceDioProxyInterceptor extends Interceptor {
 
 /// Holds the Alice HTTP inspector for debugging.
 /// [instance] is non-null only in debug builds when `showGenerationCommentary` is true
-/// (after [syncWithRuntimeConfig] runs).
+/// (after [syncWithRuntimeConfig] runs). **Always null on web.**
 class AliceInspector {
   AliceInspector._();
 
@@ -71,7 +73,7 @@ class AliceInspector {
       return;
     }
     final want = AppRuntimeConfig.instance.showGenerationCommentary;
-    if (want && _navigatorKey != null) {
+    if (want && _navigatorKey != null && !kIsWeb) {
       _instance ??= Alice(navigatorKey: _navigatorKey!);
     } else {
       _instance = null;

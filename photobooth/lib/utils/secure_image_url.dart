@@ -25,6 +25,9 @@ class SecureImageUrl {
     return '$base/$trimmed';
   }
 
+  /// Resolves relative API paths to an absolute URL (no `sessionId` appended).
+  static String absolutize(String url) => _absolutizeIfRelative(url);
+
   /// Returns [url] with `sessionId=<currentSessionId>` appended when it points to `/api/img/...`
   /// and no other access token is already present.
   static String withSessionId(String url, {String? sessionId}) {
@@ -51,6 +54,55 @@ class SecureImageUrl {
     }
     qp['sessionId'] = sid;
     return uri.replace(queryParameters: qp).toString();
+  }
+
+  /// Best-effort preview URL for a `transformation_steps` row from
+  /// `GET /api/generation-runs/:runId` (CDN JPEG or legacy nested fields).
+  static String? previewUrlFromStepMap(Map<String, dynamic> data) {
+    for (final key in [
+      'previewImageUrl',
+      'thumbnailUrl',
+      'previewUrl',
+      'imageUrl',
+    ]) {
+      final v = data[key];
+      if (v is String && v.trim().isNotEmpty) {
+        return absolutize(v.trim());
+      }
+    }
+    final od = data['outputData'];
+    if (od is Map) {
+      final m = Map<String, dynamic>.from(od);
+      for (final key in [
+        'previewImageUrl',
+        'thumbnailUrl',
+        'previewUrl',
+        'imageUrl',
+        'url',
+      ]) {
+        final v = m[key];
+        if (v is String && v.trim().isNotEmpty) {
+          return absolutize(v.trim());
+        }
+      }
+    }
+    final id = data['inputData'];
+    if (id is Map) {
+      final m = Map<String, dynamic>.from(id);
+      for (final key in [
+        'previewImageUrl',
+        'thumbnailUrl',
+        'previewUrl',
+        'imageUrl',
+        'url',
+      ]) {
+        final v = m[key];
+        if (v is String && v.trim().isNotEmpty) {
+          return absolutize(v.trim());
+        }
+      }
+    }
+    return null;
   }
 }
 

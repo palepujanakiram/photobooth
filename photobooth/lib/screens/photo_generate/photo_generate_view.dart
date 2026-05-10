@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/cupertino.dart' show CupertinoButton, CupertinoColors, CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/app_settings_manager.dart';
+import '../../services/kiosk_manager.dart';
 import 'photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
 import '../../utils/constants.dart';
@@ -12,7 +14,12 @@ import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../utils/route_args.dart';
 import '../../utils/secure_image_url.dart';
+import '../../utils/transformation_step_display.dart';
+import '../transformation_details/transformation_details_view.dart';
 import '../../views/widgets/contact_before_pay_sheet.dart';
+import '../../views/widgets/cached_network_image.dart';
+import '../photo_capture/photo_image_from_xfile_io.dart'
+    if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart' as photo_image;
 
 class PhotoGenerateScreen extends StatefulWidget {
   const PhotoGenerateScreen({super.key});
@@ -30,10 +37,21 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   /// Reserved height for Continue + “Or add one more style” so the bar stays fixed when cards zoom.
   static const double _kGenerateFooterSlotHeight = 140.0;
 
+  /// AppBar [bottom]: subtitle line + optional stamp strip (must match [PreferredSize]).
+  static const double _kBeholdSubtitleBlockHeight = 28.0;
+  static const double _kBeholdStampStripExtraHeight = 62.0;
+
+  double _beholdAppBarBelowTitleHeight(PhotoGenerateViewModel vm) {
+    if (!vm.showProgressStampStrip) return _kBeholdSubtitleBlockHeight;
+    return _kBeholdSubtitleBlockHeight + _kBeholdStampStripExtraHeight;
+  }
+
   late PhotoGenerateViewModel _viewModel;
   bool _viewModelCreated = false;
   bool _isInitialized = false;
   final GlobalKey _contentKey = GlobalKey();
+
+  bool? _paymentsEnabledOverride;
 
   /// At most one zoomed slot: null or a [GeneratedImage.id].
   String? _zoomedSlotId;
@@ -47,10 +65,22 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_viewModelCreated) {
+      final rawArgs = ModalRoute.of(context)?.settings.arguments;
+      if (rawArgs is PhotoGenerateViewModel) {
+        // Result-only route: receive a fully initialized ViewModel from the
+        // progress page (which ran generation).
+        _viewModel = rawArgs;
+        _viewModelCreated = true;
+        _isInitialized = true;
+        unawaited(_loadPaymentEnablement());
+        return;
+      }
       _viewModel = PhotoGenerateViewModel(
         appSettingsManager: context.read<AppSettingsManager>(),
       );
       _viewModelCreated = true;
+      unawaited(_viewModel.loadProgressiveDisplayPreference());
+      unawaited(_loadPaymentEnablement());
     }
     if (!_isInitialized) {
       _initializeFromArguments();
@@ -58,14 +88,25 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     }
   }
 
-  void _initializeFromArguments() {
-    final parsed = GenerateArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
-    if (parsed == null) return;
-    _viewModel.initialize(parsed.photo, parsed.theme);
+  Future<void> _loadPaymentEnablement() async {
+    final v = await KioskManager().getPaymentEnabledOverride();
+    if (!mounted) return;
+    setState(() => _paymentsEnabledOverride = v);
+  }
 
-    // Start generation automatically
+  void _initializeFromArguments() {
+    // `/generate` is now result-only. If someone navigates here with GenerateArgs,
+    // redirect them to the progress route.
+    final raw = ModalRoute.of(context)?.settings.arguments;
+    final parsed = GenerateArgs.tryParse(raw);
+    if (parsed == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _viewModel.generateImage();
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(
+        context,
+        AppConstants.kRouteGenerateProgress,
+        arguments: parsed,
+      );
     });
   }
 
@@ -202,20 +243,11 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                   fontSize: 22,
                 ),
               ),
-              bottom: const PreferredSize(
-                preferredSize: Size.fromHeight(22),
-                child: Padding(
-                  padding: EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    'Your AI-transformed portrait awaits',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
+              bottom: PreferredSize(
+                preferredSize: Size.fromHeight(
+                  _beholdAppBarBelowTitleHeight(viewModel),
                 ),
+                child: _buildBeholdAppBarBottom(context, viewModel),
               ),
               leading: IconButton(
                 icon: const Icon(CupertinoIcons.back, color: Colors.white),
@@ -228,7 +260,23 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                   }
                 },
               ),
-              actions: const [AppBarAliceAction()],
+              actions: [
+                IconButton(
+                  tooltip: viewModel.useProgressiveGenerationUi
+                      ? 'Switch to simple progress'
+                      : 'Switch to stage previews',
+                  icon: Icon(
+                    viewModel.useProgressiveGenerationUi
+                        ? Icons.view_compact
+                        : Icons.view_timeline,
+                    color: Colors.white,
+                  ),
+                    onPressed: () async {
+                    await viewModel.toggleProgressiveGenerationUi();
+                  },
+                ),
+                const AppBarAliceAction(),
+              ],
             ),
             body: Stack(
               children: [
@@ -239,11 +287,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                   top: false,
                   child: Padding(
                     padding: EdgeInsets.only(
-                      // Body is behind the app bar; account for app bar + subtitle height.
                       top: MediaQuery.paddingOf(context).top +
                           kToolbarHeight +
-                          22 +
-                          6,
+                          _beholdAppBarBelowTitleHeight(viewModel),
                     ),
                     child: Column(
                       children: [
@@ -271,6 +317,304 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         },
       ),
     );
+  }
+
+  Widget _buildBeholdAppBarBottom(
+    BuildContext context,
+    PhotoGenerateViewModel viewModel,
+  ) {
+    return const Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(bottom: 6),
+          child: Text(
+            'Your AI-transformed portrait awaits',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Device capture (“In frame”) + core API stages + optional Branded/Signed + storage.
+  Widget _funnelPipelineStamp(
+    PhotoGenerateViewModel viewModel,
+    PipelineFunnelSlot slot,
+    int index,
+  ) {
+    const thumb = 60.0;
+    const outer = 68.0;
+    final stampId = 'funnel:$index';
+    final selected = viewModel.selectedHeroStampId == stampId;
+    final url = slot.displayPreviewUrl;
+    final statusLabel = slot.isFinished
+        ? 'done'
+        : slot.isActive
+            ? 'in progress'
+            : slot.isPending
+                ? 'waiting'
+                : 'queued';
+    final borderColor = selected
+        ? CupertinoColors.systemBlue
+        : slot.isFinished
+            ? Colors.lightGreenAccent.withValues(alpha: 0.85)
+            : slot.isActive
+                ? CupertinoColors.activeBlue
+                : Colors.white30;
+    final borderW = selected ? 2.5 : (slot.isActive ? 2.0 : 1.0);
+
+    late final Widget inner;
+    if (slot.isDeviceCapture) {
+      final photo = viewModel.originalPhoto;
+      if (photo != null) {
+        inner = ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: thumb,
+            height: thumb,
+            child: photo_image.imageFromXFileSized(
+              photo.imageFile,
+              thumb,
+              thumb,
+              fit: BoxFit.cover,
+            ),
+          ),
+        );
+      } else {
+        inner = Icon(
+          transformationStepIcon(slot.stageKey),
+          color: Colors.white54,
+          size: 32,
+        );
+      }
+    } else if (url != null && url.isNotEmpty) {
+      inner = ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: CachedNetworkImage(
+          imageUrl: SecureImageUrl.withSessionId(url),
+          width: thumb,
+          height: thumb,
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.low,
+        ),
+      );
+    } else if (slot.isMetadataOnlyStage && slot.isFinished) {
+      inner = Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(
+            transformationStepIcon(slot.stageKey),
+            color: Colors.white70,
+            size: 32,
+          ),
+          Positioned(
+            right: 1,
+            bottom: 1,
+            child: Icon(
+              Icons.check_circle,
+              color: Colors.lightGreenAccent.withValues(alpha: 0.95),
+              size: 18,
+            ),
+          ),
+        ],
+      );
+    } else if (slot.isMetadataOnlyStage && slot.isActive) {
+      inner = Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(
+            transformationStepIcon(slot.stageKey),
+            color: Colors.white60,
+            size: 32,
+          ),
+          const SizedBox(
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      );
+    } else if (slot.isFinished) {
+      inner = const Icon(Icons.check_circle,
+          color: Colors.lightGreenAccent, size: 32);
+    } else if (slot.isActive) {
+      inner = const Center(
+        child: SizedBox(
+          width: 26,
+          height: 26,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Colors.white,
+          ),
+        ),
+      );
+    } else {
+      inner = Icon(Icons.image_outlined,
+          color: Colors.white.withValues(alpha: 0.35), size: 32);
+    }
+
+    return Tooltip(
+      message: '${slot.label} — $statusLabel',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => viewModel.toggleHeroStamp(stampId),
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: outer,
+            height: outer,
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(width: borderW, color: borderColor),
+              color: Colors.black.withValues(alpha: 0.35),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: ColoredBox(
+                color: Colors.black45,
+                child: inner,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget? _generatingHeroUnderlay(PhotoGenerateViewModel vm) {
+    final id = vm.selectedHeroStampId;
+    if (id == null) return null;
+    if (id == 'source' && vm.originalPhoto != null) {
+      return ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: photo_image.imageFromXFileSized(
+            vm.originalPhoto!.imageFile,
+            720,
+            1280,
+            fit: BoxFit.contain,
+          ),
+        ),
+      );
+    }
+    if (id.startsWith('stage:')) {
+      final key = id.substring(6);
+      for (final s in vm.progressivePipelineStages) {
+        if (s.stepKey == key) {
+          final url = s.previewImageUrl;
+          if (url != null && url.isNotEmpty) {
+            return ColoredBox(
+              color: Colors.black,
+              child: Center(
+                child: CachedNetworkImage(
+                  imageUrl: SecureImageUrl.withSessionId(url),
+                  fit: BoxFit.contain,
+                ),
+              ),
+            );
+          }
+        }
+      }
+    }
+    if (id.startsWith('live:')) {
+      final idx = int.tryParse(id.substring(5));
+      if (idx != null &&
+          idx >= 0 &&
+          idx < vm.liveSlots.length &&
+          !vm.liveSlots[idx].loading) {
+        final url = vm.liveSlots[idx].imageUrl;
+        if (url != null && url.isNotEmpty) {
+          return ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: CachedNetworkImage(
+                imageUrl: SecureImageUrl.withSessionId(url),
+                fit: BoxFit.contain,
+              ),
+            ),
+          );
+        }
+      }
+    }
+    if (id.startsWith('funnel:')) {
+      final idx = int.tryParse(id.substring(7));
+      if (idx != null &&
+          idx >= 0 &&
+          idx < vm.pipelineFunnelSlots.length) {
+        final slot = vm.pipelineFunnelSlots[idx];
+        if (slot.isDeviceCapture && vm.originalPhoto != null) {
+          return ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: photo_image.imageFromXFileSized(
+                vm.originalPhoto!.imageFile,
+                720,
+                1280,
+                fit: BoxFit.contain,
+              ),
+            ),
+          );
+        }
+        final url = slot.displayPreviewUrl;
+        if (url != null && url.isNotEmpty) {
+          return ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: CachedNetworkImage(
+                imageUrl: SecureImageUrl.withSessionId(url),
+                fit: BoxFit.contain,
+              ),
+            ),
+          );
+        }
+        if (slot.isMetadataOnlyStage && slot.isFinished) {
+          return ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    transformationStepIcon(slot.stageKey),
+                    color: Colors.white70,
+                    size: 72,
+                  ),
+                  const SizedBox(height: 16),
+                  const Icon(
+                    Icons.check_circle,
+                    color: Colors.lightGreenAccent,
+                    size: 48,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        if (slot.isFinished) {
+          return const ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: Icon(
+                Icons.check_circle,
+                color: Colors.lightGreenAccent,
+                size: 72,
+              ),
+            ),
+          );
+        }
+      }
+    }
+    return null;
   }
 
   Widget _buildMainContent(
@@ -319,64 +663,46 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
 
       return Padding(
         padding: EdgeInsets.all(padding),
-        child: LayoutBuilder(
-          builder: (context, _) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, slot) {
-                      final w = slot.maxWidth.isFinite && slot.maxWidth > 0
-                          ? slot.maxWidth
-                          : maxWidth;
-                      return FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.center,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            ConstrainedBox(
-                              constraints: BoxConstraints(maxWidth: w),
-                              child: Column(
-                                key: _contentKey,
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.stretch,
-                                children: [
-                                  _buildPhotosDisplay(
-                                    context,
-                                    viewModel,
-                                    appColors,
-                                    isLandscape,
-                                    w.isFinite ? w : null,
-                                    viewportHeight,
-                                    true,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                if (hasFooter)
-                  SizedBox(
-                    height: footerH,
-                    child: Center(
-                      child: _buildPhotosActionFooter(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, slot) {
+                  final w = slot.maxWidth.isFinite && slot.maxWidth > 0
+                      ? slot.maxWidth
+                      : maxWidth;
+                  final contentW = w.isFinite ? w : null;
+                  return Align(
+                    alignment: Alignment.topCenter,
+                    child: SizedBox(
+                      width: contentW,
+                      child: _buildPhotosDisplay(
                         context,
                         viewModel,
                         appColors,
+                        isLandscape,
+                        contentW,
+                        viewportHeight,
+                        true,
                       ),
                     ),
+                  );
+                },
+              ),
+            ),
+            if (hasFooter)
+              SizedBox(
+                height: footerH,
+                child: Center(
+                  child: _buildPhotosActionFooter(
+                    context,
+                    viewModel,
+                    appColors,
                   ),
-              ],
-            );
-          },
+                ),
+              ),
+          ],
         ),
       );
     }
@@ -397,6 +723,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     PhotoGenerateViewModel viewModel,
     AppColors appColors,
   ) {
+    final paymentsEnabled = _paymentsEnabledOverride ?? true;
     final canAddMoreStyle = viewModel.canShowAddAnotherStyleButton;
     final isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
     final isLoadingMore = viewModel.isLoadingMore;
@@ -422,9 +749,17 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                     if (selectedImages.isEmpty) return;
 
                     final routerContext = context;
-                    final contact = await showContactBeforePaySheet(routerContext);
-                    if (!routerContext.mounted) return;
-                    if (contact == null) return;
+                    String customerName = '';
+                    String customerPhone = '';
+                    bool customerWhatsappOptIn = false;
+                    if (paymentsEnabled) {
+                      final contact = await showContactBeforePaySheet(routerContext);
+                      if (!routerContext.mounted) return;
+                      if (contact == null) return;
+                      customerName = contact.customerName;
+                      customerPhone = contact.customerPhone;
+                      customerWhatsappOptIn = contact.whatsappOptIn;
+                    }
 
                     await Navigator.pushNamed(
                       routerContext,
@@ -432,9 +767,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                       arguments: {
                         'generatedImages': selectedImages,
                         'originalPhoto': viewModel.originalPhoto,
-                        'customerName': contact.customerName,
-                        'customerPhone': contact.customerPhone,
-                        'customerWhatsappOptIn': contact.whatsappOptIn,
+                        'customerName': customerName,
+                        'customerPhone': customerPhone,
+                        'customerWhatsappOptIn': customerWhatsappOptIn,
                       },
                     );
                   }
@@ -450,7 +785,31 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               ),
             ),
           ),
-          if (viewModel.selectedCount > 0) ...[
+          if (!isGeneratingOrLoading &&
+              viewModel.lastTransformationRunId != null &&
+              viewModel.generatedImages.isNotEmpty) ...[
+            TextButton(
+              onPressed: () {
+                Navigator.push<void>(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => TransformationDetailsScreen(
+                      runId: viewModel.lastTransformationRunId!,
+                    ),
+                  ),
+                );
+              },
+              child: const Text(
+                'Transformation details',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+          ],
+          if (paymentsEnabled && viewModel.selectedCount > 0) ...[
             const SizedBox(height: 10),
             Center(
               child: Text(
@@ -478,6 +837,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                           context,
                           AppConstants.kRouteHome,
                           arguments: {
+                            if (viewModel.originalPhoto != null)
+                              'photo': viewModel.originalPhoto,
                             'addOneMoreStyle': true,
                             'usedThemeIds': List<String>.from(
                               viewModel.generatedImages
@@ -522,10 +883,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         (MediaQuery.sizeOf(context).width - 2 * sectionPadding).clamp(0.0, double.infinity);
 
     const double cardGap = 10.0;
-    // Portrait uses the theme card ratio. Landscape uses per-image aspect to avoid black bars.
-    const double portraitAspect = AppConstants.kThemeSelectedCardAspectRatio;
-    const double fallbackLandscapeAspect = 16 / 9;
-    final double aspect = isLandscape ? fallbackLandscapeAspect : portraitAspect;
+    // Printing target is 6×4 => 3:2. Keep the generation/review canvas aligned to print.
+    const double aspect = 3 / 2;
 
     final bool isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
     final bool isLoadingMore = viewModel.isLoadingMore;
@@ -577,8 +936,15 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final isLoadingMore = viewModel.isLoadingMore;
     final images = viewModel.generatedImages;
     final hasImages = images.isNotEmpty;
+    final hideCompactHeader = viewModel.useProgressiveGenerationLayoutForSession &&
+        isGeneratingOrLoading;
 
-    final totalSlots = (hasImages ? images.length : 1) + (isLoadingMore ? 1 : 0);
+    final int baseSlotCount = hasImages
+        ? images.length
+        : (isGenerating && viewModel.liveSlotCount > 0
+            ? viewModel.liveSlotCount
+            : 1);
+    final totalSlots = baseSlotCount + (isLoadingMore ? 1 : 0);
 
     // When we only have a single slot (initial placeholder or one image),
     // size it like the POSE capture card so the "main image placeholder" feels consistent.
@@ -622,10 +988,22 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               ? 'Your masterpiece is ready'
               : '';
 
+      final wideStoryLayout = MediaQuery.sizeOf(context).width >= 980;
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (hideCompactHeader &&
+                isGeneratingOrLoading &&
+                !viewModel.showProgressStampStrip) ...[
+              _buildProgressivePipelineSection(context, viewModel),
+              const SizedBox(height: 12),
+            ] else if (!hideCompactHeader &&
+                isGenerating &&
+                viewModel.liveSlotCount > 0) ...[
+              _buildLiveGenerationHeader(context, viewModel),
+              const SizedBox(height: 12),
+            ],
             if (message.isNotEmpty) ...[
               Text(
                 message,
@@ -638,9 +1016,45 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
+              if (hasImages && !isGeneratingOrLoading) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Generated in ${viewModel.elapsedSeconds}s',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
               const SizedBox(height: 18),
             ],
-            Center(child: slots.first),
+            if (isGeneratingOrLoading && !hasImages) ...[
+              // In-progress uses the same hero card visual language as final output.
+              _buildGenerationProgressHeroCard(
+                context,
+                viewModel,
+                width: maxW,
+                height: cardH,
+              ),
+            ] else if (wideStoryLayout && isGeneratingOrLoading) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Center(child: slots.first),
+                  const SizedBox(width: 18),
+                  _buildGenerationStoryCard(context, viewModel),
+                ],
+              ),
+            ] else ...[
+              Center(child: slots.first),
+              if (isGeneratingOrLoading) ...[
+                const SizedBox(height: 18),
+                _buildGenerationStoryCard(context, viewModel),
+              ],
+            ],
             if ((hasImages || isGenerating || isLoadingMore) &&
                 !fixedFooterOutside) ...[
               const SizedBox(height: 18),
@@ -691,6 +1105,17 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (hideCompactHeader &&
+              isGeneratingOrLoading &&
+              !viewModel.showProgressStampStrip) ...[
+            _buildProgressivePipelineSection(context, viewModel),
+            const SizedBox(height: 12),
+          ] else if (!hideCompactHeader &&
+              isGenerating &&
+              viewModel.liveSlotCount > 0) ...[
+            _buildLiveGenerationHeader(context, viewModel),
+            const SizedBox(height: 12),
+          ],
           if (message.isNotEmpty) ...[
             Text(
               message,
@@ -743,6 +1168,22 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final isLoadingMore = viewModel.isLoadingMore;
     final images = viewModel.generatedImages;
     final hasImages = images.isNotEmpty;
+
+    if (isGenerating && !hasImages && viewModel.liveSlotCount > 0) {
+      return viewModel.liveSlots
+          .map(
+            (slot) => _transformedSlotFrame(
+              cardWidth: cardWidth,
+              cardHeight: cardHeight,
+              child: _buildLiveGenerationSlot(
+                viewModel,
+                appColors,
+                slot,
+              ),
+            ),
+          )
+          .toList();
+    }
 
     if (isGenerating && !hasImages) {
       return [
@@ -1033,6 +1474,308 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     );
   }
 
+  Widget _buildProgressivePipelineSection(
+    BuildContext context,
+    PhotoGenerateViewModel viewModel,
+  ) {
+    final stages = viewModel.progressivePipelineStages;
+    final progress = (viewModel.liveProgress / 100).clamp(0.0, 1.0);
+    final caption = viewModel.progressiveOneLiner;
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 620),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress <= 0 ? null : progress,
+              minHeight: 6,
+              backgroundColor: Colors.white24,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 118,
+            child: stages.isEmpty
+                ? Center(
+                    child: Text(
+                      'Pipeline starting — watch each stage appear here.',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.75),
+                        fontSize: 13,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                : ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: stages.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (context, i) {
+                      return _buildProgressiveStageTile(context, stages[i]);
+                    },
+                  ),
+          ),
+          if (caption != null && caption.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              child: Text(
+                caption,
+                key: ValueKey<String>(caption),
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  height: 1.25,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressiveStageTile(
+    BuildContext context,
+    ProgressivePipelineStage stage,
+  ) {
+    final label = transformationStepDisplayLabel(stage.stepKey);
+    final url = stage.previewImageUrl;
+
+    Widget thumb;
+    if (url != null && url.isNotEmpty) {
+      thumb = ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: CachedNetworkImage(
+          imageUrl: SecureImageUrl.withSessionId(url),
+          fit: BoxFit.cover,
+          width: 72,
+          height: 72,
+        ),
+      );
+    } else if (stage.complete && !stage.skipped) {
+      thumb = Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          color: Colors.white12,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: const Icon(Icons.check_circle, color: Colors.lightGreenAccent, size: 36),
+      );
+    } else if (stage.skipped) {
+      thumb = Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          color: Colors.white10,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: const Icon(Icons.skip_next, color: Colors.white38, size: 32),
+      );
+    } else if (stage.active) {
+      thumb = Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          color: Colors.white12,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.amberAccent, width: 2),
+        ),
+        child: const Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      );
+    } else {
+      thumb = Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          color: Colors.white10,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Icon(
+          transformationStepIcon(stage.stepKey),
+          color: Colors.white38,
+          size: 32,
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: 82,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          thumb,
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: stage.skipped ? Colors.white38 : Colors.white70,
+              fontSize: 10,
+              decoration:
+                  stage.skipped ? TextDecoration.lineThrough : TextDecoration.none,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+          if (stage.durationMs != null && stage.complete)
+            Text(
+              '${stage.durationMs} ms',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.45),
+                fontSize: 9,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveGenerationHeader(
+    BuildContext context,
+    PhotoGenerateViewModel viewModel,
+  ) {
+    final step = viewModel.liveCurrentStep;
+    final commentary = viewModel.liveCommentary;
+    final attempt = viewModel.liveAttempt;
+    final totalAttempts = viewModel.liveTotalAttempts;
+    final lastScore = viewModel.liveLastScore;
+    final progress = (viewModel.liveProgress / 100).clamp(0.0, 1.0);
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 520),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress <= 0 ? null : progress,
+              minHeight: 6,
+              backgroundColor: Colors.white24,
+              color: Colors.white,
+            ),
+          ),
+          if (step != null && step.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Step: ${transformationStepDisplayLabel(step)}'
+              '${viewModel.liveStepDurationsMs[step] != null ? ' · ${viewModel.liveStepDurationsMs[step]} ms' : ''}',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (attempt != null &&
+              totalAttempts != null &&
+              totalAttempts > 1) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Attempt $attempt of $totalAttempts'
+              '${lastScore != null ? ' · last score ${lastScore.toStringAsFixed(2)}' : ''}',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (commentary != null && commentary.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              child: Text(
+                commentary,
+                key: ValueKey<String>(commentary),
+                style: const TextStyle(
+                  color: Colors.white60,
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveGenerationSlot(
+    PhotoGenerateViewModel viewModel,
+    AppColors appColors,
+    LiveGenerationSlotState slot,
+  ) {
+    if (slot.loading) {
+      return _buildTransformedLoadingPlaceholder(viewModel, appColors);
+    }
+    if (slot.failed) {
+      return const Center(
+        child: Icon(Icons.error_outline, color: Colors.redAccent, size: 40),
+      );
+    }
+    final url = slot.imageUrl;
+    if (url == null || url.isEmpty) {
+      return const Center(
+        child: Icon(Icons.image_not_supported_outlined,
+            color: Colors.white38, size: 40),
+      );
+    }
+    final secureUrl = SecureImageUrl.withSessionId(url);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        CachedNetworkImage(
+          imageUrl: secureUrl,
+          fit: BoxFit.cover,
+        ),
+        if (slot.qualityScore != null)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Text(
+                  slot.qualityScore!.toStringAsFixed(2),
+                  style: const TextStyle(color: Colors.white, fontSize: 11),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _buildTransformedLoadingPlaceholder(
     PhotoGenerateViewModel viewModel,
     AppColors appColors,
@@ -1040,34 +1783,164 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final message = viewModel.progressMessage.isNotEmpty
         ? viewModel.progressMessage
         : (viewModel.isLoadingMore ? 'Adding new style...' : 'Creating...');
+    final underlay = _generatingHeroUnderlay(viewModel);
+    final hint = viewModel.selectedHeroStampId != null &&
+            underlay == null
+        ? 'Preview not ready for this step yet'
+        : null;
     return SizedBox.expand(
-      child: ColoredBox(
-        color: Colors.black26,
-        child: Center(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (underlay != null) Positioned.fill(child: underlay),
+          Positioned.fill(
+            child: ColoredBox(
+              color: underlay != null
+                  ? Colors.black.withValues(alpha: 0.42)
+                  : Colors.black26,
+            ),
+          ),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(color: Colors.white),
+                  const SizedBox(height: 12),
+                  Text(
+                    message,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white70,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (hint != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      hint,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.65),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(
+                    '${viewModel.elapsedSeconds}s',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGenerationStoryCard(
+    BuildContext context,
+    PhotoGenerateViewModel vm,
+  ) {
+    final slots = vm.pipelineFunnelSlots;
+    if (slots.isEmpty) return const SizedBox.shrink();
+    final screenW = MediaQuery.sizeOf(context).width;
+    final maxW = math.min(screenW * 0.44, 560.0);
+
+    // ThemeCard-like visual language (kiosk presentation).
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxW),
+      child: Card(
+        elevation: 10,
+        shadowColor: CupertinoColors.systemBlue.withValues(alpha: 0.22),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: Color(0xFF4A4A4A), width: 1.5),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.black.withValues(alpha: 0.78),
+                Colors.black.withValues(alpha: 0.52),
+              ],
+            ),
+          ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const CircularProgressIndicator(color: Colors.white),
-                const SizedBox(height: 12),
-                Text(
-                  message,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.white70,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    const Icon(CupertinoIcons.sparkles,
+                        color: Colors.white70, size: 18),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'AI generation',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${(vm.pipelineFunnelProgress * 100).round()}%',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${viewModel.elapsedSeconds}s',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.white70,
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 68,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: slots.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (_, i) => _funnelPipelineStamp(vm, slots[i], i),
                   ),
+                ),
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: vm.pipelineFunnelProgress,
+                    minHeight: 10,
+                    backgroundColor: Colors.white24,
+                    color: CupertinoColors.systemBlue,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  vm.progressMessage.isNotEmpty
+                      ? vm.progressMessage
+                      : 'Transforming your look…',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    height: 1.2,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.left,
                 ),
               ],
             ),
@@ -1077,4 +1950,429 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     );
   }
 
+  Widget _buildGenerationProgressHeroCard(
+    BuildContext context,
+    PhotoGenerateViewModel vm, {
+    required double width,
+    required double height,
+  }) {
+    // Use the same hero frame as the final image card; swap the "content" inside.
+    final preprocessUrl = _previewForStage(vm, 'preprocessing');
+    final bgUrl = _previewForStage(vm, 'background_removal');
+    final aiUrl = _previewForStage(vm, 'ai_generation');
+
+    int index = 0;
+    String stageTitle = '2 · CAPTURE';
+    String headline = 'Got it';
+    String description = 'Frozen frame, framing applied';
+    String? imageUrl;
+    Widget? bottomAccessory;
+
+    if (aiUrl != null) {
+      index = 3;
+      stageTitle = '4 · REVEAL';
+      headline = 'Rendering';
+      description = 'AI is applying your style';
+      imageUrl = aiUrl;
+      bottomAccessory = _buildPostRevealPolishingOverlay(context, vm);
+    } else if (bgUrl != null) {
+      index = 2;
+      stageTitle = '3 · ISOLATE';
+      headline = 'Background removed';
+      description = 'Subject isolated, ready to render';
+      imageUrl = bgUrl;
+    } else if (preprocessUrl != null) {
+      index = 1;
+      stageTitle = '2 · CAPTURE';
+      headline = 'Got it';
+      description = 'Frozen frame, framing applied';
+      imageUrl = preprocessUrl;
+    } else {
+      index = 0;
+      stageTitle = '1 · DETECT';
+      headline = 'Face locked';
+      description = 'Live preview';
+    }
+
+    // Important UX: keep the photo canvas clean (no UI overlays).
+    // All progress/status UI lives around the canvas, not on top of it.
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: width),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  stageTitle,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                  ),
+                  textAlign: TextAlign.left,
+                ),
+                const SizedBox(height: 8),
+                _storyboardTopBars(activeIndex: index),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: width,
+            height: height,
+            child: _transformedSlotFrame(
+              cardWidth: width,
+              cardHeight: height,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  const ColoredBox(color: Colors.black),
+                  Positioned.fill(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeOutCubic,
+                      transitionBuilder: (child, anim) {
+                        final fade = CurvedAnimation(
+                          parent: anim,
+                          curve: Curves.easeOut,
+                        );
+                        final scale =
+                            Tween<double>(begin: 0.985, end: 1.0).animate(fade);
+                        return FadeTransition(
+                          opacity: fade,
+                          child: ScaleTransition(scale: scale, child: child),
+                        );
+                      },
+                      child: KeyedSubtree(
+                        key: ValueKey<String>(imageUrl ?? 'local_$index'),
+                        child: _buildProgressHeroStageImage(
+                          context,
+                          vm,
+                          imageUrl: imageUrl,
+                          width: width,
+                          height: height,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  headline,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  description,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    height: 1.2,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '${vm.elapsedSeconds}s',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                if (bottomAccessory != null) ...[
+                  const SizedBox(height: 12),
+                  bottomAccessory,
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressHeroStageImage(
+    BuildContext context,
+    PhotoGenerateViewModel vm, {
+    required String? imageUrl,
+    required double width,
+    required double height,
+  }) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final cacheW = (width * dpr).ceil().clamp(64, 2048);
+    final loading = ColoredBox(
+      color: Colors.black,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: const Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              color: Colors.white,
+              strokeWidth: 2,
+            ),
+          ),
+        ),
+      ),
+    );
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      final err = SizedBox(
+        width: width,
+        height: height,
+        child: vm.originalPhoto != null
+            ? photo_image.imageFromXFileSized(
+                vm.originalPhoto!.imageFile,
+                width,
+                height,
+                fit: BoxFit.cover,
+              )
+            : loading,
+      );
+      return SizedBox(
+        width: width,
+        height: height,
+        child: ClipRect(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            alignment: Alignment.center,
+            child: CachedNetworkImage(
+              imageUrl: imageUrl.trim(),
+              fit: BoxFit.cover,
+              cacheWidth: cacheW,
+              filterQuality: FilterQuality.medium,
+              placeholder: loading,
+              errorWidget: err,
+            ),
+          ),
+        ),
+      );
+    }
+    if (vm.originalPhoto != null) {
+      return photo_image.imageFromXFileSized(
+        vm.originalPhoto!.imageFile,
+        width,
+        height,
+        fit: BoxFit.cover,
+      );
+    }
+    return loading;
+  }
+
+  String? _previewForStage(PhotoGenerateViewModel vm, String stageKey) {
+    final want = stageKey.trim().toLowerCase();
+    for (final s in vm.generationRunStepPreviews) {
+      final key = canonicalPipelineStageKey(s.stage);
+      if (key == want && (s.previewUrl ?? '').trim().isNotEmpty) {
+        return s.previewUrl!.trim();
+      }
+    }
+    return null;
+  }
+
+  Widget _buildPostRevealPolishingOverlay(
+    BuildContext context,
+    PhotoGenerateViewModel vm,
+  ) {
+    // After REVEAL (ai_generation preview), keep users engaged by showing truthful
+    // post-processing mechanics as `steps[]` advances.
+    final steps = vm.generationRunStepPreviews;
+    if (steps.isEmpty) return const SizedBox.shrink();
+
+    final byStage = <String, GenerationRunStepPreview>{};
+    for (final s in steps) {
+      byStage[canonicalPipelineStageKey(s.stage)] = s;
+    }
+
+    const polishOrder = <String>[
+      'scene_lighting',
+      'face_relight',
+      'frame_composite',
+      'upscaling',
+      'exif_stamp',
+      'c2pa_sign',
+      'storage',
+    ];
+
+    String? activeKey;
+    for (final k in polishOrder) {
+      final s = byStage[k];
+      if (s != null && s.isActive) {
+        activeKey = k;
+        break;
+      }
+    }
+    activeKey ??= byStage['storage']?.isFinished == true
+        ? 'storage'
+        : (polishOrder.firstWhere(
+            (k) => byStage[k]?.isFinished != true,
+            orElse: () => 'storage',
+          ));
+
+    String copyFor(String k) {
+      switch (k) {
+        case 'scene_lighting':
+          return 'Matching scene lighting';
+        case 'face_relight':
+          return 'Relighting your face';
+        case 'frame_composite':
+          return 'Adding your frame';
+        case 'upscaling':
+          return 'Sharpening for print';
+        case 'exif_stamp':
+          return 'Branding';
+        case 'c2pa_sign':
+          return 'Signing authenticity';
+        case 'storage':
+          return 'Preparing print file';
+        default:
+          return transformationStepDisplayLabel(k);
+      }
+    }
+
+    Widget stageChip(String k) {
+      final s = byStage[k];
+      final finished = s?.isFinished == true;
+      final active = s?.isActive == true;
+      final color = active
+          ? CupertinoColors.activeBlue
+          : finished
+              ? Colors.lightGreenAccent.withValues(alpha: 0.9)
+              : Colors.white30;
+      final icon = finished
+          ? Icons.check_circle
+          : active
+              ? Icons.autorenew
+              : Icons.more_horiz;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: 0.85), width: 1.2),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Text(
+              copyFor(k),
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Sits in the storyboard’s bottom column (not centered on the photo).
+    // Elapsed time stays on the frame’s corner badge to avoid duplicate timers.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.55),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(CupertinoIcons.wand_stars,
+                      color: Colors.white70, size: 15),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Finishing touches · ${copyFor(activeKey)}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (var i = 0; i < polishOrder.length; i++) ...[
+                      if (i != 0) const SizedBox(width: 8),
+                      stageChip(polishOrder[i]),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _storyboardTopBars({required int activeIndex}) {
+    const total = 4;
+    return SizedBox(
+      height: 10,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (var i = 0; i < total; i++) ...[
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              width: i == activeIndex ? 42 : 22,
+              height: 6,
+              decoration: BoxDecoration(
+                color: i <= activeIndex
+                    ? CupertinoColors.systemBlue
+                    : Colors.white24,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            if (i != total - 1) const SizedBox(width: 10),
+          ],
+        ],
+      ),
+    );
+  }
+
 }
+

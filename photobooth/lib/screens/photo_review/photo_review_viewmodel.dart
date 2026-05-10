@@ -4,6 +4,7 @@ import '../photo_capture/photo_model.dart';
 import '../theme_selection/theme_model.dart';
 import '../result/transformed_image_model.dart';
 import '../../services/api_service.dart';
+import '../../services/app_settings_manager.dart';
 import '../../services/session_manager.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
@@ -11,6 +12,7 @@ import '../../utils/exceptions.dart';
 class ReviewViewModel extends ChangeNotifier {
   final ApiService _apiService;
   final SessionManager _sessionManager;
+  final AppSettingsManager? _appSettingsManager;
   final PhotoModel? _photo;
   final ThemeModel? _theme;
   TransformedImageModel? _transformedImage;
@@ -27,10 +29,16 @@ class ReviewViewModel extends ChangeNotifier {
     required ThemeModel theme,
     ApiService? apiService,
     SessionManager? sessionManager,
+    AppSettingsManager? appSettingsManager,
   })  : _photo = photo,
         _theme = theme,
         _apiService = apiService ?? ApiService(),
-        _sessionManager = sessionManager ?? SessionManager();
+        _sessionManager = sessionManager ?? SessionManager(),
+        _appSettingsManager = appSettingsManager;
+
+  int get _parallelSlotCount =>
+      _appSettingsManager?.resolveParallelImageCount() ??
+      AppConstants.kAiParallelGenerationCount;
 
   PhotoModel? get photo => _photo;
   ThemeModel? get theme => _theme;
@@ -90,12 +98,15 @@ class ReviewViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Parallel SSE generation; legacy POST /api/generate-image: [ApiService.generateImage].
+      try {
+        await _appSettingsManager?.fetchSettings();
+      } catch (_) {}
       const generateTimeout = Duration(seconds: 120);
       final parallel = await _apiService
-          .generateImageParallelStream(
+          .generateImages(
         sessionId: sessionId,
-        count: AppConstants.kAiParallelGenerationCount,
+        count: _parallelSlotCount,
+        attempt: 1,
         originalPhotoId: _photo!.id,
         themeId: _theme!.id,
         onProgress: (message) {
@@ -110,8 +121,7 @@ class ReviewViewModel extends ChangeNotifier {
       );
 
       final imageUrl = parallel.preferredImageUrl;
-      if (imageUrl == null ||
-          (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://'))) {
+      if (imageUrl == null || imageUrl.isEmpty) {
         throw ApiException('No valid image URL in parallel generation result');
       }
 
@@ -121,6 +131,7 @@ class ReviewViewModel extends ChangeNotifier {
         originalPhotoId: _photo!.id,
         themeId: _theme!.id,
         transformedAt: DateTime.now(),
+        runId: parallel.runId,
       );
       
       // Step 3: Finalizing
@@ -135,10 +146,9 @@ class ReviewViewModel extends ChangeNotifier {
       _errorMessage = 'Generation took too long. Please try again.';
       return null;
     } on ApiException catch (e) {
-      // Include detailed error information
       final statusInfo = e.statusCode != null ? ' (Status: ${e.statusCode})' : '';
       final timeInfo = _elapsedSeconds > 0 ? ' [Took ${_elapsedSeconds}s]' : '';
-      _errorMessage = '${e.message}$statusInfo$timeInfo';
+      _errorMessage = '${e.userFacingMessage}$statusInfo$timeInfo';
       return null;
     } catch (e) {
       final timeInfo = _elapsedSeconds > 0 ? ' [Took ${_elapsedSeconds}s]' : '';

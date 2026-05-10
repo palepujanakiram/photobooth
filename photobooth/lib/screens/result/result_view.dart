@@ -15,6 +15,7 @@ import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../views/widgets/payment_link_qr.dart';
 import '../../services/payment_push_coordinator.dart';
+import '../../services/kiosk_manager.dart';
 import '../../utils/route_args.dart';
 
 class ResultScreen extends StatefulWidget {
@@ -31,6 +32,7 @@ class _ResultScreenState extends State<ResultScreen> {
   String? _customerName;
   String? _customerPhone;
   bool _customerWhatsappOptIn = false;
+  bool? _paymentsEnabledOverride;
   Timer? _failureIdleTimer;
   int _failureSecondsLeft = 0;
   bool _navigatingAway = false;
@@ -71,6 +73,18 @@ class _ResultScreenState extends State<ResultScreen> {
       customerWhatsappOptIn: _customerWhatsappOptIn,
     );
     _isInitialized = true;
+    unawaited(_initPaymentMode());
+  }
+
+  Future<void> _initPaymentMode() async {
+    final v = await KioskManager().getPaymentEnabledOverride();
+    if (!mounted) return;
+    setState(() => _paymentsEnabledOverride = v);
+    final paymentsEnabled = _paymentsEnabledOverride ?? true;
+    if (!paymentsEnabled) {
+      PaymentPushCoordinator.instance.registerResultScreenCallback(null);
+      return;
+    }
 
     PaymentPushCoordinator.instance
         .registerResultScreenCallback(_onPaymentPushFromFcm);
@@ -271,6 +285,7 @@ class _ResultScreenState extends State<ResultScreen> {
   @override
   Widget build(BuildContext context) {
     final appColors = AppColors.of(context);
+    final paymentsEnabled = _paymentsEnabledOverride ?? true;
 
     if (!_isInitialized || _viewModel == null) {
       return Scaffold(
@@ -362,6 +377,7 @@ class _ResultScreenState extends State<ResultScreen> {
                             children: [
                               _buildTitleSection(appColors),
                               const SizedBox(height: 10),
+                            if (paymentsEnabled)
                               _buildPaymentCard(context, viewModel, appColors),
                               if (viewModel.hasError) _buildErrorBanner(viewModel),
                               if (viewModel.fcmPaymentPushSuccess == true &&

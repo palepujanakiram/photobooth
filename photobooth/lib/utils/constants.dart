@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 
 import 'app_config.dart';
@@ -19,10 +20,13 @@ class AppConstants {
   // Timeout for AI generation (same as general timeout)
   static const Duration kAiGenerationTimeout = Duration(seconds: 300);
 
-  /// `count` for GET `/api/generate-stream-parallel`. Use **1** when each UI action
-  /// should produce a single image; use **3** (or more) only if the screen offers
-  /// multiple parallel style options in one request.
+  /// Fallback when `/api/settings` omits or invalidates `parallelImageCount`.
+  /// Server-driven value chooses POST `/api/generate-image` (when **1**) vs
+  /// GET `/api/generate-stream-parallel` (when **> 1**); see [ApiService.generateImages].
   static const int kAiParallelGenerationCount = 1;
+
+  /// Upper bound for `parallelImageCount` from settings (client-side sanity only).
+  static const int kMaxParallelImageSlots = 12;
 
   /// Fallback when `/api/settings` omits `initialPrice` / `additionalPrintPrice`.
   static const int kDefaultInitialPrintPrice = 100;
@@ -106,14 +110,13 @@ class AppConstants {
   static const String kContinueButtonText = 'Continue';
 
   /// When true (from `/api/settings` → `showGenerationCommentary`), optimizes for
-  /// low-RAM Android TV / kiosk (2 GB): tighter image caches, no photo metadata overlay,
-  /// lighter gallery pick, smaller theme disk cache.
-  /// Does **not** lower camera [ResolutionPreset] — quality is preserved; uploads are
-  /// still resized in [ImageHelper.encodeImageForUpload].
+  /// low-RAM Android TV / kiosk (2 GB): tighter image caches, lighter gallery pick,
+  /// smaller theme disk cache.
   ///
-  /// Default is **false** until settings load; enable commentary on the server to turn this on.
+  /// **Web:** always `false` — commentary there only enables logging/debug UI; kiosk RAM
+  /// tuning would shrink [ImageCache] during capture/upload and block navigation.
   static bool get kLowMemoryKioskMode =>
-      AppRuntimeConfig.instance.showGenerationCommentary;
+      !kIsWeb && AppRuntimeConfig.instance.showGenerationCommentary;
 
   /// Extra delay after releasing a [CameraController] before opening the next (ms).
   /// Gives CameraX / HAL time to free buffers on slow 2 GB TV boxes when switching cams.
@@ -153,9 +156,10 @@ class AppConstants {
   static int get kGalleryPickerImageQuality =>
       kLowMemoryKioskMode ? 85 : 95;
 
-  /// When true (same as `showGenerationCommentary`), shows the native camera info pane on Capture Photo.
+  /// When true (with `showGenerationCommentary`), shows native camera details on Capture Photo.
+  /// **Off on web** — `camera_native_details` / layout differs; avoids extra work after capture.
   static bool get kShowNativeCameraInfoPane =>
-      AppRuntimeConfig.instance.showGenerationCommentary;
+      !kIsWeb && AppRuntimeConfig.instance.showGenerationCommentary;
 
   /// When true, shows the Print & Share Options section (Printer IP, Silent Print, Print, Share) on Complete Payment / Result screen.
   static const bool kShowResultPrintSection = false;
@@ -186,6 +190,7 @@ class AppConstants {
 
   // Logging
   // Controls console logs and breadcrumb logs (Bugsnag). Tied to `showGenerationCommentary`.
+  // On web, API logs are summaries only (method, URL, keys, sizes) so huge bodies do not block the UI.
   static bool get kEnableLogOutput =>
       AppRuntimeConfig.instance.showGenerationCommentary;
 
@@ -205,7 +210,10 @@ class AppConstants {
   static const String kRouteTerms = '/terms';
   static const String kRouteHome = '/theme-selection';
   static const String kRouteCapture = '/capture';
+  /// Kiosk: choose occasion frame (or none) after theme, before generation.
+  static const String kRouteFrameSelect = '/frame-select';
   static const String kRouteGenerate = '/generate';
+  static const String kRouteGenerateProgress = '/generate-progress';
   static const String kRouteReview = '/review';
   static const String kRouteResult = '/result';
   static const String kRouteThankYou = '/thank-you';

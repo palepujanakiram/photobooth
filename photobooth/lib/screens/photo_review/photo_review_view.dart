@@ -8,6 +8,7 @@ import '../theme_selection/theme_model.dart';
 import 'photo_review_viewmodel.dart';
 import '../../utils/constants.dart';
 import '../../utils/app_config.dart';
+import '../../services/app_settings_manager.dart';
 import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/app_snackbar.dart';
@@ -40,7 +41,11 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
     final theme = parsed.theme;
     _photo = photo;
     _theme = theme;
-    _reviewViewModel = ReviewViewModel(photo: photo, theme: theme);
+    _reviewViewModel = ReviewViewModel(
+      photo: photo,
+      theme: theme,
+      appSettingsManager: context.read<AppSettingsManager>(),
+    );
     _photoBytesFuture = photo.imageFile.readAsBytes();
     _isInitialized = true;
   }

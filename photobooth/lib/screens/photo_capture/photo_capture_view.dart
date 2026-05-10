@@ -1,8 +1,7 @@
 import 'dart:math' as math;
 import 'dart:async';
 
-import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -28,6 +27,7 @@ import '../../views/widgets/leading_with_alice.dart';
 import 'photo_capture_rotation_screen.dart';
 import '../../services/hardware_key_service.dart';
 import '../../utils/route_args.dart';
+import '../../utils/web_flow_trace.dart';
 
 class PhotoCaptureScreen extends StatefulWidget {
   const PhotoCaptureScreen({super.key});
@@ -311,7 +311,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                               );
                             }
 
-                            if (viewModel.hasError) {
+                            // Upload/session errors after capture should not replace the preview;
+                            // those are shown inline in [_buildCaptureColumn].
+                            if (viewModel.hasError && viewModel.capturedPhoto == null) {
                               final appColors = AppColors.of(context);
                               return Center(
                                 child: Column(
@@ -351,7 +353,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                               );
                             }
 
-                            if (!viewModel.isReady) {
+                            // After a successful capture we call [disposeCamera] before leaving;
+                            // [isReady] becomes false while [capturedPhoto] is still set. Still show
+                            // the captured still + actions, not "Camera not ready".
+                            if (!viewModel.isReady && viewModel.capturedPhoto == null) {
                               return const Center(
                                 child: Text(
                                   'Camera not ready',
@@ -387,7 +392,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                       ),
                     Consumer<AppSettingsManager>(
                       builder: (context, appSettings, _) {
-                        if (appSettings.settings?.showGenerationCommentary != true) {
+                        // Web: DevTools + web-safe API summaries; RAM/log overlays add timers
+                        // and ValueListenable churn that can stall the post-capture isolate.
+                        if (kIsWeb ||
+                            appSettings.settings?.showGenerationCommentary != true) {
                           return const SizedBox.shrink();
                         }
                         return Positioned(
@@ -399,7 +407,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     ),
                     Consumer<AppSettingsManager>(
                       builder: (context, appSettings, _) {
-                        if (appSettings.settings?.showGenerationCommentary != true) {
+                        if (kIsWeb ||
+                            appSettings.settings?.showGenerationCommentary != true) {
                           return const SizedBox.shrink();
                         }
                         return Positioned(
@@ -477,8 +486,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             hasCapturedPhoto,
           ),
         ),
-        // 3. Inline error (pre-capture) above bottom actions.
-        if (!hasCapturedPhoto && viewModel.hasError && viewModel.errorMessage != null)
+        // 3. Post-capture errors (e.g. upload) above Continue — full-screen branch is skipped when a photo exists.
+        if (hasCapturedPhoto && viewModel.hasError && viewModel.errorMessage != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: _buildCaptureErrorSection(context, viewModel),
@@ -582,10 +591,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                               viewModel.capturedPhoto!.imageFile,
                               cardW,
                               cardH,
-                              // Match live preview: contain in portrait (no crop), cover on landscape kiosks.
-                              fit: MediaQuery.orientationOf(context) == Orientation.portrait
-                                  ? BoxFit.contain
-                                  : BoxFit.cover,
+                              // Match live preview: full-bleed cover (no black “stencil”), smooth shutter transition.
+                              fit: BoxFit.cover,
                             )
                           : KeyedSubtree(
                               // Web builds can aggressively reuse platform views / textures.
@@ -624,35 +631,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
-  /// Display size of the live preview after rotation (same math as the inner [SizedBox] below).
+  /// Display size of the live preview after rotation (see [CaptureViewModel.previewDisplaySizeForCard]).
   Size? _livePreviewDisplaySize(CaptureViewModel viewModel) {
-    final controller = viewModel.cameraController;
-    if (controller == null || !controller.value.isInitialized) {
-      return null;
-    }
-
-    final previewSize = controller.value.previewSize;
-    final baseAspectRatio = controller.value.aspectRatio;
-    final autoQuarterTurns = _androidTvPreviewQuarterTurns(viewModel);
-    final manualQuarterTurns = (viewModel.previewRotationDegrees ~/ 90) % 4;
-    final effectiveQuarterTurns =
-        (autoQuarterTurns + manualQuarterTurns) % 4;
-
-    final displayAspectRatio =
-        effectiveQuarterTurns.isOdd ? 1 / baseAspectRatio : baseAspectRatio;
-    final width = previewSize == null
-        ? (effectiveQuarterTurns.isOdd ? 1.0 : displayAspectRatio)
-        : (effectiveQuarterTurns.isOdd
-            ? previewSize.height
-            : previewSize.width);
-    final height = previewSize == null
-        ? (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1.0)
-        : (effectiveQuarterTurns.isOdd
-            ? previewSize.width
-            : previewSize.height);
-
-    if (width <= 0 || height <= 0) return null;
-    return Size(width, height);
+    return viewModel.previewDisplaySizeForCard;
   }
 
   /// Width/height ratio for the capture card: decoded still, live preview, viewport slot on phones, or [fallbackAspect].
@@ -679,10 +660,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return (w / h).clamp(0.28, 0.92);
     }
 
-    // Keep the capture card size consistent before/after capture by preferring the
-    // live preview aspect ratio even after the still is taken. This avoids a
-    // visible "jump" in placeholder size when switching from preview → still.
+    // Keep the capture card size consistent before/after capture. Prefer the aspect
+    // locked at shutter (preview stream); decoded still size often differs and caused jumps.
     if (hasCapturedPhoto) {
+      final locked = viewModel.lockedCaptureCardAspectRatio;
+      if (locked != null && locked > 0) {
+        return locked.clamp(0.35, 2.85);
+      }
       final live = _livePreviewDisplaySize(viewModel);
       if (live != null && live.height > 0) {
         return (live.width / live.height).clamp(0.35, 2.85);
@@ -725,7 +709,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     Widget preview = _buildPlatformPreview(controller);
-    final autoQuarterTurns = _androidTvPreviewQuarterTurns(viewModel);
+    final autoQuarterTurns = viewModel.previewAutoQuarterTurns;
     final manualQuarterTurns = (viewModel.previewRotationDegrees ~/ 90) % 4;
     final effectiveQuarterTurns =
         (autoQuarterTurns + manualQuarterTurns) % 4;
@@ -745,19 +729,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final height = displaySize?.height ??
         (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1.0);
 
-    // Always preserve aspect ratio and avoid stretching.
-    //
-    // In portrait capture flows, prefer showing the full frame (contain) so users
-    // can see their entire pose; on landscape kiosks/tablets, prefer full-bleed
-    // (cover) for a premium look.
-    final isPortrait =
-        MediaQuery.orientationOf(context) == Orientation.portrait;
-    final fit = isPortrait ? BoxFit.contain : BoxFit.cover;
-
+    // Full-bleed preview inside the card (same framing as the captured still).
+    // Center + contain left black letterboxing when card aspect matched the stream
+    // but the fitted subtree didn’t fill the stack; expand + cover removes the “stencil”.
     return ClipRect(
-      child: Center(
+      child: SizedBox.expand(
         child: FittedBox(
-          fit: fit,
+          fit: BoxFit.cover,
           alignment: Alignment.center,
           child: SizedBox(
             width: width,
@@ -776,34 +754,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     return CameraPreview(controller);
   }
 
-  int _androidTvPreviewQuarterTurns(CaptureViewModel viewModel) {
-    final camera = viewModel.currentCamera;
-    if (camera == null) return 0;
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return 0;
-    if (!viewModel.shouldUseLandscapePreviewRotationWorkaround &&
-        camera.lensDirection != CameraLensDirection.external) {
-      return 0;
-    }
-
-    final surfaceRotationDegrees = switch (viewModel.displayRotation) {
-      1 => 90,
-      2 => 180,
-      3 => 270,
-      _ => 0,
-    };
-
-    final sensorOrientation = camera.sensorOrientation % 360;
-    final rotationDegrees = switch (camera.lensDirection) {
-      CameraLensDirection.front =>
-        (sensorOrientation + surfaceRotationDegrees) % 360,
-      _ => (sensorOrientation - surfaceRotationDegrees + 360) % 360,
-    };
-
-    return ((360 - rotationDegrees) % 360) ~/ 90;
-  }
-
   String _effectiveRotationLabel(CaptureViewModel viewModel) {
-    final autoTurns = _androidTvPreviewQuarterTurns(viewModel);
+    final autoTurns = viewModel.previewAutoQuarterTurns;
     final manualTurns = (viewModel.previewRotationDegrees ~/ 90) % 4;
     final effectiveTurns = (autoTurns + manualTurns) % 4;
     final rotation = '${effectiveTurns * 90}° (auto ${autoTurns * 90}° + manual ${manualTurns * 90}°)';
@@ -965,14 +917,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                       // camera heap on a 4 GB kiosk.
                       viewModel.disposeCamera();
                       final photo = viewModel.capturedPhoto!;
-                      await Navigator.pushNamed(
-                        currentContext,
+                      if (!mounted || !currentContext.mounted) return;
+                      WebFlowTrace.log('NAV', 'pushReplacementNamed theme-selection start');
+                      // Replace capture with theme so the new route is definitely on top
+                      // (web + nested navigators could leave capture visible under push).
+                      // This also drops capture from the stack — back goes to the screen
+                      // below (e.g. terms or a prior theme), not to a disposed camera.
+                      await Navigator.of(currentContext, rootNavigator: true)
+                          .pushReplacementNamed(
                         AppConstants.kRouteHome,
                         arguments: ThemeSelectionArgs(photo: photo),
                       );
-                      // User came back (Back from ThemeSelection). Re-initialize camera.
-                      if (!mounted || !currentContext.mounted) return;
-                      await _resetAndInitializeCameras();
+                      WebFlowTrace.log('NAV', 'pushReplacementNamed done');
+                      // After replacement this [State] is disposed; do not touch camera.
                     }
                   },
             child: viewModel.isUploading
@@ -1019,7 +976,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           const SizedBox(height: 8),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-            onPressed: () => viewModel.clearCapturedPhoto(),
+            onPressed: () {
+              if (viewModel.capturedPhoto != null) {
+                viewModel.clearErrorMessage();
+              } else {
+                viewModel.clearCapturedPhoto();
+              }
+            },
             child: Text('Dismiss', style: TextStyle(color: appColors.errorColor, fontSize: 12, fontWeight: FontWeight.w600)),
           ),
         ],

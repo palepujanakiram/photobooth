@@ -21,4 +21,20 @@ class AppConfig {
     'BASE_URL',
     defaultValue: 'https://fotozenai.fly.dev',
   );
+
+  /// JWT for `Authorization: Bearer …` on API calls (e.g. Supabase anon / edge gateway).
+  ///
+  /// Client apps cannot hide this from a determined user; treat it as a **public** credential
+  /// and enforce authorization on the server (RLS, session checks, rate limits).
+  ///
+  /// Override per build: `--dart-define=API_BEARER_TOKEN=<jwt>`.
+  static const String apiBearerToken = String.fromEnvironment(
+    'API_BEARER_TOKEN',
+    defaultValue:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
+  );
+
+  static Map<String, String> get authorizationBearerHeader => {
+        'Authorization': 'Bearer $apiBearerToken',
+      };
 }
