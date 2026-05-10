@@ -93,7 +93,7 @@ class _FrameSelectScreenState extends State<FrameSelectScreen> {
     if (photo == null || theme == null) return;
     Navigator.pushReplacementNamed(
       context,
-      AppConstants.kRouteGenerate,
+      AppConstants.kRouteGenerateProgress,
       arguments: GenerateArgs(photo: photo, theme: theme),
     );
   }

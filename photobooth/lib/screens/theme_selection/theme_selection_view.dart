@@ -231,7 +231,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
               }
               await Navigator.pushNamed(
                 currentContext,
-                AppConstants.kRouteGenerate,
+                AppConstants.kRouteGenerateProgress,
                 arguments: GenerateArgs(photo: photo, theme: selectedTheme),
               );
             } else {
@@ -246,7 +246,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
               }
               await Navigator.pushNamed(
                 currentContext,
-                AppConstants.kRouteGenerate,
+                AppConstants.kRouteGenerateProgress,
                 arguments: GenerateArgs(photo: photo, theme: selectedTheme),
               );
             }
