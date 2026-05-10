@@ -136,13 +136,28 @@ class _PhotoGenerateProgressScreenState
                   top: false,
                   child: Padding(
                     padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + kToolbarHeight),
-                    child: Center(
-                      child: _buildGenerationProgressHeroCard(
-                        context,
-                        vm,
-                        width: cardW,
-                        height: cardH,
-                      ),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minHeight: constraints.maxHeight - 24,
+                            ),
+                            child: Center(
+                              child: _buildGenerationProgressHeroCard(
+                                context,
+                                vm,
+                                width: cardW,
+                                height: cardH,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -193,9 +208,9 @@ class _PhotoGenerateProgressScreenState
     final aiUrl = _previewForStage(vm, 'ai_generation');
 
     int index = 0;
-    String stageTitle = '1 · DETECT';
-    String headline = 'Face locked';
-    String description = 'Live preview';
+    String stageTitle = '2 · CAPTURE';
+    String headline = 'Got it';
+    String description = 'Frozen frame, framing applied';
     String? imageUrl;
     bool checker = false;
     Widget? localFallback;
@@ -230,6 +245,11 @@ class _PhotoGenerateProgressScreenState
       headline = 'Got it';
       description = 'Frozen frame, framing applied';
       imageUrl = preprocessUrl;
+    } else {
+      index = 0;
+      stageTitle = '1 · DETECT';
+      headline = 'Face locked';
+      description = 'Live preview';
     }
 
     Widget imageLayer() {
@@ -248,127 +268,119 @@ class _PhotoGenerateProgressScreenState
       return localFallback ?? const SizedBox.shrink();
     }
 
-    return SizedBox(
-      width: width,
-      height: height,
-      child: _transformedSlotFrame(
-        cardWidth: width,
-        cardHeight: height,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (checker)
-              _checkerboardBackground()
-            else
-              const ColoredBox(color: Colors.black),
-            Positioned.fill(child: imageLayer()),
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: bottomAccessory != null
-                          ? [
-                              Colors.black.withValues(alpha: 0.92),
-                              Colors.black.withValues(alpha: 0.42),
-                              Colors.transparent,
-                            ]
-                          : [
-                              Colors.black.withValues(alpha: 0.76),
-                              Colors.transparent,
-                            ],
-                      stops: bottomAccessory != null
-                          ? const [0.0, 0.55, 1.0]
-                          : null,
+    // Match PhotoGenerateScreen: photo frame is image-only; status lives outside.
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: width),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  stageTitle,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                  ),
+                  textAlign: TextAlign.left,
+                ),
+                const SizedBox(height: 8),
+                _storyboardTopBars(activeIndex: index),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: width,
+            height: height,
+            child: _transformedSlotFrame(
+              cardWidth: width,
+              cardHeight: height,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (checker)
+                    _checkerboardBackground()
+                  else
+                    const ColoredBox(color: Colors.black),
+                  Positioned.fill(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeOutCubic,
+                      transitionBuilder: (child, anim) {
+                        final fade = CurvedAnimation(
+                          parent: anim,
+                          curve: Curves.easeOut,
+                        );
+                        final scale =
+                            Tween<double>(begin: 0.985, end: 1.0).animate(fade);
+                        return FadeTransition(
+                          opacity: fade,
+                          child: ScaleTransition(scale: scale, child: child),
+                        );
+                      },
+                      child: KeyedSubtree(
+                        key: ValueKey<String>(imageUrl ?? 'local_$index'),
+                        child: imageLayer(),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
             ),
-            Positioned(
-              top: 16,
-              left: 16,
-              right: 16,
-              child: _storyboardTopBars(activeIndex: index),
-            ),
-            Positioned(
-              top: 14,
-              left: 16,
-              child: Text(
-                stageTitle,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.1,
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: 14,
-              right: 14,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white24),
-                ),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  child: Text(
-                    '${vm.elapsedSeconds}s',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                    ),
+          ),
+          const SizedBox(height: 14),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  headline,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
                   ),
+                  textAlign: TextAlign.center,
                 ),
-              ),
-            ),
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 720),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(
-                        headline,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 20,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        description,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          height: 1.2,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      if (bottomAccessory != null) ...[
-                        const SizedBox(height: 12),
-                        bottomAccessory,
-                      ],
-                    ],
+                const SizedBox(height: 6),
+                Text(
+                  description,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    height: 1.2,
                   ),
+                  textAlign: TextAlign.center,
                 ),
-              ),
+                const SizedBox(height: 10),
+                Text(
+                  '${vm.elapsedSeconds}s',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                if (bottomAccessory != null) ...[
+                  const SizedBox(height: 12),
+                  bottomAccessory,
+                ],
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
