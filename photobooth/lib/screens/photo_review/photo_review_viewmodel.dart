@@ -131,6 +131,7 @@ class ReviewViewModel extends ChangeNotifier {
         originalPhotoId: _photo!.id,
         themeId: _theme!.id,
         transformedAt: DateTime.now(),
+        runId: parallel.runId,
       );
       
       // Step 3: Finalizing

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'theme_model.dart';
+import '../../models/kiosk_frame_model.dart';
 import '../../services/theme_manager.dart';
 import '../../utils/constants.dart';
 import '../../services/api_service.dart';
@@ -316,15 +317,53 @@ class ThemeViewModel extends ChangeNotifier {
     }
   }
 
-  /// Kiosk frame count for routing after theme. Returns **≥ 0** when the API succeeded;
-  /// **-1** when frames cannot be queried (e.g. missing kiosk context) — caller should open
-  /// [FrameSelectScreen] so existing error UI can run.
-  Future<int> loadKioskFrameCountForGate() async {
+  /// Active kiosk frames for routing after theme (same API as [FrameSelectScreen]).
+  Future<List<KioskFrameModel>> fetchKioskFramesList() async {
+    return _apiService.getKioskFrames();
+  }
+
+  /// Persists the only available frame when the kiosk has exactly one active frame.
+  Future<bool> syncSingleFrameSelection(String frameId) async {
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null) {
+      _errorMessage = 'No active session.';
+      notifyListeners();
+      return false;
+    }
+
+    _isUpdatingSession = true;
+    _errorMessage = null;
+    notifyListeners();
+
     try {
-      final frames = await _apiService.getKioskFrames();
-      return frames.length;
-    } catch (_) {
-      return -1;
+      const updateTimeout = Duration(seconds: 30);
+      final response = await _apiService
+          .updateSession(
+            sessionId: sessionId,
+            includeSelectedFrameId: true,
+            selectedFrameId: frameId,
+          )
+          .timeout(
+            updateTimeout,
+            onTimeout: () => throw TimeoutException(
+              'Update session timed out after ${updateTimeout.inSeconds} seconds',
+            ),
+          );
+      _sessionManager.setSessionFromResponse(response);
+      return true;
+    } on TimeoutException {
+      _errorMessage =
+          'Request took too long. Please check your connection and try again.';
+      return false;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
+      return false;
+    } finally {
+      _isUpdatingSession = false;
+      notifyListeners();
     }
   }
 

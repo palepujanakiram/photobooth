@@ -199,26 +199,52 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         if (!mounted || !currentContext.mounted) return;
         if (success) {
           final photo = _photoFromCapture!;
-          final frameCount = await viewModel.loadKioskFrameCountForGate();
-          if (!mounted || !currentContext.mounted) return;
-          // Skip frame picker when there is nothing to choose (&lt; 2 frames) so kiosks
-          // never flash `/frame-select` before `/generate`.
-          if (frameCount >= 0 && frameCount < 2) {
-            final frameOk = await viewModel.syncAutoSkippedFrameSelection();
+          try {
+            final frames = await viewModel.fetchKioskFramesList();
             if (!mounted || !currentContext.mounted) return;
-            if (!frameOk) {
-              AppSnackBar.showError(
+            if (frames.length >= 2) {
+              await Navigator.pushNamed(
                 currentContext,
-                viewModel.errorMessage ?? 'Could not prepare generation.',
+                AppConstants.kRouteFrameSelect,
+                arguments: {
+                  'photo': photo,
+                  'theme': selectedTheme,
+                },
               );
-              return;
+            } else if (frames.length == 1) {
+              final frameOk =
+                  await viewModel.syncSingleFrameSelection(frames.single.id);
+              if (!mounted || !currentContext.mounted) return;
+              if (!frameOk) {
+                AppSnackBar.showError(
+                  currentContext,
+                  viewModel.errorMessage ?? 'Could not prepare generation.',
+                );
+                return;
+              }
+              await Navigator.pushNamed(
+                currentContext,
+                AppConstants.kRouteGenerate,
+                arguments: GenerateArgs(photo: photo, theme: selectedTheme),
+              );
+            } else {
+              final frameOk = await viewModel.syncAutoSkippedFrameSelection();
+              if (!mounted || !currentContext.mounted) return;
+              if (!frameOk) {
+                AppSnackBar.showError(
+                  currentContext,
+                  viewModel.errorMessage ?? 'Could not prepare generation.',
+                );
+                return;
+              }
+              await Navigator.pushNamed(
+                currentContext,
+                AppConstants.kRouteGenerate,
+                arguments: GenerateArgs(photo: photo, theme: selectedTheme),
+              );
             }
-            await Navigator.pushNamed(
-              currentContext,
-              AppConstants.kRouteGenerate,
-              arguments: GenerateArgs(photo: photo, theme: selectedTheme),
-            );
-          } else {
+          } catch (_) {
+            if (!mounted || !currentContext.mounted) return;
             await Navigator.pushNamed(
               currentContext,
               AppConstants.kRouteFrameSelect,

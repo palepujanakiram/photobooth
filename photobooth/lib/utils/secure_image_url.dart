@@ -25,6 +25,9 @@ class SecureImageUrl {
     return '$base/$trimmed';
   }
 
+  /// Resolves relative API paths to an absolute URL (no `sessionId` appended).
+  static String absolutize(String url) => _absolutizeIfRelative(url);
+
   /// Returns [url] with `sessionId=<currentSessionId>` appended when it points to `/api/img/...`
   /// and no other access token is already present.
   static String withSessionId(String url, {String? sessionId}) {
