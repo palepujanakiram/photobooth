@@ -2,6 +2,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class KioskManager {
   static const String _kPrefsKioskCode = 'kiosk_code';
+  static const String _kPrefsPaymentEnabledOverride = 'kiosk_payment_enabled_override';
+
+  static bool? _cachedPaymentEnabledOverride;
 
   Future<String?> getKioskCode() async {
     final prefs = await SharedPreferences.getInstance();
@@ -24,6 +27,40 @@ class KioskManager {
   Future<void> clearKioskCode() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kPrefsKioskCode);
+  }
+
+  /// Payment enablement override from `GET /api/kiosk/by-code/:code`.
+  ///
+  /// - null: inherit (default behavior; payments enabled)
+  /// - true: force enabled
+  /// - false: force disabled (kiosk must hide all pricing details + skip payment flow)
+  Future<bool?> getPaymentEnabledOverride() async {
+    if (_cachedPaymentEnabledOverride != null) {
+      return _cachedPaymentEnabledOverride;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    if (!prefs.containsKey(_kPrefsPaymentEnabledOverride)) {
+      return null;
+    }
+    final v = prefs.getBool(_kPrefsPaymentEnabledOverride);
+    _cachedPaymentEnabledOverride = v;
+    return v;
+  }
+
+  Future<void> setPaymentEnabledOverride(bool? value) async {
+    _cachedPaymentEnabledOverride = value;
+    final prefs = await SharedPreferences.getInstance();
+    if (value == null) {
+      await prefs.remove(_kPrefsPaymentEnabledOverride);
+      return;
+    }
+    await prefs.setBool(_kPrefsPaymentEnabledOverride, value);
+  }
+
+  Future<void> clearPaymentEnabledOverride() async {
+    _cachedPaymentEnabledOverride = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kPrefsPaymentEnabledOverride);
   }
 }
 

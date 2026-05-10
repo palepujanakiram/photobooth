@@ -1,10 +1,12 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../utils/constants.dart';
 import '../utils/logger.dart';
 import 'error_reporting/error_reporting_manager.dart';
 import 'api_logging/log_truncator.dart';
 import 'api_logging/payload_sanitizer.dart';
 import 'api_logging/request_formatter.dart';
+import 'api_logging/web_api_log_summary.dart';
 
 /// Interceptor that logs all API requests and responses with detailed timing
 /// Logs request method, URL, headers, body, response details, and performance metrics
@@ -24,7 +26,11 @@ class ApiLoggingInterceptor extends Interceptor {
       return;
     }
 
-    AppLogger.debug(_requestFormatter.format(options));
+    AppLogger.debug(
+      kIsWeb
+          ? formatWebApiRequestSummary(options)
+          : _requestFormatter.format(options),
+    );
     
     // Track API request in Bugsnag
     ErrorReportingManager.log('API Request: ${options.method} ${options.uri}');
@@ -44,7 +50,11 @@ class ApiLoggingInterceptor extends Interceptor {
       return;
     }
 
-    AppLogger.debug(_responseFormatter.format(response));
+    AppLogger.debug(
+      kIsWeb
+          ? formatWebApiResponseSummary(response)
+          : _responseFormatter.format(response),
+    );
     
     // Track successful API response in Bugsnag with timing
     final startTime =
@@ -73,7 +83,12 @@ class ApiLoggingInterceptor extends Interceptor {
         : null;
     
     if (AppConstants.kEnableLogOutput) {
-      AppLogger.error(_responseFormatter.formatError(err), error: err);
+      AppLogger.error(
+        kIsWeb
+            ? formatWebApiErrorSummary(err)
+            : _responseFormatter.formatError(err),
+        error: err,
+      );
       
       // Log API failure to Bugsnag with detailed context and timing
       final durationStr = duration != null ? ' (${duration.inMilliseconds}ms)' : '';
@@ -93,7 +108,9 @@ class ApiLoggingInterceptor extends Interceptor {
         'status_code': err.response?.statusCode?.toString() ?? 'none',
         'status_message': err.response?.statusMessage ?? 'none',
         'response_data': err.response?.data != null
-            ? _sanitizer.sanitizeData(err.response?.data)
+            ? (kIsWeb
+                ? webSafeResponseDataSnapshot(err.response?.data)
+                : _sanitizer.sanitizeData(err.response?.data))
             : 'none',
         'duration_ms': duration?.inMilliseconds.toString() ?? 'unknown',
         'timestamp': DateTime.now().toIso8601String(),

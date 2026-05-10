@@ -117,12 +117,20 @@ class AppLogger {
     
     final formattedMessage = '[${level.label}] $fileInfo - $message';
 
+    // Ring buffer: cap line length so API/debug logs never store multi‑MB strings
+    // (would freeze [DebugLogOverlay] when showGenerationCommentary is on).
+    const maxBufferedChars = 2048;
+    final forBuffer = formattedMessage.length > maxBufferedChars
+        ? '${formattedMessage.substring(0, maxBufferedChars)}… '
+            '[+${formattedMessage.length - maxBufferedChars} chars]'
+        : formattedMessage;
+
     // Always buffer logs for UI debugging (even if output is disabled).
     // Keep bounded memory by truncating to [_maxBufferedLines].
     final current = _recentLines.value;
     final next = <String>[
       ...current,
-      formattedMessage,
+      forBuffer,
       if (error != null) '    ↳ error: $error',
       if (stackTrace != null) '    ↳ stack: ${stackTrace.toString().split('\n').first}',
     ];

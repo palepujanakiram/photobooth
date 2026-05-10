@@ -6,6 +6,39 @@ import '../../utils/logger.dart';
 import 'log_truncator.dart';
 import 'payload_sanitizer.dart';
 
+/// Avoid [jsonEncode] of maps containing a huge `userImageUrl` (logging only).
+int? estimatePayloadSizeForLogging(dynamic data) {
+  if (data == null) return null;
+  if (data is String) return data.length;
+  if (data is List<int>) return data.length;
+  if (data is Map) {
+    final slug = data['userImageUrl'];
+    if (slug is String && slug.length > 8192) {
+      var total = 64;
+      for (final e in data.entries) {
+        if (e.key == 'userImageUrl' && e.value is String) {
+          total += (e.value as String).length;
+        } else {
+          try {
+            total += jsonEncode({e.key: e.value}).length;
+          } catch (_) {
+            total += 64;
+          }
+        }
+      }
+      return total;
+    }
+  }
+  if (data is Map || data is List) {
+    try {
+      return jsonEncode(data).length;
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
+}
+
 class ApiRequestFormatter {
   const ApiRequestFormatter(this._sanitizer, this._truncator);
 
@@ -90,13 +123,7 @@ class ApiRequestFormatter {
     return buffer.toString();
   }
 
-  int? _estimateSize(dynamic data) {
-    if (data == null) return null;
-    if (data is String) return data.length;
-    if (data is List<int>) return data.length;
-    if (data is Map || data is List) return jsonEncode(data).length;
-    return null;
-  }
+  int? _estimateSize(dynamic data) => estimatePayloadSizeForLogging(data);
 }
 
 class ApiResponseFormatter {
@@ -269,13 +296,7 @@ class ApiResponseFormatter {
     return buffer.toString();
   }
 
-  int? _estimateSize(dynamic data) {
-    if (data == null) return null;
-    if (data is String) return data.length;
-    if (data is List<int>) return data.length;
-    if (data is Map || data is List) return jsonEncode(data).length;
-    return null;
-  }
+  int? _estimateSize(dynamic data) => estimatePayloadSizeForLogging(data);
 }
 
 void debugApiLog(String message) {

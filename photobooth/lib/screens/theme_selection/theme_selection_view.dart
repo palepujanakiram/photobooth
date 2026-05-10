@@ -198,14 +198,36 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         success = await viewModel.updateSessionWithTheme();
         if (!mounted || !currentContext.mounted) return;
         if (success) {
-          Navigator.pushNamed(
-            currentContext,
-            AppConstants.kRouteGenerate,
-            arguments: {
-              'photo': _photoFromCapture,
-              'theme': selectedTheme,
-            },
-          );
+          final photo = _photoFromCapture!;
+          final frameCount = await viewModel.loadKioskFrameCountForGate();
+          if (!mounted || !currentContext.mounted) return;
+          // Skip frame picker when there is nothing to choose (&lt; 2 frames) so kiosks
+          // never flash `/frame-select` before `/generate`.
+          if (frameCount >= 0 && frameCount < 2) {
+            final frameOk = await viewModel.syncAutoSkippedFrameSelection();
+            if (!mounted || !currentContext.mounted) return;
+            if (!frameOk) {
+              AppSnackBar.showError(
+                currentContext,
+                viewModel.errorMessage ?? 'Could not prepare generation.',
+              );
+              return;
+            }
+            await Navigator.pushNamed(
+              currentContext,
+              AppConstants.kRouteGenerate,
+              arguments: GenerateArgs(photo: photo, theme: selectedTheme),
+            );
+          } else {
+            await Navigator.pushNamed(
+              currentContext,
+              AppConstants.kRouteFrameSelect,
+              arguments: {
+                'photo': photo,
+                'theme': selectedTheme,
+              },
+            );
+          }
         } else {
           AppSnackBar.showError(
             currentContext,

@@ -71,7 +71,8 @@ abstract class ApiClient {
     @Path('sessionId') String sessionId,
   );
 
-  /// Generates transformed image using AI (legacy; app uses parallel SSE — see [ApiService.generateImageParallelStream]).
+  /// Generates transformed image using AI (POST). Used when `/api/settings` `parallelImageCount` is 1;
+  /// see [ApiService.generateImages].
   @POST('/api/generate-image')
   Future<dynamic> generateImage(
     @Body() Map<String, dynamic> body,

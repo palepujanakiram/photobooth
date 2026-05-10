@@ -21,6 +21,7 @@ import '../../utils/app_device_type.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
+import '../../utils/web_flow_trace.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 
@@ -1015,11 +1016,11 @@ class CaptureViewModel extends ChangeNotifier {
     AppLogger.debug('   isReady: $isReady');
 
     ErrorReportingManager.log('📸 Photo capture attempt started');
-    await ErrorReportingManager.setCustomKeys({
+    unawaited(ErrorReportingManager.setCustomKeys({
       'capture_isReady': isReady,
       'capture_hasController': _cameraController != null,
       'capture_initialized': _cameraController?.value.isInitialized ?? false,
-    });
+    }));
 
     if (!isReady) {
       String debugInfo = 'Camera not ready.\n\n';
@@ -1050,19 +1051,25 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
+      WebFlowTrace.reset(label: 'capture');
+      WebFlowTrace.log('CAPTURE', 'shutter_begin kIsWeb=$kIsWeb isReady=$isReady');
       AppLogger.debug('📸 Capturing photo...');
       ErrorReportingManager.log('📸 Photo capture started');
       XFile imageFile;
       if (_shouldUseStreamOnlyCapture()) {
         // External / Android TV camera stacks frequently fail still JPEG capture (CameraX recoverable errors).
         // Use a single-frame stream grab deterministically for reliability.
+        WebFlowTrace.log('CAPTURE', 'streamFallback_start');
         imageFile = await _captureSingleFrameFallback(
           reason: 'streamOnlyCapture',
           details: 'android=${_deviceType?.toString()} camera=${_currentCamera?.name ?? "unknown"}',
         );
+        WebFlowTrace.log('CAPTURE', 'streamFallback_done pathLen=${imageFile.path.length}');
       } else {
         try {
+          WebFlowTrace.log('CAPTURE', 'takePicture_start');
           imageFile = await _takePictureWithRecovery();
+          WebFlowTrace.log('CAPTURE', 'takePicture_done pathLen=${imageFile.path.length}');
         } on TimeoutException catch (e) {
           imageFile = await _captureSingleFrameFallback(
             reason: 'takePicture timeout',
@@ -1081,11 +1088,16 @@ class CaptureViewModel extends ChangeNotifier {
       final isFrontCamera = _currentCamera?.lensDirection == CameraLensDirection.front;
       // Normalize + bake EXIF orientation so tablets handle rotation reliably, and
       // un-mirror front camera captures so saved photos match the real world.
+      WebFlowTrace.log('CAPTURE', 'normalize_start');
       final XFile savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
         imageFile,
         flipHorizontal: isFrontCamera,
       );
+      WebFlowTrace.log('CAPTURE', 'normalize_done');
       AppLogger.debug('✅ Photo normalized and saved');
+      // Web: do NOT read the full JPEG into memory here — that blocks the JS
+      // thread while [_isCapturing] is true (frozen UI). Preview uses the blob
+      // URL; [uploadPhotoToSession] materializes bytes under the upload loader.
 
       // Get camera ID from either standard controller or current camera
       final cameraId = _cameraController?.description.name ?? _currentCamera?.name;
@@ -1097,17 +1109,18 @@ class CaptureViewModel extends ChangeNotifier {
         cameraId: cameraId,
       );
       _capturedImagePixelSize = null;
-      unawaited(_refreshCapturedImagePixelSize(savedFile));
+      unawaited(_refreshCapturedImagePixelSizeSoon(savedFile));
 
-      // Track successful photo capture
-      await ErrorReportingManager.setPhotoCaptureContext(
+      // Track successful photo capture (must not block shutter completion)
+      unawaited(ErrorReportingManager.setPhotoCaptureContext(
         photoId: photoId,
         sessionId: _sessionManager.sessionId,
-      );
+      ));
       ErrorReportingManager.log('Photo captured successfully: $photoId');
-      
+      WebFlowTrace.log('CAPTURE', 'photoModel_set photoId=$photoId');
       notifyListeners();
     } on CameraException catch (e, stackTrace) {
+      WebFlowTrace.log('CAPTURE', 'ERROR CameraException ${e.toString()}');
       final errorString = e.toString();
       final isCameraClosedError = errorString.contains('Camera is closed') ||
           errorString.contains('camera is closed') ||
@@ -1128,6 +1141,7 @@ class CaptureViewModel extends ChangeNotifier {
       _errorMessage = 'Camera Error:\n${e.toString()}';
       notifyListeners();
     } catch (e, stackTrace) {
+      WebFlowTrace.log('CAPTURE', 'ERROR $e');
       // Check if this is a timeout exception
       final isTimeout = e.toString().contains('TimeoutException') || 
                         e.toString().contains('timed out') ||
@@ -1159,6 +1173,7 @@ class CaptureViewModel extends ChangeNotifier {
       
       notifyListeners();
     } finally {
+      WebFlowTrace.log('CAPTURE', 'finally isCapturing=false');
       _isCapturing = false;
       notifyListeners();
     }
@@ -1510,13 +1525,13 @@ class CaptureViewModel extends ChangeNotifier {
         cameraId: cameraId,
       );
       _capturedImagePixelSize = null;
-      unawaited(_refreshCapturedImagePixelSize(normalizedFile));
+      unawaited(_refreshCapturedImagePixelSizeSoon(normalizedFile));
 
       // Track successful photo selection
-      await ErrorReportingManager.setPhotoCaptureContext(
+      unawaited(ErrorReportingManager.setPhotoCaptureContext(
         photoId: photoId,
         sessionId: _sessionManager.sessionId,
-      );
+      ));
       await ErrorReportingManager.setCustomKey('photo_source', 'gallery');
       ErrorReportingManager.log('Photo selected from gallery: $photoId');
 
@@ -1578,6 +1593,38 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Clears [errorMessage] only (e.g. after a failed upload) while keeping the capture.
+  void clearErrorMessage() {
+    if (_errorMessage == null) return;
+    _errorMessage = null;
+    notifyListeners();
+  }
+
+  /// On web only: copy blob-backed [XFile] into memory for reliable [readAsBytes]
+  /// during upload. Call under the upload loader, not during shutter.
+  Future<XFile> _materializeWebXFile(XFile file, String namePrefix) async {
+    if (!kIsWeb) return file;
+    WebFlowTrace.log('MATERIALIZE', 'readAsBytes_start');
+    final bytes = await file.readAsBytes();
+    WebFlowTrace.log('MATERIALIZE', 'readAsBytes_done byteLen=${bytes.length}');
+    if (bytes.isEmpty) {
+      throw Exception('Image is empty (web materialize)');
+    }
+    return XFile.fromData(
+      bytes,
+      name: '${namePrefix}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      mimeType: 'image/jpeg',
+    );
+  }
+
+  /// Decode pixel size after capture without competing with shutter completion.
+  Future<void> _refreshCapturedImagePixelSizeSoon(XFile file) async {
+    if (kIsWeb) {
+      await Future<void>.delayed(const Duration(milliseconds: 48));
+    }
+    await _refreshCapturedImagePixelSize(file);
+  }
+
   Future<void> _refreshCapturedImagePixelSize(XFile file) async {
     final path = file.path;
     try {
@@ -1628,39 +1675,67 @@ class CaptureViewModel extends ChangeNotifier {
     _startUploadTimer();
     notifyListeners();
 
+    WebFlowTrace.reset(label: 'upload');
+    final sidShort = sessionId.length <= 8 ? sessionId : '${sessionId.substring(0, 8)}…';
+    WebFlowTrace.log('UPLOAD', 'begin sessionId=$sidShort kIsWeb=$kIsWeb');
+
+    // Web: allow one layout frame so the full-screen loader and timer repaint
+    // before encode/base64 monopolizes the JS thread.
+    if (kIsWeb) {
+      WebFlowTrace.log('UPLOAD', 'pre_materialize_delay_16ms_start');
+      await Future<void>.delayed(const Duration(milliseconds: 16));
+      WebFlowTrace.log('UPLOAD', 'pre_materialize_delay_done');
+    }
+
     try {
+      if (kIsWeb) {
+        final mat = await _materializeWebXFile(_capturedPhoto!.imageFile, 'upload');
+        _capturedPhoto = _capturedPhoto!.copyWith(imageFile: mat);
+        notifyListeners();
+        WebFlowTrace.log('UPLOAD', 'materialize_copyWith_done');
+      }
+
       // Get the image file from the captured photo
       final imageFile = _capturedPhoto!.imageFile;
       
       ErrorReportingManager.log('📦 Encoding image for upload (upload-optimized size)');
+      WebFlowTrace.log('ENCODE', 'ImageHelper.encodeImageForUpload_start');
       
-      // Encode in background — 1024×1024 @ quality 90, ~200–400 KB (optimized for Gemini AI).
-      final base64Image = await compute(
-        _encodeImageForUploadInBackground,
-        imageFile.path,
+      // Use [ImageHelper.encodeImageForUpload] (not path + [compute]): web camera [XFile]s
+      // often have no real filesystem path; bytes must be read before isolate work.
+      final base64Image = await ImageHelper.encodeImageForUpload(imageFile);
+      WebFlowTrace.log(
+        'ENCODE',
+        'ImageHelper.encodeImageForUpload_done dataUrlLen=${base64Image.length}',
       );
       
       ErrorReportingManager.log('✅ Image encoded for upload');
       ErrorReportingManager.log('📤 Uploading processed image to API');
-      
-      // Step 3: Update session with photo (PATCH /api/sessions/{sessionId})
-      // Note: selectedThemeId is not included here - it will be set later in theme selection
-      // Use app API timeout so slow connections / large images can complete
+      WebFlowTrace.log('PATCH', 'updateSession_photo_start');
+
+      // Step 2: PATCH /api/sessions/{sessionId} with userImageUrl (data URL) + optional metadata.
       final response = await _apiService.updateSession(
         sessionId: sessionId,
         userImageUrl: base64Image,
-        selectedThemeId: null, // Theme will be selected later
+        selectedThemeId: null,
+        framingMetadata: <String, dynamic>{
+          'applied': false,
+          'mode': 'auto',
+          'originalImageUrl': null,
+        },
       ).timeout(
         AppConstants.kApiTimeout,
         onTimeout: () => throw TimeoutException(
           'Upload timed out after ${AppConstants.kApiTimeout.inSeconds} seconds',
         ),
       );
+      WebFlowTrace.log('PATCH', 'updateSession_photo_done');
       
       ErrorReportingManager.log('✅ Image uploaded successfully');
       
       // Save the response to SessionManager
       _sessionManager.setSessionFromResponse(response);
+      WebFlowTrace.log('UPLOAD', 'setSessionFromResponse_done');
       
       // Step 3b: Preprocess image in background (fire-and-forget)
       // This runs validation, compression, and person detection ahead of time
@@ -1668,14 +1743,18 @@ class CaptureViewModel extends ChangeNotifier {
       ErrorReportingManager.log('🔄 Triggering background image preprocessing');
       _apiService.preprocessImage(sessionId: sessionId);
       
+      WebFlowTrace.log('UPLOAD', 'success preprocess_fireAndForget');
       return true;
-    } on TimeoutException {
+    } on TimeoutException catch (e) {
+      WebFlowTrace.log('UPLOAD', 'ERROR TimeoutException $e');
       _errorMessage = 'Upload took too long. Please check your connection and try again.';
       return false;
     } on app_exceptions.ApiException catch (e) {
+      WebFlowTrace.log('UPLOAD', 'ERROR ApiException ${e.message}');
       _errorMessage = e.message;
       return false;
     } catch (e) {
+      WebFlowTrace.log('UPLOAD', 'ERROR $e');
       _errorMessage = 'Failed to upload photo: ${e.toString()}';
       return false;
     } finally {
@@ -1683,12 +1762,6 @@ class CaptureViewModel extends ChangeNotifier {
       _isUploading = false;
       notifyListeners();
     }
-  }
-
-  /// Encodes image for upload with smaller payload (faster upload on slow links).
-  static Future<String> _encodeImageForUploadInBackground(String imagePath) async {
-    final file = XFile(imagePath);
-    return await ImageHelper.encodeImageForUpload(file);
   }
 
   /// Updates session with captured photo and selected theme
@@ -1716,28 +1789,26 @@ class CaptureViewModel extends ChangeNotifier {
       // Get the image file from the captured photo
       final imageFile = _capturedPhoto!.imageFile;
       
-      // Encode to base64 in background (no resize; already normalized at capture)
-      final base64Image = await compute(
-        _encodeImageForUploadInBackground,
-        imageFile.path,
-      );
-      
-      // Update session via API: PATCH /api/sessions/{sessionId}
+      final base64Image = await ImageHelper.encodeImageForUpload(imageFile);
+
       const updateTimeout = Duration(seconds: 60);
       final response = await _apiService.updateSession(
         sessionId: sessionId,
         userImageUrl: base64Image,
         selectedThemeId: selectedThemeId,
+        framingMetadata: <String, dynamic>{
+          'applied': false,
+          'mode': 'auto',
+          'originalImageUrl': null,
+        },
       ).timeout(
         updateTimeout,
         onTimeout: () => throw TimeoutException(
           'Update timed out after ${updateTimeout.inSeconds} seconds',
         ),
       );
-      
-      // Save the response to SessionManager
+
       _sessionManager.setSessionFromResponse(response);
-      
       return true;
     } on TimeoutException {
       _errorMessage = 'Request took too long. Please check your connection and try again.';

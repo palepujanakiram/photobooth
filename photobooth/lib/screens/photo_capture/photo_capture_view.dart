@@ -28,6 +28,7 @@ import '../../views/widgets/leading_with_alice.dart';
 import 'photo_capture_rotation_screen.dart';
 import '../../services/hardware_key_service.dart';
 import '../../utils/route_args.dart';
+import '../../utils/web_flow_trace.dart';
 
 class PhotoCaptureScreen extends StatefulWidget {
   const PhotoCaptureScreen({super.key});
@@ -311,7 +312,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                               );
                             }
 
-                            if (viewModel.hasError) {
+                            // Upload/session errors after capture should not replace the preview;
+                            // those are shown inline in [_buildCaptureColumn].
+                            if (viewModel.hasError && viewModel.capturedPhoto == null) {
                               final appColors = AppColors.of(context);
                               return Center(
                                 child: Column(
@@ -351,7 +354,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                               );
                             }
 
-                            if (!viewModel.isReady) {
+                            // After a successful capture we call [disposeCamera] before leaving;
+                            // [isReady] becomes false while [capturedPhoto] is still set. Still show
+                            // the captured still + actions, not "Camera not ready".
+                            if (!viewModel.isReady && viewModel.capturedPhoto == null) {
                               return const Center(
                                 child: Text(
                                   'Camera not ready',
@@ -387,7 +393,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                       ),
                     Consumer<AppSettingsManager>(
                       builder: (context, appSettings, _) {
-                        if (appSettings.settings?.showGenerationCommentary != true) {
+                        // Web: DevTools + web-safe API summaries; RAM/log overlays add timers
+                        // and ValueListenable churn that can stall the post-capture isolate.
+                        if (kIsWeb ||
+                            appSettings.settings?.showGenerationCommentary != true) {
                           return const SizedBox.shrink();
                         }
                         return Positioned(
@@ -399,7 +408,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     ),
                     Consumer<AppSettingsManager>(
                       builder: (context, appSettings, _) {
-                        if (appSettings.settings?.showGenerationCommentary != true) {
+                        if (kIsWeb ||
+                            appSettings.settings?.showGenerationCommentary != true) {
                           return const SizedBox.shrink();
                         }
                         return Positioned(
@@ -477,8 +487,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             hasCapturedPhoto,
           ),
         ),
-        // 3. Inline error (pre-capture) above bottom actions.
-        if (!hasCapturedPhoto && viewModel.hasError && viewModel.errorMessage != null)
+        // 3. Post-capture errors (e.g. upload) above Continue — full-screen branch is skipped when a photo exists.
+        if (hasCapturedPhoto && viewModel.hasError && viewModel.errorMessage != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: _buildCaptureErrorSection(context, viewModel),
@@ -965,14 +975,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                       // camera heap on a 4 GB kiosk.
                       viewModel.disposeCamera();
                       final photo = viewModel.capturedPhoto!;
-                      await Navigator.pushNamed(
-                        currentContext,
+                      if (!mounted || !currentContext.mounted) return;
+                      WebFlowTrace.log('NAV', 'pushReplacementNamed theme-selection start');
+                      // Replace capture with theme so the new route is definitely on top
+                      // (web + nested navigators could leave capture visible under push).
+                      // This also drops capture from the stack — back goes to the screen
+                      // below (e.g. terms or a prior theme), not to a disposed camera.
+                      await Navigator.of(currentContext, rootNavigator: true)
+                          .pushReplacementNamed(
                         AppConstants.kRouteHome,
                         arguments: ThemeSelectionArgs(photo: photo),
                       );
-                      // User came back (Back from ThemeSelection). Re-initialize camera.
-                      if (!mounted || !currentContext.mounted) return;
-                      await _resetAndInitializeCameras();
+                      WebFlowTrace.log('NAV', 'pushReplacementNamed done');
+                      // After replacement this [State] is disposed; do not touch camera.
                     }
                   },
             child: viewModel.isUploading
@@ -1019,7 +1034,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           const SizedBox(height: 8),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-            onPressed: () => viewModel.clearCapturedPhoto(),
+            onPressed: () {
+              if (viewModel.capturedPhoto != null) {
+                viewModel.clearErrorMessage();
+              } else {
+                viewModel.clearCapturedPhoto();
+              }
+            },
             child: Text('Dismiss', style: TextStyle(color: appColors.errorColor, fontSize: 12, fontWeight: FontWeight.w600)),
           ),
         ],
