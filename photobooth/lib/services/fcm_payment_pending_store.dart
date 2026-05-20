@@ -48,7 +48,8 @@ class FcmPaymentPendingStore {
       }
     } catch (e, st) {
       if (kDebugMode) {
-        AppLogger.error('FCM background persist failed: $e', error: e, stackTrace: st);
+        AppLogger.error('FCM background persist failed: $e',
+            error: e, stackTrace: st);
       }
     }
   }
@@ -63,7 +64,22 @@ class FcmPaymentPendingStore {
       }
     } catch (e, st) {
       if (kDebugMode) {
-        AppLogger.error('FCM restore pending failed: $e', error: e, stackTrace: st);
+        AppLogger.error('FCM restore pending failed: $e',
+            error: e, stackTrace: st);
+      }
+    }
+  }
+
+  /// Clears any disk-persisted payment payload (e.g. next customer must not replay
+  /// background FCM from the previous session).
+  static Future<void> clear() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_prefsKey);
+    } catch (e, st) {
+      if (kDebugMode) {
+        AppLogger.error('FCM pending store clear failed: $e',
+            error: e, stackTrace: st);
       }
     }
   }
@@ -95,7 +111,8 @@ class FcmPaymentPendingStore {
         // Best-effort
       }
       if (kDebugMode) {
-        AppLogger.error('FCM takePending failed (discarded): $e', error: e, stackTrace: st);
+        AppLogger.error('FCM takePending failed (discarded): $e',
+            error: e, stackTrace: st);
       }
       await ErrorReportingManager.recordError(
         e,

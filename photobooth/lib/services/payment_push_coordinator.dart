@@ -73,7 +73,8 @@ class PaymentPushPayload {
 
     var type = _resolveTypeFromFields(flat);
     if (type.isEmpty) {
-      type = _inferTypeFromNotificationText(notificationTitle, notificationBody);
+      type =
+          _inferTypeFromNotificationText(notificationTitle, notificationBody);
     }
 
     return PaymentPushPayload(
@@ -273,6 +274,18 @@ class PaymentPushCoordinator {
   void attachNavigator(GlobalKey<NavigatorState> key) {
     _navigatorKey = key;
     _drainQueuedPayment();
+  }
+
+  /// Resets payment push dedup, in-memory queue, and **disk** pending FCM payload
+  /// so the next customer does not inherit the previous [paymentId] or a stale push.
+  ///
+  /// Does not clear [registerResultScreenCallback]; the active screen should
+  /// unregister in [dispose] as today.
+  Future<void> resetForNextCustomer() async {
+    _lastHandledPaymentId = null;
+    _queuedPaymentPayload = null;
+    _queuedPaymentDataKeys = null;
+    await FcmPaymentPendingStore.clear();
   }
 
   /// Set when [ResultScreen] is visible; cleared on dispose.

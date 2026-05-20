@@ -13,7 +13,7 @@ import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/centered_max_width.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
-import '../../views/widgets/payment_link_qr.dart';
+import '../../views/widgets/kiosk_payment_qr_display.dart';
 import '../../services/payment_push_coordinator.dart';
 import '../../services/kiosk_manager.dart';
 import '../../utils/route_args.dart';
@@ -53,7 +53,8 @@ class _ResultScreenState extends State<ResultScreen> {
     super.didChangeDependencies();
     if (_isInitialized) return;
 
-    final parsed = ResultArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
+    final parsed =
+        ResultArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
     if (parsed == null) return;
 
     final generatedImages = parsed.generatedImages;
@@ -281,7 +282,6 @@ class _ResultScreenState extends State<ResultScreen> {
     AppLogger.debug('Pay&Collect: help dialog shown');
   }
 
-
   @override
   Widget build(BuildContext context) {
     final appColors = AppColors.of(context);
@@ -367,92 +367,113 @@ class _ResultScreenState extends State<ResultScreen> {
                           22 +
                           6,
                     ),
-                    child: Center(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 18),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 480),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _buildTitleSection(appColors),
-                              const SizedBox(height: 10),
-                            if (paymentsEnabled)
-                              _buildPaymentCard(context, viewModel, appColors),
-                              if (viewModel.hasError) _buildErrorBanner(viewModel),
-                              if (viewModel.fcmPaymentPushSuccess == true &&
-                                  viewModel.hasError) ...[
-                                const SizedBox(height: 14),
-                                CenteredMaxWidth(
-                                  maxWidth: 360,
-                                  child: SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.blue,
-                                        foregroundColor: Colors.white,
-                                        minimumSize:
-                                            const Size(double.infinity, 56),
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 16,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(14),
-                                        ),
-                                        textStyle: const TextStyle(
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.bold,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                          child: Align(
+                            alignment: Alignment.topCenter,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 480),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _buildTitleSection(appColors),
+                                  const SizedBox(height: 8),
+                                  if (paymentsEnabled)
+                                    Expanded(
+                                      child: _buildPaymentCard(
+                                        context,
+                                        viewModel,
+                                        appColors,
+                                      ),
+                                    )
+                                  else
+                                    const Spacer(),
+                                  if (viewModel.hasError)
+                                    _buildErrorBanner(viewModel),
+                                  if (viewModel.fcmPaymentPushSuccess == true &&
+                                      viewModel.hasError) ...[
+                                    const SizedBox(height: 14),
+                                    CenteredMaxWidth(
+                                      maxWidth: 360,
+                                      child: SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.blue,
+                                            foregroundColor: Colors.white,
+                                            minimumSize: const Size(
+                                              double.infinity,
+                                              56,
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 16,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                            ),
+                                            textStyle: const TextStyle(
+                                              fontSize: 17,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          onPressed: _retryingPrint
+                                              ? null
+                                              : () => _retryPrint(viewModel),
+                                          child: Text(
+                                            _retryingPrint
+                                                ? 'Retrying...'
+                                                : 'Retry print',
+                                          ),
                                         ),
                                       ),
-                                      onPressed: _retryingPrint
-                                          ? null
-                                          : () => _retryPrint(viewModel),
-                                      child: Text(
-                                        _retryingPrint
-                                            ? 'Retrying...'
-                                            : 'Retry print',
+                                    ),
+                                  ],
+                                  const SizedBox(height: 12),
+                                  CenteredMaxWidth(
+                                    maxWidth: 360,
+                                    child: SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor:
+                                              Colors.blueGrey.shade800,
+                                          foregroundColor: Colors.white,
+                                          minimumSize: const Size(
+                                            double.infinity,
+                                            52,
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 14,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                          ),
+                                          textStyle: const TextStyle(
+                                            fontSize: 17,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        onPressed: _navigateToStart,
+                                        child: Text(
+                                          viewModel.fcmPaymentPushSuccess ==
+                                                      false &&
+                                                  _failureSecondsLeft > 0
+                                              ? 'Back to start (${_failureSecondsLeft}s)'
+                                              : 'Back to start',
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ],
-                              const SizedBox(height: 16),
-                              CenteredMaxWidth(
-                                maxWidth: 360,
-                                child: SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.blueGrey.shade800,
-                                      foregroundColor: Colors.white,
-                                      minimumSize:
-                                          const Size(double.infinity, 56),
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 16,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      textStyle: const TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    onPressed: _navigateToStart,
-                                    child: Text(
-                                      viewModel.fcmPaymentPushSuccess == false &&
-                                              _failureSecondsLeft > 0
-                                          ? 'Back to start (${_failureSecondsLeft}s)'
-                                          : 'Back to start',
-                                    ),
-                                  ),
-                                ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -469,8 +490,10 @@ class _ResultScreenState extends State<ResultScreen> {
       padding: const EdgeInsets.only(top: 0, bottom: 2),
       child: Text(
         'Scan the QR code to pay with UPI.\nPrinting starts automatically after payment is approved.',
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: 14,
+          fontSize: 13,
           color: Colors.white.withValues(alpha: 0.8),
           height: 1.35,
         ),
@@ -513,8 +536,8 @@ class _ResultScreenState extends State<ResultScreen> {
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
                 onPressed: () => viewModel.clearError(),
-                icon:
-                    const Icon(CupertinoIcons.xmark, color: Colors.red, size: 18),
+                icon: const Icon(CupertinoIcons.xmark,
+                    color: Colors.red, size: 18),
               ),
             ],
           ),
@@ -544,7 +567,8 @@ class _ResultScreenState extends State<ResultScreen> {
             child: TextButton.icon(
               style: TextButton.styleFrom(
                 foregroundColor: Colors.red,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               onPressed: () async {
@@ -564,16 +588,17 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
-  /// Fixed height for the QR panel (kiosk-friendly).
-  static const double _resultBoxHeight = 400;
+  /// Minimum height when layout constraints are missing (tests / degenerate).
+  static const double _paymentCardMinHeight = 260;
 
   static const TextStyle _resultBoxTitleStyle = TextStyle(
-    fontSize: 32,
+    fontSize: 26,
     fontWeight: FontWeight.bold,
+    height: 1.15,
     color: Colors.white,
   );
 
-  Widget _buildPaymentQrArea(ResultViewModel viewModel, double side) {
+  Widget _buildPaymentQrArea(ResultViewModel viewModel, double maxQrWidth) {
     final gatewayEnabled = viewModel.isPaymentGatewayEnabled;
     if (!gatewayEnabled) {
       // When payment gateway is disabled, show the static UPI QR instead of any init state/errors.
@@ -587,10 +612,10 @@ class _ResultScreenState extends State<ResultScreen> {
       );
     }
     if (viewModel.paymentInitInProgress) {
-      return SizedBox(
-        width: side,
-        height: side,
-        child: const Center(
+      return const SizedBox(
+        width: double.infinity,
+        height: 280,
+        child: Center(
           child: Padding(
             padding: EdgeInsets.all(12),
             child: CircularProgressIndicator(strokeWidth: 2),
@@ -608,194 +633,211 @@ class _ResultScreenState extends State<ResultScreen> {
         ),
       );
     }
-    final link = viewModel.paymentLink;
-    if (link == null || link.isEmpty) {
+    bool hasPayload(String? s) => (s?.trim().isNotEmpty ?? false);
+    if (!hasPayload(viewModel.qrImageUrl) &&
+        !hasPayload(viewModel.upiLink) &&
+        !hasPayload(viewModel.paymentLink)) {
       return Icon(
         CupertinoIcons.qrcode,
-        size: side * 0.45,
+        size: 56,
         color: Colors.grey.shade700,
       );
     }
-    return Padding(
-      padding: const EdgeInsets.all(6),
-      child: PaymentLinkQr(paymentLink: link, size: side - 12),
+    return KioskPaymentQrDisplay(
+      qrImageUrl: viewModel.qrImageUrl,
+      upiLink: viewModel.upiLink,
+      paymentLink: viewModel.paymentLink,
+      maxContentWidth: maxQrWidth,
     );
   }
 
-  Widget _buildPaymentCard(BuildContext context, ResultViewModel viewModel, AppColors appColors) {
+  Widget _buildPaymentCard(
+      BuildContext context, ResultViewModel viewModel, AppColors appColors) {
     final totalPrice = viewModel.totalPrice;
-    return Container(
-      height: _resultBoxHeight,
-      clipBehavior: Clip.antiAlias,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+    return LayoutBuilder(
+      builder: (context, outerConstraints) {
+        final maxH = outerConstraints.maxHeight;
+        final cardHeight = maxH.isFinite && maxH > 0
+            ? maxH.clamp(_paymentCardMinHeight, 2000.0)
+            : 420.0;
+        return Container(
+          height: cardHeight,
+          clipBehavior: Clip.none,
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // Keep the QR comfortably centered with even breathing room above/below.
-          const headerAndFooterReserve = 160.0;
-          final maxSideFromWidth =
-              (constraints.maxWidth - 24).clamp(180.0, 260.0);
-          final maxSideFromHeight = (constraints.maxHeight - headerAndFooterReserve)
-              .clamp(160.0, 260.0);
-          final side = (maxSideFromWidth < maxSideFromHeight)
-              ? maxSideFromWidth
-              : maxSideFromHeight;
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final maxQrWidth =
+                  (constraints.maxWidth - 12).clamp(240.0, 460.0).toDouble();
 
-          return Column(
-            children: [
-              const Text(
-                'Pay via UPI',
-                style: _resultBoxTitleStyle,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '₹$totalPrice',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: Center(
-                  child: Container(
-                    width: side,
-                    height: side,
-                    decoration: BoxDecoration(
+              return Column(
+                children: [
+                  const Text(
+                    'Pay via UPI',
+                    style: _resultBoxTitleStyle,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '₹$totalPrice',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      height: 1.2,
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.3),
-                      ),
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    alignment: Alignment.center,
-                    child: _buildPaymentQrArea(viewModel, side),
                   ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                viewModel.fcmPaymentPushSuccess == false
-                    ? 'Payment failed. Please try again.\nYou will return to start automatically.'
-                    : viewModel.fcmPaymentPushSuccess == true
-                        ? 'Payment confirmed. Printing...'
-                        : (viewModel.isPaymentGatewayEnabled
-                            ? 'Waiting for payment confirmation...'
-                            : 'Waiting for admin approval...'),
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.35,
-                  fontWeight: FontWeight.w600,
-                  color: viewModel.fcmPaymentPushSuccess == false
-                      ? Colors.red.shade200
-                      : (viewModel.fcmPaymentPushSuccess == true
-                          ? Colors.green.shade200
-                          : Colors.white.withValues(alpha: 0.85)),
-                ),
-              ),
-              if (viewModel.isDeadPollingFallbackVisible) ...[
-                const SizedBox(height: 10),
-                Text(
-                  'Did your payment go through?',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white.withValues(alpha: 0.95),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.35),
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 6),
+                  Expanded(
+                    child: Center(
+                      child: Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.3),
                           ),
                         ),
-                        // Disable while a refresh is in flight to avoid
-                        // double-taps on slow connections.
-                        onPressed: _refreshingPolling
-                            ? null
-                            : () async {
-                                if (!mounted) return;
-                                setState(() => _refreshingPolling = true);
-                                try {
-                                  await viewModel.refreshPaymentPolling();
-                                } finally {
-                                  if (mounted) {
-                                    setState(() => _refreshingPolling = false);
-                                  }
-                                }
-                              },
-                        child: _refreshingPolling
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              )
-                            : const Text('Refresh'),
+                        clipBehavior: Clip.antiAlias,
+                        alignment: Alignment.center,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
+                          child: _buildPaymentQrArea(viewModel, maxQrWidth),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white.withValues(alpha: 0.16),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    viewModel.fcmPaymentPushSuccess == false
+                        ? 'Payment failed. Please try again.\nYou will return to start automatically.'
+                        : viewModel.fcmPaymentPushSuccess == true
+                            ? 'Payment confirmed. Printing...'
+                            : (viewModel.isPaymentGatewayEnabled
+                                ? 'Waiting for payment confirmation...'
+                                : 'Waiting for admin approval...'),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.3,
+                      fontWeight: FontWeight.w600,
+                      color: viewModel.fcmPaymentPushSuccess == false
+                          ? Colors.red.shade200
+                          : (viewModel.fcmPaymentPushSuccess == true
+                              ? Colors.green.shade200
+                              : Colors.white.withValues(alpha: 0.85)),
+                    ),
+                  ),
+                  if (viewModel.isDeadPollingFallbackVisible) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      'Did your payment go through?',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white.withValues(alpha: 0.95),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: BorderSide(
+                                color: Colors.white.withValues(alpha: 0.35),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            // Disable while a refresh is in flight to avoid
+                            // double-taps on slow connections.
+                            onPressed: _refreshingPolling
+                                ? null
+                                : () async {
+                                    if (!mounted) return;
+                                    setState(() => _refreshingPolling = true);
+                                    try {
+                                      await viewModel.refreshPaymentPolling();
+                                    } finally {
+                                      if (mounted) {
+                                        setState(
+                                            () => _refreshingPolling = false);
+                                      }
+                                    }
+                                  },
+                            child: _refreshingPolling
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : const Text('Refresh'),
                           ),
                         ),
-                        onPressed: () => _showGetHelpDialog(viewModel),
-                        child: const Text('Get help'),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor:
+                                  Colors.white.withValues(alpha: 0.16),
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            onPressed: () => _showGetHelpDialog(viewModel),
+                            child: const Text('Get help'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (viewModel.fcmPaymentPushSuccess == false &&
+                      _failureSecondsLeft > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Returning to start in ${_failureSecondsLeft}s',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withValues(alpha: 0.78),
                       ),
                     ),
                   ],
-                ),
-              ],
-              if (viewModel.fcmPaymentPushSuccess == false &&
-                  _failureSecondsLeft > 0) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Returning to start in ${_failureSecondsLeft}s',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white.withValues(alpha: 0.78),
-                  ),
-                ),
-              ],
-            ],
-          );
-        },
-      ),
+                ],
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }
