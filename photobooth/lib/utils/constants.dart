@@ -105,6 +105,15 @@ class AppConstants {
   /// (theme/kiosk value) so preview matches the usable viewport instead of a short strip.
   static const double kCapturePreviewCardMaxHeightFractionPhonePortrait = 0.78;
 
+  /// BEHOLD single-result hero: width cap on landscape / desktop (wider than capture kiosk).
+  static const double kBeholdResultCardMaxWidthFractionLandscape = 0.52;
+
+  /// BEHOLD single-result hero: height cap on landscape (taller than capture 0.50).
+  static const double kBeholdResultCardMaxHeightFractionLandscape = 0.62;
+
+  /// BEHOLD single-result hero: use nearly all of the Expanded slot above the footer.
+  static const double kBeholdResultCardSlotHeightFraction = 0.94;
+
   /// On Generate Photo, generated-image cards scale to this factor when toggled (tap again restores 1.0).
   static const double kGeneratePhotoZoomedScale = 1.3;
   static const String kContinueButtonText = 'Continue';
