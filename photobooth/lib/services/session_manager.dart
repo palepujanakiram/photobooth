@@ -19,7 +19,8 @@ class SessionData {
   final DateTime expiresAt;
   final String? kioskId;
   final String? kioskLocation;
-  final String? userImageUrl; // Base64 encoded image from PATCH /api/sessions/{sessionId}
+  final String?
+      userImageUrl; // Base64 encoded image from PATCH /api/sessions/{sessionId}
   final String? selectedThemeId; // Theme ID selected by user
   final String? selectedCategoryId; // Category ID of selected theme
   /// Frame id, `"none"` if customer declined, or null if unset / auto-resolve later.
@@ -193,6 +194,21 @@ class SessionManager extends ChangeNotifier {
     _clearSessionInternal(reason: 'explicit');
   }
 
+  /// Clears session from memory and **always** removes persisted prefs, even when
+  /// [currentSession] was already null (stale disk is wiped).
+  ///
+  /// For full kiosk customer handoff (session + payment FCM dedup), call
+  /// [endPhotoboothCustomerSession] instead.
+  ///
+  /// Await before navigation or process exit so SharedPreferences can flush on kiosk hardware.
+  Future<void> endCustomerSession() async {
+    _currentSession = null;
+    _expiryClearScheduled = false;
+    AppLogger.debug('Session cleared (end customer)');
+    await _persistCurrentSession();
+    notifyListeners();
+  }
+
   /// Restores persisted session into memory (best-effort).
   ///
   /// On parse/validation failure: discards persisted value and reports error.
@@ -215,7 +231,8 @@ class SessionManager extends ChangeNotifier {
         return;
       }
 
-      AppLogger.debug('Session restored: ${session.id} (expires at: ${session.expiresAt})');
+      AppLogger.debug(
+          'Session restored: ${session.id} (expires at: ${session.expiresAt})');
       notifyListeners();
     } catch (e, st) {
       // Corrupt persisted data — discard so we don't loop forever.
@@ -234,4 +251,3 @@ class SessionManager extends ChangeNotifier {
     }
   }
 }
-

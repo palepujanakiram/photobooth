@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../services/customer_session_lifecycle.dart';
 import '../../utils/constants.dart';
 import '../../utils/route_args.dart';
 import '../../views/widgets/theme_background.dart';
@@ -21,6 +22,9 @@ class _ThankYouScreenState extends State<ThankYouScreen> {
 
   Future<void> _exit() async {
     if (!mounted) return;
+    await endPhotoboothCustomerSessionLogged('thank-you exit');
+    if (!mounted) return;
+    // Returns operator to terms (same stack reset as other flow ends); not slideshow.
     Navigator.pushNamedAndRemoveUntil(
       context,
       AppConstants.kRouteTerms,
@@ -71,8 +75,10 @@ class _ThankYouScreenState extends State<ThankYouScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        constraints: const BoxConstraints(maxWidth: 280, maxHeight: 88),
-                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        constraints:
+                            const BoxConstraints(maxWidth: 280, maxHeight: 88),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 12, horizontal: 16),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(16),

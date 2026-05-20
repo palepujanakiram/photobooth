@@ -374,13 +374,23 @@ class ApiService {
     }
   }
 
-  /// GET `/api/payments/status/{paymentId}` — `{ "status": "PENDING" | "APPROVED" | "FAILED" }`.
-  /// Poll when FCM is unavailable; returns that map or null on error / non-JSON.
-  Future<Map<String, dynamic>?> fetchPaymentStatus(String paymentId) async {
+  /// GET `/api/payments/status/{paymentId}?sessionId=…` — `{ "status": "PENDING" | "APPROVED" | "FAILED" }`.
+  ///
+  /// [sessionId] is required by the server (query param); omit only in legacy tests.
+  Future<Map<String, dynamic>?> fetchPaymentStatus(
+    String paymentId, {
+    String? sessionId,
+  }) async {
     if (paymentId.isEmpty) return null;
+    final sid = sessionId?.trim();
+    final qp = <String, dynamic>{};
+    if (sid != null && sid.isNotEmpty) {
+      qp['sessionId'] = sid;
+    }
     try {
       final r = await _dio.get<dynamic>(
         '/api/payments/status/$paymentId',
+        queryParameters: qp.isEmpty ? null : qp,
         options: Options(
           validateStatus: (c) => c != null && c >= 200 && c < 500,
           responseType: ResponseType.json,
@@ -717,6 +727,32 @@ class ApiService {
     return null;
   }
 
+  /// Parses JSON from `GET /api/kiosk/frames`. Throws [ApiException] if the payload
+  /// is not a list or `{ "frames" | "data": [...] }`, or if an entry is invalid.
+  List<KioskFrameModel> _parseKioskFramesBody(dynamic data) {
+    if (data == null) {
+      return <KioskFrameModel>[];
+    }
+    final List<dynamic> raw;
+    if (data is List) {
+      raw = data;
+    } else if (data is Map &&
+        (data['frames'] is List || data['data'] is List)) {
+      raw = (data['frames'] ?? data['data']) as List<dynamic>;
+    } else {
+      throw ApiException('Unexpected frames response from API');
+    }
+    return raw
+        .map((e) {
+          if (e is! Map) {
+            throw ApiException('Invalid frame entry in API response');
+          }
+          return KioskFrameModel.fromJson(Map<String, dynamic>.from(e));
+        })
+        .where((f) => f.id.isNotEmpty && f.overlayUrl.isNotEmpty)
+        .toList();
+  }
+
   /// GET `/api/kiosk/frames` — active occasion frames for the current kiosk session.
   ///
   /// Backend requires at least one of `kioskCode` or `kioskId` (same as themes).
@@ -745,43 +781,41 @@ class ApiService {
         queryParameters: qp,
         options: Options(
           responseType: ResponseType.json,
-          validateStatus: (c) => c != null && c >= 200 && c < 500,
+          // Include 5xx so we can handle misconfigured APIs that error instead of
+          // returning 200 + `[]` when a kiosk has no occasion frames.
+          validateStatus: (c) => c != null && c < 600,
         ),
       );
       final data = r.data;
-      if (data == null) {
-        return <KioskFrameModel>[];
+      final status = r.statusCode ?? 200;
+
+      if (status >= 500) {
+        try {
+          return _parseKioskFramesBody(data);
+        } catch (e, st) {
+          AppLogger.warning(
+            'GET /api/kiosk/frames returned HTTP $status; treating as no frames. '
+            'Prefer returning 200 with an empty list when none are configured.',
+            error: e,
+            stackTrace: st,
+          );
+          return <KioskFrameModel>[];
+        }
       }
-      if (r.statusCode != null && r.statusCode! >= 400) {
+
+      if (status >= 400) {
         if (data is Map<String, dynamic>) {
           throw ApiException(
             data['error']?.toString() ??
                 data['message']?.toString() ??
-                'Failed to load frames (${r.statusCode})',
-            r.statusCode,
+                'Failed to load frames ($status)',
+            status,
           );
         }
-        throw ApiException('Failed to load frames (${r.statusCode})', r.statusCode);
+        throw ApiException('Failed to load frames ($status)', status);
       }
-      final List<dynamic> raw;
-      if (data is List) {
-        raw = data;
-      } else if (data is Map &&
-          (data['frames'] is List || data['data'] is List)) {
-        final list = (data['frames'] ?? data['data']) as List<dynamic>;
-        raw = list;
-      } else {
-        throw ApiException('Unexpected frames response from API');
-      }
-      return raw
-          .map((e) {
-            if (e is! Map) {
-              throw ApiException('Invalid frame entry in API response');
-            }
-            return KioskFrameModel.fromJson(Map<String, dynamic>.from(e));
-          })
-          .where((f) => f.id.isNotEmpty && f.overlayUrl.isNotEmpty)
-          .toList();
+
+      return _parseKioskFramesBody(data);
     } on ApiException {
       rethrow;
     } on DioException catch (e) {
@@ -1179,12 +1213,13 @@ class ApiService {
       }
 
       final raw = await _apiClient.initiatePayment(body);
-      if (raw is! Map<String, dynamic>) {
+      if (raw is! Map) {
         throw ApiException(
           '${AppConstants.kErrorApiCall}: unexpected payment response',
         );
       }
-      return PaymentInitiateResult.fromJson(raw);
+      final rawMap = Map<String, dynamic>.from(raw);
+      return PaymentInitiateResult.fromJson(rawMap);
     } on DioException catch (e) {
       _handleWebNetworkError(e);
 

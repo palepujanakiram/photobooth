@@ -16,11 +16,19 @@ class ThemeSelectionArgs {
   static ThemeSelectionArgs? tryParse(Object? args) {
     if (args is ThemeSelectionArgs) return args;
     if (args is Map) {
-      final photo = args['photo'] as PhotoModel?;
+      final photoRaw = args['photo'];
+      final PhotoModel? photo = switch (photoRaw) {
+        null => null,
+        final PhotoModel p => p,
+        _ => null,
+      };
+      if (photoRaw != null && photo == null) return null;
       final addOneMore = args['addOneMoreStyle'] == true;
       final used = args['usedThemeIds'];
-      final usedIds = used is List ? used.map((e) => e.toString()).toList() : <String>[];
-      return ThemeSelectionArgs(photo: photo, addOneMoreStyle: addOneMore, usedThemeIds: usedIds);
+      final usedIds =
+          used is List ? used.map((e) => e.toString()).toList() : <String>[];
+      return ThemeSelectionArgs(
+          photo: photo, addOneMoreStyle: addOneMore, usedThemeIds: usedIds);
     }
     return null;
   }
@@ -35,10 +43,10 @@ class GenerateArgs {
   static GenerateArgs? tryParse(Object? args) {
     if (args is GenerateArgs) return args;
     if (args is Map) {
-      final photo = args['photo'] as PhotoModel?;
-      final theme = args['theme'] as ThemeModel?;
-      if (photo == null || theme == null) return null;
-      return GenerateArgs(photo: photo, theme: theme);
+      final p = args['photo'];
+      final t = args['theme'];
+      if (p is! PhotoModel || t is! ThemeModel) return null;
+      return GenerateArgs(photo: p, theme: t);
     }
     return null;
   }
@@ -62,9 +70,21 @@ class ResultArgs {
   static ResultArgs? tryParse(Object? args) {
     if (args is ResultArgs) return args;
     if (args is Map) {
-      final generatedImages = args['generatedImages'] as List<GeneratedImage>?;
-      final originalPhoto = args['originalPhoto'] as PhotoModel?;
-      if (generatedImages == null || generatedImages.isEmpty) return null;
+      final rawList = args['generatedImages'];
+      if (rawList is! List) return null;
+      final generatedImages = <GeneratedImage>[];
+      for (final e in rawList) {
+        if (e is! GeneratedImage) return null;
+        generatedImages.add(e);
+      }
+      if (generatedImages.isEmpty) return null;
+      final op = args['originalPhoto'];
+      final PhotoModel? originalPhoto = switch (op) {
+        null => null,
+        final PhotoModel p => p,
+        _ => null,
+      };
+      if (op != null && originalPhoto == null) return null;
       final name = args['customerName']?.toString();
       final phone = args['customerPhone']?.toString();
       final wa = args['customerWhatsappOptIn'] == true;
@@ -116,6 +136,7 @@ class ThankYouArgs {
 class QrShareArgs {
   final List<GeneratedImage> generatedImages;
   final PhotoModel? originalPhoto;
+
   /// Optional [ResultViewModel] from Pay & Collect (not JSON-serializable).
   final Object? resultViewModel;
   final String? shareUrl;
@@ -144,9 +165,21 @@ class QrShareArgs {
   static QrShareArgs? tryParse(Object? args) {
     if (args is QrShareArgs) return args;
     if (args is Map) {
-      final generatedImages = args['generatedImages'] as List<GeneratedImage>?;
-      if (generatedImages == null || generatedImages.isEmpty) return null;
-      final originalPhoto = args['originalPhoto'] as PhotoModel?;
+      final rawList = args['generatedImages'];
+      if (rawList is! List) return null;
+      final generatedImages = <GeneratedImage>[];
+      for (final e in rawList) {
+        if (e is! GeneratedImage) return null;
+        generatedImages.add(e);
+      }
+      if (generatedImages.isEmpty) return null;
+      final op = args['originalPhoto'];
+      final PhotoModel? originalPhoto = switch (op) {
+        null => null,
+        final PhotoModel p => p,
+        _ => null,
+      };
+      if (op != null && originalPhoto == null) return null;
       final vm = args['resultViewModel'];
       final url = args['shareUrl']?.toString();
       final longUrl = args['shareLongUrl']?.toString();
@@ -179,4 +212,3 @@ class QrShareArgs {
     return null;
   }
 }
-
