@@ -91,6 +91,8 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   final Map<String, XFile> _downloadedFiles = {};
 
   String? _paymentLink;
+  String? _qrImageUrl;
+  String? _upiLink;
   String? _paymentInitError;
   bool _paymentInitInProgress = false;
 
@@ -147,6 +149,8 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   bool get isDisposed => _disposed;
 
   String? get paymentLink => _paymentLink;
+  String? get qrImageUrl => _qrImageUrl;
+  String? get upiLink => _upiLink;
   String? get paymentInitError => _paymentInitError;
   bool get paymentInitInProgress => _paymentInitInProgress;
 

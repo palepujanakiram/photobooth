@@ -18,6 +18,7 @@ import '../../utils/transformation_step_display.dart';
 import '../transformation_details/transformation_details_view.dart';
 import '../../views/widgets/contact_before_pay_sheet.dart';
 import '../../views/widgets/cached_network_image.dart';
+import '../../views/widgets/generated_image_preview_screen.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
     if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart' as photo_image;
 
@@ -29,14 +30,6 @@ class PhotoGenerateScreen extends StatefulWidget {
 }
 
 class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
-  /// Layout animations when zoom toggles (message strip, row height, footer shift).
-  static const Duration _kZoomLayoutAnimationDuration =
-      Duration(milliseconds: 280);
-  static const Curve _kZoomLayoutAnimationCurve = Curves.easeOutCubic;
-
-  /// Reserved height for Continue + “Or add one more style” so the bar stays fixed when cards zoom.
-  static const double _kGenerateFooterSlotHeight = 140.0;
-
   /// AppBar [bottom]: subtitle line + optional stamp strip (must match [PreferredSize]).
   static const double _kBeholdSubtitleBlockHeight = 28.0;
   static const double _kBeholdStampStripExtraHeight = 62.0;
@@ -53,12 +46,81 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
 
   bool? _paymentsEnabledOverride;
 
-  /// At most one zoomed slot: null or a [GeneratedImage.id].
-  String? _zoomedSlotId;
+  void _openGeneratedImagePreview(
+    BuildContext context,
+    GeneratedImage image,
+  ) {
+    final url = SecureImageUrl.withSessionId(image.imageUrl);
+    if (url.isEmpty) return;
+    unawaited(
+      Navigator.of(context).push<void>(
+        PageRouteBuilder<void>(
+          opaque: false,
+          barrierColor: Colors.black.withValues(alpha: 0.92),
+          pageBuilder: (_, __, ___) {
+            return GeneratedImagePreviewScreen(
+              imageUrl: url,
+              title: image.theme.name,
+              subtitle: 'Generated in ${_viewModel.elapsedSeconds}s',
+            );
+          },
+          transitionsBuilder: (_, animation, __, child) {
+            return FadeTransition(
+              opacity: CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              ),
+              child: child,
+            );
+          },
+        ),
+      ),
+    );
+  }
 
-  void _clearPhotoZoom() {
-    if (_zoomedSlotId == null) return;
-    setState(() => _zoomedSlotId = null);
+  /// Portrait-friendly slot for single results; 3:2 grid for multiple print styles.
+  double _beholdCardAspectRatio(BuildContext context, int slotCount) {
+    if (slotCount <= 1) {
+      return AppConstants.themeCardSlotAspectRatio(context);
+    }
+    return 3 / 2;
+  }
+
+  /// Sizes the BEHOLD hero like CAPTURE: fill the available slot, then clamp to screen fractions.
+  ({double width, double height}) _computeBeholdHeroCardSize(
+    BuildContext context, {
+    required double maxWidth,
+    required double maxHeight,
+    required double aspect,
+  }) {
+    final media = MediaQuery.sizeOf(context);
+    final isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final isPhonePortrait = !isLandscape &&
+        media.shortestSide < AppConstants.kTabletBreakpoint;
+
+    final widthCapFrac = isLandscape
+        ? AppConstants.kBeholdResultCardMaxWidthFractionLandscape
+        : AppConstants.kCapturePreviewCardMaxWidthFractionPortrait;
+    final heightCapFrac = isLandscape
+        ? AppConstants.kBeholdResultCardMaxHeightFractionLandscape
+        : (isPhonePortrait
+            ? AppConstants.kCapturePreviewCardMaxHeightFractionPhonePortrait
+            : AppConstants.kCapturePreviewCardMaxHeightFractionPortrait);
+
+    final capW = math.min(maxWidth, media.width * widthCapFrac);
+    final capH = math.min(maxHeight, media.height * heightCapFrac);
+
+    late double cardW;
+    late double cardH;
+    if (capW / capH > aspect) {
+      cardH = capH;
+      cardW = cardH * aspect;
+    } else {
+      cardW = capW;
+      cardH = cardW / aspect;
+    }
+    return (width: cardW, height: cardH);
   }
 
   @override
@@ -252,7 +314,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               leading: IconButton(
                 icon: const Icon(CupertinoIcons.back, color: Colors.white),
                 onPressed: () {
-                  _clearPhotoZoom();
                   if (viewModel.isOperationInProgress) {
                     _showCancelOperationDialog(context, viewModel);
                   } else {
@@ -659,7 +720,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     if (viewportHeight != null && viewportHeight > 0) {
       final hasFooter = viewModel.generatedImages.isNotEmpty ||
           viewModel.isGenerating;
-      final footerH = hasFooter ? _kGenerateFooterSlotHeight : 0.0;
 
       return Padding(
         padding: EdgeInsets.all(padding),
@@ -673,18 +733,27 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                       ? slot.maxWidth
                       : maxWidth;
                   final contentW = w.isFinite ? w : null;
-                  return Align(
-                    alignment: Alignment.topCenter,
-                    child: SizedBox(
-                      width: contentW,
-                      child: _buildPhotosDisplay(
-                        context,
-                        viewModel,
-                        appColors,
-                        isLandscape,
-                        contentW,
-                        viewportHeight,
-                        true,
+                  final contentH = slot.maxHeight.isFinite && slot.maxHeight > 0
+                      ? slot.maxHeight
+                      : viewportHeight;
+                  return SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: slot.maxHeight),
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: SizedBox(
+                          width: contentW,
+                          child: _buildPhotosDisplay(
+                            context,
+                            viewModel,
+                            appColors,
+                            isLandscape,
+                            contentW,
+                            contentH,
+                            true,
+                          ),
+                        ),
                       ),
                     ),
                   );
@@ -692,14 +761,11 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               ),
             ),
             if (hasFooter)
-              SizedBox(
-                height: footerH,
-                child: Center(
-                  child: _buildPhotosActionFooter(
-                    context,
-                    viewModel,
-                    appColors,
-                  ),
+              Center(
+                child: _buildPhotosActionFooter(
+                  context,
+                  viewModel,
+                  appColors,
                 ),
               ),
           ],
@@ -744,7 +810,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
             borderRadius: BorderRadius.circular(12),
             onPressed: (!isGeneratingOrLoading && viewModel.hasSelectedImages)
                 ? () async {
-                    _clearPhotoZoom();
                     final selectedImages = viewModel.selectedGeneratedImages;
                     if (selectedImages.isEmpty) return;
 
@@ -832,7 +897,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                 onPressed: (viewModel.isGenerating || viewModel.isLoadingMore)
                     ? null
                     : () async {
-                        _clearPhotoZoom();
                         final result = await Navigator.pushNamed(
                           context,
                           AppConstants.kRouteHome,
@@ -883,8 +947,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         (MediaQuery.sizeOf(context).width - 2 * sectionPadding).clamp(0.0, double.infinity);
 
     const double cardGap = 10.0;
-    // Printing target is 6×4 => 3:2. Keep the generation/review canvas aligned to print.
-    const double aspect = 3 / 2;
 
     final bool isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
     final bool isLoadingMore = viewModel.isLoadingMore;
@@ -893,21 +955,48 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final double vh = viewportHeight ?? MediaQuery.sizeOf(context).height;
     // Reduce reserved space so the photo canvas gets more prominence.
     const double reservedAboveRow = 72.0;
-    const double reservedBelowRow = 172.0;
-    // Landscape / large displays: let the photo row use more vertical space (kiosk).
-    final double heightFraction = isLandscape ? 0.80 : 0.68;
-    final double maxRowCap = isLandscape ? 1080.0 : 920.0;
-    final double minRow = isLandscape ? 300.0 : 260.0;
-    final double maxRowHeight = math.max(
-      minRow,
-      math.min(
+    final double reservedBelowRow = fixedFooterOutside ? 24.0 : 172.0;
+    // When the action footer is laid out below this column, titles and status
+    // ("Your masterpiece is ready", elapsed time, etc.) still sit above the hero
+    // card inside the same Expanded slot. Reserve vertical budget for them so the
+    // Column does not overflow short viewports (kiosk / embedded browser).
+    final bool hasImages = viewModel.generatedImages.isNotEmpty;
+    final double interiorChromeAboveCard = (fixedFooterOutside &&
+            viewportHeight != null &&
+            viewportHeight.isFinite)
+        ? (hasImages && !isGeneratingOrLoading
+            ? 118.0
+            : isGeneratingOrLoading
+                ? 88.0
+                : 0.0)
+        : 0.0;
+    final bool singleResultReady =
+        hasImages && !isGeneratingOrLoading && viewModel.generatedImages.length <= 1;
+
+    final double maxRowHeight;
+    if (fixedFooterOutside && singleResultReady) {
+      // Footer is outside this column; vh is the Expanded slot — use almost all of it.
+      maxRowHeight = math.max(
+        200.0,
+        (vh - interiorChromeAboveCard) *
+            AppConstants.kBeholdResultCardSlotHeightFraction,
+      );
+    } else {
+      // Landscape / large displays: let the photo row use more vertical space (kiosk).
+      final double heightFraction = isLandscape ? 0.80 : 0.68;
+      final double maxRowCap = isLandscape ? 1080.0 : 920.0;
+      final double rowBudget = math.min(
         maxRowCap,
         math.min(
           vh * heightFraction,
-          vh - reservedAboveRow - reservedBelowRow,
+          vh -
+              reservedAboveRow -
+              reservedBelowRow -
+              interiorChromeAboveCard,
         ),
-      ),
-    );
+      );
+      maxRowHeight = math.max(120.0, rowBudget);
+    }
     return _buildGeneratedOnlyLayout(
       context,
       viewModel,
@@ -915,7 +1004,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       screenWidth: screenWidth,
       maxRowHeight: maxRowHeight,
       gap: cardGap,
-      aspect: aspect,
       isGeneratingOrLoading: isGeneratingOrLoading,
       fixedFooterOutside: fixedFooterOutside,
     );
@@ -928,7 +1016,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     required double screenWidth,
     required double maxRowHeight,
     required double gap,
-    required double aspect,
     required bool isGeneratingOrLoading,
     required bool fixedFooterOutside,
   }) {
@@ -945,29 +1032,19 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
             ? viewModel.liveSlotCount
             : 1);
     final totalSlots = baseSlotCount + (isLoadingMore ? 1 : 0);
+    final aspect = _beholdCardAspectRatio(context, totalSlots);
 
     // When we only have a single slot (initial placeholder or one image),
     // size it like the POSE capture card so the "main image placeholder" feels consistent.
     if (totalSlots == 1) {
-      // Use the same aspect-fit sizing as POSE, but don't over-cap on BEHOLD:
-      // `maxRowHeight` already accounts for reserved header/footer space.
-      final maxW = screenWidth;
-      final maxH = maxRowHeight;
-
-      late double cardW;
-      late double cardH;
-      if (maxW / maxH > aspect) {
-        cardH = maxH;
-        cardW = cardH * aspect;
-      } else {
-        cardW = maxW;
-        cardH = cardW / aspect;
-      }
-
-      final String? genZoomId = _zoomedSlotId != null &&
-              viewModel.generatedImages.any((e) => e.id == _zoomedSlotId)
-          ? _zoomedSlotId
-          : null;
+      final size = _computeBeholdHeroCardSize(
+        context,
+        maxWidth: screenWidth,
+        maxHeight: maxRowHeight,
+        aspect: aspect,
+      );
+      final cardW = size.width;
+      final cardH = size.height;
 
       final slots = _buildTransformedSlotWidgets(
         context,
@@ -975,7 +1052,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         appColors,
         cardW,
         cardH,
-        genZoomId,
       );
 
       final isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
@@ -1035,7 +1111,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
               _buildGenerationProgressHeroCard(
                 context,
                 viewModel,
-                width: maxW,
+                width: cardW,
                 height: cardH,
               ),
             ] else if (wideStoryLayout && isGeneratingOrLoading) ...[
@@ -1079,18 +1155,12 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final scaledW = cardW * scale;
     final scaledH = cardH * scale;
 
-    final String? genZoomId = _zoomedSlotId != null &&
-            viewModel.generatedImages.any((e) => e.id == _zoomedSlotId)
-        ? _zoomedSlotId
-        : null;
-
     final slots = _buildTransformedSlotWidgets(
       context,
       viewModel,
       appColors,
       scaledW,
       scaledH,
-      genZoomId,
     );
 
     final message = isGeneratingOrLoading
@@ -1130,20 +1200,14 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
             ),
             const SizedBox(height: 18),
           ],
-          AnimatedSize(
-            duration: _kZoomLayoutAnimationDuration,
-            curve: _kZoomLayoutAnimationCurve,
-            alignment: Alignment.center,
-            clipBehavior: Clip.none,
-            child: SizedBox(
-              width: screenWidth,
-              child: Center(
-                child: Wrap(
-                  spacing: gap,
-                  runSpacing: gap,
-                  alignment: WrapAlignment.center,
-                  children: slots,
-                ),
+          SizedBox(
+            width: screenWidth,
+            child: Center(
+              child: Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                alignment: WrapAlignment.center,
+                children: slots,
               ),
             ),
           ),
@@ -1162,7 +1226,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     AppColors appColors,
     double cardWidth,
     double cardHeight,
-    String? effectiveZoomId,
   ) {
     final isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
     final isLoadingMore = viewModel.isLoadingMore;
@@ -1230,7 +1293,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
           image,
           cardWidth,
           cardHeight,
-          effectiveZoomId: effectiveZoomId,
           showRemoveButton: showRemoveButton,
         ),
       );
@@ -1242,25 +1304,86 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     required double cardWidth,
     required double cardHeight,
     required Widget child,
+    bool selected = false,
   }) {
     return SizedBox(
       width: cardWidth,
       height: cardHeight,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
+      child: Card(
+        margin: EdgeInsets.zero,
+        elevation: 8,
+        shadowColor: Colors.black.withValues(alpha: 0.38),
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          side: BorderSide(
+            color: selected
+                ? CupertinoColors.systemBlue.withValues(alpha: 0.85)
+                : const Color(0xFF4A4A4A),
+            width: selected ? 2.0 : 1.5,
+          ),
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(11),
-          child: child,
+        clipBehavior: Clip.antiAlias,
+        child: child,
+      ),
+    );
+  }
+
+  /// Fills the hero card like CAPTURE / generation progress (cover, no letterbox mat).
+  Widget _buildGeneratedHeroNetworkImage(
+    BuildContext context, {
+    required String imageUrl,
+    required double width,
+    required double height,
+  }) {
+    final secureUrl = SecureImageUrl.withSessionId(imageUrl);
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final cacheW = (width * dpr).ceil().clamp(64, 2048);
+    final loading = ColoredBox(
+      color: Colors.black,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: const Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              color: Colors.white,
+              strokeWidth: 2,
+            ),
+          ),
+        ),
+      ),
+    );
+    if (secureUrl.isEmpty) {
+      return loading;
+    }
+    return SizedBox(
+      width: width,
+      height: height,
+      child: ColoredBox(
+        color: Colors.black,
+        child: FittedBox(
+          fit: BoxFit.contain,
+          alignment: Alignment.center,
+          child: CachedNetworkImage(
+            imageUrl: secureUrl,
+            fit: BoxFit.contain,
+            cacheWidth: cacheW,
+            filterQuality: FilterQuality.medium,
+            placeholder: loading,
+            errorWidget: SizedBox(
+              width: width,
+              height: height,
+              child: const Center(
+                child: Icon(
+                  CupertinoIcons.exclamationmark_triangle,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -1272,90 +1395,28 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     GeneratedImage image,
     double cardWidth,
     double cardHeight, {
-    required String? effectiveZoomId,
     bool showRemoveButton = false,
   }) {
-    final isZoomed = effectiveZoomId == image.id;
-    const double zoom = AppConstants.kGeneratePhotoZoomedScale;
-    final double slotW = isZoomed ? cardWidth * zoom : cardWidth;
-    final double slotH = isZoomed ? cardHeight * zoom : cardHeight;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      width: slotW,
-      height: slotH,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          setState(() {
-            _zoomedSlotId = _zoomedSlotId == image.id ? null : image.id;
-          });
-        },
-        child: SizedBox.expand(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: image.isSelected
-                    ? CupertinoColors.systemBlue.withValues(alpha: 0.85)
-                    : Colors.white24,
-                width: image.isSelected ? 2.0 : 1.0,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(11),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                if (image.isSelected)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(11),
-                          boxShadow: [
-                            BoxShadow(
-                              color: CupertinoColors.systemBlue.withValues(alpha: 0.18),
-                              blurRadius: 26,
-                              spreadRadius: 2,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+    return SizedBox(
+      width: cardWidth,
+      height: cardHeight,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _openGeneratedImagePreview(context, image),
+          child: _transformedSlotFrame(
+            cardWidth: cardWidth,
+            cardHeight: cardHeight,
+            selected: image.isSelected,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
                 const ColoredBox(color: Colors.black),
-                Image.network(
-                  SecureImageUrl.withSessionId(image.imageUrl),
-                  // Show the full generation in-frame (no crop).
-                  fit: BoxFit.contain,
-                  alignment: Alignment.center,
-                  width: double.infinity,
-                  height: double.infinity,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return const Center(
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                      ),
-                    );
-                  },
-                  errorBuilder: (_, __, ___) => const Center(
-                    child: Icon(
-                      CupertinoIcons.exclamationmark_triangle,
-                      color: Colors.white,
-                      size: 32,
-                    ),
-                  ),
+                _buildGeneratedHeroNetworkImage(
+                  context,
+                  imageUrl: image.imageUrl,
+                  width: cardWidth,
+                  height: cardHeight,
                 ),
                 if (showRemoveButton)
                   Positioned(
@@ -1385,6 +1446,26 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                       ),
                     ),
                   ),
+                Positioned(
+                  top: 10,
+                  left: 10,
+                  child: Material(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(10),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => _openGeneratedImagePreview(context, image),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(
+                          CupertinoIcons.fullscreen,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
                 Positioned(
                   top: 10,
                   right: 10,
@@ -1469,7 +1550,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
             ),
           ),
         ),
-      ),
       ),
     );
   }

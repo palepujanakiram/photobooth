@@ -5,7 +5,9 @@ mixin _ResultViewModelImpl on ChangeNotifier {
 
   /// Loads UPI payment link from POST /api/payment/initiate and exposes it for QR display.
   Future<void> loadPaymentQr({String? customerPhone}) async {
-    if (_r._paymentInitInProgress || _r._paymentLink != null) return;
+    if (_r._paymentInitInProgress) return;
+    final existingId = _r._activePaymentId?.trim();
+    if (existingId != null && existingId.isNotEmpty) return;
     final sessionId = _r._sessionManager.sessionId;
     if (sessionId == null || sessionId.isEmpty) {
       _r._paymentInitError = 'No session for payment. Go back and try again.';
@@ -15,6 +17,9 @@ mixin _ResultViewModelImpl on ChangeNotifier {
 
     _r._paymentInitInProgress = true;
     _r._paymentInitError = null;
+    _r._paymentLink = null;
+    _r._qrImageUrl = null;
+    _r._upiLink = null;
     _r._activePaymentId = null;
     _r._paymentIdPollTimer?.cancel();
     _r._sessionPollTimer?.cancel();
@@ -51,6 +56,8 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       // For manual/static QR mode, backend may omit paymentLink but should still
       // create a transaction with an id that admin can approve/reject.
       _r._paymentLink = result.paymentLink;
+      _r._qrImageUrl = result.qrImageUrl;
+      _r._upiLink = result.upiLink;
       final pid = result.id.trim();
       _r._activePaymentId = pid.isNotEmpty ? pid : null;
       if (_r._activePaymentId != null) {
@@ -206,10 +213,14 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       t.cancel();
       return;
     }
+    final sessionId = _r._sessionManager.sessionId?.trim();
 
     Map<String, dynamic>? raw;
     try {
-      raw = await _r._apiService.fetchPaymentStatus(id);
+      raw = await _r._apiService.fetchPaymentStatus(
+        id,
+        sessionId: sessionId,
+      );
     } catch (_) {
       raw = null;
     }
