@@ -1,0 +1,47 @@
+# Flutter test coverage upload to Qlty Cloud (separate from SonarCloud).
+name: Qlty
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: photobooth
+
+jobs:
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.2.2
+
+      - name: Setup Flutter SDK
+        uses: flutter-actions/setup-flutter@v4.2
+        with:
+          channel: stable
+          cache: true
+          cache-key: 'flutter-{platform}-{channel}-{architecture}-{hash}'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run tests with coverage
+        run: flutter test --coverage
+
+      - name: Verify coverage report
+        run: test -f coverage/lcov.info
+
+      - name: Upload coverage to Qlty
+        uses: qltysh/qlty-action/coverage@v2
+        with:
+          token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
+          files: photobooth/coverage/lcov.info
+          format: lcov
+          add-prefix: photobooth
