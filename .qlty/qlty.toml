@@ -69,6 +69,7 @@ ignores = [
   "lib/views/**",
   "lib/screens/**/*_view.dart",
   "lib/screens/**/photo_generate_progress_view.dart",
+  "lib/screens/**/post_reveal_polishing_overlay.dart",
   "lib/screens/**/app_splash_screen.dart",
   "lib/screens/**/theme_preview_screen.dart",
   "lib/screens/**/webview_screen.dart",
