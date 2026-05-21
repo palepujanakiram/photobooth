@@ -13,6 +13,31 @@ typedef StaffPaymentsPrintStateSink = void Function({
   String? progressMessage,
 });
 
+/// Validates session, confirms print, and resolves image URL (Sonar S3776).
+Future<String?> staffPaymentsPreparePrintSession({
+  required BuildContext context,
+  required bool Function() isMounted,
+  required String sessionId,
+  required Future<String?> Function() resolveImageUrl,
+  required void Function(String message) onError,
+}) async {
+  if (sessionId.isEmpty) {
+    onError('Missing sessionId in payment payload');
+    return null;
+  }
+
+  final ok = await staffPaymentsConfirmPrintDialog(context, sessionId);
+  if (!isMounted() || !ok) return null;
+
+  final imageUrl = await resolveImageUrl();
+  if (!isMounted()) return null;
+  if (imageUrl == null || imageUrl.isEmpty) {
+    onError('Cannot print: image URL not found for this session.');
+    return null;
+  }
+  return imageUrl;
+}
+
 /// Confirms print for a session; returns false if cancelled or unmounted.
 Future<bool> staffPaymentsConfirmPrintDialog(
   BuildContext context,
@@ -41,13 +66,13 @@ Future<bool> staffPaymentsConfirmPrintDialog(
 
 /// Download image and send to network printer (Sonar S3776 extraction).
 Future<void> staffPaymentsRunPrintJob({
-  required BuildContext context,
   required ApiService publicApi,
   required PrintService printService,
   required AppSettingsModel? settings,
   required String imageUrl,
   required bool Function() isMounted,
   required StaffPaymentsPrintStateSink onState,
+  required VoidCallback? onSuccess,
 }) async {
   onState(loading: true, error: null, progressMessage: 'Preparing image...');
   try {
@@ -67,9 +92,7 @@ Future<void> staffPaymentsRunPrintJob({
       printerPort: endpoint.port,
     );
     if (!isMounted()) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Print job sent')),
-    );
+    onSuccess?.call();
   } on ApiException catch (e) {
     if (!isMounted()) return;
     onState(error: e.message);

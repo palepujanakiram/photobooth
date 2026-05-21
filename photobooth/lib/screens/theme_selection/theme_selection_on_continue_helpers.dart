@@ -13,21 +13,19 @@ Future<void> themeSelectionContinueWithPhoto({
   required ThemeViewModel viewModel,
   required PhotoModel photo,
   required ThemeModel selectedTheme,
-  required bool mounted,
   required void Function(bool generating) setGenerating,
 }) async {
   final currentContext = context;
   setGenerating(true);
   try {
     final success = await viewModel.updateSessionWithTheme();
-    if (!mounted || !currentContext.mounted) return;
+    if (!currentContext.mounted) return;
     if (success) {
       await themeSelectionNavigateAfterSessionUpdate(
         context: currentContext,
         viewModel: viewModel,
         photo: photo,
         selectedTheme: selectedTheme,
-        mounted: mounted,
       );
     } else {
       AppSnackBar.showError(
@@ -36,7 +34,7 @@ Future<void> themeSelectionContinueWithPhoto({
       );
     }
   } catch (e) {
-    if (mounted && currentContext.mounted) {
+    if (currentContext.mounted) {
       AppSnackBar.showError(
         currentContext,
         'An error occurred: ${e.toString()}',
@@ -50,7 +48,6 @@ Future<void> themeSelectionContinueWithPhoto({
 /// Continue without capture: open camera and store result (Sonar S3776).
 Future<void> themeSelectionContinueToCapture({
   required BuildContext context,
-  required bool mounted,
   required void Function(PhotoModel photo) setPhotoFromCapture,
 }) async {
   final currentContext = context;
@@ -58,7 +55,7 @@ Future<void> themeSelectionContinueToCapture({
     currentContext,
     AppConstants.kRouteCapture,
   );
-  if (!mounted || !currentContext.mounted) return;
+  if (!currentContext.mounted) return;
   if (result == null || result is! PhotoModel) return;
   setPhotoFromCapture(result);
 }
