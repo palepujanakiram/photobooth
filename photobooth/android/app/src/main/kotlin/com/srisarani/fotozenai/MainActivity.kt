@@ -18,15 +18,16 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                "payment_updates",
-                "Payment Updates",
-                NotificationManager.IMPORTANCE_HIGH,
-            ).apply {
-                description = "FotoZen payment confirmation alerts"
-                enableLights(true)
-                enableVibration(true)
-            }
+            val channel =
+                NotificationChannel(
+                    "payment_updates",
+                    "Payment Updates",
+                    NotificationManager.IMPORTANCE_HIGH,
+                ).apply {
+                    description = "FotoZen payment confirmation alerts"
+                    enableLights(true)
+                    enableVibration(true)
+                }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
@@ -45,22 +46,26 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        hardwareKeysChannel = MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            "photobooth/hardware_keys"
-        ).apply {
-            setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "setEnabled" -> {
-                        val args = call.arguments as? Map<*, *>
-                        val enabled = args?.get("enabled") as? Boolean ?: false
-                        hardwareKeysEnabled = enabled
-                        result.success(null)
+        hardwareKeysChannel =
+            MethodChannel(
+                flutterEngine.dartExecutor.binaryMessenger,
+                "photobooth/hardware_keys",
+            ).apply {
+                setMethodCallHandler { call, result ->
+                    when (call.method) {
+                        "setEnabled" -> {
+                            val args = call.arguments as? Map<*, *>
+                            val enabled = args?.get("enabled") as? Boolean ?: false
+                            hardwareKeysEnabled = enabled
+                            result.success(null)
+                        }
+
+                        else -> {
+                            result.notImplemented()
+                        }
                     }
-                    else -> result.notImplemented()
                 }
             }
-        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -73,8 +78,8 @@ class MainActivity : FlutterActivity() {
                     mapOf(
                         "keyCode" to code,
                         "action" to event.action,
-                        "timestampMs" to event.eventTime
-                    )
+                        "timestampMs" to event.eventTime,
+                    ),
                 )
                 return true
             }

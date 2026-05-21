@@ -1,6 +1,6 @@
 /// Abstract interface for error reporting services
 /// Implement this interface to add support for different error reporting tools
-/// (e.g., Crashlytics, Bugsnag, Sentry, etc.)
+/// (e.g., Bugsnag, Sentry, etc.)
 abstract class ErrorReportingService {
   /// Initialize the error reporting service
   Future<void> initialize();

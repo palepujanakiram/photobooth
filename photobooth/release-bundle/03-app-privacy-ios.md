@@ -7,7 +7,7 @@ The App Privacy questionnaire in App Store Connect is structured around **data t
 | Question | Answer |
 |---|---|
 | Does this app collect any data? | **Yes** |
-| Does this app use third-party SDKs that collect data? | **Yes** (Cashfree, Firebase Crashlytics, Firebase Messaging) |
+| Does this app use third-party SDKs that collect data? | **Yes** (Cashfree, Bugsnag, Firebase Messaging) |
 
 ## Data type declarations
 
@@ -54,7 +54,7 @@ Free-text justification for the form:
 - **Photos:** *"User photos captured at the kiosk, transformed by AI, and printed. Auto-deleted within 15 minutes of printing."*
 - **Email / phone (optional):** *"Collected only when the user requests a digital copy of their photo via QR / WhatsApp / email."*
 - **Payment info:** *"Transaction metadata returned by our payment processor (Cashfree Payments). Card and UPI details are handled by Cashfree's PCI-DSS-compliant flow and never reach our servers."*
-- **Diagnostics & usage data:** *"Aggregate, anonymised analytics on session flow and Firebase Crashlytics crash reports."*
+- **Diagnostics & usage data:** *"Aggregate, anonymised analytics on session flow and Bugsnag crash reports."*
 - **Device ID:** *"Internal kiosk binding identifier; links the app installation to a specific kiosk for printer routing. Not the IDFA / advertising identifier."*
 
 ## Apple-specific compliance toggles
