@@ -16,6 +16,8 @@ bool ignored(String path) {
     '_view_scaffold.dart',
     '_view_layout.dart',
     '_scaffold_body.dart',
+    'app_splash_screen_body.dart',
+    '_print_helpers.dart',
     '_payment_card_widgets.dart',
     '_carousel_page.dart',
     '_loaded_body.dart',
