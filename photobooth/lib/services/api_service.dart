@@ -15,9 +15,12 @@ import '../utils/exceptions.dart';
 import '../utils/app_config.dart';
 import '../utils/constants.dart';
 import '../utils/session_user_image_validation.dart';
+import '../utils/app_strings.dart';
 import '../utils/logger.dart';
 import 'api_client.dart';
 import 'file_helper.dart';
+import 'api_dio_errors.dart';
+import 'generation_api_errors.dart';
 import 'api_logging_interceptor.dart';
 import 'alice_inspector.dart';
 import 'client_identification.dart';
@@ -194,7 +197,7 @@ class ApiService {
             final errorMsg = dioError.message ?? '';
             if (errorMsg.contains('XMLHttpRequest') ||
                 errorMsg.contains('CORS') ||
-                errorMsg.contains('Failed to fetch') ||
+                errorMsg.contains(AppStrings.failedToFetch) ||
                 errorMsg.contains('NetworkError') ||
                 errorMsg.contains('connection errored') ||
                 errorMsg.contains('assureDioException') ||
@@ -207,7 +210,7 @@ class ApiService {
                 error:
                     'CORS/Network Error: The API server may not be configured to allow requests from this origin.',
                 message:
-                    'CORS/Network Error: ${dioError.message ?? "Unknown network error"}',
+                    'CORS/Network Error: ${dioError.message ?? AppStrings.unknownNetworkError}',
               );
               return handler.next(friendlyError);
             }
@@ -415,26 +418,10 @@ class ApiService {
     return null;
   }
 
-  /// Helper method to check and handle CORS/network errors on web
-  void _handleWebNetworkError(DioException e) {
-    if (kIsWeb &&
-        (e.type == DioExceptionType.connectionError ||
-            e.type == DioExceptionType.unknown)) {
-      final errorMsg = e.message ?? '';
-      if (errorMsg.contains('XMLHttpRequest') ||
-          errorMsg.contains('CORS') ||
-          errorMsg.contains('Failed to fetch') ||
-          errorMsg.contains('NetworkError') ||
-          errorMsg.contains('connection errored')) {
-        throw ApiException(
-          'CORS/Network Error: The API server at ${AppConstants.kBaseUrl} may not be configured to allow requests from this origin (${kIsWeb ? "web browser" : "app"}). '
-          'This is typically a CORS (Cross-Origin Resource Sharing) issue. '
-          'Please ensure the server allows requests from your domain, or contact the server administrator. '
-          'Error: ${e.message ?? "Unknown network error"}',
-        );
-      }
-    }
-  }
+  void _handleWebNetworkError(DioException e) => throwIfWebCorsOrNetwork(e);
+
+  /// Maps [e] to [ApiException] (CORS on web, network, or server body message).
+  Never _throwMappedApiException(DioException e) => throwMappedApiException(e);
 
   /// Transforms an image using AI with the selected theme.
   ///
@@ -562,33 +549,7 @@ class ApiService {
         );
       }
     } on DioException catch (e) {
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout ||
-          e.type == DioExceptionType.connectionError) {
-        throw ApiException(AppConstants.kErrorNetwork);
-      }
-
-      // Extract error message from response if available
-      String errorMessage = AppConstants.kErrorApiCall;
-      if (e.response != null) {
-        final responseData = e.response?.data;
-        if (responseData is Map<String, dynamic>) {
-          errorMessage = responseData['message'] as String? ??
-              responseData['error'] as String? ??
-              'API Error: ${e.response?.statusCode}';
-        } else if (responseData is String) {
-          errorMessage = responseData;
-        } else {
-          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
-        }
-      } else {
-        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
-      }
-
-      throw ApiException(
-        errorMessage,
-        e.response?.statusCode,
-      );
+      _throwMappedApiException(e);
     } catch (e) {
       if (e is ApiException) {
         rethrow;
@@ -641,12 +602,12 @@ class ApiService {
         final errorMsg = e.message ?? '';
         if (errorMsg.contains('XMLHttpRequest') ||
             errorMsg.contains('CORS') ||
-            errorMsg.contains('Failed to fetch') ||
+            errorMsg.contains(AppStrings.failedToFetch) ||
             errorMsg.contains('NetworkError')) {
           throw ApiException(
             'CORS Error: The API server at ${AppConstants.kBaseUrl} is not configured to allow requests from this origin. '
             'Please contact the server administrator to add CORS headers allowing requests from your domain. '
-            'Error details: ${e.message ?? "Unknown network error"}',
+            'Error details: ${e.message ?? AppStrings.unknownNetworkError}',
           );
         }
       }
@@ -835,34 +796,7 @@ class ApiService {
         'accepted': true,
       });
     } on DioException catch (e) {
-      _handleWebNetworkError(e);
-
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout ||
-          e.type == DioExceptionType.connectionError) {
-        throw ApiException(AppConstants.kErrorNetwork);
-      }
-
-      String errorMessage = AppConstants.kErrorApiCall;
-      if (e.response != null) {
-        final responseData = e.response?.data;
-        if (responseData is Map<String, dynamic>) {
-          errorMessage = responseData['message'] as String? ??
-              responseData['error'] as String? ??
-              'API Error: ${e.response?.statusCode}';
-        } else if (responseData is String) {
-          errorMessage = responseData;
-        } else {
-          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
-        }
-      } else {
-        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
-      }
-
-      throw ApiException(
-        errorMessage,
-        e.response?.statusCode,
-      );
+      _throwMappedApiException(e);
     } catch (e) {
       if (e is ApiException) {
         rethrow;
@@ -876,34 +810,7 @@ class ApiService {
     try {
       return await _apiClient.getAppSettings();
     } on DioException catch (e) {
-      _handleWebNetworkError(e);
-
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout ||
-          e.type == DioExceptionType.connectionError) {
-        throw ApiException(AppConstants.kErrorNetwork);
-      }
-
-      String errorMessage = AppConstants.kErrorApiCall;
-      if (e.response != null) {
-        final responseData = e.response?.data;
-        if (responseData is Map<String, dynamic>) {
-          errorMessage = responseData['message'] as String? ??
-              responseData['error'] as String? ??
-              'API Error: ${e.response?.statusCode}';
-        } else if (responseData is String) {
-          errorMessage = responseData;
-        } else {
-          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
-        }
-      } else {
-        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
-      }
-
-      throw ApiException(
-        errorMessage,
-        e.response?.statusCode,
-      );
+      _throwMappedApiException(e);
     } catch (e) {
       if (e is ApiException) {
         rethrow;
@@ -928,32 +835,7 @@ class ApiService {
       });
       return response;
     } on DioException catch (e) {
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout ||
-          e.type == DioExceptionType.connectionError) {
-        throw ApiException(AppConstants.kErrorNetwork);
-      }
-
-      String errorMessage = AppConstants.kErrorApiCall;
-      if (e.response != null) {
-        final responseData = e.response?.data;
-        if (responseData is Map<String, dynamic>) {
-          errorMessage = responseData['message'] as String? ??
-              responseData['error'] as String? ??
-              'API Error: ${e.response?.statusCode}';
-        } else if (responseData is String) {
-          errorMessage = responseData;
-        } else {
-          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
-        }
-      } else {
-        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
-      }
-
-      throw ApiException(
-        errorMessage,
-        e.response?.statusCode,
-      );
+      _throwMappedApiException(e);
     } catch (e) {
       if (e is ApiException) {
         rethrow;
@@ -1041,37 +923,7 @@ class ApiService {
         throw ApiException(AppConstants.kErrorNetwork);
       }
 
-      String errorMessage = AppConstants.kErrorApiCall;
-      if (e.response != null) {
-        final responseData = e.response?.data;
-        if (responseData is Map<String, dynamic>) {
-          errorMessage = responseData['message'] as String? ??
-              responseData['error'] as String? ??
-              'API Error: ${e.response?.statusCode}';
-        } else if (responseData is String) {
-          try {
-            final errObj = jsonDecode(responseData);
-            if (errObj is Map) {
-              errorMessage = errObj['message'] as String? ??
-                  errObj['error'] as String? ??
-                  responseData;
-            } else {
-              errorMessage = responseData;
-            }
-          } catch (_) {
-            errorMessage = responseData;
-          }
-        } else {
-          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
-        }
-      } else {
-        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
-      }
-
-      throw ApiException(
-        errorMessage,
-        e.response?.statusCode,
-      );
+      _throwMappedApiException(e);
     } catch (e) {
       if (e is ApiException) {
         rethrow;
@@ -1086,34 +938,7 @@ class ApiService {
     try {
       await _apiClient.deleteSession(sessionId);
     } on DioException catch (e) {
-      _handleWebNetworkError(e);
-
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout ||
-          e.type == DioExceptionType.connectionError) {
-        throw ApiException(AppConstants.kErrorNetwork);
-      }
-
-      String errorMessage = AppConstants.kErrorApiCall;
-      if (e.response != null) {
-        final responseData = e.response?.data;
-        if (responseData is Map<String, dynamic>) {
-          errorMessage = responseData['message'] as String? ??
-              responseData['error'] as String? ??
-              'API Error: ${e.response?.statusCode}';
-        } else if (responseData is String) {
-          errorMessage = responseData;
-        } else {
-          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
-        }
-      } else {
-        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
-      }
-
-      throw ApiException(
-        errorMessage,
-        e.response?.statusCode,
-      );
+      _throwMappedApiException(e);
     } catch (e) {
       if (e is ApiException) {
         rethrow;
@@ -1163,28 +988,7 @@ class ApiService {
       }
       throw ApiException('Unexpected generation run response');
     } on DioException catch (e) {
-      _handleWebNetworkError(e);
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout ||
-          e.type == DioExceptionType.connectionError) {
-        throw ApiException(AppConstants.kErrorNetwork);
-      }
-      String errorMessage = AppConstants.kErrorApiCall;
-      if (e.response != null) {
-        final responseData = e.response?.data;
-        if (responseData is Map<String, dynamic>) {
-          errorMessage = responseData['error'] as String? ??
-              responseData['message'] as String? ??
-              'API Error: ${e.response?.statusCode}';
-        } else if (responseData is String) {
-          errorMessage = responseData;
-        } else {
-          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
-        }
-      } else {
-        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
-      }
-      throw ApiException(errorMessage, e.response?.statusCode);
+      _throwMappedApiException(e);
     } catch (e) {
       if (e is ApiException) {
         rethrow;
@@ -1221,34 +1025,7 @@ class ApiService {
       final rawMap = Map<String, dynamic>.from(raw);
       return PaymentInitiateResult.fromJson(rawMap);
     } on DioException catch (e) {
-      _handleWebNetworkError(e);
-
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout ||
-          e.type == DioExceptionType.connectionError) {
-        throw ApiException(AppConstants.kErrorNetwork);
-      }
-
-      String errorMessage = AppConstants.kErrorApiCall;
-      if (e.response != null) {
-        final responseData = e.response?.data;
-        if (responseData is Map<String, dynamic>) {
-          errorMessage = responseData['message'] as String? ??
-              responseData['error'] as String? ??
-              'API Error: ${e.response?.statusCode}';
-        } else if (responseData is String) {
-          errorMessage = responseData;
-        } else {
-          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
-        }
-      } else {
-        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
-      }
-
-      throw ApiException(
-        errorMessage,
-        e.response?.statusCode,
-      );
+      _throwMappedApiException(e);
     } catch (e) {
       if (e is ApiException) {
         rethrow;
@@ -1375,62 +1152,16 @@ class ApiService {
           runId: runId,
         );
       } on DioException catch (e) {
-        _handleWebNetworkError(e);
-
         final isTimeout = e.type == DioExceptionType.connectionTimeout ||
             e.type == DioExceptionType.receiveTimeout ||
             e.type == DioExceptionType.sendTimeout;
 
-        // If timeout and we haven't retried yet, retry once
         if (isTimeout && retryCount < maxRetries) {
           retryCount++;
-          continue; // Retry the request
+          continue;
         }
 
-        // Handle error response according to new API spec
-        String errorMessage = AppConstants.kErrorApiCall;
-        String? errorDetails;
-        String? runId;
-
-        if (e.response != null) {
-          final statusCode = e.response?.statusCode;
-          final responseData = e.response?.data;
-
-          if (responseData is Map<String, dynamic>) {
-            // New API error format: { "error": "...", "details": "...", "runId": "..." }
-            errorMessage = responseData['error'] as String? ??
-                responseData['message'] as String? ??
-                'API Error: $statusCode';
-            errorDetails = responseData['details'] as String?;
-            runId = responseData['runId'] as String?;
-
-            // Build error message with details if available
-            if (errorDetails != null && errorDetails.isNotEmpty) {
-              errorMessage = '$errorMessage: $errorDetails';
-            }
-
-            // Include runId in debug logs for tracking
-            if (runId != null) {
-              AppLogger.debug(
-                  '❌ Generation failed (Run ID: $runId): $errorMessage');
-            }
-          } else if (responseData is String) {
-            errorMessage = responseData;
-          } else {
-            errorMessage = isTimeout
-                ? 'Request timed out. Please try again.'
-                : 'API Error: $statusCode - ${e.message}';
-          }
-        } else {
-          errorMessage = isTimeout
-              ? 'Request timed out. Please try again.'
-              : '${AppConstants.kErrorNetwork}: ${e.message}';
-        }
-
-        throw ApiException(
-          errorMessage,
-          e.response?.statusCode,
-        );
+        GenerationApiFailure.fromDioException(e).rethrowAsApiException();
       } catch (e) {
         if (e is ApiException) {
           rethrow;
@@ -1605,31 +1336,7 @@ class ApiService {
 
       return await completer.future;
     } on DioException catch (e) {
-      _handleWebNetworkError(e);
-
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout ||
-          e.type == DioExceptionType.connectionError) {
-        throw ApiException(AppConstants.kErrorNetwork);
-      }
-
-      String errorMessage = AppConstants.kErrorApiCall;
-      if (e.response != null) {
-        final responseData = e.response?.data;
-        if (responseData is Map<String, dynamic>) {
-          errorMessage = responseData['error'] as String? ??
-              responseData['message'] as String? ??
-              'API Error: ${e.response?.statusCode}';
-        } else if (responseData is String) {
-          errorMessage = responseData;
-        } else {
-          errorMessage = 'API Error: ${e.response?.statusCode} - ${e.message}';
-        }
-      } else {
-        errorMessage = '${AppConstants.kErrorApiCall}: ${e.message}';
-      }
-
-      throw ApiException(errorMessage, e.response?.statusCode);
+      _throwMappedApiException(e);
     }
   }
 

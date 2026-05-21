@@ -4,9 +4,11 @@ import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'result_payment_status.dart';
 import 'result_viewmodel.dart';
 import '../../services/app_settings_manager.dart';
 import '../../utils/constants.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/logger.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
@@ -42,6 +44,10 @@ class _ResultScreenState extends State<ResultScreen> {
   /// Prevents double-taps on slow connections and lets us swap the button
   /// label for an inline spinner.
   bool _refreshingPolling = false;
+
+  /// Guards [WidgetsBinding.addPostFrameCallback] so we do not queue duplicate
+  /// thank-you navigations on every [Consumer] rebuild (same as pre-refactor intent).
+  bool _thankYouNavigationScheduled = false;
 
   @override
   void initState() {
@@ -122,21 +128,26 @@ class _ResultScreenState extends State<ResultScreen> {
       await _viewModel!.onFcmPaymentPush(payload);
       if (!mounted) return;
 
-      if (_viewModel!.fcmPaymentPushSuccess == true) {
-        _failureIdleTimer?.cancel();
-        _failureSecondsLeft = 0;
-        if (_viewModel!.hasError) {
-          AppSnackBar.showError(context, _viewModel!.errorMessage!);
-        } else {
-          AppSnackBar.showSuccess(context, 'Print job sent successfully!');
-          await _navigateToThankYouIfEligible(_viewModel!);
-        }
-      } else if (_viewModel!.fcmPaymentPushSuccess == false) {
-        _startFailureIdleCountdown();
-      }
+      await _onPaymentPushOutcome(_viewModel!);
     } catch (e, st) {
-      // Keep production UI clean: debug output is gated via AppLogger.
       AppLogger.debug('Payment FCM UI error: $e\n$st');
+    }
+  }
+
+  Future<void> _onPaymentPushOutcome(ResultViewModel viewModel) async {
+    if (viewModel.fcmPaymentPushSuccess == true) {
+      _failureIdleTimer?.cancel();
+      _failureSecondsLeft = 0;
+      if (viewModel.hasError) {
+        AppSnackBar.showError(context, viewModel.errorMessage!);
+        return;
+      }
+      AppSnackBar.showSuccess(context, AppStrings.printJobSentSuccess);
+      await _navigateToThankYouIfEligible(viewModel);
+      return;
+    }
+    if (viewModel.fcmPaymentPushSuccess == false) {
+      _startFailureIdleCountdown();
     }
   }
 
@@ -253,11 +264,215 @@ class _ResultScreenState extends State<ResultScreen> {
         AppSnackBar.showError(context, viewModel.errorMessage!);
         return;
       }
-      AppSnackBar.showSuccess(context, 'Print job sent successfully!');
+      AppSnackBar.showSuccess(context, AppStrings.printJobSentSuccess);
       await _navigateToThankYouIfEligible(viewModel);
     } finally {
       _retryingPrint = false;
     }
+  }
+
+  Widget _buildRefreshPollingChild() {
+    if (_refreshingPolling) {
+      return const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+      );
+    }
+    return const Text('Refresh');
+  }
+
+  String _backToStartLabel(ResultViewModel viewModel) {
+    if (viewModel.fcmPaymentPushSuccess == false && _failureSecondsLeft > 0) {
+      return 'Back to start (${_failureSecondsLeft}s)';
+    }
+    return 'Back to start';
+  }
+
+  /// When payment succeeds via FCM or polling, auto-advance once printing finishes.
+  /// Called from [build]; must not enqueue multiple callbacks per frame storm.
+  void _scheduleThankYouNavigationIfNeeded(ResultViewModel viewModel) {
+    if (viewModel.fcmPaymentPushSuccess != true) {
+      _thankYouNavigationScheduled = false;
+      return;
+    }
+    if (_didNavigateToThankYou || _thankYouNavigationScheduled) return;
+    if (viewModel.hasError || viewModel.isPrinting) return;
+
+    _thankYouNavigationScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _thankYouNavigationScheduled = false;
+      if (!mounted || _didNavigateToThankYou) return;
+      unawaited(_navigateToThankYouIfEligible(viewModel));
+    });
+  }
+
+  Widget _buildPayScreenBody(
+    BuildContext context,
+    ResultViewModel viewModel,
+    AppColors appColors,
+    bool paymentsEnabled,
+  ) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        forceMaterialTransparency: true,
+        centerTitle: true,
+        title: const Text(
+          'PAY',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 22,
+          ),
+        ),
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(22),
+          child: Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text(
+              'Scan to complete your purchase',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+        leading: IconButton(
+          icon: const Icon(CupertinoIcons.back, color: Colors.white),
+          onPressed: _confirmAndPopBack,
+        ),
+        actions: const [AppBarAliceAction()],
+      ),
+      body: Stack(
+        children: [
+          const Positioned.fill(child: ThemeBackground()),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.only(
+                top: MediaQuery.paddingOf(context).top +
+                    kToolbarHeight +
+                    22 +
+                    6,
+              ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 480),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildTitleSection(appColors),
+                            const SizedBox(height: 8),
+                            if (paymentsEnabled)
+                              Expanded(
+                                child: _buildPaymentCard(
+                                  context,
+                                  viewModel,
+                                  appColors,
+                                ),
+                              )
+                            else
+                              const Spacer(),
+                            if (viewModel.hasError)
+                              _buildErrorBanner(viewModel),
+                            if (viewModel.fcmPaymentPushSuccess == true &&
+                                viewModel.hasError) ...[
+                              const SizedBox(height: 14),
+                              CenteredMaxWidth(
+                                maxWidth: 360,
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blue,
+                                      foregroundColor: Colors.white,
+                                      minimumSize: const Size(
+                                        double.infinity,
+                                        56,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 16,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                      textStyle: const TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    onPressed: _retryingPrint
+                                        ? null
+                                        : () => _retryPrint(viewModel),
+                                    child: Text(
+                                      _retryingPrint
+                                          ? 'Retrying...'
+                                          : 'Retry print',
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            CenteredMaxWidth(
+                              maxWidth: 360,
+                              child: SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blueGrey.shade800,
+                                    foregroundColor: Colors.white,
+                                    minimumSize: const Size(
+                                      double.infinity,
+                                      52,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    textStyle: const TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  onPressed: _navigateToStart,
+                                  child: Text(_backToStartLabel(viewModel)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showGetHelpDialog(ResultViewModel viewModel) async {
@@ -298,187 +513,12 @@ class _ResultScreenState extends State<ResultScreen> {
       value: _viewModel!,
       child: Consumer2<ResultViewModel, AppSettingsManager>(
         builder: (context, viewModel, _, child) {
-          // Approval can arrive via FCM *or* polling (session/payment status). When polling
-          // drives the state, we still need to auto-advance once printing completes.
-          if (!_didNavigateToThankYou &&
-              viewModel.fcmPaymentPushSuccess == true &&
-              !viewModel.hasError &&
-              !viewModel.isPrinting) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              unawaited(_navigateToThankYouIfEligible(viewModel));
-            });
-          }
-          return Scaffold(
-            backgroundColor: Colors.transparent,
-            extendBodyBehindAppBar: true,
-            appBar: AppBar(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              surfaceTintColor: Colors.transparent,
-              forceMaterialTransparency: true,
-              centerTitle: true,
-              title: const Text(
-                'PAY',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 22,
-                ),
-              ),
-              bottom: const PreferredSize(
-                // Give the subtitle enough height on tablets / large text scales
-                // so it never collides with the title.
-                preferredSize: Size.fromHeight(22),
-                child: Padding(
-                  padding: EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    'Scan to complete your purchase',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-              leading: IconButton(
-                icon: const Icon(CupertinoIcons.back, color: Colors.white),
-                onPressed: _confirmAndPopBack,
-              ),
-              actions: const [AppBarAliceAction()],
-            ),
-            body: Stack(
-              children: [
-                const Positioned.fill(
-                  child: ThemeBackground(),
-                ),
-                SafeArea(
-                  top: false,
-                  child: Padding(
-                    // Body is behind the app bar; account for title + subtitle height.
-                    padding: EdgeInsets.only(
-                      top: MediaQuery.paddingOf(context).top +
-                          kToolbarHeight +
-                          22 +
-                          6,
-                    ),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        return Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                          child: Align(
-                            alignment: Alignment.topCenter,
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 480),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  _buildTitleSection(appColors),
-                                  const SizedBox(height: 8),
-                                  if (paymentsEnabled)
-                                    Expanded(
-                                      child: _buildPaymentCard(
-                                        context,
-                                        viewModel,
-                                        appColors,
-                                      ),
-                                    )
-                                  else
-                                    const Spacer(),
-                                  if (viewModel.hasError)
-                                    _buildErrorBanner(viewModel),
-                                  if (viewModel.fcmPaymentPushSuccess == true &&
-                                      viewModel.hasError) ...[
-                                    const SizedBox(height: 14),
-                                    CenteredMaxWidth(
-                                      maxWidth: 360,
-                                      child: SizedBox(
-                                        width: double.infinity,
-                                        child: ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.blue,
-                                            foregroundColor: Colors.white,
-                                            minimumSize: const Size(
-                                              double.infinity,
-                                              56,
-                                            ),
-                                            padding: const EdgeInsets.symmetric(
-                                              vertical: 16,
-                                            ),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(14),
-                                            ),
-                                            textStyle: const TextStyle(
-                                              fontSize: 17,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          onPressed: _retryingPrint
-                                              ? null
-                                              : () => _retryPrint(viewModel),
-                                          child: Text(
-                                            _retryingPrint
-                                                ? 'Retrying...'
-                                                : 'Retry print',
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                  const SizedBox(height: 12),
-                                  CenteredMaxWidth(
-                                    maxWidth: 360,
-                                    child: SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                              Colors.blueGrey.shade800,
-                                          foregroundColor: Colors.white,
-                                          minimumSize: const Size(
-                                            double.infinity,
-                                            52,
-                                          ),
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 14,
-                                          ),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(14),
-                                          ),
-                                          textStyle: const TextStyle(
-                                            fontSize: 17,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        onPressed: _navigateToStart,
-                                        child: Text(
-                                          viewModel.fcmPaymentPushSuccess ==
-                                                      false &&
-                                                  _failureSecondsLeft > 0
-                                              ? 'Back to start (${_failureSecondsLeft}s)'
-                                              : 'Back to start',
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          _scheduleThankYouNavigationIfNeeded(viewModel);
+          return _buildPayScreenBody(
+            context,
+            viewModel,
+            appColors,
+            paymentsEnabled,
           );
         },
       ),
@@ -588,9 +628,6 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
-  /// Minimum height when layout constraints are missing (tests / degenerate).
-  static const double _paymentCardMinHeight = 260;
-
   static const TextStyle _resultBoxTitleStyle = TextStyle(
     fontSize: 26,
     fontWeight: FontWeight.bold,
@@ -656,10 +693,7 @@ class _ResultScreenState extends State<ResultScreen> {
     final totalPrice = viewModel.totalPrice;
     return LayoutBuilder(
       builder: (context, outerConstraints) {
-        final maxH = outerConstraints.maxHeight;
-        final cardHeight = maxH.isFinite && maxH > 0
-            ? maxH.clamp(_paymentCardMinHeight, 2000.0)
-            : 420.0;
+        final cardHeight = computePaymentCardHeight(outerConstraints);
         return Container(
           height: cardHeight,
           clipBehavior: Clip.none,
@@ -680,6 +714,8 @@ class _ResultScreenState extends State<ResultScreen> {
             builder: (context, constraints) {
               final maxQrWidth =
                   (constraints.maxWidth - 12).clamp(240.0, 460.0).toDouble();
+              final status =
+                  ResultPaymentStatusPresentation.fromViewModel(viewModel);
 
               return Column(
                 children: [
@@ -724,13 +760,7 @@ class _ResultScreenState extends State<ResultScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    viewModel.fcmPaymentPushSuccess == false
-                        ? 'Payment failed. Please try again.\nYou will return to start automatically.'
-                        : viewModel.fcmPaymentPushSuccess == true
-                            ? 'Payment confirmed. Printing...'
-                            : (viewModel.isPaymentGatewayEnabled
-                                ? 'Waiting for payment confirmation...'
-                                : 'Waiting for admin approval...'),
+                    status.statusMessage,
                     textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -738,11 +768,7 @@ class _ResultScreenState extends State<ResultScreen> {
                       fontSize: 12,
                       height: 1.3,
                       fontWeight: FontWeight.w600,
-                      color: viewModel.fcmPaymentPushSuccess == false
-                          ? Colors.red.shade200
-                          : (viewModel.fcmPaymentPushSuccess == true
-                              ? Colors.green.shade200
-                              : Colors.white.withValues(alpha: 0.85)),
+                      color: status.statusMessageColor,
                     ),
                   ),
                   if (viewModel.isDeadPollingFallbackVisible) ...[
@@ -787,18 +813,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                       }
                                     }
                                   },
-                            child: _refreshingPolling
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  )
-                                : const Text('Refresh'),
+                            child: _buildRefreshPollingChild(),
                           ),
                         ),
                         const SizedBox(width: 10),

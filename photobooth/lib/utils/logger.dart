@@ -1,5 +1,7 @@
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
+
+import 'app_strings.dart';
 import 'constants.dart';
 
 /// Log levels matching CocoaLumberjack-style logging
@@ -61,7 +63,7 @@ class AppLogger {
     
     for (int i = 0; i < frames.length && i < 5; i++) {
       final frame = frames[i];
-      if (frame.contains('logger.dart')) {
+      if (frame.contains(AppStrings.loggerFileName)) {
         continue; // Skip logger internal frames
       }
       
@@ -84,7 +86,7 @@ class AppLogger {
           functionName = match.group(6);
         }
         
-        if (fileName != null && !fileName.contains('logger.dart')) {
+        if (fileName != null && !fileName.contains(AppStrings.loggerFileName)) {
           break; // Found the actual caller
         }
       }
@@ -94,7 +96,7 @@ class AppLogger {
     if (fileName == null || functionName == null || lineNumber == null) {
       for (int i = 0; i < frames.length && i < 5; i++) {
         final frame = frames[i];
-        if (frame.contains('logger.dart')) continue;
+        if (frame.contains(AppStrings.loggerFileName)) continue;
         
         // Try to extract at least file and line
         final fileMatch = RegExp(r'([^/\\]+\.dart):(\d+)').firstMatch(frame);

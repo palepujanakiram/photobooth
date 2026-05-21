@@ -5,6 +5,7 @@ import 'package:image/image.dart' as img;
 import 'package:camera/camera.dart';
 import '../services/file_helper.dart';
 import 'session_user_image_validation.dart';
+import 'app_strings.dart';
 import 'web_flow_trace.dart';
 
 /// Standard format/size for all captured photos (any camera, any platform).
@@ -224,7 +225,7 @@ class ImageHelper {
   }) async {
     final bytes = await imageFile.readAsBytes();
     if (bytes.isEmpty) {
-      throw Exception('Image file is empty');
+      throw Exception(AppStrings.imageFileEmpty);
     }
     return compute(
       _resizeAndEncodeIsolate,
@@ -328,7 +329,7 @@ class ImageHelper {
     final bytes = await imageFile.readAsBytes();
     WebFlowTrace.log('ENCODE_IMPL', 'readAsBytes_done len=${bytes.length}');
     if (bytes.isEmpty) {
-      throw Exception('Image file is empty');
+      throw Exception(AppStrings.imageFileEmpty);
     }
 
     if (kIsWeb) {
@@ -349,7 +350,7 @@ class ImageHelper {
     try {
       final bytes = await imageFile.readAsBytes();
       if (bytes.isEmpty) {
-        throw Exception('Image file is empty');
+        throw Exception(AppStrings.imageFileEmpty);
       }
 
       final base64String = base64Encode(bytes);
@@ -368,7 +369,7 @@ class ImageHelper {
   static Future<XFile> rotateImage180(XFile imageFile) async {
     final bytes = await imageFile.readAsBytes();
     if (bytes.isEmpty) {
-      throw Exception('Image file is empty');
+      throw Exception(AppStrings.imageFileEmpty);
     }
     final ext = imageFile.path.toLowerCase().split('.').last;
     final encodedBytes = await compute(

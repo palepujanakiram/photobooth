@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
+import '../../utils/app_strings.dart';
 import '../../utils/logger.dart';
 import 'log_truncator.dart';
 import 'payload_sanitizer.dart';
@@ -47,9 +48,9 @@ class ApiRequestFormatter {
 
   String format(RequestOptions options) {
     final buffer = StringBuffer();
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln(AppStrings.apiLogSeparator);
     buffer.writeln('📤 API REQUEST');
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln(AppStrings.apiLogSeparator);
     buffer.writeln('⏱️  Time: ${DateTime.now().toIso8601String()}');
     buffer.writeln('Method: ${options.method}');
     buffer.writeln('URL: ${options.uri}');
@@ -119,7 +120,7 @@ class ApiRequestFormatter {
       }
     }
 
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln(AppStrings.apiLogSeparator);
     return buffer.toString();
   }
 
@@ -139,9 +140,9 @@ class ApiResponseFormatter {
         startTime != null ? DateTime.now().difference(startTime) : null;
 
     final buffer = StringBuffer();
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln(AppStrings.apiLogSeparator);
     buffer.writeln('📥 API RESPONSE');
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln(AppStrings.apiLogSeparator);
     buffer.writeln('⏱️  Time: ${DateTime.now().toIso8601String()}');
     if (duration != null) {
       buffer.writeln(
@@ -202,7 +203,7 @@ class ApiResponseFormatter {
       }
     }
 
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln(AppStrings.apiLogSeparator);
     return buffer.toString();
   }
 
@@ -213,9 +214,9 @@ class ApiResponseFormatter {
         startTime != null ? DateTime.now().difference(startTime) : null;
 
     final buffer = StringBuffer();
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln(AppStrings.apiLogSeparator);
     buffer.writeln('❌ API ERROR');
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln(AppStrings.apiLogSeparator);
     buffer.writeln('⏱️  Time: ${DateTime.now().toIso8601String()}');
     if (duration != null) {
       buffer.writeln(
@@ -292,7 +293,7 @@ class ApiResponseFormatter {
       }
     }
 
-    buffer.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln(AppStrings.apiLogSeparator);
     return buffer.toString();
   }
 
