@@ -33,7 +33,7 @@ jobs:
         run: flutter pub get
 
       - name: Run tests with coverage
-        run: flutter test --coverage
+        run: flutter test --coverage --concurrency=1
 
       - name: Verify coverage report
         run: test -f coverage/lcov.info
