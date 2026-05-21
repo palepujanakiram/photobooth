@@ -14,6 +14,9 @@
 config_version = "0"
 
 exclude_patterns = [
+  # Vendored / path dependency packages (not app code — see photobooth/pubspec.yaml)
+  "**/photobooth/packages/**",
+  "photobooth/packages/**",
   "*_min.*",
   "*-min.*",
   "*.min.*",
