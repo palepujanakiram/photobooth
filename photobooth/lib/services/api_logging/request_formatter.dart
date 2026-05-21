@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:dio/dio.dart';
 
 import '../../utils/app_strings.dart';
@@ -7,39 +5,9 @@ import '../../utils/logger.dart';
 import 'body_log_formatting.dart';
 import 'log_truncator.dart';
 import 'payload_sanitizer.dart';
+import 'payload_size_estimate.dart';
 
-/// Avoid [jsonEncode] of maps containing a huge `userImageUrl` (logging only).
-int? estimatePayloadSizeForLogging(dynamic data) {
-  if (data == null) return null;
-  if (data is String) return data.length;
-  if (data is List<int>) return data.length;
-  if (data is Map) {
-    final slug = data['userImageUrl'];
-    if (slug is String && slug.length > 8192) {
-      var total = 64;
-      for (final e in data.entries) {
-        if (e.key == 'userImageUrl' && e.value is String) {
-          total += (e.value as String).length;
-        } else {
-          try {
-            total += jsonEncode({e.key: e.value}).length;
-          } catch (_) {
-            total += 64;
-          }
-        }
-      }
-      return total;
-    }
-  }
-  if (data is Map || data is List) {
-    try {
-      return jsonEncode(data).length;
-    } catch (_) {
-      return null;
-    }
-  }
-  return null;
-}
+export 'payload_size_estimate.dart' show estimatePayloadSizeForLogging;
 
 class ApiRequestFormatter {
   ApiRequestFormatter(PayloadSanitizer sanitizer, LogTruncator truncator)

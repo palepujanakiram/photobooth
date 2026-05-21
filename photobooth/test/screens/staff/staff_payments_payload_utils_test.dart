@@ -102,4 +102,67 @@ void main() {
       '',
     );
   });
+
+  test('imageUrlFromGeneratedEntry normalizes map and string entries', () {
+    expect(
+      StaffPaymentsPayloadUtils.imageUrlFromGeneratedEntry(
+        {'imageUrl': '/api/img/a.jpg'},
+        sessionId: 'sess-2',
+      ),
+      contains('sessionId=sess-2'),
+    );
+    expect(
+      StaffPaymentsPayloadUtils.imageUrlFromGeneratedEntry('api/img/b.jpg'),
+      isNotNull,
+    );
+    expect(
+      StaffPaymentsPayloadUtils.imageUrlFromGeneratedEntry({'n': 1}),
+      isNull,
+    );
+    expect(
+      StaffPaymentsPayloadUtils.imageUrlFromGeneratedEntry('  '),
+      isNull,
+    );
+  });
+
+  test('resolveSessionImageUrl prefers generatedImages then deep search', () {
+    expect(
+      StaffPaymentsPayloadUtils.resolveSessionImageUrl(
+        {
+          'generatedImages': [
+            {'imageUrl': '/api/img/from-list.jpg'},
+          ],
+        },
+        sessionId: 'sess-3',
+      ),
+      contains('from-list.jpg'),
+    );
+    expect(
+      StaffPaymentsPayloadUtils.resolveSessionImageUrl(
+        {'nested': {'thumbnailUrl': '/api/img/deep.jpg'}},
+        sessionId: 'sess-3',
+      ),
+      contains('deep.jpg'),
+    );
+    expect(
+      StaffPaymentsPayloadUtils.resolveSessionImageUrl(
+        {},
+        sessionId: 'sess-3',
+      ),
+      isNull,
+    );
+  });
+
+  test('userImageFieldFromSession reads user image fields', () {
+    expect(
+      StaffPaymentsPayloadUtils.userImageFieldFromSession({
+        'userImageUrl': 'data:image/jpeg;base64,abc',
+      }),
+      'data:image/jpeg;base64,abc',
+    );
+    expect(
+      StaffPaymentsPayloadUtils.userImageFieldFromSession({}),
+      '',
+    );
+  });
 }
