@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../firebase_options.dart';
+import '../utils/app_strings.dart';
 import '../utils/logger.dart';
 import 'fcm_payment_pending_store.dart';
 
@@ -21,7 +22,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     'background handler messageId=${message.messageId} '
     'dataKeys=[${message.data.keys.join(',')}] '
     'hasNotification=${message.notification != null}',
-    name: 'fotozen.fcm',
+    name: AppStrings.fcmLogChannel,
   );
   if (kDebugMode) {
     AppLogger.debug(

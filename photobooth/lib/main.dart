@@ -128,9 +128,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
     }
   }
 
-  Future<void> _setupPaymentFcmListeners() async {
-    // Register streams before any await so a push is never dropped while we
-    // wait for permission/token (narrow race on slow devices).
+  void _registerPaymentFcmStreams() {
     _fcmOpenedAppSub?.cancel();
     _fcmForegroundSub?.cancel();
 
@@ -188,8 +186,10 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
         }
       },
     );
+  }
 
-    if (kDebugMode) {
+  void _logFcmSetupHints() {
+    if (!kDebugMode) return;
       if (defaultTargetPlatform == TargetPlatform.android) {
         AppLogger.debug(
           'FCM Firebase project (server Admin SDK must match): '
@@ -210,8 +210,9 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
         'or not sent). Android: notification-led pushes skip onMessage while backgrounded unless user '
         'taps the notification; use data + android.priority=high for silent wake.',
       );
-    }
+  }
 
+  Future<void> _requestFcmPermissionAndPersistToken() async {
     final perm = await FirebaseMessaging.instance.requestPermission(
       alert: true,
       announcement: false,
@@ -231,16 +232,14 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
         await FcmTokenStore.save(token);
       }
       if (kDebugMode) {
-        if (token != null) {
-          AppLogger.debug('FCM registration token (use in payment init & server): $token');
-        } else {
-          AppLogger.debug('FCM registration token: null');
-        }
+        AppLogger.debug(
+          token != null
+              ? 'FCM registration token (use in payment init & server): $token'
+              : 'FCM registration token: null',
+        );
       }
     } catch (e) {
-      if (kDebugMode) {
-        AppLogger.debug('FCM getToken failed: $e');
-      }
+      if (kDebugMode) AppLogger.debug('FCM getToken failed: $e');
     }
 
     if (defaultTargetPlatform == TargetPlatform.iOS) {
@@ -250,7 +249,9 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
         sound: false,
       );
     }
+  }
 
+  Future<void> _deliverFcmColdStartMessageIfAny() async {
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (kDebugMode) {
       AppLogger.debug(
@@ -258,9 +259,15 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
       );
     }
     if (initial != null) {
-      // Queue for delivery when the payment UI is ready (avoids post-frame routing races).
       PaymentPushCoordinator.instance.queueRemoteMessage(initial);
     }
+  }
+
+  Future<void> _setupPaymentFcmListeners() async {
+    _registerPaymentFcmStreams();
+    _logFcmSetupHints();
+    await _requestFcmPermissionAndPersistToken();
+    await _deliverFcmColdStartMessageIfAny();
 
     if (mounted) {
       await PaymentPushCoordinator.instance.flushPendingStoragePayment();

@@ -107,16 +107,18 @@ class ApiLoggingInterceptor extends Interceptor {
         'error_message': err.message ?? 'No message',
         'status_code': err.response?.statusCode?.toString() ?? 'none',
         'status_message': err.response?.statusMessage ?? 'none',
-        'response_data': err.response?.data != null
-            ? (kIsWeb
-                ? webSafeResponseDataSnapshot(err.response?.data)
-                : _sanitizer.sanitizeData(err.response?.data))
-            : 'none',
+        'response_data': _errorResponseDataSnapshot(err.response?.data),
         'duration_ms': duration?.inMilliseconds.toString() ?? 'unknown',
         'timestamp': DateTime.now().toIso8601String(),
       },
     );
     
     handler.next(err);
+  }
+
+  Object _errorResponseDataSnapshot(Object? data) {
+    if (data == null) return 'none';
+    if (kIsWeb) return webSafeResponseDataSnapshot(data) ?? 'none';
+    return _sanitizer.sanitizeData(data);
   }
 }

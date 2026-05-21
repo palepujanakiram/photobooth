@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'fcm_payment_pending_store.dart';
 import 'error_reporting/error_reporting_manager.dart';
 import 'whatsapp_push_coordinator.dart';
+import '../utils/app_strings.dart';
 import '../utils/logger.dart';
 import 'session_manager.dart';
 
@@ -337,7 +338,7 @@ class PaymentPushCoordinator {
     developer.log(
       'handleRemoteMessage id=${message.messageId} dataKeys=${message.data.keys.toList()} '
       'title=${message.notification?.title}',
-      name: 'fotozen.fcm',
+      name: AppStrings.fcmLogChannel,
     );
     if (kDebugMode) {
       AppLogger.debug(
@@ -371,7 +372,7 @@ class PaymentPushCoordinator {
         originSessionId != currentSessionId) {
       developer.log(
         'flush dropped pending: session mismatch origin=$originSessionId current=$currentSessionId',
-        name: 'fotozen.fcm',
+        name: AppStrings.fcmLogChannel,
       );
       if (kDebugMode) {
         AppLogger.debug(
@@ -415,11 +416,11 @@ class PaymentPushCoordinator {
       developer.log(
         'flush dropped pending: type="${payload.type}" title="${payload.title}" '
         'body="${payload.body}" dataKeys=${data.keys.toList()}',
-        name: 'fotozen.fcm',
+        name: AppStrings.fcmLogChannel,
       );
       if (kDebugMode) {
         AppLogger.debug(
-          'FCM flush: stored pending is not a payment payload; see fotozen.fcm log',
+          'FCM flush: stored pending is not a payment payload; see ${AppStrings.fcmLogChannel} log',
         );
       }
       return;
@@ -488,7 +489,9 @@ class PaymentPushCoordinator {
 
   void _showGlobalPaymentDialog(PaymentPushPayload payload, BuildContext ctx) {
     final title = payload.title ??
-        (payload.isApproved ? 'Payment confirmed' : 'Payment issue');
+        (payload.isApproved
+            ? AppStrings.paymentConfirmedTitle
+            : AppStrings.paymentNotCompletedTitle);
     final body = payload.body ??
         (payload.isApproved
             ? 'Your payment was approved. Open the payment screen to print.'

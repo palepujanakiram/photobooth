@@ -6,6 +6,11 @@ import 'package:flutter/material.dart';
 
 import '../../utils/process_rss.dart';
 
+String _formatRssMegabytes(double? mb) {
+  if (mb != null) return '${mb.toStringAsFixed(1)} MB';
+  return kIsWeb ? 'n/a (web)' : 'n/a';
+}
+
 /// Live process RSS (MB) + sparkline for spotting camera-related memory spikes.
 class DebugRamMonitorOverlay extends StatefulWidget {
   const DebugRamMonitorOverlay({super.key});
@@ -81,9 +86,7 @@ class _DebugRamMonitorOverlayState extends State<DebugRamMonitorOverlay> {
             ),
             const SizedBox(height: 2),
             Text(
-              mb != null
-                  ? '${mb.toStringAsFixed(1)} MB'
-                  : (kIsWeb ? 'n/a (web)' : 'n/a'),
+              _formatRssMegabytes(mb),
               style: const TextStyle(
                 color: Colors.limeAccent,
                 fontSize: 13,

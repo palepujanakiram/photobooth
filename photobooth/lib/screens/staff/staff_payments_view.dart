@@ -7,9 +7,10 @@ import '../../services/staff_api_service.dart';
 import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/print_service.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
-import '../../utils/secure_image_url.dart';
+import 'staff_payments_payload_utils.dart';
 import '../../views/widgets/app_colors.dart';
 
 class StaffPaymentsScreen extends StatefulWidget {
@@ -38,158 +39,44 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     _refresh();
   }
 
-  static String _pickString(Map<String, dynamic> p, List<String> keys) {
-    for (final k in keys) {
-      final v = p[k];
-      if (v == null) continue;
-      final s = v.toString().trim();
-      if (s.isNotEmpty) return s;
-    }
-    return '';
-  }
-
   static String _paymentId(Map<String, dynamic> p) =>
-      _pickString(p, const ['id', 'paymentId', 'payment_id']);
+      StaffPaymentsPayloadUtils.pickString(
+        p,
+        const ['id', 'paymentId', 'payment_id'],
+      );
 
   static String _paymentStatus(Map<String, dynamic> p) =>
-      _pickString(p, const ['status', 'paymentStatus', 'payment_status'])
-          .toUpperCase();
+      StaffPaymentsPayloadUtils.pickString(
+        p,
+        const ['status', 'paymentStatus', 'payment_status'],
+      ).toUpperCase();
 
   static String _sessionId(Map<String, dynamic> p) {
-    // Common flat keys.
-    final direct = _pickString(p, const ['sessionId', 'session_id']);
+    final direct = StaffPaymentsPayloadUtils.pickString(
+      p,
+      const ['sessionId', 'session_id'],
+    );
     if (direct.isNotEmpty) return direct;
 
-    // Sometimes the payment embeds a session object.
     final sessionObj = p['session'];
     if (sessionObj is Map) {
       final m = Map<String, dynamic>.from(sessionObj);
-      final embedded = _pickString(m, const ['id', 'sessionId', 'session_id']);
+      final embedded = StaffPaymentsPayloadUtils.pickString(
+        m,
+        const ['id', 'sessionId', 'session_id'],
+      );
       if (embedded.isNotEmpty) return embedded;
     }
 
-    // Last resort: search nested payload for a session id.
-    final any = _deepFindFirstValueForKeys(
+    final any = StaffPaymentsPayloadUtils.deepFindFirstValueForKeys(
       p,
       const ['sessionId', 'session_id', 'sessionID', 'session'],
     );
     return any?.trim() ?? '';
   }
 
-  static String? _deepFindFirstValueForKeys(
-    dynamic node,
-    List<String> keys, {
-    int depth = 0,
-  }) {
-    if (node == null || depth > 5) return null;
-    if (node is Map) {
-      final m = Map<String, dynamic>.from(node);
-      for (final k in keys) {
-        final v = m[k];
-        if (v is String && v.trim().isNotEmpty) return v.trim();
-        // If the value is an object, try pulling id from it.
-        if ((k == 'session' || k.toLowerCase() == 'session') && v is Map) {
-          final id = Map<String, dynamic>.from(v)['id'];
-          if (id is String && id.trim().isNotEmpty) return id.trim();
-        }
-      }
-      for (final v in m.values) {
-        final found =
-            _deepFindFirstValueForKeys(v, keys, depth: depth + 1);
-        if (found != null) return found;
-      }
-      return null;
-    }
-    if (node is List) {
-      for (final e in node) {
-        final found =
-            _deepFindFirstValueForKeys(e, keys, depth: depth + 1);
-        if (found != null) return found;
-      }
-    }
-    return null;
-  }
-
-  static String _baseUrlNoTrailingSlash() {
-    const b = AppConstants.kBaseUrl;
-    return b.endsWith('/') ? b.substring(0, b.length - 1) : b;
-  }
-
-  static String _absolutizeIfRelative(String url) {
-    final trimmed = url.trim();
-    if (trimmed.isEmpty) return '';
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      return trimmed;
-    }
-    // data:image/... is already absolute in a sense (inline image).
-    if (trimmed.startsWith('data:image')) return trimmed;
-    final base = _baseUrlNoTrailingSlash();
-    if (trimmed.startsWith('/')) return '$base$trimmed';
-    return '$base/$trimmed';
-  }
-
-  static bool _looksLikeUrl(String s) {
-    final t = s.trim();
-    if (t.isEmpty) return false;
-    if (t.startsWith('http://') || t.startsWith('https://')) return true;
-    if (t.startsWith('/')) return true;
-    // Common relative API/img paths.
-    if (t.startsWith('api/')) return true;
-    if (t.startsWith('api/img/')) return true;
-    if (t.startsWith('/api/')) return true;
-    return false;
-  }
-
-  static String _normalizeImageUrl(String raw, {String? sessionId}) {
-    final t = raw.trim();
-    if (t.isEmpty) return '';
-    if (t.startsWith('data:image')) return t;
-    // Make relative URLs absolute and attach sessionId for protected /api/img paths.
-    final absolute = _absolutizeIfRelative(t);
-    return SecureImageUrl.withSessionId(absolute, sessionId: sessionId);
-  }
-
-  static String? _deepFindFirstUrl(dynamic node, {int depth = 0}) {
-    if (node == null || depth > 4) return null;
-    if (node is String) {
-      final t = node.trim();
-      if (_looksLikeUrl(t)) return t;
-      return null;
-    }
-    if (node is Map) {
-      final m = Map<String, dynamic>.from(node);
-      // Prefer likely keys first.
-      for (final k in const [
-        'imageUrl',
-        'image_url',
-        'url',
-        'photoUrl',
-        'photo_url',
-        'thumbnailUrl',
-        'thumbUrl',
-        'previewUrl',
-      ]) {
-        final v = m[k];
-        if (v is String && _looksLikeUrl(v)) return v;
-      }
-      for (final v in m.values) {
-        final found = _deepFindFirstUrl(v, depth: depth + 1);
-        if (found != null) return found;
-      }
-      return null;
-    }
-    if (node is List) {
-      for (final e in node) {
-        final found = _deepFindFirstUrl(e, depth: depth + 1);
-        if (found != null) return found;
-      }
-    }
-    return null;
-  }
-
   static String _paymentThumbUrlFromPayload(Map<String, dynamic> p) {
-    // Try common keys first (we don't know exact backend shape yet).
-    return _pickString(p, const [
+    return StaffPaymentsPayloadUtils.pickString(p, const [
       'thumbnailUrl',
       'thumbUrl',
       'imageUrl',
@@ -205,7 +92,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
 
   static String _paymentImageUrlForPrintFromPayload(Map<String, dynamic> p) {
     // Prefer explicit image URL keys (over thumbnails).
-    return _pickString(p, const [
+    return StaffPaymentsPayloadUtils.pickString(p, const [
       'imageUrl',
       'image_url',
       'generatedImageUrl',
@@ -219,7 +106,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     final fromPaymentRaw = _paymentImageUrlForPrintFromPayload(payment).trim();
     final sid = _sessionId(payment).trim();
     if (fromPaymentRaw.isNotEmpty) {
-      return _normalizeImageUrl(fromPaymentRaw, sessionId: sid.isEmpty ? null : sid);
+      return StaffPaymentsPayloadUtils.normalizeImageUrl(fromPaymentRaw, sessionId: sid.isEmpty ? null : sid);
     }
 
     if (sid.isEmpty) return null;
@@ -240,17 +127,17 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
                 '')
             .toString()
             .trim();
-        if (u.isNotEmpty) return _normalizeImageUrl(u, sessionId: sid);
+        if (u.isNotEmpty) return StaffPaymentsPayloadUtils.normalizeImageUrl(u, sessionId: sid);
       }
       if (first is String) {
         final u = first.trim();
-        if (u.isNotEmpty) return _normalizeImageUrl(u, sessionId: sid);
+        if (u.isNotEmpty) return StaffPaymentsPayloadUtils.normalizeImageUrl(u, sessionId: sid);
       }
     }
 
     // Last resort: search the session payload for *any* URL-like string.
-    final any = _deepFindFirstUrl(raw);
-    if (any != null) return _normalizeImageUrl(any, sessionId: sid);
+    final any = StaffPaymentsPayloadUtils.deepFindFirstUrl(raw);
+    if (any != null) return StaffPaymentsPayloadUtils.normalizeImageUrl(any, sessionId: sid);
 
     return null;
   }
@@ -280,14 +167,14 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
               .toString()
               .trim();
           if (u.isNotEmpty) {
-            setState(() => _sessionThumbUrlCache[sid] = _normalizeImageUrl(u, sessionId: sid));
+            setState(() => _sessionThumbUrlCache[sid] = StaffPaymentsPayloadUtils.normalizeImageUrl(u, sessionId: sid));
             return;
           }
         }
         if (first is String) {
           final u = first.trim();
           if (u.isNotEmpty) {
-            setState(() => _sessionThumbUrlCache[sid] = _normalizeImageUrl(u, sessionId: sid));
+            setState(() => _sessionThumbUrlCache[sid] = StaffPaymentsPayloadUtils.normalizeImageUrl(u, sessionId: sid));
             return;
           }
         }
@@ -311,7 +198,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     final raw = payloadUrl.trim().isNotEmpty
         ? payloadUrl.trim()
         : (_sessionThumbUrlCache[sid] ?? '');
-    final resolved = _normalizeImageUrl(raw, sessionId: sid.isEmpty ? null : sid);
+    final resolved = StaffPaymentsPayloadUtils.normalizeImageUrl(raw, sessionId: sid.isEmpty ? null : sid);
 
     Widget placeholder() => Container(
           width: 54,
@@ -335,7 +222,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     }
 
     // Base64 data URL or bare base64.
-    if (resolved.startsWith('data:image')) {
+    if (resolved.startsWith(AppStrings.dataImagePrefix)) {
       try {
         final uriData = UriData.parse(resolved);
         final bytes = uriData.contentAsBytes();
@@ -703,7 +590,10 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
           final id = _paymentId(p);
           final status = _paymentStatus(p);
           final sid = _sessionId(p);
-          final amount = _pickString(p, const ['amount', 'total', 'price']);
+          final amount = StaffPaymentsPayloadUtils.pickString(
+            p,
+            const ['amount', 'total', 'price'],
+          );
           final thumb = _paymentThumbUrlFromPayload(p);
 
           return Card(

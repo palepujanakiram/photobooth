@@ -76,6 +76,79 @@ String _beholdHeroMessage({
   return '';
 }
 
+/// Vertical space reserved above the behold card when the footer is external.
+String _transformedLoadingMessage(PhotoGenerateViewModel viewModel) {
+  if (viewModel.progressMessage.isNotEmpty) {
+    return viewModel.progressMessage;
+  }
+  if (viewModel.isLoadingMore) return 'Adding new style...';
+  return 'Creating...';
+}
+
+/// Layout inputs for [_PhotoGenerateViewState._buildGeneratedOnlyLayout] (Sonar S107).
+class _GeneratedOnlyLayoutLayout {
+  const _GeneratedOnlyLayoutLayout({
+    required this.screenWidth,
+    required this.maxRowHeight,
+    required this.gap,
+    required this.isGeneratingOrLoading,
+    required this.fixedFooterOutside,
+  });
+
+  final double screenWidth;
+  final double maxRowHeight;
+  final double gap;
+  final bool isGeneratingOrLoading;
+  final bool fixedFooterOutside;
+}
+
+double _computeBeholdMaxRowHeight({
+  required bool fixedFooterOutside,
+  required bool singleResultReady,
+  required double viewportHeight,
+  required double interiorChromeAboveCard,
+  required bool isLandscape,
+  required double reservedAboveRow,
+  required double reservedBelowRow,
+}) {
+  if (fixedFooterOutside && singleResultReady) {
+    return math.max(
+      200.0,
+      (viewportHeight - interiorChromeAboveCard) *
+          AppConstants.kBeholdResultCardSlotHeightFraction,
+    );
+  }
+  final heightFraction = isLandscape ? 0.80 : 0.68;
+  final maxRowCap = isLandscape ? 1080.0 : 920.0;
+  final rowBudget = math.min(
+    maxRowCap,
+    math.min(
+      viewportHeight * heightFraction,
+      viewportHeight -
+          reservedAboveRow -
+          reservedBelowRow -
+          interiorChromeAboveCard,
+    ),
+  );
+  return math.max(120.0, rowBudget);
+}
+
+double _interiorChromeAboveCardHeight({
+  required bool fixedFooterOutside,
+  required double? viewportHeight,
+  required bool hasImages,
+  required bool isGeneratingOrLoading,
+}) {
+  if (!fixedFooterOutside ||
+      viewportHeight == null ||
+      !viewportHeight.isFinite) {
+    return 0.0;
+  }
+  if (hasImages && !isGeneratingOrLoading) return 118.0;
+  if (isGeneratingOrLoading) return 88.0;
+  return 0.0;
+}
+
 /// Column count for the behold grid: 1, 2, or 3 columns by slot count.
 int _beholdGridColumnCount(int totalSlots) {
   if (totalSlots <= 1) return 1;
@@ -1010,64 +1083,44 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     // card inside the same Expanded slot. Reserve vertical budget for them so the
     // Column does not overflow short viewports (kiosk / embedded browser).
     final bool hasImages = viewModel.generatedImages.isNotEmpty;
-    final double interiorChromeAboveCard = (fixedFooterOutside &&
-            viewportHeight != null &&
-            viewportHeight.isFinite)
-        ? (hasImages && !isGeneratingOrLoading
-            ? 118.0
-            : isGeneratingOrLoading
-                ? 88.0
-                : 0.0)
-        : 0.0;
+    final double interiorChromeAboveCard = _interiorChromeAboveCardHeight(
+      fixedFooterOutside: fixedFooterOutside,
+      viewportHeight: viewportHeight,
+      hasImages: hasImages,
+      isGeneratingOrLoading: isGeneratingOrLoading,
+    );
     final bool singleResultReady =
         hasImages && !isGeneratingOrLoading && viewModel.generatedImages.length <= 1;
 
-    final double maxRowHeight;
-    if (fixedFooterOutside && singleResultReady) {
-      // Footer is outside this column; vh is the Expanded slot — use almost all of it.
-      maxRowHeight = math.max(
-        200.0,
-        (vh - interiorChromeAboveCard) *
-            AppConstants.kBeholdResultCardSlotHeightFraction,
-      );
-    } else {
-      // Landscape / large displays: let the photo row use more vertical space (kiosk).
-      final double heightFraction = isLandscape ? 0.80 : 0.68;
-      final double maxRowCap = isLandscape ? 1080.0 : 920.0;
-      final double rowBudget = math.min(
-        maxRowCap,
-        math.min(
-          vh * heightFraction,
-          vh -
-              reservedAboveRow -
-              reservedBelowRow -
-              interiorChromeAboveCard,
-        ),
-      );
-      maxRowHeight = math.max(120.0, rowBudget);
-    }
-    return _buildGeneratedOnlyLayout(
-      context,
-      viewModel,
-      appColors,
+    final layout = _GeneratedOnlyLayoutLayout(
       screenWidth: screenWidth,
-      maxRowHeight: maxRowHeight,
+      maxRowHeight: _computeBeholdMaxRowHeight(
+        fixedFooterOutside: fixedFooterOutside,
+        singleResultReady: singleResultReady,
+        viewportHeight: vh,
+        interiorChromeAboveCard: interiorChromeAboveCard,
+        isLandscape: isLandscape,
+        reservedAboveRow: reservedAboveRow,
+        reservedBelowRow: reservedBelowRow,
+      ),
       gap: cardGap,
       isGeneratingOrLoading: isGeneratingOrLoading,
       fixedFooterOutside: fixedFooterOutside,
     );
+    return _buildGeneratedOnlyLayout(context, viewModel, appColors, layout);
   }
 
   Widget _buildGeneratedOnlyLayout(
     BuildContext context,
     PhotoGenerateViewModel viewModel,
-    AppColors appColors, {
-    required double screenWidth,
-    required double maxRowHeight,
-    required double gap,
-    required bool isGeneratingOrLoading,
-    required bool fixedFooterOutside,
-  }) {
+    AppColors appColors,
+    _GeneratedOnlyLayoutLayout layout,
+  ) {
+    final screenWidth = layout.screenWidth;
+    final maxRowHeight = layout.maxRowHeight;
+    final gap = layout.gap;
+    final isGeneratingOrLoading = layout.isGeneratingOrLoading;
+    final fixedFooterOutside = layout.fixedFooterOutside;
     final isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
     final isLoadingMore = viewModel.isLoadingMore;
     final images = viewModel.generatedImages;
@@ -1211,13 +1264,11 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       scaledH,
     );
 
-    final message = isGeneratingOrLoading
-        ? (isLoadingMore
-            ? 'Adding your new style...'
-            : 'Please wait while we create your masterpiece')
-        : hasImages
-            ? 'Your masterpiece is ready'
-            : '';
+    final message = _beholdHeroMessage(
+      isGeneratingOrLoading: isGeneratingOrLoading,
+      isLoadingMore: isLoadingMore,
+      hasImages: hasImages,
+    );
 
     return Center(
       child: Column(
@@ -1908,9 +1959,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     PhotoGenerateViewModel viewModel,
     AppColors appColors,
   ) {
-    final message = viewModel.progressMessage.isNotEmpty
-        ? viewModel.progressMessage
-        : (viewModel.isLoadingMore ? 'Adding new style...' : 'Creating...');
+    final message = _transformedLoadingMessage(viewModel);
     final underlay = _generatingHeroUnderlay(viewModel);
     final hint = viewModel.selectedHeroStampId != null &&
             underlay == null
