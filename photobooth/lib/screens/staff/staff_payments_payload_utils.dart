@@ -3,9 +3,7 @@ import '../../utils/constants.dart';
 import '../../utils/secure_image_url.dart';
 
 /// JSON / URL helpers for staff payment list payloads (extracted for Sonar S3776).
-class StaffPaymentsPayloadUtils {
-  StaffPaymentsPayloadUtils._();
-
+abstract final class StaffPaymentsPayloadUtils {
   static String baseUrlNoTrailingSlash() {
     const b = AppConstants.kBaseUrl;
     return b.endsWith('/') ? b.substring(0, b.length - 1) : b;

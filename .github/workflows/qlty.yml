@@ -38,6 +38,9 @@ jobs:
       - name: Verify coverage report
         run: test -f coverage/lcov.info
 
+      - name: Verify in-scope coverage (100% gate)
+        run: dart run tool/verify_coverage_scope.dart
+
       - name: Upload coverage to Qlty
         uses: qltysh/qlty-action/coverage@v2
         with:

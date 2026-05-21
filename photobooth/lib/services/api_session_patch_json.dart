@@ -35,14 +35,14 @@ String stripEchoedUserImageUrlField(String raw) {
   final colon = raw.indexOf(':', keyIdx + key.length);
   if (colon < 0) return raw;
 
-  final valueStart = skipLeadingWhitespace(raw, colon + 1);
+  final valueStart = ApiJsonScanUtils.skipLeadingWhitespace(raw, colon + 1);
   if (valueStart >= raw.length || raw[valueStart] != '"') return raw;
 
   final valueCloseIdx = jsonStringCloseQuoteIndex(raw, valueStart);
   if (valueCloseIdx < 0) return raw;
 
-  final removeStart = indexOfLeadingCommaBefore(raw, keyIdx);
-  final removeEnd = endIndexAfterJsonValue(raw, valueCloseIdx);
+  final removeStart = ApiJsonScanUtils.indexOfLeadingCommaBefore(raw, keyIdx);
+  final removeEnd = ApiJsonScanUtils.endIndexAfterJsonValue(raw, valueCloseIdx);
   return raw.substring(0, removeStart) + raw.substring(removeEnd);
 }
 

@@ -24,7 +24,11 @@ Uint8List cameraImageToJpegBytes(CameraImage image) {
 
   final out = img.Image(width: width, height: height);
 
-  int clamp(int v) => v < 0 ? 0 : (v > 255 ? 255 : v);
+  int clampChannel(int v) {
+    if (v < 0) return 0;
+    if (v > 255) return 255;
+    return v;
+  }
 
   for (int y = 0; y < height; y++) {
     final yRowOffset = yRowStride * y;
@@ -41,7 +45,7 @@ Uint8List cameraImageToJpegBytes(CameraImage image) {
       final g = (yVal - 0.344136 * uVal - 0.714136 * vVal).round();
       final b = (yVal + 1.772 * uVal).round();
 
-      out.setPixelRgb(x, y, clamp(r), clamp(g), clamp(b));
+      out.setPixelRgb(x, y, clampChannel(r), clampChannel(g), clampChannel(b));
     }
   }
 
