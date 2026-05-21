@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'theme_model.dart';
 import '../../models/kiosk_frame_model.dart';
 import '../../services/theme_manager.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
@@ -305,7 +306,7 @@ class ThemeViewModel extends ChangeNotifier {
 
       return true;
     } on TimeoutException {
-      _errorMessage = 'Request took too long. Please check your connection and try again.';
+      _errorMessage = AppStrings.requestTimeoutConnection;
       return false;
     } on ApiException catch (e) {
       _errorMessage = e.message;
@@ -355,7 +356,7 @@ class ThemeViewModel extends ChangeNotifier {
       return true;
     } on TimeoutException {
       _errorMessage =
-          'Request took too long. Please check your connection and try again.';
+          AppStrings.requestTimeoutConnection;
       return false;
     } on ApiException catch (e) {
       _errorMessage = e.message;
@@ -401,7 +402,7 @@ class ThemeViewModel extends ChangeNotifier {
       return true;
     } on TimeoutException {
       _errorMessage =
-          'Request took too long. Please check your connection and try again.';
+          AppStrings.requestTimeoutConnection;
       return false;
     } on ApiException catch (e) {
       _errorMessage = e.message;

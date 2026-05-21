@@ -1,8 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart' show compute, kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:uuid/uuid.dart';
 import '../models/app_settings_model.dart';
 import '../models/kiosk_frame_model.dart';
@@ -12,24 +11,20 @@ import '../models/parallel_generation_result.dart';
 import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/exceptions.dart';
-import '../utils/app_config.dart';
 import '../utils/constants.dart';
 import '../utils/session_user_image_validation.dart';
-import '../utils/app_strings.dart';
 import '../utils/logger.dart';
 import 'api_client.dart';
 import 'api_dio_errors.dart';
 import 'api_http_response.dart';
 import 'generation_api_errors.dart';
-import 'client_identification.dart';
 import 'kiosk_manager.dart';
 import 'session_manager.dart';
 import 'api_image_url_utils.dart';
 import 'api_service_legacy_media.dart';
-import 'api_session_patch_json.dart';
 import 'api_service_dio.dart';
-import 'api_sse_dispatch.dart';
-import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
+import 'api_parallel_sse_consumer.dart';
+import 'api_service_helpers.dart';
 
 class ApiService {
   late final ApiClient _apiClient;
@@ -241,66 +236,15 @@ class ApiService {
   /// Returns only themes where isActive is true
   Future<List<ThemeModel>> getThemes() async {
     try {
-      // Kiosk-aware themes: pass kiosk identifiers when available.
-      // Backend may ignore these params if not implemented; safe no-op.
-      final kioskCode = (await KioskManager().getKioskCode())?.trim().toUpperCase();
-      final kioskId = SessionManager().currentSession?.kioskId;
-
-      final qp = <String, dynamic>{};
-      if (kioskCode != null && kioskCode.isNotEmpty) {
-        qp['kioskCode'] = kioskCode;
-      }
-      if (kioskId != null && kioskId.isNotEmpty) {
-        qp['kioskId'] = kioskId;
-      }
-
+      final qp = await kioskThemesQueryParameters();
       final r = await _dio.get<dynamic>(
         '/api/themes',
         queryParameters: qp.isEmpty ? null : qp,
-        options: Options(
-          responseType: ResponseType.json,
-        ),
+        options: Options(responseType: ResponseType.json),
       );
-
-      final data = r.data;
-      if (data is List) {
-        return data
-            .whereType<Map>()
-            .map((e) => ThemeModel.fromJson(Map<String, dynamic>.from(e)))
-            .toList();
-      }
-
-      throw ApiException('Unexpected themes response from API');
-      // Filter themes where isActive is true
-      // return themes.where((theme) => theme.isActive == true).toList();
+      return parseThemesResponseBody(r.data);
     } on DioException catch (e) {
-      // Check for CORS or network errors (common on web)
-      if (kIsWeb &&
-          (e.type == DioExceptionType.connectionError ||
-              e.type == DioExceptionType.unknown)) {
-        final errorMsg = e.message ?? '';
-        if (errorMsg.contains('XMLHttpRequest') ||
-            errorMsg.contains('CORS') ||
-            errorMsg.contains(AppStrings.failedToFetch) ||
-            errorMsg.contains('NetworkError')) {
-          throw ApiException(
-            'CORS Error: The API server at ${AppConstants.kBaseUrl} is not configured to allow requests from this origin. '
-            'Please contact the server administrator to add CORS headers allowing requests from your domain. '
-            'Error details: ${e.message ?? AppStrings.unknownNetworkError}',
-          );
-        }
-      }
-
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout ||
-          e.type == DioExceptionType.connectionError) {
-        throw ApiException(
-            'Connection error occurred: ${e.message ?? AppConstants.kErrorNetwork}');
-      }
-      throw ApiException(
-        'Failed to fetch themes: ${e.message}',
-        e.response?.statusCode,
-      );
+      rethrowThemesFetchDioError(e);
     } catch (e) {
       if (e is ApiException) {
         rethrow;
@@ -544,37 +488,18 @@ class ApiService {
     Map<String, dynamic>? framingMetadata,
   }) async {
     try {
-      final body = <String, dynamic>{};
-
-      if (userImageUrl != null) {
-        body['userImageUrl'] = userImageUrl;
-      }
-      if (selectedThemeId != null) {
-        body['selectedThemeId'] = selectedThemeId;
-      }
-      if (includeSelectedFrameId) {
-        body['selectedFrameId'] = selectedFrameId;
-      }
-      if (personCount != null) {
-        body['personCount'] = personCount;
-      }
-      if (framingMetadata != null && framingMetadata.isNotEmpty) {
-        body['framingMetadata'] = framingMetadata;
-      }
-
       if (userImageUrl != null) {
         SessionUserImageValidation.assertValidForSessionPatch(userImageUrl);
       }
+      final body = buildSessionPatchBody(
+        userImageUrl: userImageUrl,
+        selectedThemeId: selectedThemeId,
+        includeSelectedFrameId: includeSelectedFrameId,
+        selectedFrameId: selectedFrameId,
+        personCount: personCount,
+        framingMetadata: framingMetadata,
+      );
 
-      // Ensure at least one field is provided
-      if (body.isEmpty) {
-        throw ApiException(
-            'At least one of userImageUrl, selectedThemeId, or selectedFrameId '
-            '(with includeSelectedFrameId) must be provided');
-      }
-
-      // Plain text + [compute] so a multi‑MB echoed `userImageUrl` is not jsonDecoded
-      // on the UI thread (was freezing Chrome right after PATCH 200).
       final httpResponse = await _dio.patch<String>(
         '/api/sessions/$sessionId',
         data: body,
@@ -584,15 +509,7 @@ class ApiService {
         ),
       );
 
-      final text = httpResponse.data;
-      if (text == null || text.isEmpty) {
-        throw ApiException('Empty session response');
-      }
-      // Web: [compute] does not use a worker — strip huge fields first, then decode here.
-      if (kIsWeb) {
-        return parseSessionPatchResponseJson(text);
-      }
-      return await compute(parseSessionPatchResponseJson, text);
+      return decodeSessionPatchResponseText(httpResponse.data ?? '');
     } on DioException catch (e) {
       _handleWebNetworkError(e);
 
@@ -754,52 +671,10 @@ class ApiService {
           throw ApiException('No image URL in response');
         }
 
-        // Log additional response metadata (optional, for debugging/analytics)
+        logGenerateImageResponseMetadata(response);
         final runId = response['runId'] as String?;
-        final framing = response['framing'] as Map<String, dynamic>?;
-        final timing = response['timing'] as Map<String, dynamic>?;
-        final faceVerification =
-            response['faceVerification'] as Map<String, dynamic>?;
-        final evaluation = response['evaluation'] as Map<String, dynamic>?;
-
-        if (runId != null || framing != null || timing != null) {
-          AppLogger.debug('📊 Generation metadata:');
-          if (runId != null) {
-            AppLogger.debug('   Run ID: $runId');
-          }
-          if (framing != null) {
-            AppLogger.debug(
-                '   Framing: ${framing['personCount']} person(s), ${framing['orientation']}, ${framing['zoomLevel']}, ${framing['aspectRatio']}');
-          }
-          if (timing != null) {
-            final totalMs = timing['totalMs'] as int?;
-            final generationMs = timing['generationMs'] as int?;
-            final upscaleMs = timing['upscaleMs'] as int?;
-            if (totalMs != null) {
-              AppLogger.debug('   Total duration: ${totalMs}ms');
-              if (generationMs != null) {
-                AppLogger.debug('   Generation: ${generationMs}ms');
-              }
-              if (upscaleMs != null && upscaleMs > 0) {
-                AppLogger.debug('   Upscale: ${upscaleMs}ms');
-              }
-            }
-          }
-          if (faceVerification != null) {
-            AppLogger.debug(
-                '   Face verification: ${faceVerification['originalCount']} original, ${faceVerification['generatedCount']} generated, match: ${faceVerification['match']}');
-          }
-          if (evaluation != null) {
-            AppLogger.debug(
-                '   Evaluation: composite=${evaluation['compositeScore']}, identity=${evaluation['identityScore']}, prompt=${evaluation['promptScore']}');
-          }
-        }
-
-        // Backend may return a relative path (e.g. `/api/img/generated/...`); resolve
-        // against [AppConstants.kBaseUrl] so [NetworkImage] / Dio always get an absolute URI.
         final resolvedImageUrl = resolveApiImageUrl(imageUrl);
 
-        // Just return the URL - no XFile wrapper, no download
         return TransformedImageModel(
           id: _uuid.v4(),
           imageUrl: resolvedImageUrl,
@@ -888,20 +763,11 @@ class ApiService {
 
     final dio = _createAiGenerationDio(sseAccept: true);
 
-    final slots = List<String>.filled(count, '');
-    final qualityByIndex = <int, double>{};
-    final completer = Completer<ParallelGenerationResult>();
-
     try {
       final response = await dio.get(
         '/api/generate-stream-parallel',
-        queryParameters: {
-          'sessionId': sessionId,
-          'count': count,
-        },
-        options: Options(
-          responseType: ResponseType.stream,
-        ),
+        queryParameters: {'sessionId': sessionId, 'count': count},
+        options: Options(responseType: ResponseType.stream),
       );
 
       final body = response.data;
@@ -909,71 +775,12 @@ class ApiService {
         throw ApiException('Unexpected response for parallel generation stream');
       }
 
-      final buffer = StringBuffer();
-      try {
-        await for (final chunk in utf8.decoder.bind(body.stream)) {
-          buffer.write(chunk);
-          while (true) {
-            final current = buffer.toString();
-            final sep = current.indexOf('\n\n');
-            if (sep < 0) break;
-            var block = current.substring(0, sep);
-            final remaining = current.substring(sep + 2);
-            buffer
-              ..clear()
-              ..write(remaining);
-            if (block.endsWith('\r')) {
-              block = block.substring(0, block.length - 1);
-            }
-            dispatchParallelSseBlock(
-              block,
-              slots: slots,
-              qualityByIndex: qualityByIndex,
-              completer: completer,
-              onProgress: onProgress,
-              onSseEvent: onSseEvent,
-            );
-            if (completer.isCompleted) {
-              return await completer.future;
-            }
-          }
-        }
-        final remaining = buffer.toString();
-        if (remaining.trim().isNotEmpty) {
-          dispatchParallelSseBlock(
-            remaining,
-            slots: slots,
-            qualityByIndex: qualityByIndex,
-            completer: completer,
-            onProgress: onProgress,
-            onSseEvent: onSseEvent,
-          );
-        }
-      } catch (e) {
-        if (!completer.isCompleted) {
-          completer.completeError(
-            ApiException('Parallel generation stream failed: $e'),
-          );
-        }
-      }
-
-      if (!completer.isCompleted) {
-        if (slots.any((u) => u.isNotEmpty)) {
-          completer.complete(
-            ParallelGenerationResult(
-              imageUrlsBySlot: List<String>.from(slots),
-              success: true,
-              qualityScoreByIndex: Map<int, double>.from(qualityByIndex),
-            ),
-          );
-        } else {
-          completer.completeError(
-            ApiException('Generation ended without any image'),
-          );
-        }
-      }
-
-      return await completer.future;
+      return consumeParallelGenerationSseStream(
+        body,
+        slotCount: count,
+        onProgress: onProgress,
+        onSseEvent: onSseEvent,
+      );
     } on DioException catch (e) {
       _throwMappedApiException(e);
     }
