@@ -20,6 +20,7 @@ import '../utils/logger.dart';
 import 'api_client.dart';
 import 'file_helper.dart';
 import 'api_dio_errors.dart';
+import 'api_http_response.dart';
 import 'generation_api_errors.dart';
 import 'api_logging_interceptor.dart';
 import 'alice_inspector.dart';
@@ -259,28 +260,15 @@ class ApiService {
         ),
       );
       final data = r.data;
-      if (r.statusCode != null && r.statusCode! >= 400) {
-        if (data is Map<String, dynamic>) {
-          throw ApiException(
-            data['error']?.toString() ??
-                data['message']?.toString() ??
-                'Failed to create share link (${r.statusCode})',
-            r.statusCode,
-          );
-        }
-        throw ApiException(
-          'Failed to create share link (${r.statusCode}): ${data ?? ''}',
-          r.statusCode,
-        );
-      }
-      if (data is Map<String, dynamic>) return data;
-      if (data is Map) return Map<String, dynamic>.from(data);
-      throw ApiException('Unexpected share link response from API');
+      throwIfHttpErrorResponse(r, operationLabel: 'Failed to create share link');
+      return parseJsonMapBody(
+        data,
+        unexpectedMessage: 'Unexpected share link response from API',
+      );
     } on DioException catch (e) {
-      _handleWebNetworkError(e);
-      throw ApiException(
-        'Failed to create share link: ${e.message}',
-        e.response?.statusCode,
+      throwApiExceptionAfterWebCors(
+        e,
+        messagePrefix: 'Failed to create share link',
       );
     }
   }
@@ -351,28 +339,15 @@ class ApiService {
         ),
       );
       final data = r.data;
-      if (r.statusCode != null && r.statusCode! >= 400) {
-        if (data is Map<String, dynamic>) {
-          throw ApiException(
-            data['error']?.toString() ??
-                data['message']?.toString() ??
-                'Receipt request failed (${r.statusCode})',
-            r.statusCode,
-          );
-        }
-        throw ApiException(
-          'Receipt request failed (${r.statusCode}): ${data ?? ''}',
-          r.statusCode,
-        );
-      }
-      if (data is Map<String, dynamic>) return data;
-      if (data is Map) return Map<String, dynamic>.from(data);
-      throw ApiException('Unexpected receipt response from API');
+      throwIfHttpErrorResponse(r, operationLabel: 'Receipt request failed');
+      return parseJsonMapBody(
+        data,
+        unexpectedMessage: 'Unexpected receipt response from API',
+      );
     } on DioException catch (e) {
-      _handleWebNetworkError(e);
-      throw ApiException(
-        'Failed to request receipt: ${e.message}',
-        e.response?.statusCode,
+      throwApiExceptionAfterWebCors(
+        e,
+        messagePrefix: 'Failed to request receipt',
       );
     }
   }

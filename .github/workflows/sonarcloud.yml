@@ -39,6 +39,12 @@ jobs:
       - name: Run tests with coverage
         run: flutter test --coverage
 
+      - name: Verify coverage report for Sonar
+        run: |
+          test -f coverage/lcov.info || (echo "Missing coverage/lcov.info" && exit 1)
+          wc -l coverage/lcov.info
+          head -5 coverage/lcov.info
+
       # Monorepo: sonar-project.properties lives under photobooth/.
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v6.0.0

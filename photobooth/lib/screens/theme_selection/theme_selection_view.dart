@@ -6,11 +6,11 @@ import 'package:flutter/cupertino.dart'
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'theme_selection_layout.dart';
 import 'theme_selection_viewmodel.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import '../photo_capture/photo_model.dart';
 import '../../utils/constants.dart';
-import '../../utils/app_config.dart';
 import '../../views/widgets/theme_card.dart';
 import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/app_snackbar.dart';
@@ -520,18 +520,9 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   }
 
   String _themeSampleImageUrl(ThemeModel? theme) {
-    if (theme?.sampleImageUrl == null || theme!.sampleImageUrl!.isEmpty) {
-      return '';
-    }
-    final imageUrl = theme.sampleImageUrl!;
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-      return imageUrl;
-    }
-    final baseUrl = AppConfig.baseUrl.endsWith('/')
-        ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
-        : AppConfig.baseUrl;
-    final path = imageUrl.startsWith('/') ? imageUrl : '/$imageUrl';
-    return '$baseUrl$path';
+    final url = theme?.sampleImageUrl;
+    if (url == null || url.isEmpty) return '';
+    return ThemeSelectionLayoutMetrics.resolveThemeImageUrl(url);
   }
 
   Color? _parseThemeBackgroundColor(String? hexColor) {
@@ -643,26 +634,17 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   /// Larger fraction on phone portrait so the hero card uses the screen; smaller on tablet / landscape.
   double _carouselViewportFractionFor(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final w = size.width;
-    final h = size.height;
-    if (w < AppConstants.kTabletBreakpoint) {
-      return h >= w ? 0.76 : 0.52;
-    }
-    if (w < 900) {
-      return 0.42;
-    }
-    return AppConstants.kThemeCarouselViewportFraction;
+    return ThemeSelectionLayoutMetrics.carouselViewportFraction(
+      width: size.width,
+      height: size.height,
+    );
   }
 
-  // _buildCategoryTabs removed
-
-  /// Responsive columns for card-grid theme list (web + Android).
   int _themeGridCrossAxisCount(BuildContext context, bool isLandscape) {
-    final w = MediaQuery.sizeOf(context).width;
-    if (w >= 1200) return isLandscape ? 5 : 4;
-    if (w >= 900) return 4;
-    if (w >= 700) return 3;
-    return 2;
+    return ThemeSelectionLayoutMetrics.gridCrossAxisCount(
+      width: MediaQuery.sizeOf(context).width,
+      isLandscape: isLandscape,
+    );
   }
 
   Widget _buildThemeContinueButton(
@@ -1055,19 +1037,9 @@ class _ThemeThumbImage extends StatelessWidget {
   const _ThemeThumbImage({required this.theme});
 
   String _getImageUrl() {
-    if (theme.sampleImageUrl == null || theme.sampleImageUrl!.isEmpty) {
-      return '';
-    }
-    final imageUrl = theme.sampleImageUrl!;
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-      return imageUrl;
-    }
-    final baseUrl = AppConfig.baseUrl.endsWith('/')
-        ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
-        : AppConfig.baseUrl;
-    final relativePath =
-        imageUrl.startsWith('/') ? imageUrl : '/$imageUrl';
-    return '$baseUrl$relativePath';
+    final url = theme.sampleImageUrl;
+    if (url == null || url.isEmpty) return '';
+    return ThemeSelectionLayoutMetrics.resolveThemeImageUrl(url);
   }
 
   @override
