@@ -88,6 +88,7 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('Finishing touches'), findsOneWidget);
     expect(find.textContaining('Relighting your face'), findsWidgets);
