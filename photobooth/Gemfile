@@ -1,12 +1,8 @@
+# frozen_string_literal: true
+
 # Gemfile for Fastlane dependencies
-source "https://rubygems.org"
+source 'https://rubygems.org'
 
-# Fastlane
-gem "fastlane"
-
-# Required dependencies
-gem "bigdecimal"
-
-# Firebase App Distribution plugin
-gem "fastlane-plugin-firebase_app_distribution"
-
+gem 'bigdecimal'
+gem 'fastlane'
+gem 'fastlane-plugin-firebase_app_distribution'

@@ -55,4 +55,4 @@ These cannot be answered from the repo and need confirmation:
 - Do not enable "Sign in with Apple" — there is no user account system in the app.
 - Do not enable "Family Sharing" — kiosk app, not relevant.
 - Do not opt the app into Play's "Advertising ID" usage — the app does not use IDFA / GAID.
-- Do not connect any analytics SDK beyond what's already in the build (Firebase Crashlytics + FCM). Adding GA4 / Adjust / etc. would change the Data Safety / App Privacy answers in this bundle.
+- Do not connect any analytics SDK beyond what's already in the build (Bugsnag + FCM). Adding GA4 / Adjust / etc. would change the Data Safety / App Privacy answers in this bundle.

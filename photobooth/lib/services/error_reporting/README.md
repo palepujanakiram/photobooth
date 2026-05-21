@@ -4,7 +4,7 @@ A flexible, extensible error reporting system that provides a unified interface 
 
 ## 📋 Overview
 
-The `ErrorReportingManager` is a centralized facade that manages error reporting services. It currently uses Firebase Crashlytics but can easily support multiple services simultaneously (Bugsnag, Sentry, etc.).
+The `ErrorReportingManager` is a centralized facade that manages error reporting services. It uses **Bugsnag** by default and can support additional services (Sentry, etc.) via new `ErrorReportingService` implementations.
 
 ## 🏗️ Architecture
 
@@ -28,14 +28,11 @@ The `ErrorReportingManager` is a centralized facade that manages error reporting
 │   (Abstract Interface)              │
 └──────────────┬──────────────────────┘
                │
-         ┌─────┴─────┐
-         │           │
-         ▼           ▼
-┌──────────────┐ ┌──────────────┐
-│ Crashlytics  │ │   Bugsnag    │
-│   Reporter   │ │   Reporter   │
-│  (Current)   │ │  (Future)    │
-└──────────────┘ └──────────────┘
+               ▼
+┌─────────────────────────────────────┐
+│      BugsnagErrorReporter           │
+│         (default)                   │
+└─────────────────────────────────────┘
 ```
 
 ## 🚀 Quick Start
@@ -53,8 +50,7 @@ void main() async {
   
   // Initialize ErrorReportingManager
   await ErrorReportingManager.initialize(
-    enableCrashlytics: true,  // Enable Crashlytics
-    // Add more services here in the future
+    enableBugsnag: true,
   );
   
   // Set up global error handlers
@@ -281,16 +277,11 @@ Update `error_reporting_manager.dart`:
 import 'bugsnag_error_reporter.dart';
 
 static Future<void> initialize({
-  bool enableCrashlytics = true,
-  bool enableBugsnag = false,  // Add this parameter
+  bool enableBugsnag = true,
 }) async {
   if (_isInitialized) return;
 
-  if (enableCrashlytics) {
-    _services.add(CrashlyticsErrorReporter());
-  }
-
-  if (enableBugsnag) {  // Add this block
+  if (enableBugsnag) {
     _services.add(BugsnagErrorReporter());
   }
 
@@ -306,12 +297,11 @@ static Future<void> initialize({
 
 ```dart
 await ErrorReportingManager.initialize(
-  enableCrashlytics: true,
-  enableBugsnag: true,  // Enable Bugsnag
+  enableBugsnag: true,
 );
 ```
 
-That's it! Now errors will be sent to both Crashlytics and Bugsnag automatically.
+That's it! Errors are sent to Bugsnag (and any other services you register).
 
 ## 📝 API Reference
 
@@ -400,7 +390,7 @@ Switch(
 ## 📦 Current Implementation
 
 ### Active Services
-- ✅ **Firebase Crashlytics** (via `CrashlyticsErrorReporter`)
+- ✅ **Bugsnag** (via `BugsnagErrorReporter`)
 
 ### Supported Operations
 - ✅ Breadcrumb logging
@@ -411,7 +401,6 @@ Switch(
 - ✅ Global enable/disable
 
 ### Future Services (Easy to Add)
-- 🔜 Bugsnag
 - 🔜 Sentry
 - 🔜 Custom logging server
 - 🔜 Analytics integration
@@ -491,8 +480,8 @@ await ErrorReportingManager.setPhotoCaptureContext(
    print('Initialized: ${ErrorReportingManager.isInitialized}');
    print('Services: ${ErrorReportingManager.serviceCount}');
    ```
-3. Check Firebase configuration (if using Crashlytics)
-4. Wait 2-5 minutes for logs to appear in dashboard
+3. Check Bugsnag API key / native configuration
+4. Wait 2-5 minutes for logs to appear in the Bugsnag dashboard
 
 ### Want to Verify Logging?
 Add debug prints in development:
@@ -516,7 +505,7 @@ static void log(String message) {
 
 - `error_reporting_service.dart` - Abstract interface
 - `error_reporting_manager.dart` - Main facade
-- `crashlytics_error_reporter.dart` - Crashlytics implementation
+- `bugsnag_error_reporter.dart` - Bugsnag implementation
 - `../../main.dart` - Initialization code
 - `../../screens/photo_capture/photo_capture_viewmodel.dart` - Usage example
 
