@@ -598,14 +598,16 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   ]) {
     return buildPhotoGenerateMainContent(
       context: context,
-      contentKey: _contentKey,
-      viewModel: viewModel,
-      appColors: appColors,
-      isLandscape: isLandscape,
-      viewportHeight: viewportHeight,
-      viewportWidth: viewportWidth,
-      buildPhotosDisplay: _buildPhotosDisplay,
-      buildPhotosActionFooter: _buildPhotosActionFooter,
+      input: PhotoGenerateMainContentInput(
+        contentKey: _contentKey,
+        viewModel: viewModel,
+        appColors: appColors,
+        isLandscape: isLandscape,
+        viewportHeight: viewportHeight,
+        viewportWidth: viewportWidth,
+        buildPhotosDisplay: _buildPhotosDisplay,
+        buildPhotosActionFooter: _buildPhotosActionFooter,
+      ),
     );
   }
 
@@ -684,13 +686,15 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       viewModel: viewModel,
       appColors: appColors,
       layout: layout,
-      beholdCardAspectRatio: _beholdCardAspectRatio,
-      buildTransformedSlotWidgets: _buildTransformedSlotWidgets,
-      buildProgressivePipelineSection: _buildProgressivePipelineSection,
-      buildLiveGenerationHeader: _buildLiveGenerationHeader,
-      buildGenerationProgressHeroCard: _buildGenerationProgressHeroCard,
-      buildGenerationStoryCard: _buildGenerationStoryCard,
-      buildPhotosActionFooter: _buildPhotosActionFooter,
+      builders: GeneratedOnlyLayoutBuilders(
+        beholdCardAspectRatio: _beholdCardAspectRatio,
+        buildTransformedSlotWidgets: _buildTransformedSlotWidgets,
+        buildProgressivePipelineSection: _buildProgressivePipelineSection,
+        buildLiveGenerationHeader: _buildLiveGenerationHeader,
+        buildGenerationProgressHeroCard: _buildGenerationProgressHeroCard,
+        buildGenerationStoryCard: _buildGenerationStoryCard,
+        buildPhotosActionFooter: _buildPhotosActionFooter,
+      ),
     );
   }
 

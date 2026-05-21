@@ -17,8 +17,11 @@ void main() {
 
   test('category helpers and selection', () async {
     final tm = ThemeManager.forTesting(ThemesFakeApi([
-      sampleTheme('t1').copyWith(categoryId: 'royal', categoryName: 'Royal'),
-      sampleTheme('t2').copyWith(categoryId: 'wedding'),
+      sampleTheme('t1').copyWith((p) {
+        p.categoryId = 'royal';
+        p.categoryName = 'Royal';
+      }),
+      sampleTheme('t2').copyWith((p) => p.categoryId = 'wedding'),
     ]));
     await tm.fetchThemes();
     final vm = ThemeViewModel(themeManager: tm, apiService: FakeApiService());

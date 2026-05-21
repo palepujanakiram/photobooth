@@ -2,30 +2,22 @@ import 'package:flutter/services.dart';
 
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
+import 'kiosk_receipt_share_fallback.dart';
 
 /// Post-payment share + share-images helpers (Sonar S3776 extractions).
-void applyKioskFallbackWhenReceiptShareEmpty({
-  required String? receiptShareUrl,
-  required String? kioskFallbackShareUrl,
-  required void Function(String url) setReceiptShareUrl,
-  required String? receiptShareLongUrl,
-  required String? kioskFallbackShareLongUrl,
-  required void Function(String longUrl) setReceiptShareLongUrl,
-  required DateTime? receiptShareExpiresAt,
-  required DateTime? kioskFallbackShareExpiresAt,
-  required void Function(DateTime expiresAt) setReceiptShareExpiresAt,
-}) {
-  final ru = receiptShareUrl?.trim() ?? '';
+void applyKioskFallbackWhenReceiptShareEmpty(KioskReceiptShareFallback state) {
+  final ru = state.receiptShareUrl?.trim() ?? '';
   if (ru.isNotEmpty) return;
-  final ku = kioskFallbackShareUrl?.trim() ?? '';
+  final ku = state.kioskFallbackShareUrl?.trim() ?? '';
   if (ku.isEmpty) return;
-  setReceiptShareUrl(kioskFallbackShareUrl!);
-  if ((receiptShareLongUrl?.trim() ?? '').isEmpty &&
-      kioskFallbackShareLongUrl != null) {
-    setReceiptShareLongUrl(kioskFallbackShareLongUrl);
+  state.setReceiptShareUrl(state.kioskFallbackShareUrl!);
+  if ((state.receiptShareLongUrl?.trim() ?? '').isEmpty &&
+      state.kioskFallbackShareLongUrl != null) {
+    state.setReceiptShareLongUrl(state.kioskFallbackShareLongUrl!);
   }
-  if (receiptShareExpiresAt == null && kioskFallbackShareExpiresAt != null) {
-    setReceiptShareExpiresAt(kioskFallbackShareExpiresAt);
+  if (state.receiptShareExpiresAt == null &&
+      state.kioskFallbackShareExpiresAt != null) {
+    state.setReceiptShareExpiresAt(state.kioskFallbackShareExpiresAt!);
   }
 }
 
