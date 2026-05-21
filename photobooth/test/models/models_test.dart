@@ -89,7 +89,7 @@ void main() {
     });
     expect(t.sampleImageUrl, '/img.jpg');
     expect(t.prompt, 'p');
-    expect(t.copyWith(name: 'N2').name, 'N2');
+    expect(t.copyWith((p) => p.name = 'N2').name, 'N2');
     expect(t == ThemeModel.fromJson({'id': 't1', 'categoryId': 'c1', 'name': 'x', 'description': 'd', 'promptText': 'p'}), isTrue);
   });
 

@@ -1,0 +1,59 @@
+---
+description: SonarCloud quality gates — no new issues, coverage >90%, low duplication
+alwaysApply: true
+---
+
+# SonarCloud quality gates (required on every change)
+
+Project: `palepujanakiram_photobooth` in `photobooth/`. See [`docs/sonar-quality.md`](../../docs/sonar-quality.md) (repo root).
+
+When you **add or modify** code under `photobooth/lib/` or `photobooth/test/`, you must satisfy all five gates below before considering the work done.
+
+## 1. No new Maintainability issues
+
+- Do **not** introduce new Sonar code smells (especially `dart:S107` >7 parameters, `dart:S3776` cognitive complexity >15, `dart:S3358` nested ternaries, `dart:S1192` duplicated literals).
+- **Fix pattern**: extract helpers (`*_helpers.dart`, `*_widgets.dart`, `*_body.dart`), group parameters into small `*Input` / `*State` / `*Builders` classes, move copy to [`lib/utils/app_strings.dart`](../../photobooth/lib/utils/app_strings.dart).
+- Avoid `// NOSONAR` unless documented in the PR; prefer refactoring.
+
+## 2. No new Reliability issues
+
+- No new bugs, null-safety gaps, or fragile async/`BuildContext` use after `await` without `mounted` / `context.mounted` checks.
+- Handle API errors with [`utils/exceptions.dart`](../../photobooth/lib/utils/exceptions.dart); report via `ErrorReportingManager` where appropriate.
+- Run `dart analyze` from `photobooth/` — zero new analyzer errors.
+
+## 3. Code coverage > 90%
+
+- **SonarCloud (new code)**: keep coverage **above 90%** on changed lines; do not merge if the PR gate fails.
+- **In-scope unit-testable layer** (services, utils, models, most ViewModels — see `sonar.coverage.exclusions` / `.qlty/qlty.toml`): add or update tests so scoped files stay at **100%**:
+
+```bash
+cd photobooth
+flutter test --coverage
+dart run tool/verify_coverage_scope.dart
+```
+
+- New logic in an in-scope file **requires** matching tests under `photobooth/test/`.
+- Pure UI extractions (`*_view.dart`, `*_view_widgets.dart`, `*_body.dart`, `*_helpers.dart` listed in coverage ignores) are excluded from the denominator; do not put business logic there without tests elsewhere.
+
+## 4. No new Security issues
+
+- No new vulnerabilities or unreviewed security hotspots.
+- No hardcoded secrets, tokens, or API keys; URLs only via [`lib/utils/app_config.dart`](../../photobooth/lib/utils/app_config.dart).
+- Validate/unescape user and network input; use existing secure URL helpers where applicable.
+
+## 5. No new Code Duplication issues
+
+- Keep duplicated lines **≤ 3%** on new code (Sonar gate).
+- Reuse shared helpers and [`app_strings.dart`](../../photobooth/lib/utils/app_strings.dart); extract duplicated blocks instead of copy-pasting.
+- Do not duplicate API/logging patterns — follow existing `api_service_helpers.dart` / `api_logging/` structure.
+
+## Pre-PR checklist
+
+```bash
+cd photobooth
+dart analyze
+flutter test --coverage
+dart run tool/verify_coverage_scope.dart
+```
+
+Fix SonarLint (connected mode: `palepujanakiram` / `palepujanakiram_photobooth`). Do not merge if the SonarCloud PR quality gate fails.
