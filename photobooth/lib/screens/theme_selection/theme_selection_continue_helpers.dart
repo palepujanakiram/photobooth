@@ -13,7 +13,6 @@ Future<void> themeSelectionNavigateAfterSessionUpdate({
   required ThemeViewModel viewModel,
   required PhotoModel photo,
   required ThemeModel selectedTheme,
-  required bool mounted,
 }) async {
   try {
     await _themeSelectionNavigateAfterFramesLoaded(
@@ -21,14 +20,13 @@ Future<void> themeSelectionNavigateAfterSessionUpdate({
       viewModel: viewModel,
       photo: photo,
       selectedTheme: selectedTheme,
-      mounted: mounted,
     );
   } catch (_) {
+    if (!context.mounted) return;
     await _themeSelectionNavigateFrameSelectFallback(
       context: context,
       photo: photo,
       selectedTheme: selectedTheme,
-      mounted: mounted,
     );
   }
 }
@@ -37,9 +35,8 @@ Future<void> _themeSelectionNavigateFrameSelectFallback({
   required BuildContext context,
   required PhotoModel photo,
   required ThemeModel selectedTheme,
-  required bool mounted,
 }) async {
-  if (!mounted || !context.mounted) return;
+  if (!context.mounted) return;
   await Navigator.pushNamed(
     context,
     AppConstants.kRouteFrameSelect,
@@ -55,16 +52,14 @@ Future<void> _themeSelectionNavigateAfterFramesLoaded({
   required ThemeViewModel viewModel,
   required PhotoModel photo,
   required ThemeModel selectedTheme,
-  required bool mounted,
 }) async {
   final frames = await viewModel.fetchKioskFramesList();
-  if (!mounted || !context.mounted) return;
+  if (!context.mounted) return;
   if (frames.length >= 2) {
     await _themeSelectionNavigateFrameSelectFallback(
       context: context,
       photo: photo,
       selectedTheme: selectedTheme,
-      mounted: mounted,
     );
     return;
   }
@@ -73,18 +68,16 @@ Future<void> _themeSelectionNavigateAfterFramesLoaded({
       context: context,
       viewModel: viewModel,
       frameId: frames.single.id,
-      mounted: mounted,
     );
     if (!ok) return;
   } else {
     final ok = await _themeSelectionSyncAutoSkippedFrame(
       context: context,
       viewModel: viewModel,
-      mounted: mounted,
     );
     if (!ok) return;
   }
-  if (!mounted || !context.mounted) return;
+  if (!context.mounted) return;
   await Navigator.pushNamed(
     context,
     AppConstants.kRouteGenerateProgress,
@@ -96,10 +89,9 @@ Future<bool> _themeSelectionSyncSingleFrame({
   required BuildContext context,
   required ThemeViewModel viewModel,
   required String frameId,
-  required bool mounted,
 }) async {
   final frameOk = await viewModel.syncSingleFrameSelection(frameId);
-  if (!mounted || !context.mounted) return false;
+  if (!context.mounted) return false;
   if (frameOk) return true;
   AppSnackBar.showError(
     context,
@@ -111,10 +103,9 @@ Future<bool> _themeSelectionSyncSingleFrame({
 Future<bool> _themeSelectionSyncAutoSkippedFrame({
   required BuildContext context,
   required ThemeViewModel viewModel,
-  required bool mounted,
 }) async {
   final frameOk = await viewModel.syncAutoSkippedFrameSelection();
-  if (!mounted || !context.mounted) return false;
+  if (!context.mounted) return false;
   if (frameOk) return true;
   AppSnackBar.showError(
     context,
