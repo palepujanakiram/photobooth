@@ -12,11 +12,14 @@ import '../../utils/constants.dart';
   final widthFrac = isLandscape
       ? AppConstants.kCapturePreviewCardMaxWidthFractionLandscape
       : AppConstants.kCapturePreviewCardMaxWidthFractionPortrait;
-  final heightFrac = isLandscape
-      ? AppConstants.kCapturePreviewCardMaxHeightFractionLandscape
-      : (isPhonePortrait
-          ? AppConstants.kCapturePreviewCardMaxHeightFractionPhonePortrait
-          : AppConstants.kCapturePreviewCardMaxHeightFractionPortrait);
+  final double heightFrac;
+  if (isLandscape) {
+    heightFrac = AppConstants.kCapturePreviewCardMaxHeightFractionLandscape;
+  } else if (isPhonePortrait) {
+    heightFrac = AppConstants.kCapturePreviewCardMaxHeightFractionPhonePortrait;
+  } else {
+    heightFrac = AppConstants.kCapturePreviewCardMaxHeightFractionPortrait;
+  }
   return (widthFrac, heightFrac);
 }
 

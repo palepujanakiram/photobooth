@@ -45,6 +45,9 @@ jobs:
           wc -l coverage/lcov.info
           head -5 coverage/lcov.info
 
+      - name: Verify in-scope coverage (100% gate)
+        run: dart run tool/verify_coverage_scope.dart
+
       # Monorepo: sonar-project.properties lives under photobooth/.
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v6.0.0
