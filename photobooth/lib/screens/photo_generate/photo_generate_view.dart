@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/kiosk_manager.dart';
 import 'photo_generate_viewmodel.dart';
+import 'post_reveal_polishing_overlay.dart';
 import '../theme_selection/theme_model.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_colors.dart';
@@ -2101,7 +2102,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       headline = 'Rendering';
       description = 'AI is applying your style';
       imageUrl = aiUrl;
-      bottomAccessory = _buildPostRevealPolishingOverlay(context, vm);
+      bottomAccessory =
+          PostRevealPolishingOverlay(steps: vm.generationRunStepPreviews);
     } else if (bgUrl != null) {
       index = 2;
       stageTitle = '3 · ISOLATE';
@@ -2320,158 +2322,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       }
     }
     return null;
-  }
-
-  Widget _buildPostRevealPolishingOverlay(
-    BuildContext context,
-    PhotoGenerateViewModel vm,
-  ) {
-    // After REVEAL (ai_generation preview), keep users engaged by showing truthful
-    // post-processing mechanics as `steps[]` advances.
-    final steps = vm.generationRunStepPreviews;
-    if (steps.isEmpty) return const SizedBox.shrink();
-
-    final byStage = <String, GenerationRunStepPreview>{};
-    for (final s in steps) {
-      byStage[canonicalPipelineStageKey(s.stage)] = s;
-    }
-
-    const polishOrder = <String>[
-      'scene_lighting',
-      'face_relight',
-      'frame_composite',
-      'upscaling',
-      'exif_stamp',
-      'c2pa_sign',
-      'storage',
-    ];
-
-    String? activeKey;
-    for (final k in polishOrder) {
-      final s = byStage[k];
-      if (s != null && s.isActive) {
-        activeKey = k;
-        break;
-      }
-    }
-    activeKey ??= byStage['storage']?.isFinished == true
-        ? 'storage'
-        : (polishOrder.firstWhere(
-            (k) => byStage[k]?.isFinished != true,
-            orElse: () => 'storage',
-          ));
-
-    String copyFor(String k) {
-      switch (k) {
-        case 'scene_lighting':
-          return 'Matching scene lighting';
-        case 'face_relight':
-          return 'Relighting your face';
-        case 'frame_composite':
-          return 'Adding your frame';
-        case 'upscaling':
-          return 'Sharpening for print';
-        case 'exif_stamp':
-          return 'Branding';
-        case 'c2pa_sign':
-          return 'Signing authenticity';
-        case 'storage':
-          return 'Preparing print file';
-        default:
-          return transformationStepDisplayLabel(k);
-      }
-    }
-
-    Widget stageChip(String k) {
-      final s = byStage[k];
-      final finished = s?.isFinished == true;
-      final active = s?.isActive == true;
-      final color = active
-          ? CupertinoColors.activeBlue
-          : finished
-              ? Colors.lightGreenAccent.withValues(alpha: 0.9)
-              : Colors.white30;
-      final icon = finished
-          ? Icons.check_circle
-          : active
-              ? Icons.autorenew
-              : Icons.more_horiz;
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: color.withValues(alpha: 0.85), width: 1.2),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 6),
-            Text(
-              copyFor(k),
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Sits in the storyboard’s bottom column (not centered on the photo).
-    // Elapsed time stays on the frame’s corner badge to avoid duplicate timers.
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.55),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  const Icon(CupertinoIcons.wand_stars,
-                      color: Colors.white70, size: 15),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Finishing touches · ${copyFor(activeKey)}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (var i = 0; i < polishOrder.length; i++) ...[
-                      if (i != 0) const SizedBox(width: 8),
-                      stageChip(polishOrder[i]),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _storyboardTopBars({required int activeIndex}) {
