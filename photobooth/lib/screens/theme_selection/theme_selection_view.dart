@@ -21,6 +21,9 @@ import '../../views/widgets/centered_max_width.dart';
 import '../../services/theme_manager.dart';
 import 'theme_model.dart';
 import 'theme_preview_screen.dart';
+import 'theme_selection_carousel_page.dart';
+import 'theme_selection_continue_helpers.dart';
+import 'theme_selection_loaded_body.dart';
 import '../../utils/route_args.dart';
 
 class ThemeSelectionScreen extends StatefulWidget {
@@ -118,6 +121,25 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     viewModel.clearArmedTheme();
   }
 
+  void _onCarouselThemeTap(ThemeViewModel viewModel, ThemeModel theme, int index) {
+    final isCurrentCenter = viewModel.carouselIndex == index;
+    if (isCurrentCenter) {
+      viewModel.selectTheme(theme);
+      viewModel.armTheme(theme);
+      _pauseAutoScrollTemporarily(viewModel);
+      return;
+    }
+    _clearArmedSelection(viewModel);
+    viewModel.selectTheme(theme);
+    viewModel.setCarouselIndex(index);
+    _pageController?.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOut,
+    );
+    _pauseAutoScrollTemporarily(viewModel);
+  }
+
   void _syncCarouselTimer(ThemeViewModel viewModel) {
     final count = viewModel.filteredThemes.length;
     if (count <= 1) {
@@ -205,62 +227,13 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         success = await viewModel.updateSessionWithTheme();
         if (!mounted || !currentContext.mounted) return;
         if (success) {
-          final photo = _photoFromCapture!;
-          try {
-            final frames = await viewModel.fetchKioskFramesList();
-            if (!mounted || !currentContext.mounted) return;
-            if (frames.length >= 2) {
-              await Navigator.pushNamed(
-                currentContext,
-                AppConstants.kRouteFrameSelect,
-                arguments: {
-                  'photo': photo,
-                  'theme': selectedTheme,
-                },
-              );
-            } else if (frames.length == 1) {
-              final frameOk =
-                  await viewModel.syncSingleFrameSelection(frames.single.id);
-              if (!mounted || !currentContext.mounted) return;
-              if (!frameOk) {
-                AppSnackBar.showError(
-                  currentContext,
-                  viewModel.errorMessage ?? 'Could not prepare generation.',
-                );
-                return;
-              }
-              await Navigator.pushNamed(
-                currentContext,
-                AppConstants.kRouteGenerateProgress,
-                arguments: GenerateArgs(photo: photo, theme: selectedTheme),
-              );
-            } else {
-              final frameOk = await viewModel.syncAutoSkippedFrameSelection();
-              if (!mounted || !currentContext.mounted) return;
-              if (!frameOk) {
-                AppSnackBar.showError(
-                  currentContext,
-                  viewModel.errorMessage ?? 'Could not prepare generation.',
-                );
-                return;
-              }
-              await Navigator.pushNamed(
-                currentContext,
-                AppConstants.kRouteGenerateProgress,
-                arguments: GenerateArgs(photo: photo, theme: selectedTheme),
-              );
-            }
-          } catch (_) {
-            if (!mounted || !currentContext.mounted) return;
-            await Navigator.pushNamed(
-              currentContext,
-              AppConstants.kRouteFrameSelect,
-              arguments: {
-                'photo': photo,
-                'theme': selectedTheme,
-              },
-            );
-          }
+          await themeSelectionNavigateAfterSessionUpdate(
+            context: currentContext,
+            viewModel: viewModel,
+            photo: _photoFromCapture!,
+            selectedTheme: selectedTheme,
+            mounted: mounted,
+          );
         } else {
           AppSnackBar.showError(
             currentContext,
@@ -431,75 +404,21 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                     ),
                     child: Consumer<ThemeViewModel>(
                       builder: (context, viewModel, child) {
-                      if (viewModel.showNoThemesMessage) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (!mounted) return;
-                          final vm = context.read<ThemeViewModel>();
-                          if (vm.showNoThemesMessage) {
-                            AppSnackBar.showError(context, 'No themes available');
-                            vm.clearNoThemesMessage();
-                          }
-                        });
-                      }
-                      if (viewModel.isLoading) {
-                        return const Center(
-                          child: CircularProgressIndicator(),
+                        final reducedBottomInset = math.max(
+                          0.0,
+                          effectiveBottomInset(context) - 40.0,
                         );
-                      }
-                      if (viewModel.hasError) {
-                        return Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(
-                                CupertinoIcons.exclamationmark_triangle,
-                                size: 64,
-                                color: Colors.red,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                viewModel.errorMessage ?? 'Unknown error',
-                                style: const TextStyle(
-                                    fontSize: 16, color: Colors.white),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 24),
-                              TextButton(
-                                onPressed: () => viewModel.loadThemes(),
-                                child: const Text('Retry'),
-                              ),
-                            ],
+                        return ThemeSelectionLoadedBody(
+                          viewModel: viewModel,
+                          mounted: mounted,
+                          bottomPadding: reducedBottomInset,
+                          carousel: _buildCarouselAndThumbnails(
+                            context,
+                            viewModel,
+                            isLandscape,
                           ),
                         );
-                      }
-                      if (viewModel.themes.isEmpty) {
-                        return const Center(
-                          child: Text(
-                            'No themes available',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        );
-                      }
-
-                      final reducedBottomInset = math.max(
-                        0.0,
-                        effectiveBottomInset(context) - 40.0,
-                      );
-                      return Padding(
-                        padding: EdgeInsets.only(bottom: reducedBottomInset),
-                        child: Column(
-                          children: [
-                            Expanded(
-                              child: _buildCarouselAndThumbnails(
-                                context,
-                                viewModel,
-                                isLandscape,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                      },
                     ),
                   ),
                 ),
@@ -787,92 +706,17 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
             },
             itemBuilder: (context, index) {
               final theme = filtered[index];
-              final isSelected =
-                  viewModel.selectedTheme?.id == theme.id;
-              return AnimatedBuilder(
-                animation: _pageController!,
-                builder: (context, _) {
-                  final hasPage = _pageController!.position.hasContentDimensions &&
-                      _pageController!.page != null;
-                  final page = hasPage
-                      ? _pageController!.page!
-                      : viewModel.carouselIndex.toDouble();
-                  final offset = page - index;
-                  final delta = offset.abs();
-                  final scale = (1.0 - (delta * 0.28)).clamp(0.48, 1.15);
-                  final opacity = (1.0 - (delta * 0.22)).clamp(0.5, 1.0);
-                  final isCenter = delta < 0.5;
-                  const perspective = 0.001;
-                  final angleY = offset * 0.5;
-                  final matrix = Matrix4.identity()
-                    ..setEntry(3, 2, perspective)
-                    ..rotateY(angleY)
-                    ..scaleByDouble(scale, scale, 1.0, 1.0);
-                  final aspectRatio = isCenter
-                      ? AppConstants.themeCardSlotAspectRatio(context)
-                      : AppConstants.themeCarouselSideAspectRatio(context);
-                  return Opacity(
-                    opacity: opacity,
-                    child: Transform(
-                      alignment: Alignment.center,
-                      transform: matrix,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 14),
-                        child: Center(
-                          child: AspectRatio(
-                            aspectRatio: aspectRatio,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(25),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black
-                                        .withValues(alpha: 0.6),
-                                    blurRadius: 40,
-                                    offset: const Offset(0, 20),
-                                  ),
-                                ],
-                              ),
-                              clipBehavior: Clip.antiAlias,
-                              child: ThemeCard(
-                                theme: theme,
-                                isSelected: isSelected,
-                                selectedBorderWidth: isSelected &&
-                                        viewModel.armedTheme?.id == theme.id
-                                    ? 4.0
-                                    : 2.0,
-                                onTap: () {
-                                  final isCurrentCenter =
-                                      viewModel.carouselIndex == index;
-                                  if (isCurrentCenter) {
-                                    viewModel.selectTheme(theme);
-                                    viewModel.armTheme(theme);
-                                    _pauseAutoScrollTemporarily(viewModel);
-                                    return;
-                                  }
-                                  _clearArmedSelection(viewModel);
-                                  viewModel.selectTheme(theme);
-                                  viewModel.setCarouselIndex(index);
-                                  _pageController?.animateToPage(
-                                    index,
-                                    duration: const Duration(milliseconds: 400),
-                                    curve: Curves.easeOut,
-                                  );
-                                  _pauseAutoScrollTemporarily(viewModel);
-                                },
-                                onPreview: () => _openThemePreview(context, viewModel, theme, index),
-                                showSelectedLabel: _addOneMoreStyle &&
-                                    _usedThemeIds.contains(theme.id),
-                                onSelectPressed: null,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
+              return ThemeSelectionCarouselPage(
+                theme: theme,
+                index: index,
+                pageController: _pageController!,
+                viewModel: viewModel,
+                fallbackCarouselIndex: viewModel.carouselIndex,
+                addOneMoreStyle: _addOneMoreStyle,
+                usedThemeIds: _usedThemeIds,
+                onTap: () => _onCarouselThemeTap(viewModel, theme, index),
+                onPreview: () =>
+                    _openThemePreview(context, viewModel, theme, index),
               );
             },
           ),

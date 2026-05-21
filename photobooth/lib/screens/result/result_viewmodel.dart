@@ -22,6 +22,7 @@ import '../../services/fcm_service.dart';
 import '../../services/payment_push_coordinator.dart';
 import '../../services/whatsapp_push_coordinator.dart';
 import '../../models/kiosk_share_link_model.dart';
+import 'result_viewmodel_share_helpers.dart';
 
 part 'result_viewmodel_impl.part.dart';
 

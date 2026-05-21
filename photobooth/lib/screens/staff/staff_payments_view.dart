@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,10 +5,12 @@ import '../../services/staff_api_service.dart';
 import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/print_service.dart';
-import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
+import 'staff_payment_card.dart';
 import 'staff_payments_payload_utils.dart';
+import 'staff_payments_thumb_helpers.dart';
+import 'staff_payments_view_helpers.dart';
 import '../../views/widgets/app_colors.dart';
 
 class StaffPaymentsScreen extends StatefulWidget {
@@ -106,40 +106,19 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     final fromPaymentRaw = _paymentImageUrlForPrintFromPayload(payment).trim();
     final sid = _sessionId(payment).trim();
     if (fromPaymentRaw.isNotEmpty) {
-      return StaffPaymentsPayloadUtils.normalizeImageUrl(fromPaymentRaw, sessionId: sid.isEmpty ? null : sid);
+      return StaffPaymentsPayloadUtils.normalizeImageUrl(
+        fromPaymentRaw,
+        sessionId: sid.isEmpty ? null : sid,
+      );
     }
 
     if (sid.isEmpty) return null;
     final raw = await _publicApi.fetchSession(sid);
     if (!mounted || raw == null) return null;
-
-    // Prefer generated image URL when present (handle multiple shapes/keys).
-    final generated = raw['generatedImages'] ?? raw['generated_images'] ?? raw['images'];
-    if (generated is List && generated.isNotEmpty) {
-      final first = generated.first;
-      if (first is Map) {
-        final m = Map<String, dynamic>.from(first);
-        final u = (m['imageUrl'] ??
-                m['image_url'] ??
-                m['url'] ??
-                m['photoUrl'] ??
-                m['photo_url'] ??
-                '')
-            .toString()
-            .trim();
-        if (u.isNotEmpty) return StaffPaymentsPayloadUtils.normalizeImageUrl(u, sessionId: sid);
-      }
-      if (first is String) {
-        final u = first.trim();
-        if (u.isNotEmpty) return StaffPaymentsPayloadUtils.normalizeImageUrl(u, sessionId: sid);
-      }
-    }
-
-    // Last resort: search the session payload for *any* URL-like string.
-    final any = StaffPaymentsPayloadUtils.deepFindFirstUrl(raw);
-    if (any != null) return StaffPaymentsPayloadUtils.normalizeImageUrl(any, sessionId: sid);
-
-    return null;
+    return StaffPaymentsPayloadUtils.resolveSessionImageUrl(
+      raw,
+      sessionId: sid,
+    );
   }
 
   Future<void> _ensureSessionThumbLoaded(String sessionId) async {
@@ -152,38 +131,17 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
       final raw = await _publicApi.fetchSession(sid);
       if (!mounted || raw == null) return;
 
-      // Prefer generated image URL when present.
-      final generated = raw['generatedImages'] ?? raw['generated_images'] ?? raw['images'];
-      if (generated is List && generated.isNotEmpty) {
-        final first = generated.first;
-        if (first is Map) {
-          final m = Map<String, dynamic>.from(first);
-          final u = (m['imageUrl'] ??
-                  m['image_url'] ??
-                  m['url'] ??
-                  m['photoUrl'] ??
-                  m['photo_url'] ??
-                  '')
-              .toString()
-              .trim();
-          if (u.isNotEmpty) {
-            setState(() => _sessionThumbUrlCache[sid] = StaffPaymentsPayloadUtils.normalizeImageUrl(u, sessionId: sid));
-            return;
-          }
-        }
-        if (first is String) {
-          final u = first.trim();
-          if (u.isNotEmpty) {
-            setState(() => _sessionThumbUrlCache[sid] = StaffPaymentsPayloadUtils.normalizeImageUrl(u, sessionId: sid));
-            return;
-          }
-        }
+      final imageUrl = StaffPaymentsPayloadUtils.resolveSessionImageUrl(
+        raw,
+        sessionId: sid,
+      );
+      if (imageUrl != null) {
+        setState(() => _sessionThumbUrlCache[sid] = imageUrl);
+        return;
       }
 
-      // Fallback: base64 user image (if provided).
-      final userImage = (raw['userImageUrl'] ?? raw['user_image_url'] ?? '')
-          .toString()
-          .trim();
+      final userImage =
+          StaffPaymentsPayloadUtils.userImageFieldFromSession(raw);
       if (userImage.isNotEmpty) {
         // Store as a sentinel; renderer will decode.
         setState(() => _sessionThumbUrlCache[sid] = userImage);
@@ -195,84 +153,20 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
 
   Widget _buildThumb(String sessionId, String payloadUrl) {
     final sid = sessionId.trim();
-    final raw = payloadUrl.trim().isNotEmpty
-        ? payloadUrl.trim()
-        : (_sessionThumbUrlCache[sid] ?? '');
-    final resolved = StaffPaymentsPayloadUtils.normalizeImageUrl(raw, sessionId: sid.isEmpty ? null : sid);
-
-    Widget placeholder() => Container(
-          width: 54,
-          height: 54,
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.black12),
-          ),
-          alignment: Alignment.center,
-          child: const Icon(Icons.image, size: 22, color: Colors.black45),
-        );
+    final resolved = staffPaymentThumbResolvedUrl(
+      sessionId: sid,
+      payloadUrl: payloadUrl,
+      sessionThumbUrlCache: _sessionThumbUrlCache,
+    );
 
     if (resolved.isEmpty) {
-      // Lazy load session-derived thumbnail.
-      if (sid.isNotEmpty) {
-        // Fire-and-forget; cache + setState will rebuild.
-        _ensureSessionThumbLoaded(sid);
-      }
-      return placeholder();
+      if (sid.isNotEmpty) _ensureSessionThumbLoaded(sid);
+      return staffPaymentThumbPlaceholder();
     }
 
-    // Base64 data URL or bare base64.
-    if (resolved.startsWith(AppStrings.dataImagePrefix)) {
-      try {
-        final uriData = UriData.parse(resolved);
-        final bytes = uriData.contentAsBytes();
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Image.memory(
-            bytes,
-            width: 54,
-            height: 54,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => placeholder(),
-          ),
-        );
-      } catch (_) {
-        return placeholder();
-      }
-    }
-    // Likely bare base64 (no scheme). Avoid decoding huge strings unless it
-    // looks like base64 and is within a reasonable size.
-    final looksLikeBase64 = !resolved.startsWith('http') &&
-        !resolved.startsWith('/') &&
-        resolved.length > 100 &&
-        resolved.length < 200000;
-    if (looksLikeBase64) {
-      try {
-        final bytes = base64Decode(resolved);
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Image.memory(
-            bytes,
-            width: 54,
-            height: 54,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => placeholder(),
-          ),
-        );
-      } catch (_) {
-        // Fall through to network attempt (might be some other token).
-      }
-    }
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: Image.network(
-        resolved,
-        width: 54,
-        height: 54,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => placeholder(),
-      ),
+    return staffPaymentThumbImage(
+      resolved: resolved,
+      placeholder: staffPaymentThumbPlaceholder,
     );
   }
 
@@ -389,15 +283,9 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     });
     try {
       // Capture printer settings before async gaps.
-      final settings = context.read<AppSettingsManager>().settings;
-      final host = (settings?.printerHost?.trim().isNotEmpty ?? false)
-          ? settings!.printerHost!.trim()
-          : AppConstants.kDefaultPrinterHost;
-      final port = (settings?.printerPort != null &&
-              settings!.printerPort! > 0 &&
-              settings.printerPort! <= 65535)
-          ? settings.printerPort!
-          : 80;
+      final endpoint = staffPaymentsPrinterEndpoint(
+        context.read<AppSettingsManager>().settings,
+      );
 
       // Resolve a network URL for the generated image (server-hosted), then
       // print via the same kiosk path: download -> network printer API.
@@ -420,8 +308,8 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
       setState(() => _progressMessage = 'Sending print job...');
       await _printService.printImageToNetworkPrinter(
         file,
-        printerHost: host,
-        printerPort: port,
+        printerHost: endpoint.host,
+        printerPort: endpoint.port,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -587,107 +475,19 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
         separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
           final p = list[i];
-          final id = _paymentId(p);
-          final status = _paymentStatus(p);
           final sid = _sessionId(p);
-          final amount = StaffPaymentsPayloadUtils.pickString(
-            p,
-            const ['amount', 'total', 'price'],
-          );
-          final thumb = _paymentThumbUrlFromPayload(p);
-
-          return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildThumb(sid, thumb),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    id.isEmpty ? '(no id)' : id,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: status == 'APPROVED'
-                                        ? Colors.green.withValues(alpha: 0.12)
-                                        : status == 'FAILED' || status == 'REJECTED'
-                                            ? Colors.red.withValues(alpha: 0.12)
-                                            : Colors.orange.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    status.isEmpty ? 'UNKNOWN' : status,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            if (amount.isNotEmpty)
-                              Text(
-                                'Amount: $amount',
-                                style: TextStyle(color: appColors.textColor),
-                              ),
-                            if (sid.isNotEmpty)
-                              Text(
-                                'Session: $sid',
-                                style: TextStyle(color: appColors.textColor),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      if (showDecisionButtons)
-                        ElevatedButton(
-                          onPressed: _loading ? null : () => _approve(p),
-                          child: const Text('Approve'),
-                        ),
-                      if (showDecisionButtons)
-                        OutlinedButton(
-                          onPressed: _loading ? null : () => _reject(p),
-                          child: const Text('Reject'),
-                        ),
-                      OutlinedButton.icon(
-                        onPressed: (_loading || sid.isEmpty)
-                            ? null
-                            : () => _printForSession(p),
-                        icon: const Icon(Icons.print),
-                        label: const Text('Print'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+          return StaffPaymentCard(
+            appColors: appColors,
+            paymentId: _paymentId(p),
+            status: _paymentStatus(p),
+            sessionId: sid,
+            amount: StaffPaymentCard.amountFromPayload(p),
+            thumb: _buildThumb(sid, _paymentThumbUrlFromPayload(p)),
+            loading: _loading,
+            showDecisionButtons: showDecisionButtons,
+            onApprove: () => _approve(p),
+            onReject: () => _reject(p),
+            onPrint: () => _printForSession(p),
           );
         },
       ),

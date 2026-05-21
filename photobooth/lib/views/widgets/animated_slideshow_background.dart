@@ -110,41 +110,62 @@ class _AnimatedSlideshowBackgroundState extends State<AnimatedSlideshowBackgroun
 
         // Fill the viewport exactly with equal cells — no floored sizes (those left
         // gaps and made the grid feel misaligned). Spacing is fixed between tracks.
-        return RepaintBoundary(
-          child: ClipRect(
-            child: SizedBox(
-              width: w,
-              height: h,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (int row = 0; row < rows; row++) ...[
-                    if (row > 0) SizedBox(height: vSpacing),
-                    Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (int col = 0; col < cols; col++) ...[
-                            if (col > 0) SizedBox(width: hSpacing),
-                            Expanded(
-                              child: _SlideshowCard(
-                                assetPaths: _paths,
-                                seed: row * cols + col,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
+        return buildAnimatedSlideshowGrid(
+          width: w,
+          height: h,
+          cols: cols,
+          rows: rows,
+          hSpacing: hSpacing,
+          vSpacing: vSpacing,
+          paths: _paths,
         );
       },
     );
   }
+}
+
+/// Slideshow image grid (Sonar S3776 extraction).
+Widget buildAnimatedSlideshowGrid({
+  required double width,
+  required double height,
+  required int cols,
+  required int rows,
+  required double hSpacing,
+  required double vSpacing,
+  required List<String> paths,
+}) {
+  return RepaintBoundary(
+    child: ClipRect(
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (int row = 0; row < rows; row++) ...[
+              if (row > 0) SizedBox(height: vSpacing),
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (int col = 0; col < cols; col++) ...[
+                      if (col > 0) SizedBox(width: hSpacing),
+                      Expanded(
+                        child: _SlideshowCard(
+                          assetPaths: paths,
+                          seed: row * cols + col,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 /// A single card that stays in place and cycles through images with random
