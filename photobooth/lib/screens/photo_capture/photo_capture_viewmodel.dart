@@ -20,6 +20,7 @@ import '../../utils/device_classifier.dart';
 import '../../utils/app_device_type.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
+import 'camera_description_label.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/logger.dart';
 import '../../utils/web_flow_trace.dart';
@@ -476,14 +477,8 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// True if camera name looks like a real external device (e.g. iOS UUID).
   /// Excludes built-in cameras whose names contain "built-in" (plugin can misreport direction).
-  bool _looksLikeExternalCameraName(String name) {
-    final lower = name.toLowerCase();
-    if (lower.contains('built-in')) return false;
-    if (name.length < 10) return false;
-    // iOS external cameras use UUID format (e.g. 00000000-0010-0000-03F0-000007600000)
-    if (name.length > 30 && name.contains('-')) return true;
-    return lower.contains('webcam') || lower.contains('usb') || lower.contains('external');
-  }
+  bool _looksLikeExternalCameraName(String name) =>
+      looksLikeExternalCameraName(name);
 
   /// Set device type from UI (from [DeviceClassifier.getDeviceType]).
   /// Used to filter cameras: tablet/TV → external only, phone → built-in only.
@@ -592,15 +587,17 @@ class CaptureViewModel extends ChangeNotifier {
           '📋 CaptureViewModel.loadCameras - Device: $_deviceType, showing ${_availableCameras.length} camera(s):');
       for (var i = 0; i < _availableCameras.length; i++) {
         final c = _availableCameras[i];
-        final ext = c.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(c.name);
-        AppLogger.debug('   ${i + 1}. ${c.name} (${c.lensDirection}) ${ext ? AppStrings.cameraLabelExternal : AppStrings.cameraLabelBuiltIn}');
+        AppLogger.debug(
+          '   ${i + 1}. ${cameraDescriptionLabel(c)} (${c.lensDirection})',
+        );
       }
 
       // If no camera is currently selected and cameras are available, prefer external then first
       if (_currentCamera == null && _availableCameras.isNotEmpty) {
         _currentCamera = _pickDefaultCamera(_availableCameras);
-        final isExt = _currentCamera!.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(_currentCamera!.name);
-        AppLogger.debug('📷 Auto-selected camera: ${_currentCamera!.name} (${_currentCamera!.lensDirection}) ${isExt ? AppStrings.cameraLabelExternal : AppStrings.cameraLabelBuiltIn}');
+        AppLogger.debug(
+          '📷 Auto-selected camera: ${cameraDescriptionLabel(_currentCamera!)}',
+        );
       }
 
       notifyListeners();
@@ -676,8 +673,9 @@ class CaptureViewModel extends ChangeNotifier {
         await loadCameras(forceRefresh: forceRefresh);
         if (_availableCameras.isNotEmpty) {
           _currentCamera = _pickDefaultCamera(_availableCameras);
-          final isExt = _currentCamera!.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(_currentCamera!.name);
-          AppLogger.debug('📷 Selected camera: ${_currentCamera!.name} (${_currentCamera!.lensDirection}) ${isExt ? AppStrings.cameraLabelExternal : AppStrings.cameraLabelBuiltIn}');
+          AppLogger.debug(
+            '📷 Selected camera: ${cameraDescriptionLabel(_currentCamera!)}',
+          );
           await initializeCamera(_currentCamera!);
         } else {
           AppLogger.debug('⚠️ No cameras available');

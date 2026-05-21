@@ -3,6 +3,7 @@ import 'package:flutter/material.dart'
     show Colors, Divider, Orientation, Scaffold, CircularProgressIndicator;
 import 'package:provider/provider.dart';
 import 'terms_and_conditions_viewmodel.dart';
+import 'terms_layout_metrics.dart';
 import '../../utils/constants.dart';
 import '../splash/bootstrap_route_args.dart';
 import '../webview/webview_screen.dart';
@@ -82,10 +83,13 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     final screenWidth = mediaQuery.size.width;
     final isLandscape = mediaQuery.orientation == Orientation.landscape;
     
-    // Calculate responsive sizes
+    final layout = TermsLayoutMetrics(
+      screenWidth: screenWidth,
+      isLandscape: isLandscape,
+    );
     final double horizontalPadding = screenWidth * 0.06;
-    final double cardMaxWidth = screenWidth > 600 ? 500.0 : screenWidth * 0.9;
-    final double scrollVerticalPadding = isLandscape ? 8.0 : 16.0;
+    final double cardMaxWidth = layout.cardMaxWidth;
+    final double scrollVerticalPadding = layout.scrollVerticalPadding;
 
     return ChangeNotifierProvider.value(
       value: _viewModel,
@@ -170,7 +174,11 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Widget _buildConsentCard(TermsAndConditionsViewModel viewModel, AppColors appColors, [bool compact = false]) {
-    final cardPadding = compact ? 12.0 : 20.0;
+    final layout = TermsLayoutMetrics(
+      screenWidth: MediaQuery.sizeOf(context).width,
+      isLandscape: compact,
+    );
+    final cardPadding = layout.cardPadding(compact: compact);
     return Container(
       decoration: BoxDecoration(
         color: appColors.cardBackgroundColor,
@@ -249,7 +257,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           // Checkbox section
           Container(
             margin: EdgeInsets.symmetric(horizontal: cardPadding),
-            padding: EdgeInsets.all(compact ? 12.0 : 16),
+            padding: EdgeInsets.all(layout.checkboxAreaPadding(compact: compact)),
             decoration: BoxDecoration(
               color: appColors.backgroundColor,
               borderRadius: BorderRadius.circular(12),
@@ -257,7 +265,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             child: _buildCheckbox(viewModel, appColors),
           ),
           
-          SizedBox(height: compact ? 12 : 20),
+          SizedBox(height: layout.sectionGap(compact: compact)),
           
           // Action button
           Padding(
@@ -265,7 +273,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             child: _buildActionButtons(viewModel, appColors),
           ),
           
-          SizedBox(height: compact ? 8 : 16),
+          SizedBox(height: layout.innerSectionGap(compact: compact)),
           
           // View full T&C link
           Center(
