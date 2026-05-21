@@ -65,6 +65,9 @@ Use [`lib/utils/app_strings.dart`](../photobooth/lib/utils/app_strings.dart) for
 
 Generated and vendored paths are listed in `sonar-project.properties`. Do not add per-line suppressions without a comment in the PR.
 
+- **Sonar:** `photobooth/packages/**` (e.g. `camera_android_camerax`, `camera_native_details` path deps)
+- **Qlty:** same paths in [`.qlty/qlty.toml`](../.qlty/qlty.toml) → `photobooth/packages/**`
+
 ## Phased remediation (in-repo)
 
 | Phase | Focus |
