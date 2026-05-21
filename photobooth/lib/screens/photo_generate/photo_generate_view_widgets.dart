@@ -33,6 +33,134 @@ class GeneratedOnlyLayoutLayout {
   final bool fixedFooterOutside;
 }
 
+typedef PhotoGeneratePhotosDisplayBuilder = Widget Function(
+  BuildContext context,
+  PhotoGenerateViewModel viewModel,
+  AppColors appColors,
+  bool isLandscape,
+  double? availableWidth,
+  double? viewportHeight,
+  bool fixedFooterOutside,
+);
+
+typedef PhotoGeneratePhotosActionFooterBuilder = Widget Function(
+  BuildContext context,
+  PhotoGenerateViewModel viewModel,
+  AppColors appColors,
+);
+
+typedef BeholdSlotWidgetsBuilder = List<Widget> Function(
+  BuildContext context,
+  PhotoGenerateViewModel viewModel,
+  AppColors appColors,
+  double cardWidth,
+  double cardHeight,
+);
+
+typedef BeholdSimpleWidgetBuilder = Widget Function(
+  BuildContext context,
+  PhotoGenerateViewModel viewModel,
+);
+
+typedef BeholdHeroCardBuilder = Widget Function(
+  BuildContext context,
+  PhotoGenerateViewModel viewModel, {
+  required double width,
+  required double height,
+});
+
+/// Inputs for [buildPhotoGenerateMainContent] (Sonar S107).
+class PhotoGenerateMainContentInput {
+  const PhotoGenerateMainContentInput({
+    required this.contentKey,
+    required this.viewModel,
+    required this.appColors,
+    required this.isLandscape,
+    this.viewportHeight,
+    this.viewportWidth,
+    required this.buildPhotosDisplay,
+    required this.buildPhotosActionFooter,
+  });
+
+  final GlobalKey contentKey;
+  final PhotoGenerateViewModel viewModel;
+  final AppColors appColors;
+  final bool isLandscape;
+  final double? viewportHeight;
+  final double? viewportWidth;
+  final PhotoGeneratePhotosDisplayBuilder buildPhotosDisplay;
+  final PhotoGeneratePhotosActionFooterBuilder buildPhotosActionFooter;
+}
+
+/// Builder callbacks for generated-only layouts (Sonar S107).
+class GeneratedOnlyLayoutBuilders {
+  const GeneratedOnlyLayoutBuilders({
+    required this.beholdCardAspectRatio,
+    required this.buildTransformedSlotWidgets,
+    required this.buildProgressivePipelineSection,
+    required this.buildLiveGenerationHeader,
+    required this.buildGenerationProgressHeroCard,
+    required this.buildGenerationStoryCard,
+    required this.buildPhotosActionFooter,
+  });
+
+  final double Function(BuildContext context, int slotCount) beholdCardAspectRatio;
+  final BeholdSlotWidgetsBuilder buildTransformedSlotWidgets;
+  final BeholdSimpleWidgetBuilder buildProgressivePipelineSection;
+  final BeholdSimpleWidgetBuilder buildLiveGenerationHeader;
+  final BeholdHeroCardBuilder buildGenerationProgressHeroCard;
+  final BeholdSimpleWidgetBuilder buildGenerationStoryCard;
+  final PhotoGeneratePhotosActionFooterBuilder buildPhotosActionFooter;
+}
+
+/// Single-slot behold layout state (Sonar S107).
+class GeneratedOnlySingleSlotState {
+  const GeneratedOnlySingleSlotState({
+    required this.screenWidth,
+    required this.maxRowHeight,
+    required this.aspect,
+    required this.isGeneratingOrLoading,
+    required this.isGenerating,
+    required this.isLoadingMore,
+    required this.hasImages,
+    required this.hideCompactHeader,
+    required this.fixedFooterOutside,
+  });
+
+  final double screenWidth;
+  final double maxRowHeight;
+  final double aspect;
+  final bool isGeneratingOrLoading;
+  final bool isGenerating;
+  final bool isLoadingMore;
+  final bool hasImages;
+  final bool hideCompactHeader;
+  final bool fixedFooterOutside;
+}
+
+/// Multi-slot behold grid state (Sonar S107).
+class GeneratedOnlyGridSlotState {
+  const GeneratedOnlyGridSlotState({
+    required this.layout,
+    required this.totalSlots,
+    required this.aspect,
+    required this.isGeneratingOrLoading,
+    required this.isGenerating,
+    required this.isLoadingMore,
+    required this.hasImages,
+    required this.hideCompactHeader,
+  });
+
+  final GeneratedOnlyLayoutLayout layout;
+  final int totalSlots;
+  final double aspect;
+  final bool isGeneratingOrLoading;
+  final bool isGenerating;
+  final bool isLoadingMore;
+  final bool hasImages;
+  final bool hideCompactHeader;
+}
+
 double beholdPortraitHeightCapFraction({
   required bool isLandscape,
   required bool isPhonePortrait,
@@ -218,126 +346,161 @@ Widget? _heroUnderlayFunnel(PhotoGenerateViewModel vm, String indexPart) {
   return null;
 }
 
-typedef PhotoGeneratePhotosDisplayBuilder = Widget Function(
-  BuildContext context,
-  PhotoGenerateViewModel viewModel,
-  AppColors appColors,
-  bool isLandscape,
-  double? availableWidth,
-  double? viewportHeight,
-  bool fixedFooterOutside,
-);
-
 Widget buildPhotoGenerateMainContent({
   required BuildContext context,
-  required GlobalKey contentKey,
-  required PhotoGenerateViewModel viewModel,
-  required AppColors appColors,
-  required bool isLandscape,
-  required double? viewportHeight,
-  required double? viewportWidth,
-  required PhotoGeneratePhotosDisplayBuilder buildPhotosDisplay,
-  required Widget Function(
-    BuildContext context,
-    PhotoGenerateViewModel viewModel,
-    AppColors appColors,
-  ) buildPhotosActionFooter,
+  required PhotoGenerateMainContentInput input,
 }) {
-  final padding = isLandscape ? 12.0 : 16.0;
-  final maxWidth = viewportWidth != null && viewportWidth.isFinite
-      ? viewportWidth
+  final padding = input.isLandscape ? 12.0 : 16.0;
+  final maxWidth = input.viewportWidth != null && input.viewportWidth!.isFinite
+      ? input.viewportWidth!
       : double.infinity;
 
-  Widget buildContent(double width) {
-    final contentWidth = width.isFinite ? width : null;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: width),
-          child: Column(
-            key: contentKey,
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              buildPhotosDisplay(
-                context,
-                viewModel,
-                appColors,
-                isLandscape,
-                contentWidth,
-                viewportHeight,
-                false,
-              ),
-            ],
-          ),
-        ),
-      ],
+  if (input.viewportHeight != null && input.viewportHeight! > 0) {
+    return _buildPhotoGenerateViewportColumn(
+      context: context,
+      input: input,
+      padding: padding,
+      maxWidth: maxWidth,
     );
   }
 
-  if (viewportHeight != null && viewportHeight > 0) {
-    final hasFooter =
-        viewModel.generatedImages.isNotEmpty || viewModel.isGenerating;
+  return _buildPhotoGenerateScrollMain(
+    context: context,
+    input: input,
+    padding: padding,
+    maxWidth: maxWidth,
+  );
+}
 
-    return Padding(
-      padding: EdgeInsets.all(padding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, slot) {
-                final w = slot.maxWidth.isFinite && slot.maxWidth > 0
-                    ? slot.maxWidth
-                    : maxWidth;
-                final contentW = w.isFinite ? w : null;
-                final contentH =
-                    slot.maxHeight.isFinite && slot.maxHeight > 0
-                        ? slot.maxHeight
-                        : viewportHeight;
-                return SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: slot.maxHeight),
-                    child: Align(
-                      alignment: Alignment.center,
-                      child: SizedBox(
-                        width: contentW,
-                        child: buildPhotosDisplay(
-                          context,
-                          viewModel,
-                          appColors,
-                          isLandscape,
-                          contentW,
-                          contentH,
-                          true,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          if (hasFooter)
-            Center(
-              child: buildPhotosActionFooter(context, viewModel, appColors),
-            ),
-        ],
-      ),
-    );
-  }
-
+Widget _buildPhotoGenerateScrollMain({
+  required BuildContext context,
+  required PhotoGenerateMainContentInput input,
+  required double padding,
+  required double maxWidth,
+}) {
   return SingleChildScrollView(
     padding: EdgeInsets.all(padding),
     child: LayoutBuilder(
       builder: (context, constraints) {
         final w =
             constraints.maxWidth.isFinite ? constraints.maxWidth : maxWidth;
-        return buildContent(w);
+        return _buildPhotoGenerateCenteredRow(
+          context: context,
+          input: input,
+          width: w,
+          fixedFooterOutside: false,
+        );
       },
+    ),
+  );
+}
+
+Widget _buildPhotoGenerateCenteredRow({
+  required BuildContext context,
+  required PhotoGenerateMainContentInput input,
+  required double width,
+  required bool fixedFooterOutside,
+  double? contentHeight,
+}) {
+  final contentWidth = width.isFinite ? width : null;
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    crossAxisAlignment: CrossAxisAlignment.center,
+    children: [
+      ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: width),
+        child: Column(
+          key: input.contentKey,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            input.buildPhotosDisplay(
+              context,
+              input.viewModel,
+              input.appColors,
+              input.isLandscape,
+              contentWidth,
+              contentHeight ?? input.viewportHeight,
+              fixedFooterOutside,
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+Widget _buildPhotoGenerateViewportColumn({
+  required BuildContext context,
+  required PhotoGenerateMainContentInput input,
+  required double padding,
+  required double maxWidth,
+}) {
+  final hasFooter = input.viewModel.generatedImages.isNotEmpty ||
+      input.viewModel.isGenerating;
+
+  return Padding(
+    padding: EdgeInsets.all(padding),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, slot) {
+              return _buildPhotoGenerateViewportScrollSlot(
+                context: context,
+                input: input,
+                slot: slot,
+                maxWidth: maxWidth,
+              );
+            },
+          ),
+        ),
+        if (hasFooter)
+          Center(
+            child: input.buildPhotosActionFooter(
+              context,
+              input.viewModel,
+              input.appColors,
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
+Widget _buildPhotoGenerateViewportScrollSlot({
+  required BuildContext context,
+  required PhotoGenerateMainContentInput input,
+  required BoxConstraints slot,
+  required double maxWidth,
+}) {
+  final w = slot.maxWidth.isFinite && slot.maxWidth > 0
+      ? slot.maxWidth
+      : maxWidth;
+  final contentW = w.isFinite ? w : null;
+  final contentH = slot.maxHeight.isFinite && slot.maxHeight > 0
+      ? slot.maxHeight
+      : input.viewportHeight;
+  return SingleChildScrollView(
+    physics: const ClampingScrollPhysics(),
+    child: ConstrainedBox(
+      constraints: BoxConstraints(minHeight: slot.maxHeight),
+      child: Align(
+        alignment: Alignment.center,
+        child: SizedBox(
+          width: contentW,
+          child: input.buildPhotosDisplay(
+            context,
+            input.viewModel,
+            input.appColors,
+            input.isLandscape,
+            contentW,
+            contentH,
+            true,
+          ),
+        ),
+      ),
     ),
   );
 }
@@ -401,35 +564,11 @@ Widget _buildContinueButton({
         : CupertinoColors.systemGrey,
     borderRadius: BorderRadius.circular(12),
     onPressed: canContinue
-        ? () async {
-            final selectedImages = viewModel.selectedGeneratedImages;
-            if (selectedImages.isEmpty) return;
-
-            final routerContext = context;
-            var customerName = '';
-            var customerPhone = '';
-            var customerWhatsappOptIn = false;
-            if (paymentsEnabled) {
-              final contact = await showContactBeforePaySheet(routerContext);
-              if (!routerContext.mounted) return;
-              if (contact == null) return;
-              customerName = contact.customerName;
-              customerPhone = contact.customerPhone;
-              customerWhatsappOptIn = contact.whatsappOptIn;
-            }
-
-            await Navigator.pushNamed(
-              routerContext,
-              AppConstants.kRouteResult,
-              arguments: {
-                'generatedImages': selectedImages,
-                'originalPhoto': viewModel.originalPhoto,
-                'customerName': customerName,
-                'customerPhone': customerPhone,
-                'customerWhatsappOptIn': customerWhatsappOptIn,
-              },
-            );
-          }
+        ? () => _onPhotoGenerateContinuePressed(
+              context: context,
+              viewModel: viewModel,
+              paymentsEnabled: paymentsEnabled,
+            )
         : null,
     child: Text(
       viewModel.selectedCount < viewModel.generatedImages.length
@@ -442,6 +581,42 @@ Widget _buildContinueButton({
       ),
     ),
   );
+}
+
+Future<void> _onPhotoGenerateContinuePressed({
+  required BuildContext context,
+  required PhotoGenerateViewModel viewModel,
+  required bool paymentsEnabled,
+}) async {
+  final selectedImages = viewModel.selectedGeneratedImages;
+  if (selectedImages.isEmpty) return;
+
+  final contact = await _photoGenerateContactBeforePay(
+    context: context,
+    paymentsEnabled: paymentsEnabled,
+  );
+  if (!context.mounted) return;
+  if (paymentsEnabled && contact == null) return;
+
+  await Navigator.pushNamed(
+    context,
+    AppConstants.kRouteResult,
+    arguments: {
+      'generatedImages': selectedImages,
+      'originalPhoto': viewModel.originalPhoto,
+      'customerName': contact?.customerName ?? '',
+      'customerPhone': contact?.customerPhone ?? '',
+      'customerWhatsappOptIn': contact?.whatsappOptIn ?? false,
+    },
+  );
+}
+
+Future<ContactBeforePayResult?> _photoGenerateContactBeforePay({
+  required BuildContext context,
+  required bool paymentsEnabled,
+}) async {
+  if (!paymentsEnabled) return null;
+  return showContactBeforePaySheet(context);
 }
 
 Widget _buildTransformationDetailsLink(
@@ -533,42 +708,12 @@ Widget _buildAddAnotherStyleButton({
   );
 }
 
-typedef BeholdSlotWidgetsBuilder = List<Widget> Function(
-  BuildContext context,
-  PhotoGenerateViewModel viewModel,
-  AppColors appColors,
-  double cardWidth,
-  double cardHeight,
-);
-
-typedef BeholdSimpleWidgetBuilder = Widget Function(
-  BuildContext context,
-  PhotoGenerateViewModel viewModel,
-);
-
-typedef BeholdHeroCardBuilder = Widget Function(
-  BuildContext context,
-  PhotoGenerateViewModel viewModel, {
-  required double width,
-  required double height,
-});
-
 Widget buildGeneratedOnlyLayout({
   required BuildContext context,
   required PhotoGenerateViewModel viewModel,
   required AppColors appColors,
   required GeneratedOnlyLayoutLayout layout,
-  required double Function(BuildContext context, int slotCount) beholdCardAspectRatio,
-  required BeholdSlotWidgetsBuilder buildTransformedSlotWidgets,
-  required BeholdSimpleWidgetBuilder buildProgressivePipelineSection,
-  required BeholdSimpleWidgetBuilder buildLiveGenerationHeader,
-  required BeholdHeroCardBuilder buildGenerationProgressHeroCard,
-  required BeholdSimpleWidgetBuilder buildGenerationStoryCard,
-  required Widget Function(
-    BuildContext context,
-    PhotoGenerateViewModel viewModel,
-    AppColors appColors,
-  ) buildPhotosActionFooter,
+  required GeneratedOnlyLayoutBuilders builders,
 }) {
   final screenWidth = layout.screenWidth;
   final maxRowHeight = layout.maxRowHeight;
@@ -589,28 +734,25 @@ Widget buildGeneratedOnlyLayout({
     liveSlotCount: viewModel.liveSlotCount,
   );
   final totalSlots = baseSlotCount + (isLoadingMore ? 1 : 0);
-  final aspect = beholdCardAspectRatio(context, totalSlots);
+  final aspect = builders.beholdCardAspectRatio(context, totalSlots);
 
   if (totalSlots == 1) {
     return _buildGeneratedOnlySingleSlotLayout(
       context: context,
       viewModel: viewModel,
       appColors: appColors,
-      screenWidth: screenWidth,
-      maxRowHeight: maxRowHeight,
-      aspect: aspect,
-      isGeneratingOrLoading: isGeneratingOrLoading,
-      isGenerating: isGenerating,
-      isLoadingMore: isLoadingMore,
-      hasImages: hasImages,
-      hideCompactHeader: hideCompactHeader,
-      fixedFooterOutside: fixedFooterOutside,
-      buildTransformedSlotWidgets: buildTransformedSlotWidgets,
-      buildProgressivePipelineSection: buildProgressivePipelineSection,
-      buildLiveGenerationHeader: buildLiveGenerationHeader,
-      buildGenerationProgressHeroCard: buildGenerationProgressHeroCard,
-      buildGenerationStoryCard: buildGenerationStoryCard,
-      buildPhotosActionFooter: buildPhotosActionFooter,
+      slot: GeneratedOnlySingleSlotState(
+        screenWidth: screenWidth,
+        maxRowHeight: maxRowHeight,
+        aspect: aspect,
+        isGeneratingOrLoading: isGeneratingOrLoading,
+        isGenerating: isGenerating,
+        isLoadingMore: isLoadingMore,
+        hasImages: hasImages,
+        hideCompactHeader: hideCompactHeader,
+        fixedFooterOutside: fixedFooterOutside,
+      ),
+      builders: builders,
     );
   }
 
@@ -618,18 +760,17 @@ Widget buildGeneratedOnlyLayout({
     context: context,
     viewModel: viewModel,
     appColors: appColors,
-    layout: layout,
-    totalSlots: totalSlots,
-    aspect: aspect,
-    isGeneratingOrLoading: isGeneratingOrLoading,
-    isGenerating: isGenerating,
-    isLoadingMore: isLoadingMore,
-    hasImages: hasImages,
-    hideCompactHeader: hideCompactHeader,
-    buildTransformedSlotWidgets: buildTransformedSlotWidgets,
-    buildProgressivePipelineSection: buildProgressivePipelineSection,
-    buildLiveGenerationHeader: buildLiveGenerationHeader,
-    buildPhotosActionFooter: buildPhotosActionFooter,
+    slot: GeneratedOnlyGridSlotState(
+      layout: layout,
+      totalSlots: totalSlots,
+      aspect: aspect,
+      isGeneratingOrLoading: isGeneratingOrLoading,
+      isGenerating: isGenerating,
+      isLoadingMore: isLoadingMore,
+      hasImages: hasImages,
+      hideCompactHeader: hideCompactHeader,
+    ),
+    builders: builders,
   );
 }
 
@@ -738,35 +879,18 @@ Widget _buildGeneratedOnlySingleSlotLayout({
   required BuildContext context,
   required PhotoGenerateViewModel viewModel,
   required AppColors appColors,
-  required double screenWidth,
-  required double maxRowHeight,
-  required double aspect,
-  required bool isGeneratingOrLoading,
-  required bool isGenerating,
-  required bool isLoadingMore,
-  required bool hasImages,
-  required bool hideCompactHeader,
-  required bool fixedFooterOutside,
-  required BeholdSlotWidgetsBuilder buildTransformedSlotWidgets,
-  required BeholdSimpleWidgetBuilder buildProgressivePipelineSection,
-  required BeholdSimpleWidgetBuilder buildLiveGenerationHeader,
-  required BeholdHeroCardBuilder buildGenerationProgressHeroCard,
-  required BeholdSimpleWidgetBuilder buildGenerationStoryCard,
-  required Widget Function(
-    BuildContext context,
-    PhotoGenerateViewModel viewModel,
-    AppColors appColors,
-  ) buildPhotosActionFooter,
+  required GeneratedOnlySingleSlotState slot,
+  required GeneratedOnlyLayoutBuilders builders,
 }) {
   final size = computeBeholdHeroCardSize(
     context,
-    maxWidth: screenWidth,
-    maxHeight: maxRowHeight,
-    aspect: aspect,
+    maxWidth: slot.screenWidth,
+    maxHeight: slot.maxRowHeight,
+    aspect: slot.aspect,
   );
   final cardW = size.width;
   final cardH = size.height;
-  final slots = buildTransformedSlotWidgets(
+  final slots = builders.buildTransformedSlotWidgets(
     context,
     viewModel,
     appColors,
@@ -774,11 +898,10 @@ Widget _buildGeneratedOnlySingleSlotLayout({
     cardH,
   );
   final message = beholdHeroMessage(
-    isGeneratingOrLoading: isGeneratingOrLoading,
-    isLoadingMore: isLoadingMore,
-    hasImages: hasImages,
+    isGeneratingOrLoading: slot.isGeneratingOrLoading,
+    isLoadingMore: slot.isLoadingMore,
+    hasImages: slot.hasImages,
   );
-  final wideStoryLayout = MediaQuery.sizeOf(context).width >= 980;
 
   return Center(
     child: Column(
@@ -787,49 +910,79 @@ Widget _buildGeneratedOnlySingleSlotLayout({
         _buildBeholdLayoutHeader(
           context: context,
           viewModel: viewModel,
-          hideCompactHeader: hideCompactHeader,
-          isGeneratingOrLoading: isGeneratingOrLoading,
-          isGenerating: isGenerating,
-          buildProgressivePipelineSection: buildProgressivePipelineSection,
-          buildLiveGenerationHeader: buildLiveGenerationHeader,
+          hideCompactHeader: slot.hideCompactHeader,
+          isGeneratingOrLoading: slot.isGeneratingOrLoading,
+          isGenerating: slot.isGenerating,
+          buildProgressivePipelineSection:
+              builders.buildProgressivePipelineSection,
+          buildLiveGenerationHeader: builders.buildLiveGenerationHeader,
         ),
         _buildBeholdHeroMessageBlock(
           message: message,
-          hasImages: hasImages,
-          isGeneratingOrLoading: isGeneratingOrLoading,
+          hasImages: slot.hasImages,
+          isGeneratingOrLoading: slot.isGeneratingOrLoading,
           viewModel: viewModel,
           showElapsed: true,
         ),
-        if (isGeneratingOrLoading && !hasImages)
-          buildGenerationProgressHeroCard(
-            context,
-            viewModel,
-            width: cardW,
-            height: cardH,
-          )
-        else if (wideStoryLayout && isGeneratingOrLoading)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Center(child: slots.first),
-              const SizedBox(width: 18),
-              buildGenerationStoryCard(context, viewModel),
-            ],
-          )
-        else ...[
-          Center(child: slots.first),
-          if (isGeneratingOrLoading) ...[
-            const SizedBox(height: 18),
-            buildGenerationStoryCard(context, viewModel),
-          ],
-        ],
-        if ((hasImages || isGenerating || isLoadingMore) && !fixedFooterOutside) ...[
+        _buildGeneratedOnlySingleSlotHero(
+          context: context,
+          viewModel: viewModel,
+          slot: slot,
+          cardW: cardW,
+          cardH: cardH,
+          slots: slots,
+          builders: builders,
+        ),
+        if ((slot.hasImages ||
+                slot.isGenerating ||
+                slot.isLoadingMore) &&
+            !slot.fixedFooterOutside) ...[
           const SizedBox(height: 18),
-          buildPhotosActionFooter(context, viewModel, appColors),
+          builders.buildPhotosActionFooter(context, viewModel, appColors),
         ],
       ],
     ),
+  );
+}
+
+Widget _buildGeneratedOnlySingleSlotHero({
+  required BuildContext context,
+  required PhotoGenerateViewModel viewModel,
+  required GeneratedOnlySingleSlotState slot,
+  required double cardW,
+  required double cardH,
+  required List<Widget> slots,
+  required GeneratedOnlyLayoutBuilders builders,
+}) {
+  if (slot.isGeneratingOrLoading && !slot.hasImages) {
+    return builders.buildGenerationProgressHeroCard(
+      context,
+      viewModel,
+      width: cardW,
+      height: cardH,
+    );
+  }
+  final wideStoryLayout = MediaQuery.sizeOf(context).width >= 980;
+  if (wideStoryLayout && slot.isGeneratingOrLoading) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Center(child: slots.first),
+        const SizedBox(width: 18),
+        builders.buildGenerationStoryCard(context, viewModel),
+      ],
+    );
+  }
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Center(child: slots.first),
+      if (slot.isGeneratingOrLoading) ...[
+        const SizedBox(height: 18),
+        builders.buildGenerationStoryCard(context, viewModel),
+      ],
+    ],
   );
 }
 
@@ -837,42 +990,28 @@ Widget _buildGeneratedOnlyGridLayout({
   required BuildContext context,
   required PhotoGenerateViewModel viewModel,
   required AppColors appColors,
-  required GeneratedOnlyLayoutLayout layout,
-  required int totalSlots,
-  required double aspect,
-  required bool isGeneratingOrLoading,
-  required bool isGenerating,
-  required bool isLoadingMore,
-  required bool hasImages,
-  required bool hideCompactHeader,
-  required BeholdSlotWidgetsBuilder buildTransformedSlotWidgets,
-  required BeholdSimpleWidgetBuilder buildProgressivePipelineSection,
-  required BeholdSimpleWidgetBuilder buildLiveGenerationHeader,
-  required Widget Function(
-    BuildContext context,
-    PhotoGenerateViewModel viewModel,
-    AppColors appColors,
-  ) buildPhotosActionFooter,
+  required GeneratedOnlyGridSlotState slot,
+  required GeneratedOnlyLayoutBuilders builders,
 }) {
-  final screenWidth = layout.screenWidth;
-  final maxRowHeight = layout.maxRowHeight;
-  final gap = layout.gap;
-  final fixedFooterOutside = layout.fixedFooterOutside;
+  final screenWidth = slot.layout.screenWidth;
+  final maxRowHeight = slot.layout.maxRowHeight;
+  final gap = slot.layout.gap;
+  final fixedFooterOutside = slot.layout.fixedFooterOutside;
 
-  var cols = beholdGridColumnCount(totalSlots);
+  var cols = beholdGridColumnCount(slot.totalSlots);
   cols = cols.clamp(1, 3);
-  final rows = (totalSlots / cols).ceil().clamp(1, 3);
+  final rows = (slot.totalSlots / cols).ceil().clamp(1, 3);
 
   final gridH = maxRowHeight;
   final cardH = (gridH - gap * (rows - 1)) / rows;
-  final cardW = cardH * aspect;
+  final cardW = cardH * slot.aspect;
   final gridW = cols * cardW + gap * (cols - 1);
   final scale =
       gridW > screenWidth ? (screenWidth / gridW).clamp(0.35, 1.0) : 1.0;
   final scaledW = cardW * scale;
   final scaledH = cardH * scale;
 
-  final slots = buildTransformedSlotWidgets(
+  final slots = builders.buildTransformedSlotWidgets(
     context,
     viewModel,
     appColors,
@@ -880,9 +1019,9 @@ Widget _buildGeneratedOnlyGridLayout({
     scaledH,
   );
   final message = beholdHeroMessage(
-    isGeneratingOrLoading: isGeneratingOrLoading,
-    isLoadingMore: isLoadingMore,
-    hasImages: hasImages,
+    isGeneratingOrLoading: slot.isGeneratingOrLoading,
+    isLoadingMore: slot.isLoadingMore,
+    hasImages: slot.hasImages,
   );
 
   return Center(
@@ -892,16 +1031,17 @@ Widget _buildGeneratedOnlyGridLayout({
         _buildBeholdLayoutHeader(
           context: context,
           viewModel: viewModel,
-          hideCompactHeader: hideCompactHeader,
-          isGeneratingOrLoading: isGeneratingOrLoading,
-          isGenerating: isGenerating,
-          buildProgressivePipelineSection: buildProgressivePipelineSection,
-          buildLiveGenerationHeader: buildLiveGenerationHeader,
+          hideCompactHeader: slot.hideCompactHeader,
+          isGeneratingOrLoading: slot.isGeneratingOrLoading,
+          isGenerating: slot.isGenerating,
+          buildProgressivePipelineSection:
+              builders.buildProgressivePipelineSection,
+          buildLiveGenerationHeader: builders.buildLiveGenerationHeader,
         ),
         _buildBeholdHeroMessageBlock(
           message: message,
-          hasImages: hasImages,
-          isGeneratingOrLoading: isGeneratingOrLoading,
+          hasImages: slot.hasImages,
+          isGeneratingOrLoading: slot.isGeneratingOrLoading,
           viewModel: viewModel,
           showElapsed: false,
         ),
@@ -916,9 +1056,10 @@ Widget _buildGeneratedOnlyGridLayout({
             ),
           ),
         ),
-        if ((hasImages || isGenerating || isLoadingMore) && !fixedFooterOutside) ...[
+        if ((slot.hasImages || slot.isGenerating || slot.isLoadingMore) &&
+            !fixedFooterOutside) ...[
           const SizedBox(height: 18),
-          buildPhotosActionFooter(context, viewModel, appColors),
+          builders.buildPhotosActionFooter(context, viewModel, appColors),
         ],
       ],
     ),

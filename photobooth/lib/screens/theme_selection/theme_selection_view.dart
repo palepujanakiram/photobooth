@@ -13,7 +13,6 @@ import '../photo_capture/photo_model.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/theme_card.dart';
 import '../../views/widgets/cached_network_image.dart';
-import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/bottom_safe_area.dart';
 import '../../views/widgets/falling_starfield_background.dart';
@@ -22,7 +21,7 @@ import '../../services/theme_manager.dart';
 import 'theme_model.dart';
 import 'theme_preview_screen.dart';
 import 'theme_selection_carousel_page.dart';
-import 'theme_selection_continue_helpers.dart';
+import 'theme_selection_on_continue_helpers.dart';
 import 'theme_selection_loaded_body.dart';
 import '../../utils/route_args.dart';
 
@@ -218,49 +217,29 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       return;
     }
 
-    final currentContext = context;
     if (_photoFromCapture != null) {
       _startTimer();
-      setState(() => _isGenerating = true);
-      bool success = false;
-      try {
-        success = await viewModel.updateSessionWithTheme();
-        if (!mounted || !currentContext.mounted) return;
-        if (success) {
-          await themeSelectionNavigateAfterSessionUpdate(
-            context: currentContext,
-            viewModel: viewModel,
-            photo: _photoFromCapture!,
-            selectedTheme: selectedTheme,
-            mounted: mounted,
-          );
-        } else {
-          AppSnackBar.showError(
-            currentContext,
-            viewModel.errorMessage ??
-                'Failed to update session with theme',
-          );
-        }
-      } catch (e) {
-        if (mounted && currentContext.mounted) {
-          AppSnackBar.showError(
-            currentContext,
-            'An error occurred: ${e.toString()}',
-          );
-        }
-      } finally {
-        _stopTimer();
-        if (mounted) setState(() => _isGenerating = false);
-      }
-    } else {
-      final result = await Navigator.pushNamed(
-        currentContext,
-        AppConstants.kRouteCapture,
+      await themeSelectionContinueWithPhoto(
+        context: context,
+        viewModel: viewModel,
+        photo: _photoFromCapture!,
+        selectedTheme: selectedTheme,
+        mounted: mounted,
+        setGenerating: (v) {
+          if (mounted) setState(() => _isGenerating = v);
+        },
       );
-      if (!mounted || !currentContext.mounted) return;
-      if (result == null || result is! PhotoModel) return;
-      setState(() => _photoFromCapture = result);
+      _stopTimer();
+      return;
     }
+
+    await themeSelectionContinueToCapture(
+      context: context,
+      mounted: mounted,
+      setPhotoFromCapture: (photo) {
+        if (mounted) setState(() => _photoFromCapture = photo);
+      },
+    );
   }
 
   Future<void> _openThemePreview(

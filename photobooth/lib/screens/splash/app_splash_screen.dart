@@ -17,7 +17,7 @@ import '../../utils/constants.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/animated_slideshow_background.dart'
     show kSlideshowAssetPaths;
-import 'app_splash_copy_helpers.dart';
+import 'app_splash_screen_body.dart';
 
 /// Cold start and kiosk management: branded animation, no stacked dialogs.
 class AppSplashScreen extends StatefulWidget {
@@ -539,252 +539,36 @@ class _AppSplashScreenState extends State<AppSplashScreen>
                     ),
                   ),
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 28),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Center(
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(maxWidth: formMaxWidth),
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: appColors.backgroundColor
-                                    .withValues(alpha: 0.55),
-                                borderRadius: BorderRadius.circular(22),
-                                border: Border.all(
-                                  color: appColors.dividerColor
-                                      .withValues(alpha: 0.45),
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  FadeTransition(
-                                    opacity: _fade,
-                                    child: ScaleTransition(
-                                      scale: _scale,
-                                      child: Column(
-                                        children: [
-                                          SizedBox(
-                                            height: 72,
-                                            child: Image.asset(
-                                              AppConstants.kBrandLogoAsset,
-                                              fit: BoxFit.contain,
-                                              errorBuilder: (_, __, ___) =>
-                                                  Icon(
-                                                CupertinoIcons.sparkles,
-                                                size: 56,
-                                                color: appColors.primaryColor,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Text(
-                                            AppConstants.kBrandName,
-                                            style: TextStyle(
-                                              fontSize: 22,
-                                              fontWeight: FontWeight.w700,
-                                              color: appColors.textColor,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                          const SizedBox(height: 6),
-                                          Text(
-                                            appSplashKioskSubtitle(
-                                              manageKiosk: widget.args.manageKiosk,
-                                              needsEntry: _needsEntry,
-                                            ),
-                                            style: TextStyle(
-                                              fontSize: 15,
-                                              color:
-                                                  appColors.secondaryTextColor,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  if (_bootstrapDone) ...[
-                                    const SizedBox(height: 26),
-                                    if (showManageSummary) ...[
-                                      Text(
-                                        'Linked to kiosk',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: appColors.secondaryTextColor,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        _storedCode!,
-                                        style: TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 1.2,
-                                          color: appColors.textColor,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                      const SizedBox(height: 24),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: CupertinoButton(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                vertical: 14,
-                                              ),
-                                              color: CupertinoColors.systemBlue,
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              onPressed: _busy
-                                                  ? null
-                                                  : () => setState(() {
-                                                        _manageEditing = true;
-                                                        _codeController.text =
-                                                            _storedCode ?? '';
-                                                      }),
-                                              child: const Text(
-                                                'Change code',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.w700,
-                                                  color: CupertinoColors.white,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: CupertinoButton(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                vertical: 14,
-                                              ),
-                                              color: CupertinoColors.systemRed
-                                                  .resolveFrom(context)
-                                                  .withValues(alpha: 0.15),
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              onPressed:
-                                                  _busy ? null : _disconnect,
-                                              child: Text(
-                                                'Disconnect',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.w700,
-                                                  color: CupertinoColors
-                                                      .destructiveRed
-                                                      .resolveFrom(context),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                    if (showForm) ...[
-                                      if (showManageSummary)
-                                        const SizedBox(height: 20),
-                                      Text(
-                                        'Enter the code, or scan the operator’s QR with this booth',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: appColors.secondaryTextColor,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                      const SizedBox(height: 10),
-                                      _buildCodeOrScanRow(
-                                        appColors,
-                                        formMaxWidth,
-                                        showManageSummary,
-                                      ),
-                                      if (_error != null) ...[
-                                        const SizedBox(height: 10),
-                                        Text(
-                                          _error!,
-                                          style: const TextStyle(
-                                            color: CupertinoColors.systemRed,
-                                            fontSize: 14,
-                                            height: 1.3,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ],
-                                      const SizedBox(height: 18),
-                                      CupertinoButton(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 16,
-                                        ),
-                                        color: CupertinoColors.systemBlue,
-                                        borderRadius: BorderRadius.circular(12),
-                                        onPressed: _busy ? null : _submitCode,
-                                        child: Text(
-                                          widget.args.manageKiosk
-                                              ? 'Save & continue'
-                                              : 'Continue',
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w800,
-                                            color: CupertinoColors.white,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 14),
-                                      CupertinoButton(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 14,
-                                        ),
-                                        color: CupertinoColors.systemGrey
-                                            .resolveFrom(context)
-                                            .withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(12),
-                                        onPressed: _busy
-                                            ? null
-                                            : () => Navigator.of(context)
-                                                .pushNamed(AppConstants
-                                                    .kRouteStaffLogin),
-                                        child: Text(
-                                          'Staff login',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w800,
-                                            color: appColors.textColor,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                  child: AppSplashScreenBody(
+                    args: widget.args,
+                    appColors: appColors,
+                    formMaxWidth: formMaxWidth,
+                    fade: _fade,
+                    scale: _scale,
+                    bootstrapDone: _bootstrapDone,
+                    showForm: showForm,
+                    showManageSummary: showManageSummary,
+                    storedCode: _storedCode,
+                    busy: _busy,
+                    error: _error,
+                    needsEntry: _needsEntry,
+                    onManageEdit: () => setState(() {
+                      _manageEditing = true;
+                      _codeController.text = _storedCode ?? '';
+                    }),
+                    onDisconnect: _disconnect,
+                    buildCodeOrScanRow: (showManageSummary) =>
+                        _buildCodeOrScanRow(
+                      appColors,
+                      formMaxWidth,
+                      showManageSummary,
                     ),
+                    onSubmitCode: _submitCode,
+                    onStaffLogin: () => Navigator.of(context)
+                        .pushNamed(AppConstants.kRouteStaffLogin),
                   ),
                 ),
-                if (versionFooter.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
-                    child: Text(
-                      versionFooter,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.25,
-                        color: appColors.secondaryTextColor
-                            .withValues(alpha: 0.88),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
+                appSplashVersionFooter(versionFooter, appColors),
               ],
             ),
             if (_busy)
