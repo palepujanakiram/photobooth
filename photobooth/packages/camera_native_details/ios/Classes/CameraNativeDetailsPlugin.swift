@@ -13,11 +13,10 @@ public class CameraNativeDetailsPlugin: NSObject, FlutterPlugin {
     }
 
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-        switch call.method {
-        case "getCameraDetails":
+        if call.method == "getCameraDetails" {
             // iOS: return default values for now; real implementation can be added later.
             result(defaultDetailsMap())
-        default:
+        } else {
             result(FlutterMethodNotImplemented)
         }
     }

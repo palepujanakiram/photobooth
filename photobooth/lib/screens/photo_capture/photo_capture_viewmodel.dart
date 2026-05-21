@@ -20,6 +20,7 @@ import '../../utils/device_classifier.dart';
 import '../../utils/app_device_type.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/logger.dart';
 import '../../utils/web_flow_trace.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
@@ -592,14 +593,14 @@ class CaptureViewModel extends ChangeNotifier {
       for (var i = 0; i < _availableCameras.length; i++) {
         final c = _availableCameras[i];
         final ext = c.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(c.name);
-        AppLogger.debug('   ${i + 1}. ${c.name} (${c.lensDirection}) ${ext ? "[external]" : "[built-in]"}');
+        AppLogger.debug('   ${i + 1}. ${c.name} (${c.lensDirection}) ${ext ? AppStrings.cameraLabelExternal : AppStrings.cameraLabelBuiltIn}');
       }
 
       // If no camera is currently selected and cameras are available, prefer external then first
       if (_currentCamera == null && _availableCameras.isNotEmpty) {
         _currentCamera = _pickDefaultCamera(_availableCameras);
         final isExt = _currentCamera!.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(_currentCamera!.name);
-        AppLogger.debug('📷 Auto-selected camera: ${_currentCamera!.name} (${_currentCamera!.lensDirection}) ${isExt ? "[external]" : "[built-in]"}');
+        AppLogger.debug('📷 Auto-selected camera: ${_currentCamera!.name} (${_currentCamera!.lensDirection}) ${isExt ? AppStrings.cameraLabelExternal : AppStrings.cameraLabelBuiltIn}');
       }
 
       notifyListeners();
@@ -676,7 +677,7 @@ class CaptureViewModel extends ChangeNotifier {
         if (_availableCameras.isNotEmpty) {
           _currentCamera = _pickDefaultCamera(_availableCameras);
           final isExt = _currentCamera!.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(_currentCamera!.name);
-          AppLogger.debug('📷 Selected camera: ${_currentCamera!.name} (${_currentCamera!.lensDirection}) ${isExt ? "[external]" : "[built-in]"}');
+          AppLogger.debug('📷 Selected camera: ${_currentCamera!.name} (${_currentCamera!.lensDirection}) ${isExt ? AppStrings.cameraLabelExternal : AppStrings.cameraLabelBuiltIn}');
           await initializeCamera(_currentCamera!);
         } else {
           AppLogger.debug('⚠️ No cameras available');
