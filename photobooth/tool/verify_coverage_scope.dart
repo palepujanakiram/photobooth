@@ -10,6 +10,7 @@ bool ignored(String path) {
     'lib/views/',
     '_view.dart',
     'photo_generate_progress_view.dart',
+    'post_reveal_polishing_overlay.dart',
     'app_splash_screen.dart',
     'theme_preview_screen.dart',
     'webview_screen.dart',
