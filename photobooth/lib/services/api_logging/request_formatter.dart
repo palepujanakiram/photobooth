@@ -42,8 +42,9 @@ int? estimatePayloadSizeForLogging(dynamic data) {
 }
 
 class ApiRequestFormatter {
-  ApiRequestFormatter(PayloadSanitizer sanitizer, this._truncator)
-      : _body = ApiBodyLogFormatting(sanitizer, _truncator);
+  ApiRequestFormatter(PayloadSanitizer sanitizer, LogTruncator truncator)
+      : _truncator = truncator,
+        _body = ApiBodyLogFormatting(sanitizer, truncator);
 
   final LogTruncator _truncator;
   final ApiBodyLogFormatting _body;
@@ -78,8 +79,9 @@ class ApiRequestFormatter {
 }
 
 class ApiResponseFormatter {
-  ApiResponseFormatter(PayloadSanitizer sanitizer, this._truncator)
-      : _body = ApiBodyLogFormatting(sanitizer, _truncator);
+  ApiResponseFormatter(PayloadSanitizer sanitizer, LogTruncator truncator)
+      : _truncator = truncator,
+        _body = ApiBodyLogFormatting(sanitizer, truncator);
 
   final LogTruncator _truncator;
   final ApiBodyLogFormatting _body;

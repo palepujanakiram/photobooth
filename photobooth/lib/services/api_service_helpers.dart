@@ -34,25 +34,44 @@ List<ThemeModel> parseThemesResponseBody(dynamic data) {
       .toList();
 }
 
-Never rethrowThemesFetchDioError(DioException e) {
-  if (kIsWeb &&
-      (e.type == DioExceptionType.connectionError ||
-          e.type == DioExceptionType.unknown)) {
-    final errorMsg = e.message ?? '';
-    if (errorMsg.contains('XMLHttpRequest') ||
-        errorMsg.contains('CORS') ||
-        errorMsg.contains(AppStrings.failedToFetch) ||
-        errorMsg.contains('NetworkError')) {
-      throw ApiException(
-        'CORS Error: The API server at ${AppConstants.kBaseUrl} is not configured to allow requests from this origin. '
-        'Please contact the server administrator to add CORS headers allowing requests from your domain. '
-        'Error details: ${e.message ?? AppStrings.unknownNetworkError}',
-      );
-    }
+bool isWebCorsThemesFetchError(
+  DioException e, {
+  bool platformIsWeb = kIsWeb,
+}) {
+  if (!platformIsWeb) return false;
+  if (e.type != DioExceptionType.connectionError &&
+      e.type != DioExceptionType.unknown) {
+    return false;
   }
-  if (e.type == DioExceptionType.connectionTimeout ||
+  final errorMsg = e.message ?? '';
+  return errorMsg.contains('XMLHttpRequest') ||
+      errorMsg.contains('CORS') ||
+      errorMsg.contains(AppStrings.failedToFetch) ||
+      errorMsg.contains('NetworkError');
+}
+
+Never throwWebCorsThemesFetchError(DioException e) {
+  throw ApiException(
+    'CORS Error: The API server at ${AppConstants.kBaseUrl} is not configured to allow requests from this origin. '
+    'Please contact the server administrator to add CORS headers allowing requests from your domain. '
+    'Error details: ${e.message ?? AppStrings.unknownNetworkError}',
+  );
+}
+
+bool isThemesFetchConnectionError(DioException e) {
+  return e.type == DioExceptionType.connectionTimeout ||
       e.type == DioExceptionType.receiveTimeout ||
-      e.type == DioExceptionType.connectionError) {
+      e.type == DioExceptionType.connectionError;
+}
+
+Never rethrowThemesFetchDioError(
+  DioException e, {
+  bool platformIsWeb = kIsWeb,
+}) {
+  if (isWebCorsThemesFetchError(e, platformIsWeb: platformIsWeb)) {
+    throwWebCorsThemesFetchError(e);
+  }
+  if (isThemesFetchConnectionError(e)) {
     throw ApiException(
       'Connection error occurred: ${e.message ?? AppConstants.kErrorNetwork}',
     );
@@ -89,9 +108,12 @@ Map<String, dynamic> buildSessionPatchBody({
   return body;
 }
 
-Future<Map<String, dynamic>> decodeSessionPatchResponseText(String text) async {
+Future<Map<String, dynamic>> decodeSessionPatchResponseText(
+  String text, {
+  bool decodeOnMainIsolate = kIsWeb,
+}) async {
   if (text.isEmpty) throw ApiException('Empty session response');
-  if (kIsWeb) return parseSessionPatchResponseJson(text);
+  if (decodeOnMainIsolate) return parseSessionPatchResponseJson(text);
   return compute(parseSessionPatchResponseJson, text);
 }
 
