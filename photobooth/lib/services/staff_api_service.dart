@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 
+import '../utils/app_strings.dart';
 import '../utils/constants.dart';
 import '../utils/exceptions.dart';
 import '../utils/logger.dart';
@@ -126,7 +127,7 @@ class StaffApiService {
         await _dio.post<dynamic>(
           '/api/staff/logout',
           options: Options(
-            headers: {'X-Staff-Token': token},
+            headers: {AppStrings.staffTokenHeader: token},
             validateStatus: (c) => c != null && c >= 200 && c < 500,
           ),
         );
@@ -152,7 +153,7 @@ class StaffApiService {
       final r = await _dio.get<dynamic>(
         '/api/staff/payments',
         options: Options(
-          headers: {'X-Staff-Token': token},
+          headers: {AppStrings.staffTokenHeader: token},
           validateStatus: (c) => c != null && c >= 200 && c < 500,
           responseType: ResponseType.json,
         ),
@@ -246,7 +247,7 @@ class StaffApiService {
         path,
         data: data,
         options: Options(
-          headers: {'X-Staff-Token': token},
+          headers: {AppStrings.staffTokenHeader: token},
           validateStatus: (c) => c != null && c >= 200 && c < 500,
           responseType: ResponseType.json,
         ),

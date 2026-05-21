@@ -1,12 +1,10 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui'
     show Size, ImmutableBuffer, instantiateImageCodecFromBuffer;
 import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, compute, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/services.dart' show DeviceOrientation, MethodChannel;
 import 'package:camera/camera.dart';
 import 'package:camera/camera.dart' as cam show availableCameras;
-import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,6 +24,22 @@ import '../../utils/logger.dart';
 import '../../utils/web_flow_trace.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import 'package:camera_native_details/camera_native_details.dart';
+import 'camera_image_yuv_jpeg.dart';
+import 'photo_capture_camera_config.dart';
+
+(double, double) _previewDisplayDimensions({
+  required Size? previewSize,
+  required int effectiveQuarterTurns,
+  required double displayAspectRatio,
+}) {
+  final odd = effectiveQuarterTurns.isOdd;
+  if (previewSize == null) {
+    return odd ? (1.0, displayAspectRatio) : (displayAspectRatio, 1.0);
+  }
+  return odd
+      ? (previewSize.height, previewSize.width)
+      : (previewSize.width, previewSize.height);
+}
 
 class CaptureViewModel extends ChangeNotifier {
   final ApiService _apiService;
@@ -221,16 +235,11 @@ class CaptureViewModel extends ChangeNotifier {
 
     final displayAspectRatio =
         effectiveQuarterTurns.isOdd ? 1 / baseAspectRatio : baseAspectRatio;
-    final width = previewSize == null
-        ? (effectiveQuarterTurns.isOdd ? 1.0 : displayAspectRatio)
-        : (effectiveQuarterTurns.isOdd
-            ? previewSize.height
-            : previewSize.width);
-    final height = previewSize == null
-        ? (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1.0)
-        : (effectiveQuarterTurns.isOdd
-            ? previewSize.width
-            : previewSize.height);
+    final (width, height) = _previewDisplayDimensions(
+      previewSize: previewSize,
+      effectiveQuarterTurns: effectiveQuarterTurns,
+      displayAspectRatio: displayAspectRatio,
+    );
 
     if (width <= 0 || height <= 0) return null;
     return Size(width, height);
@@ -517,10 +526,72 @@ class CaptureViewModel extends ChangeNotifier {
     return list;
   }
 
+  void _applyCachedCameraList() {
+    if (_cachedAvailableCameras == null) return;
+    _availableCameras = _externalCamerasFirst(_cachedAvailableCameras!);
+    if (_currentCamera == null && _availableCameras.isNotEmpty) {
+      _currentCamera = _pickDefaultCamera(_availableCameras);
+    }
+  }
+
+  Future<bool> _ensureAndroidCameraPermission() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return true;
+    }
+    final status = await Permission.camera.status;
+    if (status.isGranted) return true;
+    AppLogger.debug('📷 Camera permission not granted, requesting...');
+    final result = await Permission.camera.request();
+    AppLogger.debug('📷 Permission result: $result');
+    if (result.isGranted) return true;
+    _errorMessage = 'Camera permission is required to detect and use cameras.';
+    return false;
+  }
+
+  Future<void> _reportEmptyCameraEnumeration() async {
+    ErrorReportingManager.log('❌ Camera enumeration returned 0 cameras');
+    await ErrorReportingManager.recordError(
+      Exception('Camera enumeration returned 0 cameras'),
+      StackTrace.current,
+      reason: 'No cameras detected',
+      extraInfo: {
+        'platform': defaultTargetPlatform.name,
+        'message':
+            'availableCameras() returned empty list; no exception thrown',
+      },
+      fatal: false,
+    );
+  }
+
+  void _assignEnumeratedCameras(List<CameraDescription> allCameras) {
+    if (allCameras.isEmpty) {
+      unawaited(_reportEmptyCameraEnumeration());
+    }
+    AppLogger.debug('📷 Detected ${allCameras.length} camera(s):');
+    for (final c in allCameras) {
+      AppLogger.debug('  - Name: "${c.name}", Direction: ${c.lensDirection}');
+    }
+    _availableCameras = _externalCamerasFirst(allCameras);
+    _cachedAvailableCameras = List<CameraDescription>.from(allCameras);
+    AppLogger.debug(
+      '📋 CaptureViewModel.loadCameras - Device: $_deviceType, '
+      'showing ${_availableCameras.length} camera(s):',
+    );
+    for (var i = 0; i < _availableCameras.length; i++) {
+      final c = _availableCameras[i];
+      AppLogger.debug(
+        '   ${i + 1}. ${cameraDescriptionLabel(c)} (${c.lensDirection})',
+      );
+    }
+    if (_currentCamera == null && _availableCameras.isNotEmpty) {
+      _currentCamera = _pickDefaultCamera(_availableCameras);
+      AppLogger.debug(
+        '📷 Auto-selected camera: ${cameraDescriptionLabel(_currentCamera!)}',
+      );
+    }
+  }
+
   /// Loads available cameras when user opens Capture screen.
-  /// On Android, availableCameras() returns an empty list (no exception) when
-  /// camera permission is not granted, so we must request permission first.
-  /// On iOS, the camera plugin triggers the permission dialog itself.
   Future<void> loadCameras({bool forceRefresh = false}) async {
     _isLoadingCameras = true;
     _errorMessage = null;
@@ -528,93 +599,34 @@ class CaptureViewModel extends ChangeNotifier {
 
     try {
       if (!forceRefresh && _cachedAvailableCameras != null) {
-        _availableCameras = _externalCamerasFirst(_cachedAvailableCameras!);
-        if (_currentCamera == null && _availableCameras.isNotEmpty) {
-          _currentCamera = _pickDefaultCamera(_availableCameras);
-        }
+        _applyCachedCameraList();
         notifyListeners();
         return;
       }
 
-      // On Android, request camera permission before enumeration.
-      // Without this, availableCameras() silently returns an empty list.
-      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-        final status = await Permission.camera.status;
-        if (!status.isGranted) {
-          AppLogger.debug('📷 Camera permission not granted, requesting...');
-          final result = await Permission.camera.request();
-          AppLogger.debug('📷 Permission result: $result');
-          if (!result.isGranted) {
-            _errorMessage = 'Camera permission is required to detect and use cameras.';
-            _isLoadingCameras = false;
-            notifyListeners();
-            return;
-          }
-        }
+      if (!await _ensureAndroidCameraPermission()) {
+        return;
       }
 
       final allCameras = await cam.availableCameras().timeout(
         _loadCamerasTimeout,
-        onTimeout: () {
-          throw TimeoutException(
-            'Camera enumeration timed out after ${_loadCamerasTimeout.inSeconds}s',
-          );
-        },
+        onTimeout: () => throw TimeoutException(
+          'Camera enumeration timed out after ${_loadCamerasTimeout.inSeconds}s',
+        ),
       );
 
-      if (allCameras.isEmpty) {
-        ErrorReportingManager.log('❌ Camera enumeration returned 0 cameras');
-        await ErrorReportingManager.recordError(
-          Exception('Camera enumeration returned 0 cameras'),
-          StackTrace.current,
-          reason: 'No cameras detected',
-          extraInfo: {
-            'platform': defaultTargetPlatform.name,
-            'message': 'availableCameras() returned empty list; no exception thrown',
-          },
-          fatal: false,
-        );
-      }
-      AppLogger.debug('📷 Detected ${allCameras.length} camera(s):');
-      for (final c in allCameras) {
-        AppLogger.debug('  - Name: "${c.name}", Direction: ${c.lensDirection}');
-      }
-      // Show all cameras (no device-type filter that could hide the only camera)
-      _availableCameras = _externalCamerasFirst(allCameras);
-      _cachedAvailableCameras = List<CameraDescription>.from(allCameras);
-
-      AppLogger.debug(
-          '📋 CaptureViewModel.loadCameras - Device: $_deviceType, showing ${_availableCameras.length} camera(s):');
-      for (var i = 0; i < _availableCameras.length; i++) {
-        final c = _availableCameras[i];
-        AppLogger.debug(
-          '   ${i + 1}. ${cameraDescriptionLabel(c)} (${c.lensDirection})',
-        );
-      }
-
-      // If no camera is currently selected and cameras are available, prefer external then first
-      if (_currentCamera == null && _availableCameras.isNotEmpty) {
-        _currentCamera = _pickDefaultCamera(_availableCameras);
-        AppLogger.debug(
-          '📷 Auto-selected camera: ${cameraDescriptionLabel(_currentCamera!)}',
-        );
-      }
-
+      _assignEnumeratedCameras(allCameras);
       notifyListeners();
     } on TimeoutException {
       _errorMessage = 'Camera took too long to load. Please try again.';
       ErrorReportingManager.log('❌ Camera enumeration timed out');
     } catch (e, stackTrace) {
       _errorMessage = 'Failed to load cameras: $e';
-      ErrorReportingManager.log('❌ Failed to load cameras: $e');
       await ErrorReportingManager.recordError(
         e,
         stackTrace,
-        reason: 'loadCameras failed (exception from camera plugin or availableCameras)',
-        extraInfo: {
-          'error': e.toString(),
-          'errorType': e.runtimeType.toString(),
-        },
+        reason: 'loadCameras failed',
+        extraInfo: {'error': e.toString(), 'errorType': e.runtimeType.toString()},
         fatal: false,
       );
       notifyListeners();
@@ -715,161 +727,135 @@ class CaptureViewModel extends ChangeNotifier {
     await initializeCamera(camera);
   }
 
-  /// Initializes the camera with the selected camera
-  Future<void> initializeCamera(CameraDescription camera) async {
-    await _withCameraLock(() async {
-      _isInitializing = true;
+  CameraDescription _resolveListedCamera(CameraDescription camera) {
+    try {
+      return _availableCameras.firstWhere((c) => c.name == camera.name);
+    } catch (_) {
+      return camera;
+    }
+  }
+
+  Future<bool> _tryFastCameraDescriptionSwitch(
+    CameraDescription cameraToUse,
+    CameraDescription camera,
+  ) async {
+    final ctrl = _cameraController;
+    if (ctrl == null || !ctrl.value.isInitialized) return false;
+    try {
+      await ctrl.setDescription(cameraToUse);
+      _currentCamera = camera;
+      _isInitializing = false;
       _errorMessage = null;
       notifyListeners();
+      unawaited(_finishCameraSetup(camera));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
-      try {
-      _minZoom = null;
-      _maxZoom = null;
-      _currentZoom = 1.0;
-
-      CameraDescription cameraToUse = camera;
-      try {
-        cameraToUse = _availableCameras.firstWhere((c) => c.name == camera.name);
-      } catch (_) {
-        // Best-effort; use the passed camera.
-      }
-
-      // Aligned with camera package example: try setDescription when switching (no full reinit)
-      if (_cameraController != null && _cameraController!.value.isInitialized) {
-        try {
-          await _cameraController!.setDescription(cameraToUse);
-          _currentCamera = camera;
-          _isInitializing = false;
-          _errorMessage = null;
-          notifyListeners();
-          unawaited(_finishCameraSetup(camera));
-          return;
-        } catch (_) {
-          // Fall through to full dispose + init
-        }
-      }
-
-      // CRITICAL: Fully release the previous camera before opening the new one
-      final hadController = _cameraController != null;
-      if (_cameraController != null) {
-        AppLogger.debug('🔄 Disposing existing camera controller before switch...');
-        try {
-          _cameraController!.removeListener(_onCameraControllerUpdate);
-          await _cameraController!.dispose();
-        } catch (e) {
-          AppLogger.debug('   ⚠️ Warning: Error disposing existing controller: $e');
-        }
-        _cameraController = null;
-      }
-      _cameraGeneration++;
-      // Brief delay only when we actually released a camera (lets system free resources)
-      if (hadController) {
-        await Future.delayed(
-          Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
-        );
-      }
-
-      // Debug: Log which camera is being initialized
-      AppLogger.debug('📸 CaptureViewModel.initializeCamera called:');
-      AppLogger.debug('   Camera name: ${camera.name}');
-      AppLogger.debug('   Camera direction: ${camera.lensDirection}');
-      AppLogger.debug('   Camera sensor orientation: ${camera.sensorOrientation}');
-      
-      // Set error reporting context for better error tracking
-      unawaited(ErrorReportingManager.setCameraContext(
-        cameraId: camera.name,
-        cameraDirection: camera.lensDirection.toString(),
-        isExternal: camera.lensDirection == CameraLensDirection.external,
-      ));
-      ErrorReportingManager.log('Initializing camera: ${camera.name}');
-
-      // [max] still capture asks the device for the largest photo buffers; on 4 GB kiosks that
-      // plus preview ([veryHigh] when capture is max in vendored camera_android_camerax) can add
-      // ~1.5–2 GB and trigger OOM. [kLowMemoryKioskMode] uses [high] (1080p) — the sweet spot:
-      // enough resolution for sharp AI transformation (upload resized to 1024×1024 for Gemini)
-      // while keeping native heap ~400–600 MB below [max]/4K.
-      // RAM budget cleared by: slideshow JPG resize (-333 MB), camera dispose before nav
-      // (-300–600 MB), cacheWidth on all Image widgets (-40 MB).
-      //
-      // External (HDMI capture card / UVC): avoid [max] — many devices mis-handle max JPEG
-      // vs preview (garbled / banded stills). [high] aligns better with typical 1080p HDMI.
-      // Use [high] for built-in cameras as the default sweet spot:
-      // - Much faster takePicture() on many Android tablets vs [max]
-      // - Lower memory pressure (avoids slowdowns / OOM on kiosk devices)
-      // - Still plenty of detail for downstream AI (upload is resized anyway)
-      final bool isExternal = camera.lensDirection == CameraLensDirection.external ||
-          _looksLikeExternalCameraName(camera.name);
-      // Android TV + UVC/HDMI stacks are far more sensitive to multi-usecase / large buffers.
-      // Prefer a lower preset to keep CameraX stable. Upload is resized anyway.
-      final ResolutionPreset preset = _deviceType == AppDeviceType.androidTv
-          ? ResolutionPreset.low
-          : (isExternal ? ResolutionPreset.medium : ResolutionPreset.high);
-
-      // For Android TV / external cameras, prefer YUV streaming so we can fall back
-      // to a single-frame capture when still JPEG capture is flaky.
-      final ImageFormatGroup streamFormat =
-          (!kIsWeb && defaultTargetPlatform == TargetPlatform.android && (_deviceType == AppDeviceType.androidTv || isExternal))
-              ? ImageFormatGroup.yuv420
-              : ImageFormatGroup.jpeg;
-      _cameraController = CameraController(
-        cameraToUse,
-        preset,
-        enableAudio: false,
-        imageFormatGroup: streamFormat,
+  Future<void> _disposeCameraControllerForSwitch() async {
+    final hadController = _cameraController != null;
+    if (_cameraController == null) return;
+    AppLogger.debug('🔄 Disposing existing camera controller before switch...');
+    try {
+      _cameraController!.removeListener(_onCameraControllerUpdate);
+      await _cameraController!.dispose();
+    } catch (e) {
+      AppLogger.debug('   ⚠️ Warning: Error disposing existing controller: $e');
+    }
+    _cameraController = null;
+    _cameraGeneration++;
+    if (hadController) {
+      await Future.delayed(
+        Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
       );
-      _cameraController!.addListener(_onCameraControllerUpdate);
-      await _cameraController!.initialize().timeout(
-        const Duration(seconds: 15),
-        onTimeout: () =>
-            throw Exception(
-                'Camera initialization timed out after 15 seconds'),
-      );
+    }
+  }
 
-      if (_cameraController != null &&
-          _cameraController!.value.isInitialized) {
-        final activeCamera = _cameraController!.description;
-        final size = _cameraController!.value.previewSize;
-        AppLogger.debug(
-            '✅ CaptureViewModel - Camera initialized with ${preset.name}:');
-        AppLogger.debug('   Active camera: ${activeCamera.name}');
-        AppLogger.debug(
-            '   Preview size: ${size?.width ?? "?"}x${size?.height ?? "?"}');
+  void _logCameraInitializationStart(CameraDescription camera) {
+    AppLogger.debug('📸 CaptureViewModel.initializeCamera called:');
+    AppLogger.debug('   Camera name: ${camera.name}');
+    AppLogger.debug('   Camera direction: ${camera.lensDirection}');
+    AppLogger.debug('   Camera sensor orientation: ${camera.sensorOrientation}');
+    unawaited(ErrorReportingManager.setCameraContext(
+      cameraId: camera.name,
+      cameraDirection: camera.lensDirection.toString(),
+      isExternal: camera.lensDirection == CameraLensDirection.external,
+    ));
+    ErrorReportingManager.log('Initializing camera: ${camera.name}');
+  }
 
-        _currentCamera = camera;
-        _minZoom = null;
-        _maxZoom = null;
-        _currentZoom = 1.0;
+  Future<void> _openFreshCameraController(
+    CameraDescription cameraToUse,
+    CameraDescription camera,
+  ) async {
+    final isExternal = isExternalCaptureCamera(
+      camera,
+      _looksLikeExternalCameraName,
+    );
+    final preset = captureResolutionPreset(
+      deviceType: _deviceType,
+      isExternal: isExternal,
+    );
+    final streamFormat = captureStreamFormat(
+      deviceType: _deviceType,
+      isExternal: isExternal,
+    );
+    _cameraController = CameraController(
+      cameraToUse,
+      preset,
+      enableAudio: false,
+      imageFormatGroup: streamFormat,
+    );
+    _cameraController!.addListener(_onCameraControllerUpdate);
+    await _cameraController!.initialize().timeout(
+      const Duration(seconds: 15),
+      onTimeout: () => throw Exception(
+        'Camera initialization timed out after 15 seconds',
+      ),
+    );
 
-        _isInitializing = false;
-        _errorMessage = null;
-        notifyListeners();
-        unawaited(_finishCameraSetup(camera));
-        return;
-      }
-
+    final ctrl = _cameraController;
+    if (ctrl == null || !ctrl.value.isInitialized) {
       _errorMessage = 'Camera controller is null after initialization';
-      _isInitializing = false;
-      notifyListeners();
-    } on app_exceptions.PermissionException catch (e, stackTrace) {
+      return;
+    }
+
+    final size = ctrl.value.previewSize;
+    AppLogger.debug('✅ CaptureViewModel - Camera initialized with ${preset.name}:');
+    AppLogger.debug('   Active camera: ${ctrl.description.name}');
+    AppLogger.debug(
+      '   Preview size: ${size?.width ?? "?"}x${size?.height ?? "?"}',
+    );
+    _currentCamera = camera;
+    _minZoom = null;
+    _maxZoom = null;
+    _currentZoom = 1.0;
+    _errorMessage = null;
+    unawaited(_finishCameraSetup(camera));
+  }
+
+  Future<void> _handleCameraInitializationError(
+    Object e,
+    StackTrace stackTrace,
+    CameraDescription camera,
+  ) async {
+    if (e is app_exceptions.PermissionException) {
       _errorMessage = e.message;
-      
-      // Log to Bugsnag
-      ErrorReportingManager.log('❌ Permission exception during camera initialization');
+      ErrorReportingManager.log(
+        '❌ Permission exception during camera initialization',
+      );
       await ErrorReportingManager.recordError(
         e,
         stackTrace,
         reason: 'Permission exception',
-        extraInfo: {
-          'message': e.message,
-          'camera_name': camera.name,
-        },
+        extraInfo: {'message': e.message, 'camera_name': camera.name},
       );
-      
-      notifyListeners();
-    } on app_exceptions.CameraException catch (e, stackTrace) {
+      return;
+    }
+    if (e is app_exceptions.CameraException) {
       _errorMessage = e.message;
-      
-      // Log to Bugsnag
       ErrorReportingManager.log('❌ Camera exception during initialization');
       await ErrorReportingManager.recordError(
         e,
@@ -881,28 +867,44 @@ class CaptureViewModel extends ChangeNotifier {
           'camera_direction': camera.lensDirection.toString(),
         },
       );
-      
-      notifyListeners();
-    } catch (e, stackTrace) {
-      _errorMessage = 'Failed to initialize camera: $e';
-      
-      // Log to Bugsnag
-      ErrorReportingManager.log('❌ Unexpected error during camera initialization');
-      await ErrorReportingManager.recordError(
-        e,
-        stackTrace,
-        reason: 'Unexpected camera initialization error',
-        extraInfo: {
-          'error': e.toString(),
-          'camera_name': camera.name,
-        },
-      );
-      
-      notifyListeners();
-    } finally {
-      _isInitializing = false;
-      notifyListeners();
+      return;
     }
+    _errorMessage = 'Failed to initialize camera: $e';
+    ErrorReportingManager.log('❌ Unexpected error during camera initialization');
+    await ErrorReportingManager.recordError(
+      e,
+      stackTrace,
+      reason: 'Unexpected camera initialization error',
+      extraInfo: {'error': e.toString(), 'camera_name': camera.name},
+    );
+  }
+
+  /// Initializes the camera with the selected camera
+  Future<void> initializeCamera(CameraDescription camera) async {
+    await _withCameraLock(() async {
+      _isInitializing = true;
+      _errorMessage = null;
+      notifyListeners();
+
+      try {
+        _minZoom = null;
+        _maxZoom = null;
+        _currentZoom = 1.0;
+
+        final cameraToUse = _resolveListedCamera(camera);
+        if (await _tryFastCameraDescriptionSwitch(cameraToUse, camera)) {
+          return;
+        }
+
+        await _disposeCameraControllerForSwitch();
+        _logCameraInitializationStart(camera);
+        await _openFreshCameraController(cameraToUse, camera);
+      } catch (e, stackTrace) {
+        await _handleCameraInitializationError(e, stackTrace, camera);
+      } finally {
+        _isInitializing = false;
+        notifyListeners();
+      }
     });
   }
 
@@ -1082,11 +1084,132 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<bool> _guardCaptureReady() async {
+    if (isReady) return true;
+    var debugInfo = 'Camera not ready.\n\nDebug Info:\n';
+    debugInfo += '- Controller Exists: ${_cameraController != null}\n';
+    if (_cameraController != null) {
+      debugInfo +=
+          '- Controller Initialized: ${_cameraController!.value.isInitialized}\n';
+    }
+    _errorMessage = debugInfo;
+    ErrorReportingManager.log('❌ Camera not ready for capture');
+    await ErrorReportingManager.recordError(
+      Exception('Camera not ready for photo capture'),
+      StackTrace.current,
+      reason: 'Camera not ready',
+      extraInfo: {'debug_info': debugInfo},
+    );
+    notifyListeners();
+    return false;
+  }
+
+  Future<XFile> _obtainRawCaptureFile() async {
+    if (_shouldUseStreamOnlyCapture()) {
+      WebFlowTrace.log('CAPTURE', 'streamFallback_start');
+      final file = await _captureSingleFrameFallback(
+        reason: 'streamOnlyCapture',
+        details:
+            'android=${_deviceType?.toString()} camera=${_currentCamera?.name ?? "unknown"}',
+      );
+      WebFlowTrace.log('CAPTURE', 'streamFallback_done pathLen=${file.path.length}');
+      return file;
+    }
+    try {
+      WebFlowTrace.log('CAPTURE', 'takePicture_start');
+      final file = await _takePictureWithRecovery();
+      WebFlowTrace.log('CAPTURE', 'takePicture_done pathLen=${file.path.length}');
+      return file;
+    } on TimeoutException catch (e) {
+      return _captureSingleFrameFallback(
+        reason: AppStrings.takePictureTimeout,
+        details: e.toString(),
+      );
+    } on CameraException catch (e) {
+      return _captureSingleFrameFallback(
+        reason: 'takePicture CameraException',
+        details: e.toString(),
+      );
+    }
+  }
+
+  Future<void> _assignCapturedPhotoModel(XFile savedFile) async {
+    final cameraId =
+        _cameraController?.description.name ?? _currentCamera?.name;
+    final photoId = _uuid.v4();
+    _snapshotLockedCaptureCardAspectFromLivePreview();
+    _capturedPhoto = PhotoModel(
+      id: photoId,
+      imageFile: savedFile,
+      capturedAt: DateTime.now(),
+      cameraId: cameraId,
+    );
+    _capturedImagePixelSize = null;
+    unawaited(_refreshCapturedImagePixelSizeSoon(savedFile));
+    unawaited(ErrorReportingManager.setPhotoCaptureContext(
+      photoId: photoId,
+      sessionId: _sessionManager.sessionId,
+    ));
+    ErrorReportingManager.log('Photo captured successfully: $photoId');
+    WebFlowTrace.log('CAPTURE', 'photoModel_set photoId=$photoId');
+    notifyListeners();
+  }
+
+  Future<void> _handleCaptureCameraException(
+    CameraException e,
+    StackTrace stackTrace,
+  ) async {
+    WebFlowTrace.log('CAPTURE', 'ERROR CameraException $e');
+    final errorString = e.toString();
+    final isCameraClosedError = errorString.contains('Camera is closed') ||
+        errorString.contains('camera is closed') ||
+        errorString.contains('CameraDeviceImpl.close');
+    await ErrorReportingManager.recordError(
+      e,
+      stackTrace,
+      reason: isCameraClosedError
+          ? 'Camera was closed during capture (race condition)'
+          : 'CameraController takePicture failed',
+      extraInfo: {
+        'error': errorString,
+        'camera': _currentCamera?.name ?? 'unknown',
+      },
+      fatal: false,
+    );
+    _errorMessage = 'Camera Error:\n$e';
+    notifyListeners();
+  }
+
+  Future<void> _handleCaptureGenericError(
+    Object e,
+    StackTrace stackTrace,
+  ) async {
+    WebFlowTrace.log('CAPTURE', 'ERROR $e');
+    final isTimeout = e.toString().contains('TimeoutException') ||
+        e.toString().contains('timed out') ||
+        e.toString().contains('CAPTURE_TIMEOUT');
+    _errorMessage = 'Capture Failed:\n$e';
+    if (isTimeout) {
+      await ErrorReportingManager.setCustomKeys({
+        'timeout_occurred': true,
+        'timeout_error': e.toString(),
+      });
+    }
+    await ErrorReportingManager.recordError(
+      e,
+      stackTrace,
+      reason: isTimeout ? 'Photo capture timeout' : 'Photo capture failed',
+      extraInfo: {
+        'error': e.toString(),
+        'is_timeout': isTimeout,
+        'camera': _currentCamera?.name ?? 'unknown',
+      },
+    );
+    notifyListeners();
+  }
+
   /// Captures a photo
   Future<void> capturePhoto() async {
-    AppLogger.debug('📸 capturePhoto() called');
-    AppLogger.debug('   isReady: $isReady');
-
     ErrorReportingManager.log('📸 Photo capture attempt started');
     unawaited(ErrorReportingManager.setCustomKeys({
       'capture_isReady': isReady,
@@ -1094,29 +1217,7 @@ class CaptureViewModel extends ChangeNotifier {
       'capture_initialized': _cameraController?.value.isInitialized ?? false,
     }));
 
-    if (!isReady) {
-      String debugInfo = 'Camera not ready.\n\n';
-      debugInfo += 'Debug Info:\n';
-      debugInfo += '- Controller Exists: ${_cameraController != null}\n';
-      if (_cameraController != null) {
-        debugInfo += '- Controller Initialized: ${_cameraController!.value.isInitialized}\n';
-      }
-
-      _errorMessage = debugInfo;
-      AppLogger.debug('❌ Camera not ready, cannot capture photo');
-      
-      // Log to error reporting
-      ErrorReportingManager.log('❌ Camera not ready for capture');
-      await ErrorReportingManager.recordError(
-        Exception('Camera not ready for photo capture'),
-        StackTrace.current,
-        reason: 'Camera not ready',
-        extraInfo: {'debug_info': debugInfo},
-      );
-      
-      notifyListeners();
-      return;
-    }
+    if (!await _guardCaptureReady()) return;
 
     _isCapturing = true;
     _errorMessage = null;
@@ -1125,126 +1226,20 @@ class CaptureViewModel extends ChangeNotifier {
     try {
       WebFlowTrace.reset(label: 'capture');
       WebFlowTrace.log('CAPTURE', 'shutter_begin kIsWeb=$kIsWeb isReady=$isReady');
-      AppLogger.debug('📸 Capturing photo...');
-      ErrorReportingManager.log('📸 Photo capture started');
-      XFile imageFile;
-      if (_shouldUseStreamOnlyCapture()) {
-        // External / Android TV camera stacks frequently fail still JPEG capture (CameraX recoverable errors).
-        // Use a single-frame stream grab deterministically for reliability.
-        WebFlowTrace.log('CAPTURE', 'streamFallback_start');
-        imageFile = await _captureSingleFrameFallback(
-          reason: 'streamOnlyCapture',
-          details: 'android=${_deviceType?.toString()} camera=${_currentCamera?.name ?? "unknown"}',
-        );
-        WebFlowTrace.log('CAPTURE', 'streamFallback_done pathLen=${imageFile.path.length}');
-      } else {
-        try {
-          WebFlowTrace.log('CAPTURE', 'takePicture_start');
-          imageFile = await _takePictureWithRecovery();
-          WebFlowTrace.log('CAPTURE', 'takePicture_done pathLen=${imageFile.path.length}');
-        } on TimeoutException catch (e) {
-          imageFile = await _captureSingleFrameFallback(
-            reason: 'takePicture timeout',
-            details: e.toString(),
-          );
-        } on CameraException catch (e) {
-          imageFile = await _captureSingleFrameFallback(
-            reason: 'takePicture CameraException',
-            details: e.toString(),
-          );
-        }
-      }
-      ErrorReportingManager.log('✅ Photo captured');
-      AppLogger.debug('✅ Photo captured successfully');
-
-      final isFrontCamera = _currentCamera?.lensDirection == CameraLensDirection.front;
-      // Normalize + bake EXIF orientation so tablets handle rotation reliably, and
-      // un-mirror front camera captures so saved photos match the real world.
+      final imageFile = await _obtainRawCaptureFile();
+      final isFrontCamera =
+          _currentCamera?.lensDirection == CameraLensDirection.front;
       WebFlowTrace.log('CAPTURE', 'normalize_start');
-      final XFile savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
+      final savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
         imageFile,
         flipHorizontal: isFrontCamera,
       );
       WebFlowTrace.log('CAPTURE', 'normalize_done');
-      AppLogger.debug('✅ Photo normalized and saved');
-      // Web: do NOT read the full JPEG into memory here — that blocks the JS
-      // thread while [_isCapturing] is true (frozen UI). Preview uses the blob
-      // URL; [uploadPhotoToSession] materializes bytes under the upload loader.
-
-      // Get camera ID from either standard controller or current camera
-      final cameraId = _cameraController?.description.name ?? _currentCamera?.name;
-      final photoId = _uuid.v4();
-      _snapshotLockedCaptureCardAspectFromLivePreview();
-      _capturedPhoto = PhotoModel(
-        id: photoId,
-        imageFile: savedFile,
-        capturedAt: DateTime.now(),
-        cameraId: cameraId,
-      );
-      _capturedImagePixelSize = null;
-      unawaited(_refreshCapturedImagePixelSizeSoon(savedFile));
-
-      // Track successful photo capture (must not block shutter completion)
-      unawaited(ErrorReportingManager.setPhotoCaptureContext(
-        photoId: photoId,
-        sessionId: _sessionManager.sessionId,
-      ));
-      ErrorReportingManager.log('Photo captured successfully: $photoId');
-      WebFlowTrace.log('CAPTURE', 'photoModel_set photoId=$photoId');
-      notifyListeners();
+      await _assignCapturedPhotoModel(savedFile);
     } on CameraException catch (e, stackTrace) {
-      WebFlowTrace.log('CAPTURE', 'ERROR CameraException ${e.toString()}');
-      final errorString = e.toString();
-      final isCameraClosedError = errorString.contains('Camera is closed') ||
-          errorString.contains('camera is closed') ||
-          errorString.contains('CameraDeviceImpl.close');
-      ErrorReportingManager.log('❌ takePicture failed');
-      await ErrorReportingManager.recordError(
-        e,
-        stackTrace,
-        reason: isCameraClosedError
-            ? 'Camera was closed during capture (race condition)'
-            : 'CameraController takePicture failed',
-        extraInfo: {
-          'error': errorString,
-          'camera': _currentCamera?.name ?? 'unknown',
-        },
-        fatal: false,
-      );
-      _errorMessage = 'Camera Error:\n${e.toString()}';
-      notifyListeners();
+      await _handleCaptureCameraException(e, stackTrace);
     } catch (e, stackTrace) {
-      WebFlowTrace.log('CAPTURE', 'ERROR $e');
-      // Check if this is a timeout exception
-      final isTimeout = e.toString().contains('TimeoutException') || 
-                        e.toString().contains('timed out') ||
-                        e.toString().contains('CAPTURE_TIMEOUT');
-      
-      _errorMessage = 'Capture Failed:\n$e';
-      
-      // Log to error reporting with extra details for timeouts
-      if (isTimeout) {
-        ErrorReportingManager.log('⏱️ TIMEOUT during photo capture');
-        await ErrorReportingManager.setCustomKeys({
-          'timeout_occurred': true,
-          'timeout_error': e.toString(),
-        });
-      } else {
-        ErrorReportingManager.log('❌ Unexpected error during photo capture: $e');
-      }
-      
-      await ErrorReportingManager.recordError(
-        e,
-        stackTrace,
-        reason: isTimeout ? 'Photo capture timeout' : 'Photo capture failed',
-        extraInfo: {
-          'error': e.toString(),
-          'is_timeout': isTimeout,
-          'camera': _currentCamera?.name ?? 'unknown',
-        },
-      );
-      
-      notifyListeners();
+      await _handleCaptureGenericError(e, stackTrace);
     } finally {
       WebFlowTrace.log('CAPTURE', 'finally isCapturing=false');
       _isCapturing = false;
@@ -1308,7 +1303,7 @@ class CaptureViewModel extends ChangeNotifier {
         await ctrl.stopImageStream();
         streaming = false;
 
-        final jpegBytes = await compute(_cameraImageToJpegBytesIsolate, frame);
+        final jpegBytes = await compute(cameraImageToJpegBytes, frame);
         final tempDir = await FileHelper.getTempDirectoryPath();
         const photosSubdir = 'photos';
         final photosDir = '$tempDir/$photosSubdir';
@@ -1345,53 +1340,6 @@ class CaptureViewModel extends ChangeNotifier {
     });
   }
 
-  /// Isolate helper: converts a YUV420 [CameraImage] into JPEG bytes.
-  static Uint8List _cameraImageToJpegBytesIsolate(CameraImage image) {
-    // Expect 3 planes: Y, U, V (YUV_420_888)
-    if (image.planes.length < 3) {
-      throw Exception('Unexpected CameraImage planes: ${image.planes.length}');
-    }
-    final width = image.width;
-    final height = image.height;
-    final yPlane = image.planes[0];
-    final uPlane = image.planes[1];
-    final vPlane = image.planes[2];
-
-    final yBytes = yPlane.bytes;
-    final uBytes = uPlane.bytes;
-    final vBytes = vPlane.bytes;
-
-    final yRowStride = yPlane.bytesPerRow;
-    final uvRowStride = uPlane.bytesPerRow;
-    final uvPixelStride = uPlane.bytesPerPixel ?? 1;
-
-    final out = img.Image(width: width, height: height);
-
-    int clamp(int v) => v < 0 ? 0 : (v > 255 ? 255 : v);
-
-    for (int y = 0; y < height; y++) {
-      final yRowOffset = yRowStride * y;
-      final uvRowOffset = uvRowStride * (y >> 1);
-      for (int x = 0; x < width; x++) {
-        final yIndex = yRowOffset + x;
-        final uvIndex = uvRowOffset + (x >> 1) * uvPixelStride;
-
-        final Y = yBytes[yIndex] & 0xFF;
-        final U = (uBytes[uvIndex] & 0xFF) - 128;
-        final V = (vBytes[uvIndex] & 0xFF) - 128;
-
-        // BT.601 conversion
-        final int r = (Y + 1.402 * V).round();
-        final int g = (Y - 0.344136 * U - 0.714136 * V).round();
-        final int b = (Y + 1.772 * U).round();
-
-        out.setPixelRgb(x, y, clamp(r), clamp(g), clamp(b));
-      }
-    }
-
-    return Uint8List.fromList(img.encodeJpg(out, quality: 85));
-  }
-
   Future<XFile> _takePictureWithRecovery() async {
     final ctrl = _cameraController;
     if (ctrl == null || !ctrl.value.isInitialized) {
@@ -1413,7 +1361,7 @@ class CaptureViewModel extends ChangeNotifier {
     try {
       return await ctrl.takePicture().timeout(
         _takePictureTimeout,
-        onTimeout: () => throw TimeoutException('takePicture timeout'),
+        onTimeout: () => throw TimeoutException(AppStrings.takePictureTimeout),
       );
     } on CameraException catch (e) {
       // Attempt 2 (single recovery + retry) for known CameraX flaky states.
@@ -1475,7 +1423,7 @@ class CaptureViewModel extends ChangeNotifier {
       // Treat timeouts as recoverable once, then retry.
       final camera = _currentCamera;
       if (camera == null) rethrow;
-      await _recoverCamera(reason: 'takePicture timeout', details: e.toString());
+      await _recoverCamera(reason: AppStrings.takePictureTimeout, details: e.toString());
       final ctrl2 = _cameraController;
       if (ctrl2 == null || !ctrl2.value.isInitialized) rethrow;
       return await ctrl2.takePicture().timeout(

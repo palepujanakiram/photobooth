@@ -13,6 +13,7 @@ import '../../services/print_service.dart';
 import '../../services/session_manager.dart';
 import '../../services/share_service.dart';
 import '../../services/kiosk_manager.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';

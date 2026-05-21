@@ -314,18 +314,20 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     return _generatedImages.first.imageUrl;
   }
 
-  /// In-frame capture (optional) + core stages + conditional EXIF/C2PA + storage.
-  List<PipelineFunnelSlot> get pipelineFunnelSlots {
+  Map<String, GenerationRunStepPreview> _pipelineStepsByStage() {
     final byStage = <String, GenerationRunStepPreview>{};
     for (final s in _generationRunStepPreviews) {
       final key = canonicalPipelineStageKey(s.stage);
       if (!kPipelineFunnelRecognizedStageKeys.contains(key)) continue;
       byStage[key] = s;
     }
+    return byStage;
+  }
 
-    // Option B: only show stages once we actually *see* them in `steps[]`.
-    // No placeholder slots for stages that never ran / haven't started yet.
-    final stageSequence = <String>[
+  List<String> _visiblePipelineStageKeys(
+    Map<String, GenerationRunStepPreview> byStage,
+  ) {
+    return [
       for (final k in kPipelineFunnelCoreStages)
         if (byStage.containsKey(k)) k,
       if (byStage.containsKey('exif_stamp')) 'exif_stamp',
@@ -333,7 +335,46 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       if (byStage.containsKey(kPipelineFunnelStorageStage))
         kPipelineFunnelStorageStage,
     ];
+  }
 
+  String? _pipelineDisplayPreviewUrl({
+    required String stageKey,
+    required String? rawNonEmpty,
+    required String? lastShownUrl,
+  }) {
+    if (rawNonEmpty == null) return null;
+    final noDedupe = stageKey == 'frame_composite' ||
+        stageKey == kPipelineFunnelStorageStage;
+    if (noDedupe || lastShownUrl == null || rawNonEmpty != lastShownUrl) {
+      return rawNonEmpty;
+    }
+    return null;
+  }
+
+  PipelineFunnelSlot _pipelineSlotForStage({
+    required String stageKey,
+    required GenerationRunStepPreview? step,
+    required String? displayPreviewUrl,
+  }) {
+    final isFinished = step?.isFinished ?? false;
+    final isActive = step?.isActive ?? false;
+    final isPending = step == null || (!isFinished && !isActive);
+    return PipelineFunnelSlot(
+      stageKey: stageKey,
+      label: transformationStepDisplayLabel(stageKey),
+      displayPreviewUrl: displayPreviewUrl,
+      isPending: isPending,
+      isActive: isActive,
+      isFinished: isFinished,
+      isDeviceCapture: false,
+      isMetadataOnlyStage: kPipelineFunnelMetadataOnlyStages.contains(stageKey),
+    );
+  }
+
+  /// In-frame capture (optional) + core stages + conditional EXIF/C2PA + storage.
+  List<PipelineFunnelSlot> get pipelineFunnelSlots {
+    final byStage = _pipelineStepsByStage();
+    final stageSequence = _visiblePipelineStageKeys(byStage);
     String? lastShownUrl;
     final out = <PipelineFunnelSlot>[];
     if (_originalPhoto != null) {
@@ -351,33 +392,16 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       final step = byStage[stageKey];
       final raw = step?.previewUrl?.trim();
       final rawNonEmpty = raw != null && raw.isNotEmpty ? raw : null;
-
-      String? display;
-      if (rawNonEmpty != null) {
-        // Don't dedupe the frame overlay and final storage output; even if the URL
-        // coincidentally matches earlier, users expect to “see” these stages.
-        final noDedupe =
-            stageKey == 'frame_composite' || stageKey == kPipelineFunnelStorageStage;
-        if (noDedupe || lastShownUrl == null || rawNonEmpty != lastShownUrl) {
-          display = rawNonEmpty;
-          lastShownUrl = rawNonEmpty;
-        }
-      }
-
-      final isFinished = step?.isFinished ?? false;
-      final isActive = step?.isActive ?? false;
-      final isPending = step == null || (!isFinished && !isActive);
-      final isMeta = kPipelineFunnelMetadataOnlyStages.contains(stageKey);
-
-      out.add(PipelineFunnelSlot(
+      final display = _pipelineDisplayPreviewUrl(
         stageKey: stageKey,
-        label: transformationStepDisplayLabel(stageKey),
+        rawNonEmpty: rawNonEmpty,
+        lastShownUrl: lastShownUrl,
+      );
+      if (display != null) lastShownUrl = display;
+      out.add(_pipelineSlotForStage(
+        stageKey: stageKey,
+        step: step,
         displayPreviewUrl: display,
-        isPending: isPending,
-        isActive: isActive,
-        isFinished: isFinished,
-        isDeviceCapture: false,
-        isMetadataOnlyStage: isMeta,
       ));
     }
     return List<PipelineFunnelSlot>.unmodifiable(out);

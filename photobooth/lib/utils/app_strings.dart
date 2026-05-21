@@ -27,4 +27,26 @@ abstract final class AppStrings {
 
   /// Horizontal rule in API request/response debug logs (mobile + web formatters).
   static const apiLogSeparator = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
+
+  /// FCM / payment push log channel name (Android logcat filter).
+  static const fcmLogChannel = 'fotozen.fcm';
+
+  /// Staff API authentication header.
+  static const staffTokenHeader = 'X-Staff-Token';
+
+  /// Inline image URL prefix (data URLs, staff QR thumbnails).
+  static const dataImagePrefix = 'data:image';
+
+  /// Camera capture timeout reason (logging + recovery).
+  static const takePictureTimeout = 'takePicture timeout';
+
+  /// Payment push / poll notification titles and bodies.
+  static const paymentConfirmedTitle = 'Payment confirmed';
+  static const paymentNotCompletedTitle = 'Payment not completed';
+  static const paymentFailedRetryBody =
+      'Payment failed. Try again or use another method.';
+
+  /// Theme session update timeout message.
+  static const requestTimeoutConnection =
+      'Request took too long. Please check your connection and try again.';
 }
