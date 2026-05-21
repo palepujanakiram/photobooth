@@ -681,15 +681,17 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     if (_r._disposed) return;
 
     applyKioskFallbackWhenReceiptShareEmpty(
-      receiptShareUrl: _r._receiptShareUrl,
-      kioskFallbackShareUrl: _r._kioskFallbackShareUrl,
-      setReceiptShareUrl: (u) => _r._receiptShareUrl = u,
-      receiptShareLongUrl: _r._receiptShareLongUrl,
-      kioskFallbackShareLongUrl: _r._kioskFallbackShareLongUrl,
-      setReceiptShareLongUrl: (u) => _r._receiptShareLongUrl = u,
-      receiptShareExpiresAt: _r._receiptShareExpiresAt,
-      kioskFallbackShareExpiresAt: _r._kioskFallbackShareExpiresAt,
-      setReceiptShareExpiresAt: (t) => _r._receiptShareExpiresAt = t,
+      KioskReceiptShareFallback(
+        receiptShareUrl: _r._receiptShareUrl,
+        kioskFallbackShareUrl: _r._kioskFallbackShareUrl,
+        setReceiptShareUrl: (u) => _r._receiptShareUrl = u,
+        receiptShareLongUrl: _r._receiptShareLongUrl,
+        kioskFallbackShareLongUrl: _r._kioskFallbackShareLongUrl,
+        setReceiptShareLongUrl: (u) => _r._receiptShareLongUrl = u,
+        receiptShareExpiresAt: _r._receiptShareExpiresAt,
+        kioskFallbackShareExpiresAt: _r._kioskFallbackShareExpiresAt,
+        setReceiptShareExpiresAt: (t) => _r._receiptShareExpiresAt = t,
+      ),
     );
 
     _r._postPaymentSharePrepared = true;

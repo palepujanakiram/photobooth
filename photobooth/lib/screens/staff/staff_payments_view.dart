@@ -10,7 +10,7 @@ import '../../utils/exceptions.dart';
 import 'staff_payment_card.dart';
 import 'staff_payments_payload_utils.dart';
 import 'staff_payments_thumb_helpers.dart';
-import 'staff_payments_view_helpers.dart';
+import 'staff_payments_print_helpers.dart';
 import '../../views/widgets/app_colors.dart';
 
 class StaffPaymentsScreen extends StatefulWidget {
@@ -256,77 +256,32 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
       return;
     }
 
-    final ok = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Create print job?'),
-            content: Text('Session: $sid'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Print'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+    final ok = await staffPaymentsConfirmPrintDialog(context, sid);
     if (!mounted || !ok) return;
 
-    setState(() {
-      _loading = true;
-      _error = null;
-      _progressMessage = 'Preparing image...';
-    });
-    try {
-      // Capture printer settings before async gaps.
-      final endpoint = staffPaymentsPrinterEndpoint(
-        context.read<AppSettingsManager>().settings,
-      );
-
-      // Resolve a network URL for the generated image (server-hosted), then
-      // print via the same kiosk path: download -> network printer API.
-      final imageUrl = await _resolveImageUrlForPrint(p);
-      if (imageUrl == null || imageUrl.isEmpty) {
-        throw PrintException(
-          'Cannot print: image URL not found for this session.',
-        );
-      }
-
-      // Download to a temp file (or use XFile(url) on web).
-      final file = await _publicApi.downloadImageToTemp(
-        imageUrl,
-        onProgress: (m) {
-          if (!mounted) return;
-          setState(() => _progressMessage = m);
-        },
-      );
-
-      setState(() => _progressMessage = 'Sending print job...');
-      await _printService.printImageToNetworkPrinter(
-        file,
-        printerHost: endpoint.host,
-        printerPort: endpoint.port,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Print job sent')),
-      );
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() => _error = e.message);
-    } on PrintException catch (e) {
-      if (!mounted) return;
-      setState(() => _error = e.message);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = 'Print failed: $e');
-    } finally {
-      if (mounted) setState(() => _loading = false);
+    final imageUrl = await _resolveImageUrlForPrint(p);
+    if (!mounted) return;
+    if (imageUrl == null || imageUrl.isEmpty) {
+      setState(() => _error = 'Cannot print: image URL not found for this session.');
+      return;
     }
+
+    await staffPaymentsRunPrintJob(
+      context: context,
+      publicApi: _publicApi,
+      printService: _printService,
+      settings: context.read<AppSettingsManager>().settings,
+      imageUrl: imageUrl,
+      isMounted: () => mounted,
+      onState: ({loading, error, progressMessage}) {
+        if (!mounted) return;
+        setState(() {
+          if (loading != null) _loading = loading;
+          if (error != null) _error = error;
+          if (progressMessage != null) _progressMessage = progressMessage;
+        });
+      },
+    );
   }
 
   Future<void> _logout() async {
