@@ -1,4 +1,8 @@
+import 'package:dio/dio.dart';
+import 'package:photobooth/models/app_settings_model.dart';
+import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/models/kiosk_frame_model.dart';
+import 'package:photobooth/screens/theme_selection/theme_model.dart';
 import 'package:photobooth/services/api_service.dart';
 import 'package:photobooth/utils/exceptions.dart';
 
@@ -10,7 +14,14 @@ class FakeApiService extends ApiService {
     this.framesThrow = false,
     this.patchThrows = false,
     this.sessionResponse = const {'sessionId': 'sess-1'},
-  });
+  }) : super(
+          dio: Dio(
+            BaseOptions(
+              baseUrl: AppConstants.kBaseUrl,
+              validateStatus: (_) => true,
+            ),
+          ),
+        );
 
   final List<KioskFrameModel> kioskFrames;
   final bool validateKioskCodeResult;
@@ -33,6 +44,17 @@ class FakeApiService extends ApiService {
     if (framesThrow) throw ApiException('frames failed');
     return kioskFrames;
   }
+
+  @override
+  Future<List<ThemeModel>> getThemes() async => const [];
+
+  @override
+  Future<AppSettingsModel> getAppSettings() async =>
+      AppSettingsModel(parallelImageCount: 1);
+
+  @override
+  Future<Map<String, dynamic>> fetchGenerationRun(String runId) async =>
+      {'id': runId};
 
   @override
   Future<Map<String, dynamic>> updateSession({

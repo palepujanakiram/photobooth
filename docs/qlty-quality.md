@@ -66,7 +66,29 @@ The upload step uses:
 
 Without `QLTY_COVERAGE_TOKEN`, the **Qlty** workflow fails on upload. The **SonarCloud** workflow is unaffected.
 
-## Local coverage (optional)
+## Code coverage (Flutter)
+
+Qlty Cloud **coverage %** uses `photobooth/coverage/lcov.info` from CI. A raw run over all of `lib/` is typically **~10%** because most lines live in UI screens and camera flows that are not unit-tested.
+
+### Scoped coverage (target: 100%)
+
+[`[coverage].ignores`](../.qlty/qlty.toml) defines the **unit-testable application layer** (ViewModels, services, utils, models). Excluded from the coverage denominator:
+
+- `*_view.dart`, `lib/views/**`, splash/progress screens
+- Generated / platform stubs (`*.g.dart`, `file_helper_*`, `*_stub.dart`, …)
+- Large integration surfaces: camera capture VM, generate/result VMs, FCM, print, staff APIs
+
+After exclusions, enforce **100% line coverage** on the remaining files:
+
+```bash
+cd photobooth
+flutter test --coverage
+dart run tool/verify_coverage_scope.dart
+```
+
+`verify_coverage_scope.dart` exits non-zero and lists any in-scope file below 100%.
+
+### Local coverage (optional)
 
 ```bash
 cd photobooth
