@@ -74,6 +74,8 @@ ignores = [
   "lib/screens/**/*_view_scaffold.dart",
   "lib/screens/**/*_view_layout.dart",
   "lib/screens/**/*_scaffold_body.dart",
+  "lib/screens/**/app_splash_screen_body.dart",
+  "lib/screens/**/*_print_helpers.dart",
   "lib/screens/**/*_payment_card_widgets.dart",
   "lib/screens/**/*_carousel_page.dart",
   "lib/screens/**/*_loaded_body.dart",

@@ -39,6 +39,10 @@ lib/
 - **Generated files**: `*.g.dart` (Retrofit, json_serializable) — do not edit; run `dart run build_runner build` if needed.
 - **Assets**: `lib/images/` (e.g. launcher icon).
 
+## Quality gates (SonarCloud / Qlty)
+
+On every code change, satisfy: **no new Maintainability, Reliability, or Security issues**; **no new duplication**; **coverage > 90%** on Sonar new code and **100%** on the in-scope unit-test layer (`flutter test --coverage` + `dart run tool/verify_coverage_scope.dart`). Full checklist: [`.cursor/rules/sonar-quality-gates.mdc`](sonar-quality-gates.mdc) and [`docs/sonar-quality.md`](../../docs/sonar-quality.md).
+
 ## Conventions
 
 - **Config/URLs**: Change endpoints and links in `lib/utils/app_config.dart` only; no hardcoded API URLs elsewhere.

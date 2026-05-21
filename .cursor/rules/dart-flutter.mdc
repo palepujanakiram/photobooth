@@ -8,6 +8,15 @@ alwaysApply: false
 
 Follow existing patterns and the linter config in `analysis_options.yaml`.
 
+## SonarCloud gates (when editing `lib/` or `test/`)
+
+Before finishing any change, ensure you did **not** introduce new **Maintainability**, **Reliability**, **Security**, or **duplication** issues, and that **coverage stays > 90%** (Sonar) with **100%** on in-scope files (`dart run tool/verify_coverage_scope.dart`). See [sonar-quality-gates.mdc](sonar-quality-gates.mdc).
+
+- **S107**: ≤7 parameters — use `*Input` / `*Builders` classes.
+- **S3776**: cognitive complexity ≤15 — extract `*_helpers.dart` / `*_widgets.dart`.
+- **S1192**: repeated strings → `lib/utils/app_strings.dart`.
+- **Tests**: new service/utils/model/ViewModel logic needs tests under `photobooth/test/`.
+
 ## Linter (already in project)
 
 - `prefer_const_constructors`, `prefer_const_literals_to_create_immutables`

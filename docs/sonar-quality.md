@@ -6,9 +6,12 @@ Project: [palepujanakiram_photobooth](https://sonarcloud.io/project/overview?id=
 
 | Metric | Target |
 |--------|--------|
-| Coverage | ≥ 80% |
+| Coverage | **> 90%** |
 | Duplicated lines | ≤ 3% |
 | Security hotspots reviewed | 100% |
+| Maintainability | No new issues on changed code |
+| Reliability | No new issues on changed code |
+| Security (vulnerabilities) | No new issues on changed code |
 
 ## New code definition (recommended)
 
@@ -38,11 +41,22 @@ Checklist for reviewers:
 cd photobooth
 dart analyze
 flutter test --coverage
+dart run tool/verify_coverage_scope.dart
 ```
 
 Fix SonarLint issues in the IDE (connected mode: `palepujanakiram` / `palepujanakiram_photobooth`).
 
 Do not merge if the SonarCloud PR quality gate fails.
+
+### Agent / contributor checklist (all changes)
+
+1. **Maintainability** — no new code smells (`S107`, `S3776`, `S3358`, `S1192`, etc.).
+2. **Reliability** — no new bugs; safe async/`BuildContext` usage; `dart analyze` clean.
+3. **Coverage** — Sonar new-code **> 90%**; in-scope layer **100%** via `verify_coverage_scope.dart`.
+4. **Security** — no new vulnerabilities; hotspots reviewed; secrets only in env/CI, URLs in `app_config.dart`.
+5. **Duplication** — ≤ 3% on new code; reuse helpers and `app_strings.dart`.
+
+Cursor rules: [`.cursor/rules/sonar-quality-gates.mdc`](../.cursor/rules/sonar-quality-gates.mdc).
 
 ## Triage order
 
@@ -73,5 +87,5 @@ Generated and vendored paths are listed in `sonar-project.properties` (including
 |-------|--------|
 | 0 | Hotspots (UI) + lcov CI check + new-code setting |
 | 1 | Duplication ≤ 3% — API/logging + view extractions |
-| 2 | Coverage ≥ 80% — utils/services tests, then ViewModels |
+| 2 | Coverage > 90% (Sonar) + 100% in-scope (`verify_coverage_scope.dart`) |
 | 3 | Burn down new issues (S3776 → S3358 → S1192) |
