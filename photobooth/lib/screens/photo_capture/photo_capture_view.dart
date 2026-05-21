@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
 import 'package:camera_native_details/camera_native_details.dart';
+import 'photo_capture_view_layout.dart';
 import 'photo_capture_viewmodel.dart';
 import 'photo_image_from_xfile_io.dart' if (dart.library.html) 'photo_image_from_xfile_web.dart' as photo_image;
 import '../../utils/app_runtime_config.dart';
@@ -531,14 +532,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           constraints,
         );
 
-        final widthCapFrac = isLandscape
-            ? AppConstants.kCapturePreviewCardMaxWidthFractionLandscape
-            : AppConstants.kCapturePreviewCardMaxWidthFractionPortrait;
-        final heightCapFrac = isLandscape
-            ? AppConstants.kCapturePreviewCardMaxHeightFractionLandscape
-            : (isPhonePortrait
-                ? AppConstants.kCapturePreviewCardMaxHeightFractionPhonePortrait
-                : AppConstants.kCapturePreviewCardMaxHeightFractionPortrait);
+        final (widthCapFrac, heightCapFrac) = capturePreviewCardSizeFractions(
+          isLandscape: isLandscape,
+          isPhonePortrait: isPhonePortrait,
+        );
 
         // Tablets: use the full canvas available for a cleaner kiosk-style preview.
         final maxW = isTablet
@@ -548,15 +545,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             ? constraints.maxHeight
             : math.min(constraints.maxHeight, media.height * heightCapFrac);
 
-        late double cardW;
-        late double cardH;
-        if (maxW / maxH > aspect) {
-          cardH = maxH;
-          cardW = cardH * aspect;
-        } else {
-          cardW = maxW;
-          cardH = cardW / aspect;
-        }
+        final (cardW, cardH) = capturePreviewCardDimensions(
+          constraints: constraints,
+          aspect: aspect,
+          maxW: maxW,
+          maxH: maxH,
+        );
 
         return Center(
           child: Card(

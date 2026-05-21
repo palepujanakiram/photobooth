@@ -63,7 +63,9 @@ Use [`lib/utils/app_strings.dart`](../photobooth/lib/utils/app_strings.dart) for
 
 ## Exclusions
 
-Generated and vendored paths are listed in `sonar-project.properties` (including `photobooth/packages/**` for path dependencies). Do not add per-line suppressions without a comment in the PR.
+Generated and vendored paths are listed in `sonar-project.properties` (including `photobooth/packages/**` for path dependencies).
+
+**Coverage scope** in `sonar.coverage.exclusions` matches `.qlty/qlty.toml` `[coverage].ignores` (unit-testable layer only; UI shells and integration code excluded). Do not add per-line suppressions without a comment in the PR.
 
 ## Phased remediation (in-repo)
 

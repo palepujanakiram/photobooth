@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../utils/exceptions.dart';
+import 'api_json_scan_utils.dart';
 
 /// Index of the closing `"` for a JSON string starting at [openQuoteIndex] (`"` itself).
 /// Handles standard escapes (`\"`, `\\`, `\uXXXX`, etc.). Returns -1 if not found.
@@ -34,42 +35,14 @@ String stripEchoedUserImageUrlField(String raw) {
   final colon = raw.indexOf(':', keyIdx + key.length);
   if (colon < 0) return raw;
 
-  var i = colon + 1;
-  while (i < raw.length) {
-    final c = raw.codeUnitAt(i);
-    if (c != 0x20 && c != 0x09 && c != 0x0a && c != 0x0d) break;
-    i++;
-  }
-  if (i >= raw.length || raw[i] != '"') return raw;
+  final valueStart = skipLeadingWhitespace(raw, colon + 1);
+  if (valueStart >= raw.length || raw[valueStart] != '"') return raw;
 
-  final valueCloseIdx = jsonStringCloseQuoteIndex(raw, i);
+  final valueCloseIdx = jsonStringCloseQuoteIndex(raw, valueStart);
   if (valueCloseIdx < 0) return raw;
 
-  var removeStart = keyIdx;
-  var before = keyIdx - 1;
-  while (before >= 0) {
-    final c = raw.codeUnitAt(before);
-    if (c == 0x20 || c == 0x09 || c == 0x0a || c == 0x0d) {
-      before--;
-      continue;
-    }
-    if (raw[before] == ',') removeStart = before;
-    break;
-  }
-
-  var removeEnd = valueCloseIdx + 1;
-  while (removeEnd < raw.length) {
-    final c = raw.codeUnitAt(removeEnd);
-    if (c == 0x20 || c == 0x09 || c == 0x0a || c == 0x0d) {
-      removeEnd++;
-      continue;
-    }
-    if (c == 0x2c) {
-      removeEnd++;
-    }
-    break;
-  }
-
+  final removeStart = indexOfLeadingCommaBefore(raw, keyIdx);
+  final removeEnd = endIndexAfterJsonValue(raw, valueCloseIdx);
   return raw.substring(0, removeStart) + raw.substring(removeEnd);
 }
 
@@ -99,28 +72,24 @@ void assertSessionBodyLooksLikeJson(String raw, String endpointDescription) {
   }
 }
 
+Map<String, dynamic> _decodeSessionPatchMap(String raw) {
+  final decoded = jsonDecode(raw);
+  if (decoded is! Map) {
+    throw const FormatException('Session PATCH: expected a JSON object');
+  }
+  final map = Map<String, dynamic>.from(decoded);
+  map.remove('userImageUrl');
+  return map;
+}
+
 /// Decode session PATCH JSON; server often echoes huge `userImageUrl`.
 Map<String, dynamic> parseSessionPatchResponseJson(String raw) {
   assertSessionBodyLooksLikeJson(raw, 'PATCH /api/sessions/:sessionId');
   try {
-    final slim = stripEchoedUserImageUrlField(raw);
-    final decoded = jsonDecode(slim);
-    if (decoded is! Map) {
-      throw const FormatException('Session PATCH: expected a JSON object');
-    }
-    final map = Map<String, dynamic>.from(decoded);
-    map.remove('userImageUrl');
-    return map;
+    return _decodeSessionPatchMap(stripEchoedUserImageUrlField(raw));
   } on FormatException {
-    // Strip can fail on unusual server JSON; full parse + drop key still works (may be heavy).
     try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) {
-        throw ApiException('Session response was not a JSON object.');
-      }
-      final map = Map<String, dynamic>.from(decoded);
-      map.remove('userImageUrl');
-      return map;
+      return _decodeSessionPatchMap(raw);
     } on FormatException {
       throw ApiException(
         'Could not read session response from the server. '

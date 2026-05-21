@@ -145,7 +145,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           PaymentPushPayload(
             type: PaymentPushCoordinator.typeApproved,
             paymentId: sessionId,
-            title: 'Payment confirmed',
+            title: AppStrings.paymentConfirmedTitle,
             body: 'Payment approved. Printing...',
           ),
         );
@@ -155,8 +155,8 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           PaymentPushPayload(
             type: PaymentPushCoordinator.typeFailed,
             paymentId: sessionId,
-            title: 'Payment not completed',
-            body: 'Payment failed. Try again or use another method.',
+            title: AppStrings.paymentNotCompletedTitle,
+            body: AppStrings.paymentFailedRetryBody,
           ),
         );
       case _PollVerdict.pending:
@@ -251,7 +251,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           PaymentPushPayload(
             type: PaymentPushCoordinator.typeApproved,
             paymentId: id,
-            title: 'Payment confirmed',
+            title: AppStrings.paymentConfirmedTitle,
             body: 'Payment approved. Proceed to print your photo.',
           ),
         );
@@ -261,8 +261,8 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           PaymentPushPayload(
             type: PaymentPushCoordinator.typeFailed,
             paymentId: id,
-            title: 'Payment not completed',
-            body: 'Payment failed. Try again or use another method.',
+            title: AppStrings.paymentNotCompletedTitle,
+            body: AppStrings.paymentFailedRetryBody,
           ),
         );
       case _PollVerdict.pending:
@@ -327,7 +327,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
             PaymentPushPayload(
               type: PaymentPushCoordinator.typeApproved,
               paymentId: sessionId,
-              title: 'Payment confirmed',
+              title: AppStrings.paymentConfirmedTitle,
               body: 'Payment approved. Printing...',
             ),
           );

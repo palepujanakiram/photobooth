@@ -1,6 +1,7 @@
 import '../screens/photo_capture/photo_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../screens/photo_generate/photo_generate_viewmodel.dart';
+import 'route_args_parsing.dart';
 
 class ThemeSelectionArgs {
   final PhotoModel? photo;
@@ -16,19 +17,13 @@ class ThemeSelectionArgs {
   static ThemeSelectionArgs? tryParse(Object? args) {
     if (args is ThemeSelectionArgs) return args;
     if (args is Map) {
-      final photoRaw = args['photo'];
-      final PhotoModel? photo = switch (photoRaw) {
-        null => null,
-        final PhotoModel p => p,
-        _ => null,
-      };
-      if (photoRaw != null && photo == null) return null;
-      final addOneMore = args['addOneMoreStyle'] == true;
-      final used = args['usedThemeIds'];
-      final usedIds =
-          used is List ? used.map((e) => e.toString()).toList() : <String>[];
+      final photo = parseOptionalPhotoModel(args['photo']);
+      if (args['photo'] != null && photo == null) return null;
       return ThemeSelectionArgs(
-          photo: photo, addOneMoreStyle: addOneMore, usedThemeIds: usedIds);
+        photo: photo,
+        addOneMoreStyle: args['addOneMoreStyle'] == true,
+        usedThemeIds: parseStringIdList(args['usedThemeIds']),
+      );
     }
     return null;
   }
@@ -70,30 +65,16 @@ class ResultArgs {
   static ResultArgs? tryParse(Object? args) {
     if (args is ResultArgs) return args;
     if (args is Map) {
-      final rawList = args['generatedImages'];
-      if (rawList is! List) return null;
-      final generatedImages = <GeneratedImage>[];
-      for (final e in rawList) {
-        if (e is! GeneratedImage) return null;
-        generatedImages.add(e);
-      }
-      if (generatedImages.isEmpty) return null;
-      final op = args['originalPhoto'];
-      final PhotoModel? originalPhoto = switch (op) {
-        null => null,
-        final PhotoModel p => p,
-        _ => null,
-      };
-      if (op != null && originalPhoto == null) return null;
-      final name = args['customerName']?.toString();
-      final phone = args['customerPhone']?.toString();
-      final wa = args['customerWhatsappOptIn'] == true;
+      final generatedImages = parseGeneratedImageList(args['generatedImages']);
+      if (generatedImages == null) return null;
+      final originalPhoto = parseOptionalPhotoModel(args['originalPhoto']);
+      if (args['originalPhoto'] != null && originalPhoto == null) return null;
       return ResultArgs(
         generatedImages: generatedImages,
         originalPhoto: originalPhoto,
-        customerName: name,
-        customerPhone: phone,
-        customerWhatsappOptIn: wa,
+        customerName: args['customerName']?.toString(),
+        customerPhone: args['customerPhone']?.toString(),
+        customerWhatsappOptIn: args['customerWhatsappOptIn'] == true,
       );
     }
     return null;
@@ -114,19 +95,10 @@ class ThankYouArgs {
   static ThankYouArgs? tryParse(Object? args) {
     if (args is ThankYouArgs) return args;
     if (args is Map) {
-      final url = args['shareUrl']?.toString();
-      final longUrl = args['shareLongUrl']?.toString();
-      final expiresRaw = args['shareExpiresAt'];
-      DateTime? expiresAt;
-      if (expiresRaw is DateTime) {
-        expiresAt = expiresRaw;
-      } else if (expiresRaw != null) {
-        expiresAt = DateTime.tryParse(expiresRaw.toString());
-      }
       return ThankYouArgs(
-        shareUrl: url,
-        shareLongUrl: longUrl,
-        shareExpiresAt: expiresAt,
+        shareUrl: args['shareUrl']?.toString(),
+        shareLongUrl: args['shareLongUrl']?.toString(),
+        shareExpiresAt: parseOptionalDateTime(args['shareExpiresAt']),
       );
     }
     return null;
@@ -165,48 +137,22 @@ class QrShareArgs {
   static QrShareArgs? tryParse(Object? args) {
     if (args is QrShareArgs) return args;
     if (args is Map) {
-      final rawList = args['generatedImages'];
-      if (rawList is! List) return null;
-      final generatedImages = <GeneratedImage>[];
-      for (final e in rawList) {
-        if (e is! GeneratedImage) return null;
-        generatedImages.add(e);
-      }
-      if (generatedImages.isEmpty) return null;
-      final op = args['originalPhoto'];
-      final PhotoModel? originalPhoto = switch (op) {
-        null => null,
-        final PhotoModel p => p,
-        _ => null,
-      };
-      if (op != null && originalPhoto == null) return null;
-      final vm = args['resultViewModel'];
-      final url = args['shareUrl']?.toString();
-      final longUrl = args['shareLongUrl']?.toString();
-      final expiresRaw = args['shareExpiresAt'];
-      DateTime? expiresAt;
-      if (expiresRaw is DateTime) {
-        expiresAt = expiresRaw;
-      } else if (expiresRaw != null) {
-        expiresAt = DateTime.tryParse(expiresRaw.toString());
-      }
-      final kioskUrl = args['kioskShareUrl']?.toString();
-      final waQueued = args['whatsappQueued'] == true;
-      final waOptIn = args['customerWhatsappOptIn'] == true;
-      final phone = args['customerPhone']?.toString();
-      final pdf = args['receiptPdfUrl']?.toString();
+      final generatedImages = parseGeneratedImageList(args['generatedImages']);
+      if (generatedImages == null) return null;
+      final originalPhoto = parseOptionalPhotoModel(args['originalPhoto']);
+      if (args['originalPhoto'] != null && originalPhoto == null) return null;
       return QrShareArgs(
         generatedImages: generatedImages,
         originalPhoto: originalPhoto,
-        resultViewModel: vm,
-        shareUrl: url,
-        shareLongUrl: longUrl,
-        shareExpiresAt: expiresAt,
-        kioskShareUrl: kioskUrl,
-        whatsappQueued: waQueued,
-        customerWhatsappOptIn: waOptIn,
-        customerPhone: phone,
-        receiptPdfUrl: pdf,
+        resultViewModel: args['resultViewModel'],
+        shareUrl: args['shareUrl']?.toString(),
+        shareLongUrl: args['shareLongUrl']?.toString(),
+        shareExpiresAt: parseOptionalDateTime(args['shareExpiresAt']),
+        kioskShareUrl: args['kioskShareUrl']?.toString(),
+        whatsappQueued: args['whatsappQueued'] == true,
+        customerWhatsappOptIn: args['customerWhatsappOptIn'] == true,
+        customerPhone: args['customerPhone']?.toString(),
+        receiptPdfUrl: args['receiptPdfUrl']?.toString(),
       );
     }
     return null;
