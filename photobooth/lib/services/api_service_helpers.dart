@@ -9,7 +9,7 @@ import 'api_image_url_utils.dart';
 import '../utils/app_strings.dart';
 import '../utils/constants.dart';
 import '../utils/exceptions.dart';
-import '../utils/logger.dart';
+import 'api_generate_metadata_log.dart';
 import 'api_session_patch_json.dart';
 import 'kiosk_manager.dart';
 import 'session_manager.dart';
@@ -167,47 +167,4 @@ bool isGenerateImageDioTimeout(DioException e) {
   return e.type == DioExceptionType.connectionTimeout ||
       e.type == DioExceptionType.receiveTimeout ||
       e.type == DioExceptionType.sendTimeout;
-}
-
-void logGenerateImageResponseMetadata(Map<String, dynamic> response) {
-  final runId = response['runId'] as String?;
-  final framing = response['framing'] as Map<String, dynamic>?;
-  final timing = response['timing'] as Map<String, dynamic>?;
-  final faceVerification = response['faceVerification'] as Map<String, dynamic>?;
-  final evaluation = response['evaluation'] as Map<String, dynamic>?;
-  if (runId == null && framing == null && timing == null) return;
-
-  AppLogger.debug('📊 Generation metadata:');
-  if (runId != null) AppLogger.debug('   Run ID: $runId');
-  if (framing != null) {
-    AppLogger.debug(
-      '   Framing: ${framing['personCount']} person(s), '
-      '${framing['orientation']}, ${framing['zoomLevel']}, ${framing['aspectRatio']}',
-    );
-  }
-  if (timing != null) {
-    final totalMs = timing['totalMs'] as int?;
-    final generationMs = timing['generationMs'] as int?;
-    final upscaleMs = timing['upscaleMs'] as int?;
-    if (totalMs != null) {
-      AppLogger.debug('   Total duration: ${totalMs}ms');
-      if (generationMs != null) AppLogger.debug('   Generation: ${generationMs}ms');
-      if (upscaleMs != null && upscaleMs > 0) {
-        AppLogger.debug('   Upscale: ${upscaleMs}ms');
-      }
-    }
-  }
-  if (faceVerification != null) {
-    AppLogger.debug(
-      '   Face verification: ${faceVerification['originalCount']} original, '
-      '${faceVerification['generatedCount']} generated, '
-      'match: ${faceVerification['match']}',
-    );
-  }
-  if (evaluation != null) {
-    AppLogger.debug(
-      '   Evaluation: composite=${evaluation['compositeScore']}, '
-      'identity=${evaluation['identityScore']}, prompt=${evaluation['promptScore']}',
-    );
-  }
 }
