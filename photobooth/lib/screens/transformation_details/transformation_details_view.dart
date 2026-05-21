@@ -7,6 +7,7 @@ import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
 import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/leading_with_alice.dart';
+import 'transformation_details_helpers.dart';
 import 'transformation_details_viewmodel.dart';
 
 /// Full-screen forensics for one generation run (`GET /api/generation-runs/:runId`).
@@ -31,6 +32,24 @@ class TransformationDetailsScreen extends StatelessWidget {
   }
 }
 
+Widget _transformationDetailsBody(TransformationDetailsViewModel vm) {
+  if (vm.isLoading) {
+    return const Center(child: CircularProgressIndicator());
+  }
+  if (vm.errorMessage != null) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          vm.errorMessage!,
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+  return _RunBody(payload: vm.payload!);
+}
+
 class _TransformationDetailsBody extends StatelessWidget {
   const _TransformationDetailsBody();
 
@@ -43,19 +62,7 @@ class _TransformationDetailsBody extends StatelessWidget {
         title: const Text('Transformation details'),
         actions: const [AppBarAliceAction()],
       ),
-      body: vm.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : vm.errorMessage != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      vm.errorMessage!,
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                )
-              : _RunBody(payload: vm.payload!),
+      body: _transformationDetailsBody(vm),
     );
   }
 }
@@ -68,58 +75,13 @@ class _RunBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final run = payload['run'];
-    final stepsRaw = payload['steps'];
     if (run is! Map<String, dynamic>) {
       return const Center(child: Text('Invalid response: missing run'));
     }
-    final steps = stepsRaw is List
-        ? stepsRaw
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList()
-        : <Map<String, dynamic>>[];
-    steps.sort((a, b) {
-      DateTime? parse(dynamic v) {
-        if (v is String && v.trim().isNotEmpty) {
-          return DateTime.tryParse(v.trim());
-        }
-        return null;
-      }
-
-      final ta = parse(a['startedAt']);
-      final tb = parse(b['startedAt']);
-      if (ta == null && tb == null) return 0;
-      if (ta == null) return 1;
-      if (tb == null) return -1;
-      return ta.compareTo(tb);
-    });
-
-    final meta = run['metadata'] is Map
-        ? Map<String, dynamic>.from(run['metadata'] as Map)
-        : <String, dynamic>{};
-    final applied = meta['appliedSettings'] is Map
-        ? Map<String, dynamic>.from(meta['appliedSettings'] as Map)
-        : <String, dynamic>{};
-
-    Map<String, dynamic>? aiStep;
-    for (final s in steps) {
-      final stage = s['stage']?.toString() ?? '';
-      if (stage == 'ai_generation' || stage == 'ai') {
-        aiStep = s;
-        break;
-      }
-    }
-
-    String? finalPrompt;
-    if (aiStep != null) {
-      final out = aiStep['outputData'];
-      final m = aiStep['metadata'];
-      if (out is Map && out['finalPrompt'] != null) {
-        finalPrompt = out['finalPrompt'].toString();
-      } else if (m is Map && m['finalPrompt'] != null) {
-        finalPrompt = m['finalPrompt'].toString();
-      }
-    }
+    final steps = parseTransformationSteps(payload['steps']);
+    final meta = parseRunMetadata(run);
+    final applied = parseAppliedSettings(meta);
+    final finalPrompt = finalPromptFromAiStep(findAiGenerationStep(steps));
 
     return ListView(
       padding: const EdgeInsets.all(16),

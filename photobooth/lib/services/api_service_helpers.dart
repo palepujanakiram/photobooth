@@ -1,7 +1,11 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show compute, kIsWeb;
+import 'package:uuid/uuid.dart';
 
+import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
+import 'api_client.dart';
+import 'api_image_url_utils.dart';
 import '../utils/app_strings.dart';
 import '../utils/constants.dart';
 import '../utils/exceptions.dart';
@@ -118,6 +122,53 @@ Future<Map<String, dynamic>> decodeSessionPatchResponseText(
 }
 
 /// Debug logging for POST /api/generate-image metadata block.
+/// Single POST /api/generate-image attempt (Sonar S3776 extraction).
+Future<TransformedImageModel> generateTransformedImageOnce({
+  required ApiClient apiClient,
+  required String sessionId,
+  required int attempt,
+  required String originalPhotoId,
+  required String themeId,
+  required Uuid uuid,
+  void Function(String message)? onProgress,
+}) async {
+  final response = await apiClient.generateImage({
+    'sessionId': sessionId,
+    'attempt': attempt,
+    'trackDetails': true,
+  });
+  onProgress?.call('Response received');
+
+  if (response['success'] != true) {
+    final errorMsg = response['error'] as String? ?? 'Generation failed';
+    throw ApiException(errorMsg);
+  }
+
+  final imageUrl = response['imageUrl'] as String?;
+  if (imageUrl == null || imageUrl.isEmpty) {
+    throw ApiException('No image URL in response');
+  }
+
+  logGenerateImageResponseMetadata(response);
+  final runId = response['runId'] as String?;
+  final resolvedImageUrl = resolveApiImageUrl(imageUrl);
+
+  return TransformedImageModel(
+    id: uuid.v4(),
+    imageUrl: resolvedImageUrl,
+    originalPhotoId: originalPhotoId,
+    themeId: themeId,
+    transformedAt: DateTime.now(),
+    runId: runId,
+  );
+}
+
+bool isGenerateImageDioTimeout(DioException e) {
+  return e.type == DioExceptionType.connectionTimeout ||
+      e.type == DioExceptionType.receiveTimeout ||
+      e.type == DioExceptionType.sendTimeout;
+}
+
 void logGenerateImageResponseMetadata(Map<String, dynamic> response) {
   final runId = response['runId'] as String?;
   final framing = response['framing'] as Map<String, dynamic>?;

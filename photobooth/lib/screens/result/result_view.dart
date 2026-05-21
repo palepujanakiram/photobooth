@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'result_payment_card_widgets.dart';
 import 'result_payment_status.dart';
 import 'result_viewmodel.dart';
 import '../../services/app_settings_manager.dart';
@@ -628,13 +629,6 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
-  static const TextStyle _resultBoxTitleStyle = TextStyle(
-    fontSize: 26,
-    fontWeight: FontWeight.bold,
-    height: 1.15,
-    color: Colors.white,
-  );
-
   Widget _buildPaymentQrArea(ResultViewModel viewModel, double maxQrWidth) {
     final gatewayEnabled = viewModel.isPaymentGatewayEnabled;
     if (!gatewayEnabled) {
@@ -690,7 +684,6 @@ class _ResultScreenState extends State<ResultScreen> {
 
   Widget _buildPaymentCard(
       BuildContext context, ResultViewModel viewModel, AppColors appColors) {
-    final totalPrice = viewModel.totalPrice;
     return LayoutBuilder(
       builder: (context, outerConstraints) {
         final cardHeight = computePaymentCardHeight(outerConstraints);
@@ -714,140 +707,26 @@ class _ResultScreenState extends State<ResultScreen> {
             builder: (context, constraints) {
               final maxQrWidth =
                   (constraints.maxWidth - 12).clamp(240.0, 460.0).toDouble();
-              final status =
-                  ResultPaymentStatusPresentation.fromViewModel(viewModel);
 
-              return Column(
-                children: [
-                  const Text(
-                    'Pay via UPI',
-                    style: _resultBoxTitleStyle,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '₹$totalPrice',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      height: 1.2,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Expanded(
-                    child: Center(
-                      child: Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.symmetric(horizontal: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        alignment: Alignment.center,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 4,
-                            vertical: 2,
-                          ),
-                          child: _buildPaymentQrArea(viewModel, maxQrWidth),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    status.statusMessage,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.3,
-                      fontWeight: FontWeight.w600,
-                      color: status.statusMessageColor,
-                    ),
-                  ),
-                  if (viewModel.isDeadPollingFallbackVisible) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      'Did your payment go through?',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white.withValues(alpha: 0.95),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.white,
-                              side: BorderSide(
-                                color: Colors.white.withValues(alpha: 0.35),
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            // Disable while a refresh is in flight to avoid
-                            // double-taps on slow connections.
-                            onPressed: _refreshingPolling
-                                ? null
-                                : () async {
-                                    if (!mounted) return;
-                                    setState(() => _refreshingPolling = true);
-                                    try {
-                                      await viewModel.refreshPaymentPolling();
-                                    } finally {
-                                      if (mounted) {
-                                        setState(
-                                            () => _refreshingPolling = false);
-                                      }
-                                    }
-                                  },
-                            child: _buildRefreshPollingChild(),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  Colors.white.withValues(alpha: 0.16),
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            onPressed: () => _showGetHelpDialog(viewModel),
-                            child: const Text('Get help'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  if (viewModel.fcmPaymentPushSuccess == false &&
-                      _failureSecondsLeft > 0) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Returning to start in ${_failureSecondsLeft}s',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.78),
-                      ),
-                    ),
-                  ],
-                ],
+              return ResultPaymentCardColumn(
+                viewModel: viewModel,
+                maxQrWidth: maxQrWidth,
+                refreshingPolling: _refreshingPolling,
+                failureSecondsLeft: _failureSecondsLeft,
+                onRefreshPolling: () async {
+                  if (!mounted) return;
+                  setState(() => _refreshingPolling = true);
+                  try {
+                    await viewModel.refreshPaymentPolling();
+                  } finally {
+                    if (mounted) {
+                      setState(() => _refreshingPolling = false);
+                    }
+                  }
+                },
+                onGetHelp: () => _showGetHelpDialog(viewModel),
+                refreshPollingChild: _buildRefreshPollingChild(),
+                buildQrArea: _buildPaymentQrArea,
               );
             },
           ),

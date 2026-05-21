@@ -128,4 +128,54 @@ abstract final class StaffPaymentsPayloadUtils {
     }
     return '';
   }
+
+  /// First generated-image URL from a session payload (maps or string entries).
+  static String? imageUrlFromGeneratedEntry(dynamic first, {String? sessionId}) {
+    if (first is Map) {
+      final m = Map<String, dynamic>.from(first);
+      final u = pickString(m, const [
+        'imageUrl',
+        'image_url',
+        'url',
+        'photoUrl',
+        'photo_url',
+      ]);
+      if (u.isNotEmpty) {
+        return normalizeImageUrl(u, sessionId: sessionId);
+      }
+    }
+    if (first is String) {
+      final u = first.trim();
+      if (u.isNotEmpty) {
+        return normalizeImageUrl(u, sessionId: sessionId);
+      }
+    }
+    return null;
+  }
+
+  /// Resolves a print/preview image URL from [raw] session JSON.
+  static String? resolveSessionImageUrl(
+    Map<String, dynamic> raw, {
+    required String sessionId,
+  }) {
+    final generated =
+        raw['generatedImages'] ?? raw['generated_images'] ?? raw['images'];
+    if (generated is List && generated.isNotEmpty) {
+      final fromFirst = imageUrlFromGeneratedEntry(
+        generated.first,
+        sessionId: sessionId,
+      );
+      if (fromFirst != null) return fromFirst;
+    }
+    final any = deepFindFirstUrl(raw);
+    if (any != null) {
+      return normalizeImageUrl(any, sessionId: sessionId);
+    }
+    return null;
+  }
+
+  /// Bare base64 user image field from session payload (no data-URL prefix).
+  static String userImageFieldFromSession(Map<String, dynamic> raw) {
+    return pickString(raw, const ['userImageUrl', 'user_image_url']);
+  }
 }

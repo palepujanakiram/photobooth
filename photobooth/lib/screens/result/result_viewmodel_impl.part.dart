@@ -674,9 +674,32 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       return;
     }
 
-    KioskShareLinkModel? kiosk;
+    await _mintKioskFallbackForPostPayment();
+    if (_r._disposed) return;
+
+    await _postSessionReceiptForPostPayment(sessionId);
+    if (_r._disposed) return;
+
+    applyKioskFallbackWhenReceiptShareEmpty(
+      receiptShareUrl: _r._receiptShareUrl,
+      kioskFallbackShareUrl: _r._kioskFallbackShareUrl,
+      setReceiptShareUrl: (u) => _r._receiptShareUrl = u,
+      receiptShareLongUrl: _r._receiptShareLongUrl,
+      kioskFallbackShareLongUrl: _r._kioskFallbackShareLongUrl,
+      setReceiptShareLongUrl: (u) => _r._receiptShareLongUrl = u,
+      receiptShareExpiresAt: _r._receiptShareExpiresAt,
+      kioskFallbackShareExpiresAt: _r._kioskFallbackShareExpiresAt,
+      setReceiptShareExpiresAt: (t) => _r._receiptShareExpiresAt = t,
+    );
+
+    _r._postPaymentSharePrepared = true;
+    await refreshWhatsappDeliveryStatusFromSession();
+    notifyListeners();
+  }
+
+  Future<void> _mintKioskFallbackForPostPayment() async {
     try {
-      kiosk = await mintCustomerShareLink();
+      final kiosk = await mintCustomerShareLink();
       if (_r._disposed) return;
       if (kiosk != null && kiosk.isValid) {
         _r._kioskFallbackShareUrl = kiosk.url;
@@ -686,8 +709,9 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     } catch (e, st) {
       AppLogger.debug('post-payment kiosk share mint failed: $e\n$st');
     }
-    if (_r._disposed) return;
+  }
 
+  Future<void> _postSessionReceiptForPostPayment(String sessionId) async {
     try {
       final fcmToken = kIsWeb ? null : await FcmService.getToken();
       if (_r._disposed) return;
@@ -699,34 +723,10 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       if (receipt != null) {
         _r._receiptResponseReceived = true;
         _ingestReceiptShareFields(receipt);
-        // NOTE: do NOT override _r._whatsappQueued from the client-side opt-in
-        // here — the server is now authoritative on whether WhatsApp was
-        // actually queued (it can refuse for invalid_phone / no_phone even
-        // when the user opted in). _ingestReceiptShareFields already sets
-        // _r._whatsappQueued from the response.
       }
     } catch (e, st) {
-      // _postSessionReceiptWithRetry already reports + logs; this is a safety net.
       AppLogger.debug('postSessionReceipt failed (outer): $e\n$st');
     }
-    if (_r._disposed) return;
-
-    // If receipt didn't include a share URL, fall back to kiosk mint (if any).
-    final ru = _r._receiptShareUrl?.trim() ?? '';
-    if (ru.isEmpty) {
-      final ku = _r._kioskFallbackShareUrl?.trim() ?? '';
-      if (ku.isNotEmpty) {
-        _r._receiptShareUrl = _r._kioskFallbackShareUrl;
-        if ((_r._receiptShareLongUrl?.trim() ?? '').isEmpty) {
-          _r._receiptShareLongUrl = _r._kioskFallbackShareLongUrl;
-        }
-        _r._receiptShareExpiresAt ??= _r._kioskFallbackShareExpiresAt;
-      }
-    }
-
-    _r._postPaymentSharePrepared = true;
-    await refreshWhatsappDeliveryStatusFromSession();
-    notifyListeners();
   }
 
   /// Posts the receipt with retry + error reporting.
@@ -917,6 +917,31 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     }
   }
 
+  Future<void> _shareImagesOnWeb({Rect? sharePositionOrigin}) async {
+    final urls = _r._generatedImages
+        .map((e) => e.imageUrl)
+        .where((u) => u.trim().isNotEmpty)
+        .toList();
+    if (urls.isEmpty) {
+      _r._errorMessage = 'No images to share';
+      notifyListeners();
+      return;
+    }
+    _r._isSharing = true;
+    _r._errorMessage = null;
+    notifyListeners();
+    try {
+      _r._errorMessage = await shareGeneratedImageUrlsOnWeb(
+        urls: urls,
+        shareText: _r._shareService.shareText,
+        sharePositionOrigin: sharePositionOrigin,
+      );
+    } finally {
+      _r._isSharing = false;
+      notifyListeners();
+    }
+  }
+
   /// Print all images using system print dialog
   Future<void> printWithDialog() async {
     // Download files first if needed
@@ -946,42 +971,8 @@ mixin _ResultViewModelImpl on ChangeNotifier {
 
   /// Share all images
   Future<void> shareImages({Rect? sharePositionOrigin}) async {
-    // Web share: share the URLs (no filesystem downloads / file sharing).
     if (kIsWeb) {
-      final urls = _r._generatedImages
-          .map((e) => e.imageUrl)
-          .where((u) => u.trim().isNotEmpty)
-          .toList();
-      if (urls.isEmpty) {
-        _r._errorMessage = 'No images to share';
-        notifyListeners();
-        return;
-      }
-      _r._isSharing = true;
-      _r._errorMessage = null;
-      notifyListeners();
-      try {
-        await _r._shareService.shareText(
-          urls.join('\n'),
-          sharePositionOrigin: sharePositionOrigin,
-          subject: '${AppConstants.kBrandName} photos',
-        );
-      } on ShareException catch (e) {
-        // Many browsers don't support Web Share API for desktops.
-        // Fall back to copying the link(s) so operators can paste into WhatsApp.
-        try {
-          await Clipboard.setData(ClipboardData(text: urls.join('\n')));
-          _r._errorMessage =
-              'Sharing not supported in this browser. Link copied.';
-        } catch (_) {
-          _r._errorMessage = e.message;
-        }
-      } catch (e) {
-        _r._errorMessage = 'Failed to share: $e';
-      } finally {
-        _r._isSharing = false;
-        notifyListeners();
-      }
+      await _shareImagesOnWeb(sharePositionOrigin: sharePositionOrigin);
       return;
     }
 

@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import '../../utils/logger.dart';
 import 'package:provider/provider.dart';
 import 'theme_slideshow_layout.dart';
+import 'theme_slideshow_timer_helpers.dart';
 import 'theme_slideshow_viewmodel.dart';
 import '../terms_and_conditions/terms_and_conditions_view.dart';
 import '../../utils/constants.dart';
@@ -122,42 +122,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
     }
 
     _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        if (identical(_timer, timer)) _timer = null;
-        return;
-      }
-
-      // Check if ViewModel is still valid (not disposed)
-      try {
-        // Check if all images are still loaded
-        if (!_viewModel.areAllImagesLoaded) {
-          timer.cancel();
-          if (identical(_timer, timer)) _timer = null;
-          return;
-        }
-
-        final imageUrls = _displayUrlsFor(_viewModel);
-        if (imageUrls.isEmpty) {
-          timer.cancel();
-          if (identical(_timer, timer)) _timer = null;
-          return;
-        }
-
-        final nextIndex = (_currentIndex + 1) % imageUrls.length;
-        // Select a new random transition for this change
-        if (mounted) {
-          setState(() {
-            _currentTransition = TransitionSelector.getRandomTransition();
-            _currentIndex = nextIndex;
-          });
-        }
-      } catch (e) {
-        // ViewModel might be disposed, cancel timer
-        AppLogger.debug('Error in slideshow timer: $e');
-        timer.cancel();
-        if (identical(_timer, timer)) _timer = null;
-      }
+      _onSlideshowTimerTick(timer);
     });
   }
 
@@ -255,6 +220,40 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
       sampleUrls: viewModel.getSampleImageUrls(),
       preloadedUrls: viewModel.preloadedImageUrls,
     );
+  }
+
+  void _onSlideshowTimerTick(Timer timer) {
+    if (!mounted) {
+      timer.cancel();
+      if (identical(_timer, timer)) _timer = null;
+      return;
+    }
+    try {
+      final imageUrls = _displayUrlsFor(_viewModel);
+      if (!themeSlideshowShouldAdvanceTick(
+        viewModel: _viewModel,
+        imageUrls: imageUrls,
+      )) {
+        timer.cancel();
+        if (identical(_timer, timer)) _timer = null;
+        return;
+      }
+      final nextIndex = themeSlideshowNextIndex(
+        currentIndex: _currentIndex,
+        imageUrls: imageUrls,
+      );
+      if (nextIndex == null) return;
+      if (mounted) {
+        setState(() {
+          _currentTransition = TransitionSelector.getRandomTransition();
+          _currentIndex = nextIndex;
+        });
+      }
+    } catch (e) {
+      themeSlideshowLogTimerError(e);
+      timer.cancel();
+      if (identical(_timer, timer)) _timer = null;
+    }
   }
 
   void _onTap() {
