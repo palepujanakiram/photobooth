@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class KioskManager {
@@ -5,6 +6,12 @@ class KioskManager {
   static const String _kPrefsPaymentEnabledOverride = 'kiosk_payment_enabled_override';
 
   static bool? _cachedPaymentEnabledOverride;
+
+  /// Clears in-memory payment override cache (tests only).
+  @visibleForTesting
+  static void resetPaymentOverrideCacheForTests() {
+    _cachedPaymentEnabledOverride = null;
+  }
 
   Future<String?> getKioskCode() async {
     final prefs = await SharedPreferences.getInstance();
