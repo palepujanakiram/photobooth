@@ -5,9 +5,10 @@ import 'package:provider/provider.dart';
 import '../photo_capture/photo_model.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
+import 'photo_review_layout.dart';
 import 'photo_review_viewmodel.dart';
 import '../../utils/constants.dart';
-import '../../utils/app_config.dart';
+import '../../utils/theme_image_urls.dart';
 import '../../services/app_settings_manager.dart';
 import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/full_screen_loader.dart';
@@ -73,260 +74,7 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
               child: BottomSafePadding(
                 child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final mediaQuery = MediaQuery.of(context);
-                  final bottomPadding = mediaQuery.padding.bottom;
-                  final isLandscape = mediaQuery.orientation == Orientation.landscape;
-                  final contentPadding = isLandscape ? 10.0 : 16.0;
-                  final labelFontSize = isLandscape ? 14.0 : 18.0;
-                  final labelGap = isLandscape ? 6.0 : 12.0;
-                  return Container(
-                    width: double.infinity,
-                    height: constraints.maxHeight,
-                    color: Theme.of(context).colorScheme.surface,
-                    padding: EdgeInsets.fromLTRB(contentPadding, contentPadding, contentPadding, 0.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      mainAxisSize: MainAxisSize.max,
-                      children: [
-                        // Side by side layout for Captured Photo and Selected Theme
-                        Expanded(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Left side: Captured Photo
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Captured Photo',
-                                      style: TextStyle(
-                                        fontSize: labelFontSize,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    SizedBox(height: labelGap),
-                                    Expanded(
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          color:
-                                              Theme.of(context).colorScheme.surfaceContainerHighest,
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        child: ClipRRect(
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                          child: FutureBuilder<List<int>>(
-                                            future: _photoBytesFuture,
-                                            builder: (context, snapshot) {
-                                              if (snapshot
-                                                      .connectionState ==
-                                                  ConnectionState.waiting) {
-                                                return const Center(
-                                                  child:
-                                                      CircularProgressIndicator(),
-                                                );
-                                              }
-                                              if (snapshot.hasError ||
-                                                  !snapshot.hasData) {
-                                                return Center(
-                                                  child: Icon(
-                                                    CupertinoIcons.exclamationmark_triangle,
-                                                    color: Theme.of(context).colorScheme.error,
-                                                    size: 48,
-                                                  ),
-                                                );
-                                              }
-                                              return Image.memory(
-                                                Uint8List.fromList(
-                                                    snapshot.data!),
-                                                fit: BoxFit.cover,
-                                                width: double.infinity,
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              SizedBox(width: isLandscape ? 10 : 16),
-                              // Right side: Selected Theme
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Selected Theme',
-                                      style: TextStyle(
-                                        fontSize: labelFontSize,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    SizedBox(height: labelGap),
-                                    Expanded(
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          color:
-                                              Theme.of(context).colorScheme.surfaceContainerHighest,
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        child: ClipRRect(
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                          child: _theme?.sampleImageUrl !=
-                                                      null &&
-                                                  _theme!
-                                                      .sampleImageUrl!
-                                                      .isNotEmpty
-                                              ? _buildThemeImage(
-                                                  _theme!.sampleImageUrl!,
-                                                )
-                                              : Container(
-                                                  color: Colors.grey.shade300,
-                                                  child: Column(
-                                                    mainAxisAlignment:
-                                                        MainAxisAlignment
-                                                            .center,
-                                                    children: [
-                                                      const Icon(
-                                                        CupertinoIcons.paintbrush,
-                                                        size: 64,
-                                                        color:
-                                                            Colors.grey,
-                                                      ),
-                                                      const SizedBox(
-                                                          height: 16),
-                                                      Text(
-                                                        _theme?.name ??
-                                                            'Unknown',
-                                                        style:
-                                                            const TextStyle(
-                                                          fontSize: 18,
-                                                          fontWeight:
-                                                              FontWeight
-                                                                  .bold,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(
-                                                          height: 8),
-                                                      Padding(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                                horizontal:
-                                                                    16.0),
-                                                        child: Text(
-                                                          _theme
-                                                                  ?.description ??
-                                                              '',
-                                                          style:
-                                                              const TextStyle(
-                                                                  fontSize:
-                                                                      14),
-                                                          textAlign:
-                                                              TextAlign
-                                                                  .center,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(height: isLandscape ? 8 : 16),
-                        // Button section (error shown in snackbar instead)
-
-                        Padding(
-                          padding: EdgeInsets.only(
-                            bottom: (isLandscape ? 10.0 : 16.0) + bottomPadding,
-                          ),
-                          child: Consumer<ReviewViewModel>(
-                            builder: (context, viewModel, child) {
-                              return AppContinueButton(
-                                text: 'Transform Photo',
-                                onPressed: viewModel.isTransforming
-                                    ? null
-                                    : () async {
-                                        // Capture context before async operation
-                                        final currentContext = context;
-
-                                        final transformedImage =
-                                            await viewModel.transformPhoto();
-
-                                        if (!mounted ||
-                                            !currentContext.mounted) {
-                                          return;
-                                        }
-
-                                        if (transformedImage != null) {
-                                          final theme = viewModel.theme;
-                                          final photo = viewModel.photo;
-                                          if (theme == null || photo == null) {
-                                            return;
-                                          }
-
-                                          final generated = GeneratedImage(
-                                            id: transformedImage.id,
-                                            imageUrl: transformedImage.imageUrl,
-                                            theme: theme,
-                                            isSelected: true,
-                                          );
-
-                                          final contact =
-                                              await showContactBeforePaySheet(
-                                            currentContext,
-                                          );
-                                          if (!mounted || !currentContext.mounted) {
-                                            return;
-                                          }
-                                          if (contact == null) return;
-
-                                          await Navigator.pushNamed(
-                                            currentContext,
-                                            AppConstants.kRouteResult,
-                                            arguments: {
-                                              'generatedImages': <GeneratedImage>[generated],
-                                              'originalPhoto': photo,
-                                              'customerName': contact.customerName,
-                                              'customerPhone': contact.customerPhone,
-                                              'customerWhatsappOptIn': contact.whatsappOptIn,
-                                            },
-                                          );
-                                        } else if (viewModel.hasError) {
-                                          // Show detailed error in dialog
-                                          final errorMessage =
-                                              viewModel.errorMessage ??
-                                                  'Unknown error';
-                                          
-                                          // Show error with full details
-                                          AppSnackBar.showError(
-                                            currentContext,
-                                            errorMessage,
-                                          );
-                                        }
-                                      },
-                                isLoading: viewModel.isTransforming,
-                                padding: EdgeInsets.zero,
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
+                  return _buildReviewBody(context, constraints);
                 },
               ),
               ),
@@ -353,18 +101,225 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
     );
   }
 
-  /// Builds theme image with proper URL handling
-  /// Fills available space like the captured photo
-  Widget _buildThemeImage(String imageUrl) {
-    // Handle URL construction like ThemeCard does
-    String fullUrl = imageUrl;
-    if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
-      final baseUrl = AppConfig.baseUrl.endsWith('/')
-          ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
-          : AppConfig.baseUrl;
-      final relativePath = imageUrl.startsWith('/') ? imageUrl : '/$imageUrl';
-      fullUrl = '$baseUrl$relativePath';
+  Widget _buildReviewBody(BuildContext context, BoxConstraints constraints) {
+    final metrics = ReviewLayoutMetrics(
+      isLandscape:
+          MediaQuery.orientationOf(context) == Orientation.landscape,
+    );
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+
+    return Container(
+      width: double.infinity,
+      height: constraints.maxHeight,
+      color: Theme.of(context).colorScheme.surface,
+      padding: EdgeInsets.fromLTRB(
+        metrics.contentPadding,
+        metrics.contentPadding,
+        metrics.contentPadding,
+        0,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _buildCapturedPhotoPanel(context, metrics)),
+                SizedBox(width: metrics.columnGap),
+                Expanded(child: _buildThemePanel(context, metrics)),
+              ],
+            ),
+          ),
+          SizedBox(height: metrics.sectionGap),
+          Padding(
+            padding: EdgeInsets.only(
+              bottom: metrics.bottomButtonPadding(bottomPadding),
+            ),
+            child: Consumer<ReviewViewModel>(
+              builder: (context, viewModel, _) {
+                return AppContinueButton(
+                  text: 'Transform Photo',
+                  onPressed: viewModel.isTransforming
+                      ? null
+                      : () => _handleTransformPhoto(context, viewModel),
+                  isLoading: viewModel.isTransforming,
+                  padding: EdgeInsets.zero,
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCapturedPhotoPanel(
+    BuildContext context,
+    ReviewLayoutMetrics metrics,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Captured Photo',
+          style: TextStyle(
+            fontSize: metrics.labelFontSize,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        SizedBox(height: metrics.labelGap),
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: FutureBuilder<List<int>>(
+                future: _photoBytesFuture,
+                builder: (context, snapshot) =>
+                    _buildPhotoBytesPreview(context, snapshot),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPhotoBytesPreview(
+    BuildContext context,
+    AsyncSnapshot<List<int>> snapshot,
+  ) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const Center(child: CircularProgressIndicator());
     }
+    if (snapshot.hasError || !snapshot.hasData) {
+      return Center(
+        child: Icon(
+          CupertinoIcons.exclamationmark_triangle,
+          color: Theme.of(context).colorScheme.error,
+          size: 48,
+        ),
+      );
+    }
+    return Image.memory(
+      Uint8List.fromList(snapshot.data!),
+      fit: BoxFit.cover,
+      width: double.infinity,
+    );
+  }
+
+  Widget _buildThemePanel(BuildContext context, ReviewLayoutMetrics metrics) {
+    final theme = _theme;
+    final sampleUrl = theme?.sampleImageUrl?.trim() ?? '';
+    final hasSample = sampleUrl.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Selected Theme',
+          style: TextStyle(
+            fontSize: metrics.labelFontSize,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        SizedBox(height: metrics.labelGap),
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: hasSample
+                  ? _buildThemeImage(sampleUrl)
+                  : _buildThemePlaceholder(theme),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildThemePlaceholder(ThemeModel? theme) {
+    return Container(
+      color: Colors.grey.shade300,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(CupertinoIcons.paintbrush, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(
+            theme?.name ?? 'Unknown',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              theme?.description ?? '',
+              style: const TextStyle(fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleTransformPhoto(
+    BuildContext context,
+    ReviewViewModel viewModel,
+  ) async {
+    final currentContext = context;
+    final transformedImage = await viewModel.transformPhoto();
+
+    if (!mounted || !currentContext.mounted) return;
+
+    if (transformedImage != null) {
+      final theme = viewModel.theme;
+      final photo = viewModel.photo;
+      if (theme == null || photo == null) return;
+
+      final generated = GeneratedImage(
+        id: transformedImage.id,
+        imageUrl: transformedImage.imageUrl,
+        theme: theme,
+        isSelected: true,
+      );
+
+      final contact = await showContactBeforePaySheet(currentContext);
+      if (!mounted || !currentContext.mounted || contact == null) return;
+
+      await Navigator.pushNamed(
+        currentContext,
+        AppConstants.kRouteResult,
+        arguments: {
+          'generatedImages': <GeneratedImage>[generated],
+          'originalPhoto': photo,
+          'customerName': contact.customerName,
+          'customerPhone': contact.customerPhone,
+          'customerWhatsappOptIn': contact.whatsappOptIn,
+        },
+      );
+      return;
+    }
+
+    if (viewModel.hasError) {
+      AppSnackBar.showError(
+        currentContext,
+        viewModel.errorMessage ?? 'Unknown error',
+      );
+    }
+  }
+
+  Widget _buildThemeImage(String imageUrl) {
+    final fullUrl = resolveThemeSampleImageUrl(imageUrl);
 
     return CachedNetworkImage(
       imageUrl: fullUrl,

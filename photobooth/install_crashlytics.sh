@@ -10,8 +10,8 @@ echo ""
 echo "📦 Step 1/3: Installing Flutter dependencies..."
 flutter pub get
 
-if [ $? -ne 0 ]; then
-    echo "❌ Error: flutter pub get failed"
+if [[ $? -ne 0 ]]; then
+    echo "❌ Error: flutter pub get failed" >&2
     exit 1
 fi
 
@@ -23,9 +23,9 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "🍎 Step 2/3: Installing iOS CocoaPods..."
     cd ios || exit
     pod install
-    if [ $? -ne 0 ]; then
-        echo "⚠️  Warning: pod install failed. You may need to run it manually."
-        echo "   Run: cd ios && pod install"
+    if [[ $? -ne 0 ]]; then
+        echo "⚠️  Warning: pod install failed. You may need to run it manually." >&2
+        echo "   Run: cd ios && pod install" >&2
     else
         echo "✅ iOS CocoaPods installed"
     fi
@@ -40,8 +40,8 @@ fi
 echo "🧹 Step 3/3: Cleaning previous build..."
 flutter clean
 
-if [ $? -ne 0 ]; then
-    echo "⚠️  Warning: flutter clean failed"
+if [[ $? -ne 0 ]]; then
+    echo "⚠️  Warning: flutter clean failed" >&2
 else
     echo "✅ Build cleaned"
 fi

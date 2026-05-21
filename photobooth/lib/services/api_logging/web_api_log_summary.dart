@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../../utils/app_strings.dart';
 import 'log_truncator.dart';
 import 'request_formatter.dart';
 
@@ -9,7 +10,7 @@ const _bytes = LogTruncator(maxLoggedJsonLength: 6000);
 /// Avoids [jsonEncode], pretty-print, and deep sanitization on huge maps (same isolate as UI).
 String formatWebApiRequestSummary(RequestOptions options) {
   final buf = StringBuffer();
-  buf.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  buf.writeln(AppStrings.apiLogSeparator);
   buf.writeln('📤 API REQUEST (web summary)');
   buf.writeln('${options.method} ${options.uri}');
   final data = options.data;
@@ -32,7 +33,7 @@ String formatWebApiRequestSummary(RequestOptions options) {
   } else {
     buf.writeln('Body: ${data.runtimeType}');
   }
-  buf.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  buf.writeln(AppStrings.apiLogSeparator);
   return buf.toString();
 }
 
@@ -43,7 +44,7 @@ String formatWebApiResponseSummary(Response<dynamic> response) {
       startTime != null ? DateTime.now().difference(startTime) : null;
 
   final buf = StringBuffer();
-  buf.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  buf.writeln(AppStrings.apiLogSeparator);
   buf.writeln('📥 API RESPONSE (web summary)');
   buf.writeln('Time: ${DateTime.now().toIso8601String()}');
   if (duration != null) {
@@ -69,7 +70,7 @@ String formatWebApiResponseSummary(Response<dynamic> response) {
   } else {
     buf.writeln('Body: ${data.runtimeType}');
   }
-  buf.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  buf.writeln(AppStrings.apiLogSeparator);
   return buf.toString();
 }
 
@@ -79,7 +80,7 @@ String formatWebApiErrorSummary(DioException err) {
       startTime != null ? DateTime.now().difference(startTime) : null;
 
   final buf = StringBuffer();
-  buf.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  buf.writeln(AppStrings.apiLogSeparator);
   buf.writeln('❌ API ERROR (web summary)');
   buf.writeln('Time: ${DateTime.now().toIso8601String()}');
   if (duration != null) {
@@ -125,7 +126,7 @@ String formatWebApiErrorSummary(DioException err) {
     }
   }
 
-  buf.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  buf.writeln(AppStrings.apiLogSeparator);
   return buf.toString();
 }
 

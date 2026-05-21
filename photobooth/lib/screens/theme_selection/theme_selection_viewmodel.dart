@@ -10,6 +10,12 @@ import '../../services/session_manager.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../utils/exceptions.dart';
 
+String _titleCaseWord(String p) {
+  if (p.isEmpty) return p;
+  final tail = p.length > 1 ? p.substring(1).toLowerCase() : '';
+  return '${p[0].toUpperCase()}$tail';
+}
+
 class ThemeViewModel extends ChangeNotifier {
   final ThemeManager _themeManager;
   final ApiService _apiService;
@@ -83,11 +89,7 @@ class ThemeViewModel extends ChangeNotifier {
       return _categoryIdToName[key]!;
     }
     final parts = id.split(RegExp(r'[-_\s]+'));
-    return parts
-        .map((p) => p.isEmpty
-            ? p
-            : '${p[0].toUpperCase()}${p.length > 1 ? p.substring(1).toLowerCase() : ''}')
-        .join(' ');
+    return parts.map(_titleCaseWord).join(' ');
   }
 
   /// Currently selected category ("All" or a categoryId).
