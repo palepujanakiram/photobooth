@@ -23,7 +23,7 @@ Do not merge if the SonarCloud PR quality gate fails.
 
 ## CI
 
-[`.github/workflows/build.yml`](../.github/workflows/build.yml) runs `flutter test --coverage` before the Sonar scan. Coverage is read from `photobooth/coverage/lcov.info` via [`sonar-project.properties`](../photobooth/sonar-project.properties).
+[`.github/workflows/sonarcloud.yml`](../.github/workflows/sonarcloud.yml) runs `flutter test --coverage` before the Sonar scan. Coverage is read from `photobooth/coverage/lcov.info` via [`sonar-project.properties`](../photobooth/sonar-project.properties).
 
 ## Shared strings
 

@@ -1,4 +1,6 @@
-name: Build
+# Flutter test + coverage, Android APK build, and SonarCloud analysis (photobooth/).
+# PR decoration and new-code quality gates require fetch-depth: 0 and projectBaseDir.
+name: SonarCloud
 on:
   push:
     branches:
@@ -6,7 +8,6 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-# Sonar PR decoration and new-code detection need full git history (not depth=1).
 permissions:
   contents: read
 
@@ -17,7 +18,8 @@ defaults:
 jobs:
   sonarqube:
     name: SonarQube
-    runs-on: macos-latest
+    # Linux is enough: tests, APK, and Sonar do not need Xcode (use macos only for iOS builds).
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4.2.2
