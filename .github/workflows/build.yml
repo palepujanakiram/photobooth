@@ -20,18 +20,18 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630cea9f82148b4604df9f9c2 # v4.2.2
+        uses: actions/checkout@v4.2.2
         with:
           fetch-depth: 0
 
       - name: Set up Java (required for Android builds)
-        uses: actions/setup-java@6c040e45b2a60b89b476fd654447c7f332d5d67c # v4.7.0
+        uses: actions/setup-java@v4.7.0
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Setup Flutter SDK
-        uses: flutter-actions/setup-flutter@ff30b38104f79dca4c521c03b36c05c9a0f5ffbc # v4.11.0
+        uses: flutter-actions/setup-flutter@v4.2
         with:
           channel: stable
           cache: true
@@ -47,9 +47,8 @@ jobs:
         run: flutter build apk
 
       # Monorepo: sonar-project.properties lives under photobooth/.
-      # Use projectBaseDir (SonarSource docs) — step working-directory is not enough.
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@294b2f3e98d2851359cdc5e0b4fe960f2e9daa2c # v6.0.0
+        uses: SonarSource/sonarqube-scan-action@v6.0.0
         with:
           projectBaseDir: photobooth
         env:
