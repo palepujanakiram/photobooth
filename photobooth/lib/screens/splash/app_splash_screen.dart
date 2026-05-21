@@ -17,6 +17,7 @@ import '../../utils/constants.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/animated_slideshow_background.dart'
     show kSlideshowAssetPaths;
+import 'app_splash_copy_helpers.dart';
 
 /// Cold start and kiosk management: branded animation, no stacked dialogs.
 class AppSplashScreen extends StatefulWidget {
@@ -592,11 +593,10 @@ class _AppSplashScreenState extends State<AppSplashScreen>
                                           ),
                                           const SizedBox(height: 6),
                                           Text(
-                                            widget.args.manageKiosk
-                                                ? 'Kiosk settings'
-                                                : (_needsEntry
-                                                    ? 'Enter your venue kiosk code to continue'
-                                                    : 'Getting things ready…'),
+                                            appSplashKioskSubtitle(
+                                              manageKiosk: widget.args.manageKiosk,
+                                              needsEntry: _needsEntry,
+                                            ),
                                             style: TextStyle(
                                               fontSize: 15,
                                               color:

@@ -1,8 +1,11 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
+import 'package:photobooth/services/api_client.dart';
+import 'package:photobooth/services/api_generate_metadata_log.dart';
 import 'package:photobooth/services/api_service_helpers.dart';
 import 'package:photobooth/services/session_manager.dart';
+import 'package:uuid/uuid.dart';
 import 'package:photobooth/utils/exceptions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -159,6 +162,103 @@ void main() {
     );
   });
 
+  test('generateTransformedImageOnce throws on failed or empty response', () async {
+    const uuid = Uuid();
+    final failClient = _GenerateImageApiClient(
+      response: {'success': false, 'error': 'Generation failed'},
+    );
+    expect(
+      () => generateTransformedImageOnce(
+        apiClient: failClient,
+        sessionId: 's',
+        attempt: 1,
+        originalPhotoId: 'p',
+        themeId: 't',
+        uuid: uuid,
+      ),
+      throwsA(
+        predicate<ApiException>((e) => e.message == 'Generation failed'),
+      ),
+    );
+
+    final defaultErrorClient = _GenerateImageApiClient(
+      response: {'success': false},
+    );
+    expect(
+      () => generateTransformedImageOnce(
+        apiClient: defaultErrorClient,
+        sessionId: 's',
+        attempt: 1,
+        originalPhotoId: 'p',
+        themeId: 't',
+        uuid: uuid,
+      ),
+      throwsA(predicate<ApiException>((e) => e.message == 'Generation failed')),
+    );
+
+    final noUrlClient = _GenerateImageApiClient(
+      response: {'success': true, 'imageUrl': ''},
+    );
+    expect(
+      () => generateTransformedImageOnce(
+        apiClient: noUrlClient,
+        sessionId: 's',
+        attempt: 1,
+        originalPhotoId: 'p',
+        themeId: 't',
+        uuid: uuid,
+      ),
+      throwsA(
+        predicate<ApiException>((e) => e.message == 'No image URL in response'),
+      ),
+    );
+  });
+
+  test('generateTransformedImageOnce returns model on success', () async {
+    const uuid = Uuid();
+    final client = _GenerateImageApiClient(
+      response: {
+        'success': true,
+        'imageUrl': '/api/img/out.jpg',
+        'runId': 'run-1',
+      },
+    );
+    final model = await generateTransformedImageOnce(
+      apiClient: client,
+      sessionId: 's',
+      attempt: 1,
+      originalPhotoId: 'p',
+      themeId: 't',
+      uuid: uuid,
+      onProgress: (_) {},
+    );
+    expect(model.imageUrl, contains('out.jpg'));
+    expect(model.runId, 'run-1');
+    expect(model.originalPhotoId, 'p');
+    expect(model.themeId, 't');
+  });
+
+  test('isGenerateImageDioTimeout recognizes timeout types', () {
+    expect(
+      isGenerateImageDioTimeout(
+        DioException(
+          requestOptions: RequestOptions(path: '/'),
+          type: DioExceptionType.receiveTimeout,
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      isGenerateImageDioTimeout(
+        DioException(
+          requestOptions: RequestOptions(path: '/'),
+          type: DioExceptionType.badResponse,
+        ),
+      ),
+      isFalse,
+    );
+  });
+
   test('logGenerateImageResponseMetadata logs and early-returns', () {
     logGenerateImageResponseMetadata({});
     logGenerateImageResponseMetadata({
@@ -182,4 +282,17 @@ void main() {
       },
     });
   });
+}
+
+class _GenerateImageApiClient implements ApiClient {
+  _GenerateImageApiClient({required this.response});
+
+  final Map<String, dynamic> response;
+
+  @override
+  Future<dynamic> generateImage(Map<String, dynamic> body) async => response;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError(invocation.memberName.toString());
 }

@@ -1,11 +1,15 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show compute, kIsWeb;
+import 'package:uuid/uuid.dart';
 
+import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
+import 'api_client.dart';
+import 'api_image_url_utils.dart';
 import '../utils/app_strings.dart';
 import '../utils/constants.dart';
 import '../utils/exceptions.dart';
-import '../utils/logger.dart';
+import 'api_generate_metadata_log.dart';
 import 'api_session_patch_json.dart';
 import 'kiosk_manager.dart';
 import 'session_manager.dart';
@@ -118,45 +122,49 @@ Future<Map<String, dynamic>> decodeSessionPatchResponseText(
 }
 
 /// Debug logging for POST /api/generate-image metadata block.
-void logGenerateImageResponseMetadata(Map<String, dynamic> response) {
-  final runId = response['runId'] as String?;
-  final framing = response['framing'] as Map<String, dynamic>?;
-  final timing = response['timing'] as Map<String, dynamic>?;
-  final faceVerification = response['faceVerification'] as Map<String, dynamic>?;
-  final evaluation = response['evaluation'] as Map<String, dynamic>?;
-  if (runId == null && framing == null && timing == null) return;
+/// Single POST /api/generate-image attempt (Sonar S3776 extraction).
+Future<TransformedImageModel> generateTransformedImageOnce({
+  required ApiClient apiClient,
+  required String sessionId,
+  required int attempt,
+  required String originalPhotoId,
+  required String themeId,
+  required Uuid uuid,
+  void Function(String message)? onProgress,
+}) async {
+  final response = await apiClient.generateImage({
+    'sessionId': sessionId,
+    'attempt': attempt,
+    'trackDetails': true,
+  });
+  onProgress?.call('Response received');
 
-  AppLogger.debug('📊 Generation metadata:');
-  if (runId != null) AppLogger.debug('   Run ID: $runId');
-  if (framing != null) {
-    AppLogger.debug(
-      '   Framing: ${framing['personCount']} person(s), '
-      '${framing['orientation']}, ${framing['zoomLevel']}, ${framing['aspectRatio']}',
-    );
+  if (response['success'] != true) {
+    final errorMsg = response['error'] as String? ?? 'Generation failed';
+    throw ApiException(errorMsg);
   }
-  if (timing != null) {
-    final totalMs = timing['totalMs'] as int?;
-    final generationMs = timing['generationMs'] as int?;
-    final upscaleMs = timing['upscaleMs'] as int?;
-    if (totalMs != null) {
-      AppLogger.debug('   Total duration: ${totalMs}ms');
-      if (generationMs != null) AppLogger.debug('   Generation: ${generationMs}ms');
-      if (upscaleMs != null && upscaleMs > 0) {
-        AppLogger.debug('   Upscale: ${upscaleMs}ms');
-      }
-    }
+
+  final imageUrl = response['imageUrl'] as String?;
+  if (imageUrl == null || imageUrl.isEmpty) {
+    throw ApiException('No image URL in response');
   }
-  if (faceVerification != null) {
-    AppLogger.debug(
-      '   Face verification: ${faceVerification['originalCount']} original, '
-      '${faceVerification['generatedCount']} generated, '
-      'match: ${faceVerification['match']}',
-    );
-  }
-  if (evaluation != null) {
-    AppLogger.debug(
-      '   Evaluation: composite=${evaluation['compositeScore']}, '
-      'identity=${evaluation['identityScore']}, prompt=${evaluation['promptScore']}',
-    );
-  }
+
+  logGenerateImageResponseMetadata(response);
+  final runId = response['runId'] as String?;
+  final resolvedImageUrl = resolveApiImageUrl(imageUrl);
+
+  return TransformedImageModel(
+    id: uuid.v4(),
+    imageUrl: resolvedImageUrl,
+    originalPhotoId: originalPhotoId,
+    themeId: themeId,
+    transformedAt: DateTime.now(),
+    runId: runId,
+  );
+}
+
+bool isGenerateImageDioTimeout(DioException e) {
+  return e.type == DioExceptionType.connectionTimeout ||
+      e.type == DioExceptionType.receiveTimeout ||
+      e.type == DioExceptionType.sendTimeout;
 }

@@ -20,7 +20,6 @@ import 'api_http_response.dart';
 import 'generation_api_errors.dart';
 import 'kiosk_manager.dart';
 import 'session_manager.dart';
-import 'api_image_url_utils.dart';
 import 'api_service_legacy_media.dart';
 import 'api_service_dio.dart';
 import 'api_parallel_sse_consumer.dart';
@@ -651,48 +650,20 @@ class ApiService {
 
     while (retryCount <= maxRetries) {
       try {
-        // Server reads source image from the session (after PATCH photo + PATCH theme).
-        // [originalPhotoId] / [themeId] are for client-side [TransformedImageModel] only.
-        final response = await apiClientWithTimeout.generateImage({
-          'sessionId': sessionId,
-          'attempt': attempt,
-          'trackDetails': true,
-        });
-        onProgress?.call('Response received');
-
-        // Validate response
-        if (response['success'] != true) {
-          final errorMsg = response['error'] as String? ?? 'Generation failed';
-          throw ApiException(errorMsg);
-        }
-
-        final imageUrl = response['imageUrl'] as String?;
-        if (imageUrl == null || imageUrl.isEmpty) {
-          throw ApiException('No image URL in response');
-        }
-
-        logGenerateImageResponseMetadata(response);
-        final runId = response['runId'] as String?;
-        final resolvedImageUrl = resolveApiImageUrl(imageUrl);
-
-        return TransformedImageModel(
-          id: _uuid.v4(),
-          imageUrl: resolvedImageUrl,
+        return await generateTransformedImageOnce(
+          apiClient: apiClientWithTimeout,
+          sessionId: sessionId,
+          attempt: attempt,
           originalPhotoId: originalPhotoId,
           themeId: themeId,
-          transformedAt: DateTime.now(),
-          runId: runId,
+          uuid: _uuid,
+          onProgress: onProgress,
         );
       } on DioException catch (e) {
-        final isTimeout = e.type == DioExceptionType.connectionTimeout ||
-            e.type == DioExceptionType.receiveTimeout ||
-            e.type == DioExceptionType.sendTimeout;
-
-        if (isTimeout && retryCount < maxRetries) {
+        if (isGenerateImageDioTimeout(e) && retryCount < maxRetries) {
           retryCount++;
           continue;
         }
-
         GenerationApiFailure.fromDioException(e).rethrowAsApiException();
       } catch (e) {
         if (e is ApiException) {
