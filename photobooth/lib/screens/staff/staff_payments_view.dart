@@ -250,37 +250,43 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
   }
 
   Future<void> _printForSession(Map<String, dynamic> p) async {
-    final sid = _sessionId(p);
-    if (sid.isEmpty) {
-      setState(() => _error = 'Missing sessionId in payment payload');
-      return;
-    }
-
-    final ok = await staffPaymentsConfirmPrintDialog(context, sid);
-    if (!mounted || !ok) return;
-
-    final imageUrl = await _resolveImageUrlForPrint(p);
-    if (!mounted) return;
-    if (imageUrl == null || imageUrl.isEmpty) {
-      setState(() => _error = 'Cannot print: image URL not found for this session.');
-      return;
-    }
+    final imageUrl = await staffPaymentsPreparePrintSession(
+      context: context,
+      isMounted: () => mounted,
+      sessionId: _sessionId(p),
+      resolveImageUrl: () => _resolveImageUrlForPrint(p),
+      onError: (msg) => setState(() => _error = msg),
+    );
+    if (!mounted || imageUrl == null) return;
 
     await staffPaymentsRunPrintJob(
-      context: context,
       publicApi: _publicApi,
       printService: _printService,
       settings: context.read<AppSettingsManager>().settings,
       imageUrl: imageUrl,
       isMounted: () => mounted,
-      onState: ({loading, error, progressMessage}) {
-        if (!mounted) return;
-        setState(() {
-          if (loading != null) _loading = loading;
-          if (error != null) _error = error;
-          if (progressMessage != null) _progressMessage = progressMessage;
-        });
-      },
+      onState: _applyPrintJobState,
+      onSuccess: _showPrintJobSentSnackBar,
+    );
+  }
+
+  void _applyPrintJobState({
+    bool? loading,
+    String? error,
+    String? progressMessage,
+  }) {
+    if (!mounted) return;
+    setState(() {
+      if (loading != null) _loading = loading;
+      if (error != null) _error = error;
+      if (progressMessage != null) _progressMessage = progressMessage;
+    });
+  }
+
+  void _showPrintJobSentSnackBar() {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Print job sent')),
     );
   }
 
