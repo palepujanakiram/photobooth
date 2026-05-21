@@ -11,8 +11,8 @@ import 'api_logging/web_api_log_summary.dart';
 /// Interceptor that logs all API requests and responses with detailed timing
 /// Logs request method, URL, headers, body, response details, and performance metrics
 class ApiLoggingInterceptor extends Interceptor {
-  static final _sanitizer = PayloadSanitizer(maxLoggedStringLength: 2000);
-  static final _truncator = LogTruncator(maxLoggedJsonLength: 6000);
+  static const _sanitizer = PayloadSanitizer(maxLoggedStringLength: 2000);
+  static const _truncator = LogTruncator(maxLoggedJsonLength: 6000);
   static final _requestFormatter = ApiRequestFormatter(_sanitizer, _truncator);
   static final _responseFormatter = ApiResponseFormatter(_sanitizer, _truncator);
 
