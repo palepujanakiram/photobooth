@@ -445,9 +445,26 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
+  Color _checkboxBorderColor(bool agreed) {
+    if (agreed) return CupertinoColors.systemBlue;
+    return CupertinoColors.systemGrey;
+  }
+
+  Color _checkboxFillColor(bool agreed) {
+    if (agreed) return CupertinoColors.systemBlue;
+    return Colors.transparent;
+  }
+
+  Color _startButtonLabelColor(bool canSubmit, AppColors appColors) {
+    if (canSubmit) return CupertinoColors.white;
+    if (appColors.isDarkMode) return CupertinoColors.white;
+    return CupertinoColors.black;
+  }
+
   Widget _buildCheckbox(TermsAndConditionsViewModel viewModel, AppColors appColors) {
+    final agreed = viewModel.isAgreed;
     return GestureDetector(
-      onTap: () => viewModel.toggleAgreement(!viewModel.isAgreed),
+      onTap: () => viewModel.toggleAgreement(!agreed),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -457,16 +474,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
-                color: viewModel.isAgreed
-                    ? CupertinoColors.systemBlue
-                    : CupertinoColors.systemGrey,
+                color: _checkboxBorderColor(agreed),
                 width: 2,
               ),
-              color: viewModel.isAgreed
-                  ? CupertinoColors.systemBlue
-                  : Colors.transparent,
+              color: _checkboxFillColor(agreed),
             ),
-            child: viewModel.isAgreed
+            child: agreed
                 ? const Icon(
                     CupertinoIcons.checkmark,
                     color: CupertinoColors.white,
@@ -511,11 +524,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: viewModel.canSubmit
-                        ? CupertinoColors.white
-                        : appColors.isDarkMode
-                            ? CupertinoColors.white
-                            : CupertinoColors.black,
+                    color: _startButtonLabelColor(
+                      viewModel.canSubmit,
+                      appColors,
+                    ),
                   ),
                 ),
         ),

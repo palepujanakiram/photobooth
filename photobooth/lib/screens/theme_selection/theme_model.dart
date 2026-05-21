@@ -33,6 +33,7 @@ class ThemeModel {
   /// Getter for backward compatibility with code that uses .prompt
   String get prompt => promptText;
 
+  // ignore: number_of_parameters — mirrors all fields; single patch object would not reduce call-site clarity.
   ThemeModel copyWith({
     String? id,
     String? categoryId,

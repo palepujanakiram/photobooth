@@ -72,18 +72,22 @@ class _AnimatedSlideshowBackgroundState extends State<AnimatedSlideshowBackgroun
     _paths = widget.assetPaths ?? List<String>.from(kSlideshowAssetPaths);
   }
 
+  void _precacheSlideshowImages(BuildContext context) {
+    for (final path in _paths) {
+      if (_isNetworkImagePath(path)) {
+        precacheImage(NetworkImage(path), context);
+      } else {
+        precacheImage(AssetImage(path), context);
+      }
+    }
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_precached && _paths.isNotEmpty) {
       _precached = true;
-      for (final path in _paths) {
-        if (_isNetworkImagePath(path)) {
-          precacheImage(NetworkImage(path), context);
-        } else {
-          precacheImage(AssetImage(path), context);
-        }
-      }
+      _precacheSlideshowImages(context);
     }
   }
 

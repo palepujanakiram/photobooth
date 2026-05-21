@@ -22,6 +22,66 @@ import '../../views/widgets/generated_image_preview_screen.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
     if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart' as photo_image;
 
+// --- Pipeline funnel / “Behold” grid helpers (Sonar S3358 / S3776 extractions) ---
+
+/// Short status text under each funnel thumbnail (queued → in progress → done).
+String _funnelSlotStatusLabel(PipelineFunnelSlot slot) {
+  if (slot.isFinished) return 'done';
+  if (slot.isActive) return 'in progress';
+  if (slot.isPending) return 'waiting';
+  return 'queued';
+}
+
+/// Border color for funnel cells: selection overrides pipeline state colors.
+Color _funnelSlotBorderColor(PipelineFunnelSlot slot, bool selected) {
+  if (selected) return CupertinoColors.systemBlue;
+  if (slot.isFinished) {
+    return Colors.lightGreenAccent.withValues(alpha: 0.85);
+  }
+  if (slot.isActive) return CupertinoColors.activeBlue;
+  return Colors.white30;
+}
+
+/// Thicker border when the slot is selected or actively generating.
+double _funnelSlotBorderWidth(PipelineFunnelSlot slot, bool selected) {
+  if (selected) return 2.5;
+  if (slot.isActive) return 2.0;
+  return 1.0;
+}
+
+/// How many grid placeholders to show before images arrive (live pipeline vs static).
+int _beholdBaseSlotCount({
+  required bool hasImages,
+  required int imageCount,
+  required bool isGenerating,
+  required int liveSlotCount,
+}) {
+  if (hasImages) return imageCount;
+  if (isGenerating && liveSlotCount > 0) return liveSlotCount;
+  return 1;
+}
+
+/// Headline above the generated-image grid (loading vs ready vs empty).
+String _beholdHeroMessage({
+  required bool isGeneratingOrLoading,
+  required bool isLoadingMore,
+  required bool hasImages,
+}) {
+  if (isGeneratingOrLoading) {
+    if (isLoadingMore) return 'Adding your new style...';
+    return 'Please wait while we create your masterpiece';
+  }
+  if (hasImages) return 'Your masterpiece is ready';
+  return '';
+}
+
+/// Column count for the behold grid: 1, 2, or 3 columns by slot count.
+int _beholdGridColumnCount(int totalSlots) {
+  if (totalSlots <= 1) return 1;
+  if (totalSlots == 2) return 2;
+  return 3;
+}
+
 class PhotoGenerateScreen extends StatefulWidget {
   const PhotoGenerateScreen({super.key});
 
@@ -414,21 +474,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final stampId = 'funnel:$index';
     final selected = viewModel.selectedHeroStampId == stampId;
     final url = slot.displayPreviewUrl;
-    final statusLabel = slot.isFinished
-        ? 'done'
-        : slot.isActive
-            ? 'in progress'
-            : slot.isPending
-                ? 'waiting'
-                : 'queued';
-    final borderColor = selected
-        ? CupertinoColors.systemBlue
-        : slot.isFinished
-            ? Colors.lightGreenAccent.withValues(alpha: 0.85)
-            : slot.isActive
-                ? CupertinoColors.activeBlue
-                : Colors.white30;
-    final borderW = selected ? 2.5 : (slot.isActive ? 2.0 : 1.0);
+    final statusLabel = _funnelSlotStatusLabel(slot);
+    final borderColor = _funnelSlotBorderColor(slot, selected);
+    final borderW = _funnelSlotBorderWidth(slot, selected);
 
     late final Widget inner;
     if (slot.isDeviceCapture) {
@@ -1026,11 +1074,12 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final hideCompactHeader = viewModel.useProgressiveGenerationLayoutForSession &&
         isGeneratingOrLoading;
 
-    final int baseSlotCount = hasImages
-        ? images.length
-        : (isGenerating && viewModel.liveSlotCount > 0
-            ? viewModel.liveSlotCount
-            : 1);
+    final int baseSlotCount = _beholdBaseSlotCount(
+      hasImages: hasImages,
+      imageCount: images.length,
+      isGenerating: isGenerating,
+      liveSlotCount: viewModel.liveSlotCount,
+    );
     final totalSlots = baseSlotCount + (isLoadingMore ? 1 : 0);
     final aspect = _beholdCardAspectRatio(context, totalSlots);
 
@@ -1056,13 +1105,11 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
 
       final isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
       final isLoadingMore = viewModel.isLoadingMore;
-      final message = isGeneratingOrLoading
-          ? (isLoadingMore
-              ? 'Adding your new style...'
-              : 'Please wait while we create your masterpiece')
-          : hasImages
-              ? 'Your masterpiece is ready'
-              : '';
+      final message = _beholdHeroMessage(
+        isGeneratingOrLoading: isGeneratingOrLoading,
+        isLoadingMore: isLoadingMore,
+        hasImages: hasImages,
+      );
 
       final wideStoryLayout = MediaQuery.sizeOf(context).width >= 980;
       return Center(
@@ -1142,7 +1189,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     }
 
     // Responsive grid: 1 -> 1 col, 2 -> 2 cols, 3+ -> 3 cols (clamped by width).
-    int cols = totalSlots <= 1 ? 1 : (totalSlots == 2 ? 2 : 3);
+    int cols = _beholdGridColumnCount(totalSlots);
     cols = cols.clamp(1, 3);
     final rows = (totalSlots / cols).ceil().clamp(1, 3);
 

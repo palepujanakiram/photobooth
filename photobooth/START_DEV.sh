@@ -53,8 +53,8 @@ if ps -p $CHROME_PID > /dev/null; then
   flutter run -d chrome
   
 else
-  echo "❌ Error: Chrome failed to start"
-  echo "   Try running manually:"
+  echo "❌ Error: Chrome failed to start" >&2
+  echo "   Try running manually:" >&2
   echo "   /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --user-data-dir=/tmp/chrome_dev --disable-web-security"
   exit 1
 fi
