@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show VoidCallback, visibleForTesting;
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/exceptions.dart';
 import '../utils/app_config.dart';
@@ -9,16 +9,20 @@ import 'kiosk_manager.dart';
 /// Singleton class responsible for fetching, caching, and providing themes
 /// to all screens that need them.
 class ThemeManager {
-  // Private constructor for singleton pattern
-  ThemeManager._internal();
+  ThemeManager._internal([ApiService? apiService])
+      : _apiService = apiService ?? ApiService();
 
-  // Singleton instance
   static final ThemeManager _instance = ThemeManager._internal();
 
   /// Get the singleton instance
   factory ThemeManager() => _instance;
 
-  final ApiService _apiService = ApiService();
+  /// Non-singleton instance for unit tests.
+  @visibleForTesting
+  factory ThemeManager.forTesting(ApiService apiService) =>
+      ThemeManager._internal(apiService);
+
+  final ApiService _apiService;
 
   // Cached themes
   List<ThemeModel> _cachedThemes = [];
