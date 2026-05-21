@@ -1,5 +1,6 @@
-# Flutter test + coverage, Android APK build, and SonarCloud analysis (photobooth/).
+# Flutter tests + coverage, then SonarCloud analysis (photobooth/).
 # PR decoration and new-code quality gates require fetch-depth: 0 and projectBaseDir.
+# APK builds are not required for Sonar; use fastlane/local CI elsewhere if needed.
 name: SonarCloud
 on:
   push:
@@ -18,19 +19,12 @@ defaults:
 jobs:
   sonarqube:
     name: SonarQube
-    # Linux is enough: tests, APK, and Sonar do not need Xcode (use macos only for iOS builds).
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4.2.2
         with:
           fetch-depth: 0
-
-      - name: Set up Java (required for Android builds)
-        uses: actions/setup-java@v4.7.0
-        with:
-          distribution: 'temurin'
-          java-version: '17'
 
       - name: Setup Flutter SDK
         uses: flutter-actions/setup-flutter@v4.2
@@ -44,9 +38,6 @@ jobs:
 
       - name: Run tests with coverage
         run: flutter test --coverage
-
-      - name: Build App
-        run: flutter build apk
 
       # Monorepo: sonar-project.properties lives under photobooth/.
       - name: SonarQube Scan
