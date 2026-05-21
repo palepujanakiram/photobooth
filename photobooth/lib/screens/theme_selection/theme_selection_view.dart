@@ -224,7 +224,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         viewModel: viewModel,
         photo: _photoFromCapture!,
         selectedTheme: selectedTheme,
-        mounted: mounted,
         setGenerating: (v) {
           if (mounted) setState(() => _isGenerating = v);
         },
@@ -235,7 +234,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
 
     await themeSelectionContinueToCapture(
       context: context,
-      mounted: mounted,
       setPhotoFromCapture: (photo) {
         if (mounted) setState(() => _photoFromCapture = photo);
       },
