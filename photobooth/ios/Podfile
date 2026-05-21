@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-# Uncomment this line to define a global platform for your project
+require_relative 'podfile_helper'
+
 platform :ios, '17.0'
 
-# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
 project 'Runner', {
@@ -12,29 +12,8 @@ project 'Runner', {
   'Release' => :release
 }
 
-def read_flutter_root_from_xcconfig(path)
-  File.foreach(path) do |line|
-    matches = line.match(/FLUTTER_ROOT=(.*)/)
-    return matches[1].strip if matches
-  end
-  nil
-end
-
-def flutter_root
-  settings_path = File.expand_path(File.join('Flutter', 'Generated.xcconfig'), __dir__)
-  unless File.exist?(settings_path)
-    raise "#{settings_path} must exist. " \
-          'If you\'re running pod install manually, make sure flutter pub get is executed first'
-  end
-
-  root = read_flutter_root_from_xcconfig(settings_path)
-  return root if root
-
-  raise "FLUTTER_ROOT not found in #{settings_path}. " \
-        'Try deleting Generated.xcconfig, then run flutter pub get'
-end
-
-require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+flutter_sdk_root = PhotoboothPodfile.flutter_root(__dir__)
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_sdk_root)
 
 flutter_ios_podfile_setup
 
