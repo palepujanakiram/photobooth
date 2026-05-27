@@ -84,7 +84,7 @@ class _PhotoGenerateProgressScreenState
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final aspect = 3 / 2;
+    const aspect = 3 / 2;
 
     return ChangeNotifierProvider.value(
       value: _vm,
@@ -206,37 +206,56 @@ class _PhotoGenerateProgressScreenState
     final bgUrl = _previewForStage(vm, 'background_removal');
     final aiUrl = _previewForStage(vm, 'ai_generation');
 
+    bool polishingStarted() {
+      for (final s in vm.generationRunStepPreviews) {
+        final key = canonicalPipelineStageKey(s.stage);
+        switch (key) {
+          case 'scene_lighting':
+          case 'face_relight':
+          case 'frame_composite':
+          case 'upscaling':
+          case 'exif_stamp':
+          case 'c2pa_sign':
+          case 'storage':
+            if (s.isActive || s.isFinished) return true;
+            break;
+        }
+      }
+      return false;
+    }
+
     int index = 0;
-    String stageTitle = '2 · CAPTURE';
-    String headline = 'Got it';
-    String description = 'Frozen frame, framing applied';
+    String stageTitle = '1 · CAPTURE';
+    String headline = 'Uploading';
+    String description = 'Sending your photo to the studio';
     String? imageUrl;
     Widget? bottomAccessory;
 
-    if (aiUrl != null) {
+    if (aiUrl != null && polishingStarted()) {
       index = 3;
-      stageTitle = '4 · REVEAL';
+      stageTitle = '4 · FINISH';
+      headline = 'Finishing touches';
+      description = 'Preparing your print-ready portrait';
+      imageUrl = aiUrl;
+      bottomAccessory = _buildPostRevealPolishingOverlay(context, vm);
+    } else if (aiUrl != null) {
+      index = 2;
+      stageTitle = '3 · REVEAL';
       headline = 'Rendering';
       description = 'AI is applying your style';
       imageUrl = aiUrl;
-      bottomAccessory = _buildPostRevealPolishingOverlay(context, vm);
     } else if (bgUrl != null) {
-      index = 2;
-      stageTitle = '3 · ISOLATE';
+      index = 1;
+      stageTitle = '2 · ISOLATE';
       headline = 'Background removed';
       description = 'Subject isolated, ready to render';
       imageUrl = bgUrl;
     } else if (preprocessUrl != null) {
-      index = 1;
-      stageTitle = '2 · CAPTURE';
-      headline = 'Got it';
+      index = 0;
+      stageTitle = '1 · CAPTURE';
+      headline = 'Captured';
       description = 'Frozen frame, framing applied';
       imageUrl = preprocessUrl;
-    } else {
-      index = 0;
-      stageTitle = '1 · DETECT';
-      headline = 'Face locked';
-      description = 'Live preview';
     }
 
     // Match PhotoGenerateScreen: photo frame is image-only; status lives outside.
