@@ -3,8 +3,9 @@ import 'app_config.dart';
 
 /// Helpers for accessing protected image endpoints.
 ///
-/// Backend may protect `/api/img/...` resources (403 unless caller has an admin cookie,
-/// `?sessionId=...`, or `?shareToken=...`). The kiosk app uses `sessionId`.
+/// Backend may protect `/api/img/...` resources (403 unless caller sends
+/// `X-Kiosk-Session-Token`, has an admin cookie, `?sessionId=...`, or `?shareToken=...`).
+/// The kiosk app uses `X-Kiosk-Session-Token` (via ProtectedImageLoader) and `sessionId`.
 class SecureImageUrl {
   static bool _isProtectedImgPath(String path) {
     return path.startsWith('/api/img/') || path.startsWith('api/img/');

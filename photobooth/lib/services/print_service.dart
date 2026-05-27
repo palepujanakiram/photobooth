@@ -12,6 +12,7 @@ import 'alice_inspector.dart';
 import 'printer_api_client.dart';
 import 'file_helper.dart';
 import 'error_reporting/error_reporting_manager.dart';
+import 'kiosk_session_auth.dart';
 import 'print_file.dart';
 
 Uri _printerHttpBaseUri(String host, int port) {
@@ -146,6 +147,9 @@ class PrintService {
         if (kDebugMode == true) {
           downloadDio.interceptors.add(ApiLoggingInterceptor());
           downloadDio.interceptors.add(AliceDioProxyInterceptor());
+        }
+        if (filePath.contains('/api/img/')) {
+          addKioskSessionTokenInterceptor(downloadDio);
         }
 
         final response = await downloadDio.get<List<int>>(

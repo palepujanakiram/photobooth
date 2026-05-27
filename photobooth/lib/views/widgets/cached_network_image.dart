@@ -1,8 +1,11 @@
 import 'dart:io' if (dart.library.html) 'dart:html' as io;
+import 'dart:typed_data';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../services/image_cache_service.dart';
+import '../../services/protected_image_loader.dart';
 import '../../utils/logger.dart';
 import '../../utils/secure_image_url.dart';
 
@@ -39,6 +42,7 @@ class CachedNetworkImage extends StatefulWidget {
 class _CachedNetworkImageState extends State<CachedNetworkImage> {
   final ImageCacheService _cacheService = ImageCacheService();
   io.File? _cachedFile; // Only used on mobile platforms
+  Uint8List? _protectedBytes;
   bool _isLoading = true;
   bool _hasError = false;
 
@@ -63,10 +67,25 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
       _isLoading = true;
       _hasError = false;
       _cachedFile = null;
+      _protectedBytes = null;
     });
 
     try {
       final securedUrl = SecureImageUrl.withSessionId(widget.imageUrl);
+
+      if (ProtectedImageLoader.isProtectedUrl(widget.imageUrl)) {
+        final bytes = await ProtectedImageLoader.instance.fetchBytes(
+          widget.imageUrl,
+        );
+        if (mounted) {
+          setState(() {
+            _protectedBytes = bytes;
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
       // On web, skip file caching and use network image directly
       if (kIsWeb) {
         if (mounted) {
@@ -142,6 +161,27 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
 
     if (_hasError && widget.errorWidget != null) {
       return widget.errorWidget!;
+    }
+
+    final protectedBytes = _protectedBytes;
+    if (protectedBytes != null) {
+      return Image.memory(
+        protectedBytes,
+        fit: widget.fit,
+        width: widget.width,
+        height: widget.height,
+        cacheWidth: widget.cacheWidth,
+        cacheHeight: widget.cacheHeight,
+        filterQuality: widget.filterQuality,
+        errorBuilder: (context, error, stackTrace) {
+          return widget.errorWidget ??
+              const Icon(
+                CupertinoIcons.photo,
+                size: 64,
+                color: CupertinoColors.systemGrey,
+              );
+        },
+      );
     }
 
     // If we have a cached file, use it (mobile only)

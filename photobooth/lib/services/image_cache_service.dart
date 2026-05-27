@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 
 import '../utils/constants.dart';
 import '../utils/logger.dart';
+import 'protected_image_loader.dart';
 
 /// Service for caching theme images to disk for persistent storage
 class ImageCacheService {
@@ -102,22 +104,24 @@ class ImageCacheService {
         return cachedFile;
       }
 
-      // Download image
       AppLogger.debug('ImageCacheService: downloading and caching image: $imageUrl');
-      final response = await http.get(Uri.parse(imageUrl)).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          throw TimeoutException('Image download timeout');
-        },
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception('Failed to download image: ${response.statusCode}');
-      }
-
-      // Save to cache
       final cacheFile = File(await _getCacheFilePath(imageUrl));
-      await cacheFile.writeAsBytes(response.bodyBytes);
+      final Uint8List bytes;
+      if (ProtectedImageLoader.isProtectedUrl(imageUrl)) {
+        bytes = await ProtectedImageLoader.instance.fetchBytes(imageUrl);
+      } else {
+        final response = await http.get(Uri.parse(imageUrl)).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw TimeoutException('Image download timeout');
+          },
+        );
+        if (response.statusCode != 200) {
+          throw Exception('Failed to download image: ${response.statusCode}');
+        }
+        bytes = Uint8List.fromList(response.bodyBytes);
+      }
+      await cacheFile.writeAsBytes(bytes);
 
       // Check cache size and clean if needed
       await _cleanCacheIfNeeded();

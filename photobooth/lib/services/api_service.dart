@@ -22,6 +22,7 @@ import 'api_logging_interceptor.dart';
 import 'alice_inspector.dart';
 import 'client_identification.dart';
 import 'kiosk_manager.dart';
+import 'kiosk_session_auth.dart';
 import 'session_manager.dart';
 
 // Conditional import for web Dio configuration
@@ -182,6 +183,8 @@ class ApiService {
       _dio.interceptors.add(ApiLoggingInterceptor());
       _dio.interceptors.add(AliceDioProxyInterceptor());
     }
+
+    addKioskSessionTokenInterceptor(_dio);
 
     // Add error interceptor for web compatibility
     _dio.interceptors.add(InterceptorsWrapper(
@@ -926,7 +929,9 @@ class ApiService {
         if (source != null && source.isNotEmpty) 'source': source,
         if (includeSelectedFrameId) 'selectedFrameId': selectedFrameId,
       });
-      return response;
+      if (response is Map<String, dynamic>) return response;
+      if (response is Map) return Map<String, dynamic>.from(response);
+      throw ApiException('Unexpected session create response from API');
     } on DioException catch (e) {
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout ||
@@ -1290,6 +1295,7 @@ class ApiService {
       dioWithTimeout.interceptors.add(ApiLoggingInterceptor());
       dioWithTimeout.interceptors.add(AliceDioProxyInterceptor());
     }
+    addKioskSessionTokenInterceptor(dioWithTimeout);
 
     final apiClientWithTimeout =
         ApiClient(dioWithTimeout, baseUrl: AppConstants.kBaseUrl);
@@ -1517,6 +1523,7 @@ class ApiService {
       dio.interceptors.add(ApiLoggingInterceptor());
       dio.interceptors.add(AliceDioProxyInterceptor());
     }
+    addKioskSessionTokenInterceptor(dio);
 
     final slots = List<String>.filled(count, '');
     final qualityByIndex = <int, double>{};
