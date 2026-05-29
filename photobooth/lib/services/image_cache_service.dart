@@ -1,13 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 
 import '../utils/constants.dart';
 import '../utils/logger.dart';
-import 'image_cache_cleanup.dart';
+import 'protected_image_loader.dart';
 
 /// Service for caching theme images to disk for persistent storage
 class ImageCacheService {
@@ -103,22 +104,24 @@ class ImageCacheService {
         return cachedFile;
       }
 
-      // Download image
       AppLogger.debug('ImageCacheService: downloading and caching image: $imageUrl');
-      final response = await http.get(Uri.parse(imageUrl)).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          throw TimeoutException('Image download timeout');
-        },
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception('Failed to download image: ${response.statusCode}');
-      }
-
-      // Save to cache
       final cacheFile = File(await _getCacheFilePath(imageUrl));
-      await cacheFile.writeAsBytes(response.bodyBytes);
+      final Uint8List bytes;
+      if (ProtectedImageLoader.isProtectedUrl(imageUrl)) {
+        bytes = await ProtectedImageLoader.instance.fetchBytes(imageUrl);
+      } else {
+        final response = await http.get(Uri.parse(imageUrl)).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw TimeoutException('Image download timeout');
+          },
+        );
+        if (response.statusCode != 200) {
+          throw Exception('Failed to download image: ${response.statusCode}');
+        }
+        bytes = Uint8List.fromList(response.bodyBytes);
+      }
+      await cacheFile.writeAsBytes(bytes);
 
       // Check cache size and clean if needed
       await _cleanCacheIfNeeded();
@@ -171,11 +174,33 @@ class ImageCacheService {
         // Sort by modification time (oldest first)
         fileInfo.sort((a, b) => a.stat.modified.compareTo(b.stat.modified));
         
-        evictOldestImageCacheFiles(
-          fileInfo: fileInfo,
-          currentSize: totalSize,
-          maxSizeBytes: maxSizeBytes,
-        );
+        // Delete oldest files until under limit
+        int currentSize = totalSize;
+        for (var info in fileInfo) {
+          if (currentSize <= maxSizeBytes) break;
+          
+          try {
+            if (await info.file.exists()) {
+              await info.file.delete();
+              currentSize -= info.stat.size;
+              AppLogger.debug('ImageCacheService: deleted old cache file: ${info.file.path}');
+            }
+          } catch (e, st) {
+            // It's normal for cache files to disappear between `exists()` and `delete()`
+            // (race with another cleanup / OS eviction). Treat "no such file" as a no-op.
+            if (e is FileSystemException && e.osError?.errorCode == 2) {
+              continue;
+            }
+            if (e is PathNotFoundException) {
+              continue;
+            }
+            AppLogger.error(
+              'ImageCacheService: error deleting cache file',
+              error: e,
+              stackTrace: st,
+            );
+          }
+        }
       }
     } catch (e, st) {
       AppLogger.error(

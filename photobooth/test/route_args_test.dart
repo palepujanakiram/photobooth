@@ -6,7 +6,7 @@ import 'package:photobooth/screens/theme_selection/theme_model.dart';
 import 'package:photobooth/utils/route_args.dart';
 
 void main() {
-  final theme = ThemeModel(
+  const theme = ThemeModel(
     id: 't1',
     categoryId: 'c1',
     name: 'Test theme',
