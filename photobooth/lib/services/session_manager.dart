@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/logger.dart';
 import 'error_reporting/error_reporting_manager.dart';
+import 'kiosk_session_auth.dart';
 
 /// Session data model matching API response
 class SessionData {
@@ -25,6 +26,8 @@ class SessionData {
   final String? selectedCategoryId; // Category ID of selected theme
   /// Frame id, `"none"` if customer declined, or null if unset / auto-resolve later.
   final String? selectedFrameId;
+  /// Opaque token from session create; sent as `X-Kiosk-Session-Token` on protected routes.
+  final String? kioskAuthToken;
 
   SessionData({
     required this.id,
@@ -41,6 +44,7 @@ class SessionData {
     this.selectedThemeId,
     this.selectedCategoryId,
     this.selectedFrameId,
+    this.kioskAuthToken,
   });
 
   /// Get sessionId (alias for id)
@@ -62,6 +66,7 @@ class SessionData {
       'selectedThemeId': selectedThemeId,
       'selectedCategoryId': selectedCategoryId,
       'selectedFrameId': selectedFrameId,
+      if (kioskAuthToken != null) 'kioskAuthToken': kioskAuthToken,
     };
   }
 
@@ -95,6 +100,7 @@ class SessionData {
       selectedThemeId: json['selectedThemeId'] as String?,
       selectedCategoryId: json['selectedCategoryId'] as String?,
       selectedFrameId: json['selectedFrameId'] as String?,
+      kioskAuthToken: parseKioskAuthToken(json),
     );
   }
 }
@@ -137,6 +143,9 @@ class SessionManager extends ChangeNotifier {
 
   /// Get current session ID (convenience method)
   String? get sessionId => currentSession?.id;
+
+  /// Kiosk session auth token for protected API routes (null if no active session).
+  String? get kioskAuthToken => currentSession?.kioskAuthToken;
 
   /// Check if a session exists
   bool get hasSession => currentSession != null;
@@ -183,6 +192,10 @@ class SessionManager extends ChangeNotifier {
     // and can surface as an uncaught async error right after photo upload.
     // The app already carries pixels in [PhotoModel]; server retains the image.
     final slim = Map<String, dynamic>.from(response)..remove('userImageUrl');
+    if (parseKioskAuthToken(slim) == null &&
+        _currentSession?.kioskAuthToken != null) {
+      slim[kKioskAuthTokenJsonKey] = _currentSession!.kioskAuthToken;
+    }
     _currentSession = SessionData.fromJson(slim);
     AppLogger.debug('Session stored from API: ${_currentSession!.id}');
     unawaited(_persistCurrentSession());
