@@ -4,16 +4,18 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../services/theme_manager.dart';
 import '../../services/image_cache_service.dart';
-import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
 import '../../utils/theme_image_urls.dart';
+import '../../views/widgets/animated_slideshow_background.dart'
+    show kSlideshowAssetPaths;
 import '../theme_selection/theme_model.dart';
+import 'theme_slideshow_image.dart';
 
 class ThemeSlideshowViewModel extends ChangeNotifier {
   final ThemeManager _themeManager;
   final ImageCacheService _imageCacheService;
   List<ThemeModel> _themes = [];
-  bool _isLoading = true;
+  bool _isLoading = false;
   bool _isPreloadingImages = false;
   bool _isFirstImageLoaded = false;
   bool _areAllImagesLoaded = false;
@@ -92,65 +94,30 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
     return null;
   }
 
-  /// Called when ThemeManager updates themes
+  /// Called when ThemeManager updates themes (slideshow UI stays on bundled assets).
   void _onThemesUpdated() {
     if (_isDisposed) return;
     _themes = _themeManager.themes;
-    _isLoading = _themeManager.isLoading;
-    _errorMessage = _themeManager.errorMessage;
     notifyListeners();
   }
 
-  /// Fetches themes using ThemeManager
+  /// Warms [ThemeManager] for later screens; slideshow UI uses bundled assets.
   /// [forceRefresh] - If true, forces a fresh fetch from API
   Future<void> fetchThemes({bool forceRefresh = false}) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
     try {
-      // Fetch themes from ThemeManager (will use cache if available)
       await _themeManager.fetchThemes(forceRefresh: forceRefresh);
-      // Update local state from ThemeManager
       _onThemesUpdated();
-    } on ApiException catch (e) {
-      _errorMessage = e.message;
-      _isLoading = false;
-      // If ThemeManager has cached themes, use them
-      if (_themeManager.hasThemes) {
-        _onThemesUpdated();
-      } else {
-        notifyListeners();
-      }
     } catch (e) {
-      _errorMessage = 'Failed to fetch themes: $e';
-      _isLoading = false;
-      // If ThemeManager has cached themes, use them
+      AppLogger.debug('Background theme prefetch failed: $e');
       if (_themeManager.hasThemes) {
         _onThemesUpdated();
-      } else {
-        notifyListeners();
       }
     }
   }
 
-  /// Gets all sample image URLs from active themes with base URL prepended
+  /// Slideshow frames: local assets for instant display (not theme API samples).
   List<String> getSampleImageUrls() {
-    return _themes
-        .where((theme) =>
-            (theme.isActive == true) &&
-            theme.sampleImageUrl != null &&
-            theme.sampleImageUrl!.isNotEmpty)
-        .map((theme) {
-          final fullUrl = resolveThemeSampleImageUrl(theme.sampleImageUrl!);
-          if (isValidHttpUrl(fullUrl)) {
-            return fullUrl;
-          }
-          AppLogger.debug('Invalid theme sample URL: $fullUrl');
-          return null;
-        })
-        .whereType<String>() // Filter out null values
-        .toList();
+    return List<String>.from(kSlideshowAssetPaths);
   }
 
   /// Preloads images with priority: first image first, then rest
@@ -207,13 +174,12 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
     String url,
   ) async {
     try {
-      final cachedFile = await _cacheWithTimeout(url, label: 'First image');
       if (_isDisposed || !context.mounted) return;
-      await _precacheSlideshowUrl(context, url, cachedFile);
+      await _precacheSlideshowPath(context, url);
       _markFirstImageReady(url);
     } catch (e) {
       if (_isDisposed) return;
-      AppLogger.debug('Failed to cache/preload first image: $url - Error: $e');
+      AppLogger.debug('Failed to preload first slideshow image: $url - $e');
       _markFirstImageReady(url);
     }
   }
@@ -245,14 +211,25 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
   ) async {
     if (_isDisposed) return null;
     try {
-      final cachedFile = await _cacheWithTimeout(url);
       if (!context.mounted) return null;
-      await _precacheSlideshowUrl(context, url, cachedFile);
+      await _precacheSlideshowPath(context, url);
       return url;
     } catch (e) {
-      AppLogger.debug('Failed to cache/preload image: $url - Error: $e');
+      AppLogger.debug('Failed to preload slideshow image: $url - $e');
       return null;
     }
+  }
+
+  Future<void> _precacheSlideshowPath(BuildContext context, String path) async {
+    if (isSlideshowAssetImagePath(path)) {
+      await precacheImage(AssetImage(path), context).timeout(
+        const Duration(seconds: 5),
+      );
+      return;
+    }
+    final cachedFile = await _cacheWithTimeout(path, label: 'Slideshow image');
+    if (!context.mounted) return;
+    await _precacheSlideshowUrl(context, path, cachedFile);
   }
 
   Future<dynamic> _cacheWithTimeout(String url, {String? label}) {
