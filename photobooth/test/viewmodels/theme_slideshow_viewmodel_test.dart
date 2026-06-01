@@ -23,19 +23,22 @@ void main() {
     vm.dispose();
   });
 
-  test('preloadImages with no themes clears state', () async {
-    final tm = ThemeManager.forTesting(ThemesFakeApi([]));
-    final vm = ThemeSlideshowViewModel(themeManager: tm);
-    await vm.fetchThemes();
-    expect(vm.getSampleImageUrls(), isEmpty);
+  test('getSampleImageUrls uses bundled slideshow assets', () {
+    final vm = ThemeSlideshowViewModel(
+      themeManager: ThemeManager.forTesting(ThemesFakeApi([])),
+    );
+    final urls = vm.getSampleImageUrls();
+    expect(urls, isNotEmpty);
+    expect(urls.first, startsWith('assets/slideshow/'));
     vm.dispose();
   });
 
-  test('fetchThemes surfaces ApiException when no cache', () async {
+  test('fetchThemes prefetch failure does not block slideshow assets', () async {
     final tm = ThemeManager.forTesting(ThemesFakeApi([], throwOnFetch: true));
     final vm = ThemeSlideshowViewModel(themeManager: tm);
     await vm.fetchThemes();
-    expect(vm.hasError, isTrue);
+    expect(vm.hasError, isFalse);
+    expect(vm.getSampleImageUrls(), isNotEmpty);
     vm.dispose();
   });
 }
