@@ -144,7 +144,14 @@ flutter build ipa --release
 # Then upload via Xcode Organizer or `xcrun altool`
 ```
 
-`fastlane/` is already set up in this repo — once signing is configured, the existing Fastfile can automate the upload step.
+`fastlane/` automates distribution — see [fastlane/DISTRIBUTION.md](fastlane/DISTRIBUTION.md):
+
+```bash
+cd photobooth
+bundle exec fastlane android generatedbuild   # AAB → Google Play + Firebase App Distribution
+```
+
+CI: GitHub Actions workflow **Mobile release** (`.github/workflows/mobile-release.yml`).
 
 ## 7. Recommended release path
 
