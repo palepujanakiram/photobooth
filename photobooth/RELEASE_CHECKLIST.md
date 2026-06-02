@@ -44,19 +44,19 @@ Required before Play Console upload:
 
 1. Generate an upload keystore:
    ```bash
-   keytool -genkey -v -keystore ~/fotozen-upload.jks \
+   keytool -genkey -v -keystore android/keystore/fotozen-upload.jks \
      -keyalg RSA -keysize 2048 -validity 10000 \
      -alias fotozen-upload
    ```
    Store the `.jks` somewhere durable (1Password / encrypted backup) — losing it means losing the ability to push updates without a key reset request to Google.
-2. Create `android/key.properties` (already in `.gitignore` per Flutter convention; verify):
+2. Create `android/keystore/key.properties`:
    ```
    storePassword=...
    keyPassword=...
    keyAlias=fotozen-upload
-   storeFile=/absolute/path/fotozen-upload.jks
+   storeFile=../keystore/fotozen-upload.jks
    ```
-3. Wire it into `build.gradle` — replace the debug signingConfig with a proper release block reading from `key.properties`. The standard Flutter docs snippet works as-is.
+3. Wire it into `build.gradle` — replace the debug signingConfig with a proper release block reading from `keystore/key.properties`.
 4. Enroll in **Play App Signing** when uploading the first AAB; Google holds the actual signing key, you only ever need the upload key.
 
 iOS signing is handled by Xcode automatic signing once the Apple Developer team is selected on the Runner target.
