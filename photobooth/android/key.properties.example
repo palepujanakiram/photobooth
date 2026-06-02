@@ -1,0 +1,7 @@
+# Copy to keystore/key.properties and point to upload keystore.
+# Generate keystore: see RELEASE_CHECKLIST.md §2 or Flutter Android deployment docs.
+storePassword=YOUR_STORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=fotozen-upload
+# Path is resolved from android/app, so ../keystore/... points to android/keystore.
+storeFile=../keystore/fotozen-upload.jks

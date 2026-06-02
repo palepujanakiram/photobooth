@@ -6,7 +6,7 @@ publish_to: 'none'
 # CLI: ./scripts/flutter_with_version.sh build web   (plain `flutter build web` does not sync)
 #      dart run tool/sync_build_version.dart
 #   PATCH = DAY*10000 + HH*100 + MM; +suffix increments each sync (Play versionCode).
-version: 2026.5.100012+13
+version: 2026.6.21440+14
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
