@@ -1,9 +1,11 @@
 import 'dart:math' as math;
 
-import 'package:flutter/cupertino.dart' show CupertinoButton, CupertinoColors;
+import 'package:flutter/cupertino.dart'
+    show CupertinoButton, CupertinoColors, CupertinoSlidingSegmentedControl;
 import 'package:flutter/material.dart';
 
 import '../../utils/constants.dart';
+import '../../utils/print_orientation.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
 import '../../views/widgets/app_colors.dart';
@@ -14,6 +16,7 @@ import '../photo_capture/photo_image_from_xfile_io.dart'
     as photo_image;
 import '../theme_selection/theme_model.dart';
 import '../transformation_details/transformation_details_view.dart';
+import 'photo_generate_behold_aspect.dart';
 import 'photo_generate_viewmodel.dart';
 
 /// Layout inputs for [buildGeneratedOnlyLayout] (Sonar S107).
@@ -519,12 +522,16 @@ Widget buildPhotosActionFooter({
   final isGeneratingOrLoading = isGenerating || isLoadingMore;
 
   return SizedBox(
-    width: 320,
+    width: 360,
     child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (!isGeneratingOrLoading && viewModel.generatedImages.isNotEmpty)
+          _buildPrintOrientationToggle(viewModel: viewModel),
+        if (!isGeneratingOrLoading && viewModel.generatedImages.isNotEmpty)
+          const SizedBox(height: 12),
         _buildContinueButton(
           context: context,
           viewModel: viewModel,
@@ -546,6 +553,60 @@ Widget buildPhotosActionFooter({
           ),
       ],
     ),
+  );
+}
+
+Widget _buildPrintOrientationToggle({
+  required PhotoGenerateViewModel viewModel,
+}) {
+  final personHint = viewModel.sessionPersonCount;
+  final hintText = personHint == null
+      ? 'Choose how your photo prints'
+      : personHint <= 1
+          ? 'Solo photo — portrait suggested'
+          : 'Group of $personHint — landscape suggested';
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const Text(
+        'Print orientation',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+        textAlign: TextAlign.center,
+      ),
+      const SizedBox(height: 4),
+      Text(
+        hintText,
+        style: const TextStyle(color: Colors.white70, fontSize: 11),
+        textAlign: TextAlign.center,
+      ),
+      const SizedBox(height: 10),
+      CupertinoSlidingSegmentedControl<PrintOrientation>(
+        groupValue: viewModel.printOrientation,
+        backgroundColor: Colors.black.withValues(alpha: 0.35),
+        thumbColor: CupertinoColors.systemBlue,
+        children: {
+          for (final orientation in PrintOrientation.values)
+            orientation: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Text(
+                orientation.label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        },
+        onValueChanged: (value) {
+          if (value != null) viewModel.setPrintOrientation(value);
+        },
+      ),
+    ],
   );
 }
 
@@ -598,12 +659,17 @@ Future<void> _onPhotoGenerateContinuePressed({
   if (!context.mounted) return;
   if (paymentsEnabled && contact == null) return;
 
+  await viewModel.syncPrintOrientationBeforeCheckout();
+
+  if (!context.mounted) return;
+
   await Navigator.pushNamed(
     context,
     AppConstants.kRouteResult,
     arguments: {
       'generatedImages': selectedImages,
       'originalPhoto': viewModel.originalPhoto,
+      'printOrientation': viewModel.printOrientation.apiValue,
       'customerName': contact?.customerName ?? '',
       'customerPhone': contact?.customerPhone ?? '',
       'customerWhatsappOptIn': contact?.whatsappOptIn ?? false,
@@ -734,7 +800,14 @@ Widget buildGeneratedOnlyLayout({
     liveSlotCount: viewModel.liveSlotCount,
   );
   final totalSlots = baseSlotCount + (isLoadingMore ? 1 : 0);
-  final aspect = builders.beholdCardAspectRatio(context, totalSlots);
+  final aspect = totalSlots <= 1
+      ? beholdSingleResultCardAspectRatio(
+          context,
+          viewModel,
+          maxWidth: screenWidth,
+          maxHeight: maxRowHeight,
+        )
+      : builders.beholdCardAspectRatio(context, totalSlots);
 
   if (totalSlots == 1) {
     return _buildGeneratedOnlySingleSlotLayout(

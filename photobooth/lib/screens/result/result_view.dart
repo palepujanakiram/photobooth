@@ -75,6 +75,7 @@ class _ResultScreenState extends State<ResultScreen> {
     _viewModel = ResultViewModel(
       generatedImages: generatedImages,
       originalPhoto: originalPhoto,
+      printOrientation: parsed.printOrientation,
       appSettingsManager: context.read<AppSettingsManager>(),
       customerName: _customerName,
       customerPhone: _customerPhone,

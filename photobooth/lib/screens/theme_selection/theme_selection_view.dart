@@ -528,11 +528,15 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   // Category chips hidden by request. Keep constants/method removed to avoid dead code.
 
   /// Larger fraction on phone portrait so the hero card uses the screen; smaller on tablet / landscape.
-  double _carouselViewportFractionFor(BuildContext context) {
+  double _carouselViewportFractionFor(
+    BuildContext context, {
+    required int themeCount,
+  }) {
     final size = MediaQuery.sizeOf(context);
     return ThemeSelectionLayoutMetrics.carouselViewportFraction(
       width: size.width,
       height: size.height,
+      themeCount: themeCount,
     );
   }
 
@@ -644,7 +648,10 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       return _buildCardGridLayout(context, viewModel, isLandscape);
     }
 
-    final vf = _carouselViewportFractionFor(context);
+    final vf = _carouselViewportFractionFor(
+      context,
+      themeCount: filtered.length,
+    );
     if (_pageController == null || _carouselViewportFraction != vf) {
       final initial = viewModel.carouselIndex.clamp(0, filtered.length - 1);
       _pageController?.dispose();
@@ -674,7 +681,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     return Column(
       children: [
         Expanded(
-          flex: 7,
           child: PageView.builder(
             controller: _pageController,
             itemCount: filtered.length,

@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/logger.dart';
+import '../utils/print_orientation.dart';
 import 'error_reporting/error_reporting_manager.dart';
 import 'kiosk_session_auth.dart';
 
@@ -30,6 +31,8 @@ class SessionData {
   final String? kioskAuthToken;
   /// Authoritative person count from `/api/preprocess-image` (used for theme filtering).
   final int? personCount;
+  /// Customer print layout preference (`portrait` | `landscape`).
+  final String? printOrientation;
 
   SessionData({
     required this.id,
@@ -48,11 +51,13 @@ class SessionData {
     this.selectedFrameId,
     this.kioskAuthToken,
     this.personCount,
+    this.printOrientation,
   });
 
   SessionData copyWith({
     int? personCount,
     String? kioskAuthToken,
+    String? printOrientation,
   }) {
     return SessionData(
       id: id,
@@ -71,6 +76,7 @@ class SessionData {
       selectedFrameId: selectedFrameId,
       kioskAuthToken: kioskAuthToken ?? this.kioskAuthToken,
       personCount: personCount ?? this.personCount,
+      printOrientation: printOrientation ?? this.printOrientation,
     );
   }
 
@@ -95,7 +101,20 @@ class SessionData {
       'selectedFrameId': selectedFrameId,
       if (kioskAuthToken != null) 'kioskAuthToken': kioskAuthToken,
       if (personCount != null) 'personCount': personCount,
+      if (printOrientation != null) 'printOrientation': printOrientation,
     };
+  }
+
+  static String? _printOrientationFromJson(Map<String, dynamic> json) {
+    final direct = PrintOrientation.tryParse(json['printOrientation']?.toString());
+    if (direct != null) return direct.apiValue;
+    final framing = json['framingMetadata'];
+    if (framing is Map) {
+      final fromFraming =
+          PrintOrientation.tryParse(framing['orientation']?.toString());
+      if (fromFraming != null) return fromFraming.apiValue;
+    }
+    return null;
   }
 
   static int? _personCountFromJson(Map<String, dynamic> json) {
@@ -137,6 +156,7 @@ class SessionData {
       selectedFrameId: json['selectedFrameId'] as String?,
       kioskAuthToken: parseKioskAuthToken(json),
       personCount: _personCountFromJson(json),
+      printOrientation: _printOrientationFromJson(json),
     );
   }
 }
@@ -185,6 +205,10 @@ class SessionManager extends ChangeNotifier {
 
   /// Person count for theme filtering (from preprocess; null until set).
   int? get personCount => currentSession?.personCount;
+
+  PrintOrientation get printOrientation =>
+      PrintOrientation.tryParse(currentSession?.printOrientation) ??
+      PrintOrientation.fromPersonCount(personCount);
 
   /// Check if a session exists
   bool get hasSession => currentSession != null;
@@ -239,6 +263,10 @@ class SessionManager extends ChangeNotifier {
         _currentSession?.personCount != null) {
       slim['personCount'] = _currentSession!.personCount;
     }
+    if (SessionData._printOrientationFromJson(slim) == null &&
+        _currentSession?.printOrientation != null) {
+      slim['printOrientation'] = _currentSession!.printOrientation;
+    }
     _currentSession = SessionData.fromJson(slim);
     AppLogger.debug('Session stored from API: ${_currentSession!.id}');
     unawaited(_persistCurrentSession());
@@ -250,6 +278,14 @@ class SessionManager extends ChangeNotifier {
     final s = _currentSession;
     if (s == null || count < 1) return;
     _currentSession = s.copyWith(personCount: count);
+    unawaited(_persistCurrentSession());
+    notifyListeners();
+  }
+
+  void setPrintOrientation(PrintOrientation orientation) {
+    final s = _currentSession;
+    if (s == null) return;
+    _currentSession = s.copyWith(printOrientation: orientation.apiValue);
     unawaited(_persistCurrentSession());
     notifyListeners();
   }

@@ -105,6 +105,13 @@ class AppConstants {
   /// (theme/kiosk value) so preview matches the usable viewport instead of a short strip.
   static const double kCapturePreviewCardMaxHeightFractionPhonePortrait = 0.78;
 
+  /// BEHOLD single-result hero when output aspect is unknown (typical AI / kiosk output).
+  static const double kBeholdSingleResultDefaultAspectRatio = 3 / 2;
+
+  /// DNP-style print sizes for network printer API.
+  static const String kPrintSizePortrait4x6 = 's4x6';
+  static const String kPrintSizeLandscape6x4 = 's6x4';
+
   /// BEHOLD single-result hero: width cap on landscape / desktop (wider than capture kiosk).
   static const double kBeholdResultCardMaxWidthFractionLandscape = 0.52;
 

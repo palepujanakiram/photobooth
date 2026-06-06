@@ -4,6 +4,7 @@ import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter/foundation.dart' show kIsWeb;
+import '../utils/constants.dart';
 import '../utils/exceptions.dart';
 import '../utils/logger.dart';
 import 'printer_api_client.dart';
@@ -108,6 +109,7 @@ class PrintService {
     XFile imageFile, {
     required String printerHost,
     int printerPort = 80,
+    String printSize = AppConstants.kPrintSizePortrait4x6,
   }) async {
     final baseUri = _printerHttpBaseUri(printerHost, printerPort);
     final baseUrl = baseUri.origin;
@@ -134,7 +136,7 @@ class PrintService {
           PrinterApiClient(dio, baseUrl: baseUrl, errorLogger: null);
 
       if (kIsWeb) {
-        await postNetworkPrintWeb(dio, baseUrl, imageBytes);
+        await postNetworkPrintWeb(dio, baseUrl, imageBytes, printSize: printSize);
         ErrorReportingManager.log('✅ Network print completed successfully (web)');
         return;
       }
@@ -143,6 +145,7 @@ class PrintService {
         printerClient: printerClient,
         imageBytes: imageBytes,
         baseUrl: baseUrl,
+        printSize: printSize,
       );
       ErrorReportingManager.log('✅ Network print completed successfully (mobile)');
     } on DioException catch (e, stackTrace) {
