@@ -1,5 +1,25 @@
 part of 'photo_generate_viewmodel.dart';
 
+Future<double?> aspectRatioFromXFile(XFile? file) async {
+  if (file == null) return null;
+  final path = file.path;
+  try {
+    final bytes = await file.readAsBytes();
+    final buffer = await ImmutableBuffer.fromUint8List(bytes);
+    final codec = await instantiateImageCodecFromBuffer(buffer);
+    final frame = await codec.getNextFrame();
+    final w = frame.image.width.toDouble();
+    final h = frame.image.height.toDouble();
+    frame.image.dispose();
+    codec.dispose();
+    if (h <= 0) return null;
+    return (w / h).clamp(0.35, 2.85);
+  } catch (e) {
+    AppLogger.debug('Could not read image aspect from $path: $e');
+    return null;
+  }
+}
+
 DateTime? parseGenerationRunStepStartedAt(dynamic v) {
   if (v is String && v.trim().isNotEmpty) {
     return DateTime.tryParse(v.trim());

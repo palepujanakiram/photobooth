@@ -2,6 +2,7 @@ import 'package:camera/camera.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 
+import '../utils/constants.dart';
 import '../utils/exceptions.dart';
 import '../utils/logger.dart';
 import 'alice_inspector.dart';
@@ -72,13 +73,18 @@ Dio createPrinterApiDio(String baseUrl) {
   return dio;
 }
 
-Future<void> postNetworkPrintWeb(Dio dio, String baseUrl, List<int> imageBytes) async {
+Future<void> postNetworkPrintWeb(
+  Dio dio,
+  String baseUrl,
+  List<int> imageBytes, {
+  String printSize = AppConstants.kPrintSizePortrait4x6,
+}) async {
   final formData = FormData.fromMap({
     'imageFile': MultipartFile.fromBytes(
       imageBytes,
       filename: 'image.jpg',
     ),
-    'printSize': 's4x6',
+    'printSize': printSize,
     'quantity': 1,
     'imageEdited': false,
     'DeviceId': 'flutter-photobooth-web',
@@ -96,6 +102,7 @@ Future<void> postNetworkPrintMobile({
   required PrinterApiClient printerClient,
   required List<int> imageBytes,
   required String baseUrl,
+  String printSize = AppConstants.kPrintSizePortrait4x6,
 }) async {
   final tempDirPath = await FileHelper.getTempDirectoryPath();
   final fileName = 'print_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -106,7 +113,7 @@ Future<void> postNetworkPrintMobile({
   try {
     await printerClient.printImage(
       tempFile.retrofitFile,
-      's4x6',
+      printSize,
       1,
       false,
       'flutter-photobooth-mobile',
