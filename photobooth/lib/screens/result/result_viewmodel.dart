@@ -13,6 +13,7 @@ import '../../services/print_service.dart';
 import '../../services/session_manager.dart';
 import '../../services/share_service.dart';
 import '../../services/kiosk_manager.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
@@ -21,6 +22,8 @@ import '../../services/fcm_service.dart';
 import '../../services/payment_push_coordinator.dart';
 import '../../services/whatsapp_push_coordinator.dart';
 import '../../models/kiosk_share_link_model.dart';
+import 'kiosk_receipt_share_fallback.dart';
+import 'result_viewmodel_share_helpers.dart';
 
 part 'result_viewmodel_impl.part.dart';
 

@@ -1,14 +1,16 @@
 import 'dart:math' as math;
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
 import 'package:camera_native_details/camera_native_details.dart';
+import 'photo_capture_view_aspect.dart';
+import 'photo_capture_view_handlers.dart';
+import 'photo_capture_view_layout.dart';
+import 'photo_capture_view_scaffold.dart';
 import 'photo_capture_viewmodel.dart';
 import 'photo_image_from_xfile_io.dart' if (dart.library.html) 'photo_image_from_xfile_web.dart' as photo_image;
 import '../../utils/app_runtime_config.dart';
@@ -19,15 +21,8 @@ import '../../services/app_settings_manager.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/centered_max_width.dart';
-import '../../views/widgets/full_screen_loader.dart';
-import '../../views/widgets/theme_background.dart';
-import '../../views/widgets/debug_ram_monitor_overlay.dart';
-import '../../views/widgets/debug_log_overlay.dart';
-import '../../views/widgets/leading_with_alice.dart';
 import 'photo_capture_rotation_screen.dart';
 import '../../services/hardware_key_service.dart';
-import '../../utils/route_args.dart';
-import '../../utils/web_flow_trace.dart';
 
 class PhotoCaptureScreen extends StatefulWidget {
   const PhotoCaptureScreen({super.key});
@@ -172,6 +167,100 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
   }
 
+  Widget _buildDetectingCamerasState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(color: Colors.white),
+          const SizedBox(height: 20),
+          Text(
+            'Detecting cameras…',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: 16,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCaptureFatalErrorState(
+    BuildContext context,
+    CaptureViewModel viewModel,
+  ) {
+    final appColors = AppColors.of(context);
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            CupertinoIcons.exclamationmark_triangle,
+            size: 64,
+            color: appColors.errorColor,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            viewModel.errorMessage ?? 'Unknown error',
+            style: const TextStyle(fontSize: 16, color: Colors.white),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TextButton(
+                onPressed: () => _resetAndInitializeCameras(forceRefresh: true),
+                child: const Text('Retry'),
+              ),
+              TextButton(
+                onPressed: () => openAppSettings(),
+                child: const Text('Open Settings'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCaptureBodyContent(
+    BuildContext context,
+    CaptureViewModel viewModel,
+  ) {
+    if (viewModel.isLoadingCameras) return _buildDetectingCamerasState();
+    if (viewModel.isInitializing) {
+      return const Center(child: CircularProgressIndicator(color: Colors.white));
+    }
+    if (viewModel.availableCameras.isEmpty && !viewModel.hasError) {
+      return const Center(child: CircularProgressIndicator(color: Colors.white));
+    }
+    if (viewModel.hasError && viewModel.capturedPhoto == null) {
+      return _buildCaptureFatalErrorState(context, viewModel);
+    }
+    if (!viewModel.isReady && viewModel.capturedPhoto == null) {
+      return const Center(
+        child: Text(
+          'Camera not ready',
+          style: TextStyle(color: Colors.white),
+        ),
+      );
+    }
+
+    final previewWidget = _buildCameraPreviewWithRotation(context, viewModel);
+    final hasCapturedPhoto = viewModel.capturedPhoto != null;
+    return Padding(
+      padding: const EdgeInsets.only(left: 12, right: 12),
+      child: _buildCaptureColumn(
+        context: context,
+        viewModel: viewModel,
+        hasCapturedPhoto: hasCapturedPhoto,
+        previewWidget: previewWidget,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
@@ -181,244 +270,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           return ListenableBuilder(
             listenable: AppRuntimeConfig.instance,
             builder: (context, _) {
-              return Scaffold(
-                backgroundColor: Colors.transparent,
-                extendBodyBehindAppBar: true,
-                appBar: AppBar(
-                  backgroundColor: Colors.transparent,
-                  elevation: 0,
-                  scrolledUnderElevation: 0,
-                  surfaceTintColor: Colors.transparent,
-                  forceMaterialTransparency: true,
-                  centerTitle: true,
-                  systemOverlayStyle: SystemUiOverlayStyle.light.copyWith(
-                    statusBarColor: Colors.transparent,
-                    systemNavigationBarColor: Colors.transparent,
+              return PhotoCaptureScaffold(
+                viewModel: viewModel,
+                onBack: () => Navigator.pop(context),
+                onSelectCamera: () =>
+                    _showCameraSelectionDialog(context, viewModel),
+                onOpenRotation: () =>
+                    _openPreviewRotationScreen(context, viewModel),
+                onReloadCameras: () =>
+                    _resetAndInitializeCameras(forceRefresh: true),
+                body: Builder(
+                  builder: (context) => _buildCaptureBodyContent(
+                    context,
+                    Provider.of<CaptureViewModel>(context, listen: true),
                   ),
-                  title: const Text(
-                    'POSE',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 22,
-                    ),
-                  ),
-                  bottom: const PreferredSize(
-                    preferredSize: Size.fromHeight(22),
-                    child: Padding(
-                      padding: EdgeInsets.only(bottom: 6),
-                      child: Text(
-                        'Step in front of the camera and strike your best look',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-                  leading: IconButton(
-                    icon: const Icon(CupertinoIcons.back, color: Colors.white),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                  actions: [
-                    if (viewModel.availableCameras.length > 1)
-                      IconButton(
-                        icon: Icon(
-                          CupertinoIcons.camera_rotate,
-                          color: (viewModel.isLoadingCameras || viewModel.isInitializing)
-                              ? Colors.grey
-                              : Colors.white,
-                        ),
-                        onPressed: viewModel.isLoadingCameras || viewModel.isInitializing
-                            ? null
-                            : () => _showCameraSelectionDialog(context, viewModel),
-                      ),
-                    IconButton(
-                      icon: Icon(
-                        CupertinoIcons.rotate_right,
-                        color: (viewModel.isLoadingCameras || viewModel.isInitializing)
-                            ? Colors.grey
-                            : Colors.white,
-                      ),
-                      onPressed: viewModel.isLoadingCameras || viewModel.isInitializing
-                          ? null
-                          : () => _openPreviewRotationScreen(context, viewModel),
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        CupertinoIcons.arrow_clockwise,
-                        color: (viewModel.isLoadingCameras || viewModel.isInitializing)
-                            ? Colors.grey
-                            : Colors.white,
-                      ),
-                      onPressed: viewModel.isLoadingCameras || viewModel.isInitializing
-                          ? null
-                          : () => _resetAndInitializeCameras(forceRefresh: true),
-                    ),
-                    const AppBarAliceAction(),
-                  ],
-                ),
-                body: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    const Positioned.fill(
-                      child: ThemeBackground(theme: null),
-                    ),
-                    SafeArea(
-                      top: false,
-                      bottom: false,
-                      child: Padding(
-                        padding: EdgeInsets.only(
-                          // Body is behind the app bar; account for app bar + subtitle height.
-                          top: MediaQuery.paddingOf(context).top +
-                              kToolbarHeight +
-                              22 +
-                              6,
-                        ),
-                        child: Builder(
-                          builder: (context) {
-                            final viewModel =
-                                Provider.of<CaptureViewModel>(context, listen: true);
-                            // "Detecting cameras…" full-screen state like fluttercamerabasic (loading gate)
-                            if (viewModel.isLoadingCameras) {
-                              return Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const CircularProgressIndicator(color: Colors.white),
-                                    const SizedBox(height: 20),
-                                    Text(
-                                      'Detecting cameras…',
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.9),
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }
-                            if (viewModel.isInitializing) {
-                              return const Center(
-                                child: CircularProgressIndicator(color: Colors.white),
-                              );
-                            }
-                            if (viewModel.availableCameras.isEmpty && !viewModel.hasError) {
-                              return const Center(
-                                child: CircularProgressIndicator(color: Colors.white),
-                              );
-                            }
-
-                            // Upload/session errors after capture should not replace the preview;
-                            // those are shown inline in [_buildCaptureColumn].
-                            if (viewModel.hasError && viewModel.capturedPhoto == null) {
-                              final appColors = AppColors.of(context);
-                              return Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      CupertinoIcons.exclamationmark_triangle,
-                                      size: 64,
-                                      color: appColors.errorColor,
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      viewModel.errorMessage ?? 'Unknown error',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        color: Colors.white,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                    const SizedBox(height: 24),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              _resetAndInitializeCameras(forceRefresh: true),
-                                          child: const Text('Retry'),
-                                        ),
-                                        TextButton(
-                                          onPressed: () => openAppSettings(),
-                                          child: const Text('Open Settings'),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }
-
-                            // After a successful capture we call [disposeCamera] before leaving;
-                            // [isReady] becomes false while [capturedPhoto] is still set. Still show
-                            // the captured still + actions, not "Camera not ready".
-                            if (!viewModel.isReady && viewModel.capturedPhoto == null) {
-                              return const Center(
-                                child: Text(
-                                  'Camera not ready',
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                              );
-                            }
-
-                            final Widget previewWidget =
-                                _buildCameraPreviewWithRotation(context, viewModel);
-                            final hasCapturedPhoto = viewModel.capturedPhoto != null;
-
-                            return Padding(
-                              padding: const EdgeInsets.only(left: 12, right: 12),
-                              child: _buildCaptureColumn(
-                                context: context,
-                                viewModel: viewModel,
-                                hasCapturedPhoto: hasCapturedPhoto,
-                                previewWidget: previewWidget,
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                    if (viewModel.isUploading)
-                      Positioned.fill(
-                        child: FullScreenLoader(
-                          text: 'Processing Your Photo',
-                          loaderColor: Colors.blue,
-                          elapsedSeconds: viewModel.uploadElapsedSeconds,
-                        ),
-                      ),
-                    Consumer<AppSettingsManager>(
-                      builder: (context, appSettings, _) {
-                        // Web: DevTools + web-safe API summaries; RAM/log overlays add timers
-                        // and ValueListenable churn that can stall the post-capture isolate.
-                        if (kIsWeb ||
-                            appSettings.settings?.showGenerationCommentary != true) {
-                          return const SizedBox.shrink();
-                        }
-                        return Positioned(
-                          left: 10,
-                          top: MediaQuery.paddingOf(context).top + kToolbarHeight + 6,
-                          child: const DebugRamMonitorOverlay(),
-                        );
-                      },
-                    ),
-                    Consumer<AppSettingsManager>(
-                      builder: (context, appSettings, _) {
-                        if (kIsWeb ||
-                            appSettings.settings?.showGenerationCommentary != true) {
-                          return const SizedBox.shrink();
-                        }
-                        return Positioned(
-                          left: 10,
-                          top: MediaQuery.paddingOf(context).top + kToolbarHeight + 6 + 52,
-                          child: const DebugLogOverlay(),
-                        );
-                      },
-                    ),
-                  ],
                 ),
               );
             },
@@ -526,7 +391,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         final fallbackAspect = AppConstants.themeCardSlotAspectRatio(context);
         final isPhonePortrait = !isLandscape &&
             media.shortestSide < AppConstants.kTabletBreakpoint;
-        final aspect = _captureCardAspectRatio(
+        final aspect = captureCardAspectRatio(
           context,
           viewModel,
           hasCapturedPhoto,
@@ -534,14 +399,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           constraints,
         );
 
-        final widthCapFrac = isLandscape
-            ? AppConstants.kCapturePreviewCardMaxWidthFractionLandscape
-            : AppConstants.kCapturePreviewCardMaxWidthFractionPortrait;
-        final heightCapFrac = isLandscape
-            ? AppConstants.kCapturePreviewCardMaxHeightFractionLandscape
-            : (isPhonePortrait
-                ? AppConstants.kCapturePreviewCardMaxHeightFractionPhonePortrait
-                : AppConstants.kCapturePreviewCardMaxHeightFractionPortrait);
+        final (widthCapFrac, heightCapFrac) = capturePreviewCardSizeFractions(
+          isLandscape: isLandscape,
+          isPhonePortrait: isPhonePortrait,
+        );
 
         // Tablets: use the full canvas available for a cleaner kiosk-style preview.
         final maxW = isTablet
@@ -551,15 +412,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             ? constraints.maxHeight
             : math.min(constraints.maxHeight, media.height * heightCapFrac);
 
-        late double cardW;
-        late double cardH;
-        if (maxW / maxH > aspect) {
-          cardH = maxH;
-          cardW = cardH * aspect;
-        } else {
-          cardW = maxW;
-          cardH = cardW / aspect;
-        }
+        final (cardW, cardH) = capturePreviewCardDimensions(
+          constraints: constraints,
+          aspect: aspect,
+          maxW: maxW,
+          maxH: maxH,
+        );
 
         return Center(
           child: Card(
@@ -631,67 +489,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
-  /// Display size of the live preview after rotation (see [CaptureViewModel.previewDisplaySizeForCard]).
-  Size? _livePreviewDisplaySize(CaptureViewModel viewModel) {
-    return viewModel.previewDisplaySizeForCard;
-  }
-
-  /// Width/height ratio for the capture card: decoded still, live preview, viewport slot on phones, or [fallbackAspect].
-  ///
-  /// On **phone portrait**, if the stream has not reported [CameraValue.previewSize] yet (common briefly on
-  /// Android front cameras), the theme hero ratio (3:4.5) is a poor match — use [layoutConstraints] so
-  /// the card tracks the Expanded preview area instead.
-  double _captureCardAspectRatio(
-    BuildContext context,
-    CaptureViewModel viewModel,
-    bool hasCapturedPhoto,
-    double fallbackAspect,
-    BoxConstraints layoutConstraints,
-  ) {
-    bool phonePortrait() {
-      return MediaQuery.orientationOf(context) == Orientation.portrait &&
-          MediaQuery.sizeOf(context).shortestSide < AppConstants.kTabletBreakpoint;
-    }
-
-    double viewportSlotAspect() {
-      final w = layoutConstraints.maxWidth;
-      final h = layoutConstraints.maxHeight;
-      if (w <= 0 || h <= 0) return fallbackAspect;
-      return (w / h).clamp(0.28, 0.92);
-    }
-
-    // Keep the capture card size consistent before/after capture. Prefer the aspect
-    // locked at shutter (preview stream); decoded still size often differs and caused jumps.
-    if (hasCapturedPhoto) {
-      final locked = viewModel.lockedCaptureCardAspectRatio;
-      if (locked != null && locked > 0) {
-        return locked.clamp(0.35, 2.85);
-      }
-      final live = _livePreviewDisplaySize(viewModel);
-      if (live != null && live.height > 0) {
-        return (live.width / live.height).clamp(0.35, 2.85);
-      }
-      final pixels = viewModel.capturedImagePixelSize;
-      if (pixels != null && pixels.height > 0) {
-        return (pixels.width / pixels.height).clamp(0.35, 2.85);
-      }
-      if (phonePortrait()) return viewportSlotAspect();
-      return fallbackAspect;
-    }
-
-    final controller = viewModel.cameraController;
-    final previewSize = controller?.value.previewSize;
-    final live = _livePreviewDisplaySize(viewModel);
-    if (live != null && live.height > 0) {
-      if (phonePortrait() && previewSize == null) {
-        return viewportSlotAspect();
-      }
-      return (live.width / live.height).clamp(0.35, 2.85);
-    }
-    if (phonePortrait()) return viewportSlotAspect();
-    return fallbackAspect;
-  }
-
   /// Builds camera preview and applies Android TV/external-camera correction
   /// plus any user-selected manual rotation.
   Widget _buildCameraPreviewWithRotation(BuildContext context, CaptureViewModel viewModel) {
@@ -720,7 +517,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       );
     }
 
-    final displaySize = _livePreviewDisplaySize(viewModel);
+    final displaySize = viewModel.previewDisplaySizeForCard;
     final baseAspectRatio = controller.value.aspectRatio;
     final displayAspectRatio =
         effectiveQuarterTurns.isOdd ? 1 / baseAspectRatio : baseAspectRatio;
@@ -863,20 +660,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
-  /// Shared style for Capture Photo screen buttons (matches Generate Photo Continue button).
-  static ButtonStyle _captureScreenButtonStyle({bool secondary = false}) {
-    return ElevatedButton.styleFrom(
-      backgroundColor: secondary ? Colors.grey : Colors.blue,
-      foregroundColor: Colors.white,
-      disabledBackgroundColor: Colors.grey.shade600,
-      disabledForegroundColor: Colors.white70,
-      minimumSize: const Size(double.infinity, 56),
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-    );
-  }
-
   /// Retake and Continue buttons in a Row (post-capture).
   Widget _buildCapturedPhotoControlsRow(BuildContext context, CaptureViewModel viewModel) {
     return SizedBox(
@@ -885,53 +668,24 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ElevatedButton(
-            style: _captureScreenButtonStyle(secondary: true),
-            onPressed: () async {
-              // Web camera streams can get sticky even after widget swaps.
-              // Recreate the whole screen so it behaves like a fresh Capture entry.
-              if (kIsWeb) {
-                viewModel.disposeCamera();
-                if (!mounted) return;
-                await Navigator.of(context).pushReplacementNamed(
-                  AppConstants.kRouteCapture,
-                );
-                return;
-              }
-              viewModel.clearCapturedPhoto();
-            },
+            style: captureScreenButtonStyle(secondary: true),
+            onPressed: () => handleCapturedPhotoRetake(
+              context: context,
+              viewModel: viewModel,
+              isMounted: () => mounted,
+            ),
             child: const Text('Retake'),
           ),
           const SizedBox(height: 12),
           ElevatedButton(
-            style: _captureScreenButtonStyle(),
+            style: captureScreenButtonStyle(),
             onPressed: (viewModel.isCapturing || viewModel.isUploading)
                 ? null
-                : () async {
-                    final currentContext = context;
-                    if (!mounted || !currentContext.mounted) return;
-                    final success = await viewModel.uploadPhotoToSession();
-                    if (!mounted || !currentContext.mounted) return;
-                    if (success && viewModel.capturedPhoto != null) {
-                      // Release camera native buffers (~300–600 MB) BEFORE
-                      // navigating so the next screen doesn't overlap with
-                      // camera heap on a 4 GB kiosk.
-                      viewModel.disposeCamera();
-                      final photo = viewModel.capturedPhoto!;
-                      if (!mounted || !currentContext.mounted) return;
-                      WebFlowTrace.log('NAV', 'pushReplacementNamed theme-selection start');
-                      // Replace capture with theme so the new route is definitely on top
-                      // (web + nested navigators could leave capture visible under push).
-                      // This also drops capture from the stack — back goes to the screen
-                      // below (e.g. terms or a prior theme), not to a disposed camera.
-                      await Navigator.of(currentContext, rootNavigator: true)
-                          .pushReplacementNamed(
-                        AppConstants.kRouteHome,
-                        arguments: ThemeSelectionArgs(photo: photo),
-                      );
-                      WebFlowTrace.log('NAV', 'pushReplacementNamed done');
-                      // After replacement this [State] is disposed; do not touch camera.
-                    }
-                  },
+                : () => handleCapturedPhotoContinue(
+                      context: context,
+                      viewModel: viewModel,
+                      isMounted: () => mounted,
+                    ),
             child: viewModel.isUploading
                 ? const SizedBox(
                     width: 24,
@@ -1003,7 +757,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         children: [
           if (isPhotoUploadAllowed) ...[
             ElevatedButton.icon(
-              style: _captureScreenButtonStyle(secondary: true),
+              style: captureScreenButtonStyle(secondary: true),
               onPressed:
                   (viewModel.isCapturing || viewModel.isSelectingFromGallery)
                       ? null
@@ -1023,7 +777,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             const SizedBox(height: 12),
           ],
           ElevatedButton.icon(
-            style: _captureScreenButtonStyle(),
+            style: captureScreenButtonStyle(),
             onPressed: (viewModel.isCapturing ||
                     viewModel.isSelectingFromGallery ||
                     viewModel.isCountingDown)

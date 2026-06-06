@@ -182,7 +182,7 @@ class ThemeCard extends StatelessWidget {
                                 ? FontWeight.bold
                                 : FontWeight.w600,
                             color: _parseColor(theme.textColor) ??
-                                Colors.white,
+                                const Color(0xFFFFFFFF),
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,

@@ -6,6 +6,10 @@ import '../../views/widgets/app_colors.dart';
 
 /// Loads [url] in a [WebViewWidget] with loading and error states.
 ///
+/// JavaScript and unrestricted navigation are intentional: callers pass only
+/// operator-configured HTTPS URLs (terms, help, kiosk content) from [AppConfig],
+/// not arbitrary user input. Mark Sonar security hotspots **Safe** after review.
+///
 /// Set [useScaffold] for edge-to-edge web content with a close control only (no
 /// app bar). Used for the webview named route and by [WebViewUrlSheet].
 class WebViewScreen extends StatefulWidget {

@@ -4,11 +4,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'theme_model.dart';
 import '../../models/kiosk_frame_model.dart';
 import '../../services/theme_manager.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../utils/exceptions.dart';
+
+String _titleCaseWord(String p) {
+  if (p.isEmpty) return p;
+  final tail = p.length > 1 ? p.substring(1).toLowerCase() : '';
+  return '${p[0].toUpperCase()}$tail';
+}
 
 class ThemeViewModel extends ChangeNotifier {
   final ThemeManager _themeManager;
@@ -83,11 +90,7 @@ class ThemeViewModel extends ChangeNotifier {
       return _categoryIdToName[key]!;
     }
     final parts = id.split(RegExp(r'[-_\s]+'));
-    return parts
-        .map((p) => p.isEmpty
-            ? p
-            : '${p[0].toUpperCase()}${p.length > 1 ? p.substring(1).toLowerCase() : ''}')
-        .join(' ');
+    return parts.map(_titleCaseWord).join(' ');
   }
 
   /// Currently selected category ("All" or a categoryId).
@@ -303,7 +306,7 @@ class ThemeViewModel extends ChangeNotifier {
 
       return true;
     } on TimeoutException {
-      _errorMessage = 'Request took too long. Please check your connection and try again.';
+      _errorMessage = AppStrings.requestTimeoutConnection;
       return false;
     } on ApiException catch (e) {
       _errorMessage = e.message;
@@ -353,7 +356,7 @@ class ThemeViewModel extends ChangeNotifier {
       return true;
     } on TimeoutException {
       _errorMessage =
-          'Request took too long. Please check your connection and try again.';
+          AppStrings.requestTimeoutConnection;
       return false;
     } on ApiException catch (e) {
       _errorMessage = e.message;
@@ -399,7 +402,7 @@ class ThemeViewModel extends ChangeNotifier {
       return true;
     } on TimeoutException {
       _errorMessage =
-          'Request took too long. Please check your connection and try again.';
+          AppStrings.requestTimeoutConnection;
       return false;
     } on ApiException catch (e) {
       _errorMessage = e.message;

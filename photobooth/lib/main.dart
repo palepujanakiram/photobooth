@@ -11,22 +11,8 @@ import 'package:bugsnag_flutter/bugsnag_flutter.dart';
 import 'package:flutter_alice/alice.dart';
 import 'package:overlay_support/overlay_support.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
-import 'screens/theme_slideshow/theme_slideshow_view.dart';
-import 'screens/splash/app_splash_screen.dart';
-import 'screens/splash/bootstrap_route_args.dart';
-import 'screens/terms_and_conditions/terms_and_conditions_view.dart';
-import 'screens/webview/webview_screen.dart';
-import 'screens/theme_selection/theme_selection_view.dart';
-import 'screens/photo_capture/photo_capture_view.dart';
-import 'screens/frame_select/frame_select_view.dart';
-import 'screens/photo_generate/photo_generate_view.dart';
-import 'screens/photo_generate/photo_generate_progress_view.dart';
-import 'screens/photo_review/photo_review_view.dart';
-import 'screens/result/result_view.dart';
-import 'screens/qr_share/qr_share_view.dart';
-import 'screens/thank_you/thank_you_view.dart';
-import 'screens/staff/staff_login_view.dart';
-import 'screens/staff/staff_payments_view.dart';
+import 'app_routes.dart';
+import 'main_error_handlers.dart';
 import 'utils/app_runtime_config.dart';
 import 'utils/constants.dart';
 import 'utils/logger.dart';
@@ -43,14 +29,6 @@ import 'services/client_identification.dart';
 import 'services/session_manager.dart';
 
 const String _kBugsnagApiKey = String.fromEnvironment('BUGSNAG_API_KEY');
-
-bool _isFilteredImageError(Object e) {
-  final errorString = e.toString().toLowerCase();
-  return errorString.contains('image decoding') ||
-      errorString.contains('failed to submit image decoding command buffer') ||
-      errorString.contains('codec failed to produce an image') ||
-      errorString.contains('failed to load network image');
-}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -110,84 +88,11 @@ Future<void> main() async {
     enableBugsnag: !kIsWeb,
   );
 
-  // Set up Flutter error handler with filtering
-  FlutterError.onError = (errorDetails) {
-    // Filter out non-fatal image decoding errors
-    // These are handled by Image.errorBuilder widgets
-    if (_isFilteredImageError(errorDetails.exception)) {
-      // Log to console in debug mode but don't report to Bugsnag
-      if (kDebugMode) {
-        AppLogger.error(
-          'Image loading error (non-fatal, handled by UI): ${errorDetails.exception}',
-          error: errorDetails.exception,
-          stackTrace: errorDetails.stack,
-        );
-      }
-      return;
-    }
+  configureFlutterErrorHandlers();
 
-    ErrorReportingManager.recordError(
-      errorDetails.exception,
-      errorDetails.stack,
-      reason: 'Flutter Fatal Error',
-      fatal: true,
-    );
-
-    // Also log to console in debug mode
-    if (kDebugMode) {
-      AppLogger.error(
-        'Flutter Fatal Error: ${errorDetails.exception}',
-        error: errorDetails.exception,
-        stackTrace: errorDetails.stack,
-      );
-    }
-  };
-
-  // Pass all uncaught asynchronous errors to ErrorReportingManager with filtering
-  PlatformDispatcher.instance.onError = (error, stack) {
-    // Filter out non-fatal image decoding errors
-    // These are handled by Image.errorBuilder widgets
-    if (_isFilteredImageError(error)) {
-      // Log to console in debug mode but don't report to Bugsnag
-      if (kDebugMode) {
-        AppLogger.error(
-          'Image loading error (non-fatal, handled by UI): $error',
-          error: error,
-          stackTrace: stack,
-        );
-      }
-      return true; // Mark as handled
-    }
-
-    ErrorReportingManager.recordError(
-      error,
-      stack,
-      reason: 'Uncaught Async Error',
-      fatal: true,
-    );
-
-    // Also log to console in debug mode
-    if (kDebugMode) {
-      AppLogger.error(
-        'Uncaught Error: $error',
-        error: error,
-        stackTrace: stack,
-      );
-    }
-    return true;
-  };
-
-  // Restore persisted session (best-effort) after error reporting + handlers are set up,
-  // but still before runApp so first-frame reads can see rehydrated state.
   await SessionManager().restore();
 
-  if (kDebugMode) {
-    if (AppConstants.kEnableLogOutput) {
-      AppLogger.debug('✅ Error reporting initialized successfully');
-      AppLogger.debug(
-          'Active services: ${ErrorReportingManager.serviceCount} (Bugsnag: enabled)');
-    }
-  }
+  logErrorReportingReady();
 
   final navigatorKey = GlobalKey<NavigatorState>();
   AliceInspector.initialize(navigatorKey);
@@ -223,9 +128,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
     }
   }
 
-  Future<void> _setupPaymentFcmListeners() async {
-    // Register streams before any await so a push is never dropped while we
-    // wait for permission/token (narrow race on slow devices).
+  void _registerPaymentFcmStreams() {
     _fcmOpenedAppSub?.cancel();
     _fcmForegroundSub?.cancel();
 
@@ -283,8 +186,10 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
         }
       },
     );
+  }
 
-    if (kDebugMode) {
+  void _logFcmSetupHints() {
+    if (!kDebugMode) return;
       if (defaultTargetPlatform == TargetPlatform.android) {
         AppLogger.debug(
           'FCM Firebase project (server Admin SDK must match): '
@@ -305,8 +210,9 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
         'or not sent). Android: notification-led pushes skip onMessage while backgrounded unless user '
         'taps the notification; use data + android.priority=high for silent wake.',
       );
-    }
+  }
 
+  Future<void> _requestFcmPermissionAndPersistToken() async {
     final perm = await FirebaseMessaging.instance.requestPermission(
       alert: true,
       announcement: false,
@@ -326,16 +232,14 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
         await FcmTokenStore.save(token);
       }
       if (kDebugMode) {
-        if (token != null) {
-          AppLogger.debug('FCM registration token (use in payment init & server): $token');
-        } else {
-          AppLogger.debug('FCM registration token: null');
-        }
+        AppLogger.debug(
+          token != null
+              ? 'FCM registration token (use in payment init & server): $token'
+              : 'FCM registration token: null',
+        );
       }
     } catch (e) {
-      if (kDebugMode) {
-        AppLogger.debug('FCM getToken failed: $e');
-      }
+      if (kDebugMode) AppLogger.debug('FCM getToken failed: $e');
     }
 
     if (defaultTargetPlatform == TargetPlatform.iOS) {
@@ -345,7 +249,9 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
         sound: false,
       );
     }
+  }
 
+  Future<void> _deliverFcmColdStartMessageIfAny() async {
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (kDebugMode) {
       AppLogger.debug(
@@ -353,9 +259,15 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
       );
     }
     if (initial != null) {
-      // Queue for delivery when the payment UI is ready (avoids post-frame routing races).
       PaymentPushCoordinator.instance.queueRemoteMessage(initial);
     }
+  }
+
+  Future<void> _setupPaymentFcmListeners() async {
+    _registerPaymentFcmStreams();
+    _logFcmSetupHints();
+    await _requestFcmPermissionAndPersistToken();
+    await _deliverFcmColdStartMessageIfAny();
 
     if (mounted) {
       await PaymentPushCoordinator.instance.flushPendingStoragePayment();
@@ -426,42 +338,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
           ],
           supportedLocales: const [Locale('en')],
           initialRoute: AppConstants.kRouteSplash,
-          routes: {
-          AppConstants.kRouteSlideshow: (context) =>
-              const ThemeSlideshowScreen(),
-          AppConstants.kRouteSplash: (context) {
-            final raw = ModalRoute.of(context)?.settings.arguments;
-            final args = raw is SplashRouteArgs
-                ? raw
-                : const SplashRouteArgs();
-            return AppSplashScreen(args: args);
-          },
-          AppConstants.kRouteTerms: (context) {
-            final raw = ModalRoute.of(context)?.settings.arguments;
-            final urls =
-                raw is TermsRouteArgs ? raw.backgroundImageUrls : null;
-            final bg = (urls != null && urls.isNotEmpty) ? urls : null;
-            return TermsAndConditionsScreen(backgroundImageUrls: bg);
-          },
-          AppConstants.kRouteHome: (context) => const ThemeSelectionScreen(),
-          AppConstants.kRouteCapture: (context) => const PhotoCaptureScreen(),
-          AppConstants.kRouteFrameSelect: (context) =>
-              const FrameSelectScreen(),
-          AppConstants.kRouteGenerate: (context) => const PhotoGenerateScreen(),
-          AppConstants.kRouteGenerateProgress: (context) =>
-              const PhotoGenerateProgressScreen(),
-          AppConstants.kRouteReview: (context) => const PhotoReviewScreen(),
-          AppConstants.kRouteResult: (context) => const ResultScreen(),
-          AppConstants.kRouteQrShare: (context) => const QrShareScreen(),
-          AppConstants.kRouteThankYou: (context) => const ThankYouScreen(),
-          AppConstants.kRouteStaffLogin: (context) => const StaffLoginScreen(),
-          AppConstants.kRouteStaffPayments: (context) =>
-              const StaffPaymentsScreen(),
-          AppConstants.kRouteWebView: (context) =>
-              WebViewScreen.fromRouteSettings(
-            ModalRoute.of(context)?.settings,
-          ),
-          },
+          routes: buildAppRoutes(),
         ),
       ),
     );

@@ -8,6 +8,7 @@ import 'package:path/path.dart' as path;
 
 import '../utils/constants.dart';
 import '../utils/logger.dart';
+import 'image_cache_cleanup.dart';
 import 'protected_image_loader.dart';
 
 /// Service for caching theme images to disk for persistent storage
@@ -174,33 +175,11 @@ class ImageCacheService {
         // Sort by modification time (oldest first)
         fileInfo.sort((a, b) => a.stat.modified.compareTo(b.stat.modified));
         
-        // Delete oldest files until under limit
-        int currentSize = totalSize;
-        for (var info in fileInfo) {
-          if (currentSize <= maxSizeBytes) break;
-          
-          try {
-            if (await info.file.exists()) {
-              await info.file.delete();
-              currentSize -= info.stat.size;
-              AppLogger.debug('ImageCacheService: deleted old cache file: ${info.file.path}');
-            }
-          } catch (e, st) {
-            // It's normal for cache files to disappear between `exists()` and `delete()`
-            // (race with another cleanup / OS eviction). Treat "no such file" as a no-op.
-            if (e is FileSystemException && e.osError?.errorCode == 2) {
-              continue;
-            }
-            if (e is PathNotFoundException) {
-              continue;
-            }
-            AppLogger.error(
-              'ImageCacheService: error deleting cache file',
-              error: e,
-              stackTrace: st,
-            );
-          }
-        }
+        evictOldestImageCacheFiles(
+          fileInfo: fileInfo,
+          currentSize: totalSize,
+          maxSizeBytes: maxSizeBytes,
+        );
       }
     } catch (e, st) {
       AppLogger.error(

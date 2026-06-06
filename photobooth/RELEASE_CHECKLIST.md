@@ -98,7 +98,7 @@ Host this at a stable URL (e.g. `https://fotozen.ai/privacy`) — both stores re
 ### 4.3 Apple-specific gotchas
 
 - **Payment for digital content** must use IAP. Since FotoZen photos are arguably a digital good, Apple may push back on offline-only payment. Mitigations: position the print as a physical good (which it is), or accept that the iOS build won't process payment in-app and is operator-mediated. Decide before submission — it's the most common rejection reason for this category.
-- **App Tracking Transparency**: not currently using IDFA, so no `NSUserTrackingUsageDescription` needed. Confirm no analytics SDKs were pulled in via Crashlytics that would change this.
+- **App Tracking Transparency**: not currently using IDFA, so no `NSUserTrackingUsageDescription` needed. Crash reporting uses Bugsnag only (no IDFA).
 - **Encryption export compliance**: standard Flutter app, set `ITSAppUsesNonExemptEncryption=false` in `Info.plist` if not using custom crypto.
 
 ### 4.4 Play-specific gotchas

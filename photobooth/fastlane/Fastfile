@@ -1,142 +1,117 @@
-# This file contains the fastlane.tools configuration
-# You can find the documentation at https://docs.fastlane.tools
-#
-# For a list of all available actions, check out
-#
-#     https://docs.fastlane.tools/actions
-#
-# For a list of all available plugins, check out
-#
-#     https://docs.fastlane.tools/plugins/available-plugins
-#
+# frozen_string_literal: true
 
-# Firebase configuration is now in Appfile
-# Edit fastlane/Appfile to set Firebase tokens, test groups, and release notes
-# Separate configuration for iOS and Android Firebase accounts
+# Fastlane configuration: https://docs.fastlane.tools
+# Firebase settings: fastlane/Appfile
 
-# Helper method to get app version from pubspec.yaml
-def get_app_version
-  # Try multiple paths since Fastlane might run from different directories
-  possible_paths = [
-    File.join(Dir.pwd, "pubspec.yaml"),
-    File.join(Dir.pwd, "..", "pubspec.yaml"),
-    File.expand_path("pubspec.yaml", File.dirname(__FILE__) + "/..")
-  ]
-  
-  pubspec_path = possible_paths.find { |path| File.exist?(path) }
-  
-  if pubspec_path && File.exist?(pubspec_path)
-    version_line = File.readlines(pubspec_path).find { |line| line.strip.start_with?("version:") }
-    if version_line
-      version_match = version_line.match(/version:\s*(.+)/)
-      if version_match
-        version_string = version_match[1].strip
-        # Format is "0.1.0+2" where 0.1.0 is version name and 2 is build number
-        if version_string.include?("+")
-          parts = version_string.split("+")
-          version_name = parts[0].strip
-          version_code = parts[1].strip
-          return { version_name: version_name, version_code: version_code }
-        end
-      end
-    end
-  end
-  return { version_name: "unknown", version_code: "unknown" }
+def find_pubspec_path
+  [
+    File.join(Dir.pwd, 'pubspec.yaml'),
+    File.join(Dir.pwd, '..', 'pubspec.yaml'),
+    File.expand_path('pubspec.yaml', "#{File.dirname(__FILE__)}/..")
+  ].find { |path| File.exist?(path) }
+end
+
+def parse_version_from_pubspec(pubspec_path)
+  return nil unless pubspec_path
+
+  version_line = File.readlines(pubspec_path).find { |line| line.strip.start_with?('version:') }
+  return nil unless version_line
+
+  version_match = version_line.match(/version:\s*(.+)/)
+  return nil unless version_match
+
+  version_string = version_match[1].strip
+  return nil unless version_string.include?('+')
+
+  parts = version_string.split('+')
+  { version_name: parts[0].strip, version_code: parts[1].strip }
+end
+
+def app_version
+  parse_version_from_pubspec(find_pubspec_path) || { version_name: 'unknown', version_code: 'unknown' }
+end
+
+def log_build_version(build_label)
+  info = app_version
+  UI.message("📱 App Version: #{info[:version_name]}")
+  UI.message("🔢 Version Code (Build Number): #{info[:version_code]}")
+  UI.message("🚀 Starting #{build_label}...")
+end
+
+def distribute_android_apk
+  firebase_app_distribution(
+    app: firebase_android_app_id,
+    apk_path: 'build/app/outputs/flutter-apk/photobooth-release.apk',
+    firebase_cli_token: firebase_android_token,
+    groups: firebase_android_test_groups,
+    release_notes: firebase_android_release_notes
+  )
+end
+
+def distribute_android_aab
+  firebase_app_distribution(
+    app: firebase_android_app_id,
+    aab_path: 'build/app/outputs/bundle/release/app-release.aab',
+    firebase_cli_token: firebase_android_token,
+    groups: firebase_android_test_groups,
+    release_notes: firebase_android_release_notes
+  )
+end
+
+def distribute_ios_ipa
+  firebase_app_distribution(
+    app: firebase_ios_app_id,
+    ipa_path: './build/ios/ipa/Runner.ipa',
+    firebase_cli_token: firebase_ios_token,
+    groups: firebase_ios_test_groups,
+    release_notes: firebase_ios_release_notes
+  )
 end
 
 default_platform(:android)
 
 platform :android do
-  desc "Build Android APK"
+  desc 'Build Android APK'
   lane :build_apk do
-    # Print app version and version code before building
-    version_info = get_app_version
-    UI.message("📱 App Version: #{version_info[:version_name]}")
-    UI.message("🔢 Version Code (Build Number): #{version_info[:version_code]}")
-    UI.message("🚀 Starting Android APK build...")
-    
-    sh("flutter build apk --release")
+    log_build_version('Android APK build')
+    sh('flutter build apk --release')
   end
 
-  desc "Build Android App Bundle (AAB)"
+  desc 'Build Android App Bundle (AAB)'
   lane :build_aab do
-    # Print app version and version code before building
-    version_info = get_app_version
-    UI.message("📱 App Version: #{version_info[:version_name]}")
-    UI.message("🔢 Version Code (Build Number): #{version_info[:version_code]}")
-    UI.message("🚀 Starting Android App Bundle (AAB) build...")
-    
-    sh("flutter build appbundle --release")
+    log_build_version('Android App Bundle (AAB) build')
+    sh('flutter build appbundle --release')
   end
 
-  desc "Build and upload Android APK to Firebase App Distribution"
+  desc 'Build and upload Android APK to Firebase App Distribution'
   lane :firebase_android do
-    # Build the APK
     build_apk
-
-    # Upload to Firebase App Distribution
-    # Uses Firebase configuration from Appfile (Android Firebase account)
-    firebase_app_distribution(
-      app: firebase_android_app_id,
-      apk_path: "build/app/outputs/flutter-apk/photobooth-release.apk",
-      firebase_cli_token: firebase_android_token,
-      groups: firebase_android_test_groups,
-      release_notes: firebase_android_release_notes
-    )
+    distribute_android_apk
   end
 
-  desc "Build and upload Android App Bundle to Firebase App Distribution"
+  desc 'Build and upload Android App Bundle to Firebase App Distribution'
   lane :firebase_android_aab do
-    # Build the AAB
     build_aab
-
-    # Upload to Firebase App Distribution
-    # Uses Firebase configuration from Appfile (Android Firebase account)
-    firebase_app_distribution(
-      app: firebase_android_app_id,
-      aab_path: "build/app/outputs/bundle/release/app-release.aab",
-      firebase_cli_token: firebase_android_token,
-      groups: firebase_android_test_groups,
-      release_notes: firebase_android_release_notes
-    )
+    distribute_android_aab
   end
 end
 
 platform :ios do
-  desc "Build iOS IPA"
+  desc 'Build iOS IPA'
   lane :build_ipa do
-    # Print app version and version code before building
-    version_info = get_app_version
-    UI.message("📱 App Version: #{version_info[:version_name]}")
-    UI.message("🔢 Version Code (Build Number): #{version_info[:version_code]}")
-    UI.message("🚀 Starting iOS IPA build...")
-    
-    # Build using Flutter
-    sh("flutter build ipa --release")
+    log_build_version('iOS IPA build')
+    sh('flutter build ipa --release')
   end
 
-  desc "Build and upload iOS IPA to Firebase App Distribution"
+  desc 'Build and upload iOS IPA to Firebase App Distribution'
   lane :firebase_ios do
-    # Build the IPA
     build_ipa
-
-    # Upload to Firebase App Distribution
-    # Uses Firebase configuration from Appfile (iOS Firebase account)
-    # Flutter builds IPA to build/ios/ipa/Runner.ipa
-    firebase_app_distribution(
-      app: firebase_ios_app_id,
-      ipa_path: "./build/ios/ipa/Runner.ipa",
-      firebase_cli_token: firebase_ios_token,
-      groups: firebase_ios_test_groups,
-      release_notes: firebase_ios_release_notes
-    )
+    distribute_ios_ipa
   end
 end
 
-# Combined lane for both platforms
-desc "Build and upload both Android and iOS to Firebase"
+desc 'Build and upload both Android and iOS to Firebase'
 lane :firebase_all do
   firebase_android
   firebase_ios
 end
-

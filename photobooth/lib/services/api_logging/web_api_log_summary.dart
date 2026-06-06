@@ -1,7 +1,9 @@
 import 'package:dio/dio.dart';
 
+import '../../utils/app_strings.dart';
 import 'log_truncator.dart';
-import 'request_formatter.dart';
+import 'payload_size_estimate.dart';
+import 'web_api_error_log_summary.dart';
 
 const _bytes = LogTruncator(maxLoggedJsonLength: 6000);
 
@@ -9,7 +11,7 @@ const _bytes = LogTruncator(maxLoggedJsonLength: 6000);
 /// Avoids [jsonEncode], pretty-print, and deep sanitization on huge maps (same isolate as UI).
 String formatWebApiRequestSummary(RequestOptions options) {
   final buf = StringBuffer();
-  buf.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  buf.writeln(AppStrings.apiLogSeparator);
   buf.writeln('📤 API REQUEST (web summary)');
   buf.writeln('${options.method} ${options.uri}');
   final data = options.data;
@@ -32,7 +34,7 @@ String formatWebApiRequestSummary(RequestOptions options) {
   } else {
     buf.writeln('Body: ${data.runtimeType}');
   }
-  buf.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  buf.writeln(AppStrings.apiLogSeparator);
   return buf.toString();
 }
 
@@ -43,7 +45,7 @@ String formatWebApiResponseSummary(Response<dynamic> response) {
       startTime != null ? DateTime.now().difference(startTime) : null;
 
   final buf = StringBuffer();
-  buf.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  buf.writeln(AppStrings.apiLogSeparator);
   buf.writeln('📥 API RESPONSE (web summary)');
   buf.writeln('Time: ${DateTime.now().toIso8601String()}');
   if (duration != null) {
@@ -69,7 +71,7 @@ String formatWebApiResponseSummary(Response<dynamic> response) {
   } else {
     buf.writeln('Body: ${data.runtimeType}');
   }
-  buf.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  buf.writeln(AppStrings.apiLogSeparator);
   return buf.toString();
 }
 
@@ -79,7 +81,7 @@ String formatWebApiErrorSummary(DioException err) {
       startTime != null ? DateTime.now().difference(startTime) : null;
 
   final buf = StringBuffer();
-  buf.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  buf.writeln(AppStrings.apiLogSeparator);
   buf.writeln('❌ API ERROR (web summary)');
   buf.writeln('Time: ${DateTime.now().toIso8601String()}');
   if (duration != null) {
@@ -91,41 +93,10 @@ String formatWebApiErrorSummary(DioException err) {
   buf.writeln('Type: ${err.type}');
   buf.writeln('Message: ${err.message ?? 'N/A'}');
 
-  final req = err.requestOptions.data;
-  if (req is Map) {
-    final size = estimatePayloadSizeForLogging(req);
-    buf.writeln(
-      'Request body: keys [${req.keys.join(', ')}]'
-      '${size != null ? ' ~${_bytes.formatBytes(size)}' : ''}',
-    );
-  } else if (req is FormData) {
-    buf.writeln(
-      'Request body: FormData (${req.fields.length} fields, ${req.files.length} files)',
-    );
-  } else if (req != null) {
-    buf.writeln('Request body: ${req.runtimeType}');
-  }
+  appendWebApiErrorRequestBody(buf, err.requestOptions.data, _bytes);
+  appendWebApiErrorResponseBody(buf, err.response, _bytes);
 
-  final resp = err.response;
-  if (resp != null) {
-    buf.writeln('Response status: ${resp.statusCode}');
-    final data = resp.data;
-    if (data is Map) {
-      final size = estimatePayloadSizeForLogging(data);
-      buf.writeln(
-        'Response body: keys [${data.keys.join(', ')}]'
-        '${size != null ? ' ~${_bytes.formatBytes(size)}' : ''}',
-      );
-    } else if (data is List) {
-      buf.writeln('Response body: list length=${data.length}');
-    } else if (data is String) {
-      buf.writeln('Response body: string length=${data.length}');
-    } else if (data != null) {
-      buf.writeln('Response body: ${data.runtimeType}');
-    }
-  }
-
-  buf.writeln('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  buf.writeln(AppStrings.apiLogSeparator);
   return buf.toString();
 }
 
