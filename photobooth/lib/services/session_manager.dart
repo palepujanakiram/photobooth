@@ -28,6 +28,8 @@ class SessionData {
   final String? selectedFrameId;
   /// Opaque token from session create; sent as `X-Kiosk-Session-Token` on protected routes.
   final String? kioskAuthToken;
+  /// Authoritative person count from `/api/preprocess-image` (used for theme filtering).
+  final int? personCount;
 
   SessionData({
     required this.id,
@@ -45,7 +47,32 @@ class SessionData {
     this.selectedCategoryId,
     this.selectedFrameId,
     this.kioskAuthToken,
+    this.personCount,
   });
+
+  SessionData copyWith({
+    int? personCount,
+    String? kioskAuthToken,
+  }) {
+    return SessionData(
+      id: id,
+      termsAccepted: termsAccepted,
+      termsAcceptedAt: termsAcceptedAt,
+      termsAcceptedIp: termsAcceptedIp,
+      termsVersion: termsVersion,
+      attemptsUsed: attemptsUsed,
+      generatedImages: generatedImages,
+      expiresAt: expiresAt,
+      kioskId: kioskId,
+      kioskLocation: kioskLocation,
+      userImageUrl: userImageUrl,
+      selectedThemeId: selectedThemeId,
+      selectedCategoryId: selectedCategoryId,
+      selectedFrameId: selectedFrameId,
+      kioskAuthToken: kioskAuthToken ?? this.kioskAuthToken,
+      personCount: personCount ?? this.personCount,
+    );
+  }
 
   /// Get sessionId (alias for id)
   String get sessionId => id;
@@ -67,7 +94,15 @@ class SessionData {
       'selectedCategoryId': selectedCategoryId,
       'selectedFrameId': selectedFrameId,
       if (kioskAuthToken != null) 'kioskAuthToken': kioskAuthToken,
+      if (personCount != null) 'personCount': personCount,
     };
+  }
+
+  static int? _personCountFromJson(Map<String, dynamic> json) {
+    final v = json['personCount'];
+    if (v is int && v > 0) return v;
+    if (v is num && v > 0) return v.round();
+    return null;
   }
 
   static String _requireString(Map<String, dynamic> json, String key) {
@@ -101,6 +136,7 @@ class SessionData {
       selectedCategoryId: json['selectedCategoryId'] as String?,
       selectedFrameId: json['selectedFrameId'] as String?,
       kioskAuthToken: parseKioskAuthToken(json),
+      personCount: _personCountFromJson(json),
     );
   }
 }
@@ -146,6 +182,9 @@ class SessionManager extends ChangeNotifier {
 
   /// Kiosk session auth token for protected API routes (null if no active session).
   String? get kioskAuthToken => currentSession?.kioskAuthToken;
+
+  /// Person count for theme filtering (from preprocess; null until set).
+  int? get personCount => currentSession?.personCount;
 
   /// Check if a session exists
   bool get hasSession => currentSession != null;
@@ -196,8 +235,21 @@ class SessionManager extends ChangeNotifier {
         _currentSession?.kioskAuthToken != null) {
       slim[kKioskAuthTokenJsonKey] = _currentSession!.kioskAuthToken;
     }
+    if (SessionData._personCountFromJson(slim) == null &&
+        _currentSession?.personCount != null) {
+      slim['personCount'] = _currentSession!.personCount;
+    }
     _currentSession = SessionData.fromJson(slim);
     AppLogger.debug('Session stored from API: ${_currentSession!.id}');
+    unawaited(_persistCurrentSession());
+    notifyListeners();
+  }
+
+  /// Updates authoritative person count after `/api/preprocess-image`.
+  void setPersonCount(int count) {
+    final s = _currentSession;
+    if (s == null || count < 1) return;
+    _currentSession = s.copyWith(personCount: count);
     unawaited(_persistCurrentSession());
     notifyListeners();
   }
