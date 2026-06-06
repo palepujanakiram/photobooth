@@ -10,6 +10,7 @@ import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/theme_filter.dart';
 
 String _titleCaseWord(String p) {
   if (p.isEmpty) return p;
@@ -58,10 +59,15 @@ class ThemeViewModel extends ChangeNotifier {
   /// True when API returned successfully but no themes are available (report and show snackbar once).
   bool get showNoThemesMessage => _showNoThemesMessage;
 
-  /// Category tab ids: "All" plus unique categoryIds from themes.
+  /// Themes applicable for the current session person count (client-side filter).
+  List<ThemeModel> get _themesForPersonCount =>
+      ThemeFilter.filterForPersonCount(_themes, _sessionManager.personCount);
+
+  /// Category tab ids: "All" plus unique categoryIds from applicable themes.
   List<String> get categoryIds {
-    if (_themes.isEmpty) return ['All'];
-    final ids = _themes.map((t) => t.categoryId).toSet().toList()..sort();
+    final applicable = _themesForPersonCount;
+    if (applicable.isEmpty) return ['All'];
+    final ids = applicable.map((t) => t.categoryId).toSet().toList()..sort();
     return ['All', ...ids];
   }
 
@@ -97,10 +103,13 @@ class ThemeViewModel extends ChangeNotifier {
   String get selectedCategoryId => _selectedCategoryId;
   String _selectedCategoryId = 'All';
 
-  /// Themes filtered by selected category.
+  /// Themes filtered by person count, then selected category.
   List<ThemeModel> get filteredThemes {
-    if (_selectedCategoryId == 'All') return _themes;
-    return _themes.where((t) => t.categoryId == _selectedCategoryId).toList();
+    final applicable = _themesForPersonCount;
+    if (_selectedCategoryId == 'All') return applicable;
+    return applicable
+        .where((t) => t.categoryId == _selectedCategoryId)
+        .toList();
   }
 
   /// Current carousel center index (for filtered themes).

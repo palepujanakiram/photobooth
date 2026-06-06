@@ -7,6 +7,7 @@ import '../models/app_settings_model.dart';
 import '../models/kiosk_frame_model.dart';
 import '../models/kiosk_info_model.dart';
 import '../models/payment_initiate_result.dart';
+import '../models/preprocess_image_result.dart';
 import '../models/parallel_generation_result.dart';
 import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
@@ -448,11 +449,13 @@ class ApiService {
     String? source,
     String? selectedFrameId,
     bool includeSelectedFrameId = false,
+    bool groupConsentAccepted = true,
   }) async {
     try {
       final response = await _apiClient.acceptTermsAndCreateSession({
         if (kioskCode != null && kioskCode.isNotEmpty) 'kioskCode': kioskCode,
         if (source != null && source.isNotEmpty) 'source': source,
+        'groupConsentAccepted': groupConsentAccepted,
         if (includeSelectedFrameId) 'selectedFrameId': selectedFrameId,
       });
       if (response is Map<String, dynamic>) return response;
@@ -770,25 +773,49 @@ class ApiService {
         onProgress: onProgress,
       );
 
-  /// Preprocesses image (validation, compression, person detection)
-  /// This is a fire-and-forget call - errors are silently ignored
-  /// Should be called immediately after uploading photo to save 2-3 seconds during AI generation
-  void preprocessImage({
+  /// POST `/api/preprocess-image` — server person detection + consensus.
+  ///
+  /// Await before theme selection; use [PreprocessImageResult.personCount] for filtering.
+  Future<PreprocessImageResult> preprocessImage({
     required String sessionId,
     int? clientFaceCount,
-  }) {
-    // Fire-and-forget: don't await, don't handle errors
-    // If preprocessing fails, the generate endpoint will handle it automatically
+  }) async {
     final body = <String, dynamic>{
       'sessionId': sessionId,
-      if (clientFaceCount != null) 'clientFaceCount': clientFaceCount,
+      if (clientFaceCount != null && clientFaceCount > 0)
+        'clientFaceCount': clientFaceCount,
     };
-    _apiClient.preprocessImage(body).then((_) {
-      // Success - preprocessing completed
-      AppLogger.debug('✅ Preprocess image completed');
-    }).catchError((error) {
-      // Silently ignore errors - this is a background optimization
-      AppLogger.error('Preprocess image failed (non-critical): $error', error: error);
-    });
+
+    try {
+      final raw = await _apiClient.preprocessImage(body);
+      if (raw is Map<String, dynamic>) {
+        return PreprocessImageResult.fromJson(raw);
+      }
+      if (raw is Map) {
+        return PreprocessImageResult.fromJson(Map<String, dynamic>.from(raw));
+      }
+      throw ApiException('Unexpected preprocess response from API');
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
+
+      String errorMessage = AppConstants.kErrorApiCall;
+      if (e.response != null) {
+        final responseData = e.response?.data;
+        if (responseData is Map<String, dynamic>) {
+          errorMessage = responseData['message'] as String? ??
+              responseData['error'] as String? ??
+              'API Error: ${e.response?.statusCode}';
+        } else if (responseData is String) {
+          errorMessage = responseData;
+        }
+      }
+      throw ApiException(errorMessage, e.response?.statusCode);
+    }
   }
 }

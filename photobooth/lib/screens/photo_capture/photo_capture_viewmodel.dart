@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'photo_model.dart';
 import '../../services/api_service.dart';
+import '../../services/face_count_service.dart';
 import '../../services/session_manager.dart';
 import '../../utils/constants.dart';
 import '../../utils/device_classifier.dart';
@@ -1642,7 +1643,7 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Uploads photo to session (Step 3)
   /// Called when user taps "Continue" button in Capture Photo screen
-  /// This uploads the photo and triggers preprocessing in the background
+  /// Uploads photo, saves client person count, and awaits server preprocess consensus.
   Future<bool> uploadPhotoToSession() async {
     if (_capturedPhoto == null) {
       _errorMessage = 'No photo captured. Please capture a photo first.';
@@ -1697,14 +1698,19 @@ class CaptureViewModel extends ChangeNotifier {
       );
       
       ErrorReportingManager.log('✅ Image encoded for upload');
+      WebFlowTrace.log('FACE', 'detectFaceCount_start');
+      final clientFaceCount = await detectFaceCountFromXFile(imageFile);
+      WebFlowTrace.log('FACE', 'detectFaceCount_done count=$clientFaceCount');
+
       ErrorReportingManager.log('📤 Uploading processed image to API');
       WebFlowTrace.log('PATCH', 'updateSession_photo_start');
 
-      // Step 2: PATCH /api/sessions/{sessionId} with userImageUrl (data URL) + optional metadata.
+      // PATCH photo + client person count; preprocess returns authoritative count.
       final response = await _apiService.updateSession(
         sessionId: sessionId,
         userImageUrl: base64Image,
         selectedThemeId: null,
+        personCount: clientFaceCount > 0 ? clientFaceCount : null,
         framingMetadata: <String, dynamic>{
           'applied': false,
           'mode': 'auto',
@@ -1723,14 +1729,29 @@ class CaptureViewModel extends ChangeNotifier {
       // Save the response to SessionManager
       _sessionManager.setSessionFromResponse(response);
       WebFlowTrace.log('UPLOAD', 'setSessionFromResponse_done');
-      
-      // Step 3b: Preprocess image in background (fire-and-forget)
-      // This runs validation, compression, and person detection ahead of time
-      // Don't wait for it to complete - it's an optimization
-      ErrorReportingManager.log('🔄 Triggering background image preprocessing');
-      _apiService.preprocessImage(sessionId: sessionId);
-      
-      WebFlowTrace.log('UPLOAD', 'success preprocess_fireAndForget');
+
+      ErrorReportingManager.log('🔄 Awaiting image preprocessing (person count)');
+      WebFlowTrace.log('PREPROCESS', 'preprocessImage_start');
+      final preprocess = await _apiService.preprocessImage(
+        sessionId: sessionId,
+        clientFaceCount: clientFaceCount > 0 ? clientFaceCount : null,
+      );
+      WebFlowTrace.log(
+        'PREPROCESS',
+        'preprocessImage_done personCount=${preprocess.personCount}',
+      );
+
+      if (preprocess.personCount != null && preprocess.personCount! > 0) {
+        _sessionManager.setPersonCount(preprocess.personCount!);
+      } else if (clientFaceCount > 0) {
+        _sessionManager.setPersonCount(clientFaceCount);
+      } else if (!preprocess.success) {
+        throw app_exceptions.ApiException(
+          'Could not verify how many people are in the photo. Please try again.',
+        );
+      }
+
+      WebFlowTrace.log('UPLOAD', 'success');
       return true;
     } on TimeoutException catch (e) {
       WebFlowTrace.log('UPLOAD', 'ERROR TimeoutException $e');
