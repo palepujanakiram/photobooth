@@ -71,6 +71,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  camera_platform_interface: ^2.11.0
   http_mock_adapter: ^0.6.1
   flutter_lints: ^3.0.1
   retrofit_generator: ^9.1.4

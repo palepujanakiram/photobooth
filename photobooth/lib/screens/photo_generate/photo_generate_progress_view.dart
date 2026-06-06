@@ -237,7 +237,8 @@ class _PhotoGenerateProgressScreenState
       headline = 'Finishing touches';
       description = 'Preparing your print-ready portrait';
       imageUrl = aiUrl;
-      bottomAccessory = _buildPostRevealPolishingOverlay(context, vm);
+      bottomAccessory =
+          PostRevealPolishingOverlay(steps: vm.generationRunStepPreviews);
     } else if (aiUrl != null) {
       index = 2;
       stageTitle = '3 · REVEAL';

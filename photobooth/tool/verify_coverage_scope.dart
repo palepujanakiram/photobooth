@@ -145,11 +145,11 @@ void main() {
   var fileLh = 0;
 
   void flushFile() {
-    if (current == null || ignored(current!)) return;
+    if (current == null || ignored(current)) return;
     lf += fileLf;
     lh += fileLh;
     if (fileLh < fileLf) {
-      gaps.add('$current ${fileLh}/${fileLf}');
+      gaps.add('$current $fileLh/$fileLf');
     }
   }
 

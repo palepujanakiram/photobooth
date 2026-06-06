@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:photobooth/screens/theme_selection/theme_model.dart';
 import 'package:photobooth/services/api_client.dart';
 import 'package:photobooth/services/api_generate_metadata_log.dart';
 import 'package:photobooth/services/api_service_helpers.dart';

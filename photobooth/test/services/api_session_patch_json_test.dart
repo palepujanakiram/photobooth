@@ -48,7 +48,7 @@ void main() {
   });
 
   test('stripEchoedUserImageUrlField keeps json when value quote missing', () {
-    final raw = '{"sessionId":"s","userImageUrl":broken}';
+    const raw = '{"sessionId":"s","userImageUrl":broken}';
     expect(stripEchoedUserImageUrlField(raw), raw);
   });
 
