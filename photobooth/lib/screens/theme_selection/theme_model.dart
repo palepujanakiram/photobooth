@@ -33,34 +33,11 @@ class ThemeModel {
   /// Getter for backward compatibility with code that uses .prompt
   String get prompt => promptText;
 
-  ThemeModel copyWith({
-    String? id,
-    String? categoryId,
-    String? categoryName,
-    String? name,
-    String? description,
-    String? promptText,
-    String? negativePrompt,
-    String? sampleImageUrl,
-    bool? isActive,
-    int? displayOrder,
-    String? backgroundColor,
-    String? textColor,
-  }) {
-    return ThemeModel(
-      id: id ?? this.id,
-      categoryId: categoryId ?? this.categoryId,
-      categoryName: categoryName ?? this.categoryName,
-      name: name ?? this.name,
-      description: description ?? this.description,
-      promptText: promptText ?? this.promptText,
-      negativePrompt: negativePrompt ?? this.negativePrompt,
-      sampleImageUrl: sampleImageUrl ?? this.sampleImageUrl,
-      isActive: isActive ?? this.isActive,
-      displayOrder: displayOrder ?? this.displayOrder,
-      backgroundColor: backgroundColor ?? this.backgroundColor,
-      textColor: textColor ?? this.textColor,
-    );
+  /// Returns a copy with fields updated via [update] (Sonar S107).
+  ThemeModel copyWith(void Function(ThemeModelCopyPatch patch) update) {
+    final patch = ThemeModelCopyPatch._from(this);
+    update(patch);
+    return patch.build();
   }
 
   Map<String, dynamic> toJson() {
@@ -119,5 +96,52 @@ class ThemeModel {
 
   @override
   int get hashCode => id.hashCode;
+}
+
+/// Mutable patch for [ThemeModel.copyWith] (Sonar S107).
+class ThemeModelCopyPatch {
+  ThemeModelCopyPatch._from(ThemeModel base)
+      : id = base.id,
+        categoryId = base.categoryId,
+        categoryName = base.categoryName,
+        name = base.name,
+        description = base.description,
+        promptText = base.promptText,
+        negativePrompt = base.negativePrompt,
+        sampleImageUrl = base.sampleImageUrl,
+        isActive = base.isActive,
+        displayOrder = base.displayOrder,
+        backgroundColor = base.backgroundColor,
+        textColor = base.textColor;
+
+  String id;
+  String categoryId;
+  String? categoryName;
+  String name;
+  String description;
+  String promptText;
+  String? negativePrompt;
+  String? sampleImageUrl;
+  bool? isActive;
+  int? displayOrder;
+  String? backgroundColor;
+  String? textColor;
+
+  ThemeModel build() {
+    return ThemeModel(
+      id: id,
+      categoryId: categoryId,
+      categoryName: categoryName,
+      name: name,
+      description: description,
+      promptText: promptText,
+      negativePrompt: negativePrompt,
+      sampleImageUrl: sampleImageUrl,
+      isActive: isActive,
+      displayOrder: displayOrder,
+      backgroundColor: backgroundColor,
+      textColor: textColor,
+    );
+  }
 }
 

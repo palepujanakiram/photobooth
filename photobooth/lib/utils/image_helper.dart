@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:camera/camera.dart';
 import '../services/file_helper.dart';
+import 'image_helper_encode.dart';
 import 'session_user_image_validation.dart';
+import 'app_strings.dart';
 import 'web_flow_trace.dart';
 
 /// Standard format/size for all captured photos (any camera, any platform).
@@ -21,61 +23,9 @@ typedef ImageMetadata = ({int width, int height, String format, int fileSizeByte
 
 typedef _ImageMetadataIsolateArgs = ({Uint8List bytes, String path});
 
-/// Isolate: decode, orient, scale to ≤ [kSessionPatchUserImageMaxLongEdgePx] on long edge,
-/// JPEG [kSessionPatchUserImageJpegQuality], ensure data URL ≤ [SessionUserImageValidation.maxDataUrlCharacterLength].
-String _encodeSessionPatchUserImageUrlIsolate(Uint8List bytes) {
-  final original = img.decodeImage(bytes);
-  if (original == null) {
-    throw Exception('Failed to decode image for session upload');
-  }
-  var work = img.bakeOrientation(original);
-  const cap = kSessionPatchUserImageMaxLongEdgePx;
-  int w = work.width;
-  int h = work.height;
-  if (w > cap || h > cap) {
-    final scale = (w > h) ? cap / w : cap / h;
-    w = (w * scale).round();
-    h = (h * scale).round();
-  }
-  work = img.copyResize(
-    work,
-    width: w,
-    height: h,
-    interpolation: img.Interpolation.cubic,
-  );
-
-  var quality = kSessionPatchUserImageJpegQuality;
-  const maxChars = SessionUserImageValidation.maxDataUrlCharacterLength;
-
-  while (true) {
-    final enc = Uint8List.fromList(img.encodeJpg(work, quality: quality));
-    final url = 'data:image/jpeg;base64,${base64Encode(enc)}';
-    if (url.length <= maxChars) {
-      return url;
-    }
-    quality -= 10;
-    if (quality >= 55) {
-      continue;
-    }
-    w = (w * 0.88).round().clamp(320, w);
-    h = (h * 0.88).round().clamp(320, h);
-    work = img.copyResize(
-      work,
-      width: w,
-      height: h,
-      interpolation: img.Interpolation.cubic,
-    );
-    quality = kSessionPatchUserImageJpegQuality;
-    if (w <= 360 && h <= 360) {
-      final enc2 = Uint8List.fromList(img.encodeJpg(work, quality: 65));
-      final url2 = 'data:image/jpeg;base64,${base64Encode(enc2)}';
-      if (url2.length > maxChars) {
-        throw Exception('Could not compress image under upload size limit');
-      }
-      return url2;
-    }
-  }
-}
+/// Isolate entry: session PATCH user image encoding.
+String _encodeSessionPatchUserImageUrlIsolate(Uint8List bytes) =>
+    encodeSessionPatchUserImageUrl(bytes);
 
 String _extensionFormatLabel(String ext) {
   switch (ext) {
@@ -224,7 +174,7 @@ class ImageHelper {
   }) async {
     final bytes = await imageFile.readAsBytes();
     if (bytes.isEmpty) {
-      throw Exception('Image file is empty');
+      throw Exception(AppStrings.imageFileEmpty);
     }
     return compute(
       _resizeAndEncodeIsolate,
@@ -251,72 +201,8 @@ class ImageHelper {
       int quality,
       int maxSizeBytes,
     }) args,
-  ) {
-    final originalImage = img.decodeImage(args.bytes);
-    if (originalImage == null) {
-      throw Exception('Failed to decode image');
-    }
-
-    int targetWidth = originalImage.width;
-    int targetHeight = originalImage.height;
-
-    if (targetWidth > args.maxWidth || targetHeight > args.maxHeight) {
-      final scale = (targetWidth > targetHeight)
-          ? args.maxWidth / targetWidth
-          : args.maxHeight / targetHeight;
-      targetWidth = (targetWidth * scale).round();
-      targetHeight = (targetHeight * scale).round();
-    }
-
-    if (targetWidth < args.minWidth || targetHeight < args.minHeight) {
-      final scale = (targetWidth < targetHeight)
-          ? args.minWidth / targetWidth
-          : args.minHeight / targetHeight;
-      targetWidth = (targetWidth * scale).round();
-      targetHeight = (targetHeight * scale).round();
-    }
-
-    final resizedImage = img.copyResize(
-      originalImage,
-      width: targetWidth,
-      height: targetHeight,
-      interpolation: img.Interpolation.cubic,
-    );
-
-    int currentQuality = args.quality;
-    Uint8List? encodedBytes;
-
-    while (currentQuality >= 50) {
-      encodedBytes = Uint8List.fromList(
-        img.encodeJpg(resizedImage, quality: currentQuality),
-      );
-      if (encodedBytes.length <= args.maxSizeBytes) break;
-      currentQuality -= 10;
-    }
-
-    if (encodedBytes != null && encodedBytes.length > args.maxSizeBytes) {
-      final additionalScale =
-          (args.maxSizeBytes / encodedBytes.length) * 0.9;
-      final newWidth = (targetWidth * additionalScale).round();
-      final newHeight = (targetHeight * additionalScale).round();
-      final furtherResized = img.copyResize(
-        resizedImage,
-        width: newWidth,
-        height: newHeight,
-        interpolation: img.Interpolation.cubic,
-      );
-      encodedBytes = Uint8List.fromList(
-        img.encodeJpg(furtherResized, quality: 75),
-      );
-    }
-
-    if (encodedBytes == null || encodedBytes.isEmpty) {
-      throw Exception('Failed to encode image');
-    }
-
-    final base64String = base64Encode(encodedBytes);
-    return 'data:image/jpeg;base64,$base64String';
-  }
+  ) =>
+      resizeAndEncodeImageIsolate(args);
 
   /// Encodes the capture for `PATCH /api/sessions/:id` field **`userImageUrl`**.
   ///
@@ -328,7 +214,7 @@ class ImageHelper {
     final bytes = await imageFile.readAsBytes();
     WebFlowTrace.log('ENCODE_IMPL', 'readAsBytes_done len=${bytes.length}');
     if (bytes.isEmpty) {
-      throw Exception('Image file is empty');
+      throw Exception(AppStrings.imageFileEmpty);
     }
 
     if (kIsWeb) {
@@ -349,7 +235,7 @@ class ImageHelper {
     try {
       final bytes = await imageFile.readAsBytes();
       if (bytes.isEmpty) {
-        throw Exception('Image file is empty');
+        throw Exception(AppStrings.imageFileEmpty);
       }
 
       final base64String = base64Encode(bytes);
@@ -368,7 +254,7 @@ class ImageHelper {
   static Future<XFile> rotateImage180(XFile imageFile) async {
     final bytes = await imageFile.readAsBytes();
     if (bytes.isEmpty) {
-      throw Exception('Image file is empty');
+      throw Exception(AppStrings.imageFileEmpty);
     }
     final ext = imageFile.path.toLowerCase().split('.').last;
     final encodedBytes = await compute(

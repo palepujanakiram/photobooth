@@ -12,7 +12,10 @@ import '../../utils/logger.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
 import '../../services/generation_display_preferences.dart';
+import '../../models/parallel_generation_result.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
+
+part 'photo_generate_viewmodel_helpers.dart';
 
 /// Best-effort: session JSON may expose an in-flight generation run id (server-dependent).
 /// Normalizes API `step.stage` to keys in [kPipelineFunnelRecognizedStageKeys].
@@ -314,18 +317,20 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     return _generatedImages.first.imageUrl;
   }
 
-  /// In-frame capture (optional) + core stages + conditional EXIF/C2PA + storage.
-  List<PipelineFunnelSlot> get pipelineFunnelSlots {
+  Map<String, GenerationRunStepPreview> _pipelineStepsByStage() {
     final byStage = <String, GenerationRunStepPreview>{};
     for (final s in _generationRunStepPreviews) {
       final key = canonicalPipelineStageKey(s.stage);
       if (!kPipelineFunnelRecognizedStageKeys.contains(key)) continue;
       byStage[key] = s;
     }
+    return byStage;
+  }
 
-    // Option B: only show stages once we actually *see* them in `steps[]`.
-    // No placeholder slots for stages that never ran / haven't started yet.
-    final stageSequence = <String>[
+  List<String> _visiblePipelineStageKeys(
+    Map<String, GenerationRunStepPreview> byStage,
+  ) {
+    return [
       for (final k in kPipelineFunnelCoreStages)
         if (byStage.containsKey(k)) k,
       if (byStage.containsKey('exif_stamp')) 'exif_stamp',
@@ -333,7 +338,46 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       if (byStage.containsKey(kPipelineFunnelStorageStage))
         kPipelineFunnelStorageStage,
     ];
+  }
 
+  String? _pipelineDisplayPreviewUrl({
+    required String stageKey,
+    required String? rawNonEmpty,
+    required String? lastShownUrl,
+  }) {
+    if (rawNonEmpty == null) return null;
+    final noDedupe = stageKey == 'frame_composite' ||
+        stageKey == kPipelineFunnelStorageStage;
+    if (noDedupe || lastShownUrl == null || rawNonEmpty != lastShownUrl) {
+      return rawNonEmpty;
+    }
+    return null;
+  }
+
+  PipelineFunnelSlot _pipelineSlotForStage({
+    required String stageKey,
+    required GenerationRunStepPreview? step,
+    required String? displayPreviewUrl,
+  }) {
+    final isFinished = step?.isFinished ?? false;
+    final isActive = step?.isActive ?? false;
+    final isPending = step == null || (!isFinished && !isActive);
+    return PipelineFunnelSlot(
+      stageKey: stageKey,
+      label: transformationStepDisplayLabel(stageKey),
+      displayPreviewUrl: displayPreviewUrl,
+      isPending: isPending,
+      isActive: isActive,
+      isFinished: isFinished,
+      isDeviceCapture: false,
+      isMetadataOnlyStage: kPipelineFunnelMetadataOnlyStages.contains(stageKey),
+    );
+  }
+
+  /// In-frame capture (optional) + core stages + conditional EXIF/C2PA + storage.
+  List<PipelineFunnelSlot> get pipelineFunnelSlots {
+    final byStage = _pipelineStepsByStage();
+    final stageSequence = _visiblePipelineStageKeys(byStage);
     String? lastShownUrl;
     final out = <PipelineFunnelSlot>[];
     if (_originalPhoto != null) {
@@ -351,33 +395,16 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       final step = byStage[stageKey];
       final raw = step?.previewUrl?.trim();
       final rawNonEmpty = raw != null && raw.isNotEmpty ? raw : null;
-
-      String? display;
-      if (rawNonEmpty != null) {
-        // Don't dedupe the frame overlay and final storage output; even if the URL
-        // coincidentally matches earlier, users expect to “see” these stages.
-        final noDedupe =
-            stageKey == 'frame_composite' || stageKey == kPipelineFunnelStorageStage;
-        if (noDedupe || lastShownUrl == null || rawNonEmpty != lastShownUrl) {
-          display = rawNonEmpty;
-          lastShownUrl = rawNonEmpty;
-        }
-      }
-
-      final isFinished = step?.isFinished ?? false;
-      final isActive = step?.isActive ?? false;
-      final isPending = step == null || (!isFinished && !isActive);
-      final isMeta = kPipelineFunnelMetadataOnlyStages.contains(stageKey);
-
-      out.add(PipelineFunnelSlot(
+      final display = _pipelineDisplayPreviewUrl(
         stageKey: stageKey,
-        label: transformationStepDisplayLabel(stageKey),
+        rawNonEmpty: rawNonEmpty,
+        lastShownUrl: lastShownUrl,
+      );
+      if (display != null) lastShownUrl = display;
+      out.add(_pipelineSlotForStage(
+        stageKey: stageKey,
+        step: step,
         displayPreviewUrl: display,
-        isPending: isPending,
-        isActive: isActive,
-        isFinished: isFinished,
-        isDeviceCapture: false,
-        isMetadataOnlyStage: isMeta,
       ));
     }
     return List<PipelineFunnelSlot>.unmodifiable(out);
@@ -569,28 +596,8 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     if (sid == null) return;
     _generationRunPollInFlight = true;
     try {
-      if (_polledTransformationRunId == null ||
-          _polledTransformationRunId!.trim().isEmpty) {
-        final sessionRaw = await _apiService.fetchSession(sid);
-        final rid = parseActiveTransformationRunIdFromSession(sessionRaw);
-        if (rid != null) {
-          _polledTransformationRunId = rid;
-          if (_lastTransformationRunId == null ||
-              _lastTransformationRunId!.isEmpty) {
-            _lastTransformationRunId = rid;
-          }
-          notifyListeners();
-        }
-      }
-      final runId = _polledTransformationRunId?.trim();
-      if (runId == null || runId.isEmpty) return;
-
-      final payload = await _apiService.fetchGenerationRun(runId);
-      final next = _parseGenerationRunStepsFromPayload(payload);
-      if (!_generationRunStepsEqual(_generationRunStepPreviews, next)) {
-        _generationRunStepPreviews = next;
-        notifyListeners();
-      }
+      await _pollResolveTransformationRunId(sid);
+      await _pollRefreshGenerationRunStepPreviews();
     } catch (e) {
       AppLogger.debug('Generation run poll: $e');
     } finally {
@@ -598,54 +605,30 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     }
   }
 
-  List<GenerationRunStepPreview> _parseGenerationRunStepsFromPayload(
-    Map<String, dynamic> payload,
-  ) {
-    final stepsRaw = payload['steps'];
-    if (stepsRaw is! List) return [];
-    final rows = <Map<String, dynamic>>[];
-    for (final e in stepsRaw) {
-      if (e is! Map) continue;
-      rows.add(Map<String, dynamic>.from(e));
+  Future<void> _pollResolveTransformationRunId(String sessionId) async {
+    if (_polledTransformationRunId != null &&
+        _polledTransformationRunId!.trim().isNotEmpty) {
+      return;
     }
-    rows.sort((a, b) {
-      final ta = _parseStepStartedAt(a['startedAt']);
-      final tb = _parseStepStartedAt(b['startedAt']);
-      if (ta == null && tb == null) return 0;
-      if (ta == null) return 1;
-      if (tb == null) return -1;
-      return ta.compareTo(tb);
-    });
-    return [
-      for (final s in rows)
-        GenerationRunStepPreview(
-          stage: s['stage']?.toString() ?? 'step',
-          status: s['status']?.toString() ?? '',
-          previewUrl: SecureImageUrl.previewUrlFromStepMap(s),
-        ),
-    ];
+    final sessionRaw = await _apiService.fetchSession(sessionId);
+    final rid = parseActiveTransformationRunIdFromSession(sessionRaw);
+    if (rid == null) return;
+    _polledTransformationRunId = rid;
+    if (_lastTransformationRunId == null || _lastTransformationRunId!.isEmpty) {
+      _lastTransformationRunId = rid;
+    }
+    notifyListeners();
   }
 
-  DateTime? _parseStepStartedAt(dynamic v) {
-    if (v is String && v.trim().isNotEmpty) {
-      return DateTime.tryParse(v.trim());
+  Future<void> _pollRefreshGenerationRunStepPreviews() async {
+    final runId = _polledTransformationRunId?.trim();
+    if (runId == null || runId.isEmpty) return;
+    final payload = await _apiService.fetchGenerationRun(runId);
+    final next = parseGenerationRunStepsFromPayload(payload);
+    if (!generationRunStepsEqual(_generationRunStepPreviews, next)) {
+      _generationRunStepPreviews = next;
+      notifyListeners();
     }
-    return null;
-  }
-
-  bool _generationRunStepsEqual(
-    List<GenerationRunStepPreview> a,
-    List<GenerationRunStepPreview> b,
-  ) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i].stage != b[i].stage ||
-          a[i].status != b[i].status ||
-          a[i].previewUrl != b[i].previewUrl) {
-        return false;
-      }
-    }
-    return true;
   }
 
   void _updateProgress(String message) {
@@ -708,8 +691,8 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _generationRunPollInFlight = true;
     try {
       final payload = await _apiService.fetchGenerationRun(runId);
-      final next = _parseGenerationRunStepsFromPayload(payload);
-      if (!_generationRunStepsEqual(_generationRunStepPreviews, next)) {
+      final next = parseGenerationRunStepsFromPayload(payload);
+      if (!generationRunStepsEqual(_generationRunStepPreviews, next)) {
         _generationRunStepPreviews = next;
         notifyListeners();
       }
@@ -753,125 +736,28 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   void _handleGenerationSseEvent(String event, Map<String, dynamic> data) {
     _ingestRunIdFromSsePayload(data);
-    final commentaryAllowed =
-        _appSettingsManager?.settings?.showGenerationCommentary == true;
-
     switch (event) {
       case 'status':
       case 'start':
-        final count = (data['imageCount'] as num?)?.toInt() ??
-            (data['total'] as num?)?.toInt() ??
-            _parallelSlotCount;
-        if (count > 0) {
-          _liveSlots = List.generate(
-            count,
-            (i) => LiveGenerationSlotState(index: i, loading: true),
-          );
-        }
-        _liveProgress = math.max(_liveProgress, 15.0);
+        _handleSseStatusOrStart(data);
         break;
       case 'step':
-        final step = data['step'] as String?;
-        final st = data['status'] as String?;
-        final previewUrl = step != null ? _extractStepPreviewUrl(data) : null;
-        if (step != null && st == 'active') {
-          _liveCurrentStep = step;
-          _upsertProgressiveStage(
-            step,
-            active: true,
-            complete: false,
-            previewUrl: previewUrl,
-          );
-        }
-        if (step != null && st == 'complete') {
-          final skipped = data['skipped'] == true;
-          int? ms;
-          final rawMs = data['durationMs'];
-          if (rawMs is int) {
-            ms = rawMs;
-          } else if (rawMs is num) {
-            ms = rawMs.toInt();
-          }
-          if (!skipped) {
-            _liveStepDurationsMs[step] = ms ?? _liveStepDurationsMs[step] ?? 0;
-          }
-          _upsertProgressiveStage(
-            step,
-            active: false,
-            complete: !skipped,
-            skipped: skipped,
-            durationMs: ms,
-            previewUrl: previewUrl,
-          );
-          if (_liveCurrentStep == step) {
-            _liveCurrentStep = null;
-          }
-        }
+        _handleSseStep(data);
         break;
       case 'attempt_start':
-        _liveAttempt = (data['attempt'] as num?)?.toInt();
-        _liveTotalAttempts = (data['totalAttempts'] as num?)?.toInt();
+        _handleSseAttemptStart(data);
         break;
       case 'attempt_complete':
-        _liveLastScore = (data['score'] as num?)?.toDouble();
+        _handleSseAttemptComplete(data);
         break;
       case 'image_complete':
-        int? idx;
-        final rawIdx = data['index'];
-        if (rawIdx is int) {
-          idx = rawIdx;
-        } else if (rawIdx is num) {
-          idx = rawIdx.toInt();
-        }
-        final rawUrl = data['imageUrl'] as String?;
-        final q = (data['qualityScore'] as num?)?.toDouble();
-        if (idx != null &&
-            idx >= 0 &&
-            idx < _liveSlots.length &&
-            rawUrl != null &&
-            rawUrl.isNotEmpty) {
-          final next = List<LiveGenerationSlotState>.from(_liveSlots);
-          final url = SecureImageUrl.absolutize(rawUrl);
-          next[idx] = LiveGenerationSlotState(
-            index: idx,
-            loading: false,
-            failed: false,
-            imageUrl: url,
-            qualityScore: q,
-          );
-          _liveSlots = next;
-        }
-        final c = data['completed'];
-        final t = data['total'];
-        if (c is num && t is num && t > 0) {
-          _liveProgress = math.min(92, 15 + (c / t) * 77);
-        }
+        _handleSseImageComplete(data);
         break;
       case 'image_failed':
-        int? idx;
-        final rawIdx = data['index'];
-        if (rawIdx is int) {
-          idx = rawIdx;
-        } else if (rawIdx is num) {
-          idx = rawIdx.toInt();
-        }
-        if (idx != null && idx >= 0 && idx < _liveSlots.length) {
-          final prev = _liveSlots[idx];
-          final next = List<LiveGenerationSlotState>.from(_liveSlots);
-          next[idx] = LiveGenerationSlotState(
-            index: idx,
-            loading: false,
-            failed: true,
-            imageUrl: prev.imageUrl,
-            qualityScore: prev.qualityScore,
-          );
-          _liveSlots = next;
-        }
+        _handleSseImageFailed(data);
         break;
       case 'commentary':
-        if (commentaryAllowed) {
-          _liveCommentary = data['message'] as String?;
-        }
+        _handleSseCommentary(data);
         break;
       case 'commentary_clear':
         _liveCommentary = null;
@@ -883,6 +769,138 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         break;
     }
     notifyListeners();
+  }
+
+  void _handleSseStatusOrStart(Map<String, dynamic> data) {
+    final count = (data['imageCount'] as num?)?.toInt() ??
+        (data['total'] as num?)?.toInt() ??
+        _parallelSlotCount;
+    if (count > 0) {
+      _liveSlots = List.generate(
+        count,
+        (i) => LiveGenerationSlotState(index: i, loading: true),
+      );
+    }
+    _liveProgress = math.max(_liveProgress, 15.0);
+  }
+
+  void _handleSseStep(Map<String, dynamic> data) {
+    final step = data['step'] as String?;
+    if (step == null) return;
+    final st = data['status'] as String?;
+    final previewUrl = _extractStepPreviewUrl(data);
+    if (st == 'active') {
+      _liveCurrentStep = step;
+      _upsertProgressiveStage(
+        step,
+        active: true,
+        complete: false,
+        previewUrl: previewUrl,
+      );
+    }
+    if (st != 'complete') return;
+    final skipped = data['skipped'] == true;
+    final ms = parseSseDurationMs(data['durationMs']);
+    if (!skipped) {
+      _liveStepDurationsMs[step] = ms ?? _liveStepDurationsMs[step] ?? 0;
+    }
+    _upsertProgressiveStage(
+      step,
+      active: false,
+      complete: !skipped,
+      skipped: skipped,
+      durationMs: ms,
+      previewUrl: previewUrl,
+    );
+    if (_liveCurrentStep == step) {
+      _liveCurrentStep = null;
+    }
+  }
+
+  void _handleSseAttemptStart(Map<String, dynamic> data) {
+    _liveAttempt = (data['attempt'] as num?)?.toInt();
+    _liveTotalAttempts = (data['totalAttempts'] as num?)?.toInt();
+  }
+
+  void _handleSseAttemptComplete(Map<String, dynamic> data) {
+    _liveLastScore = (data['score'] as num?)?.toDouble();
+  }
+
+  void _handleSseImageComplete(Map<String, dynamic> data) {
+    final idx = parseSseEventIndex(data['index']);
+    final rawUrl = data['imageUrl'] as String?;
+    final q = (data['qualityScore'] as num?)?.toDouble();
+    if (idx != null &&
+        idx >= 0 &&
+        idx < _liveSlots.length &&
+        rawUrl != null &&
+        rawUrl.isNotEmpty) {
+      final next = List<LiveGenerationSlotState>.from(_liveSlots);
+      next[idx] = LiveGenerationSlotState(
+        index: idx,
+        loading: false,
+        failed: false,
+        imageUrl: SecureImageUrl.absolutize(rawUrl),
+        qualityScore: q,
+      );
+      _liveSlots = next;
+    }
+    final c = data['completed'];
+    final t = data['total'];
+    if (c is num && t is num && t > 0) {
+      _liveProgress = math.min(92, 15 + (c / t) * 77);
+    }
+  }
+
+  void _handleSseImageFailed(Map<String, dynamic> data) {
+    final idx = parseSseEventIndex(data['index']);
+    if (idx == null || idx < 0 || idx >= _liveSlots.length) return;
+    final prev = _liveSlots[idx];
+    final next = List<LiveGenerationSlotState>.from(_liveSlots);
+    next[idx] = LiveGenerationSlotState(
+      index: idx,
+      loading: false,
+      failed: true,
+      imageUrl: prev.imageUrl,
+      qualityScore: prev.qualityScore,
+    );
+    _liveSlots = next;
+  }
+
+  void _handleSseCommentary(Map<String, dynamic> data) {
+    if (_appSettingsManager?.settings?.showGenerationCommentary != true) {
+      return;
+    }
+    _liveCommentary = data['message'] as String?;
+  }
+
+  Future<bool> _completeParallelGeneration(
+    ParallelGenerationResult parallel, {
+    required ThemeModel theme,
+    void Function(bool succeeded)? assignSucceeded,
+    void Function()? onSuccessLog,
+  }) async {
+    if (parallel.firstImageUrl == null) {
+      _errorMessage = 'Failed to generate image';
+      return false;
+    }
+    assignSucceeded?.call(true);
+    _lastTransformationRunId = parallel.runId;
+    try {
+      await _refreshGenerationRunStepsNow()
+          .timeout(const Duration(milliseconds: 900));
+    } catch (_) {}
+    final newImages = generatedImagesFromParallelResult(
+      parallel: parallel,
+      theme: theme,
+      newImageId: _newGeneratedImageId,
+    );
+    _generatedImages = [...newImages, ..._generatedImages];
+    _ensureNewestAlwaysSelected();
+    _triesRemaining--;
+    _clearHeroStamp();
+    onSuccessLog?.call();
+    return true;
   }
 
   /// Generate image with the current theme
@@ -949,40 +967,15 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         return false;
       }
 
-      if (parallel.firstImageUrl != null) {
-        succeeded = true;
-        _lastTransformationRunId = parallel.runId;
-        // Refresh run steps ASAP so the storyboard can show REVEAL before we flip to final.
-        // Best-effort and bounded; never blocks completion for long.
-        try {
-          await _refreshGenerationRunStepsNow()
-              .timeout(const Duration(milliseconds: 900));
-        } catch (_) {}
-        final newImages = <GeneratedImage>[];
-        for (var i = 0; i < parallel.imageUrlsBySlot.length; i++) {
-          final url = parallel.imageUrlsBySlot[i];
-          if (url.isEmpty) continue;
-          newImages.add(GeneratedImage(
-            id: _newGeneratedImageId(i),
-            imageUrl: url,
-            theme: _selectedTheme!,
-            isSelected: true,
-          ));
-        }
-        // Newest generations first (stack order: latest left / first in list).
-        _generatedImages = [...newImages, ..._generatedImages];
-        _ensureNewestAlwaysSelected();
-        _triesRemaining--;
-        _clearHeroStamp();
-        
-        AppLogger.debug('✅ Image generated successfully');
-        ErrorReportingManager.log('Image generated successfully');
-        
-        return true;
-      } else {
-        _errorMessage = 'Failed to generate image';
-        return false;
-      }
+      return await _completeParallelGeneration(
+        parallel,
+        theme: _selectedTheme!,
+        onSuccessLog: () {
+          AppLogger.debug('✅ Image generated successfully');
+          ErrorReportingManager.log('Image generated successfully');
+        },
+        assignSucceeded: (v) => succeeded = v,
+      );
     } on TimeoutException {
       _errorMessage = 'Generation took too long. Please try again.';
       return false;
@@ -994,10 +987,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         stackTrace,
         reason: 'Image generation failed',
       );
-      
-      _errorMessage = e is ApiException
-          ? 'Generation failed: ${e.userFacingMessage}'
-          : 'Generation failed: ${e.toString()}';
+      _errorMessage = generateImageErrorMessage(e);
       return false;
     } finally {
       _stopTimer();
@@ -1111,34 +1101,11 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         return false;
       }
 
-      if (parallel.firstImageUrl != null) {
-        succeeded = true;
-        _lastTransformationRunId = parallel.runId;
-        try {
-          await _refreshGenerationRunStepsNow()
-              .timeout(const Duration(milliseconds: 900));
-        } catch (_) {}
-        final newImages = <GeneratedImage>[];
-        for (var i = 0; i < parallel.imageUrlsBySlot.length; i++) {
-          final url = parallel.imageUrlsBySlot[i];
-          if (url.isEmpty) continue;
-          newImages.add(GeneratedImage(
-            id: _newGeneratedImageId(i),
-            imageUrl: url,
-            theme: newTheme,
-            isSelected: true,
-          ));
-        }
-        _generatedImages = [...newImages, ..._generatedImages];
-        _ensureNewestAlwaysSelected();
-        _triesRemaining--;
-        _clearHeroStamp();
-        
-        return true;
-      } else {
-        _errorMessage = 'Failed to generate image';
-        return false;
-      }
+      return await _completeParallelGeneration(
+        parallel,
+        theme: newTheme,
+        assignSucceeded: (v) => succeeded = v,
+      );
     } on TimeoutException {
       _errorMessage = 'Generation took too long. Please try again.';
       return false;
@@ -1150,12 +1117,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         stackTrace,
         reason: 'Try different style failed',
       );
-      
-      _errorMessage = e is ApiException
-          ? e.userFacingMessage
-          : (e.toString().contains('Status 500')
-              ? 'Server error. Please try again or start over.'
-              : e.toString());
+      _errorMessage = tryDifferentStyleErrorMessage(e);
       return false;
     } finally {
       _stopTimer();

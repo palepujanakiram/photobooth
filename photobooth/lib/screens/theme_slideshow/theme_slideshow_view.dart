@@ -2,8 +2,9 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import '../../utils/logger.dart';
 import 'package:provider/provider.dart';
+import 'theme_slideshow_layout.dart';
+import 'theme_slideshow_timer_helpers.dart';
 import 'theme_slideshow_viewmodel.dart';
 import '../terms_and_conditions/terms_and_conditions_view.dart';
 import '../../utils/constants.dart';
@@ -105,10 +106,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
   }
 
   void _startSlideshow() {
-    // Use preloaded image URLs
-    final imageUrls = _viewModel.preloadedImageUrls.isNotEmpty
-        ? _viewModel.preloadedImageUrls
-        : _viewModel.getSampleImageUrls();
+    final imageUrls = _displayUrlsFor(_viewModel);
     if (imageUrls.isEmpty) return;
 
     // Set initial random transition
@@ -124,44 +122,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
     }
 
     _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        if (identical(_timer, timer)) _timer = null;
-        return;
-      }
-
-      // Check if ViewModel is still valid (not disposed)
-      try {
-        // Check if all images are still loaded
-        if (!_viewModel.areAllImagesLoaded) {
-          timer.cancel();
-          if (identical(_timer, timer)) _timer = null;
-          return;
-        }
-
-        final imageUrls = _viewModel.preloadedImageUrls.isNotEmpty
-            ? _viewModel.preloadedImageUrls
-            : _viewModel.getSampleImageUrls();
-        if (imageUrls.isEmpty) {
-          timer.cancel();
-          if (identical(_timer, timer)) _timer = null;
-          return;
-        }
-
-        final nextIndex = (_currentIndex + 1) % imageUrls.length;
-        // Select a new random transition for this change
-        if (mounted) {
-          setState(() {
-            _currentTransition = TransitionSelector.getRandomTransition();
-            _currentIndex = nextIndex;
-          });
-        }
-      } catch (e) {
-        // ViewModel might be disposed, cancel timer
-        AppLogger.debug('Error in slideshow timer: $e');
-        timer.cancel();
-        if (identical(_timer, timer)) _timer = null;
-      }
+      _onSlideshowTimerTick(timer);
     });
   }
 
@@ -254,11 +215,49 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
     }
   }
 
+  List<String> _displayUrlsFor(ThemeSlideshowViewModel viewModel) {
+    return selectSlideshowDisplayUrls(
+      sampleUrls: viewModel.getSampleImageUrls(),
+      preloadedUrls: viewModel.preloadedImageUrls,
+    );
+  }
+
+  void _onSlideshowTimerTick(Timer timer) {
+    if (!mounted) {
+      timer.cancel();
+      if (identical(_timer, timer)) _timer = null;
+      return;
+    }
+    try {
+      final imageUrls = _displayUrlsFor(_viewModel);
+      if (!themeSlideshowShouldAdvanceTick(
+        viewModel: _viewModel,
+        imageUrls: imageUrls,
+      )) {
+        timer.cancel();
+        if (identical(_timer, timer)) _timer = null;
+        return;
+      }
+      final nextIndex = themeSlideshowNextIndex(
+        currentIndex: _currentIndex,
+        imageUrls: imageUrls,
+      );
+      if (nextIndex == null) return;
+      if (mounted) {
+        setState(() {
+          _currentTransition = TransitionSelector.getRandomTransition();
+          _currentIndex = nextIndex;
+        });
+      }
+    } catch (e) {
+      themeSlideshowLogTimerError(e);
+      timer.cancel();
+      if (identical(_timer, timer)) _timer = null;
+    }
+  }
+
   void _onTap() {
-    // Use image URLs from themes, prefer preloaded if available
-    final imageUrls = _viewModel.preloadedImageUrls.isNotEmpty
-        ? _viewModel.preloadedImageUrls
-        : _viewModel.getSampleImageUrls();
+    final imageUrls = _displayUrlsFor(_viewModel);
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -267,6 +266,206 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildLoadingIndicator() {
+    return const Center(
+      child: CircularProgressIndicator(color: Colors.white),
+    );
+  }
+
+  Widget _buildNoImagesMessage() {
+    return const Center(
+      child: Text(
+        'No images available',
+        style: TextStyle(color: Colors.white, fontSize: 16),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(
+    BuildContext context,
+    ThemeSlideshowViewModel viewModel,
+  ) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline, size: 64, color: Colors.white),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              viewModel.errorMessage ?? 'Failed to load themes',
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CupertinoButton(
+                onPressed: () => _retryFetch(context, viewModel),
+                child: const Text('Retry'),
+              ),
+              CupertinoButton(
+                onPressed: () {
+                  if (!mounted) return;
+                  Navigator.of(context).pushNamed(AppConstants.kRouteTerms);
+                },
+                child: const Text('Continue'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _retryFetch(BuildContext context, ThemeSlideshowViewModel viewModel) {
+    if (!mounted) return;
+    final currentContext = context;
+    viewModel.fetchThemes().then((_) {
+      if (mounted && currentContext.mounted) {
+        viewModel.preloadImages(currentContext).then((_) {
+          if (mounted) _startSlideshow();
+        });
+      }
+    });
+  }
+
+  Widget _buildBrandOverlay(SlideshowLayoutMetrics metrics) {
+    return Center(
+      child: IgnorePointer(
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: metrics.overlayPaddingH,
+            vertical: metrics.overlayPaddingV,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(metrics.overlayBorderRadius),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                AppConstants.kBrandAppTitle,
+                style: TextStyle(
+                  fontSize: metrics.brandTitleSize,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              SizedBox(height: metrics.brandTitleGap),
+              Text(
+                'Touch anywhere to start',
+                style: TextStyle(
+                  fontSize: metrics.brandSubtitleSize,
+                  fontWeight: FontWeight.normal,
+                  color: Colors.white,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSlideshowImage(
+    ThemeSlideshowViewModel viewModel,
+    List<String> displayUrls,
+  ) {
+    return Positioned.fill(
+      child: AnimatedSwitcher(
+        duration: viewModel.areAllImagesLoaded
+            ? TransitionSelector.getTransitionDuration(_isTablet)
+            : Duration.zero,
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          if (viewModel.areAllImagesLoaded) {
+            return _buildTransition(child, animation);
+          }
+          return child;
+        },
+        child: Container(
+          key: ValueKey<int>(_currentIndex),
+          width: double.infinity,
+          height: double.infinity,
+          decoration: const BoxDecoration(color: Colors.black),
+          child: CachedNetworkImage(
+            imageUrl: displayUrls[_currentIndex % displayUrls.length],
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+            placeholder: const ColoredBox(
+              color: Colors.black,
+              child: Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+            ),
+            errorWidget: const _SlideshowImageErrorPlaceholder(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSlideshowStack(
+    ThemeSlideshowViewModel viewModel,
+    List<String> displayUrls,
+    SlideshowLayoutMetrics metrics,
+  ) {
+    return GestureDetector(
+      onTap: _onTap,
+      child: SizedBox.expand(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _buildSlideshowImage(viewModel, displayUrls),
+            Positioned(
+              left: 0,
+              bottom: 0,
+              child: SafeArea(
+                top: false,
+                bottom: true,
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    left: metrics.edgePaddingLeft,
+                    bottom: metrics.edgePaddingBottom,
+                  ),
+                  child: _buildThemeName(viewModel, displayUrls, metrics),
+                ),
+              ),
+            ),
+            _buildBrandOverlay(metrics),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget? _buildSlideshowBody(
+    BuildContext context,
+    ThemeSlideshowViewModel viewModel,
+    bool isLandscape,
+  ) {
+    if (viewModel.isLoading) return _buildLoadingIndicator();
+    if (viewModel.hasError) return _buildErrorState(context, viewModel);
+
+    final imageUrls = viewModel.getSampleImageUrls();
+    if (imageUrls.isEmpty) return _buildNoImagesMessage();
+    if (!viewModel.isFirstImageLoaded) return _buildLoadingIndicator();
+
+    final displayUrls = _displayUrlsFor(viewModel);
+    final metrics = SlideshowLayoutMetrics(
+      isLandscape: isLandscape,
+      isTablet: _isTablet,
+    );
+    return _buildSlideshowStack(viewModel, displayUrls, metrics);
   }
 
   @override
@@ -288,253 +487,35 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
             height: double.infinity,
             color: Colors.black,
             child: Consumer<ThemeSlideshowViewModel>(
-            builder: (context, viewModel, child) {
-            if (viewModel.isLoading) {
-              return const Center(
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                ),
-              );
-            }
-
-            if (viewModel.hasError) {
-              return Stack(
-                children: [
-                  Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          size: 64,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(height: 16),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Text(
-                            viewModel.errorMessage ?? 'Failed to load themes',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            CupertinoButton(
-                              onPressed: () {
-                                if (!mounted) return;
-                                final currentContext = context;
-                                viewModel.fetchThemes().then((_) {
-                                  if (mounted && currentContext.mounted) {
-                                    viewModel.preloadImages(currentContext).then((_) {
-                                      if (mounted) {
-                                        _startSlideshow();
-                                      }
-                                    });
-                                  }
-                                });
-                              },
-                              child: const Text('Retry'),
-                            ),
-                            CupertinoButton(
-                              onPressed: () {
-                                if (!mounted) return;
-                                Navigator.of(context).pushNamed(
-                                  AppConstants.kRouteTerms,
-                                );
-                              },
-                              child: const Text('Continue'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            }
-
-            // Get image URLs
-            final imageUrls = viewModel.getSampleImageUrls();
-            if (imageUrls.isEmpty) {
-              return const Center(
-                child: Text(
-                  'No images available',
-                  style: TextStyle(color: Colors.white, fontSize: 16),
-                ),
-              );
-            }
-
-            // Show first image immediately if loaded, otherwise show loading
-            if (!viewModel.isFirstImageLoaded) {
-              return const Center(
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                ),
-              );
-            }
-
-            // Use preloaded URLs if available, otherwise use all URLs
-            final displayUrls = viewModel.preloadedImageUrls.isNotEmpty
-                ? viewModel.preloadedImageUrls
-                : imageUrls;
-
-            return GestureDetector(
-              onTap: _onTap,
-              child: SizedBox.expand(
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // Slideshow images - fills entire screen
-                    Positioned.fill(
-                      child: AnimatedSwitcher(
-                        // Only animate if all images are loaded, otherwise just show first image
-                        duration: viewModel.areAllImagesLoaded
-                            ? TransitionSelector.getTransitionDuration(_isTablet)
-                            : Duration.zero,
-                        transitionBuilder: (Widget child, Animation<double> animation) {
-                          // Only show transitions if all images are loaded
-                          if (viewModel.areAllImagesLoaded) {
-                            return _buildTransition(child, animation);
-                          }
-                          return child; // No transition, just show the image
-                        },
-                        child: Container(
-                          key: ValueKey<int>(_currentIndex),
-                          width: double.infinity,
-                          height: double.infinity,
-                          decoration: const BoxDecoration(
-                            color: Colors.black,
-                          ),
-                          child: CachedNetworkImage(
-                            imageUrl: displayUrls[_currentIndex % displayUrls.length],
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: double.infinity,
-                            placeholder: Container(
-                              color: Colors.black,
-                              child: const Center(
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                            errorWidget: Container(
-                              color: Colors.black,
-                              child: const Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.image_not_supported,
-                                      size: 64,
-                                      color: Colors.white54,
-                                    ),
-                                    SizedBox(height: 16),
-                                    Text(
-                                      'Image unavailable',
-                                      style: TextStyle(
-                                        color: Colors.white54,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Theme name on the left side (compact in landscape)
-                    Positioned(
-                      left: 0,
-                      bottom: 0,
-                      child: SafeArea(
-                        top: false,
-                        bottom: true,
-                        child: Padding(
-                          padding: EdgeInsets.only(
-                            left: isLandscape ? 12.0 : (_isTablet ? 32.0 : 20.0),
-                            bottom: isLandscape ? 12.0 : (_isTablet ? 40.0 : 24.0),
-                          ),
-                          child: _buildThemeName(viewModel, displayUrls, isLandscape),
-                        ),
-                      ),
-                    ),
-                    // Centered overlay (compact in landscape)
-                    Center(
-                      child: IgnorePointer(
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isLandscape ? 20.0 : (_isTablet ? 48.0 : 32.0),
-                            vertical: isLandscape ? 16.0 : (_isTablet ? 32.0 : 24.0),
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.6),
-                            borderRadius: BorderRadius.circular(isLandscape ? 10.0 : (_isTablet ? 16.0 : 12.0)),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                AppConstants.kBrandAppTitle,
-                                style: TextStyle(
-                                  fontSize: isLandscape ? 20.0 : (_isTablet ? 28.0 : 24.0),
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                              SizedBox(height: isLandscape ? 6.0 : (_isTablet ? 12.0 : 8.0)),
-                              Text(
-                                'Touch anywhere to start',
-                                style: TextStyle(
-                                  fontSize: isLandscape ? 14.0 : (_isTablet ? 18.0 : 16.0),
-                                  fontWeight: FontWeight.normal,
-                                  color: Colors.white,
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-            },
-          ),
+              builder: (context, viewModel, _) {
+                return _buildSlideshowBody(context, viewModel, isLandscape) ??
+                    const SizedBox.shrink();
+              },
+            ),
         ),
         ),
       ),
     );
   }
 
-  Widget _buildThemeName(ThemeSlideshowViewModel viewModel, List<String> displayUrls, [bool compact = false]) {
+  Widget _buildThemeName(
+    ThemeSlideshowViewModel viewModel,
+    List<String> displayUrls,
+    SlideshowLayoutMetrics metrics,
+  ) {
     if (displayUrls.isEmpty || viewModel.themes.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    // Get the current image URL
     final currentImageUrl = displayUrls[_currentIndex % displayUrls.length];
-    
-    // Use ViewModel method to get the theme for this image URL
     final currentTheme = viewModel.getThemeForImageUrl(currentImageUrl);
 
     if (currentTheme == null) {
       return const SizedBox.shrink();
     }
 
-    final titleSize = compact ? 22.0 : (_isTablet ? 32.0 : 28.0);
-    final descSize = compact ? 14.0 : (_isTablet ? 18.0 : 16.0);
+    final titleSize = metrics.themeTitleSize;
+    final descSize = metrics.themeDescSize;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -556,7 +537,7 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
           ),
         ),
         if (currentTheme.description.isNotEmpty) ...[
-          SizedBox(height: compact ? 4.0 : (_isTablet ? 8.0 : 4.0)),
+          SizedBox(height: metrics.themeDescGap),
           Text(
             currentTheme.description,
             style: TextStyle(
@@ -577,5 +558,28 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
       ],
     );
   }
+}
 
+class _SlideshowImageErrorPlaceholder extends StatelessWidget {
+  const _SlideshowImageErrorPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return const ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.image_not_supported, size: 64, color: Colors.white54),
+            SizedBox(height: 16),
+            Text(
+              'Image unavailable',
+              style: TextStyle(color: Colors.white54, fontSize: 16),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

@@ -13,8 +13,8 @@ import 'api_logging/web_api_log_summary.dart';
 class ApiLoggingInterceptor extends Interceptor {
   static const _sanitizer = PayloadSanitizer(maxLoggedStringLength: 2000);
   static const _truncator = LogTruncator(maxLoggedJsonLength: 6000);
-  static const _requestFormatter = ApiRequestFormatter(_sanitizer, _truncator);
-  static const _responseFormatter = ApiResponseFormatter(_sanitizer, _truncator);
+  static final _requestFormatter = ApiRequestFormatter(_sanitizer, _truncator);
+  static final _responseFormatter = ApiResponseFormatter(_sanitizer, _truncator);
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
@@ -107,16 +107,18 @@ class ApiLoggingInterceptor extends Interceptor {
         'error_message': err.message ?? 'No message',
         'status_code': err.response?.statusCode?.toString() ?? 'none',
         'status_message': err.response?.statusMessage ?? 'none',
-        'response_data': err.response?.data != null
-            ? (kIsWeb
-                ? webSafeResponseDataSnapshot(err.response?.data)
-                : _sanitizer.sanitizeData(err.response?.data))
-            : 'none',
+        'response_data': _errorResponseDataSnapshot(err.response?.data),
         'duration_ms': duration?.inMilliseconds.toString() ?? 'unknown',
         'timestamp': DateTime.now().toIso8601String(),
       },
     );
     
     handler.next(err);
+  }
+
+  Object _errorResponseDataSnapshot(Object? data) {
+    if (data == null) return 'none';
+    if (kIsWeb) return webSafeResponseDataSnapshot(data) ?? 'none';
+    return _sanitizer.sanitizeData(data);
   }
 }

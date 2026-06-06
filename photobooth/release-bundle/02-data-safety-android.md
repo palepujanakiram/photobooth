@@ -42,7 +42,7 @@ The Play Console "Data safety" form is broken into sections — answer each as b
 | **App activity** | In-app search history | ❌ No | — | — | — | — |
 | **App activity** | Other user-generated content | ❌ No | — | — | — | — |
 | **Web browsing** | — | ❌ No | — | — | — | — |
-| **App info & performance** | Crash logs | ✅ Yes | ✅ Yes (Firebase Crashlytics) | ❌ Required | Analytics, app functionality | Standard Firebase Crashlytics; no PII |
+| **App info & performance** | Crash logs | ✅ Yes | ✅ Yes (Bugsnag) | ❌ Required | Analytics, app functionality | Bugsnag crash reports; no PII |
 | **App info & performance** | Diagnostics | ✅ Yes | ✅ Yes (Firebase) | ❌ Required | Analytics | Performance metrics |
 | **App info & performance** | Other app performance data | ❌ No | — | — | — | — |
 | **Device or other IDs** | Device or other IDs | ✅ Yes (kiosk binding only) | ❌ No | ❌ Required | App functionality (link to a kiosk) | Internal kiosk identifier — not advertising ID |
@@ -59,7 +59,7 @@ The Play Console "Data safety" form is broken into sections — answer each as b
 | Third party | Data shared | Purpose |
 |---|---|---|
 | **Cashfree Payments** | Transaction metadata, payment instrument type | Payment processing |
-| **Google (Firebase Crashlytics)** | Crash logs, device model, OS version | Crash reporting |
+| **Bugsnag** | Crash logs, device model, OS version | Crash reporting |
 | **Google (Firebase Cloud Messaging)** | FCM token (notification only) | Operational notifications to kiosk |
 | **Supabase / Google Cloud** | Photos, generated images (auto-deleted ≤15 min after print) | Storage during the live session |
 

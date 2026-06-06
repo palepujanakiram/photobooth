@@ -1,3 +1,5 @@
+rootProject.name = "photobooth"
+
 pluginManagement {
     val flutterSdkPath =
         run {

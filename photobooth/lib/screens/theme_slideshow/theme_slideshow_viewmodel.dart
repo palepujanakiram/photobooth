@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import '../../services/theme_manager.dart';
 import '../../services/image_cache_service.dart';
 import '../../utils/exceptions.dart';
-import '../../utils/app_config.dart';
 import '../../utils/logger.dart';
+import '../../utils/theme_image_urls.dart';
 import '../theme_selection/theme_model.dart';
 
 class ThemeSlideshowViewModel extends ChangeNotifier {
@@ -74,30 +76,12 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
       return null;
     }
 
-    // Try to match by constructing the full URL from theme's sampleImageUrl
     for (final theme in activeThemes) {
-      final themeImageUrl = theme.sampleImageUrl!.trim();
-      String fullThemeUrl;
+      final fullThemeUrl =
+          resolveThemeSampleImageUrl(theme.sampleImageUrl!);
+      final normalizedThemeUrl = normalizeThemeImageUrl(fullThemeUrl);
+      final normalizedImageUrl = normalizeThemeImageUrl(imageUrl);
 
-      // Construct full URL the same way getSampleImageUrls() does
-      if (themeImageUrl.startsWith('http://') ||
-          themeImageUrl.startsWith('https://')) {
-        fullThemeUrl = themeImageUrl;
-      } else {
-        // Prepend base URL if it's a relative path
-        final baseUrl = AppConfig.baseUrl.endsWith('/')
-            ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
-            : AppConfig.baseUrl;
-        final relativePath =
-            themeImageUrl.startsWith('/') ? themeImageUrl : '/$themeImageUrl';
-        fullThemeUrl = '$baseUrl$relativePath';
-      }
-
-      // Normalize both URLs for comparison (remove query params, fragments, etc.)
-      final normalizedThemeUrl = _normalizeUrl(fullThemeUrl);
-      final normalizedImageUrl = _normalizeUrl(imageUrl);
-
-      // Check if URLs match
       if (normalizedImageUrl == normalizedThemeUrl ||
           normalizedImageUrl.contains(normalizedThemeUrl) ||
           normalizedThemeUrl.contains(normalizedImageUrl)) {
@@ -106,16 +90,6 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
     }
 
     return null;
-  }
-
-  /// Normalizes a URL by removing query parameters and fragments
-  String _normalizeUrl(String url) {
-    try {
-      final uri = Uri.parse(url);
-      return '${uri.scheme}://${uri.host}${uri.path}';
-    } catch (e) {
-      return url;
-    }
   }
 
   /// Called when ThemeManager updates themes
@@ -168,34 +142,12 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
             theme.sampleImageUrl != null &&
             theme.sampleImageUrl!.isNotEmpty)
         .map((theme) {
-          final imageUrl = theme.sampleImageUrl!.trim();
-          // Check if URL is already absolute
-          if (imageUrl.startsWith('http://') ||
-              imageUrl.startsWith('https://')) {
-            // Validate URL format
-            try {
-              Uri.parse(imageUrl);
-              return imageUrl;
-            } catch (e) {
-              AppLogger.debug('Invalid absolute URL format: $imageUrl');
-              return null;
-            }
-          }
-          // Prepend base URL if it's a relative path
-          final baseUrl = AppConfig.baseUrl.endsWith('/')
-              ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
-              : AppConfig.baseUrl;
-          final relativePath =
-              imageUrl.startsWith('/') ? imageUrl : '/$imageUrl';
-          final fullUrl = '$baseUrl$relativePath';
-          // Validate constructed URL
-          try {
-            Uri.parse(fullUrl);
+          final fullUrl = resolveThemeSampleImageUrl(theme.sampleImageUrl!);
+          if (isValidHttpUrl(fullUrl)) {
             return fullUrl;
-          } catch (e) {
-            AppLogger.debug('Invalid constructed URL format: $fullUrl');
-            return null;
           }
+          AppLogger.debug('Invalid theme sample URL: $fullUrl');
+          return null;
         })
         .whereType<String>() // Filter out null values
         .toList();
@@ -224,117 +176,12 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Step 1: Load first image immediately (cache it)
       if (imageUrls.isNotEmpty && !_isDisposed) {
-        try {
-          // Cache the first image
-          final cachedFile =
-              await _imageCacheService.cacheImage(imageUrls[0]).timeout(
-            const Duration(seconds: 10),
-            onTimeout: () {
-              AppLogger.debug('First image cache timeout');
-              throw TimeoutException(
-                  'First image cache timeout', const Duration(seconds: 10));
-            },
-          );
-
-          if (_isDisposed) return;
-
-          // Also precache for immediate display
-          // Check if context is still mounted before using it after async operation
-          if (!context.mounted) return;
-          try {
-            if (cachedFile == null) {
-              await precacheImage(NetworkImage(imageUrls[0]), context).timeout(
-                const Duration(seconds: 10),
-              );
-            } else {
-              // Precache the cached file
-              await precacheImage(FileImage(cachedFile), context).timeout(
-                const Duration(seconds: 10),
-              );
-            }
-          } catch (e) {
-            // Precache failure is not critical - image will load when displayed
-            AppLogger.debug('Precache failed for first image: $e');
-          }
-
-          _isFirstImageLoaded = true;
-          _preloadedImageUrls = [imageUrls[0]];
-          notifyListeners();
-        } catch (e) {
-          if (_isDisposed) return;
-          AppLogger.debug(
-              'Failed to cache/preload first image: ${imageUrls[0]} - Error: $e');
-          // Continue anyway - image might still load when displayed
-          _isFirstImageLoaded = true;
-          _preloadedImageUrls = [imageUrls[0]];
-          notifyListeners();
-        }
+        await _preloadFirstSlideshowImage(context, imageUrls[0]);
       }
-
-      // Step 2: Cache and preload remaining images in parallel
-      if (imageUrls.length > 1 && !_isDisposed) {
-        // Capture context before async operations
-        final currentContext = context;
-        final remainingUrls = imageUrls.sublist(1);
-        final preloadFutures = remainingUrls.map((url) async {
-          if (_isDisposed) return null;
-          try {
-            // Cache the image first
-            final cachedFile = await _imageCacheService.cacheImage(url).timeout(
-              const Duration(seconds: 10),
-              onTimeout: () {
-                AppLogger.debug('Image cache timeout for: $url');
-                throw TimeoutException(
-                    'Image cache timeout', const Duration(seconds: 10));
-              },
-            );
-
-            // Precache for immediate display
-            // Check if context is still mounted before using it after async operation
-            if (!currentContext.mounted) return null;
-            try {
-              if (cachedFile != null) {
-                await precacheImage(FileImage(cachedFile), currentContext)
-                    .timeout(
-                  const Duration(seconds: 10),
-                );
-              } else {
-                // Fallback to network precache
-                await precacheImage(NetworkImage(url), currentContext).timeout(
-                  const Duration(seconds: 10),
-                );
-              }
-            } catch (e) {
-              // Precache failure is not critical - image will load when displayed
-              AppLogger.debug('Precache failed for $url: $e');
-            }
-
-            return url; // Return URL if successful
-          } catch (e) {
-            // Log error but don't fail the entire preload
-            AppLogger.debug('Failed to cache/preload image: $url - Error: $e');
-            return null; // Return null for failed images
-          }
-        }).toList();
-
-        // Wait for all remaining images to preload
-        final results = await Future.wait(preloadFutures);
-
-        if (_isDisposed) return;
-
-        // Add successfully preloaded images to the list
-        final successfulUrls = results.whereType<String>().toList();
-        _preloadedImageUrls = [imageUrls[0], ...successfulUrls];
-
-        // If some images failed, still include them (they might load when displayed)
-        if (successfulUrls.length < remainingUrls.length) {
-          final failedUrls = remainingUrls
-              .where((url) => !successfulUrls.contains(url))
-              .toList();
-          _preloadedImageUrls = [..._preloadedImageUrls, ...failedUrls];
-        }
+      if (!context.mounted || _isDisposed) return;
+      if (imageUrls.length > 1) {
+        await _preloadRemainingSlideshowImages(context, imageUrls);
       }
 
       if (_isDisposed) return;
@@ -352,5 +199,98 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
       _isPreloadingImages = false;
       notifyListeners();
     }
+  }
+
+  /// Cache + precache index 0 so the slideshow can start animating ASAP.
+  Future<void> _preloadFirstSlideshowImage(
+    BuildContext context,
+    String url,
+  ) async {
+    try {
+      final cachedFile = await _cacheWithTimeout(url, label: 'First image');
+      if (_isDisposed || !context.mounted) return;
+      await _precacheSlideshowUrl(context, url, cachedFile);
+      _markFirstImageReady(url);
+    } catch (e) {
+      if (_isDisposed) return;
+      AppLogger.debug('Failed to cache/preload first image: $url - Error: $e');
+      _markFirstImageReady(url);
+    }
+  }
+
+  /// Parallel preload for slides 1..n; keeps first URL even if later frames fail.
+  Future<void> _preloadRemainingSlideshowImages(
+    BuildContext context,
+    List<String> imageUrls,
+  ) async {
+    final remainingUrls = imageUrls.sublist(1);
+    final results = await Future.wait(
+      remainingUrls.map((url) => _preloadOneSlideshowImage(context, url)),
+    );
+    if (_isDisposed) return;
+
+    final successfulUrls = results.whereType<String>().toList();
+    _preloadedImageUrls = [imageUrls[0], ...successfulUrls];
+    if (successfulUrls.length < remainingUrls.length) {
+      final failedUrls = remainingUrls
+          .where((u) => !successfulUrls.contains(u))
+          .toList();
+      _preloadedImageUrls = [..._preloadedImageUrls, ...failedUrls];
+    }
+  }
+
+  Future<String?> _preloadOneSlideshowImage(
+    BuildContext context,
+    String url,
+  ) async {
+    if (_isDisposed) return null;
+    try {
+      final cachedFile = await _cacheWithTimeout(url);
+      if (!context.mounted) return null;
+      await _precacheSlideshowUrl(context, url, cachedFile);
+      return url;
+    } catch (e) {
+      AppLogger.debug('Failed to cache/preload image: $url - Error: $e');
+      return null;
+    }
+  }
+
+  Future<dynamic> _cacheWithTimeout(String url, {String? label}) {
+    return _imageCacheService.cacheImage(url).timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        AppLogger.debug('${label ?? 'Image'} cache timeout for: $url');
+        throw TimeoutException(
+          '${label ?? 'Image'} cache timeout',
+          const Duration(seconds: 10),
+        );
+      },
+    );
+  }
+
+  Future<void> _precacheSlideshowUrl(
+    BuildContext context,
+    String url,
+    File? cachedFile,
+  ) async {
+    try {
+      if (cachedFile == null) {
+        await precacheImage(NetworkImage(url), context).timeout(
+          const Duration(seconds: 10),
+        );
+      } else {
+        await precacheImage(FileImage(cachedFile), context).timeout(
+          const Duration(seconds: 10),
+        );
+      }
+    } catch (e) {
+      AppLogger.debug('Precache failed for $url: $e');
+    }
+  }
+
+  void _markFirstImageReady(String url) {
+    _isFirstImageLoaded = true;
+    _preloadedImageUrls = [url];
+    notifyListeners();
   }
 }

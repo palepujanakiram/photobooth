@@ -1,0 +1,57 @@
+# Flutter tests + coverage, then SonarCloud analysis (photobooth/).
+# PR decoration and new-code quality gates require fetch-depth: 0 and projectBaseDir.
+# APK builds are not required for Sonar; use fastlane/local CI elsewhere if needed.
+name: SonarCloud
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: photobooth
+
+jobs:
+  sonarqube:
+    name: SonarQube
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Flutter SDK
+        uses: flutter-actions/setup-flutter@v4.2
+        with:
+          channel: stable
+          cache: true
+          cache-key: 'flutter-{platform}-{channel}-{architecture}-{hash}'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run tests with coverage
+        run: flutter test --coverage --concurrency=1
+
+      - name: Verify coverage report for Sonar
+        run: |
+          test -f coverage/lcov.info || (echo "Missing coverage/lcov.info" && exit 1)
+          wc -l coverage/lcov.info
+          head -5 coverage/lcov.info
+
+      - name: Verify in-scope coverage (100% gate)
+        run: dart run tool/verify_coverage_scope.dart
+
+      # Monorepo: sonar-project.properties lives under photobooth/.
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v6.0.0
+        with:
+          projectBaseDir: photobooth
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

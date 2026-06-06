@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:flutter/cupertino.dart' show CupertinoButton, CupertinoColors, CupertinoIcons;
+import 'package:flutter/cupertino.dart' show CupertinoColors, CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/kiosk_manager.dart';
+import 'photo_generate_view_widgets.dart';
 import 'photo_generate_viewmodel.dart';
-import '../theme_selection/theme_model.dart';
+import 'post_reveal_polishing_overlay.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
@@ -15,12 +16,93 @@ import '../../views/widgets/theme_background.dart';
 import '../../utils/route_args.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
-import '../transformation_details/transformation_details_view.dart';
-import '../../views/widgets/contact_before_pay_sheet.dart';
 import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/generated_image_preview_screen.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
     if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart' as photo_image;
+
+// --- Pipeline funnel / “Behold” grid helpers (Sonar S3358 / S3776 extractions) ---
+
+/// Short status text under each funnel thumbnail (queued → in progress → done).
+String _funnelSlotStatusLabel(PipelineFunnelSlot slot) {
+  if (slot.isFinished) return 'done';
+  if (slot.isActive) return 'in progress';
+  if (slot.isPending) return 'waiting';
+  return 'queued';
+}
+
+/// Border color for funnel cells: selection overrides pipeline state colors.
+Color _funnelSlotBorderColor(PipelineFunnelSlot slot, bool selected) {
+  if (selected) return CupertinoColors.systemBlue;
+  if (slot.isFinished) {
+    return Colors.lightGreenAccent.withValues(alpha: 0.85);
+  }
+  if (slot.isActive) return CupertinoColors.activeBlue;
+  return Colors.white30;
+}
+
+/// Thicker border when the slot is selected or actively generating.
+double _funnelSlotBorderWidth(PipelineFunnelSlot slot, bool selected) {
+  if (selected) return 2.5;
+  if (slot.isActive) return 2.0;
+  return 1.0;
+}
+
+/// Vertical space reserved above the behold card when the footer is external.
+String _transformedLoadingMessage(PhotoGenerateViewModel viewModel) {
+  if (viewModel.progressMessage.isNotEmpty) {
+    return viewModel.progressMessage;
+  }
+  if (viewModel.isLoadingMore) return 'Adding new style...';
+  return 'Creating...';
+}
+
+double _computeBeholdMaxRowHeight({
+  required bool fixedFooterOutside,
+  required bool singleResultReady,
+  required double viewportHeight,
+  required double interiorChromeAboveCard,
+  required bool isLandscape,
+  required double reservedAboveRow,
+  required double reservedBelowRow,
+}) {
+  if (fixedFooterOutside && singleResultReady) {
+    return math.max(
+      200.0,
+      (viewportHeight - interiorChromeAboveCard) *
+          AppConstants.kBeholdResultCardSlotHeightFraction,
+    );
+  }
+  final heightFraction = isLandscape ? 0.80 : 0.68;
+  final maxRowCap = isLandscape ? 1080.0 : 920.0;
+  final rowBudget = math.min(
+    maxRowCap,
+    math.min(
+      viewportHeight * heightFraction,
+      viewportHeight -
+          reservedAboveRow -
+          reservedBelowRow -
+          interiorChromeAboveCard,
+    ),
+  );
+  return math.max(120.0, rowBudget);
+}
+
+double _interiorChromeAboveCardHeight({
+  required bool fixedFooterOutside,
+  required double? viewportHeight,
+  required bool hasImages,
+  required bool isGeneratingOrLoading,
+}) {
+  if (!fixedFooterOutside ||
+      viewportHeight == null ||
+      !viewportHeight.isFinite) {
+    return 0.0;
+  }
+  if (hasImages && !isGeneratingOrLoading) return 118.0;
+  if (isGeneratingOrLoading) return 88.0;
+  return 0.0;
+}
 
 class PhotoGenerateScreen extends StatefulWidget {
   const PhotoGenerateScreen({super.key});
@@ -84,43 +166,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       return AppConstants.themeCardSlotAspectRatio(context);
     }
     return 3 / 2;
-  }
-
-  /// Sizes the BEHOLD hero like CAPTURE: fill the available slot, then clamp to screen fractions.
-  ({double width, double height}) _computeBeholdHeroCardSize(
-    BuildContext context, {
-    required double maxWidth,
-    required double maxHeight,
-    required double aspect,
-  }) {
-    final media = MediaQuery.sizeOf(context);
-    final isLandscape =
-        MediaQuery.orientationOf(context) == Orientation.landscape;
-    final isPhonePortrait = !isLandscape &&
-        media.shortestSide < AppConstants.kTabletBreakpoint;
-
-    final widthCapFrac = isLandscape
-        ? AppConstants.kBeholdResultCardMaxWidthFractionLandscape
-        : AppConstants.kCapturePreviewCardMaxWidthFractionPortrait;
-    final heightCapFrac = isLandscape
-        ? AppConstants.kBeholdResultCardMaxHeightFractionLandscape
-        : (isPhonePortrait
-            ? AppConstants.kCapturePreviewCardMaxHeightFractionPhonePortrait
-            : AppConstants.kCapturePreviewCardMaxHeightFractionPortrait);
-
-    final capW = math.min(maxWidth, media.width * widthCapFrac);
-    final capH = math.min(maxHeight, media.height * heightCapFrac);
-
-    late double cardW;
-    late double cardH;
-    if (capW / capH > aspect) {
-      cardH = capH;
-      cardW = cardH * aspect;
-    } else {
-      cardW = capW;
-      cardH = cardW / aspect;
-    }
-    return (width: cardW, height: cardH);
   }
 
   @override
@@ -414,21 +459,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     final stampId = 'funnel:$index';
     final selected = viewModel.selectedHeroStampId == stampId;
     final url = slot.displayPreviewUrl;
-    final statusLabel = slot.isFinished
-        ? 'done'
-        : slot.isActive
-            ? 'in progress'
-            : slot.isPending
-                ? 'waiting'
-                : 'queued';
-    final borderColor = selected
-        ? CupertinoColors.systemBlue
-        : slot.isFinished
-            ? Colors.lightGreenAccent.withValues(alpha: 0.85)
-            : slot.isActive
-                ? CupertinoColors.activeBlue
-                : Colors.white30;
-    final borderW = selected ? 2.5 : (slot.isActive ? 2.0 : 1.0);
+    final statusLabel = _funnelSlotStatusLabel(slot);
+    final borderColor = _funnelSlotBorderColor(slot, selected);
+    final borderW = _funnelSlotBorderWidth(slot, selected);
 
     late final Widget inner;
     if (slot.isDeviceCapture) {
@@ -552,131 +585,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     );
   }
 
-  Widget? _generatingHeroUnderlay(PhotoGenerateViewModel vm) {
-    final id = vm.selectedHeroStampId;
-    if (id == null) return null;
-    if (id == 'source' && vm.originalPhoto != null) {
-      return ColoredBox(
-        color: Colors.black,
-        child: Center(
-          child: photo_image.imageFromXFileSized(
-            vm.originalPhoto!.imageFile,
-            720,
-            1280,
-            fit: BoxFit.contain,
-          ),
-        ),
-      );
-    }
-    if (id.startsWith('stage:')) {
-      final key = id.substring(6);
-      for (final s in vm.progressivePipelineStages) {
-        if (s.stepKey == key) {
-          final url = s.previewImageUrl;
-          if (url != null && url.isNotEmpty) {
-            return ColoredBox(
-              color: Colors.black,
-              child: Center(
-                child: CachedNetworkImage(
-                  imageUrl: SecureImageUrl.withSessionId(url),
-                  fit: BoxFit.contain,
-                ),
-              ),
-            );
-          }
-        }
-      }
-    }
-    if (id.startsWith('live:')) {
-      final idx = int.tryParse(id.substring(5));
-      if (idx != null &&
-          idx >= 0 &&
-          idx < vm.liveSlots.length &&
-          !vm.liveSlots[idx].loading) {
-        final url = vm.liveSlots[idx].imageUrl;
-        if (url != null && url.isNotEmpty) {
-          return ColoredBox(
-            color: Colors.black,
-            child: Center(
-              child: CachedNetworkImage(
-                imageUrl: SecureImageUrl.withSessionId(url),
-                fit: BoxFit.contain,
-              ),
-            ),
-          );
-        }
-      }
-    }
-    if (id.startsWith('funnel:')) {
-      final idx = int.tryParse(id.substring(7));
-      if (idx != null &&
-          idx >= 0 &&
-          idx < vm.pipelineFunnelSlots.length) {
-        final slot = vm.pipelineFunnelSlots[idx];
-        if (slot.isDeviceCapture && vm.originalPhoto != null) {
-          return ColoredBox(
-            color: Colors.black,
-            child: Center(
-              child: photo_image.imageFromXFileSized(
-                vm.originalPhoto!.imageFile,
-                720,
-                1280,
-                fit: BoxFit.contain,
-              ),
-            ),
-          );
-        }
-        final url = slot.displayPreviewUrl;
-        if (url != null && url.isNotEmpty) {
-          return ColoredBox(
-            color: Colors.black,
-            child: Center(
-              child: CachedNetworkImage(
-                imageUrl: SecureImageUrl.withSessionId(url),
-                fit: BoxFit.contain,
-              ),
-            ),
-          );
-        }
-        if (slot.isMetadataOnlyStage && slot.isFinished) {
-          return ColoredBox(
-            color: Colors.black,
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    transformationStepIcon(slot.stageKey),
-                    color: Colors.white70,
-                    size: 72,
-                  ),
-                  const SizedBox(height: 16),
-                  const Icon(
-                    Icons.check_circle,
-                    color: Colors.lightGreenAccent,
-                    size: 48,
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-        if (slot.isFinished) {
-          return const ColoredBox(
-            color: Colors.black,
-            child: Center(
-              child: Icon(
-                Icons.check_circle,
-                color: Colors.lightGreenAccent,
-                size: 72,
-              ),
-            ),
-          );
-        }
-      }
-    }
-    return null;
-  }
+  Widget? _generatingHeroUnderlay(PhotoGenerateViewModel vm) =>
+      generatingHeroUnderlay(vm);
 
   Widget _buildMainContent(
     BuildContext context,
@@ -686,100 +596,17 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     double? viewportHeight,
     double? viewportWidth,
   ]) {
-    final padding = isLandscape ? 12.0 : 16.0;
-    final maxWidth = viewportWidth != null && viewportWidth.isFinite ? viewportWidth : double.infinity;
-
-    Widget buildContent(double width) {
-      final contentWidth = width.isFinite ? width : null;
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: width),
-            child: Column(
-              key: _contentKey,
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildPhotosDisplay(
-                  context,
-                  viewModel,
-                  appColors,
-                  isLandscape,
-                  contentWidth,
-                  viewportHeight,
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
-
-    if (viewportHeight != null && viewportHeight > 0) {
-      final hasFooter = viewModel.generatedImages.isNotEmpty ||
-          viewModel.isGenerating;
-
-      return Padding(
-        padding: EdgeInsets.all(padding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, slot) {
-                  final w = slot.maxWidth.isFinite && slot.maxWidth > 0
-                      ? slot.maxWidth
-                      : maxWidth;
-                  final contentW = w.isFinite ? w : null;
-                  final contentH = slot.maxHeight.isFinite && slot.maxHeight > 0
-                      ? slot.maxHeight
-                      : viewportHeight;
-                  return SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(minHeight: slot.maxHeight),
-                      child: Align(
-                        alignment: Alignment.center,
-                        child: SizedBox(
-                          width: contentW,
-                          child: _buildPhotosDisplay(
-                            context,
-                            viewModel,
-                            appColors,
-                            isLandscape,
-                            contentW,
-                            contentH,
-                            true,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            if (hasFooter)
-              Center(
-                child: _buildPhotosActionFooter(
-                  context,
-                  viewModel,
-                  appColors,
-                ),
-              ),
-          ],
-        ),
-      );
-    }
-
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(padding),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final w = constraints.maxWidth.isFinite ? constraints.maxWidth : maxWidth;
-          return buildContent(w);
-        },
+    return buildPhotoGenerateMainContent(
+      context: context,
+      input: PhotoGenerateMainContentInput(
+        contentKey: _contentKey,
+        viewModel: viewModel,
+        appColors: appColors,
+        isLandscape: isLandscape,
+        viewportHeight: viewportHeight,
+        viewportWidth: viewportWidth,
+        buildPhotosDisplay: _buildPhotosDisplay,
+        buildPhotosActionFooter: _buildPhotosActionFooter,
       ),
     );
   }
@@ -789,146 +616,15 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     PhotoGenerateViewModel viewModel,
     AppColors appColors,
   ) {
-    final paymentsEnabled = _paymentsEnabledOverride ?? true;
-    final canAddMoreStyle = viewModel.canShowAddAnotherStyleButton;
-    final isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
-    final isLoadingMore = viewModel.isLoadingMore;
-    final isGeneratingOrLoading = isGenerating || isLoadingMore;
-
-    return SizedBox(
-      width: 320,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          CupertinoButton(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            color: (!isGeneratingOrLoading && viewModel.hasSelectedImages)
-                ? CupertinoColors.systemBlue
-                : CupertinoColors.systemGrey,
-            borderRadius: BorderRadius.circular(12),
-            onPressed: (!isGeneratingOrLoading && viewModel.hasSelectedImages)
-                ? () async {
-                    final selectedImages = viewModel.selectedGeneratedImages;
-                    if (selectedImages.isEmpty) return;
-
-                    final routerContext = context;
-                    String customerName = '';
-                    String customerPhone = '';
-                    bool customerWhatsappOptIn = false;
-                    if (paymentsEnabled) {
-                      final contact = await showContactBeforePaySheet(routerContext);
-                      if (!routerContext.mounted) return;
-                      if (contact == null) return;
-                      customerName = contact.customerName;
-                      customerPhone = contact.customerPhone;
-                      customerWhatsappOptIn = contact.whatsappOptIn;
-                    }
-
-                    await Navigator.pushNamed(
-                      routerContext,
-                      AppConstants.kRouteResult,
-                      arguments: {
-                        'generatedImages': selectedImages,
-                        'originalPhoto': viewModel.originalPhoto,
-                        'customerName': customerName,
-                        'customerPhone': customerPhone,
-                        'customerWhatsappOptIn': customerWhatsappOptIn,
-                      },
-                    );
-                  }
-                : null,
-            child: Text(
-              viewModel.selectedCount < viewModel.generatedImages.length
-                  ? 'Continue (${viewModel.selectedCount} of ${viewModel.generatedImages.length})'
-                  : 'Continue',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: CupertinoColors.white,
-              ),
-            ),
-          ),
-          if (!isGeneratingOrLoading &&
-              viewModel.lastTransformationRunId != null &&
-              viewModel.generatedImages.isNotEmpty) ...[
-            TextButton(
-              onPressed: () {
-                Navigator.push<void>(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => TransformationDetailsScreen(
-                      runId: viewModel.lastTransformationRunId!,
-                    ),
-                  ),
-                );
-              },
-              child: const Text(
-                'Transformation details',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 13,
-                  decoration: TextDecoration.underline,
-                ),
-              ),
-            ),
-          ],
-          if (paymentsEnabled && viewModel.selectedCount > 0) ...[
-            const SizedBox(height: 10),
-            Center(
-              child: Text(
-                'Total: ₹${viewModel.selectedTotalPrice}'
-                '${viewModel.selectedCount > 1 ? '  (+₹${(viewModel.selectedCount - 1) * viewModel.additionalPrintPrice})' : ''}',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.78),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-          if (canAddMoreStyle) ...[
-            const SizedBox(height: 8),
-            Center(
-              child: CupertinoButton(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                onPressed: (viewModel.isGenerating || viewModel.isLoadingMore)
-                    ? null
-                    : () async {
-                        final result = await Navigator.pushNamed(
-                          context,
-                          AppConstants.kRouteHome,
-                          arguments: {
-                            if (viewModel.originalPhoto != null)
-                              'photo': viewModel.originalPhoto,
-                            'addOneMoreStyle': true,
-                            'usedThemeIds': List<String>.from(
-                              viewModel.generatedImages
-                                  .map((e) => e.theme.id),
-                            ),
-                          },
-                        );
-                        if (!mounted) return;
-                        if (result is ThemeModel) {
-                          viewModel.prepareToAddStyle(result);
-                          viewModel.tryDifferentStyle(result);
-                        }
-                      },
-                child: const Text(
-                  'Or add one more style',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: CupertinoColors.systemBlue,
-                    decoration: TextDecoration.underline,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
+    return buildPhotosActionFooter(
+      context: context,
+      viewModel: viewModel,
+      paymentsEnabled: _paymentsEnabledOverride ?? true,
+      isMounted: mounted,
+      onAddStyleSelected: (theme) {
+        viewModel.prepareToAddStyle(theme);
+        viewModel.tryDifferentStyle(theme);
+      },
     );
   }
 
@@ -961,261 +657,43 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     // card inside the same Expanded slot. Reserve vertical budget for them so the
     // Column does not overflow short viewports (kiosk / embedded browser).
     final bool hasImages = viewModel.generatedImages.isNotEmpty;
-    final double interiorChromeAboveCard = (fixedFooterOutside &&
-            viewportHeight != null &&
-            viewportHeight.isFinite)
-        ? (hasImages && !isGeneratingOrLoading
-            ? 118.0
-            : isGeneratingOrLoading
-                ? 88.0
-                : 0.0)
-        : 0.0;
+    final double interiorChromeAboveCard = _interiorChromeAboveCardHeight(
+      fixedFooterOutside: fixedFooterOutside,
+      viewportHeight: viewportHeight,
+      hasImages: hasImages,
+      isGeneratingOrLoading: isGeneratingOrLoading,
+    );
     final bool singleResultReady =
         hasImages && !isGeneratingOrLoading && viewModel.generatedImages.length <= 1;
 
-    final double maxRowHeight;
-    if (fixedFooterOutside && singleResultReady) {
-      // Footer is outside this column; vh is the Expanded slot — use almost all of it.
-      maxRowHeight = math.max(
-        200.0,
-        (vh - interiorChromeAboveCard) *
-            AppConstants.kBeholdResultCardSlotHeightFraction,
-      );
-    } else {
-      // Landscape / large displays: let the photo row use more vertical space (kiosk).
-      final double heightFraction = isLandscape ? 0.80 : 0.68;
-      final double maxRowCap = isLandscape ? 1080.0 : 920.0;
-      final double rowBudget = math.min(
-        maxRowCap,
-        math.min(
-          vh * heightFraction,
-          vh -
-              reservedAboveRow -
-              reservedBelowRow -
-              interiorChromeAboveCard,
-        ),
-      );
-      maxRowHeight = math.max(120.0, rowBudget);
-    }
-    return _buildGeneratedOnlyLayout(
-      context,
-      viewModel,
-      appColors,
+    final layout = GeneratedOnlyLayoutLayout(
       screenWidth: screenWidth,
-      maxRowHeight: maxRowHeight,
+      maxRowHeight: _computeBeholdMaxRowHeight(
+        fixedFooterOutside: fixedFooterOutside,
+        singleResultReady: singleResultReady,
+        viewportHeight: vh,
+        interiorChromeAboveCard: interiorChromeAboveCard,
+        isLandscape: isLandscape,
+        reservedAboveRow: reservedAboveRow,
+        reservedBelowRow: reservedBelowRow,
+      ),
       gap: cardGap,
       isGeneratingOrLoading: isGeneratingOrLoading,
       fixedFooterOutside: fixedFooterOutside,
     );
-  }
-
-  Widget _buildGeneratedOnlyLayout(
-    BuildContext context,
-    PhotoGenerateViewModel viewModel,
-    AppColors appColors, {
-    required double screenWidth,
-    required double maxRowHeight,
-    required double gap,
-    required bool isGeneratingOrLoading,
-    required bool fixedFooterOutside,
-  }) {
-    final isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
-    final isLoadingMore = viewModel.isLoadingMore;
-    final images = viewModel.generatedImages;
-    final hasImages = images.isNotEmpty;
-    final hideCompactHeader = viewModel.useProgressiveGenerationLayoutForSession &&
-        isGeneratingOrLoading;
-
-    final int baseSlotCount = hasImages
-        ? images.length
-        : (isGenerating && viewModel.liveSlotCount > 0
-            ? viewModel.liveSlotCount
-            : 1);
-    final totalSlots = baseSlotCount + (isLoadingMore ? 1 : 0);
-    final aspect = _beholdCardAspectRatio(context, totalSlots);
-
-    // When we only have a single slot (initial placeholder or one image),
-    // size it like the POSE capture card so the "main image placeholder" feels consistent.
-    if (totalSlots == 1) {
-      final size = _computeBeholdHeroCardSize(
-        context,
-        maxWidth: screenWidth,
-        maxHeight: maxRowHeight,
-        aspect: aspect,
-      );
-      final cardW = size.width;
-      final cardH = size.height;
-
-      final slots = _buildTransformedSlotWidgets(
-        context,
-        viewModel,
-        appColors,
-        cardW,
-        cardH,
-      );
-
-      final isGenerating = viewModel.isGenerating && viewModel.generatedImages.isEmpty;
-      final isLoadingMore = viewModel.isLoadingMore;
-      final message = isGeneratingOrLoading
-          ? (isLoadingMore
-              ? 'Adding your new style...'
-              : 'Please wait while we create your masterpiece')
-          : hasImages
-              ? 'Your masterpiece is ready'
-              : '';
-
-      final wideStoryLayout = MediaQuery.sizeOf(context).width >= 980;
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (hideCompactHeader &&
-                isGeneratingOrLoading &&
-                !viewModel.showProgressStampStrip) ...[
-              _buildProgressivePipelineSection(context, viewModel),
-              const SizedBox(height: 12),
-            ] else if (!hideCompactHeader &&
-                isGenerating &&
-                viewModel.liveSlotCount > 0) ...[
-              _buildLiveGenerationHeader(context, viewModel),
-              const SizedBox(height: 12),
-            ],
-            if (message.isNotEmpty) ...[
-              Text(
-                message,
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w500,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (hasImages && !isGeneratingOrLoading) ...[
-                const SizedBox(height: 6),
-                Text(
-                  'Generated in ${viewModel.elapsedSeconds}s',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.white70,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-              const SizedBox(height: 18),
-            ],
-            if (isGeneratingOrLoading && !hasImages) ...[
-              // In-progress uses the same hero card visual language as final output.
-              _buildGenerationProgressHeroCard(
-                context,
-                viewModel,
-                width: cardW,
-                height: cardH,
-              ),
-            ] else if (wideStoryLayout && isGeneratingOrLoading) ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Center(child: slots.first),
-                  const SizedBox(width: 18),
-                  _buildGenerationStoryCard(context, viewModel),
-                ],
-              ),
-            ] else ...[
-              Center(child: slots.first),
-              if (isGeneratingOrLoading) ...[
-                const SizedBox(height: 18),
-                _buildGenerationStoryCard(context, viewModel),
-              ],
-            ],
-            if ((hasImages || isGenerating || isLoadingMore) &&
-                !fixedFooterOutside) ...[
-              const SizedBox(height: 18),
-              _buildPhotosActionFooter(context, viewModel, appColors),
-            ],
-          ],
-        ),
-      );
-    }
-
-    // Responsive grid: 1 -> 1 col, 2 -> 2 cols, 3+ -> 3 cols (clamped by width).
-    int cols = totalSlots <= 1 ? 1 : (totalSlots == 2 ? 2 : 3);
-    cols = cols.clamp(1, 3);
-    final rows = (totalSlots / cols).ceil().clamp(1, 3);
-
-    // Compute card sizes from height budget; scale down if width would overflow.
-    final gridH = maxRowHeight;
-    final cardH = (gridH - gap * (rows - 1)) / rows;
-    final cardW = cardH * aspect;
-    final gridW = cols * cardW + gap * (cols - 1);
-    final scale = gridW > screenWidth ? (screenWidth / gridW).clamp(0.35, 1.0) : 1.0;
-    final scaledW = cardW * scale;
-    final scaledH = cardH * scale;
-
-    final slots = _buildTransformedSlotWidgets(
-      context,
-      viewModel,
-      appColors,
-      scaledW,
-      scaledH,
-    );
-
-    final message = isGeneratingOrLoading
-        ? (isLoadingMore
-            ? 'Adding your new style...'
-            : 'Please wait while we create your masterpiece')
-        : hasImages
-            ? 'Your masterpiece is ready'
-            : '';
-
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (hideCompactHeader &&
-              isGeneratingOrLoading &&
-              !viewModel.showProgressStampStrip) ...[
-            _buildProgressivePipelineSection(context, viewModel),
-            const SizedBox(height: 12),
-          ] else if (!hideCompactHeader &&
-              isGenerating &&
-              viewModel.liveSlotCount > 0) ...[
-            _buildLiveGenerationHeader(context, viewModel),
-            const SizedBox(height: 12),
-          ],
-          if (message.isNotEmpty) ...[
-            Text(
-              message,
-              style: const TextStyle(
-                fontSize: 16,
-                color: Colors.white,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 18),
-          ],
-          SizedBox(
-            width: screenWidth,
-            child: Center(
-              child: Wrap(
-                spacing: gap,
-                runSpacing: gap,
-                alignment: WrapAlignment.center,
-                children: slots,
-              ),
-            ),
-          ),
-          if ((hasImages || isGenerating || isLoadingMore) && !fixedFooterOutside) ...[
-            const SizedBox(height: 18),
-            _buildPhotosActionFooter(context, viewModel, appColors),
-          ],
-        ],
+    return buildGeneratedOnlyLayout(
+      context: context,
+      viewModel: viewModel,
+      appColors: appColors,
+      layout: layout,
+      builders: GeneratedOnlyLayoutBuilders(
+        beholdCardAspectRatio: _beholdCardAspectRatio,
+        buildTransformedSlotWidgets: _buildTransformedSlotWidgets,
+        buildProgressivePipelineSection: _buildProgressivePipelineSection,
+        buildLiveGenerationHeader: _buildLiveGenerationHeader,
+        buildGenerationProgressHeroCard: _buildGenerationProgressHeroCard,
+        buildGenerationStoryCard: _buildGenerationStoryCard,
+        buildPhotosActionFooter: _buildPhotosActionFooter,
       ),
     );
   }
@@ -1860,9 +1338,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     PhotoGenerateViewModel viewModel,
     AppColors appColors,
   ) {
-    final message = viewModel.progressMessage.isNotEmpty
-        ? viewModel.progressMessage
-        : (viewModel.isLoadingMore ? 'Adding new style...' : 'Creating...');
+    final message = _transformedLoadingMessage(viewModel);
     final underlay = _generatingHeroUnderlay(viewModel);
     final hint = viewModel.selectedHeroStampId != null &&
             underlay == null
@@ -2054,7 +1530,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       headline = 'Rendering';
       description = 'AI is applying your style';
       imageUrl = aiUrl;
-      bottomAccessory = _buildPostRevealPolishingOverlay(context, vm);
+      bottomAccessory =
+          PostRevealPolishingOverlay(steps: vm.generationRunStepPreviews);
     } else if (bgUrl != null) {
       index = 2;
       stageTitle = '3 · ISOLATE';
@@ -2273,158 +1750,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       }
     }
     return null;
-  }
-
-  Widget _buildPostRevealPolishingOverlay(
-    BuildContext context,
-    PhotoGenerateViewModel vm,
-  ) {
-    // After REVEAL (ai_generation preview), keep users engaged by showing truthful
-    // post-processing mechanics as `steps[]` advances.
-    final steps = vm.generationRunStepPreviews;
-    if (steps.isEmpty) return const SizedBox.shrink();
-
-    final byStage = <String, GenerationRunStepPreview>{};
-    for (final s in steps) {
-      byStage[canonicalPipelineStageKey(s.stage)] = s;
-    }
-
-    const polishOrder = <String>[
-      'scene_lighting',
-      'face_relight',
-      'frame_composite',
-      'upscaling',
-      'exif_stamp',
-      'c2pa_sign',
-      'storage',
-    ];
-
-    String? activeKey;
-    for (final k in polishOrder) {
-      final s = byStage[k];
-      if (s != null && s.isActive) {
-        activeKey = k;
-        break;
-      }
-    }
-    activeKey ??= byStage['storage']?.isFinished == true
-        ? 'storage'
-        : (polishOrder.firstWhere(
-            (k) => byStage[k]?.isFinished != true,
-            orElse: () => 'storage',
-          ));
-
-    String copyFor(String k) {
-      switch (k) {
-        case 'scene_lighting':
-          return 'Matching scene lighting';
-        case 'face_relight':
-          return 'Relighting your face';
-        case 'frame_composite':
-          return 'Adding your frame';
-        case 'upscaling':
-          return 'Sharpening for print';
-        case 'exif_stamp':
-          return 'Branding';
-        case 'c2pa_sign':
-          return 'Signing authenticity';
-        case 'storage':
-          return 'Preparing print file';
-        default:
-          return transformationStepDisplayLabel(k);
-      }
-    }
-
-    Widget stageChip(String k) {
-      final s = byStage[k];
-      final finished = s?.isFinished == true;
-      final active = s?.isActive == true;
-      final color = active
-          ? CupertinoColors.activeBlue
-          : finished
-              ? Colors.lightGreenAccent.withValues(alpha: 0.9)
-              : Colors.white30;
-      final icon = finished
-          ? Icons.check_circle
-          : active
-              ? Icons.autorenew
-              : Icons.more_horiz;
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: color.withValues(alpha: 0.85), width: 1.2),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 6),
-            Text(
-              copyFor(k),
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Sits in the storyboard’s bottom column (not centered on the photo).
-    // Elapsed time stays on the frame’s corner badge to avoid duplicate timers.
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.55),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  const Icon(CupertinoIcons.wand_stars,
-                      color: Colors.white70, size: 15),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Finishing touches · ${copyFor(activeKey)}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (var i = 0; i < polishOrder.length; i++) ...[
-                      if (i != 0) const SizedBox(width: 8),
-                      stageChip(polishOrder[i]),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _storyboardTopBars({required int activeIndex}) {

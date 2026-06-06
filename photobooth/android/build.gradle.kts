@@ -1,7 +1,6 @@
 buildscript {
     dependencies {
         classpath("com.google.gms:google-services:4.4.2")
-        classpath("com.google.firebase:firebase-crashlytics-gradle:3.0.2")
     }
 }
 
@@ -27,5 +26,7 @@ subprojects {
 }
 
 tasks.register<Delete>("clean") {
+    group = "build"
+    description = "Deletes the build directory"
     delete(rootProject.layout.buildDirectory)
 }
