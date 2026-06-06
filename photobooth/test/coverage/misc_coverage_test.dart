@@ -1,6 +1,3 @@
-import 'dart:convert';
-
-import 'package:cross_file/cross_file.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,7 +12,6 @@ import 'package:photobooth/screens/result/transformed_image_model.dart';
 import 'package:photobooth/screens/splash/bootstrap_route_args.dart';
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
 import 'package:photobooth/screens/theme_slideshow/theme_slideshow_layout.dart';
-import 'package:photobooth/screens/transformation_details/transformation_details_viewmodel.dart';
 import 'package:photobooth/services/client_identification.dart';
 import 'package:photobooth/services/error_reporting/error_reporting_manager.dart';
 import 'package:photobooth/services/fcm_payment_pending_store.dart';
@@ -85,9 +81,9 @@ void main() {
 
   test('FcmPaymentPendingStore lifecycle', () async {
     SharedPreferences.setMockInitialValues({});
-    final msg = RemoteMessage(
+    const msg = RemoteMessage(
       data: {'sessionId': 'sess-1', 'type': 'payment'},
-      notification: const RemoteNotification(title: 't', body: 'b'),
+      notification: RemoteNotification(title: 't', body: 'b'),
     );
     await FcmPaymentPendingStore.persist(msg);
     final pending = await FcmPaymentPendingStore.takePending();

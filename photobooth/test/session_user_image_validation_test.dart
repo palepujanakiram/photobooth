@@ -5,7 +5,7 @@ import 'package:photobooth/utils/session_user_image_validation.dart';
 void main() {
   test('accepts minimal valid jpeg data URL', () {
     const payload = 'aGVsbG8='; // "hello"
-    final url = 'data:image/jpeg;base64,$payload';
+    const url = 'data:image/jpeg;base64,$payload';
     expect(
       () => SessionUserImageValidation.assertValidForSessionPatch(url),
       returnsNormally,

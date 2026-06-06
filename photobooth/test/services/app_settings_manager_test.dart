@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/app_settings_model.dart';
 import 'package:photobooth/services/app_settings_manager.dart';
-import 'package:photobooth/services/api_service.dart';
 import 'package:photobooth/utils/exceptions.dart';
 
 import '../fakes/fake_api_service.dart';
