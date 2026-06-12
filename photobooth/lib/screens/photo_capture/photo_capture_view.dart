@@ -167,6 +167,39 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
   }
 
+  Widget _buildNoCamerasYetState(BuildContext context) {
+    final allowGallery = context.select<AppSettingsManager, bool>(
+      (m) => m.settings?.photoUploadAllowed == true,
+    );
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: Colors.white),
+            const SizedBox(height: 16),
+            Text(
+              allowGallery
+                  ? 'Waiting for camera… or use Gallery below if this takes too long.'
+                  : 'Waiting for camera…',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.85),
+                fontSize: 15,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () => _resetAndInitializeCameras(forceRefresh: true),
+              child: const Text('Retry camera'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildDetectingCamerasState() {
     return Center(
       child: Column(
@@ -234,7 +267,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return const Center(child: CircularProgressIndicator(color: Colors.white));
     }
     if (viewModel.availableCameras.isEmpty && !viewModel.hasError) {
-      return const Center(child: CircularProgressIndicator(color: Colors.white));
+      return _buildNoCamerasYetState(context);
     }
     if (viewModel.hasError && viewModel.capturedPhoto == null) {
       return _buildCaptureFatalErrorState(context, viewModel);
@@ -679,13 +712,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           const SizedBox(height: 12),
           ElevatedButton(
             style: captureScreenButtonStyle(),
-            onPressed: (viewModel.isCapturing || viewModel.isUploading)
-                ? null
-                : () => handleCapturedPhotoContinue(
+            onPressed: viewModel.canContinueUpload
+                ? () => handleCapturedPhotoContinue(
                       context: context,
                       viewModel: viewModel,
                       isMounted: () => mounted,
-                    ),
+                    )
+                : null,
             child: viewModel.isUploading
                 ? const SizedBox(
                     width: 24,
@@ -695,7 +728,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                       strokeWidth: 2,
                     ),
                   )
-                : const Text('Continue'),
+                : Text(
+                    viewModel.isPreparingUploadPayload
+                        ? 'Preparing…'
+                        : 'Continue',
+                  ),
           ),
         ],
       ),

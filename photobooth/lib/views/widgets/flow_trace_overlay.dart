@@ -1,49 +1,52 @@
 import 'package:flutter/material.dart';
 
 import '../../utils/debug_overlay_clipboard.dart';
-import '../../utils/logger.dart';
+import '../../utils/web_flow_trace.dart';
+import '../../utils/web_flow_trace_summary.dart';
 
-class DebugLogOverlay extends StatefulWidget {
-  const DebugLogOverlay({
+/// On-screen perf timeline fed by [WebFlowTrace] when debug logging is enabled.
+class FlowTraceOverlay extends StatefulWidget {
+  const FlowTraceOverlay({
     super.key,
-    this.maxVisibleLines = 18,
-    this.width = 520,
+    this.maxVisibleLines = 14,
+    this.width = 420,
   });
 
   final int maxVisibleLines;
   final double width;
 
   @override
-  State<DebugLogOverlay> createState() => _DebugLogOverlayState();
+  State<FlowTraceOverlay> createState() => _FlowTraceOverlayState();
 }
 
-class _DebugLogOverlayState extends State<DebugLogOverlay> {
+class _FlowTraceOverlayState extends State<FlowTraceOverlay> {
   bool _collapsed = true;
-  bool _errorsOnly = false;
 
-  List<String> _filteredLines(List<String> lines) {
-    if (!_errorsOnly) return lines;
-    return lines
-        .where((l) => l.startsWith('[ERROR]') || l.startsWith('[WARNING]'))
-        .toList();
+  List<String> _visibleLines(List<String> lines) {
+    if (!_collapsed) return lines;
+    if (lines.length <= widget.maxVisibleLines) return lines;
+    return lines.sublist(lines.length - widget.maxVisibleLines);
   }
 
-  List<String> _visibleLines(List<String> filtered) {
-    if (!_collapsed) return filtered;
-    if (filtered.length <= widget.maxVisibleLines) return filtered;
-    return filtered.sublist(filtered.length - widget.maxVisibleLines);
-  }
-
-  double get _panelMaxHeight => _collapsed ? 220 : 460;
+  double get _panelMaxHeight => _collapsed ? 200 : 380;
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<List<String>>(
-      valueListenable: AppLogger.recentLinesListenable,
+      valueListenable: WebFlowTrace.linesListenable,
       builder: (context, lines, _) {
-        final visible = _visibleLines(_filteredLines(lines));
-        final text =
-            visible.isEmpty ? '— logs will appear here —' : visible.join('\n');
+        final visible = _visibleLines(lines);
+        final summaryLines = buildFlowEndToEndSummaryLines(lines);
+        final summaryText = summaryLines.isEmpty
+            ? ''
+            : '${summaryLines.join('\n')}\n';
+        final traceText = visible.isEmpty
+            ? '— perf trace (capture → output) —'
+            : visible.join('\n');
+        final text = '$summaryText$traceText';
+        final copyText = summaryLines.isEmpty
+            ? lines.join('\n')
+            : '${summaryLines.join('\n')}\n\n${lines.join('\n')}';
 
         return Material(
           color: Colors.transparent,
@@ -52,9 +55,9 @@ class _DebugLogOverlayState extends State<DebugLogOverlay> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.72),
+                color: Colors.black.withValues(alpha: 0.78),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.white24),
+                border: Border.all(color: Colors.amber.withValues(alpha: 0.35)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -64,11 +67,11 @@ class _DebugLogOverlayState extends State<DebugLogOverlay> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Logs',
+                        'Perf trace',
                         style: TextStyle(
-                          color: Colors.white70,
+                          color: Colors.amber,
                           fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -83,13 +86,13 @@ class _DebugLogOverlayState extends State<DebugLogOverlay> {
                                   ? null
                                   : () => copyDebugPanelText(
                                         context,
-                                        _filteredLines(lines).join('\n'),
-                                        feedback: 'Logs copied',
+                                        copyText,
+                                        feedback: 'Perf trace copied',
                                       ),
                               style: TextButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
+                                  horizontal: 8,
+                                  vertical: 4,
                                 ),
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -103,20 +106,19 @@ class _DebugLogOverlayState extends State<DebugLogOverlay> {
                               ),
                             ),
                             TextButton(
-                              onPressed: () =>
-                                  setState(() => _errorsOnly = !_errorsOnly),
+                              onPressed: WebFlowTrace.clearOverlay,
                               style: TextButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
+                                  horizontal: 8,
+                                  vertical: 4,
                                 ),
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
-                              child: Text(
-                                _errorsOnly ? 'Errors' : 'All',
-                                style: const TextStyle(
-                                  color: Colors.white70,
+                              child: const Text(
+                                'Clear',
+                                style: TextStyle(
+                                  color: Colors.white54,
                                   fontSize: 11,
                                 ),
                               ),
@@ -126,8 +128,8 @@ class _DebugLogOverlayState extends State<DebugLogOverlay> {
                                   setState(() => _collapsed = !_collapsed),
                               style: TextButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
+                                  horizontal: 8,
+                                  vertical: 4,
                                 ),
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -145,7 +147,7 @@ class _DebugLogOverlayState extends State<DebugLogOverlay> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   ConstrainedBox(
                     constraints: BoxConstraints(maxHeight: _panelMaxHeight),
                     child: SingleChildScrollView(
@@ -154,8 +156,8 @@ class _DebugLogOverlayState extends State<DebugLogOverlay> {
                         text,
                         style: const TextStyle(
                           fontFamily: 'monospace',
-                          fontSize: 10.5,
-                          height: 1.25,
+                          fontSize: 10,
+                          height: 1.3,
                           color: Colors.white70,
                         ),
                       ),

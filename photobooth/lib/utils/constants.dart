@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, visibleForTesting;
 import 'package:flutter/widgets.dart';
 
 import 'app_config.dart';
@@ -16,6 +16,14 @@ class AppConstants {
   // Extended timeout for image uploads and AI generation
   // Set to 5 minutes to handle slower networks and extended processing times
   static const Duration kApiTimeout = Duration(seconds: 300);
+
+  /// Capture-screen PATCH upload (shorter than [kApiTimeout] so the UI does not
+  /// sit on "Processing Your Photo" for minutes when the network fails).
+  static const Duration kSessionUploadTimeout = Duration(seconds: 90);
+
+  /// Best-effort `/api/preprocess-image` wait; on timeout the upload still succeeds
+  /// with a fallback person count (solo themes on web).
+  static const Duration kPreprocessTimeout = Duration(seconds: 30);
   
   // Timeout for AI generation (same as general timeout)
   static const Duration kAiGenerationTimeout = Duration(seconds: 300);
@@ -50,6 +58,9 @@ class AppConstants {
 
   /// [SharedPreferences] key: theme list uses card grid vs carousel on Select Theme.
   static const String kPrefsThemeSelectionCardLayout = 'theme_selection_use_card_layout';
+
+  /// [SharedPreferences] key: carousel auto-advances when idle on Select Theme (default off).
+  static const String kPrefsThemeCarouselAutoScroll = 'theme_carousel_auto_scroll_v1';
 
   /// Width : height for theme/generate cards in **portrait** device orientation.
   /// Slightly shorter than raw 9:16 for legacy grid harmony.
@@ -180,10 +191,10 @@ class AppConstants {
   /// When true, shows the Print & Share Options section (Printer IP, Silent Print, Print, Share) on Complete Payment / Result screen.
   static const bool kShowResultPrintSection = false;
 
-  /// When true (same as `showGenerationCommentary`), full-screen loaders show status text,
-  /// elapsed timer, subtitle, and current-process line.
+  /// When true, full-screen loaders show status text, elapsed timer, subtitle,
+  /// and current-process line (`kDebugMode` or `showGenerationCommentary`).
   static bool get kshowDebugInfo =>
-      AppRuntimeConfig.instance.showGenerationCommentary;
+      kDebugMode || AppRuntimeConfig.instance.showGenerationCommentary;
 
   /// SharedPreferences key for camera preview rotation (0, 90, 180, 270 degrees).
   static const String kCameraPreviewRotationKey = 'camera_preview_rotation_degrees';
@@ -204,11 +215,26 @@ class AppConstants {
   // Camera capture countdown (in seconds)
   static const int kCaptureCountdownSeconds = 3;
 
-  // Logging
-  // Controls console logs and breadcrumb logs (Bugsnag). Tied to `showGenerationCommentary`.
-  // On web, API logs are summaries only (method, URL, keys, sizes) so huge bodies do not block the UI.
-  static bool get kEnableLogOutput =>
+  /// On-screen debug HUD: Logs panel, Perf trace (+ E2E summary), RAM / JS heap.
+  /// Driven by `/api/settings` → `showGenerationCommentary` (not [kEnableLogOutput]).
+  static bool get kShowDebugHud =>
       AppRuntimeConfig.instance.showGenerationCommentary;
+
+  // Console / API logging (not the on-screen HUD). On in [kDebugMode] by default;
+  // release off unless `--dart-define=ENABLE_LOG_OUTPUT=true`. Force off with
+  // `--dart-define=ENABLE_LOG_OUTPUT=false`.
+  @visibleForTesting
+  static bool? testEnableLogOutputOverride;
+
+  static bool get kEnableLogOutput {
+    if (testEnableLogOutputOverride != null) {
+      return testEnableLogOutputOverride!;
+    }
+    const env = String.fromEnvironment('ENABLE_LOG_OUTPUT');
+    if (env == 'true') return true;
+    if (env == 'false') return false;
+    return kDebugMode;
+  }
 
   /// Terms & Conditions page (WebView via [WebViewScreen]). Defaults to
   /// [AppConfig.baseUrl]/terms.

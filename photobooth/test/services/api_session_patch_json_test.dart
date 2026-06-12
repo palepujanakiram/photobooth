@@ -18,6 +18,15 @@ void main() {
     expect(slim, contains('selectedThemeId'));
   });
 
+  test('stripEchoedUserImageUrlField fast-strips large data URLs', () {
+    final b64 = 'A' * 50000;
+    final raw =
+        '{"id":"s","userImageUrl":"data:image/jpeg;base64,$b64","personCount":1}';
+    final slim = stripEchoedUserImageUrlField(raw);
+    expect(slim, isNot(contains('userImageUrl')));
+    expect(slim, contains('"personCount":1'));
+  });
+
   test('assertSessionBodyLooksLikeJson rejects HTML', () {
     expect(
       () => assertSessionBodyLooksLikeJson('<html>', 'PATCH'),
