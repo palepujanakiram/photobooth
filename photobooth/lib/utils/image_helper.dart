@@ -222,6 +222,17 @@ class ImageHelper {
       WebFlowTrace.log('ENCODE_IMPL', 'post_read_yield_done');
     }
 
+    if (kIsWeb) {
+      WebFlowTrace.log(
+        'ENCODE_IMPL',
+        'branch web_async_encode longEdge=$kSessionPatchUserImageWebMaxLongEdgePx',
+      );
+      final out = await encodeSessionPatchUserImageUrlAsync(bytes);
+      WebFlowTrace.log('ENCODE_IMPL', 'web_async_encode_done outLen=${out.length}');
+      SessionUserImageValidation.assertValidForSessionPatch(out);
+      return out;
+    }
+
     WebFlowTrace.log('ENCODE_IMPL', 'branch session_patch_encode longEdge=$kSessionPatchUserImageMaxLongEdgePx');
     final out = await compute(_encodeSessionPatchUserImageUrlIsolate, bytes);
     WebFlowTrace.log('ENCODE_IMPL', 'session_patch_encode_done outLen=${out.length}');

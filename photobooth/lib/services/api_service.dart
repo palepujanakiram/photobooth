@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:uuid/uuid.dart';
 import '../models/app_settings_model.dart';
 import '../models/kiosk_frame_model.dart';
@@ -15,6 +17,7 @@ import '../utils/exceptions.dart';
 import '../utils/constants.dart';
 import '../utils/session_user_image_validation.dart';
 import '../utils/logger.dart';
+import '../utils/web_flow_trace.dart';
 import 'api_client.dart';
 import 'api_dio_errors.dart';
 import 'api_http_response.dart';
@@ -25,6 +28,8 @@ import 'api_service_legacy_media.dart';
 import 'api_service_dio.dart';
 import 'api_parallel_sse_consumer.dart';
 import 'api_service_helpers.dart';
+import 'api_service_web_session_patch_stub.dart'
+    if (dart.library.html) 'api_service_web_session_patch_browser.dart';
 
 class ApiService {
   late final ApiClient _apiClient;
@@ -504,16 +509,51 @@ class ApiService {
         framingMetadata: framingMetadata,
       );
 
-      final httpResponse = await _dio.patch<String>(
-        '/api/sessions/$sessionId',
-        data: body,
-        options: Options(
-          contentType: Headers.jsonContentType,
-          responseType: ResponseType.plain,
-        ),
+      final patchOptions = Options(
+        contentType: Headers.jsonContentType,
+        responseType: ResponseType.plain,
+        sendTimeout: AppConstants.kSessionUploadTimeout,
+        receiveTimeout: AppConstants.kSessionUploadTimeout,
       );
 
-      return decodeSessionPatchResponseText(httpResponse.data ?? '');
+      final Response<String> httpResponse;
+      if (kIsWeb && userImageUrl != null) {
+        WebFlowTrace.log(
+          'PATCH_API',
+          'jsonEncode_start dataUrlChars=${userImageUrl.length}',
+        );
+        await Future<void>.delayed(Duration.zero);
+        final encodeSw = Stopwatch()..start();
+        final jsonBody = jsonEncode(body);
+        WebFlowTrace.log(
+          'PATCH_API',
+          'jsonEncode_done ms=${encodeSw.elapsedMilliseconds} jsonChars=${jsonBody.length}',
+        );
+        await Future<void>.delayed(Duration.zero);
+        final responseText = await patchSessionPhotoBodyOnWeb(
+          sessionId: sessionId,
+          jsonBody: jsonBody,
+          timeout: AppConstants.kSessionUploadTimeout,
+        );
+        httpResponse = Response<String>(
+          requestOptions: RequestOptions(path: '/api/sessions/$sessionId'),
+          data: responseText,
+          statusCode: 200,
+        );
+      } else {
+        httpResponse = await _dio.patch<String>(
+          '/api/sessions/$sessionId',
+          data: body,
+          options: patchOptions,
+        );
+      }
+
+      await Future<void>.delayed(Duration.zero);
+      WebFlowTrace.log('PATCH_API', 'decode_response_start');
+      final decoded =
+          await decodeSessionPatchResponseText(httpResponse.data ?? '');
+      WebFlowTrace.log('PATCH_API', 'decode_response_done');
+      return decoded;
     } on DioException catch (e) {
       _handleWebNetworkError(e);
 

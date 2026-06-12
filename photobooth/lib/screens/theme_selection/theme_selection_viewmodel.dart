@@ -120,14 +120,25 @@ class ThemeViewModel extends ChangeNotifier {
   bool get useCardGridLayout => _useCardGridLayout;
   bool _useCardGridLayout = false;
 
-  /// Loads [useCardGridLayout] from local storage (web + mobile).
+  /// When true, the theme carousel auto-advances after idle time (persisted; default off).
+  bool get themeCarouselAutoScroll => _themeCarouselAutoScroll;
+  bool _themeCarouselAutoScroll = false;
+
+  /// Loads [useCardGridLayout] and [themeCarouselAutoScroll] from local storage.
   Future<void> loadLayoutPreference() async {
     final prefs = await SharedPreferences.getInstance();
-    final v = prefs.getBool(AppConstants.kPrefsThemeSelectionCardLayout);
-    if (v != null && v != _useCardGridLayout) {
-      _useCardGridLayout = v;
-      notifyListeners();
+    var changed = false;
+    final layout = prefs.getBool(AppConstants.kPrefsThemeSelectionCardLayout);
+    if (layout != null && layout != _useCardGridLayout) {
+      _useCardGridLayout = layout;
+      changed = true;
     }
+    final autoScroll = prefs.getBool(AppConstants.kPrefsThemeCarouselAutoScroll);
+    if (autoScroll != null && autoScroll != _themeCarouselAutoScroll) {
+      _themeCarouselAutoScroll = autoScroll;
+      changed = true;
+    }
+    if (changed) notifyListeners();
   }
 
   Future<void> setUseCardGridLayout(bool value) async {
@@ -136,6 +147,18 @@ class ThemeViewModel extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(AppConstants.kPrefsThemeSelectionCardLayout, value);
+  }
+
+  Future<void> setThemeCarouselAutoScroll(bool value) async {
+    if (_themeCarouselAutoScroll == value) return;
+    _themeCarouselAutoScroll = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(AppConstants.kPrefsThemeCarouselAutoScroll, value);
+  }
+
+  Future<void> toggleThemeCarouselAutoScroll() async {
+    await setThemeCarouselAutoScroll(!_themeCarouselAutoScroll);
   }
 
   void selectCategory(String id) {

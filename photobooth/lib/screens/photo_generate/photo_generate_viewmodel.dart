@@ -18,6 +18,7 @@ import '../../utils/transformation_step_display.dart';
 import '../../services/generation_display_preferences.dart';
 import '../../models/parallel_generation_result.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
+import '../../utils/web_flow_trace.dart';
 
 part 'photo_generate_viewmodel_helpers.dart';
 
@@ -801,6 +802,17 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   void _handleGenerationSseEvent(String event, Map<String, dynamic> data) {
     _ingestRunIdFromSsePayload(data);
+    if (event == 'step' ||
+        event == 'image_complete' ||
+        event == 'complete' ||
+        event == 'image_failed') {
+      final step = data['step'] as String?;
+      final idx = data['index'];
+      WebFlowTrace.log(
+        'SSE',
+        '$event${step != null ? ' step=$step' : ''}${idx != null ? ' idx=$idx' : ''}',
+      );
+    }
     switch (event) {
       case 'status':
       case 'start':
@@ -995,8 +1007,16 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _startGenerationRunPolling();
 
     try {
+      WebFlowTrace.log(
+        'GENERATE',
+        'begin theme=${_selectedTheme!.name} parallel=$_parallelSlotCount attempt=$_nextGenerateAttempt',
+      );
       try {
         await _appSettingsManager?.fetchSettings();
+        WebFlowTrace.log(
+          'GENERATE',
+          'settings_loaded parallel=$_parallelSlotCount',
+        );
       } catch (_) {
         // Use [resolveParallelImageCount] fallback if settings unavailable.
       }
@@ -1004,6 +1024,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       ErrorReportingManager.log('Starting image generation');
       
       _updateProgress('Transforming your look...');
+      WebFlowTrace.log('GENERATE', 'api_call_start');
 
       const generateTimeout = Duration(seconds: 120);
       final parallel = await _apiService
@@ -1015,6 +1036,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         themeId: _selectedTheme!.id,
         onProgress: (message) {
           _updateProgress(message);
+          WebFlowTrace.log('GENERATE', 'progress | $message');
         },
         onSseEvent: _parallelSlotCount > 1 ? _handleGenerationSseEvent : null,
       )
@@ -1026,6 +1048,10 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       );
 
       _stopTimer();
+      WebFlowTrace.log(
+        'GENERATE',
+        'api_call_done images=${parallel.imageUrlsBySlot.where((u) => u.isNotEmpty).length} elapsed=${_elapsedSeconds}s',
+      );
 
       // If the user pressed back/cancel while the request was in-flight, ignore late results.
       if (_isCancelled) {
@@ -1033,7 +1059,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         return false;
       }
 
-      return await _completeParallelGeneration(
+      final ok = await _completeParallelGeneration(
         parallel,
         theme: _selectedTheme!,
         onSuccessLog: () {
@@ -1042,11 +1068,17 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         },
         assignSucceeded: (v) => succeeded = v,
       );
+      if (ok) {
+        WebFlowTrace.log('OUTPUT', 'result_ready images=${_generatedImages.length}');
+      }
+      return ok;
     } on TimeoutException {
+      WebFlowTrace.log('GENERATE', 'ERROR timeout after ${_elapsedSeconds}s');
       _errorMessage = 'Generation took too long. Please try again.';
       return false;
     } catch (e, stackTrace) {
       _stopTimer();
+      WebFlowTrace.log('GENERATE', 'ERROR $e');
       AppLogger.error('❌ Error generating image: $e');
       await ErrorReportingManager.recordError(
         e,

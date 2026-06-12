@@ -25,6 +25,7 @@ import '../../utils/web_flow_trace.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_camera_config.dart';
+import 'photo_capture_preprocess_helpers.dart';
 import 'photo_capture_viewmodel_helpers.dart';
 
 (double, double) _previewDisplayDimensions({
@@ -101,6 +102,13 @@ class CaptureViewModel extends ChangeNotifier {
   // Timer tracking for upload
   Timer? _uploadTimer;
   int _uploadElapsedSeconds = 0;
+  String? _uploadStatusMessage;
+
+  /// Background upload encode (started after shutter so Continue only PATCHes).
+  String? _preparedUploadBase64;
+  String? _prepareUploadPhotoId;
+  int? _preparedClientFaceCount;
+  Future<String>? _prepareUploadFuture;
   
   // Countdown timer for capture
   int? _countdownValue;
@@ -150,6 +158,13 @@ class CaptureViewModel extends ChangeNotifier {
   bool get isSelectingFromGallery => _isSelectingFromGallery;
   bool get isUploading => _isUploading;
   int get uploadElapsedSeconds => _uploadElapsedSeconds;
+  String? get uploadStatusMessage => _uploadStatusMessage;
+  bool get isPreparingUploadPayload =>
+      _prepareUploadFuture != null && _preparedUploadBase64 == null;
+  bool get canContinueUpload =>
+      !isCapturing &&
+      !isUploading &&
+      (!kIsWeb || !isPreparingUploadPayload);
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
   int? get countdownValue => _countdownValue;
@@ -565,6 +580,9 @@ class CaptureViewModel extends ChangeNotifier {
 
   void _assignEnumeratedCameras(List<CameraDescription> allCameras) {
     if (allCameras.isEmpty) {
+      _errorMessage = kIsWeb
+          ? 'No camera detected. Allow camera access in the browser, or use Gallery if enabled.'
+          : 'No cameras available';
       unawaited(_reportEmptyCameraEnumeration());
     }
     AppLogger.debug('📷 Detected ${allCameras.length} camera(s):');
@@ -1119,13 +1137,16 @@ class CaptureViewModel extends ChangeNotifier {
       cameraId: cameraId,
     );
     _capturedImagePixelSize = null;
-    unawaited(_refreshCapturedImagePixelSizeSoon(savedFile));
+    if (!kIsWeb) {
+      unawaited(_refreshCapturedImagePixelSizeSoon(savedFile));
+    }
     unawaited(ErrorReportingManager.setPhotoCaptureContext(
       photoId: photoId,
       sessionId: _sessionManager.sessionId,
     ));
     ErrorReportingManager.log('Photo captured successfully: $photoId');
     WebFlowTrace.log('CAPTURE', 'photoModel_set photoId=$photoId');
+    _kickoffUploadPreparation();
     notifyListeners();
   }
 
@@ -1512,7 +1533,9 @@ class CaptureViewModel extends ChangeNotifier {
         cameraId: cameraId,
       );
       _capturedImagePixelSize = null;
-      unawaited(_refreshCapturedImagePixelSizeSoon(normalizedFile));
+      if (!kIsWeb) {
+        unawaited(_refreshCapturedImagePixelSizeSoon(normalizedFile));
+      }
 
       // Track successful photo selection
       unawaited(ErrorReportingManager.setPhotoCaptureContext(
@@ -1521,6 +1544,7 @@ class CaptureViewModel extends ChangeNotifier {
       ));
       await ErrorReportingManager.setCustomKey('photo_source', 'gallery');
       ErrorReportingManager.log('Photo selected from gallery: $photoId');
+      _kickoffUploadPreparation();
 
       notifyListeners();
     } on app_exceptions.CameraException catch (e, stackTrace) {
@@ -1577,8 +1601,90 @@ class CaptureViewModel extends ChangeNotifier {
     _capturedImagePixelSize = null;
     _lockedCaptureCardAspectRatio = null;
     _errorMessage = null;
+    _uploadStatusMessage = null;
+    _resetUploadPreparation();
     _previewNonce++;
     notifyListeners();
+  }
+
+  void _resetUploadPreparation() {
+    _preparedUploadBase64 = null;
+    _prepareUploadPhotoId = null;
+    _preparedClientFaceCount = null;
+    _prepareUploadFuture = null;
+  }
+
+  void _kickoffUploadPreparation() {
+    final photo = _capturedPhoto;
+    if (photo == null) return;
+    _resetUploadPreparation();
+    WebFlowTrace.log('UPLOAD_PREP', 'kickoff photoId=${photo.id}');
+    _prepareUploadFuture = () async {
+      await Future<void>.delayed(const Duration(milliseconds: 48));
+      if (_capturedPhoto?.id != photo.id) {
+        throw StateError('Photo changed before upload prep');
+      }
+      try {
+        final b64 = await _buildUploadPayload(photo);
+        if (_capturedPhoto?.id == photo.id) {
+          _preparedUploadBase64 = b64;
+          _prepareUploadPhotoId = photo.id;
+        }
+        return b64;
+      } catch (e) {
+        WebFlowTrace.log('UPLOAD_PREP', 'ERROR $e');
+        rethrow;
+      } finally {
+        if (_preparedUploadBase64 == null) {
+          _prepareUploadFuture = null;
+        }
+        notifyListeners();
+      }
+    }();
+    unawaited(_prepareUploadFuture);
+  }
+
+  Future<String> _ensureUploadBase64Ready() async {
+    final photo = _capturedPhoto;
+    if (photo == null) {
+      throw Exception('No photo captured');
+    }
+    if (_preparedUploadBase64 != null && _prepareUploadPhotoId == photo.id) {
+      return _preparedUploadBase64!;
+    }
+    if (_prepareUploadFuture != null) {
+      return _prepareUploadFuture!;
+    }
+    _prepareUploadFuture = _buildUploadPayload(photo);
+    try {
+      final b64 = await _prepareUploadFuture!;
+      if (_capturedPhoto?.id == photo.id) {
+        _preparedUploadBase64 = b64;
+        _prepareUploadPhotoId = photo.id;
+      }
+      return b64;
+    } finally {
+      _prepareUploadFuture = null;
+    }
+  }
+
+  Future<String> _buildUploadPayload(PhotoModel photo) async {
+    var imageFile = photo.imageFile;
+    if (kIsWeb) {
+      imageFile = await _materializeWebXFile(imageFile, 'upload');
+      if (_capturedPhoto?.id == photo.id) {
+        _capturedPhoto = photo.copyWith(imageFile: imageFile);
+      }
+    }
+    WebFlowTrace.log('UPLOAD_PREP', 'encode_start');
+    final base64 = await ImageHelper.encodeImageForUpload(imageFile);
+    WebFlowTrace.log('UPLOAD_PREP', 'encode_done len=${base64.length}');
+    _preparedClientFaceCount = await detectFaceCountFromXFile(imageFile);
+    WebFlowTrace.log(
+      'UPLOAD_PREP',
+      'face_done count=$_preparedClientFaceCount',
+    );
+    return base64;
   }
 
   /// Clears [errorMessage] only (e.g. after a failed upload) while keeping the capture.
@@ -1593,7 +1699,10 @@ class CaptureViewModel extends ChangeNotifier {
   Future<XFile> _materializeWebXFile(XFile file, String namePrefix) async {
     if (!kIsWeb) return file;
     WebFlowTrace.log('MATERIALIZE', 'readAsBytes_start');
-    final bytes = await file.readAsBytes();
+    final bytes = await file.readAsBytes().timeout(
+      const Duration(seconds: 30),
+      onTimeout: () => throw TimeoutException('Image read timed out after 30s'),
+    );
     WebFlowTrace.log('MATERIALIZE', 'readAsBytes_done byteLen=${bytes.length}');
     if (bytes.isEmpty) {
       throw Exception('Image is empty (web materialize)');
@@ -1642,8 +1751,72 @@ class CaptureViewModel extends ChangeNotifier {
   }
 
   /// Uploads photo to session (Step 3)
+  /// Sets an immediate person count for theme filtering, then fires preprocess
+  /// in the background (API is fire-and-forget; must not block capture Continue).
+  Future<void> _resolvePersonCountAfterUpload({
+    required String sessionId,
+    required int clientFaceCount,
+  }) async {
+    final existingCount = _sessionManager.personCount;
+    final immediateCount = resolvePersonCountAfterPreprocess(
+      preprocess: null,
+      clientFaceCount: clientFaceCount,
+      sessionPersonCount: existingCount,
+    );
+    if (existingCount == null || existingCount <= 0) {
+      _sessionManager.setPersonCount(immediateCount);
+    }
+    WebFlowTrace.log(
+      'PREPROCESS',
+      'immediate personCount=$immediateCount kIsWeb=$kIsWeb',
+    );
+
+    WebFlowTrace.log('PREPROCESS', 'preprocessImage_fire_and_forget');
+    unawaited(
+      _refinePersonCountFromPreprocess(
+        sessionId: sessionId,
+        clientFaceCount: clientFaceCount,
+        immediateCount: immediateCount,
+      ),
+    );
+  }
+
+  Future<void> _refinePersonCountFromPreprocess({
+    required String sessionId,
+    required int clientFaceCount,
+    required int immediateCount,
+  }) async {
+    try {
+      final preprocess = await _apiService
+          .preprocessImage(
+            sessionId: sessionId,
+            clientFaceCount: clientFaceCount > 0 ? clientFaceCount : null,
+          )
+          .timeout(AppConstants.kPreprocessTimeout);
+      final refined = resolvePersonCountAfterPreprocess(
+        preprocess: preprocess,
+        clientFaceCount: clientFaceCount,
+        sessionPersonCount: immediateCount,
+      );
+      if (refined != immediateCount) {
+        _sessionManager.setPersonCount(refined);
+      }
+      WebFlowTrace.log(
+        'PREPROCESS',
+        'background_done personCount=$refined',
+      );
+    } on TimeoutException catch (e) {
+      WebFlowTrace.log(
+        'PREPROCESS',
+        'background_timeout after ${AppConstants.kPreprocessTimeout.inSeconds}s $e',
+      );
+    } catch (e) {
+      WebFlowTrace.log('PREPROCESS', 'background_ERROR $e');
+    }
+  }
+
   /// Called when user taps "Continue" button in Capture Photo screen
-  /// Uploads photo, saves client person count, and awaits server preprocess consensus.
+  /// Uploads photo, saves client person count, and fires server preprocess in background.
   Future<bool> uploadPhotoToSession() async {
     if (_capturedPhoto == null) {
       _errorMessage = 'No photo captured. Please capture a photo first.';
@@ -1660,50 +1833,43 @@ class CaptureViewModel extends ChangeNotifier {
 
     _isUploading = true;
     _errorMessage = null;
+    _uploadStatusMessage = 'Preparing photo…';
     _startUploadTimer();
     notifyListeners();
 
-    WebFlowTrace.reset(label: 'upload');
     final sidShort = sessionId.length <= 8 ? sessionId : '${sessionId.substring(0, 8)}…';
     WebFlowTrace.log('UPLOAD', 'begin sessionId=$sidShort kIsWeb=$kIsWeb');
 
-    // Web: allow one layout frame so the full-screen loader and timer repaint
-    // before encode/base64 monopolizes the JS thread.
     if (kIsWeb) {
-      WebFlowTrace.log('UPLOAD', 'pre_materialize_delay_16ms_start');
       await Future<void>.delayed(const Duration(milliseconds: 16));
-      WebFlowTrace.log('UPLOAD', 'pre_materialize_delay_done');
     }
 
     try {
-      if (kIsWeb) {
-        final mat = await _materializeWebXFile(_capturedPhoto!.imageFile, 'upload');
-        _capturedPhoto = _capturedPhoto!.copyWith(imageFile: mat);
-        notifyListeners();
-        WebFlowTrace.log('UPLOAD', 'materialize_copyWith_done');
-      }
-
-      // Get the image file from the captured photo
-      final imageFile = _capturedPhoto!.imageFile;
-      
-      ErrorReportingManager.log('📦 Encoding image for upload (upload-optimized size)');
-      WebFlowTrace.log('ENCODE', 'ImageHelper.encodeImageForUpload_start');
-      
-      // Use [ImageHelper.encodeImageForUpload] (not path + [compute]): web camera [XFile]s
-      // often have no real filesystem path; bytes must be read before isolate work.
-      final base64Image = await ImageHelper.encodeImageForUpload(imageFile);
-      WebFlowTrace.log(
-        'ENCODE',
-        'ImageHelper.encodeImageForUpload_done dataUrlLen=${base64Image.length}',
+      WebFlowTrace.log('UPLOAD', 'ensure_payload_start');
+      final base64Image = await _ensureUploadBase64Ready().timeout(
+        AppConstants.kSessionUploadTimeout,
+        onTimeout: () => throw TimeoutException(
+          'Photo preparation timed out after ${AppConstants.kSessionUploadTimeout.inSeconds} seconds',
+        ),
       );
-      
-      ErrorReportingManager.log('✅ Image encoded for upload');
-      WebFlowTrace.log('FACE', 'detectFaceCount_start');
-      final clientFaceCount = await detectFaceCountFromXFile(imageFile);
-      WebFlowTrace.log('FACE', 'detectFaceCount_done count=$clientFaceCount');
+      WebFlowTrace.log(
+        'UPLOAD',
+        'ensure_payload_done dataUrlLen=${base64Image.length}',
+      );
+      final clientFaceCount = _preparedClientFaceCount ?? 0;
 
+      final payloadChars = base64Image.length;
+      final payloadLabel = ImageHelper.formatFileSize(
+        (payloadChars * 3 / 4).round(),
+      );
+      _uploadStatusMessage = 'Uploading photo ($payloadLabel)…';
+      notifyListeners();
       ErrorReportingManager.log('📤 Uploading processed image to API');
-      WebFlowTrace.log('PATCH', 'updateSession_photo_start');
+      WebFlowTrace.log(
+        'PATCH',
+        'updateSession_photo_start payloadChars=$payloadChars '
+        'hasKioskToken=${_sessionManager.kioskAuthToken?.isNotEmpty == true}',
+      );
 
       // PATCH photo + client person count; preprocess returns authoritative count.
       final response = await _apiService.updateSession(
@@ -1717,9 +1883,9 @@ class CaptureViewModel extends ChangeNotifier {
           'originalImageUrl': null,
         },
       ).timeout(
-        AppConstants.kApiTimeout,
+        AppConstants.kSessionUploadTimeout,
         onTimeout: () => throw TimeoutException(
-          'Upload timed out after ${AppConstants.kApiTimeout.inSeconds} seconds',
+          'Upload timed out after ${AppConstants.kSessionUploadTimeout.inSeconds} seconds',
         ),
       );
       WebFlowTrace.log('PATCH', 'updateSession_photo_done');
@@ -1730,44 +1896,42 @@ class CaptureViewModel extends ChangeNotifier {
       _sessionManager.setSessionFromResponse(response);
       WebFlowTrace.log('UPLOAD', 'setSessionFromResponse_done');
 
-      ErrorReportingManager.log('🔄 Awaiting image preprocessing (person count)');
-      WebFlowTrace.log('PREPROCESS', 'preprocessImage_start');
-      final preprocess = await _apiService.preprocessImage(
+      await _resolvePersonCountAfterUpload(
         sessionId: sessionId,
-        clientFaceCount: clientFaceCount > 0 ? clientFaceCount : null,
+        clientFaceCount: clientFaceCount,
       );
-      WebFlowTrace.log(
-        'PREPROCESS',
-        'preprocessImage_done personCount=${preprocess.personCount}',
-      );
-
-      if (preprocess.personCount != null && preprocess.personCount! > 0) {
-        _sessionManager.setPersonCount(preprocess.personCount!);
-      } else if (clientFaceCount > 0) {
-        _sessionManager.setPersonCount(clientFaceCount);
-      } else if (!preprocess.success) {
-        throw app_exceptions.ApiException(
-          'Could not verify how many people are in the photo. Please try again.',
-        );
-      }
 
       WebFlowTrace.log('UPLOAD', 'success');
       return true;
     } on TimeoutException catch (e) {
       WebFlowTrace.log('UPLOAD', 'ERROR TimeoutException $e');
-      _errorMessage = 'Upload took too long. Please check your connection and try again.';
+      _errorMessage =
+          'Upload took too long. Please check your connection and try again.';
+      if (kIsWeb) {
+        _errorMessage =
+            '$_errorMessage\n\nOn localhost web, run ./run_web_dev.sh (starts API proxy on :8787).';
+      }
       return false;
     } on app_exceptions.ApiException catch (e) {
       WebFlowTrace.log('UPLOAD', 'ERROR ApiException ${e.message}');
       _errorMessage = e.message;
+      if (kIsWeb) {
+        _errorMessage =
+            '${e.message}\n\nOn localhost web, run ./run_web_dev.sh (API proxy).';
+      }
       return false;
     } catch (e) {
       WebFlowTrace.log('UPLOAD', 'ERROR $e');
       _errorMessage = 'Failed to upload photo: ${e.toString()}';
+      if (kIsWeb) {
+        _errorMessage =
+            'Failed to upload photo: $e\n\nOn localhost web, run ./run_web_dev.sh (API proxy).';
+      }
       return false;
     } finally {
       _stopUploadTimer();
       _isUploading = false;
+      _uploadStatusMessage = null;
       notifyListeners();
     }
   }

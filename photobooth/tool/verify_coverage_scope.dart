@@ -115,6 +115,7 @@ bool ignored(String path) {
     'theme_image_urls.dart',
     'generation_display_preferences.dart',
     'web_flow_trace.dart',
+    'web_flow_trace_summary.dart',
     'app_runtime_config.dart',
     'route_args.dart',
     'app_settings_manager.dart',
