@@ -964,8 +964,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     assignSucceeded?.call(true);
     _lastTransformationRunId = parallel.runId;
     try {
-      await _refreshGenerationRunStepsNow()
-          .timeout(const Duration(milliseconds: 900));
+      await _refreshGenerationRunStepsNow();
     } catch (_) {}
     final newImages = generatedImagesFromParallelResult(
       parallel: parallel,
@@ -1026,9 +1025,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       _updateProgress('Transforming your look...');
       WebFlowTrace.log('GENERATE', 'api_call_start');
 
-      const generateTimeout = Duration(seconds: 120);
-      final parallel = await _apiService
-          .generateImages(
+      final parallel = await _apiService.generateImages(
         sessionId: _sessionManager.sessionId!,
         count: _parallelSlotCount,
         attempt: _nextGenerateAttempt,
@@ -1039,12 +1036,6 @@ class PhotoGenerateViewModel extends ChangeNotifier {
           WebFlowTrace.log('GENERATE', 'progress | $message');
         },
         onSseEvent: _parallelSlotCount > 1 ? _handleGenerationSseEvent : null,
-      )
-          .timeout(
-        generateTimeout,
-        onTimeout: () => throw TimeoutException(
-          'Generation timed out after ${generateTimeout.inSeconds} seconds',
-        ),
       );
 
       _stopTimer();
@@ -1072,10 +1063,6 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         WebFlowTrace.log('OUTPUT', 'result_ready images=${_generatedImages.length}');
       }
       return ok;
-    } on TimeoutException {
-      WebFlowTrace.log('GENERATE', 'ERROR timeout after ${_elapsedSeconds}s');
-      _errorMessage = 'Generation took too long. Please try again.';
-      return false;
     } catch (e, stackTrace) {
       _stopTimer();
       WebFlowTrace.log('GENERATE', 'ERROR $e');
@@ -1136,28 +1123,17 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       
       AppLogger.debug('🎨 Trying different style with theme: ${newTheme.name}');
       
-      // Update session with the new theme (30s timeout)
-      const updateTimeout = Duration(seconds: 30);
+      // Update session with the new theme
       try {
-        final patch = await _apiService
-            .updateSession(
-              sessionId: _sessionManager.sessionId!,
-              selectedThemeId: newTheme.id,
-            )
-            .timeout(
-              updateTimeout,
-              onTimeout: () => throw TimeoutException(
-                'Update theme timed out after ${updateTimeout.inSeconds} seconds',
-              ),
-            );
+        final patch = await _apiService.updateSession(
+          sessionId: _sessionManager.sessionId!,
+          selectedThemeId: newTheme.id,
+        );
         _sessionManager.setSessionFromResponse(patch);
         _refreshMaxRegenerationsFromSettings();
         final usedAfter = _sessionManager.currentSession?.attemptsUsed ?? 0;
         _triesRemaining = (_maxRegenerationsAllowed - usedAfter)
             .clamp(0, _maxRegenerationsAllowed);
-      } on TimeoutException {
-        _errorMessage = 'Request took too long. Please try again.';
-        return false;
       } catch (e) {
         _errorMessage = 'Failed to update theme: $e';
         return false;
@@ -1171,9 +1147,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       
       _updateProgress('Transforming your look...');
 
-      const generateTimeout = Duration(seconds: 120);
-      final parallel = await _apiService
-          .generateImages(
+      final parallel = await _apiService.generateImages(
         sessionId: _sessionManager.sessionId!,
         count: _parallelSlotCount,
         attempt: _nextGenerateAttempt,
@@ -1183,12 +1157,6 @@ class PhotoGenerateViewModel extends ChangeNotifier {
           _updateProgress(message);
         },
         onSseEvent: _parallelSlotCount > 1 ? _handleGenerationSseEvent : null,
-      )
-          .timeout(
-        generateTimeout,
-        onTimeout: () => throw TimeoutException(
-          'Generation timed out after ${generateTimeout.inSeconds} seconds',
-        ),
       );
 
       _stopTimer();
@@ -1204,9 +1172,6 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         theme: newTheme,
         assignSucceeded: (v) => succeeded = v,
       );
-    } on TimeoutException {
-      _errorMessage = 'Generation took too long. Please try again.';
-      return false;
     } catch (e, stackTrace) {
       _stopTimer();
       AppLogger.error('❌ Error trying different style: $e');
