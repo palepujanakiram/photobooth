@@ -7,6 +7,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
 import 'package:camera_native_details/camera_native_details.dart';
+import 'package:uvccamera/uvccamera.dart';
+import 'photo_capture_camera_picker_screen.dart';
 import 'photo_capture_view_aspect.dart';
 import 'photo_capture_view_handlers.dart';
 import 'photo_capture_view_layout.dart';
@@ -17,6 +19,7 @@ import '../../utils/app_runtime_config.dart';
 import '../../utils/constants.dart';
 import '../../utils/device_classifier.dart';
 import '../../utils/logger.dart';
+import '../../utils/uvc_capture_config.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../views/widgets/app_colors.dart';
@@ -36,6 +39,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   late CaptureViewModel _captureViewModel;
   StreamSubscription<HardwareKeyEvent>? _hardwareKeySub;
   bool _hardwareKeysEnabled = false;
+  UvcCameraDevice? _uvcDevice;
+  UvcCameraController? _uvcController;
+  bool _uvcInitializing = false;
+  String? _uvcError;
 
   @override
   void initState() {
@@ -103,6 +110,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (_hardwareKeysEnabled) {
       HardwareKeyService.setEnabled(false);
     }
+    unawaited(_disposeUvc());
     _captureViewModel.dispose();
     super.dispose();
   }
@@ -114,44 +122,162 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _captureViewModel.refreshDisplayRotation();
   }
 
-  void _showCameraSelectionDialog(BuildContext context, CaptureViewModel viewModel) {
-    final uniqueCameras = _getUniqueCameras(viewModel.availableCameras, viewModel);
-    if (uniqueCameras.isEmpty) return;
+  Future<void> _disposeUvcController() async {
+    final ctrl = _uvcController;
+    _uvcController = null;
+    _uvcInitializing = false;
+    if (ctrl != null) {
+      try {
+        await ctrl.dispose();
+      } catch (_) {
+        // Best-effort.
+      }
+    }
+  }
 
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (pickerContext) => Scaffold(
-          appBar: AppBar(
-            centerTitle: true,
-            title: const Text('Select Camera'),
-            leading: IconButton(
-              icon: const Icon(CupertinoIcons.xmark),
-              onPressed: () => Navigator.pop(pickerContext),
+  Future<void> _disposeUvc() async {
+    await _disposeUvcController();
+    _uvcDevice = null;
+    _uvcError = null;
+  }
+
+  bool get _isUsingUvc => _uvcDevice != null;
+
+  Future<void> _initUvc(UvcCameraDevice device) async {
+    setState(() {
+      _uvcDevice = device;
+      _uvcInitializing = true;
+      _uvcError = null;
+    });
+
+    // Stop built-in camera to avoid native buffer overlap.
+    _captureViewModel.disposeCamera();
+
+    try {
+      final ok = await UvcCamera.requestDevicePermission(device);
+      if (!ok) {
+        if (!mounted) return;
+        setState(() {
+          _uvcInitializing = false;
+          _uvcError = 'USB camera permission was not granted.';
+        });
+        return;
+      }
+      final ctrl = UvcCameraController(
+        device: device,
+        resolutionPreset: UvcCaptureConfig.resolutionPreset,
+      );
+      await ctrl.initialize();
+      if (!mounted) return;
+      setState(() {
+        _uvcController = ctrl;
+        _uvcInitializing = false;
+        _uvcError = null;
+      });
+    } catch (e) {
+      AppLogger.error('UVC init failed (main preview)', error: e);
+      if (!mounted) return;
+      setState(() {
+        _uvcInitializing = false;
+        _uvcError = 'Failed to initialize USB camera: $e';
+      });
+    }
+  }
+
+  Future<void> _showCameraSelectionDialog(
+    BuildContext context,
+    CaptureViewModel viewModel,
+  ) async {
+    final picked = await Navigator.of(context).push<Object?>(
+      MaterialPageRoute<Object?>(
+        builder: (_) => PhotoCaptureCameraPickerScreen(viewModel: viewModel),
+      ),
+    );
+    if (!mounted || picked == null) return;
+
+    if (picked is CameraDescription) {
+      await _disposeUvc();
+      await viewModel.switchCamera(picked);
+      return;
+    }
+
+    if (picked is UvcCameraDevice) {
+      await _initUvc(picked);
+    }
+  }
+
+  Widget _buildUvcPreview(BuildContext context) {
+    final ctrl = _uvcController;
+    if (_uvcInitializing) {
+      return const Center(child: CircularProgressIndicator(color: Colors.white));
+    }
+    if (_uvcError != null) {
+      return Container(
+        color: AppColors.of(context).backgroundColor,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              _uvcError!,
+              style: TextStyle(color: AppColors.of(context).textColor),
+              textAlign: TextAlign.center,
             ),
           ),
-          body: SafeArea(
-            child: ListView.builder(
-              itemCount: uniqueCameras.length,
-              itemBuilder: (_, index) {
-                final camera = uniqueCameras[index];
-                final isActive = viewModel.currentCamera?.name == camera.name;
-                final displayName = viewModel.getCameraDisplayName(camera);
-                return ListTile(
-                  title: Text(displayName),
-                  leading: isActive
-                      ? const Icon(CupertinoIcons.checkmark_circle_fill, color: Colors.blue)
-                      : null,
-                  onTap: () {
-                    Navigator.pop(pickerContext);
-                    if (!isActive) viewModel.switchCamera(camera);
-                  },
-                );
-              },
-            ),
+        ),
+      );
+    }
+    if (ctrl == null || !ctrl.value.isInitialized) {
+      return Container(
+        color: AppColors.of(context).backgroundColor,
+        child: Center(
+          child: Text(
+            'USB camera preview not available',
+            style: TextStyle(color: AppColors.of(context).textColor),
+          ),
+        ),
+      );
+    }
+    // Match the main preview card behavior (cover).
+    return ClipRect(
+      child: SizedBox.expand(
+        child: FittedBox(
+          fit: BoxFit.cover,
+          alignment: Alignment.center,
+          child: SizedBox(
+            width: 1,
+            height: 1,
+            child: UvcCameraPreview(ctrl),
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _captureUvc(CaptureViewModel viewModel) async {
+    final ctrl = _uvcController;
+    final device = _uvcDevice;
+    if (ctrl == null || device == null || viewModel.isCapturing) return;
+    final cameraId = 'uvc:${device.vendorId}:${device.productId}:${device.name}';
+    try {
+      final aspect = ctrl.value.previewMode?.aspectRatio;
+      if (aspect != null && aspect > 0) {
+        viewModel.lockCaptureCardAspectRatio(aspect);
+      }
+      final file = await ctrl.takePicture();
+      // Release USB preview buffers before decode/resize/encode on the UI isolate.
+      await _disposeUvcController();
+      if (mounted) setState(() {});
+      await viewModel.setCapturedPhotoFromExternalFile(
+        rawFile: file,
+        cameraId: cameraId,
+      );
+    } catch (e, st) {
+      AppLogger.error('UVC takePicture failed (main preview)', error: e, stackTrace: st);
+      if (!mounted) return;
+      setState(() {
+        _uvcError = 'USB camera capture failed: $e';
+      });
+    }
   }
 
   Future<void> _openPreviewRotationScreen(BuildContext context, CaptureViewModel viewModel) async {
@@ -272,7 +398,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (viewModel.hasError && viewModel.capturedPhoto == null) {
       return _buildCaptureFatalErrorState(context, viewModel);
     }
-    if (!viewModel.isReady && viewModel.capturedPhoto == null) {
+    final uvcReady = _isUsingUvc &&
+        _uvcController != null &&
+        _uvcController!.value.isInitialized;
+    if (!uvcReady && !viewModel.isReady && viewModel.capturedPhoto == null) {
       return const Center(
         child: Text(
           'Camera not ready',
@@ -281,7 +410,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       );
     }
 
-    final previewWidget = _buildCameraPreviewWithRotation(context, viewModel);
+    final previewWidget = _isUsingUvc
+        ? _buildUvcPreview(context)
+        : _buildCameraPreviewWithRotation(context, viewModel);
     final hasCapturedPhoto = viewModel.capturedPhoto != null;
     return Padding(
       padding: const EdgeInsets.only(left: 12, right: 12),
@@ -702,11 +833,17 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         children: [
           ElevatedButton(
             style: captureScreenButtonStyle(secondary: true),
-            onPressed: () => handleCapturedPhotoRetake(
-              context: context,
-              viewModel: viewModel,
-              isMounted: () => mounted,
-            ),
+            onPressed: () async {
+              await handleCapturedPhotoRetake(
+                context: context,
+                viewModel: viewModel,
+                isMounted: () => mounted,
+              );
+              final device = _uvcDevice;
+              if (mounted && device != null && _uvcController == null) {
+                await _initUvc(device);
+              }
+            },
             child: const Text('Retake'),
           ),
           const SizedBox(height: 12),
@@ -819,7 +956,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     viewModel.isSelectingFromGallery ||
                     viewModel.isCountingDown)
                 ? null
-                : () async => await viewModel.capturePhotoWithCountdown(),
+                : () async {
+                    if (_isUsingUvc) {
+                      await _captureUvc(viewModel);
+                    } else {
+                      await viewModel.capturePhotoWithCountdown();
+                    }
+                  },
             icon: viewModel.isCapturing
                 ? const SizedBox(
                     width: 20,
@@ -835,27 +978,5 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         ],
       ),
     );
-  }
-
-  /// Filters cameras to remove duplicates by display name and by logical device.
-  /// Flutter on iOS can return multiple entries for the same logical camera (e.g. two "Front Camera");
-  /// we keep one per display name so the list shows Back Camera, Front Camera, HP 4K once each.
-  List<CameraDescription> _getUniqueCameras(
-    List<CameraDescription> cameras,
-    CaptureViewModel viewModel,
-  ) {
-    final uniqueCameras = <CameraDescription>[];
-    final seenDisplayNames = <String>{};
-
-    for (final camera in cameras) {
-      final displayName = viewModel.getCameraDisplayName(camera);
-      if (seenDisplayNames.contains(displayName)) {
-        continue;
-      }
-      seenDisplayNames.add(displayName);
-      uniqueCameras.add(camera);
-    }
-
-    return uniqueCameras;
   }
 }
