@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui'
     show Size, ImmutableBuffer, instantiateImageCodecFromBuffer;
 import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/painting.dart' show PaintingBinding;
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:camera/camera.dart';
 import 'package:camera/camera.dart' as cam show availableCameras;
@@ -18,6 +19,7 @@ import '../../utils/device_classifier.dart';
 import '../../utils/app_device_type.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
+import '../../utils/uvc_capture_config.dart';
 import 'camera_description_label.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/logger.dart';
@@ -152,6 +154,7 @@ class CaptureViewModel extends ChangeNotifier {
   }
   List<CameraDescription> get availableCameras => _availableCameras;
   CameraDescription? get currentCamera => _currentCamera;
+  AppDeviceType? get deviceType => _deviceType;
   bool get isLoadingCameras => _isLoadingCameras;
   bool get isInitializing => _isInitializing;
   bool get isCapturing => _isCapturing;
@@ -295,6 +298,12 @@ class CaptureViewModel extends ChangeNotifier {
       _lockedCaptureCardAspectRatio =
           (d.width / d.height).clamp(0.35, 2.85);
     }
+  }
+
+  /// Locks capture-card aspect from an external preview (e.g. USB/UVC) before teardown.
+  void lockCaptureCardAspectRatio(double aspectRatio) {
+    if (aspectRatio <= 0) return;
+    _lockedCaptureCardAspectRatio = aspectRatio.clamp(0.35, 2.85);
   }
 
   /// Native camera characteristics (Android Camera2; default/placeholder on iOS/Web). Fetched after camera init.
@@ -606,6 +615,59 @@ class CaptureViewModel extends ChangeNotifier {
       AppLogger.debug(
         '📷 Auto-selected camera: ${cameraDescriptionLabel(_currentCamera!)}',
       );
+    }
+  }
+
+  /// Reloads the camera list from the platform (e.g. after plugging in USB).
+  Future<void> refreshCameraEnumeration() async {
+    await loadCameras(forceRefresh: true);
+  }
+
+  /// Sets [capturedPhoto] from an externally provided file (e.g. USB/UVC camera).
+  /// This reuses the same normalization and upload-prep pipeline as the built-in camera.
+  Future<void> setCapturedPhotoFromExternalFile({
+    required XFile rawFile,
+    required String cameraId,
+  }) async {
+    if (_isCapturing || _isUploading) return;
+    final isUvc = cameraId.startsWith('uvc:');
+    _isCapturing = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
+        rawFile,
+        flipHorizontal: false,
+        fixBgrChannelOrder: isUvc,
+        maxDimension: isUvc ? UvcCaptureConfig.normalizeMaxDimension : null,
+        jpegQuality: isUvc ? UvcCaptureConfig.normalizeJpegQuality : null,
+      );
+      if (isUvc) {
+        PaintingBinding.instance.imageCache.clear();
+        PaintingBinding.instance.imageCache.clearLiveImages();
+      }
+      await _assignCapturedPhotoModel(
+        savedFile,
+        cameraIdOverride: cameraId,
+        skipCapturedImagePixelSizeDecode: isUvc,
+        uploadPrepDelay: isUvc
+            ? UvcCaptureConfig.uploadPrepDelay
+            : const Duration(milliseconds: 48),
+      );
+    } catch (e, st) {
+      _errorMessage = 'USB camera capture failed: $e';
+      await ErrorReportingManager.recordError(
+        e,
+        st,
+        reason: 'setCapturedPhotoFromExternalFile failed',
+        extraInfo: {'cameraId': cameraId},
+        fatal: false,
+      );
+      notifyListeners();
+    } finally {
+      _isCapturing = false;
+      notifyListeners();
     }
   }
 
@@ -1125,11 +1187,19 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> _assignCapturedPhotoModel(XFile savedFile) async {
-    final cameraId =
-        _cameraController?.description.name ?? _currentCamera?.name;
+  Future<void> _assignCapturedPhotoModel(
+    XFile savedFile, {
+    String? cameraIdOverride,
+    bool skipCapturedImagePixelSizeDecode = false,
+    Duration uploadPrepDelay = const Duration(milliseconds: 48),
+  }) async {
+    final cameraId = cameraIdOverride ??
+        _cameraController?.description.name ??
+        _currentCamera?.name;
     final photoId = _uuid.v4();
-    _snapshotLockedCaptureCardAspectFromLivePreview();
+    if (cameraIdOverride == null) {
+      _snapshotLockedCaptureCardAspectFromLivePreview();
+    }
     _capturedPhoto = PhotoModel(
       id: photoId,
       imageFile: savedFile,
@@ -1137,7 +1207,7 @@ class CaptureViewModel extends ChangeNotifier {
       cameraId: cameraId,
     );
     _capturedImagePixelSize = null;
-    if (!kIsWeb) {
+    if (!kIsWeb && !skipCapturedImagePixelSizeDecode) {
       unawaited(_refreshCapturedImagePixelSizeSoon(savedFile));
     }
     unawaited(ErrorReportingManager.setPhotoCaptureContext(
@@ -1146,7 +1216,7 @@ class CaptureViewModel extends ChangeNotifier {
     ));
     ErrorReportingManager.log('Photo captured successfully: $photoId');
     WebFlowTrace.log('CAPTURE', 'photoModel_set photoId=$photoId');
-    _kickoffUploadPreparation();
+    _kickoffUploadPreparation(initialDelay: uploadPrepDelay);
     notifyListeners();
   }
 
@@ -1614,13 +1684,15 @@ class CaptureViewModel extends ChangeNotifier {
     _prepareUploadFuture = null;
   }
 
-  void _kickoffUploadPreparation() {
+  void _kickoffUploadPreparation({
+    Duration initialDelay = const Duration(milliseconds: 48),
+  }) {
     final photo = _capturedPhoto;
     if (photo == null) return;
     _resetUploadPreparation();
     WebFlowTrace.log('UPLOAD_PREP', 'kickoff photoId=${photo.id}');
     _prepareUploadFuture = () async {
-      await Future<void>.delayed(const Duration(milliseconds: 48));
+      await Future<void>.delayed(initialDelay);
       if (_capturedPhoto?.id != photo.id) {
         throw StateError('Photo changed before upload prep');
       }

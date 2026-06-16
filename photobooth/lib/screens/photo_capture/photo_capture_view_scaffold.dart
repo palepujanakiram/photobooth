@@ -103,14 +103,14 @@ class PhotoCaptureScaffold extends StatelessWidget {
         onPressed: onBack,
       ),
       actions: [
-        if (viewModel.availableCameras.length > 1)
-          IconButton(
-            icon: Icon(
-              CupertinoIcons.camera_rotate,
-              color: _cameraActionsDisabled ? Colors.grey : Colors.white,
-            ),
-            onPressed: _cameraActionsDisabled ? null : onSelectCamera,
+        IconButton(
+          icon: Icon(
+            CupertinoIcons.camera_rotate,
+            color: _cameraActionsDisabled ? Colors.grey : Colors.white,
           ),
+          tooltip: 'Select camera',
+          onPressed: _cameraActionsDisabled ? null : onSelectCamera,
+        ),
         IconButton(
           icon: Icon(
             CupertinoIcons.rotate_right,

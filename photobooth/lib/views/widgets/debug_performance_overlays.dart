@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../utils/app_runtime_config.dart';
 import '../../utils/constants.dart';
@@ -26,30 +27,233 @@ Widget _debugHudPanels(BuildContext context) {
     child: Stack(
       clipBehavior: Clip.none,
       children: [
-        Positioned(
-          left: 8,
-          top: top,
-          child: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DebugRamMonitorOverlay(),
-              SizedBox(height: 8),
-              FlowTraceOverlay(width: 300, maxVisibleLines: 8),
-            ],
-          ),
+        MovableDebugPanel(
+          prefsKeyPrefix: 'debugHud.ram',
+          defaultPosition: Offset(8, top),
+          panelWidth: 132,
+          child: const DebugRamMonitorOverlay(),
         ),
-        Positioned(
-          right: 8,
-          top: top,
-          child: DebugLogOverlay(
-            width: logWidth,
-            maxVisibleLines: 12,
-          ),
+        MovableDebugPanel(
+          prefsKeyPrefix: 'debugHud.flowTrace',
+          defaultPosition: Offset(8, top + 8 + 78),
+          panelWidth: 300,
+          child: const FlowTraceOverlay(width: 300, maxVisibleLines: 8),
+        ),
+        MovableDebugLogOverlay(
+          defaultRight: 8,
+          defaultTop: top,
+          width: logWidth,
+          maxVisibleLines: 12,
         ),
       ],
     ),
   );
+}
+
+/// Generic draggable wrapper for a debug HUD panel.
+class MovableDebugPanel extends StatefulWidget {
+  const MovableDebugPanel({
+    super.key,
+    required this.prefsKeyPrefix,
+    required this.defaultPosition,
+    required this.panelWidth,
+    required this.child,
+  });
+
+  final String prefsKeyPrefix;
+  final Offset defaultPosition;
+  final double panelWidth;
+  final Widget child;
+
+  @override
+  State<MovableDebugPanel> createState() => _MovableDebugPanelState();
+}
+
+class _MovableDebugPanelState extends State<MovableDebugPanel> {
+  Offset? _pos;
+  bool _loaded = false;
+
+  String get _prefsKeyX => '${widget.prefsKeyPrefix}.x';
+  String get _prefsKeyY => '${widget.prefsKeyPrefix}.y';
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loaded) return;
+    _loaded = true;
+    _loadSavedPosition();
+  }
+
+  Future<void> _loadSavedPosition() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final x = prefs.getDouble(_prefsKeyX);
+      final y = prefs.getDouble(_prefsKeyY);
+      if (!mounted) return;
+      if (x != null && y != null) {
+        setState(() => _pos = Offset(x, y));
+      }
+    } catch (_) {
+      // Best-effort only.
+    }
+  }
+
+  Future<void> _savePosition(Offset pos) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_prefsKeyX, pos.dx);
+      await prefs.setDouble(_prefsKeyY, pos.dy);
+    } catch (_) {
+      // Best-effort only.
+    }
+  }
+
+  Offset _clampToScreen(Offset pos, Size screen) {
+    final maxX = (screen.width - widget.panelWidth).clamp(0.0, screen.width);
+    final x = pos.dx.clamp(0.0, maxX);
+    final y = pos.dy.clamp(0.0, (screen.height - 56).clamp(0.0, screen.height));
+    return Offset(x, y);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    final pos = _clampToScreen(_pos ?? widget.defaultPosition, screen);
+    return Positioned(
+      left: pos.dx,
+      top: pos.dy,
+      child: _DragHandle(
+        onDrag: (delta) {
+          final next = _clampToScreen(pos + delta, screen);
+          setState(() => _pos = next);
+        },
+        onDragEnd: () => _savePosition(_pos ?? pos),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// Draggable wrapper for the logs overlay so it can be moved out of the way
+/// to tap UI elements underneath.
+class MovableDebugLogOverlay extends StatefulWidget {
+  const MovableDebugLogOverlay({
+    super.key,
+    required this.defaultRight,
+    required this.defaultTop,
+    required this.width,
+    required this.maxVisibleLines,
+  });
+
+  final double defaultRight;
+  final double defaultTop;
+  final double width;
+  final int maxVisibleLines;
+
+  @override
+  State<MovableDebugLogOverlay> createState() => _MovableDebugLogOverlayState();
+}
+
+class _MovableDebugLogOverlayState extends State<MovableDebugLogOverlay> {
+  static const _prefsKeyX = 'debugHud.logOverlay.x';
+  static const _prefsKeyY = 'debugHud.logOverlay.y';
+
+  Offset? _pos;
+  bool _loaded = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loaded) return;
+    _loaded = true;
+    _loadSavedPosition();
+  }
+
+  Future<void> _loadSavedPosition() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final x = prefs.getDouble(_prefsKeyX);
+      final y = prefs.getDouble(_prefsKeyY);
+      if (!mounted) return;
+      if (x != null && y != null) {
+        setState(() => _pos = Offset(x, y));
+      }
+    } catch (_) {
+      // Best-effort only.
+    }
+  }
+
+  Future<void> _savePosition(Offset pos) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_prefsKeyX, pos.dx);
+      await prefs.setDouble(_prefsKeyY, pos.dy);
+    } catch (_) {
+      // Best-effort only.
+    }
+  }
+
+  Offset _defaultPosition(Size screen) {
+    // Default: pinned top-right, matching the previous Positioned(right/top) behavior.
+    final x = (screen.width - widget.width - widget.defaultRight).clamp(0.0, screen.width);
+    final y = widget.defaultTop.clamp(0.0, screen.height);
+    return Offset(x, y);
+  }
+
+  Offset _clampToScreen(Offset pos, Size screen) {
+    // Keep the panel on-screen. We clamp by width; height varies (collapsed/expanded),
+    // so keep the top-left within bounds and allow some vertical slack.
+    final maxX = (screen.width - widget.width).clamp(0.0, screen.width);
+    final x = pos.dx.clamp(0.0, maxX);
+    final y = pos.dy.clamp(0.0, (screen.height - 56).clamp(0.0, screen.height));
+    return Offset(x, y);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    final pos = _clampToScreen(_pos ?? _defaultPosition(screen), screen);
+
+    return Positioned(
+      left: pos.dx,
+      top: pos.dy,
+      child: _DragHandle(
+        onDrag: (delta) {
+          final next = _clampToScreen(pos + delta, screen);
+          setState(() => _pos = next);
+        },
+        onDragEnd: () => _savePosition(_pos ?? pos),
+        child: DebugLogOverlay(
+          width: widget.width,
+          maxVisibleLines: widget.maxVisibleLines,
+        ),
+      ),
+    );
+  }
+}
+
+class _DragHandle extends StatelessWidget {
+  const _DragHandle({
+    required this.child,
+    required this.onDrag,
+    required this.onDragEnd,
+  });
+
+  final Widget child;
+  final ValueChanged<Offset> onDrag;
+  final VoidCallback onDragEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    // We capture pan gestures on the whole panel; this makes it easy to reposition.
+    // The user can move it away, then interact with the UI underneath.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onPanUpdate: (d) => onDrag(d.delta),
+      onPanEnd: (_) => onDragEnd(),
+      child: child,
+    );
+  }
 }
 
 /// Global capture → output debug HUD when `showGenerationCommentary` is on
