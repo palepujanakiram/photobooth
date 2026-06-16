@@ -8,5 +8,6 @@ void main() {
     expect(UvcCaptureConfig.normalizeMaxDimension, 1536);
     expect(UvcCaptureConfig.normalizeJpegQuality, 85);
     expect(UvcCaptureConfig.uploadPrepDelay, const Duration(milliseconds: 300));
+    expect(UvcCaptureConfig.deferUploadPrepUntilContinue, isTrue);
   });
 }

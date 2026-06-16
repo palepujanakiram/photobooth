@@ -654,6 +654,8 @@ class CaptureViewModel extends ChangeNotifier {
         uploadPrepDelay: isUvc
             ? UvcCaptureConfig.uploadPrepDelay
             : const Duration(milliseconds: 48),
+        skipUploadPrep:
+            isUvc && UvcCaptureConfig.deferUploadPrepUntilContinue,
       );
     } catch (e, st) {
       _errorMessage = 'USB camera capture failed: $e';
@@ -1192,6 +1194,7 @@ class CaptureViewModel extends ChangeNotifier {
     String? cameraIdOverride,
     bool skipCapturedImagePixelSizeDecode = false,
     Duration uploadPrepDelay = const Duration(milliseconds: 48),
+    bool skipUploadPrep = false,
   }) async {
     final cameraId = cameraIdOverride ??
         _cameraController?.description.name ??
@@ -1216,7 +1219,9 @@ class CaptureViewModel extends ChangeNotifier {
     ));
     ErrorReportingManager.log('Photo captured successfully: $photoId');
     WebFlowTrace.log('CAPTURE', 'photoModel_set photoId=$photoId');
-    _kickoffUploadPreparation(initialDelay: uploadPrepDelay);
+    if (!skipUploadPrep) {
+      _kickoffUploadPreparation(initialDelay: uploadPrepDelay);
+    }
     notifyListeners();
   }
 

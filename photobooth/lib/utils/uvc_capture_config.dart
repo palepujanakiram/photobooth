@@ -26,4 +26,8 @@ class UvcCaptureConfig {
 
   /// Pause before upload encode + face detection so UVC dispose / GC can run.
   static const Duration uploadPrepDelay = Duration(milliseconds: 300);
+
+  /// When true, skip background encode + face detection until the user taps Continue.
+  /// Reduces RAM spikes and UI jank while reviewing the captured still on low-RAM tablets.
+  static const bool deferUploadPrepUntilContinue = true;
 }
