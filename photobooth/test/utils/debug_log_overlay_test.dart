@@ -85,10 +85,10 @@ void main() {
     AppLogger.debug('hidden on terms');
 
     await tester.pumpWidget(
-      MaterialApp(
+      const MaterialApp(
         home: DebugPerformanceOverlayScope(
           routeName: AppConstants.kRouteTerms,
-          child: const Scaffold(body: Text('terms')),
+          child: Scaffold(body: Text('terms')),
         ),
       ),
     );
@@ -106,10 +106,10 @@ void main() {
     AppLogger.debug('visible on capture');
 
     await tester.pumpWidget(
-      MaterialApp(
+      const MaterialApp(
         home: DebugPerformanceOverlayScope(
           routeName: AppConstants.kRouteCapture,
-          child: const Scaffold(body: Text('capture')),
+          child: Scaffold(body: Text('capture')),
         ),
       ),
     );

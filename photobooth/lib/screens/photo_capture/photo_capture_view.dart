@@ -9,6 +9,7 @@ import 'package:camera/camera.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'package:uvccamera/uvccamera.dart';
 import 'photo_capture_camera_picker_screen.dart';
+import 'photo_capture_preview_rotation.dart';
 import 'photo_capture_view_aspect.dart';
 import 'photo_capture_view_handlers.dart';
 import 'photo_capture_view_layout.dart';
@@ -43,6 +44,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   UvcCameraController? _uvcController;
   bool _uvcInitializing = false;
   String? _uvcError;
+  bool _showCaptureFlash = false;
 
   @override
   void initState() {
@@ -169,6 +171,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       );
       await ctrl.initialize();
       if (!mounted) return;
+      await _captureViewModel.refreshDisplayRotation();
+      if (!mounted) return;
       setState(() {
         _uvcController = ctrl;
         _uvcInitializing = false;
@@ -206,7 +210,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
   }
 
-  Widget _buildUvcPreview(BuildContext context) {
+  Size? _uvcPreviewDisplaySize(CaptureViewModel viewModel) {
+    final mode = _uvcController?.value.previewMode;
+    if (mode == null) return null;
+    return viewModel.uvcPreviewDisplaySizeForCard(
+      frameWidth: mode.frameWidth.toDouble(),
+      frameHeight: mode.frameHeight.toDouble(),
+    );
+  }
+
+  Widget _buildUvcPreview(BuildContext context, CaptureViewModel viewModel) {
     final ctrl = _uvcController;
     if (_uvcInitializing) {
       return const Center(child: CircularProgressIndicator(color: Colors.white));
@@ -237,19 +250,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         ),
       );
     }
-    // Match the main preview card behavior (cover).
-    return ClipRect(
-      child: SizedBox.expand(
-        child: FittedBox(
-          fit: BoxFit.cover,
-          alignment: Alignment.center,
-          child: SizedBox(
-            width: 1,
-            height: 1,
-            child: UvcCameraPreview(ctrl),
-          ),
-        ),
-      ),
+
+    final previewMode = ctrl.value.previewMode;
+    final frameWidth = previewMode?.frameWidth.toDouble() ?? 1.0;
+    final frameHeight = previewMode?.frameHeight.toDouble() ?? 1.0;
+    final baseAspect = frameWidth / frameHeight;
+    final effectiveTurns = viewModel.uvcPreviewEffectiveQuarterTurns;
+
+    return buildRotatedCoverPreview(
+      preview: ctrl.buildPreview(),
+      effectiveQuarterTurns: effectiveTurns,
+      baseAspectRatio: baseAspect <= 0 ? 1.0 : baseAspect,
+      frameSize: Size(frameWidth, frameHeight),
     );
   }
 
@@ -259,9 +271,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (ctrl == null || device == null || viewModel.isCapturing) return;
     final cameraId = 'uvc:${device.vendorId}:${device.productId}:${device.name}';
     try {
-      final aspect = ctrl.value.previewMode?.aspectRatio;
-      if (aspect != null && aspect > 0) {
-        viewModel.lockCaptureCardAspectRatio(aspect);
+      if (mounted) setState(() => _showCaptureFlash = true);
+      final previewMode = ctrl.value.previewMode;
+      if (previewMode != null) {
+        final displaySize = viewModel.uvcPreviewDisplaySizeForCard(
+          frameWidth: previewMode.frameWidth.toDouble(),
+          frameHeight: previewMode.frameHeight.toDouble(),
+        );
+        if (displaySize != null && displaySize.height > 0) {
+          viewModel.lockCaptureCardAspectRatio(
+            displaySize.width / displaySize.height,
+          );
+        }
       }
       final file = await ctrl.takePicture();
       // Release USB preview buffers before decode/resize/encode on the UI isolate.
@@ -277,6 +298,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       setState(() {
         _uvcError = 'USB camera capture failed: $e';
       });
+    } finally {
+      if (mounted) setState(() => _showCaptureFlash = false);
     }
   }
 
@@ -411,7 +434,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     final previewWidget = _isUsingUvc
-        ? _buildUvcPreview(context)
+        ? _buildUvcPreview(context, viewModel)
         : _buildCameraPreviewWithRotation(context, viewModel);
     final hasCapturedPhoto = viewModel.capturedPhoto != null;
     return Padding(
@@ -561,6 +584,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           hasCapturedPhoto,
           fallbackAspect,
           constraints,
+          uvcPreviewDisplaySize:
+              _isUsingUvc ? _uvcPreviewDisplaySize(viewModel) : null,
         );
 
         final (widthCapFrac, heightCapFrac) = capturePreviewCardSizeFractions(
@@ -644,6 +669,22 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     Positioned.fill(
                       child: _buildCountdownOverlay(context, viewModel.countdownValue!),
                     ),
+                  if (_showCaptureFlash ||
+                      (viewModel.isCapturing && !hasCapturedPhoto))
+                    Positioned.fill(
+                      child: ColoredBox(
+                        color: _showCaptureFlash
+                            ? Colors.white
+                            : Colors.black.withValues(alpha: 0.35),
+                        child: viewModel.isCapturing && !_showCaptureFlash
+                            ? const Center(
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                ),
+                              )
+                            : null,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -669,45 +710,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       );
     }
 
-    Widget preview = _buildPlatformPreview(controller);
-    final autoQuarterTurns = viewModel.previewAutoQuarterTurns;
-    final manualQuarterTurns = (viewModel.previewRotationDegrees ~/ 90) % 4;
+    final preview = _buildPlatformPreview(controller);
     final effectiveQuarterTurns =
-        (autoQuarterTurns + manualQuarterTurns) % 4;
-    if (effectiveQuarterTurns != 0) {
-      preview = RotatedBox(
-        quarterTurns: effectiveQuarterTurns,
-        child: preview,
-      );
-    }
-
-    final displaySize = viewModel.previewDisplaySizeForCard;
+        (viewModel.previewAutoQuarterTurns +
+                (viewModel.previewRotationDegrees ~/ 90) % 4) %
+            4;
     final baseAspectRatio = controller.value.aspectRatio;
-    final displayAspectRatio =
-        effectiveQuarterTurns.isOdd ? 1 / baseAspectRatio : baseAspectRatio;
-    final width = displaySize?.width ??
-        (effectiveQuarterTurns.isOdd ? 1.0 : displayAspectRatio);
-    final height = displaySize?.height ??
-        (effectiveQuarterTurns.isOdd ? displayAspectRatio : 1.0);
 
-    // Full-bleed preview inside the card (same framing as the captured still).
-    // Center + contain left black letterboxing when card aspect matched the stream
-    // but the fitted subtree didn’t fill the stack; expand + cover removes the “stencil”.
-    return ClipRect(
-      child: SizedBox.expand(
-        child: FittedBox(
-          fit: BoxFit.cover,
-          alignment: Alignment.center,
-          child: SizedBox(
-            width: width,
-            height: height,
-            child: AspectRatio(
-              aspectRatio: displayAspectRatio,
-              child: preview,
-            ),
-          ),
-        ),
-      ),
+    return buildRotatedCoverPreview(
+      preview: preview,
+      effectiveQuarterTurns: effectiveQuarterTurns,
+      baseAspectRatio: baseAspectRatio,
+      frameSize: controller.value.previewSize,
     );
   }
 

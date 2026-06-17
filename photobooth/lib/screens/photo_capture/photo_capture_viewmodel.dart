@@ -27,22 +27,9 @@ import '../../utils/web_flow_trace.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_camera_config.dart';
+import 'photo_capture_preview_rotation.dart';
 import 'photo_capture_preprocess_helpers.dart';
 import 'photo_capture_viewmodel_helpers.dart';
-
-(double, double) _previewDisplayDimensions({
-  required Size? previewSize,
-  required int effectiveQuarterTurns,
-  required double displayAspectRatio,
-}) {
-  final odd = effectiveQuarterTurns.isOdd;
-  if (previewSize == null) {
-    return odd ? (1.0, displayAspectRatio) : (displayAspectRatio, 1.0);
-  }
-  return odd
-      ? (previewSize.height, previewSize.width)
-      : (previewSize.width, previewSize.height);
-}
 
 class CaptureViewModel extends ChangeNotifier {
   final ApiService _apiService;
@@ -253,7 +240,7 @@ class CaptureViewModel extends ChangeNotifier {
 
     final displayAspectRatio =
         effectiveQuarterTurns.isOdd ? 1 / baseAspectRatio : baseAspectRatio;
-    final (width, height) = _previewDisplayDimensions(
+    final (width, height) = previewDisplayDimensions(
       previewSize: previewSize,
       effectiveQuarterTurns: effectiveQuarterTurns,
       displayAspectRatio: displayAspectRatio,
@@ -269,9 +256,49 @@ class CaptureViewModel extends ChangeNotifier {
   int _androidTvPreviewQuarterTurns() {
     final camera = _currentCamera;
     if (camera == null) return 0;
+    final isExternal =
+        camera.lensDirection == CameraLensDirection.external;
+    return _previewQuarterTurnsForSensor(
+      sensorOrientation: camera.sensorOrientation % 360,
+      isFrontCamera: camera.lensDirection == CameraLensDirection.front,
+      treatAsExternal: isExternal,
+    );
+  }
+
+  /// UVC / HDMI capture: same rotation math as a built-in external camera.
+  int get uvcPreviewAutoQuarterTurns => _previewQuarterTurnsForSensor(
+        sensorOrientation: 0,
+        isFrontCamera: false,
+        treatAsExternal: true,
+      );
+
+  int get uvcPreviewEffectiveQuarterTurns =>
+      (uvcPreviewAutoQuarterTurns + (_previewRotationDegrees ~/ 90) % 4) % 4;
+
+  Size? uvcPreviewDisplaySizeForCard({
+    required double frameWidth,
+    required double frameHeight,
+  }) {
+    if (frameWidth <= 0 || frameHeight <= 0) return null;
+    final baseAspect = frameWidth / frameHeight;
+    final turns = uvcPreviewEffectiveQuarterTurns;
+    final displayAspect = turns.isOdd ? 1 / baseAspect : baseAspect;
+    final (width, height) = previewDisplayDimensions(
+      previewSize: Size(frameWidth, frameHeight),
+      effectiveQuarterTurns: turns,
+      displayAspectRatio: displayAspect,
+    );
+    if (width <= 0 || height <= 0) return null;
+    return Size(width, height);
+  }
+
+  int _previewQuarterTurnsForSensor({
+    required int sensorOrientation,
+    required bool isFrontCamera,
+    required bool treatAsExternal,
+  }) {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return 0;
-    if (!shouldUseLandscapePreviewRotationWorkaround &&
-        camera.lensDirection != CameraLensDirection.external) {
+    if (!shouldUseLandscapePreviewRotationWorkaround && !treatAsExternal) {
       return 0;
     }
 
@@ -282,12 +309,9 @@ class CaptureViewModel extends ChangeNotifier {
       _ => 0,
     };
 
-    final sensorOrientation = camera.sensorOrientation % 360;
-    final rotationDegrees = switch (camera.lensDirection) {
-      CameraLensDirection.front =>
-        (sensorOrientation + surfaceRotationDegrees) % 360,
-      _ => (sensorOrientation - surfaceRotationDegrees + 360) % 360,
-    };
+    final rotationDegrees = isFrontCamera
+        ? (sensorOrientation + surfaceRotationDegrees) % 360
+        : (sensorOrientation - surfaceRotationDegrees + 360) % 360;
 
     return ((360 - rotationDegrees) % 360) ~/ 90;
   }
@@ -635,6 +659,9 @@ class CaptureViewModel extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
+    // Let the capture flash / overlay paint before heavy isolate work.
+    await Future<void>.delayed(Duration.zero);
+
     try {
       final savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
         rawFile,
@@ -643,10 +670,6 @@ class CaptureViewModel extends ChangeNotifier {
         maxDimension: isUvc ? UvcCaptureConfig.normalizeMaxDimension : null,
         jpegQuality: isUvc ? UvcCaptureConfig.normalizeJpegQuality : null,
       );
-      if (isUvc) {
-        PaintingBinding.instance.imageCache.clear();
-        PaintingBinding.instance.imageCache.clearLiveImages();
-      }
       await _assignCapturedPhotoModel(
         savedFile,
         cameraIdOverride: cameraId,
@@ -657,6 +680,12 @@ class CaptureViewModel extends ChangeNotifier {
         skipUploadPrep:
             isUvc && UvcCaptureConfig.deferUploadPrepUntilContinue,
       );
+      if (isUvc) {
+        unawaited(Future<void>.microtask(() {
+          PaintingBinding.instance.imageCache.clear();
+          PaintingBinding.instance.imageCache.clearLiveImages();
+        }));
+      }
     } catch (e, st) {
       _errorMessage = 'USB camera capture failed: $e';
       await ErrorReportingManager.recordError(
