@@ -53,7 +53,12 @@ double captureCardAspectRatioForLivePreview({
   required CaptureViewModel viewModel,
   required double fallbackAspect,
   required BoxConstraints layoutConstraints,
+  Size? uvcPreviewDisplaySize,
 }) {
+  if (uvcPreviewDisplaySize != null && uvcPreviewDisplaySize.height > 0) {
+    return (uvcPreviewDisplaySize.width / uvcPreviewDisplaySize.height)
+        .clamp(0.35, 2.85);
+  }
   final previewSize = viewModel.cameraController?.value.previewSize;
   final liveAspect = captureCardLivePreviewAspectRatio(viewModel);
   if (liveAspect != null) {
@@ -74,8 +79,9 @@ double captureCardAspectRatio(
   CaptureViewModel viewModel,
   bool hasCapturedPhoto,
   double fallbackAspect,
-  BoxConstraints layoutConstraints,
-) {
+  BoxConstraints layoutConstraints, {
+  Size? uvcPreviewDisplaySize,
+}) {
   if (hasCapturedPhoto) {
     return captureCardAspectRatioForCaptured(
       context: context,
@@ -89,5 +95,6 @@ double captureCardAspectRatio(
     viewModel: viewModel,
     fallbackAspect: fallbackAspect,
     layoutConstraints: layoutConstraints,
+    uvcPreviewDisplaySize: uvcPreviewDisplaySize,
   );
 }
