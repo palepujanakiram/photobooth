@@ -330,6 +330,13 @@ class CaptureViewModel extends ChangeNotifier {
     _lockedCaptureCardAspectRatio = aspectRatio.clamp(0.35, 2.85);
   }
 
+  /// Resets manual preview rotation when switching to USB/UVC (built-in values are often wrong).
+  void applyDefaultPreviewRotationForUvc() {
+    if (_previewRotationDegrees == 0) return;
+    _previewRotationDegrees = 0;
+    notifyListeners();
+  }
+
   /// Native camera characteristics (Android Camera2; default/placeholder on iOS/Web). Fetched after camera init.
   CameraDetails? _nativeCameraDetails;
   CameraDetails? get nativeCameraDetails => _nativeCameraDetails;
@@ -2114,6 +2121,7 @@ class CaptureViewModel extends ChangeNotifier {
       AppLogger.error('disposeCamera failed', error: e, stackTrace: st);
     }
     _cameraController = null;
+    _nativeCameraDetails = null;
   }
 
   /// Disposes the camera controller
