@@ -24,7 +24,7 @@ void main() {
   });
 
   test('rethrowAsApiException throws ApiException', () {
-    final failure = GenerationApiFailure(userMessage: 'bad', httpStatusCode: 500);
+    const failure = GenerationApiFailure(userMessage: 'bad', httpStatusCode: 500);
     expect(
       () => failure.rethrowAsApiException(),
       throwsA(

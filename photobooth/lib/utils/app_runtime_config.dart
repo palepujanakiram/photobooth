@@ -7,8 +7,9 @@ import '../models/app_settings_model.dart';
 ///
 /// Default is **off** until settings load. When `showGenerationCommentary == true`:
 /// - **Native:** "Low memory kiosk" optimizations ([AppConstants.kLowMemoryKioskMode])
-/// - **Web:** logging / loader debug only — RAM overlays and kiosk cache limits stay off (see [applyFlutterImageCacheLimits]).
-/// - Verbose logging, API logging, loader debug lines, native camera info pane (non-web), etc.
+/// - **Web:** on-screen Logs / Perf trace / JS-heap HUD and loader debug lines.
+/// - On-screen debug HUD (Logs, Perf trace, RAM or JS heap), API logging when
+///   [AppConstants.kEnableLogOutput], loader debug lines, native camera info pane (non-web).
 class AppRuntimeConfig extends ChangeNotifier {
   AppRuntimeConfig._();
   static final AppRuntimeConfig instance = AppRuntimeConfig._();

@@ -160,11 +160,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     );
   }
 
-  /// Portrait-friendly slot for single results; 3:2 grid for multiple print styles.
+  /// Multi-style grid uses 3:2 slots; single results use [beholdSingleResultCardAspectRatio].
   double _beholdCardAspectRatio(BuildContext context, int slotCount) {
-    if (slotCount <= 1) {
-      return AppConstants.themeCardSlotAspectRatio(context);
-    }
     return 3 / 2;
   }
 
@@ -179,6 +176,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
         _viewModel = rawArgs;
         _viewModelCreated = true;
         _isInitialized = true;
+        unawaited(_viewModel.refreshBeholdHeroAspectRatio());
         unawaited(_loadPaymentEnablement());
         return;
       }
@@ -839,25 +837,27 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     return SizedBox(
       width: width,
       height: height,
-      child: ColoredBox(
-        color: Colors.black,
-        child: FittedBox(
-          fit: BoxFit.contain,
-          alignment: Alignment.center,
-          child: CachedNetworkImage(
-            imageUrl: secureUrl,
-            fit: BoxFit.contain,
-            cacheWidth: cacheW,
-            filterQuality: FilterQuality.medium,
-            placeholder: loading,
-            errorWidget: SizedBox(
-              width: width,
-              height: height,
-              child: const Center(
-                child: Icon(
-                  CupertinoIcons.exclamationmark_triangle,
-                  color: Colors.white,
-                  size: 32,
+      child: ClipRect(
+        child: ColoredBox(
+          color: Colors.black,
+          child: FittedBox(
+            fit: BoxFit.cover,
+            alignment: Alignment.center,
+            child: CachedNetworkImage(
+              imageUrl: secureUrl,
+              fit: BoxFit.cover,
+              cacheWidth: cacheW,
+              filterQuality: FilterQuality.medium,
+              placeholder: loading,
+              errorWidget: SizedBox(
+                width: width,
+                height: height,
+                child: const Center(
+                  child: Icon(
+                    CupertinoIcons.exclamationmark_triangle,
+                    color: Colors.white,
+                    size: 32,
+                  ),
                 ),
               ),
             ),

@@ -1,6 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:photobooth/screens/theme_selection/theme_model.dart';
-import 'package:photobooth/services/api_service.dart';
 import 'package:photobooth/services/theme_manager.dart';
 import 'package:photobooth/utils/exceptions.dart';
 import 'package:shared_preferences/shared_preferences.dart';

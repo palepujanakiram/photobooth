@@ -13,9 +13,11 @@ import 'package:overlay_support/overlay_support.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
 import 'app_routes.dart';
 import 'main_error_handlers.dart';
+import 'utils/app_route_tracker.dart';
 import 'utils/app_runtime_config.dart';
 import 'utils/constants.dart';
 import 'utils/logger.dart';
+import 'views/widgets/debug_performance_overlays.dart';
 import 'services/error_reporting/error_reporting_manager.dart';
 import 'services/file_helper.dart';
 import 'services/alice_inspector.dart';
@@ -111,6 +113,7 @@ class PhotoBoothApp extends StatefulWidget {
 class _PhotoBoothAppState extends State<PhotoBoothApp>
     with WidgetsBindingObserver {
   final AppSettingsManager _appSettingsManager = AppSettingsManager();
+  final AppRouteTracker _routeTracker = AppRouteTracker();
 
   /// Foreground FCM subscription (payment + any future topics).
   StreamSubscription<RemoteMessage>? _fcmForegroundSub;
@@ -308,37 +311,46 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
         Provider<Alice?>.value(value: AliceInspector.instance),
       ],
       child: OverlaySupport.global(
-        child: MaterialApp(
-          navigatorKey: widget.navigatorKey,
-          title: AppConstants.kBrandName,
-          debugShowCheckedModeBanner: false,
-          builder: (context, child) {
-            return Consumer<AppSettingsManager>(
-              builder: (context, _, __) {
-                AliceInspector.syncWithRuntimeConfig();
-                return child ?? const SizedBox.shrink();
+        child: ListenableBuilder(
+          listenable: _routeTracker,
+          builder: (context, _) {
+            return MaterialApp(
+              navigatorKey: widget.navigatorKey,
+              navigatorObservers: [_routeTracker],
+              title: AppConstants.kBrandName,
+              debugShowCheckedModeBanner: false,
+              builder: (context, child) {
+                return Consumer<AppSettingsManager>(
+                  builder: (context, _, __) {
+                    AliceInspector.syncWithRuntimeConfig();
+                    return DebugPerformanceOverlayScope(
+                      routeName: _routeTracker.currentRouteName,
+                      child: child ?? const SizedBox.shrink(),
+                    );
+                  },
+                );
               },
+              theme: ThemeData(
+                colorScheme: ColorScheme.fromSeed(
+                    seedColor: Colors.blue, brightness: Brightness.light),
+                useMaterial3: true,
+              ),
+              darkTheme: ThemeData(
+                colorScheme: ColorScheme.fromSeed(
+                    seedColor: Colors.blue, brightness: Brightness.dark),
+                useMaterial3: true,
+              ),
+              themeMode: ThemeMode.system,
+              localizationsDelegates: const [
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              supportedLocales: const [Locale('en')],
+              initialRoute: AppConstants.kRouteSplash,
+              routes: buildAppRoutes(),
             );
           },
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-                seedColor: Colors.blue, brightness: Brightness.light),
-            useMaterial3: true,
-          ),
-          darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-                seedColor: Colors.blue, brightness: Brightness.dark),
-            useMaterial3: true,
-          ),
-          themeMode: ThemeMode.system,
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          supportedLocales: const [Locale('en')],
-          initialRoute: AppConstants.kRouteSplash,
-          routes: buildAppRoutes(),
         ),
       ),
     );

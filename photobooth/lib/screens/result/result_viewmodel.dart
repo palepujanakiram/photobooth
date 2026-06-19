@@ -17,6 +17,7 @@ import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
+import '../../utils/print_orientation.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/fcm_service.dart';
 import '../../services/payment_push_coordinator.dart';
@@ -65,6 +66,7 @@ enum PostReceiptOutcome {
 class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   final List<GeneratedImage> _generatedImages;
   final PhotoModel? _originalPhoto;
+  final PrintOrientation _printOrientation;
   final PrintService _printService;
   final ShareService _shareService;
   final ApiService _apiService;
@@ -232,6 +234,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   ResultViewModel({
     required List<GeneratedImage> generatedImages,
     PhotoModel? originalPhoto,
+    PrintOrientation printOrientation = PrintOrientation.portrait,
     PrintService? printService,
     ShareService? shareService,
     ApiService? apiService,
@@ -243,6 +246,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
     bool customerWhatsappOptIn = false,
   })  : _generatedImages = generatedImages,
         _originalPhoto = originalPhoto,
+        _printOrientation = printOrientation,
         _printService = printService ?? PrintService(),
         _shareService = shareService ?? ShareService(),
         _apiService = apiService ?? ApiService(),
@@ -256,6 +260,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
 
   List<GeneratedImage> get generatedImages => _generatedImages;
   PhotoModel? get originalPhoto => _originalPhoto;
+  PrintOrientation get printOrientation => _printOrientation;
   bool get isProcessing => _isProcessing;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;

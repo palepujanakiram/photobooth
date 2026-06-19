@@ -1,8 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http_mock_adapter/http_mock_adapter.dart';
-import 'package:photobooth/models/parallel_generation_result.dart';
-import 'package:photobooth/screens/theme_selection/theme_model.dart';
 import 'package:photobooth/services/api_service.dart';
 import 'package:photobooth/services/session_manager.dart';
 import 'package:photobooth/utils/exceptions.dart';
