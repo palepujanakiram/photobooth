@@ -8,6 +8,7 @@ import 'alice_inspector.dart';
 import 'api_logging_interceptor.dart';
 import 'client_identification.dart';
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
+import 'kiosk_session_auth.dart';
 
 /// Production Dio for [ApiService] (interceptors, web CORS mapping).
 Dio createProductionApiDio() {
@@ -30,6 +31,8 @@ Dio createProductionApiDio() {
     dio.interceptors.add(ApiLoggingInterceptor());
     dio.interceptors.add(AliceDioProxyInterceptor());
   }
+
+  addKioskSessionTokenInterceptor(dio);
 
   dio.interceptors.add(
     InterceptorsWrapper(
@@ -87,5 +90,6 @@ Dio createAiGenerationDio({bool sseAccept = false}) {
     dio.interceptors.add(ApiLoggingInterceptor());
     dio.interceptors.add(AliceDioProxyInterceptor());
   }
+  addKioskSessionTokenInterceptor(dio);
   return dio;
 }

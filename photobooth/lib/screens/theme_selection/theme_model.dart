@@ -12,6 +12,12 @@ class ThemeModel {
   final bool? isActive;
   /// When sent by backend: order for display (ascending). When omitted (null), order is unchanged.
   final int? displayOrder;
+  /// Audience flags from `/api/themes` (client filters by session person count).
+  final bool? applicableSolo;
+  final bool? applicableCouple;
+  /// Legacy fallback when solo/couple flags are unset.
+  final bool? applicableSmallGroup;
+  final bool? applicableLargeGroup;
   final String? backgroundColor; // Hex color for text background (e.g., "#FF0000" or "FF0000")
   final String? textColor; // Hex color for text (e.g., "#FFFFFF" or "FFFFFF")
 
@@ -26,6 +32,10 @@ class ThemeModel {
     this.sampleImageUrl,
     this.isActive,
     this.displayOrder,
+    this.applicableSolo,
+    this.applicableCouple,
+    this.applicableSmallGroup,
+    this.applicableLargeGroup,
     this.backgroundColor,
     this.textColor,
   });
@@ -52,6 +62,12 @@ class ThemeModel {
       'sampleImageUrl': sampleImageUrl,
       if (isActive != null) 'isActive': isActive,
       if (displayOrder != null) 'displayOrder': displayOrder,
+      if (applicableSolo != null) 'applicableSolo': applicableSolo,
+      if (applicableCouple != null) 'applicableCouple': applicableCouple,
+      if (applicableSmallGroup != null)
+        'applicableSmallGroup': applicableSmallGroup,
+      if (applicableLargeGroup != null)
+        'applicableLargeGroup': applicableLargeGroup,
       'backgroundColor': backgroundColor,
       'textColor': textColor,
     };
@@ -83,6 +99,10 @@ class ThemeModel {
       sampleImageUrl: sample,
       isActive: json['isActive'] as bool?,
       displayOrder: json['displayOrder'] as int?,
+      applicableSolo: json['applicableSolo'] as bool?,
+      applicableCouple: json['applicableCouple'] as bool?,
+      applicableSmallGroup: json['applicableSmallGroup'] as bool?,
+      applicableLargeGroup: json['applicableLargeGroup'] as bool?,
       backgroundColor: json['backgroundColor'] as String?,
       textColor: json['textColor'] as String?,
     );
@@ -111,6 +131,10 @@ class ThemeModelCopyPatch {
         sampleImageUrl = base.sampleImageUrl,
         isActive = base.isActive,
         displayOrder = base.displayOrder,
+        applicableSolo = base.applicableSolo,
+        applicableCouple = base.applicableCouple,
+        applicableSmallGroup = base.applicableSmallGroup,
+        applicableLargeGroup = base.applicableLargeGroup,
         backgroundColor = base.backgroundColor,
         textColor = base.textColor;
 
@@ -124,6 +148,10 @@ class ThemeModelCopyPatch {
   String? sampleImageUrl;
   bool? isActive;
   int? displayOrder;
+  bool? applicableSolo;
+  bool? applicableCouple;
+  bool? applicableSmallGroup;
+  bool? applicableLargeGroup;
   String? backgroundColor;
   String? textColor;
 
@@ -139,6 +167,10 @@ class ThemeModelCopyPatch {
       sampleImageUrl: sampleImageUrl,
       isActive: isActive,
       displayOrder: displayOrder,
+      applicableSolo: applicableSolo,
+      applicableCouple: applicableCouple,
+      applicableSmallGroup: applicableSmallGroup,
+      applicableLargeGroup: applicableLargeGroup,
       backgroundColor: backgroundColor,
       textColor: textColor,
     );

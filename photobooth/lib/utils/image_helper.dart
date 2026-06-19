@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:camera/camera.dart';
 import '../services/file_helper.dart';
+import 'image_helper_channel_fix.dart';
 import 'image_helper_encode.dart';
 import 'session_user_image_validation.dart';
 import 'app_strings.dart';
@@ -92,6 +93,10 @@ class ImageHelper {
   static Future<XFile> normalizeAndSaveCapturedPhoto(
     XFile sourceFile, {
     bool flipHorizontal = false,
+    /// Some Android UVC plugins save stills with R/B swapped (blue skin tones).
+    bool fixBgrChannelOrder = false,
+    int? maxDimension,
+    int? jpegQuality,
   }) async {
     // Web can't write to a temp directory. For web, just return the picked file as-is.
     // Upload resizing happens later in [resizeAndEncodeImage] (bytes-only), which is web-safe.
@@ -104,7 +109,13 @@ class ImageHelper {
     }
     final normalizedBytes = await compute(
       _normalizeToStandardJpegBytes,
-      (bytes: bytes, flipHorizontal: flipHorizontal),
+      (
+        bytes: bytes,
+        flipHorizontal: flipHorizontal,
+        fixBgrChannelOrder: fixBgrChannelOrder,
+        maxDimension: maxDimension ?? kCapturedPhotoMaxDimension,
+        jpegQuality: jpegQuality ?? kCapturedPhotoJpegQuality,
+      ),
     );
     final tempDir = await FileHelper.getTempDirectoryPath();
     const photosSubdir = 'photos';
@@ -119,7 +130,13 @@ class ImageHelper {
 
   /// Top-level/static for compute(): decode, resize to standard max, encode JPEG. No file I/O.
   static Uint8List _normalizeToStandardJpegBytes(
-    ({Uint8List bytes, bool flipHorizontal}) args,
+    ({
+      Uint8List bytes,
+      bool flipHorizontal,
+      bool fixBgrChannelOrder,
+      int maxDimension,
+      int jpegQuality,
+    }) args,
   ) {
     final originalImage = img.decodeImage(args.bytes);
     if (originalImage == null) {
@@ -127,26 +144,33 @@ class ImageHelper {
     }
     // Apply EXIF orientation so saved photos are upright everywhere.
     var normalized = img.bakeOrientation(originalImage);
+    if (args.fixBgrChannelOrder) {
+      normalized = swapRedAndBlueChannels(normalized);
+    }
     if (args.flipHorizontal) {
       normalized = img.flipHorizontal(normalized);
     }
     int targetWidth = normalized.width;
     int targetHeight = normalized.height;
-    if (targetWidth > kCapturedPhotoMaxDimension || targetHeight > kCapturedPhotoMaxDimension) {
+    final maxDim = args.maxDimension;
+    if (targetWidth > maxDim || targetHeight > maxDim) {
       final scale = (targetWidth > targetHeight)
-          ? kCapturedPhotoMaxDimension / targetWidth
-          : kCapturedPhotoMaxDimension / targetHeight;
+          ? maxDim / targetWidth
+          : maxDim / targetHeight;
       targetWidth = (targetWidth * scale).round();
       targetHeight = (targetHeight * scale).round();
     }
+    final sourcePixels = normalized.width * normalized.height;
     final resized = img.copyResize(
       normalized,
       width: targetWidth,
       height: targetHeight,
-      interpolation: img.Interpolation.cubic,
+      interpolation: sourcePixels > maxDim * maxDim
+          ? img.Interpolation.linear
+          : img.Interpolation.cubic,
     );
     return Uint8List.fromList(
-      img.encodeJpg(resized, quality: kCapturedPhotoJpegQuality),
+      img.encodeJpg(resized, quality: args.jpegQuality),
     );
   }
 
@@ -220,6 +244,17 @@ class ImageHelper {
     if (kIsWeb) {
       await Future<void>.delayed(Duration.zero);
       WebFlowTrace.log('ENCODE_IMPL', 'post_read_yield_done');
+    }
+
+    if (kIsWeb) {
+      WebFlowTrace.log(
+        'ENCODE_IMPL',
+        'branch web_async_encode longEdge=$kSessionPatchUserImageWebMaxLongEdgePx',
+      );
+      final out = await encodeSessionPatchUserImageUrlAsync(bytes);
+      WebFlowTrace.log('ENCODE_IMPL', 'web_async_encode_done outLen=${out.length}');
+      SessionUserImageValidation.assertValidForSessionPatch(out);
+      return out;
     }
 
     WebFlowTrace.log('ENCODE_IMPL', 'branch session_patch_encode longEdge=$kSessionPatchUserImageMaxLongEdgePx');

@@ -15,7 +15,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
   final ThemeManager _themeManager;
   final ImageCacheService _imageCacheService;
   List<ThemeModel> _themes = [];
-  bool _isLoading = false;
+  final bool _isLoading = false;
   bool _isPreloadingImages = false;
   bool _isFirstImageLoaded = false;
   bool _areAllImagesLoaded = false;

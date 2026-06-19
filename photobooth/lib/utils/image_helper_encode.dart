@@ -9,14 +9,22 @@ import 'session_user_image_validation.dart';
 const int kSessionPatchUserImageMaxLongEdgePx = 1536;
 const int kSessionPatchUserImageJpegQuality = 85;
 
+/// Smaller cap on web so encode + JSON PATCH stay responsive on the main thread.
+const int kSessionPatchUserImageWebMaxLongEdgePx = 768;
+
+Future<void> yieldToUiForImageEncode() => Future<void>.delayed(Duration.zero);
+
 /// Session PATCH JPEG data URL under size cap (Sonar S3776 extraction).
-String encodeSessionPatchUserImageUrl(Uint8List bytes) {
+String encodeSessionPatchUserImageUrl(
+  Uint8List bytes, {
+  int maxLongEdgePx = kSessionPatchUserImageMaxLongEdgePx,
+}) {
   final original = img.decodeImage(bytes);
   if (original == null) {
     throw Exception('Failed to decode image for session upload');
   }
   var work = img.bakeOrientation(original);
-  work = _scaleSessionPatchImage(work);
+  work = _scaleSessionPatchImage(work, maxLongEdgePx: maxLongEdgePx);
 
   var quality = kSessionPatchUserImageJpegQuality;
   const maxChars = SessionUserImageValidation.maxDataUrlCharacterLength;
@@ -34,12 +42,47 @@ String encodeSessionPatchUserImageUrl(Uint8List bytes) {
   }
 }
 
-img.Image _scaleSessionPatchImage(img.Image work) {
-  const cap = kSessionPatchUserImageMaxLongEdgePx;
+/// Web-safe encode: yields between heavy steps so the loader timer can repaint.
+Future<String> encodeSessionPatchUserImageUrlAsync(
+  Uint8List bytes, {
+  int maxLongEdgePx = kSessionPatchUserImageWebMaxLongEdgePx,
+}) async {
+  await yieldToUiForImageEncode();
+  final original = img.decodeImage(bytes);
+  if (original == null) {
+    throw Exception('Failed to decode image for session upload');
+  }
+  await yieldToUiForImageEncode();
+  var work = img.bakeOrientation(original);
+  await yieldToUiForImageEncode();
+  work = _scaleSessionPatchImage(work, maxLongEdgePx: maxLongEdgePx);
+
+  var quality = kSessionPatchUserImageJpegQuality;
+  const maxChars = SessionUserImageValidation.maxDataUrlCharacterLength;
+
+  while (true) {
+    await yieldToUiForImageEncode();
+    final url = _sessionPatchDataUrl(work, quality);
+    if (url.length <= maxChars) return url;
+    quality -= 10;
+    if (quality >= 55) continue;
+    await yieldToUiForImageEncode();
+    work = _shrinkSessionPatchImage(work);
+    quality = kSessionPatchUserImageJpegQuality;
+    if (work.width <= 360 && work.height <= 360) {
+      return _sessionPatchDataUrlOrThrow(work, 65, maxChars);
+    }
+  }
+}
+
+img.Image _scaleSessionPatchImage(
+  img.Image work, {
+  required int maxLongEdgePx,
+}) {
   var w = work.width;
   var h = work.height;
-  if (w <= cap && h <= cap) return work;
-  final scale = (w > h) ? cap / w : cap / h;
+  if (w <= maxLongEdgePx && h <= maxLongEdgePx) return work;
+  final scale = (w > h) ? maxLongEdgePx / w : maxLongEdgePx / h;
   w = (w * scale).round();
   h = (h * scale).round();
   return img.copyResize(

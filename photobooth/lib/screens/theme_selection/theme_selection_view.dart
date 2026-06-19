@@ -64,6 +64,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   }
 
   void _startCarouselTimer(ThemeViewModel viewModel) {
+    if (!viewModel.themeCarouselAutoScroll) return;
     _carouselTimer?.cancel();
     _carouselTimer =
         Timer.periodic(AppConstants.kThemeCarouselAutoScrollInterval, (_) {
@@ -84,6 +85,10 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   /// Restarts the periodic timer so the next auto-advance is a full interval away
   /// (e.g. after user idle time ends).
   void _restartCarouselTimer(ThemeViewModel viewModel) {
+    if (!viewModel.themeCarouselAutoScroll) {
+      _stopCarouselTimer();
+      return;
+    }
     final count = viewModel.filteredThemes.length;
     if (count <= 1) {
       _lastCarouselThemeCount = count;
@@ -109,7 +114,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
         setState(() {
           _isAutoScrollPaused = false;
         });
-        if (!viewModel.useCardGridLayout) {
+        if (!viewModel.useCardGridLayout && viewModel.themeCarouselAutoScroll) {
           _restartCarouselTimer(viewModel);
         }
       },
@@ -140,6 +145,10 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   }
 
   void _syncCarouselTimer(ThemeViewModel viewModel) {
+    if (!viewModel.themeCarouselAutoScroll) {
+      _stopCarouselTimer();
+      return;
+    }
     final count = viewModel.filteredThemes.length;
     if (count <= 1) {
       _lastCarouselThemeCount = count;
@@ -330,8 +339,36 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                   }
                 },
               ),
-              // Layout toggle (web + mobile); Alice on wider layouts only.
+              // Layout + auto-scroll toggles (web + mobile); Alice on wider layouts only.
               actions: [
+                Selector<ThemeViewModel, bool>(
+                  selector: (_, vm) => vm.themeCarouselAutoScroll,
+                  builder: (context, autoScroll, _) {
+                    return IconButton(
+                      icon: Icon(
+                        autoScroll
+                            ? Icons.motion_photos_auto
+                            : Icons.motion_photos_off_outlined,
+                      ),
+                      tooltip: autoScroll
+                          ? 'Turn off theme auto-scroll'
+                          : 'Turn on theme auto-scroll',
+                      color: autoScroll ? Colors.white : Colors.white54,
+                      onPressed: () async {
+                        final vm = context.read<ThemeViewModel>();
+                        final next = !vm.themeCarouselAutoScroll;
+                        await vm.setThemeCarouselAutoScroll(next);
+                        if (!mounted) return;
+                        if (next && !vm.useCardGridLayout) {
+                          _restartCarouselTimer(vm);
+                        } else {
+                          _stopCarouselTimer();
+                        }
+                        setState(() {});
+                      },
+                    );
+                  },
+                ),
                 Selector<ThemeViewModel, bool>(
                   selector: (_, vm) => vm.useCardGridLayout,
                   builder: (context, useGrid, _) {
@@ -351,7 +388,13 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
                           _carouselViewportFraction = null;
                         }
                         await vm.setUseCardGridLayout(next);
-                        if (mounted) setState(() {});
+                        if (!mounted) return;
+                        setState(() {});
+                        if (!next && vm.themeCarouselAutoScroll) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) _syncCarouselTimer(vm);
+                          });
+                        }
                       },
                     );
                   },
@@ -528,11 +571,15 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
   // Category chips hidden by request. Keep constants/method removed to avoid dead code.
 
   /// Larger fraction on phone portrait so the hero card uses the screen; smaller on tablet / landscape.
-  double _carouselViewportFractionFor(BuildContext context) {
+  double _carouselViewportFractionFor(
+    BuildContext context, {
+    required int themeCount,
+  }) {
     final size = MediaQuery.sizeOf(context);
     return ThemeSelectionLayoutMetrics.carouselViewportFraction(
       width: size.width,
       height: size.height,
+      themeCount: themeCount,
     );
   }
 
@@ -644,7 +691,10 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       return _buildCardGridLayout(context, viewModel, isLandscape);
     }
 
-    final vf = _carouselViewportFractionFor(context);
+    final vf = _carouselViewportFractionFor(
+      context,
+      themeCount: filtered.length,
+    );
     if (_pageController == null || _carouselViewportFraction != vf) {
       final initial = viewModel.carouselIndex.clamp(0, filtered.length - 1);
       _pageController?.dispose();
@@ -674,7 +724,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
     return Column(
       children: [
         Expanded(
-          flex: 7,
           child: PageView.builder(
             controller: _pageController,
             itemCount: filtered.length,
