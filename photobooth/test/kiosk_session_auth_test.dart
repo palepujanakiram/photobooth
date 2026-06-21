@@ -47,6 +47,29 @@ void main() {
   });
 
   group('KioskSessionTokenInterceptor', () {
+    test('passes through without header on public route', () async {
+      SharedPreferences.setMockInitialValues({});
+      final sm = SessionManager();
+      sm.setSessionFromResponse({
+        'id': 'sess-pub',
+        'kioskAuthToken': 'token-pub',
+        'termsAccepted': false,
+        'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+        'attemptsUsed': 0,
+        'generatedImages': [],
+        'expiresAt': DateTime.utc(2027, 1, 1).toIso8601String(),
+      });
+
+      final dio = Dio();
+      dio.interceptors.add(KioskSessionTokenInterceptor(sessionManager: sm));
+      dio.httpClientAdapter = _CapturingAdapter();
+
+      await dio.get<void>('/api/themes');
+
+      final adapter = dio.httpClientAdapter as _CapturingAdapter;
+      expect(adapter.lastHeaders?[kKioskSessionTokenHeader], isNull);
+    });
+
     test('adds X-Kiosk-Session-Token on PATCH session', () async {
       SharedPreferences.setMockInitialValues({});
       final sm = SessionManager();
