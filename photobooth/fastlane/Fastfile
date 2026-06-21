@@ -1,117 +1,127 @@
 # frozen_string_literal: true
 
-# Fastlane configuration: https://docs.fastlane.tools
-# Firebase settings: fastlane/Appfile
+# Android-only Fastlane. Run from photobooth/: bundle exec fastlane android generatedbuild
+# See fastlane/DISTRIBUTION.md
 
-def find_pubspec_path
-  [
-    File.join(Dir.pwd, 'pubspec.yaml'),
-    File.join(Dir.pwd, '..', 'pubspec.yaml'),
-    File.expand_path('pubspec.yaml', "#{File.dirname(__FILE__)}/..")
-  ].find { |path| File.exist?(path) }
+opt_out_usage
+
+# --- Distribution config (edit these values) ---
+FIREBASE_TOKEN = 'your_firebase_ci_token_here' # firebase login:ci
+FIREBASE_ANDROID_APP_ID = '1:76160113818:android:196bb713e591f09c0bd323'
+FIREBASE_ANDROID_GROUPS = 'testers'
+PLAY_STORE_JSON_KEY_PATH = File.expand_path('credentials/play-store-service-account.json', __dir__)
+PLAY_STORE_TRACK = 'internal'
+ANDROID_PACKAGE_NAME = 'com.srisarani.fotozenai'
+
+def photobooth_root
+  File.expand_path('..', __dir__)
 end
 
-def parse_version_from_pubspec(pubspec_path)
-  return nil unless pubspec_path
+def in_photobooth_root(&block)
+  Dir.chdir(photobooth_root, &block)
+end
+
+def find_pubspec_path
+  File.join(photobooth_root, 'pubspec.yaml')
+end
+
+def app_version
+  pubspec_path = find_pubspec_path
+  return { version_name: 'unknown', version_code: 'unknown' } unless File.exist?(pubspec_path)
 
   version_line = File.readlines(pubspec_path).find { |line| line.strip.start_with?('version:') }
-  return nil unless version_line
+  return { version_name: 'unknown', version_code: 'unknown' } unless version_line
 
   version_match = version_line.match(/version:\s*(.+)/)
-  return nil unless version_match
+  return { version_name: 'unknown', version_code: 'unknown' } unless version_match
 
   version_string = version_match[1].strip
-  return nil unless version_string.include?('+')
+  return { version_name: 'unknown', version_code: 'unknown' } unless version_string.include?('+')
 
   parts = version_string.split('+')
   { version_name: parts[0].strip, version_code: parts[1].strip }
 end
 
-def app_version
-  parse_version_from_pubspec(find_pubspec_path) || { version_name: 'unknown', version_code: 'unknown' }
+def default_release_notes
+  info = app_version
+  "FotoZen #{info[:version_name]} (build #{info[:version_code]})"
 end
 
 def log_build_version(build_label)
   info = app_version
-  UI.message("📱 App Version: #{info[:version_name]}")
-  UI.message("🔢 Version Code (Build Number): #{info[:version_code]}")
-  UI.message("🚀 Starting #{build_label}...")
+  UI.message("App version: #{info[:version_name]}")
+  UI.message("Version code: #{info[:version_code]}")
+  UI.message("Starting #{build_label}...")
 end
 
-def distribute_android_apk
-  firebase_app_distribution(
-    app: firebase_android_app_id,
-    apk_path: 'build/app/outputs/flutter-apk/photobooth-release.apk',
-    firebase_cli_token: firebase_android_token,
-    groups: firebase_android_test_groups,
-    release_notes: firebase_android_release_notes
+def android_aab_path
+  File.join(photobooth_root, 'build/app/outputs/bundle/release/app-release.aab')
+end
+
+def validate_firebase_config!
+  return unless FIREBASE_TOKEN.nil? || FIREBASE_TOKEN.empty? || FIREBASE_TOKEN.include?('your_firebase_ci_token')
+
+  UI.user_error!('Set FIREBASE_TOKEN in fastlane/Fastfile (from `firebase login:ci`).')
+end
+
+def validate_firebase_app_id!
+  return unless FIREBASE_ANDROID_APP_ID.nil? || FIREBASE_ANDROID_APP_ID.empty?
+
+  UI.user_error!('Set FIREBASE_ANDROID_APP_ID in fastlane/Fastfile.')
+end
+
+def validate_play_store_key!
+  return if File.exist?(PLAY_STORE_JSON_KEY_PATH)
+
+  UI.user_error!(
+    "Play Store key not found at #{PLAY_STORE_JSON_KEY_PATH}. " \
+    'Place the service account JSON there or update PLAY_STORE_JSON_KEY_PATH in Fastfile.'
   )
 end
 
-def distribute_android_aab
+def validate_distribution_config!
+  validate_firebase_config!
+  validate_firebase_app_id!
+  validate_play_store_key!
+end
+
+def build_android_aab
+  log_build_version('Android App Bundle (AAB)')
+  in_photobooth_root { sh('flutter build appbundle --release') }
+  UI.user_error!("AAB not found at #{android_aab_path}") unless File.exist?(android_aab_path)
+end
+
+def distribute_android_aab_to_firebase
   firebase_app_distribution(
-    app: firebase_android_app_id,
-    aab_path: 'build/app/outputs/bundle/release/app-release.aab',
-    firebase_cli_token: firebase_android_token,
-    groups: firebase_android_test_groups,
-    release_notes: firebase_android_release_notes
+    app: FIREBASE_ANDROID_APP_ID,
+    aab_path: android_aab_path,
+    firebase_cli_token: FIREBASE_TOKEN,
+    groups: FIREBASE_ANDROID_GROUPS,
+    release_notes: default_release_notes
   )
 end
 
-def distribute_ios_ipa
-  firebase_app_distribution(
-    app: firebase_ios_app_id,
-    ipa_path: './build/ios/ipa/Runner.ipa',
-    firebase_cli_token: firebase_ios_token,
-    groups: firebase_ios_test_groups,
-    release_notes: firebase_ios_release_notes
+def upload_android_aab_to_play_store
+  upload_to_play_store(
+    track: PLAY_STORE_TRACK,
+    aab: android_aab_path,
+    package_name: ANDROID_PACKAGE_NAME,
+    json_key: PLAY_STORE_JSON_KEY_PATH,
+    skip_upload_metadata: true,
+    skip_upload_images: true,
+    skip_upload_screenshots: true,
+    skip_upload_changelogs: true
   )
 end
 
 default_platform(:android)
 
 platform :android do
-  desc 'Build Android APK'
-  lane :build_apk do
-    log_build_version('Android APK build')
-    sh('flutter build apk --release')
+  desc 'Build release AAB, upload to Google Play Console, and distribute via Firebase App Distribution'
+  lane :generatedbuild do
+    validate_distribution_config!
+    build_android_aab
+    upload_android_aab_to_play_store
+    distribute_android_aab_to_firebase
   end
-
-  desc 'Build Android App Bundle (AAB)'
-  lane :build_aab do
-    log_build_version('Android App Bundle (AAB) build')
-    sh('flutter build appbundle --release')
-  end
-
-  desc 'Build and upload Android APK to Firebase App Distribution'
-  lane :firebase_android do
-    build_apk
-    distribute_android_apk
-  end
-
-  desc 'Build and upload Android App Bundle to Firebase App Distribution'
-  lane :firebase_android_aab do
-    build_aab
-    distribute_android_aab
-  end
-end
-
-platform :ios do
-  desc 'Build iOS IPA'
-  lane :build_ipa do
-    log_build_version('iOS IPA build')
-    sh('flutter build ipa --release')
-  end
-
-  desc 'Build and upload iOS IPA to Firebase App Distribution'
-  lane :firebase_ios do
-    build_ipa
-    distribute_ios_ipa
-  end
-end
-
-desc 'Build and upload both Android and iOS to Firebase'
-lane :firebase_all do
-  firebase_android
-  firebase_ios
 end

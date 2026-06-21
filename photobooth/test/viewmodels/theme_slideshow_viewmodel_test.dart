@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:photobooth/screens/theme_slideshow/theme_slideshow_viewmodel.dart';
 import 'package:photobooth/services/theme_manager.dart';
+import 'package:photobooth/utils/theme_image_urls.dart';
 
 import '../fixtures/theme_fixtures.dart';
 
@@ -17,25 +18,28 @@ void main() {
     await tm.fetchThemes();
     final vm = ThemeSlideshowViewModel(themeManager: tm);
     await vm.fetchThemes();
-    final url = vm.getSampleImageUrls().first;
-    expect(vm.getThemeForImageUrl(url)?.id, 't1');
+    // sampleTheme sets sampleImageUrl = '/t1.jpg'; resolve to absolute URL for matching.
+    expect(vm.getThemeForImageUrl(resolveThemeSampleImageUrl('/t1.jpg'))?.id, 't1');
     expect(vm.getThemeForImageUrl(''), isNull);
     vm.dispose();
   });
 
-  test('preloadImages with no themes clears state', () async {
-    final tm = ThemeManager.forTesting(ThemesFakeApi([]));
-    final vm = ThemeSlideshowViewModel(themeManager: tm);
-    await vm.fetchThemes();
-    expect(vm.getSampleImageUrls(), isEmpty);
+  test('getSampleImageUrls uses bundled slideshow assets', () {
+    final vm = ThemeSlideshowViewModel(
+      themeManager: ThemeManager.forTesting(ThemesFakeApi([])),
+    );
+    final urls = vm.getSampleImageUrls();
+    expect(urls, isNotEmpty);
+    expect(urls.first, startsWith('assets/slideshow/'));
     vm.dispose();
   });
 
-  test('fetchThemes surfaces ApiException when no cache', () async {
+  test('fetchThemes prefetch failure does not block slideshow assets', () async {
     final tm = ThemeManager.forTesting(ThemesFakeApi([], throwOnFetch: true));
     final vm = ThemeSlideshowViewModel(themeManager: tm);
     await vm.fetchThemes();
-    expect(vm.hasError, isTrue);
+    expect(vm.hasError, isFalse);
+    expect(vm.getSampleImageUrls(), isNotEmpty);
     vm.dispose();
   });
 }

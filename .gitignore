@@ -37,6 +37,15 @@ migrate_working_dir/
 photobooth/build/
 **/android/.gradle/
 **/android/local.properties
+**/android/key.properties
+**/android/keystore/key.properties
+**/*.jks
+**/*.keystore
+**/*.jks.zip
+**/*keystore*.zip
+!photobooth/android/keystore/
+!photobooth/android/keystore/fotozen-upload.jks
+!photobooth/android/keystore/key.properties
 
 # Symbolication related
 app.*.symbols
@@ -54,6 +63,10 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots
 fastlane/test_output
+**/fastlane/credentials/*
+!**/fastlane/credentials/.gitkeep
+**/fastlane/play-store-*.json
+**/fastlane/*-service-account.json
 
 # Environment variables
 .env

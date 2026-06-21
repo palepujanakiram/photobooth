@@ -1,0 +1,77 @@
+# Build Android AAB and distribute via Fastlane (Google Play + Firebase).
+# Play JSON is written to fastlane/credentials/; set FIREBASE_TOKEN etc. in fastlane/Fastfile.
+
+name: Mobile release
+
+on:
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: photobooth
+
+jobs:
+  android-generatedbuild:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Sync build version
+        run: dart run tool/sync_build_version.dart
+
+      - name: Flutter dependencies
+        run: flutter pub get
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          working-directory: photobooth
+
+      - name: Decode Android keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret is required."
+            exit 1
+          fi
+          mkdir -p android/keystore
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/keystore/fotozen-upload.jks
+          cat > android/keystore/key.properties <<EOF
+          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          keyPassword=${ANDROID_KEY_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          storeFile=../keystore/fotozen-upload.jks
+          EOF
+
+      - name: Write Play Store service account key
+        env:
+          PLAY_STORE_JSON_KEY_DATA: ${{ secrets.PLAY_STORE_JSON_KEY_DATA }}
+        run: |
+          if [ -z "$PLAY_STORE_JSON_KEY_DATA" ]; then
+            echo "::error::PLAY_STORE_JSON_KEY_DATA secret is required."
+            exit 1
+          fi
+          mkdir -p fastlane/credentials
+          echo "$PLAY_STORE_JSON_KEY_DATA" > fastlane/credentials/play-store-service-account.json
+
+      - name: Fastlane android generatedbuild
+        run: bundle exec fastlane android generatedbuild
