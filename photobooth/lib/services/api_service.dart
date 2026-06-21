@@ -815,7 +815,7 @@ class ApiService {
 
   /// POST `/api/preprocess-image` — server person detection + consensus.
   ///
-  /// Await before theme selection; use [PreprocessImageResult.personCount] for filtering.
+  /// Fire-and-forget person-detection call; never throws — returns success=false on any error.
   Future<PreprocessImageResult> preprocessImage({
     required String sessionId,
     int? clientFaceCount,
@@ -834,28 +834,14 @@ class ApiService {
       if (raw is Map) {
         return PreprocessImageResult.fromJson(Map<String, dynamic>.from(raw));
       }
-      throw ApiException('Unexpected preprocess response from API');
+      return const PreprocessImageResult(success: false);
     } on DioException catch (e) {
       _handleWebNetworkError(e);
-
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout ||
-          e.type == DioExceptionType.connectionError) {
-        throw ApiException(AppConstants.kErrorNetwork);
-      }
-
-      String errorMessage = AppConstants.kErrorApiCall;
-      if (e.response != null) {
-        final responseData = e.response?.data;
-        if (responseData is Map<String, dynamic>) {
-          errorMessage = responseData['message'] as String? ??
-              responseData['error'] as String? ??
-              'API Error: ${e.response?.statusCode}';
-        } else if (responseData is String) {
-          errorMessage = responseData;
-        }
-      }
-      throw ApiException(errorMessage, e.response?.statusCode);
+      AppLogger.debug('preprocessImage failed: ${e.message}');
+      return const PreprocessImageResult(success: false);
+    } catch (e) {
+      AppLogger.debug('preprocessImage failed: $e');
+      return const PreprocessImageResult(success: false);
     }
   }
 }

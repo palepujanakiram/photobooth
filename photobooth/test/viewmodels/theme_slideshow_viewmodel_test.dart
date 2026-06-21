@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:photobooth/screens/theme_slideshow/theme_slideshow_viewmodel.dart';
 import 'package:photobooth/services/theme_manager.dart';
+import 'package:photobooth/utils/theme_image_urls.dart';
 
 import '../fixtures/theme_fixtures.dart';
 
@@ -17,8 +18,8 @@ void main() {
     await tm.fetchThemes();
     final vm = ThemeSlideshowViewModel(themeManager: tm);
     await vm.fetchThemes();
-    final url = vm.getSampleImageUrls().first;
-    expect(vm.getThemeForImageUrl(url)?.id, 't1');
+    // sampleTheme sets sampleImageUrl = '/t1.jpg'; resolve to absolute URL for matching.
+    expect(vm.getThemeForImageUrl(resolveThemeSampleImageUrl('/t1.jpg'))?.id, 't1');
     expect(vm.getThemeForImageUrl(''), isNull);
     vm.dispose();
   });
