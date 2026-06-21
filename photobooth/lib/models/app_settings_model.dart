@@ -97,7 +97,8 @@ class AppSettingsModel {
       upscaleUseAI: json['upscaleUseAI'] as bool?,
       compressionQuality: json['compressionQuality'] as int?,
       compressionMaxDimension: json['compressionMaxDimension'] as int?,
-      showGenerationCommentary: json['showGenerationCommentary'] as bool?,
+      // TODO: use json value when backend defaults showGenerationCommentary to false.
+      showGenerationCommentary: false,
       defaultAiProvider: json['defaultAiProvider'] as String?,
       fallbackAiProvider: json['fallbackAiProvider'] as String?,
       enableControlNet: json['enableControlNet'] as bool?,

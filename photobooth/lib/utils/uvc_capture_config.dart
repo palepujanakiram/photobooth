@@ -12,7 +12,7 @@ import 'package:uvccamera/uvccamera.dart';
 /// | Balanced    | low    | 1536         | 85          | 300 ms          |
 /// | Quality     | medium | 1920         | 85          | 48 ms           |
 class UvcCaptureConfig {
-  UvcCaptureConfig._();
+  UvcCaptureConfig._(); // coverage:ignore-line
 
   /// Native UVC stream / still resolution (`min` < `low` < `medium`).
   static const UvcCameraResolutionPreset resolutionPreset =

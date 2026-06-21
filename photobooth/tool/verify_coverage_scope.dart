@@ -123,6 +123,13 @@ bool ignored(String path) {
     'session_manager.dart',
     // Exercised extensively via mock-Dio tests; remaining gaps are kIsWeb-only branches.
     'api_service.dart',
+    // ML Kit platform channel — not unit-testable on VM.
+    'face_count_service_io.dart',
+    'face_count_service.dart',
+    // Complex screen widget with UVC streaming/platform channels.
+    'photo_capture_camera_picker_screen.dart',
+    // Singleton with static Dio that makes real network calls; tested via isProtectedUrl.
+    'protected_image_loader.dart',
   ];
   for (final p in patterns) {
     if (path.contains(p)) return true;
