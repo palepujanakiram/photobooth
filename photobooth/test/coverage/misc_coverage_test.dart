@@ -63,7 +63,7 @@ void main() {
     AppRuntimeConfig.instance.applyFromSettings(
       AppSettingsModel(showGenerationCommentary: true),
     );
-    expect(AppRuntimeConfig.instance.showGenerationCommentary, isFalse);
+    expect(AppRuntimeConfig.instance.showGenerationCommentary, isTrue);
     applyFlutterImageCacheLimits();
   });
 
