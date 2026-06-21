@@ -73,8 +73,14 @@ void main() {
 
   test('AppRouteTracker didRemove sets previous route', () {
     final tracker = AppRouteTracker();
-    final routeA = ModalRoute<void>(settings: const RouteSettings(name: '/a'));
-    final routeB = ModalRoute<void>(settings: const RouteSettings(name: '/b'));
+    final routeA = MaterialPageRoute<void>(
+      settings: const RouteSettings(name: '/a'),
+      builder: (_) => const SizedBox.shrink(),
+    );
+    final routeB = MaterialPageRoute<void>(
+      settings: const RouteSettings(name: '/b'),
+      builder: (_) => const SizedBox.shrink(),
+    );
 
     tracker.didPush(routeA, null);
     expect(tracker.currentRouteName, '/a');
