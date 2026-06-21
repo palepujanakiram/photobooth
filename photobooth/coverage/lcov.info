@@ -3142,7 +3142,7 @@ SF:lib/screens/theme_slideshow/theme_slideshow_image.dart
 DA:5,1
 DA:6,2
 DA:7,1
-DA:12,0
+DA:12,1
 DA:29,1
 DA:31,2
 DA:32,1
@@ -3162,7 +3162,7 @@ DA:54,1
 DA:60,1
 DA:62,1
 LF:22
-LH:21
+LH:22
 end_of_record
 SF:lib/views/widgets/cached_network_image.dart
 DA:25,1
@@ -13549,10 +13549,10 @@ DA:21,1
 DA:23,1
 DA:26,1
 DA:28,1
-DA:31,0
-DA:33,0
+DA:31,1
+DA:33,1
 LF:14
-LH:12
+LH:14
 end_of_record
 SF:lib/utils/web_flow_trace_summary.dart
 DA:6,2
