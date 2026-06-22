@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ui'
     show Size, ImmutableBuffer, instantiateImageCodecFromBuffer;
 import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, defaultTargetPlatform, kIsWeb;
-import 'package:flutter/painting.dart' show PaintingBinding;
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:camera/camera.dart';
 import 'package:camera/camera.dart' as cam show availableCameras;
@@ -256,21 +255,19 @@ class CaptureViewModel extends ChangeNotifier {
   int _androidTvPreviewQuarterTurns() {
     final camera = _currentCamera;
     if (camera == null) return 0;
-    final isExternal =
-        camera.lensDirection == CameraLensDirection.external;
+    final isExternal = isExternalCaptureCamera(
+      camera,
+      _looksLikeExternalCameraName,
+    );
     return _previewQuarterTurnsForSensor(
       sensorOrientation: camera.sensorOrientation % 360,
       isFrontCamera: camera.lensDirection == CameraLensDirection.front,
-      treatAsExternal: isExternal,
+      isExternalFeed: isExternal,
     );
   }
 
-  /// UVC / HDMI capture: same rotation math as a built-in external camera.
-  int get uvcPreviewAutoQuarterTurns => _previewQuarterTurnsForSensor(
-        sensorOrientation: 0,
-        isFrontCamera: false,
-        treatAsExternal: true,
-      );
+  /// UVC / USB DSLR feeds are delivered upright; no auto-rotation.
+  int get uvcPreviewAutoQuarterTurns => 0;
 
   int get uvcPreviewEffectiveQuarterTurns =>
       (uvcPreviewAutoQuarterTurns + (_previewRotationDegrees ~/ 90) % 4) % 4;
@@ -295,25 +292,18 @@ class CaptureViewModel extends ChangeNotifier {
   int _previewQuarterTurnsForSensor({
     required int sensorOrientation,
     required bool isFrontCamera,
-    required bool treatAsExternal,
+    required bool isExternalFeed,
   }) {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return 0;
-    if (!shouldUseLandscapePreviewRotationWorkaround && !treatAsExternal) {
-      return 0;
-    }
-
-    final surfaceRotationDegrees = switch (_displayRotation) {
-      1 => 90,
-      2 => 180,
-      3 => 270,
-      _ => 0,
-    };
-
-    final rotationDegrees = isFrontCamera
-        ? (sensorOrientation + surfaceRotationDegrees) % 360
-        : (sensorOrientation - surfaceRotationDegrees + 360) % 360;
-
-    return ((360 - rotationDegrees) % 360) ~/ 90;
+    final applyWorkaround =
+        shouldUseLandscapePreviewRotationWorkaround || isExternalFeed;
+    return previewAutoQuarterTurnsForSensor(
+      applyAndroidRotationWorkaround: applyWorkaround,
+      sensorOrientationDegrees: sensorOrientation % 360,
+      isFrontCamera: isFrontCamera,
+      isExternalFeed: isExternalFeed,
+      displayRotationIndex: _displayRotation,
+    );
   }
 
   void _snapshotLockedCaptureCardAspectFromLivePreview() {
@@ -659,8 +649,9 @@ class CaptureViewModel extends ChangeNotifier {
   Future<void> setCapturedPhotoFromExternalFile({
     required XFile rawFile,
     required String cameraId,
+    bool force = false,
   }) async {
-    if (_isCapturing || _isUploading) return;
+    if (!force && (_isCapturing || _isUploading)) return;
     final isUvc = cameraId.startsWith('uvc:');
     _isCapturing = true;
     _errorMessage = null;
@@ -670,13 +661,30 @@ class CaptureViewModel extends ChangeNotifier {
     await Future<void>.delayed(Duration.zero);
 
     try {
-      final savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
-        rawFile,
-        flipHorizontal: false,
-        fixBgrChannelOrder: isUvc,
-        maxDimension: isUvc ? UvcCaptureConfig.normalizeMaxDimension : null,
-        jpegQuality: isUvc ? UvcCaptureConfig.normalizeJpegQuality : null,
-      );
+      XFile savedFile;
+      try {
+        savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
+          rawFile,
+          flipHorizontal: false,
+          fixBgrChannelOrder: isUvc,
+          maxDimension: isUvc ? UvcCaptureConfig.normalizeMaxDimension : null,
+          jpegQuality: isUvc ? UvcCaptureConfig.normalizeJpegQuality : null,
+        );
+        if (isUvc) {
+          await ImageHelper.tryDeleteLocalFile(rawFile.path);
+        }
+      } catch (normalizeError, normalizeSt) {
+        if (!isUvc) rethrow;
+        AppLogger.error(
+          'UVC normalize failed; using raw still',
+          error: normalizeError,
+          stackTrace: normalizeSt,
+        );
+        savedFile = rawFile;
+      }
+      if (isUvc) {
+        await Future<void>.delayed(const Duration(milliseconds: 16));
+      }
       await _assignCapturedPhotoModel(
         savedFile,
         cameraIdOverride: cameraId,
@@ -687,12 +695,6 @@ class CaptureViewModel extends ChangeNotifier {
         skipUploadPrep:
             isUvc && UvcCaptureConfig.deferUploadPrepUntilContinue,
       );
-      if (isUvc) {
-        unawaited(Future<void>.microtask(() {
-          PaintingBinding.instance.imageCache.clear();
-          PaintingBinding.instance.imageCache.clearLiveImages();
-        }));
-      }
     } catch (e, st) {
       _errorMessage = 'USB camera capture failed: $e';
       await ErrorReportingManager.recordError(
@@ -1792,11 +1794,19 @@ class CaptureViewModel extends ChangeNotifier {
     WebFlowTrace.log('UPLOAD_PREP', 'encode_start');
     final base64 = await ImageHelper.encodeImageForUpload(imageFile);
     WebFlowTrace.log('UPLOAD_PREP', 'encode_done len=${base64.length}');
-    _preparedClientFaceCount = await detectFaceCountFromXFile(imageFile);
-    WebFlowTrace.log(
-      'UPLOAD_PREP',
-      'face_done count=$_preparedClientFaceCount',
-    );
+    final isUvc = photo.cameraId?.startsWith('uvc:') ?? false;
+    if (isUvc) {
+      // Face ML Kit decodes the full image again — skip on UVC/tablet to avoid OOM;
+      // server preprocess refines person count after PATCH.
+      _preparedClientFaceCount = 0;
+      WebFlowTrace.log('UPLOAD_PREP', 'face_skipped uvc=true');
+    } else {
+      _preparedClientFaceCount = await detectFaceCountFromXFile(imageFile);
+      WebFlowTrace.log(
+        'UPLOAD_PREP',
+        'face_done count=$_preparedClientFaceCount',
+      );
+    }
     return base64;
   }
 

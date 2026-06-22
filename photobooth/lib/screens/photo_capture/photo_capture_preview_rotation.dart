@@ -1,5 +1,32 @@
 import 'package:flutter/material.dart';
 
+/// Auto-rotation for live preview in 90° steps (0–3).
+///
+/// USB / HDMI capture feeds are already upright on kiosk tablets; skip the
+/// Android TV / sensor-orientation workaround for those devices.
+int previewAutoQuarterTurnsForSensor({
+  required bool applyAndroidRotationWorkaround,
+  required int sensorOrientationDegrees,
+  required bool isFrontCamera,
+  required bool isExternalFeed,
+  required int displayRotationIndex,
+}) {
+  if (!applyAndroidRotationWorkaround || isExternalFeed) return 0;
+
+  final surfaceRotationDegrees = switch (displayRotationIndex) {
+    1 => 90,
+    2 => 180,
+    3 => 270,
+    _ => 0,
+  };
+
+  final rotationDegrees = isFrontCamera
+      ? (sensorOrientationDegrees + surfaceRotationDegrees) % 360
+      : (sensorOrientationDegrees - surfaceRotationDegrees + 360) % 360;
+
+  return ((360 - rotationDegrees) % 360) ~/ 90;
+}
+
 /// Display width/height for a preview after [effectiveQuarterTurns] rotation.
 (double, double) previewDisplayDimensions({
   required Size? previewSize,

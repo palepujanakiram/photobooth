@@ -11,21 +11,57 @@ import 'package:uvccamera/uvccamera.dart';
 /// | Performance | min    | 1280         | 80          | 450 ms          |
 /// | Balanced    | low    | 1536         | 85          | 300 ms          |
 /// | Quality     | medium | 1920         | 85          | 48 ms           |
+///
+/// **Active profile** leans performance after tablet OOM during UVC normalize.
 class UvcCaptureConfig {
   UvcCaptureConfig._();
 
   /// Native UVC stream / still resolution (`min` < `low` < `medium`).
   static const UvcCameraResolutionPreset resolutionPreset =
-      UvcCameraResolutionPreset.low;
+      UvcCameraResolutionPreset.min;
 
-  /// Max long edge after Dart-side normalize (matches session PATCH cap).
-  static const int normalizeMaxDimension = 1536;
+  /// Max long edge after Dart-side normalize.
+  static const int normalizeMaxDimension = 1024;
 
   /// JPEG quality after normalize.
-  static const int normalizeJpegQuality = 85;
+  static const int normalizeJpegQuality = 75;
 
-  /// Pause before upload encode + face detection so UVC dispose / GC can run.
-  static const Duration uploadPrepDelay = Duration(milliseconds: 300);
+  /// Pause after UVC dispose before reading the still (lets USB/GPU buffers free).
+  static const Duration postDisposeDelay = Duration(milliseconds: 750);
+
+  /// Extra pause before reopening live feed after capture/close (native release).
+  static const Duration reopenFeedDelay = Duration(milliseconds: 1200);
+
+  /// Brief white shutter flash (not held for the whole takePicture wait).
+  static const Duration captureFlashDuration = Duration(milliseconds: 120);
+
+  /// Minimum gap between UI captures on the same open feed (native USB release).
+  static const Duration uiCaptureCooldown = Duration(milliseconds: 600);
+
+  /// Brief settle before takePicture on a freshly reopened feed.
+  static const Duration preCaptureSettleDelay = Duration(milliseconds: 50);
+
+  /// When true, keep the UVC session open while reviewing a still (retake reuses it).
+  static const bool keepControllerOpenDuringReview = true;
+
+  /// Ignore preview-interrupt shutter signals right after the feed reconnects.
+  static const Duration previewWarmupPeriod = Duration(milliseconds: 1500);
+
+  /// Ignore USB disconnect/reconnect churn while the DSLR shutter pauses HDMI.
+  static const Duration shutterGracePeriod = Duration(seconds: 4);
+
+  /// Max wait for [UvcCameraController.takePicture] (DSLR bodies can be slow).
+  static const Duration takePictureTimeout = Duration(seconds: 10);
+
+  /// Longer wait when the DSLR pauses HDMI — next frame may arrive after review.
+  static const Duration interruptTakePictureTimeout = Duration(seconds: 10);
+
+  /// Delay between takePicture retries after preview interrupt (DSLR review frame).
+  static const Duration interruptTakePictureRetryDelay =
+      Duration(milliseconds: 350);
+
+  /// Pause before upload encode + face detection (when not deferred to Continue).
+  static const Duration uploadPrepDelay = Duration(milliseconds: 450);
 
   /// When true, skip background encode + face detection until the user taps Continue.
   /// Reduces RAM spikes and UI jank while reviewing the captured still on low-RAM tablets.
