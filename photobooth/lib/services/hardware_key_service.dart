@@ -29,6 +29,20 @@ class HardwareKeyService {
     }
   }
 
+  /// Forwards camera/focus/enter keys to Flutter while a USB/DSLR UVC stream is active.
+  static Future<void> setUvcShutterKeysEnabled(bool enabled) async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    _ensureInitialized();
+    try {
+      await _channel.invokeMethod<void>(
+        'setUvcShutterKeysEnabled',
+        {'enabled': enabled},
+      );
+    } catch (_) {
+      // Best-effort.
+    }
+  }
+
   static void _ensureInitialized() {
     if (_initialized) return;
     _initialized = true;

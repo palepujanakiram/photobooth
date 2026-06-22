@@ -10,6 +10,7 @@ class HardwareKeysHandler(
 ) {
     private val channel = MethodChannel(messenger, CHANNEL_NAME)
     private var enabled: Boolean = false
+    private var uvcShutterKeysEnabled: Boolean = false
 
     init {
         channel.setMethodCallHandler(::onMethodCall)
@@ -18,6 +19,17 @@ class HardwareKeysHandler(
     fun handleKeyEvent(event: KeyEvent): Boolean {
         if (!enabled) return false
         val code = event.keyCode
+        if (uvcShutterKeysEnabled && isUvcShutterKeyCode(code)) {
+            channel.invokeMethod(
+                "onKey",
+                mapOf(
+                    "keyCode" to code,
+                    "action" to event.action,
+                    "timestampMs" to event.eventTime,
+                ),
+            )
+            return true
+        }
         if (code != KeyEvent.KEYCODE_VOLUME_UP && code != KeyEvent.KEYCODE_VOLUME_DOWN) {
             return false
         }
@@ -32,6 +44,19 @@ class HardwareKeysHandler(
         return true
     }
 
+    private fun isUvcShutterKeyCode(code: Int): Boolean =
+        when (code) {
+            KeyEvent.KEYCODE_CAMERA,
+            KeyEvent.KEYCODE_FOCUS,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_SPACE,
+            KeyEvent.KEYCODE_VOLUME_UP,
+            KeyEvent.KEYCODE_VOLUME_DOWN,
+            -> true
+            else -> false
+        }
+
     private fun onMethodCall(
         call: io.flutter.plugin.common.MethodCall,
         result: MethodChannel.Result,
@@ -40,6 +65,12 @@ class HardwareKeysHandler(
             "setEnabled" -> {
                 val args = call.arguments as? Map<*, *>
                 enabled = args?.get("enabled") as? Boolean ?: false
+                result.success(null)
+            }
+
+            "setUvcShutterKeysEnabled" -> {
+                val args = call.arguments as? Map<*, *>
+                uvcShutterKeysEnabled = args?.get("enabled") as? Boolean ?: false
                 result.success(null)
             }
 

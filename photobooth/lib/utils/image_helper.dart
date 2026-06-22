@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show File;
 
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
@@ -23,6 +24,22 @@ const int kSessionPatchUserImageJpegQuality = 85;
 typedef ImageMetadata = ({int width, int height, String format, int fileSizeBytes});
 
 typedef _ImageMetadataIsolateArgs = ({Uint8List bytes, String path});
+
+typedef _NormalizeJpegArgs = ({
+  Uint8List bytes,
+  bool flipHorizontal,
+  bool fixBgrChannelOrder,
+  int maxDimension,
+  int jpegQuality,
+});
+
+typedef _NormalizeJpegPathArgs = ({
+  String path,
+  bool flipHorizontal,
+  bool fixBgrChannelOrder,
+  int maxDimension,
+  int jpegQuality,
+});
 
 /// Isolate entry: session PATCH user image encoding.
 String _encodeSessionPatchUserImageUrlIsolate(Uint8List bytes) =>
@@ -103,20 +120,28 @@ class ImageHelper {
     if (kIsWeb) {
       return sourceFile;
     }
-    final bytes = await sourceFile.readAsBytes();
-    if (bytes.isEmpty) {
-      throw Exception('Captured image is empty');
-    }
-    final normalizedBytes = await compute(
-      _normalizeToStandardJpegBytes,
-      (
-        bytes: bytes,
-        flipHorizontal: flipHorizontal,
-        fixBgrChannelOrder: fixBgrChannelOrder,
-        maxDimension: maxDimension ?? kCapturedPhotoMaxDimension,
-        jpegQuality: jpegQuality ?? kCapturedPhotoJpegQuality,
-      ),
-    );
+    final path = sourceFile.path;
+    final normalizedBytes = path.isNotEmpty
+        ? await compute(
+            _normalizeToStandardJpegBytesFromPath,
+            (
+              path: path,
+              flipHorizontal: flipHorizontal,
+              fixBgrChannelOrder: fixBgrChannelOrder,
+              maxDimension: maxDimension ?? kCapturedPhotoMaxDimension,
+              jpegQuality: jpegQuality ?? kCapturedPhotoJpegQuality,
+            ),
+          )
+        : await compute(
+            _normalizeToStandardJpegBytes,
+            (
+              bytes: await sourceFile.readAsBytes(),
+              flipHorizontal: flipHorizontal,
+              fixBgrChannelOrder: fixBgrChannelOrder,
+              maxDimension: maxDimension ?? kCapturedPhotoMaxDimension,
+              jpegQuality: jpegQuality ?? kCapturedPhotoJpegQuality,
+            ),
+          );
     final tempDir = await FileHelper.getTempDirectoryPath();
     const photosSubdir = 'photos';
     final photosDir = '$tempDir/$photosSubdir';
@@ -128,49 +153,72 @@ class ImageHelper {
     return XFile((file as dynamic).path);
   }
 
-  /// Top-level/static for compute(): decode, resize to standard max, encode JPEG. No file I/O.
-  static Uint8List _normalizeToStandardJpegBytes(
-    ({
-      Uint8List bytes,
-      bool flipHorizontal,
-      bool fixBgrChannelOrder,
-      int maxDimension,
-      int jpegQuality,
-    }) args,
+  /// Deletes a temp capture file after normalization to free disk/RAM on kiosks.
+  static Future<void> tryDeleteLocalFile(String? path) async {
+    if (kIsWeb || path == null || path.isEmpty) return;
+    try {
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {
+      // Best-effort.
+    }
+  }
+
+  /// Top-level for [compute]: read path in isolate, then decode/resize/encode.
+  static Uint8List _normalizeToStandardJpegBytesFromPath(
+    _NormalizeJpegPathArgs args,
   ) {
+    final bytes = File(args.path).readAsBytesSync();
+    if (bytes.isEmpty) {
+      throw Exception('Captured image is empty');
+    }
+    return _normalizeToStandardJpegBytes((
+      bytes: bytes,
+      flipHorizontal: args.flipHorizontal,
+      fixBgrChannelOrder: args.fixBgrChannelOrder,
+      maxDimension: args.maxDimension,
+      jpegQuality: args.jpegQuality,
+    ));
+  }
+
+  /// Top-level/static for compute(): decode, resize to standard max, encode JPEG. No file I/O.
+  static Uint8List _normalizeToStandardJpegBytes(_NormalizeJpegArgs args) {
     final originalImage = img.decodeImage(args.bytes);
     if (originalImage == null) {
       throw Exception('Failed to decode captured image');
     }
     // Apply EXIF orientation so saved photos are upright everywhere.
     var normalized = img.bakeOrientation(originalImage);
+    final maxDim = args.maxDimension;
+
+    // Downscale before channel fix / flip to cap peak RAM in the isolate (UVC
+    // plugin saves full preview frames as JPEG quality 100).
+    if (normalized.width > maxDim || normalized.height > maxDim) {
+      final scale = (normalized.width > normalized.height)
+          ? maxDim / normalized.width
+          : maxDim / normalized.height;
+      normalized = img.copyResize(
+        normalized,
+        width: (normalized.width * scale).round(),
+        height: (normalized.height * scale).round(),
+        interpolation: img.Interpolation.linear,
+      );
+    }
+
     if (args.fixBgrChannelOrder) {
       normalized = swapRedAndBlueChannels(normalized);
     }
     if (args.flipHorizontal) {
       normalized = img.flipHorizontal(normalized);
     }
-    int targetWidth = normalized.width;
-    int targetHeight = normalized.height;
-    final maxDim = args.maxDimension;
-    if (targetWidth > maxDim || targetHeight > maxDim) {
-      final scale = (targetWidth > targetHeight)
-          ? maxDim / targetWidth
-          : maxDim / targetHeight;
-      targetWidth = (targetWidth * scale).round();
-      targetHeight = (targetHeight * scale).round();
-    }
-    final sourcePixels = normalized.width * normalized.height;
-    final resized = img.copyResize(
-      normalized,
-      width: targetWidth,
-      height: targetHeight,
-      interpolation: sourcePixels > maxDim * maxDim
-          ? img.Interpolation.linear
-          : img.Interpolation.cubic,
-    );
+
     return Uint8List.fromList(
-      img.encodeJpg(resized, quality: args.jpegQuality),
+      img.encodeJpg(
+        normalized,
+        quality: args.jpegQuality,
+      ),
     );
   }
 
