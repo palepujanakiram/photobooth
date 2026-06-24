@@ -11,7 +11,7 @@ defaults:
     working-directory: photobooth
 
 jobs:
-  android-generatedbuild:
+  android-generatebuild:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -73,5 +73,5 @@ jobs:
           mkdir -p fastlane/credentials
           echo "$PLAY_STORE_JSON_KEY_DATA" > fastlane/credentials/play-store-service-account.json
 
-      - name: Fastlane android generatedbuild
-        run: bundle exec fastlane android generatedbuild
+      - name: Fastlane android generatebuild
+        run: bundle exec fastlane android generatebuild

@@ -15,10 +15,11 @@ class ClientIdentification {
 
   /// Formats [semverVersion] (from `pubspec` / [PackageInfo.version]) for APIs.
   ///
-  /// When the app uses **encoded date-time** versioning:
-  /// `YEAR.MONTH.PATCH` where `PATCH = day×10000 + hour×100 + minute` (24h),
-  /// returns **`yyyy.mm.dd.hhmm`**. Otherwise returns [semverVersion] unchanged
-  /// (e.g. legacy `0.1.0`).
+  /// When the app uses **date** versioning:
+  /// - `YEAR.MONTH.DAY` → **`yyyy.mm.dd`**
+  /// - legacy `YEAR.MONTH.PATCH` where `PATCH = day×10000 + hour×100 + minute` (24h)
+  ///   → **`yyyy.mm.dd.hhmm`**
+  /// Otherwise returns [semverVersion] unchanged (e.g. legacy `0.1.0`).
   static String formatClientVersionLabel(String semverVersion) {
     final core = semverVersion.split('+').first.trim();
     final parts = core.split('.');
@@ -26,15 +27,21 @@ class ClientIdentification {
     final y = int.tryParse(parts[0]);
     final m = int.tryParse(parts[1]);
     final patch = int.tryParse(parts[2]);
-    if (y == null || m == null || patch == null) return semverVersion;
-    if (y < 2000 || patch < 10000) return semverVersion;
+    if (y == null || m == null || patch == null || y < 2000) return semverVersion;
+    if (m < 1 || m > 12) return semverVersion;
+
+    if (patch < 10000) {
+      if (patch < 1 || patch > 31) return semverVersion;
+      final mm = m.toString().padLeft(2, '0');
+      final dd = patch.toString().padLeft(2, '0');
+      return '$y.$mm.$dd';
+    }
+
     final day = patch ~/ 10000;
     final hm = patch % 10000;
     final h = hm ~/ 100;
     final min = hm % 100;
-    if (m < 1 || m > 12 || day < 1 || day > 31 || h > 23 || min > 59) {
-      return semverVersion;
-    }
+    if (day < 1 || day > 31 || h > 23 || min > 59) return semverVersion;
     final mm = m.toString().padLeft(2, '0');
     final dd = day.toString().padLeft(2, '0');
     final hh = h.toString().padLeft(2, '0');
