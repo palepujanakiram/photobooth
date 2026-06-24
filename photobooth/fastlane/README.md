@@ -1,44 +1,61 @@
-# Fastlane (Android + iOS)
+fastlane documentation
+----
 
-Run from `photobooth/`:
+# Installation
 
-```sh
-bundle install
-```
-
-## generatebuild (build + upload)
-
-Same lane name on both platforms — Fastlane picks the store from the platform:
-
-| Command | Output | Upload destination |
-|---------|--------|-------------------|
-| `bundle exec fastlane android generatebuild` | AAB | Google Play Console (+ Firebase App Distribution) |
-| `bundle exec fastlane ios generatebuild` | IPA | App Store Connect (TestFlight) |
-
-Each `generatebuild` lane:
-
-1. Syncs version (`YEAR.MONTH.DAY+build`) from the store API
-2. Builds the release artifact
-3. Uploads to the platform store
-
-## Build only (no upload)
+Make sure you have the latest version of the Xcode command line tools installed:
 
 ```sh
-bundle exec fastlane android build
-bundle exec fastlane ios build
+xcode-select --install
 ```
 
-## Versioning
+For _fastlane_ installation instructions, see [Installing _fastlane_](https://docs.fastlane.tools/#installing-fastlane)
 
-- **Version name:** `YEAR.MONTH.DAY` (e.g. `2026.6.24`)
-- **iOS build number:** latest TestFlight build for that version + 1
-- **Android version code:** highest version code across Play tracks + 1 (never resets; Play requirement)
+# Available Actions
 
-## Configuration
+## Android
 
-Edit distribution settings at the top of [`Fastfile`](Fastfile):
+### android generatebuild
 
-- **Android:** `FIREBASE_TOKEN`, `PLAY_STORE_JSON_KEY_PATH`, etc.
-- **iOS:** `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, API key at `fastlane/credentials/AuthKey_3Y28UQD6SG.p8`
+```sh
+[bundle exec] fastlane android generatebuild
+```
 
-iOS requires macOS with Xcode. Android `generatebuild` also pushes to Firebase App Distribution after Play Console upload.
+Sync version, build release AAB, upload to Google Play Console, and distribute via Firebase App Distribution
+
+### android build
+
+```sh
+[bundle exec] fastlane android build
+```
+
+Sync version and build release AAB only (no upload)
+
+----
+
+
+## iOS
+
+### ios generatebuild
+
+```sh
+[bundle exec] fastlane ios generatebuild
+```
+
+Sync version, build release IPA, and upload to App Store Connect (TestFlight)
+
+### ios build
+
+```sh
+[bundle exec] fastlane ios build
+```
+
+Sync version and build release IPA only (no upload)
+
+----
+
+This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.
+
+More information about _fastlane_ can be found on [fastlane.tools](https://fastlane.tools).
+
+The documentation of _fastlane_ can be found on [docs.fastlane.tools](https://docs.fastlane.tools).

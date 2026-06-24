@@ -224,7 +224,9 @@ def upload_ios_ipa_to_app_store_connect(ipa_path)
     api_key: load_app_store_connect_api_key,
     ipa: ipa_path,
     app_identifier: IOS_BUNDLE_IDENTIFIER,
-    skip_waiting_for_build_processing: true
+    skip_waiting_for_build_processing: false,
+    wait_processing_interval: 30,
+    wait_processing_timeout_duration: 3600
   )
 end
 
