@@ -17,12 +17,12 @@ import '../utils/constants.dart';
 import '../utils/session_user_image_validation.dart';
 import '../utils/logger.dart';
 import 'api_client.dart';
+import 'api_service_dio.dart';
 import 'file_helper.dart';
 import 'api_logging_interceptor.dart';
 import 'alice_inspector.dart';
 import 'client_identification.dart';
 import 'kiosk_manager.dart';
-import 'kiosk_session_auth.dart';
 import 'session_manager.dart';
 
 // Conditional import for web Dio configuration
@@ -157,69 +157,12 @@ Map<String, dynamic> _parseSessionPatchResponseJson(String raw) {
 class ApiService {
   late final ApiClient _apiClient;
   late final Dio _dio;
+  late final Dio _aiDio;
   final Uuid _uuid = const Uuid();
 
-  ApiService() {
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: AppConstants.kBaseUrl,
-        connectTimeout: AppConstants.kApiTimeout,
-        receiveTimeout: AppConstants.kApiTimeout,
-        // Large PATCH bodies (base64 photo) need an explicit send budget on web.
-        sendTimeout: AppConstants.kApiTimeout,
-        headers: ClientIdentification.mergeHeaders({
-          'Content-Type': 'application/json',
-          ...AppConfig.authorizationBearerHeader,
-        }),
-      ),
-    );
-
-    // Configure Dio to use browser HTTP adapter on web
-    // This prevents SocketException errors from native socket lookups
-    configureDioForWeb(_dio);
-
-    if (kDebugMode == true) {
-      // Add logging interceptor to log all API calls
-      _dio.interceptors.add(ApiLoggingInterceptor());
-      _dio.interceptors.add(AliceDioProxyInterceptor());
-    }
-
-    addKioskSessionTokenInterceptor(_dio);
-
-    // Add error interceptor for web compatibility
-    _dio.interceptors.add(InterceptorsWrapper(
-      onError: (error, handler) {
-        // Handle web-specific errors
-        if (kIsWeb) {
-          final dioError = error;
-          if (dioError.type == DioExceptionType.connectionError ||
-              dioError.type == DioExceptionType.unknown) {
-            final errorMsg = dioError.message ?? '';
-            if (errorMsg.contains('XMLHttpRequest') ||
-                errorMsg.contains('CORS') ||
-                errorMsg.contains('Failed to fetch') ||
-                errorMsg.contains('NetworkError') ||
-                errorMsg.contains('connection errored') ||
-                errorMsg.contains('assureDioException') ||
-                errorMsg.contains('SocketException') ||
-                errorMsg.contains('Failed host lookup')) {
-              // Convert to a more user-friendly error
-              final friendlyError = DioException(
-                requestOptions: dioError.requestOptions,
-                type: DioExceptionType.connectionError,
-                error:
-                    'CORS/Network Error: The API server may not be configured to allow requests from this origin.',
-                message:
-                    'CORS/Network Error: ${dioError.message ?? "Unknown network error"}',
-              );
-              return handler.next(friendlyError);
-            }
-          }
-        }
-        return handler.next(error);
-      },
-    ));
-
+  ApiService({Dio? dio, Dio? aiDio}) {
+    _dio = dio ?? createProductionApiDio();
+    _aiDio = aiDio ?? (dio ?? createAiGenerationDio());
     _apiClient = ApiClient(_dio, baseUrl: AppConstants.kBaseUrl);
   }
 
@@ -1273,32 +1216,8 @@ class ApiService {
     required String themeId,
     void Function(String message)? onProgress,
   }) async {
-    // Create a Dio instance with extended timeout for AI generation
-    // AI generation can take 10-60+ seconds depending on server load
-    final dioWithTimeout = Dio(
-      BaseOptions(
-        baseUrl: AppConstants.kBaseUrl,
-        connectTimeout: AppConstants.kAiGenerationTimeout,
-        receiveTimeout: AppConstants.kAiGenerationTimeout,
-        sendTimeout: AppConstants.kAiGenerationTimeout,
-        headers: ClientIdentification.mergeHeaders({
-          'Content-Type': 'application/json',
-          ...AppConfig.authorizationBearerHeader,
-        }),
-      ),
-    );
-
-    // Configure browser adapter for web (important for all Dio instances)
-    configureDioForWeb(dioWithTimeout);
-
-    if (kDebugMode == true) {
-      dioWithTimeout.interceptors.add(ApiLoggingInterceptor());
-      dioWithTimeout.interceptors.add(AliceDioProxyInterceptor());
-    }
-    addKioskSessionTokenInterceptor(dioWithTimeout);
-
     final apiClientWithTimeout =
-        ApiClient(dioWithTimeout, baseUrl: AppConstants.kBaseUrl);
+        ApiClient(_aiDio, baseUrl: AppConstants.kBaseUrl);
 
     // Retry logic: try once, retry once on timeout
     int retryCount = 0;
@@ -1504,33 +1423,12 @@ class ApiService {
     AppLogger.debug(
         '📡 Parallel SSE generation session=$sessionId photo=$originalPhotoId theme=$themeId count=$count');
 
-    final dio = Dio(
-      BaseOptions(
-        baseUrl: AppConstants.kBaseUrl,
-        connectTimeout: AppConstants.kApiTimeout,
-        receiveTimeout: AppConstants.kAiGenerationTimeout,
-        sendTimeout: AppConstants.kAiGenerationTimeout,
-        headers: ClientIdentification.mergeHeaders({
-          'Accept': 'text/event-stream',
-          ...AppConfig.authorizationBearerHeader,
-        }),
-      ),
-    );
-
-    configureDioForWeb(dio);
-
-    if (kDebugMode == true) {
-      dio.interceptors.add(ApiLoggingInterceptor());
-      dio.interceptors.add(AliceDioProxyInterceptor());
-    }
-    addKioskSessionTokenInterceptor(dio);
-
     final slots = List<String>.filled(count, '');
     final qualityByIndex = <int, double>{};
     final completer = Completer<ParallelGenerationResult>();
 
     try {
-      final response = await dio.get(
+      final response = await _aiDio.get(
         '/api/generate-stream-parallel',
         queryParameters: {
           'sessionId': sessionId,
@@ -1538,6 +1436,9 @@ class ApiService {
         },
         options: Options(
           responseType: ResponseType.stream,
+          headers: ClientIdentification.mergeHeaders({
+            'Accept': 'text/event-stream',
+          }),
         ),
       );
 
