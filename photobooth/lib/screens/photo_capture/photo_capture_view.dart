@@ -21,6 +21,7 @@ import 'photo_capture_view_handlers.dart';
 import 'photo_capture_view_layout.dart';
 import 'photo_capture_view_scaffold.dart';
 import 'photo_capture_viewmodel.dart';
+import 'photo_model.dart';
 import 'photo_image_from_xfile_io.dart' if (dart.library.html) 'photo_image_from_xfile_web.dart' as photo_image;
 import '../../utils/app_runtime_config.dart';
 import '../../utils/constants.dart';
@@ -68,6 +69,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   int _uvcPreviewGeneration = 0;
   DateTime? _uvcLastUiCaptureEndedAt;
   Future<void> _uvcOp = Future<void>.value();
+
+  bool _prefillApplied = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_prefillApplied) return;
+    _prefillApplied = true;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map && args['photo'] is PhotoModel) {
+      final photo = args['photo'] as PhotoModel;
+      _captureViewModel.capturedPhoto = photo;
+    }
+  }
 
   Future<T> _withUvcLock<T>(Future<T> Function() fn) async {
     final gate = Completer<void>();

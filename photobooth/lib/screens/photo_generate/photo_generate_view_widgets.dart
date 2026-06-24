@@ -12,12 +12,15 @@ import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/delete_my_photos_action.dart';
 import '../../views/widgets/contact_before_pay_sheet.dart';
+import '../../services/customer_session_lifecycle.dart';
+import '../splash/bootstrap_route_args.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
     if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart'
     as photo_image;
 import '../theme_selection/theme_model.dart';
 import '../transformation_details/transformation_details_view.dart';
 import 'photo_generate_behold_aspect.dart';
+import 'generation_wait_widgets.dart';
 import 'photo_generate_viewmodel.dart';
 
 /// Layout inputs for [buildGeneratedOnlyLayout] (Sonar S107).
@@ -559,6 +562,32 @@ Widget buildPhotosActionFooter({
               viewModel.cancelOperation();
             },
           ),
+        const SizedBox(height: 10),
+        Center(
+          child: TextButton(
+            onPressed: () async {
+              viewModel.cancelOperation();
+              await endPhotoboothCustomerSessionLogged('generate_start_over');
+              if (!context.mounted) return;
+              await Navigator.pushNamedAndRemoveUntil(
+                context,
+                AppConstants.kRouteTerms,
+                (route) => false,
+                arguments: TermsRouteArgs(
+                  capturePhoto: viewModel.originalPhoto,
+                ),
+              );
+            },
+            child: Text(
+              'Start all over again',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.82),
+                decoration: TextDecoration.underline,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
       ],
     ),
   );
@@ -816,6 +845,28 @@ Widget buildGeneratedOnlyLayout({
           maxHeight: maxRowHeight,
         )
       : builders.beholdCardAspectRatio(context, totalSlots);
+
+  if (isGeneratingOrLoading) {
+    final waitSize = computeBeholdHeroCardSize(
+      context,
+      maxWidth: screenWidth,
+      maxHeight: math.min(
+        maxRowHeight * 1.15,
+        MediaQuery.sizeOf(context).height * 0.58,
+      ),
+      aspect: 3 / 2,
+    );
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: GenerationWaitBody(
+          viewModel: viewModel,
+          cardWidth: waitSize.width,
+          cardHeight: waitSize.height,
+        ),
+      ),
+    );
+  }
 
   if (totalSlots == 1) {
     return _buildGeneratedOnlySingleSlotLayout(

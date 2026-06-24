@@ -22,33 +22,6 @@ import '../../views/widgets/generated_image_preview_screen.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
     if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart' as photo_image;
 
-// --- Pipeline funnel / “Behold” grid helpers (Sonar S3358 / S3776 extractions) ---
-
-/// Short status text under each funnel thumbnail (queued → in progress → done).
-String _funnelSlotStatusLabel(PipelineFunnelSlot slot) {
-  if (slot.isFinished) return 'done';
-  if (slot.isActive) return 'in progress';
-  if (slot.isPending) return 'waiting';
-  return 'queued';
-}
-
-/// Border color for funnel cells: selection overrides pipeline state colors.
-Color _funnelSlotBorderColor(PipelineFunnelSlot slot, bool selected) {
-  if (selected) return CupertinoColors.systemBlue;
-  if (slot.isFinished) {
-    return Colors.lightGreenAccent.withValues(alpha: 0.85);
-  }
-  if (slot.isActive) return CupertinoColors.activeBlue;
-  return Colors.white30;
-}
-
-/// Thicker border when the slot is selected or actively generating.
-double _funnelSlotBorderWidth(PipelineFunnelSlot slot, bool selected) {
-  if (selected) return 2.5;
-  if (slot.isActive) return 2.0;
-  return 1.0;
-}
-
 /// Vertical space reserved above the behold card when the footer is external.
 String _transformedLoadingMessage(PhotoGenerateViewModel viewModel) =>
     generationWaitLoadingMessage(viewModel);
@@ -214,61 +187,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   // Note: We previously derived per-image aspect ratios. Now that we always show
   // generated outputs in a consistent grid, this is no longer needed.
 
-  void _showCancelConfirmation(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Cancel Process?'),
-          content: const Text(
-            'Are you sure you want to cancel? Your generated images will be lost.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('No'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                Navigator.of(context).maybePop();
-              },
-              child: const Text('Yes', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showCancelOperationDialog(BuildContext context, PhotoGenerateViewModel viewModel) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Cancel Generation?'),
-          content: const Text(
-            'An image is currently being generated. Do you want to cancel and go back?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Keep Waiting'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                viewModel.cancelOperation();
-                Navigator.of(context).maybePop();
-              },
-              child: const Text('Cancel & Go Back', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   void _showRemoveStyleConfirmation(
     BuildContext context, {
     required String themeName,
@@ -350,16 +268,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                 ),
                 child: _buildBeholdAppBarBottom(context, viewModel),
               ),
-              leading: IconButton(
-                icon: const Icon(CupertinoIcons.back, color: Colors.white),
-                onPressed: () {
-                  if (viewModel.isOperationInProgress) {
-                    _showCancelOperationDialog(context, viewModel);
-                  } else {
-                    _showCancelConfirmation(context);
-                  }
-                },
-              ),
+              automaticallyImplyLeading: false,
               actions: [
                 IconButton(
                   tooltip: viewModel.useProgressiveGenerationUi
@@ -442,142 +351,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     );
   }
 
-  /// Device capture (“In frame”) + core API stages + optional Branded/Signed + storage.
-  Widget _funnelPipelineStamp(
-    PhotoGenerateViewModel viewModel,
-    PipelineFunnelSlot slot,
-    int index,
-  ) {
-    const thumb = 60.0;
-    const outer = 68.0;
-    final stampId = 'funnel:$index';
-    final selected = viewModel.selectedHeroStampId == stampId;
-    final url = slot.displayPreviewUrl;
-    final statusLabel = _funnelSlotStatusLabel(slot);
-    final borderColor = _funnelSlotBorderColor(slot, selected);
-    final borderW = _funnelSlotBorderWidth(slot, selected);
-
-    late final Widget inner;
-    if (slot.isDeviceCapture) {
-      final photo = viewModel.originalPhoto;
-      if (photo != null) {
-        inner = ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: SizedBox(
-            width: thumb,
-            height: thumb,
-            child: photo_image.imageFromXFileSized(
-              photo.imageFile,
-              thumb,
-              thumb,
-              fit: BoxFit.cover,
-            ),
-          ),
-        );
-      } else {
-        inner = Icon(
-          transformationStepIcon(slot.stageKey),
-          color: Colors.white54,
-          size: 32,
-        );
-      }
-    } else if (url != null && url.isNotEmpty) {
-      inner = ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: CachedNetworkImage(
-          imageUrl: SecureImageUrl.withSessionId(url),
-          width: thumb,
-          height: thumb,
-          fit: BoxFit.cover,
-          filterQuality: FilterQuality.low,
-        ),
-      );
-    } else if (slot.isMetadataOnlyStage && slot.isFinished) {
-      inner = Stack(
-        alignment: Alignment.center,
-        children: [
-          Icon(
-            transformationStepIcon(slot.stageKey),
-            color: Colors.white70,
-            size: 32,
-          ),
-          Positioned(
-            right: 1,
-            bottom: 1,
-            child: Icon(
-              Icons.check_circle,
-              color: Colors.lightGreenAccent.withValues(alpha: 0.95),
-              size: 18,
-            ),
-          ),
-        ],
-      );
-    } else if (slot.isMetadataOnlyStage && slot.isActive) {
-      inner = Stack(
-        alignment: Alignment.center,
-        children: [
-          Icon(
-            transformationStepIcon(slot.stageKey),
-            color: Colors.white60,
-            size: 32,
-          ),
-          const SizedBox(
-            width: 26,
-            height: 26,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: Colors.white,
-            ),
-          ),
-        ],
-      );
-    } else if (slot.isFinished) {
-      inner = const Icon(Icons.check_circle,
-          color: Colors.lightGreenAccent, size: 32);
-    } else if (slot.isActive) {
-      inner = const Center(
-        child: SizedBox(
-          width: 26,
-          height: 26,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: Colors.white,
-          ),
-        ),
-      );
-    } else {
-      inner = Icon(Icons.image_outlined,
-          color: Colors.white.withValues(alpha: 0.35), size: 32);
-    }
-
-    return Tooltip(
-      message: '${slot.label} — $statusLabel',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => viewModel.toggleHeroStamp(stampId),
-          borderRadius: BorderRadius.circular(10),
-          child: Container(
-            width: outer,
-            height: outer,
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(width: borderW, color: borderColor),
-              color: Colors.black.withValues(alpha: 0.35),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: ColoredBox(
-                color: Colors.black45,
-                child: inner,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  // Note: legacy pipeline stamp widget removed (wait UX is now the progress page).
 
   Widget? _generatingHeroUnderlay(PhotoGenerateViewModel vm) =>
       generatingHeroUnderlay(vm);
@@ -1336,6 +1110,18 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   ) {
     final message = _transformedLoadingMessage(viewModel);
     final underlay = _generatingHeroUnderlay(viewModel);
+    final photo = viewModel.originalPhoto;
+    final captureUnderlay = underlay == null && photo != null
+        ? ColoredBox(
+            color: Colors.black,
+            child: KenBurnsCaptureImage(
+              imageFile: photo.imageFile,
+              width: 720,
+              height: 1080,
+            ),
+          )
+        : null;
+    final baseUnderlay = underlay ?? captureUnderlay;
     final hint = viewModel.selectedHeroStampId != null &&
             underlay == null
         ? 'Preview not ready for this step yet'
@@ -1344,10 +1130,10 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (underlay != null) Positioned.fill(child: underlay),
+          if (baseUnderlay != null) Positioned.fill(child: baseUnderlay),
           Positioned.fill(
             child: ColoredBox(
-              color: underlay != null
+              color: baseUnderlay != null
                   ? Colors.black.withValues(alpha: 0.42)
                   : Colors.black26,
             ),

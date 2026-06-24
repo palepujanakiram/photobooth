@@ -53,7 +53,7 @@ class GenerateArgs {
       return GenerateArgs(
         photo: p,
         theme: t,
-        runToken: token is int ? token : null,
+        runToken: token is int ? token : Object.hash(p.id, t.id),
       );
     }
     return null;

@@ -1,11 +1,39 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../services/api_service.dart';
+import '../../services/app_settings_manager.dart';
+import '../../services/session_manager.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../photo_capture/photo_model.dart';
 import 'theme_model.dart';
 import 'theme_selection_continue_helpers.dart';
 import 'theme_selection_viewmodel.dart';
+
+Future<int> refreshThemeSelectionTriesRemaining(
+  AppSettingsManager appSettings,
+) async {
+  final sm = SessionManager();
+  final api = ApiService();
+  final sid = sm.sessionId;
+  if (sid != null) {
+    try {
+      final raw = await api.fetchSession(sid);
+      if (raw != null) sm.setSessionFromResponse(raw);
+    } catch (_) {}
+  }
+  try {
+    await appSettings.fetchSettings();
+  } catch (_) {}
+  final max = appSettings.settings?.maxRegenerations;
+  final maxAllowed = (max != null && max > 0)
+      ? max
+      : AppConstants.kDefaultMaxRegenerations;
+  final used = sm.currentSession?.attemptsUsed ?? 0;
+  return (maxAllowed - used).clamp(0, maxAllowed);
+}
 
 /// Continue with an existing capture: session update then navigation (Sonar S3776).
 Future<void> themeSelectionContinueWithPhoto({
@@ -16,8 +44,19 @@ Future<void> themeSelectionContinueWithPhoto({
   required void Function(bool generating) setGenerating,
 }) async {
   final currentContext = context;
+  final appSettings = currentContext.read<AppSettingsManager>();
   setGenerating(true);
   try {
+    final tries = await refreshThemeSelectionTriesRemaining(appSettings);
+    if (!currentContext.mounted) return;
+    if (tries <= 0) {
+      AppSnackBar.showError(
+        currentContext,
+        AppStrings.generationNoAttemptsRemaining,
+      );
+      return;
+    }
+
     final success = await viewModel.updateSessionWithTheme();
     if (!currentContext.mounted) return;
     if (success) {

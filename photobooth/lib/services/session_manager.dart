@@ -58,6 +58,7 @@ class SessionData {
     int? personCount,
     String? kioskAuthToken,
     String? printOrientation,
+    int? attemptsUsed,
   }) {
     return SessionData(
       id: id,
@@ -65,7 +66,7 @@ class SessionData {
       termsAcceptedAt: termsAcceptedAt,
       termsAcceptedIp: termsAcceptedIp,
       termsVersion: termsVersion,
-      attemptsUsed: attemptsUsed,
+      attemptsUsed: attemptsUsed ?? this.attemptsUsed,
       generatedImages: generatedImages,
       expiresAt: expiresAt,
       kioskId: kioskId,

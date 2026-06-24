@@ -35,6 +35,20 @@ class GenerationWaitPresentation {
   final bool stageChanged;
 }
 
+bool generationWaitHasPipelinePreviews(PhotoGenerateViewModel vm) {
+  for (final s in vm.generationRunStepPreviews) {
+    if ((s.previewUrl ?? '').trim().isNotEmpty) return true;
+  }
+  return false;
+}
+
+/// Early wait phase: collage + anticipation before server pipeline previews land.
+bool generationWaitShowAnticipationPhase(PhotoGenerateViewModel vm) {
+  if (!vm.isOperationInProgress) return false;
+  if (vm.awaitingFreshRunId) return true;
+  return !generationWaitHasPipelinePreviews(vm);
+}
+
 String generationWaitRotatingCopy(int elapsedSeconds) {
   if (elapsedSeconds <= 0) return kGenerationWaitRotatingCopy.first;
   final index = (elapsedSeconds ~/ 8) % kGenerationWaitRotatingCopy.length;
@@ -149,28 +163,28 @@ GenerationWaitPresentation resolveGenerationWaitPresentation(
   if (aiUrl != null && polishing) {
     index = 3;
     stageTitle = '4 · FINISH';
-    headline = AppStrings.generationWaitHeadlineFinishing;
-    description = AppStrings.generationWaitDescFinishing;
+    headline = AppStrings.generationWaitLiveRevealHeadline;
+    description = AppStrings.generationWaitLiveRevealDesc;
     imageUrl = aiUrl;
     showPolishingOverlay = true;
   } else if (aiUrl != null) {
     index = 2;
     stageTitle = '3 · REVEAL';
-    headline = AppStrings.generationWaitHeadlineRendering;
-    description = AppStrings.generationWaitDescRendering;
+    headline = AppStrings.generationWaitLiveRevealHeadline;
+    description = AppStrings.generationWaitLiveRevealDesc;
     imageUrl = aiUrl;
     showPolishingOverlay = true;
   } else if (bgUrl != null) {
     index = 1;
     stageTitle = '2 · ISOLATE';
-    headline = AppStrings.generationWaitHeadlineIsolate;
-    description = AppStrings.generationWaitDescIsolate;
+    headline = AppStrings.generationWaitLiveRevealHeadline;
+    description = AppStrings.generationWaitLiveRevealDesc;
     imageUrl = bgUrl;
   } else if (preprocessUrl != null) {
     index = 0;
     stageTitle = '1 · CAPTURE';
-    headline = AppStrings.generationWaitHeadlineCaptured;
-    description = AppStrings.generationWaitDescCaptured;
+    headline = AppStrings.generationWaitLiveRevealHeadline;
+    description = AppStrings.generationWaitLiveRevealDesc;
     imageUrl = preprocessUrl;
   }
 

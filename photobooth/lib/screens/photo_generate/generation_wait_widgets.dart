@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cross_file/cross_file.dart';
@@ -5,10 +6,14 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../services/customer_session_lifecycle.dart';
+import '../../services/theme_manager.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/constants.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
 import '../../views/widgets/cached_network_image.dart';
+import '../theme_selection/theme_model.dart';
 import '../theme_selection/theme_preview_screen.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
     if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart'
@@ -16,6 +21,319 @@ import '../photo_capture/photo_image_from_xfile_io.dart'
 import 'generation_wait_helpers.dart';
 import 'photo_generate_viewmodel.dart';
 import 'post_reveal_polishing_overlay.dart';
+
+class GenerationPossibilitiesCollage extends StatefulWidget {
+  const GenerationPossibilitiesCollage({super.key});
+
+  @override
+  State<GenerationPossibilitiesCollage> createState() =>
+      _GenerationPossibilitiesCollageState();
+}
+
+class _GenerationPossibilitiesCollageState
+    extends State<GenerationPossibilitiesCollage>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  static const _labels = <String>[
+    'Fantasy Kingdom',
+    'Anime Hero',
+    'Royal Wedding',
+    'Superhero',
+    'Mystic Kingdom',
+    'Bollywood Star',
+    'Pixar Character',
+    'Sweet Pop Dreamland',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(ThemeManager().fetchThemes());
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 18),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  List<_CollageCardModel> _resolveCards() {
+    final themes = ThemeManager().getActiveThemes();
+    final byName = <String, ThemeModel>{};
+    for (final t in themes) {
+      final k = t.name.trim().toLowerCase();
+      if (k.isEmpty) continue;
+      byName.putIfAbsent(k, () => t);
+    }
+
+    ThemeModel? bestMatch(String label) {
+      final want = label.trim().toLowerCase();
+      if (want.isEmpty) return null;
+      // Exact match first.
+      final exact = byName[want];
+      if (exact != null) return exact;
+      // Partial match: look for themes whose name contains the label words.
+      for (final t in themes) {
+        final name = t.name.trim().toLowerCase();
+        if (name.contains(want)) return t;
+      }
+      return null;
+    }
+
+    return _labels.map((label) {
+      final theme = bestMatch(label);
+      final url = theme == null ? '' : ThemePreviewScreen.resolveSampleImageUrl(theme);
+      return _CollageCardModel(
+        label: label,
+        imageUrl: url,
+      );
+    }).toList(growable: false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = _resolveCards();
+    final w = MediaQuery.sizeOf(context).width;
+    final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+    final height = isLandscape ? 240.0 : 220.0;
+    final maxW = math.min(w * 0.94, 720.0);
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxW),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            AppStrings.generationWaitPossibilitiesSubtitle,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.78),
+              fontSize: 12,
+              height: 1.2,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: height,
+            child: AnimatedBuilder(
+              animation: _c,
+              builder: (context, _) {
+                final t = _c.value;
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // Subtle parallax haze behind cards.
+                    Positioned.fill(
+                      child: Opacity(
+                        opacity: 0.25,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: Alignment(
+                                math.sin(t * math.pi * 2) * 0.35,
+                                math.cos(t * math.pi * 2) * 0.25,
+                              ),
+                              radius: 1.1,
+                              colors: [
+                                CupertinoColors.systemBlue.withValues(alpha: 0.35),
+                                Colors.transparent,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    for (var i = 0; i < cards.length; i++)
+                      _CollageFloatingCard(
+                        model: cards[i],
+                        index: i,
+                        t: t,
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CollageCardModel {
+  const _CollageCardModel({
+    required this.label,
+    required this.imageUrl,
+  });
+
+  final String label;
+  final String imageUrl;
+}
+
+class _CollageFloatingCard extends StatelessWidget {
+  const _CollageFloatingCard({
+    required this.model,
+    required this.index,
+    required this.t,
+  });
+
+  final _CollageCardModel model;
+  final int index;
+  final double t;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final w = (math.min(size.width * 0.94, 720.0));
+    final h = MediaQuery.orientationOf(context) == Orientation.landscape ? 240.0 : 220.0;
+
+    // Layout: 8 cards in a loose collage.
+    // Using normalized positions so it scales from tablet to desktop.
+    const positions = <Offset>[
+      Offset(0.02, 0.10),
+      Offset(0.36, 0.04),
+      Offset(0.70, 0.12),
+      Offset(0.10, 0.48),
+      Offset(0.44, 0.44),
+      Offset(0.76, 0.48),
+      Offset(0.26, 0.72),
+      Offset(0.62, 0.74),
+    ];
+    final p = positions[index % positions.length];
+
+    final baseX = p.dx * w;
+    final baseY = p.dy * h;
+
+    final phase = (t * math.pi * 2) + index * 0.55;
+    final floatY = math.sin(phase) * 6.0;
+    final floatX = math.cos(phase * 0.8) * 4.0;
+    final zoom = 1.0 + (math.sin(phase * 0.6) * 0.04);
+    final tilt = math.sin(phase * 0.7) * 0.03;
+
+    final cardW = (w * 0.26).clamp(120.0, 190.0);
+    final cardH = (cardW * 1.18).clamp(150.0, 230.0);
+
+    return Positioned(
+      left: (baseX + floatX).clamp(0.0, w - cardW),
+      top: (baseY + floatY).clamp(0.0, h - cardH),
+      child: Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.identity()
+          ..translateByDouble(cardW / 2, cardH / 2, 0, 0)
+          ..rotateZ(tilt)
+          ..scaleByDouble(zoom, zoom, 1, 0)
+          ..translateByDouble(-cardW / 2, -cardH / 2, 0, 0),
+        child: _CollageCard(
+          width: cardW,
+          height: cardH,
+          model: model,
+        ),
+      ),
+    );
+  }
+}
+
+class _CollageCard extends StatelessWidget {
+  const _CollageCard({
+    required this.width,
+    required this.height,
+    required this.model,
+  });
+
+  final double width;
+  final double height;
+  final _CollageCardModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = model.imageUrl.trim();
+    final hasImage = imageUrl.isNotEmpty;
+    final bg = DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.10),
+            Colors.white.withValues(alpha: 0.04),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Text(
+          model.label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white24, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 10,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (hasImage)
+            CachedNetworkImage(
+              imageUrl: imageUrl,
+              fit: BoxFit.cover,
+              filterQuality: FilterQuality.low,
+              placeholder: bg,
+              errorWidget: bg,
+            )
+          else
+            bg,
+          Positioned(
+            left: 10,
+            right: 10,
+            bottom: 10,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: 0.38),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  child: Text(
+                    model.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// Slow zoom/pan on the capture still so the wait state feels alive.
 class KenBurnsCaptureImage extends StatefulWidget {
@@ -777,7 +1095,202 @@ class GenerationWaitHeroCard extends StatelessWidget {
   }
 }
 
-/// Full progress-route body with funnel, hero, errors, and haptics on stage changes.
+/// Large reveal frame during live previews — no pipeline stamps or stage numbers.
+class GenerationWaitCinematicHero extends StatelessWidget {
+  const GenerationWaitCinematicHero({
+    super.key,
+    required this.viewModel,
+    required this.presentation,
+    required this.width,
+    required this.height,
+  });
+
+  final PhotoGenerateViewModel viewModel;
+  final GenerationWaitPresentation presentation;
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: width,
+          height: height,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(13),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  const ColoredBox(color: Colors.black),
+                  Positioned.fill(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 500),
+                      switchInCurve: Curves.easeOutCubic,
+                      child: KeyedSubtree(
+                        key: ValueKey<String>(
+                          presentation.imageUrl ?? 'anticipation',
+                        ),
+                        child: _heroContent(context),
+                      ),
+                    ),
+                  ),
+                  if (presentation.showPolishingOverlay)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.35),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (presentation.showPolishingOverlay) ...[
+          const SizedBox(height: 10),
+          PostRevealPolishingOverlay(
+            steps: viewModel.generationRunStepPreviews,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _heroContent(BuildContext context) {
+    final imageUrl = presentation.imageUrl;
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      return _networkImage(context, imageUrl);
+    }
+    return ThemeAnticipationHero(
+      viewModel: viewModel,
+      width: width,
+      height: height,
+    );
+  }
+
+  Widget _networkImage(BuildContext context, String imageUrl) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final cacheW = (width * dpr).ceil().clamp(64, 2048);
+    final photo = viewModel.originalPhoto;
+    final fallback = photo != null
+        ? KenBurnsCaptureImage(
+            imageFile: photo.imageFile,
+            width: width,
+            height: height,
+          )
+        : const ColoredBox(color: Colors.black);
+
+    return SizedBox(
+      width: width,
+      height: height,
+      child: FittedBox(
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+        child: CachedNetworkImage(
+          imageUrl: imageUrl.trim(),
+          fit: BoxFit.cover,
+          cacheWidth: cacheW,
+          filterQuality: FilterQuality.medium,
+          placeholder: fallback,
+          errorWidget: fallback,
+        ),
+      ),
+    );
+  }
+}
+
+/// Status line + honest progress during the anticipation wait phase.
+class GenerationWaitStatusFooter extends StatelessWidget {
+  const GenerationWaitStatusFooter({
+    super.key,
+    required this.viewModel,
+    required this.presentation,
+  });
+
+  final PhotoGenerateViewModel viewModel;
+  final GenerationWaitPresentation presentation;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = generationWaitEffectiveProgress(
+      pipelineProgress: viewModel.pipelineFunnelProgress,
+      elapsedSeconds: viewModel.elapsedSeconds,
+      hasServerPreviews: generationWaitHasPipelinePreviews(viewModel),
+    );
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 720),
+      child: Column(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress > 0.02 ? progress : null,
+              minHeight: 4,
+              backgroundColor: Colors.white12,
+              color: CupertinoColors.activeBlue,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            presentation.headline,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            presentation.description,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              height: 1.25,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '${AppStrings.generationWaitElapsedLabel}: ${viewModel.elapsedSeconds}s',
+            style: const TextStyle(
+              color: Colors.white70,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Full progress-route body with phased anticipation → pipeline UX.
 class GenerationWaitBody extends StatefulWidget {
   const GenerationWaitBody({
     super.key,
@@ -819,30 +1332,114 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
     }
     _previousPresentation = presentation;
 
-    if (vm.hasError && !vm.isOperationInProgress) {
+    if (vm.hasError && !vm.isOperationInProgress && vm.generatedImages.isEmpty) {
       return _buildErrorState(context, vm);
     }
 
-    final screenW = MediaQuery.sizeOf(context).width;
-    final funnelMaxW = math.min(screenW * 0.92, 560.0);
+    final showAnticipation = generationWaitShowAnticipationPhase(vm);
+    final anticipationHeight = widget.cardHeight * 0.48;
+    final revealHeight = widget.cardHeight * 0.62;
 
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 480),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: showAnticipation
+          ? KeyedSubtree(
+              key: const ValueKey('anticipation'),
+              child: _buildAnticipationStage(
+                vm,
+                presentation,
+                anticipationHeight,
+              ),
+            )
+          : KeyedSubtree(
+              key: const ValueKey('reveal'),
+              child: _buildLiveRevealStage(
+                vm,
+                presentation,
+                revealHeight,
+              ),
+            ),
+    );
+  }
+
+  Widget _buildLiveRevealStage(
+    PhotoGenerateViewModel vm,
+    GenerationWaitPresentation presentation,
+    double heroHeight,
+  ) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (vm.showProgressStampStrip) ...[
-          GenerationPipelineStoryCard(
-            viewModel: vm,
-            commentaryEnabled: vm.generationCommentaryEnabledForWait,
-            onStampTap: widget.onStampTap,
-            maxWidth: funnelMaxW,
+        const Text(
+          AppStrings.generationWaitPossibilitiesTitle,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 16,
+            letterSpacing: 1.2,
+            height: 1.2,
           ),
-          const SizedBox(height: 14),
-        ],
-        GenerationWaitHeroCard(
+        ),
+        const SizedBox(height: 14),
+        GenerationWaitCinematicHero(
           viewModel: vm,
           presentation: presentation,
           width: widget.cardWidth,
-          height: widget.cardHeight,
+          height: heroHeight,
+        ),
+        const SizedBox(height: 16),
+        GenerationWaitStatusFooter(
+          viewModel: vm,
+          presentation: presentation,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAnticipationStage(
+    PhotoGenerateViewModel vm,
+    GenerationWaitPresentation presentation,
+    double anticipationHeight,
+  ) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          AppStrings.generationWaitPossibilitiesTitle,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 16,
+            letterSpacing: 1.2,
+            height: 1.2,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          AppStrings.generationWaitExpectation,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.78),
+            fontSize: 12,
+            height: 1.25,
+          ),
+        ),
+        const SizedBox(height: 14),
+        ThemeAnticipationHero(
+          viewModel: vm,
+          width: widget.cardWidth,
+          height: anticipationHeight,
+        ),
+        const SizedBox(height: 16),
+        const GenerationPossibilitiesCollage(),
+        const SizedBox(height: 16),
+        GenerationWaitStatusFooter(
+          viewModel: vm,
+          presentation: presentation,
         ),
       ],
     );
@@ -884,8 +1481,30 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
               child: const Text(AppStrings.generationWaitGoBack),
             ),
           ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueGrey.shade800,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => _startOver(context),
+              child: const Text(AppStrings.generationWaitStartOver),
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  Future<void> _startOver(BuildContext context) async {
+    await endPhotoboothCustomerSessionLogged('generation_wait_start_over');
+    if (!context.mounted) return;
+    await Navigator.pushNamedAndRemoveUntil(
+      context,
+      AppConstants.kRouteTerms,
+      (route) => false,
     );
   }
 }

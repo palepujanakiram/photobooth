@@ -121,5 +121,21 @@ abstract final class AppStrings {
 
   static const generationWaitGoBack = 'Go back';
 
+  static const generationWaitStartOver = 'Start over';
+
+  static const generationWaitPossibilitiesTitle =
+      'YOUR AI MASTERPIECE IS BEING CREATED';
+
+  static const generationWaitPossibilitiesSubtitle =
+      'Meanwhile, see what is possible…';
+
+  static const generationWaitLiveRevealHeadline = 'Your portrait is taking shape';
+
+  static const generationWaitLiveRevealDesc =
+      'Magic is happening — hang tight for the reveal';
+
   static const generationWaitErrorTitle = 'Generation failed';
+
+  static const generationNoAttemptsRemaining =
+      'No generation attempts remaining for this session. Use “Or add one more style” on your results, or start over.';
 }

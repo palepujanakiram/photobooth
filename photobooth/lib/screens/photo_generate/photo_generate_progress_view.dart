@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/app_settings_manager.dart';
+import '../../services/theme_manager.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../utils/constants.dart';
 import '../../utils/route_args.dart';
@@ -23,6 +23,7 @@ class _PhotoGenerateProgressScreenState
   PhotoGenerateViewModel? _vm;
   int? _lastRunToken;
   bool _navigatedToResult = false;
+  bool _generationScheduled = false;
 
   @override
   void didChangeDependencies() {
@@ -34,19 +35,28 @@ class _PhotoGenerateProgressScreenState
 
     _lastRunToken = parsed.runToken;
     _navigatedToResult = false;
+    _generationScheduled = false;
 
     if (_vm != null && !_navigatedToResult) {
+      _vm!.cancelOperation();
       _vm!.dispose();
     }
     _vm = PhotoGenerateViewModel(
       appSettingsManager: context.read<AppSettingsManager>(),
     );
+    unawaited(ThemeManager().fetchThemes());
     unawaited(_vm!.loadProgressiveDisplayPreference());
     _vm!.initialize(parsed.photo, parsed.theme);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _vm == null) return;
-      unawaited(_vm!.generateImage());
+      _scheduleGeneration(parsed.runToken);
     });
+  }
+
+  void _scheduleGeneration(int runToken) {
+    if (!mounted || _vm == null || _lastRunToken != runToken) return;
+    if (_generationScheduled) return;
+    _generationScheduled = true;
+    unawaited(_vm!.generateImage());
   }
 
   @override
@@ -59,9 +69,11 @@ class _PhotoGenerateProgressScreenState
 
   void _maybeNavigateToResult(BuildContext context, PhotoGenerateViewModel vm) {
     if (_navigatedToResult) return;
-    if (vm.hasError && !vm.isOperationInProgress) return;
     final done = vm.generatedImages.isNotEmpty && !vm.isOperationInProgress;
     if (!done) return;
+    if (vm.hasError) {
+      vm.clearError();
+    }
     _navigatedToResult = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -120,10 +132,7 @@ class _PhotoGenerateProgressScreenState
                   fontSize: 22,
                 ),
               ),
-              leading: IconButton(
-                icon: const Icon(CupertinoIcons.back, color: Colors.white),
-                onPressed: () => Navigator.of(context).maybePop(),
-              ),
+              automaticallyImplyLeading: false,
             ),
             body: Stack(
               children: [
@@ -143,16 +152,12 @@ class _PhotoGenerateProgressScreenState
                             horizontal: 16,
                             vertical: 12,
                           ),
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              minHeight: constraints.maxHeight - 24,
-                            ),
-                            child: Center(
-                              child: GenerationWaitBody(
-                                viewModel: viewModel,
-                                cardWidth: cardW,
-                                cardHeight: cardH,
-                              ),
+                          child: Align(
+                            alignment: Alignment.topCenter,
+                            child: GenerationWaitBody(
+                              viewModel: viewModel,
+                              cardWidth: cardW,
+                              cardHeight: cardH,
                             ),
                           ),
                         );

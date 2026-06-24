@@ -44,6 +44,14 @@ void main() {
       expect(parsed.runToken, 42);
     });
 
+    test('map without runToken uses stable hash', () {
+      final a = GenerateArgs.tryParse({'photo': photo, 'theme': theme});
+      final b = GenerateArgs.tryParse({'photo': photo, 'theme': theme});
+      expect(a, isNotNull);
+      expect(b, isNotNull);
+      expect(a!.runToken, b!.runToken);
+    });
+
     test('runToken can be supplied explicitly', () {
       final a = GenerateArgs(photo: photo, theme: theme, runToken: 1);
       final b = GenerateArgs(photo: photo, theme: theme, runToken: 2);

@@ -10,6 +10,7 @@ import '../../services/session_manager.dart';
 import '../photo_capture/photo_model.dart';
 import '../theme_selection/theme_model.dart';
 import '../../utils/constants.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
 import '../../utils/print_orientation.dart';
@@ -262,6 +263,10 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   List<GenerationRunStepPreview> _generationRunStepPreviews = [];
   bool _generationRunPollInFlight = false;
 
+  /// True after [_resetLiveGenerationState] until the in-flight run reports a new id.
+  /// Prevents polling the previous session run (stale 75% isolate UI on regen).
+  bool _awaitingFreshRunId = false;
+
   PhotoGenerateViewModel({
     ApiService? apiService,
     SessionManager? sessionManager,
@@ -317,9 +322,11 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   /// Fixed pipeline stamps under “Your AI-transformed portrait awaits” (in-frame capture + 7 API stages).
   /// Stays visible after generation until the user leaves (funnel state is preserved).
+  bool get awaitingFreshRunId => _awaitingFreshRunId;
+
   bool get showProgressStampStrip {
     if (_originalPhoto == null) return false;
-    if (_isGenerating || _isLoadingMore) return true;
+    if (_isGenerating || _isLoadingMore) return false;
     return hasGeneratedImages ||
         _generationRunStepPreviews.isNotEmpty ||
         (_lastTransformationRunId != null &&
@@ -534,7 +541,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   /// 1-based attempt for POST `/api/generate-image` when `parallelImageCount` is 1.
   int get _nextGenerateAttempt =>
-      _maxRegenerationsAllowed - _triesRemaining + 1;
+      (_sessionManager.currentSession?.attemptsUsed ?? 0) + 1;
 
   int get _parallelSlotCount =>
       _appSettingsManager?.resolveParallelImageCount() ??
@@ -551,9 +558,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     // completed run, [SessionData.attemptsUsed] advances; resetting tries to
     // max here would resend attempt 1 and can trigger API errors when re-entering
     // from theme after backing out of /generate.
-    final used = _sessionManager.currentSession?.attemptsUsed ?? 0;
-    _triesRemaining = (_maxRegenerationsAllowed - used)
-        .clamp(0, _maxRegenerationsAllowed);
+    _applyAttemptsBudgetFromSession();
     _selectedHeroStampId = null;
     _applyDefaultPrintOrientationFromSession();
     unawaited(refreshBeholdHeroAspectRatio());
@@ -596,6 +601,54 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   Future<void> syncPrintOrientationBeforeCheckout() async {
     _sessionManager.setPrintOrientation(_printOrientation);
     await _syncPrintOrientationToServer();
+  }
+
+  void _applyAttemptsBudgetFromSession() {
+    _triesRemaining = computeTriesRemaining(
+      maxAllowed: _maxRegenerationsAllowed,
+      attemptsUsed: _sessionManager.currentSession?.attemptsUsed ?? 0,
+    );
+  }
+
+  /// Refreshes [attemptsUsed] from the server and recomputes [_triesRemaining].
+  Future<void> syncAttemptsBudgetFromServer() async {
+    final sid = _sessionManager.sessionId;
+    if (sid == null) return;
+    try {
+      final raw = await _apiService.fetchSession(sid);
+      if (raw != null) {
+        _sessionManager.setSessionFromResponse(raw);
+      }
+    } catch (e) {
+      AppLogger.debug('Could not refresh session attempts: $e');
+    }
+    try {
+      await _appSettingsManager?.fetchSettings();
+    } catch (_) {}
+    _refreshMaxRegenerationsFromSettings();
+    _applyAttemptsBudgetFromSession();
+    notifyListeners();
+  }
+
+  void _bumpSessionAttemptsUsedLocally() {
+    final session = _sessionManager.currentSession;
+    if (session == null) return;
+    _sessionManager.setSessionFromResponse({
+      ...session.toJson(),
+      'attemptsUsed': session.attemptsUsed + 1,
+    });
+    _applyAttemptsBudgetFromSession();
+  }
+
+  void _refundSessionAttemptLocally() {
+    final session = _sessionManager.currentSession;
+    if (session == null) return;
+    final next = (session.attemptsUsed - 1).clamp(0, _maxRegenerationsAllowed);
+    _sessionManager.setSessionFromResponse({
+      ...session.toJson(),
+      'attemptsUsed': next,
+    });
+    _applyAttemptsBudgetFromSession();
   }
 
   /// Decode capture still aspect so BEHOLD matches photo orientation.
@@ -650,16 +703,21 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     unawaited(_pollGenerationRunTick());
   }
 
+  void _bindTransformationRunId(String? runId) {
+    final id = runId?.trim();
+    if (id == null || id.isEmpty) return;
+    _awaitingFreshRunId = false;
+    _polledTransformationRunId = id;
+    _lastTransformationRunId = id;
+    notifyListeners();
+  }
+
   void _ingestRunIdFromSsePayload(Map<String, dynamic> data) {
     final raw = data['runId'];
     if (raw is! String || raw.trim().isEmpty) return;
     final id = raw.trim();
-    if (_polledTransformationRunId == id) return;
-    _polledTransformationRunId = id;
-    if (_lastTransformationRunId == null || _lastTransformationRunId!.isEmpty) {
-      _lastTransformationRunId = id;
-    }
-    notifyListeners();
+    if (_polledTransformationRunId == id && !_awaitingFreshRunId) return;
+    _bindTransformationRunId(id);
   }
 
   Future<void> _pollGenerationRunTick() async {
@@ -679,6 +737,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   }
 
   Future<void> _pollResolveTransformationRunId(String sessionId) async {
+    if (_awaitingFreshRunId) return;
     if (_polledTransformationRunId != null &&
         _polledTransformationRunId!.trim().isNotEmpty) {
       return;
@@ -686,11 +745,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     final sessionRaw = await _apiService.fetchSession(sessionId);
     final rid = parseActiveTransformationRunIdFromSession(sessionRaw);
     if (rid == null) return;
-    _polledTransformationRunId = rid;
-    if (_lastTransformationRunId == null || _lastTransformationRunId!.isEmpty) {
-      _lastTransformationRunId = rid;
-    }
-    notifyListeners();
+    _bindTransformationRunId(rid);
   }
 
   Future<void> _pollRefreshGenerationRunStepPreviews() async {
@@ -711,6 +766,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   void _resetLiveGenerationState() {
     _stopGenerationRunPolling();
+    _awaitingFreshRunId = true;
     _generationRunStepPreviews = [];
     _polledTransformationRunId = null;
     _liveProgress = 0;
@@ -969,7 +1025,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       return false;
     }
     assignSucceeded?.call(true);
-    _lastTransformationRunId = parallel.runId;
+    _bindTransformationRunId(parallel.runId);
     try {
       await _refreshGenerationRunStepsNow();
     } catch (_) {}
@@ -980,7 +1036,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     );
     _generatedImages = [...newImages, ..._generatedImages];
     _ensureNewestAlwaysSelected();
-    _triesRemaining--;
+    final usedBefore = _sessionManager.currentSession?.attemptsUsed ?? 0;
+    await syncAttemptsBudgetFromServer();
+    final usedAfter = _sessionManager.currentSession?.attemptsUsed ?? usedBefore;
+    if (usedAfter <= usedBefore) {
+      _bumpSessionAttemptsUsedLocally();
+    }
     _clearHeroStamp();
     unawaited(refreshBeholdHeroAspectRatio());
     onSuccessLog?.call();
@@ -994,9 +1055,15 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+    if (_isGenerating) {
+      AppLogger.debug('generateImage ignored: already in progress');
+      return false;
+    }
+
+    await syncAttemptsBudgetFromServer();
+
     if (_triesRemaining <= 0) {
-      _errorMessage =
-          'No generation attempts remaining for this session. Start a new session to continue.';
+      _errorMessage = AppStrings.generationNoAttemptsRemaining;
       notifyListeners();
       return false;
     }
@@ -1097,6 +1164,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   /// Call from the view before tryDifferentStyle so the UI shows loading immediately.
   void prepareToAddStyle(ThemeModel newTheme) {
+    _resetLiveGenerationState();
     _isLoadingMore = true;
     _selectedTheme = newTheme;
     _errorMessage = null;
@@ -1122,9 +1190,8 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _startGenerationRunPolling();
 
     try {
-      try {
-        await _appSettingsManager?.fetchSettings();
-      } catch (_) {}
+      await syncAttemptsBudgetFromServer();
+
       // Update session with new theme
       _selectedTheme = newTheme;
       
@@ -1138,17 +1205,16 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         );
         _sessionManager.setSessionFromResponse(patch);
         _refreshMaxRegenerationsFromSettings();
-        final usedAfter = _sessionManager.currentSession?.attemptsUsed ?? 0;
-        _triesRemaining = (_maxRegenerationsAllowed - usedAfter)
-            .clamp(0, _maxRegenerationsAllowed);
+        _applyAttemptsBudgetFromSession();
       } catch (e) {
         _errorMessage = 'Failed to update theme: $e';
         return false;
       }
 
+      await syncAttemptsBudgetFromServer();
+
       if (_triesRemaining <= 0) {
-        _errorMessage =
-            'No generation attempts remaining for this session. Start a new session to continue.';
+        _errorMessage = AppStrings.generationNoAttemptsRemaining;
         return false;
       }
       
@@ -1252,8 +1318,8 @@ class PhotoGenerateViewModel extends ChangeNotifier {
               img.id == newestId ? img.copyWith(isSelected: true) : img)
           .toList();
     }
-    // Give back one try so user can add a style again (including re-adding the removed one)
-    if (_triesRemaining < _maxRegenerationsAllowed) _triesRemaining++;
+    // Give back one try so user can add a style again (including re-adding the removed one).
+    _refundSessionAttemptLocally();
     notifyListeners();
   }
   
@@ -1303,6 +1369,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    cancelOperation();
     _stopTimer();
     _stopGenerationRunPolling();
     super.dispose();
