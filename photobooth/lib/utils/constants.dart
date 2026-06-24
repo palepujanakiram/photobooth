@@ -213,7 +213,7 @@ class AppConstants {
   static const int kCameraPreviewRotationDefault = 0;
 
   // Camera capture countdown (in seconds)
-  static const int kCaptureCountdownSeconds = 3;
+  static const int kCaptureCountdownSeconds = 5;
 
   /// On-screen debug HUD: Logs panel, Perf trace (+ E2E summary), RAM / JS heap.
   /// Driven by `/api/settings` → `showGenerationCommentary` (not [kEnableLogOutput]).

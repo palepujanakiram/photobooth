@@ -450,10 +450,15 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     return List<ProgressivePipelineStage>.unmodifiable(out);
   }
 
+  /// Kiosk/tablet: show backend commentary during wait unless web + setting off.
+  bool get generationCommentaryEnabledForWait {
+    if (!kIsWeb) return true;
+    return _appSettingsManager?.settings?.showGenerationCommentary == true;
+  }
+
   /// One line under the filmstrip: commentary, active step, or progress message.
   String? get progressiveOneLiner {
-    final commentaryAllowed =
-        _appSettingsManager?.settings?.showGenerationCommentary == true;
+    final commentaryAllowed = generationCommentaryEnabledForWait;
     if (commentaryAllowed &&
         _liveCommentary != null &&
         _liveCommentary!.trim().isNotEmpty) {
@@ -537,6 +542,8 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   /// Initialize with photo and theme
   void initialize(PhotoModel photo, ThemeModel theme) {
+    _stopTimer();
+    _elapsedSeconds = 0;
     _refreshMaxRegenerationsFromSettings();
     _originalPhoto = photo;
     _selectedTheme = theme;

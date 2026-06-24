@@ -415,10 +415,10 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   /// Deletes the session on the server (DELETE /api/sessions/{sessionId}) and clears local session.
   /// Call after user confirms "Delete my photos". Throws [ApiException] on API failure.
   Future<void> deleteSession() async {
-    final sessionId = _r._sessionManager.sessionId;
-    if (sessionId == null) return;
-    await _r._apiService.deleteSession(sessionId);
-    await endPhotoboothCustomerSessionLogged('result: deleteSession');
+    await CustomerDataDeletion.standard(
+      apiService: _r._apiService,
+      sessionManager: _r._sessionManager,
+    ).deleteMyPhotos();
   }
 
   /// Kiosk privacy wipe: clears local session + temp image files so the next user cannot access prior photos.

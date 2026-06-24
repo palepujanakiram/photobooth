@@ -4,6 +4,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../utils/route_args.dart';
 import '../../views/widgets/app_snackbar.dart';
+import '../../views/widgets/delete_my_photos_action.dart';
 import '../../views/widgets/theme_background.dart';
 import '../result/result_viewmodel.dart';
 
@@ -243,6 +244,7 @@ class _QrShareActionRow extends StatelessWidget {
             color: Colors.white.withValues(alpha: 0.8),
           ),
         ),
+        const DeleteMyPhotosButton(compact: true),
       ],
     );
   }

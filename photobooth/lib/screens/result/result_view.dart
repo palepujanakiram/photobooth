@@ -17,6 +17,7 @@ import '../../views/widgets/centered_max_width.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../views/widgets/kiosk_payment_qr_display.dart';
+import '../../views/widgets/delete_my_photos_action.dart';
 import '../../services/payment_push_coordinator.dart';
 import '../../services/kiosk_manager.dart';
 import '../../utils/route_args.dart';
@@ -463,6 +464,11 @@ class _ResultScreenState extends State<ResultScreen> {
                                 ),
                               ),
                             ),
+                            if (viewModel.fcmPaymentPushSuccess != true)
+                              const CenteredMaxWidth(
+                                maxWidth: 360,
+                                child: DeleteMyPhotosButton(),
+                              ),
                           ],
                         ),
                       ),

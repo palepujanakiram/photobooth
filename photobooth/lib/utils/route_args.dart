@@ -34,7 +34,14 @@ class GenerateArgs {
   final PhotoModel photo;
   final ThemeModel theme;
 
-  const GenerateArgs({required this.photo, required this.theme});
+  /// Unique per navigation so `/generate-progress` can restart when re-entered.
+  final int runToken;
+
+  GenerateArgs({
+    required this.photo,
+    required this.theme,
+    int? runToken,
+  }) : runToken = runToken ?? DateTime.now().microsecondsSinceEpoch;
 
   static GenerateArgs? tryParse(Object? args) {
     if (args is GenerateArgs) return args;
@@ -42,7 +49,12 @@ class GenerateArgs {
       final p = args['photo'];
       final t = args['theme'];
       if (p is! PhotoModel || t is! ThemeModel) return null;
-      return GenerateArgs(photo: p, theme: t);
+      final token = args['runToken'];
+      return GenerateArgs(
+        photo: p,
+        theme: t,
+        runToken: token is int ? token : null,
+      );
     }
     return null;
   }
