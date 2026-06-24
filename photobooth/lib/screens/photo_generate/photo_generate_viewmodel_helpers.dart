@@ -1,5 +1,17 @@
 part of 'photo_generate_viewmodel.dart';
 
+int resolveMaxRegenerationsAllowed(AppSettingsManager? mgr) {
+  final n = mgr?.settings?.maxRegenerations;
+  return (n != null && n > 0) ? n : AppConstants.kDefaultMaxRegenerations;
+}
+
+int computeTriesRemaining({
+  required int maxAllowed,
+  required int attemptsUsed,
+}) {
+  return (maxAllowed - attemptsUsed).clamp(0, maxAllowed);
+}
+
 Future<double?> aspectRatioFromXFile(XFile? file) async {
   if (file == null) return null;
   final path = file.path;

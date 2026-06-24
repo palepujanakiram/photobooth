@@ -30,6 +30,7 @@ class TermsAndConditionsScreen extends StatefulWidget {
 class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   late TermsAndConditionsViewModel _viewModel;
   bool _redirectingToSplash = false;
+  Object? _capturePrefillPhoto;
 
   @override
   void initState() {
@@ -57,7 +58,13 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         await _viewModel.acceptTermsAndCreateSession(_viewModel.kioskCode);
 
     if (success && mounted) {
-      Navigator.pushNamed(context, AppConstants.kRouteCapture);
+      Navigator.pushNamed(
+        context,
+        AppConstants.kRouteCapture,
+        arguments: _capturePrefillPhoto == null
+            ? null
+            : <String, Object?>{'photo': _capturePrefillPhoto},
+      );
     } else if (mounted && _viewModel.hasError) {
       AppSnackBar.showError(
         context,
@@ -84,6 +91,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final rawArgs = ModalRoute.of(context)?.settings.arguments;
+    if (_capturePrefillPhoto == null && rawArgs is TermsRouteArgs) {
+      _capturePrefillPhoto = rawArgs.capturePhoto;
+    }
     final appColors = AppColors.of(context);
     final mediaQuery = MediaQuery.of(context);
     final screenWidth = mediaQuery.size.width;

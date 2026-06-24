@@ -114,6 +114,35 @@ void main() {
     });
   });
 
+  group('generationWaitShowAnticipationPhase', () {
+    test('false when generation is not in progress', () {
+      final vm = PhotoGenerateViewModel();
+      vm.initialize(photo, theme);
+      expect(generationWaitShowAnticipationPhase(vm), isFalse);
+    });
+
+    test('true while awaiting a fresh run id during regen', () {
+      final vm = PhotoGenerateViewModel();
+      vm.initialize(photo, theme);
+      vm.prepareToAddStyle(theme);
+      expect(vm.awaitingFreshRunId, isTrue);
+      expect(generationWaitShowAnticipationPhase(vm), isTrue);
+    });
+  });
+
+  group('computeTriesRemaining', () {
+    test('clamps at zero and max', () {
+      expect(
+        computeTriesRemaining(maxAllowed: 3, attemptsUsed: 1),
+        2,
+      );
+      expect(
+        computeTriesRemaining(maxAllowed: 3, attemptsUsed: 5),
+        0,
+      );
+    });
+  });
+
   group('resolveGenerationWaitPresentation', () {
     test('uses rotating copy before server previews', () {
       final vm = PhotoGenerateViewModel();
