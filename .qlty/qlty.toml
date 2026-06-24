@@ -89,6 +89,8 @@ ignores = [
   "lib/services/print_service_helpers.dart",
   "lib/utils/image_helper_encode.dart",
   "lib/screens/**/photo_generate_progress_view.dart",
+  "lib/screens/**/generation_wait_helpers.dart",
+  "lib/screens/**/generation_wait_widgets.dart",
   "lib/screens/**/post_reveal_polishing_overlay.dart",
   "lib/screens/**/app_splash_screen.dart",
   "lib/screens/**/theme_preview_screen.dart",

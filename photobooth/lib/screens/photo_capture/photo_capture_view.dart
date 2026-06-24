@@ -798,9 +798,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   Widget _buildUvcPreview(BuildContext context, CaptureViewModel viewModel) {
-    // Keep the texture visible while grabbing a raster still; only show "Saving"
-    // after the UVC controller is closed and normalization runs.
-    if (viewModel.isCapturing && _uvcController == null) {
+    // Spinner while grabbing still or normalizing (matches in-app Capture UX).
+    if ((viewModel.isCapturing || _uvcCaptureInFlight) &&
+        viewModel.capturedPhoto == null) {
       return const ColoredBox(
         color: Colors.black,
         child: Center(
@@ -958,6 +958,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _uvcPhase = UvcFeedPhase.capturing;
       _uvcCaptureInFlight = true;
       _uvcReconnectTimer?.cancel();
+      if (mounted) setState(() {});
       final cameraId =
           'uvc:${device.vendorId}:${device.productId}:${device.name}';
       var captureSucceeded = false;
@@ -1403,8 +1404,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     Positioned.fill(
                       child: _buildCountdownOverlay(context, viewModel.countdownValue!),
                     ),
-                  if ((viewModel.isCapturing && !hasCapturedPhoto) &&
-                      !_showCaptureFlash)
+                  if (!_showCaptureFlash &&
+                      !hasCapturedPhoto &&
+                      (viewModel.isCapturing || _uvcCaptureInFlight))
                     Positioned.fill(
                       child: ColoredBox(
                         color: Colors.black.withValues(alpha: 0.35),
@@ -1551,7 +1553,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
-  /// Builds the countdown overlay (3, 2, 1)
+  /// Builds the on-screen capture countdown overlay (e.g. 5, 4, 3…).
   Widget _buildCountdownOverlay(BuildContext context, int countdownValue) {
     return Container(
       color: Colors.black.withValues(alpha: 0.5),
@@ -1713,18 +1715,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           ElevatedButton.icon(
             style: captureScreenButtonStyle(),
             onPressed: (viewModel.isCapturing ||
+                    _uvcCaptureInFlight ||
                     viewModel.isSelectingFromGallery ||
                     viewModel.isCountingDown ||
                     (_isUsingUvc && !_uvcReadyForCapture))
                 ? null
                 : () async {
                     if (_isUsingUvc) {
-                      await _captureUvc(viewModel, source: 'ui_button');
+                      await viewModel.captureWithCountdown(
+                        () => _captureUvc(viewModel, source: 'ui_button'),
+                        canStart: () =>
+                            _uvcReadyForCapture && !_uvcCaptureInFlight,
+                      );
                     } else {
                       await viewModel.capturePhotoWithCountdown();
                     }
                   },
-            icon: viewModel.isCapturing
+            icon: (viewModel.isCapturing || _uvcCaptureInFlight)
                 ? const SizedBox(
                     width: 20,
                     height: 20,

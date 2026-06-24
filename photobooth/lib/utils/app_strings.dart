@@ -74,4 +74,52 @@ abstract final class AppStrings {
   /// Theme session update timeout message.
   static const requestTimeoutConnection =
       'Request took too long. Please check your connection and try again.';
+
+  /// Customer privacy: delete capture + generated images (server + local).
+  static const deleteMyPhotosLabel = 'Delete my photos';
+
+  static const deleteMyPhotosDialogTitle = 'Delete my photos?';
+
+  static const deleteMyPhotosDialogBody =
+      'This will permanently delete your capture and generated images from '
+      'this session. This cannot be undone.';
+
+  static const deleteMyPhotosCancel = 'Cancel';
+
+  static const deleteMyPhotosConfirm = 'Delete';
+
+  /// Shown at the start of AI generation (progress + behold wait states).
+  static const generationWaitExpectation =
+      'This usually takes 30–60 seconds. Your portrait will appear step by step.';
+
+  static const generationWaitHeadlineStarting = 'Starting your transformation';
+
+  static const generationWaitHeadlineCaptured = 'Captured';
+
+  static const generationWaitDescCaptured = 'Frozen frame, framing applied';
+
+  static const generationWaitHeadlineIsolate = 'Background removed';
+
+  static const generationWaitDescIsolate = 'Subject isolated, ready to render';
+
+  static const generationWaitHeadlineRendering = 'Rendering';
+
+  static const generationWaitDescRendering = 'AI is applying your style';
+
+  static const generationWaitHeadlineFinishing = 'Finishing touches';
+
+  static const generationWaitDescFinishing =
+      'Preparing your print-ready portrait';
+
+  static const generationWaitThemeIntoPrefix = 'Turning you into';
+
+  static const generationWaitBeforeLabel = 'You';
+
+  static const generationWaitAfterLabel = 'Style';
+
+  static const generationWaitElapsedLabel = 'Elapsed';
+
+  static const generationWaitGoBack = 'Go back';
+
+  static const generationWaitErrorTitle = 'Generation failed';
 }

@@ -10,6 +10,7 @@ import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/cached_network_image.dart';
+import '../../views/widgets/delete_my_photos_action.dart';
 import '../../views/widgets/contact_before_pay_sheet.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
     if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart'
@@ -550,6 +551,13 @@ Widget buildPhotosActionFooter({
             viewModel: viewModel,
             isMounted: isMounted,
             onAddStyleSelected: onAddStyleSelected,
+          ),
+        if (!isGeneratingOrLoading && viewModel.generatedImages.isNotEmpty)
+          DeleteMyPhotosButton(
+            compact: true,
+            onBeforeDelete: () async {
+              viewModel.cancelOperation();
+            },
           ),
       ],
     ),

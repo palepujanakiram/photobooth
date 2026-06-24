@@ -7,6 +7,7 @@ import '../photo_generate/photo_generate_viewmodel.dart';
 import '../photo_capture/photo_model.dart';
 import '../../services/api_service.dart';
 import '../../services/customer_session_lifecycle.dart';
+import '../../services/customer_data_deletion.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/file_helper.dart';
 import '../../services/print_service.dart';

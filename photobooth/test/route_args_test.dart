@@ -36,10 +36,19 @@ void main() {
       final parsed = GenerateArgs.tryParse({
         'photo': photo,
         'theme': theme,
+        'runToken': 42,
       });
       expect(parsed, isNotNull);
       expect(parsed!.photo.id, 'p1');
       expect(parsed.theme.id, 't1');
+      expect(parsed.runToken, 42);
+    });
+
+    test('runToken can be supplied explicitly', () {
+      final a = GenerateArgs(photo: photo, theme: theme, runToken: 1);
+      final b = GenerateArgs(photo: photo, theme: theme, runToken: 2);
+      expect(a.runToken, 1);
+      expect(b.runToken, 2);
     });
 
     test('returns null when map missing fields', () {

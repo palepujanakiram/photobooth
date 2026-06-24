@@ -1,18 +1,13 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:flutter/cupertino.dart'
-    show CupertinoColors, CupertinoIcons;
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/app_settings_manager.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../utils/constants.dart';
 import '../../utils/route_args.dart';
-import '../../views/widgets/cached_network_image.dart';
-import 'post_reveal_polishing_overlay.dart';
-import '../photo_capture/photo_image_from_xfile_io.dart'
-    if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart'
-    as photo_image;
+import 'generation_wait_widgets.dart';
 import 'photo_generate_viewmodel.dart';
 
 class PhotoGenerateProgressScreen extends StatefulWidget {
@@ -25,48 +20,46 @@ class PhotoGenerateProgressScreen extends StatefulWidget {
 
 class _PhotoGenerateProgressScreenState
     extends State<PhotoGenerateProgressScreen> {
-  late PhotoGenerateViewModel _vm;
-  bool _vmCreated = false;
-  bool _initialized = false;
+  PhotoGenerateViewModel? _vm;
+  int? _lastRunToken;
   bool _navigatedToResult = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_vmCreated) {
-      _vm = PhotoGenerateViewModel(
-        appSettingsManager: context.read<AppSettingsManager>(),
-      );
-      _vmCreated = true;
-      unawaited(_vm.loadProgressiveDisplayPreference());
-    }
-    if (!_initialized) {
-      _initializeFromArgsAndStart();
-      _initialized = true;
-    }
-  }
-
-  void _initializeFromArgsAndStart() {
     final parsed =
         GenerateArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
     if (parsed == null) return;
-    _vm.initialize(parsed.photo, parsed.theme);
+    if (parsed.runToken == _lastRunToken) return;
+
+    _lastRunToken = parsed.runToken;
+    _navigatedToResult = false;
+
+    if (_vm != null && !_navigatedToResult) {
+      _vm!.dispose();
+    }
+    _vm = PhotoGenerateViewModel(
+      appSettingsManager: context.read<AppSettingsManager>(),
+    );
+    unawaited(_vm!.loadProgressiveDisplayPreference());
+    _vm!.initialize(parsed.photo, parsed.theme);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _vm.generateImage();
+      if (!mounted || _vm == null) return;
+      unawaited(_vm!.generateImage());
     });
   }
 
   @override
   void dispose() {
-    // If we handed the ViewModel off to `/generate`, it becomes owned there.
     if (!_navigatedToResult) {
-      _vm.dispose();
+      _vm?.dispose();
     }
     super.dispose();
   }
 
   void _maybeNavigateToResult(BuildContext context, PhotoGenerateViewModel vm) {
     if (_navigatedToResult) return;
+    if (vm.hasError && !vm.isOperationInProgress) return;
     final done = vm.generatedImages.isNotEmpty && !vm.isOperationInProgress;
     if (!done) return;
     _navigatedToResult = true;
@@ -75,7 +68,6 @@ class _PhotoGenerateProgressScreenState
       Navigator.pushReplacementNamed(
         context,
         AppConstants.kRouteGenerate,
-        // Hand off the same VM so selection/continue/payment flow is unchanged.
         arguments: vm,
       );
     });
@@ -83,27 +75,32 @@ class _PhotoGenerateProgressScreenState
 
   @override
   Widget build(BuildContext context) {
+    final vm = _vm;
+    if (vm == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final size = MediaQuery.sizeOf(context);
     const aspect = 3 / 2;
+    final maxW = size.width;
+    final maxH = math.min(size.height * 0.72, 980.0);
+    final double cardW;
+    final double cardH;
+    if (maxW / maxH > aspect) {
+      cardH = maxH;
+      cardW = cardH * aspect;
+    } else {
+      cardW = maxW;
+      cardH = cardW / aspect;
+    }
 
     return ChangeNotifierProvider.value(
-      value: _vm,
+      value: vm,
       child: Consumer<PhotoGenerateViewModel>(
-        builder: (context, vm, _) {
-          _maybeNavigateToResult(context, vm);
-
-          final maxW = size.width;
-          // Keep consistent with BEHOLD hero card sizing.
-          final maxH = math.min(size.height * 0.72, 980.0);
-          double cardW;
-          double cardH;
-          if (maxW / maxH > aspect) {
-            cardH = maxH;
-            cardW = cardH * aspect;
-          } else {
-            cardW = maxW;
-            cardH = cardW / aspect;
-          }
+        builder: (context, viewModel, _) {
+          _maybeNavigateToResult(context, viewModel);
 
           return Scaffold(
             backgroundColor: Colors.transparent,
@@ -130,11 +127,15 @@ class _PhotoGenerateProgressScreenState
             ),
             body: Stack(
               children: [
-                Positioned.fill(child: ThemeBackground(theme: vm.selectedTheme)),
+                Positioned.fill(
+                  child: ThemeBackground(theme: viewModel.selectedTheme),
+                ),
                 SafeArea(
                   top: false,
                   child: Padding(
-                    padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + kToolbarHeight),
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.paddingOf(context).top + kToolbarHeight,
+                    ),
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         return SingleChildScrollView(
@@ -147,11 +148,10 @@ class _PhotoGenerateProgressScreenState
                               minHeight: constraints.maxHeight - 24,
                             ),
                             child: Center(
-                              child: _buildGenerationProgressHeroCard(
-                                context,
-                                vm,
-                                width: cardW,
-                                height: cardH,
+                              child: GenerationWaitBody(
+                                viewModel: viewModel,
+                                cardWidth: cardW,
+                                cardHeight: cardH,
                               ),
                             ),
                           ),
@@ -167,329 +167,4 @@ class _PhotoGenerateProgressScreenState
       ),
     );
   }
-
-  Widget _transformedSlotFrame({
-    required double cardWidth,
-    required double cardHeight,
-    required Widget child,
-  }) {
-    return SizedBox(
-      width: cardWidth,
-      height: cardHeight,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(11),
-          child: child,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGenerationProgressHeroCard(
-    BuildContext context,
-    PhotoGenerateViewModel vm, {
-    required double width,
-    required double height,
-  }) {
-    final preprocessUrl = _previewForStage(vm, 'preprocessing');
-    final bgUrl = _previewForStage(vm, 'background_removal');
-    final aiUrl = _previewForStage(vm, 'ai_generation');
-
-    bool polishingStarted() {
-      for (final s in vm.generationRunStepPreviews) {
-        final key = canonicalPipelineStageKey(s.stage);
-        switch (key) {
-          case 'scene_lighting':
-          case 'face_relight':
-          case 'frame_composite':
-          case 'upscaling':
-          case 'exif_stamp':
-          case 'c2pa_sign':
-          case 'storage':
-            if (s.isActive || s.isFinished) return true;
-            break;
-        }
-      }
-      return false;
-    }
-
-    int index = 0;
-    String stageTitle = '1 · CAPTURE';
-    String headline = 'Uploading';
-    String description = 'Sending your photo to the studio';
-    String? imageUrl;
-    Widget? bottomAccessory;
-
-    if (aiUrl != null && polishingStarted()) {
-      index = 3;
-      stageTitle = '4 · FINISH';
-      headline = 'Finishing touches';
-      description = 'Preparing your print-ready portrait';
-      imageUrl = aiUrl;
-      bottomAccessory =
-          PostRevealPolishingOverlay(steps: vm.generationRunStepPreviews);
-    } else if (aiUrl != null) {
-      index = 2;
-      stageTitle = '3 · REVEAL';
-      headline = 'Rendering';
-      description = 'AI is applying your style';
-      imageUrl = aiUrl;
-      bottomAccessory =
-          PostRevealPolishingOverlay(steps: vm.generationRunStepPreviews);
-    } else if (bgUrl != null) {
-      index = 1;
-      stageTitle = '2 · ISOLATE';
-      headline = 'Background removed';
-      description = 'Subject isolated, ready to render';
-      imageUrl = bgUrl;
-    } else if (preprocessUrl != null) {
-      index = 0;
-      stageTitle = '1 · CAPTURE';
-      headline = 'Captured';
-      description = 'Frozen frame, framing applied';
-      imageUrl = preprocessUrl;
-    }
-
-    // Match PhotoGenerateScreen: photo frame is image-only; status lives outside.
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: width),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  stageTitle,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.1,
-                  ),
-                  textAlign: TextAlign.left,
-                ),
-                const SizedBox(height: 8),
-                _storyboardTopBars(activeIndex: index),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: width,
-            height: height,
-            child: _transformedSlotFrame(
-              cardWidth: width,
-              cardHeight: height,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  const ColoredBox(color: Colors.black),
-                  Positioned.fill(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 260),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeOutCubic,
-                      transitionBuilder: (child, anim) {
-                        final fade = CurvedAnimation(
-                          parent: anim,
-                          curve: Curves.easeOut,
-                        );
-                        final scale =
-                            Tween<double>(begin: 0.985, end: 1.0).animate(fade);
-                        return FadeTransition(
-                          opacity: fade,
-                          child: ScaleTransition(scale: scale, child: child),
-                        );
-                      },
-                      child: KeyedSubtree(
-                        key: ValueKey<String>(imageUrl ?? 'local_$index'),
-                        child: _buildProgressHeroStageImage(
-                          context,
-                          vm,
-                          imageUrl: imageUrl,
-                          width: width,
-                          height: height,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  headline,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 20,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  description,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                    height: 1.2,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  '${vm.elapsedSeconds}s',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                if (bottomAccessory != null) ...[
-                  const SizedBox(height: 12),
-                  bottomAccessory,
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String? _previewForStage(PhotoGenerateViewModel vm, String stageKey) {
-    final want = stageKey.trim().toLowerCase();
-    for (final s in vm.generationRunStepPreviews) {
-      final key = canonicalPipelineStageKey(s.stage);
-      if (key == want && (s.previewUrl ?? '').trim().isNotEmpty) {
-        return s.previewUrl!.trim();
-      }
-    }
-    return null;
-  }
-
-  /// Fills the hero [width]×[height] frame: explicit decode bounds, black mat,
-  /// no checkerboard (isolates read as a “second frame” vs CAPTURE/REVEAL).
-  Widget _buildProgressHeroStageImage(
-    BuildContext context,
-    PhotoGenerateViewModel vm, {
-    required String? imageUrl,
-    required double width,
-    required double height,
-  }) {
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final cacheW = (width * dpr).ceil().clamp(64, 2048);
-    final loading = ColoredBox(
-      color: Colors.black,
-      child: SizedBox(
-        width: width,
-        height: height,
-        child: const Center(
-          child: SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator(
-              color: Colors.white,
-              strokeWidth: 2,
-            ),
-          ),
-        ),
-      ),
-    );
-    if (imageUrl != null && imageUrl.isNotEmpty) {
-      // FittedBox + intrinsic Image size fixes web/desktop layouts where explicit
-      // width/height + cacheWidth left the bitmap small inside the black frame (REVEAL, etc.).
-      final err = SizedBox(
-        width: width,
-        height: height,
-        child: vm.originalPhoto != null
-            ? photo_image.imageFromXFileSized(
-                vm.originalPhoto!.imageFile,
-                width,
-                height,
-                fit: BoxFit.cover,
-              )
-            : loading,
-      );
-      return SizedBox(
-        width: width,
-        height: height,
-        child: ClipRect(
-          child: FittedBox(
-            fit: BoxFit.cover,
-            alignment: Alignment.center,
-            child: CachedNetworkImage(
-              imageUrl: imageUrl.trim(),
-              fit: BoxFit.cover,
-              cacheWidth: cacheW,
-              filterQuality: FilterQuality.medium,
-              placeholder: loading,
-              errorWidget: err,
-            ),
-          ),
-        ),
-      );
-    }
-    if (vm.originalPhoto != null) {
-      return photo_image.imageFromXFileSized(
-        vm.originalPhoto!.imageFile,
-        width,
-        height,
-        fit: BoxFit.cover,
-      );
-    }
-    return loading;
-  }
-
-  Widget _storyboardTopBars({required int activeIndex}) {
-    const total = 4;
-    return SizedBox(
-      height: 10,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          for (var i = 0; i < total; i++) ...[
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              width: i == activeIndex ? 42 : 22,
-              height: 6,
-              decoration: BoxDecoration(
-                color: i <= activeIndex
-                    ? CupertinoColors.systemBlue
-                    : Colors.white24,
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-            if (i != total - 1) const SizedBox(width: 10),
-          ],
-        ],
-      ),
-    );
-  }
-
 }

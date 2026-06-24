@@ -31,6 +31,8 @@ bool ignored(String path) {
     'print_service_helpers.dart',
     'image_helper_encode.dart',
     'photo_generate_progress_view.dart',
+    'generation_wait_helpers.dart',
+    'generation_wait_widgets.dart',
     'post_reveal_polishing_overlay.dart',
     'app_splash_screen.dart',
     'theme_preview_screen.dart',

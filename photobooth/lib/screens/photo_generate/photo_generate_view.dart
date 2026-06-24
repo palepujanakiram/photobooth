@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/kiosk_manager.dart';
 import 'photo_generate_view_widgets.dart';
+import 'generation_wait_widgets.dart';
 import 'photo_generate_viewmodel.dart';
 import 'post_reveal_polishing_overlay.dart';
 import '../../utils/constants.dart';
@@ -49,13 +50,8 @@ double _funnelSlotBorderWidth(PipelineFunnelSlot slot, bool selected) {
 }
 
 /// Vertical space reserved above the behold card when the footer is external.
-String _transformedLoadingMessage(PhotoGenerateViewModel viewModel) {
-  if (viewModel.progressMessage.isNotEmpty) {
-    return viewModel.progressMessage;
-  }
-  if (viewModel.isLoadingMore) return 'Adding new style...';
-  return 'Creating...';
-}
+String _transformedLoadingMessage(PhotoGenerateViewModel viewModel) =>
+    generationWaitLoadingMessage(viewModel);
 
 double _computeBeholdMaxRowHeight({
   required bool fixedFooterOutside,
@@ -1406,103 +1402,13 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     BuildContext context,
     PhotoGenerateViewModel vm,
   ) {
-    final slots = vm.pipelineFunnelSlots;
-    if (slots.isEmpty) return const SizedBox.shrink();
     final screenW = MediaQuery.sizeOf(context).width;
     final maxW = math.min(screenW * 0.44, 560.0);
-
-    // ThemeCard-like visual language (kiosk presentation).
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxW),
-      child: Card(
-        elevation: 10,
-        shadowColor: CupertinoColors.systemBlue.withValues(alpha: 0.22),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: Color(0xFF4A4A4A), width: 1.5),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.black.withValues(alpha: 0.78),
-                Colors.black.withValues(alpha: 0.52),
-              ],
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    const Icon(CupertinoIcons.sparkles,
-                        color: Colors.white70, size: 18),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'AI generation',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      '${(vm.pipelineFunnelProgress * 100).round()}%',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 68,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: slots.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 10),
-                    itemBuilder: (_, i) => _funnelPipelineStamp(vm, slots[i], i),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: vm.pipelineFunnelProgress,
-                    minHeight: 10,
-                    backgroundColor: Colors.white24,
-                    color: CupertinoColors.systemBlue,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  vm.progressMessage.isNotEmpty
-                      ? vm.progressMessage
-                      : 'Transforming your look…',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    height: 1.2,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.left,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    return GenerationPipelineStoryCard(
+      viewModel: vm,
+      commentaryEnabled: vm.generationCommentaryEnabledForWait,
+      maxWidth: maxW,
+      onStampTap: (index) => vm.toggleHeroStamp('funnel:$index'),
     );
   }
 

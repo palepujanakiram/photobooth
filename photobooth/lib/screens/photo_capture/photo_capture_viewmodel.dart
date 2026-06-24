@@ -1127,20 +1127,22 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
-  /// Starts a countdown and then captures a photo
-  /// Countdown duration is configured via AppConstants.kCaptureCountdownSeconds
-  Future<void> capturePhotoWithCountdown() async {
-    if (!isReady || _isCapturing || _countdownValue != null) {
+  /// Runs a countdown then [captureAction] (built-in CameraX or UVC).
+  Future<void> captureWithCountdown(
+    Future<void> Function() captureAction, {
+    required bool Function() canStart,
+  }) async {
+    if (!canStart() || _isCapturing || _countdownValue != null) {
       return;
     }
-    
-    AppLogger.debug('📸 Starting capture countdown (${AppConstants.kCaptureCountdownSeconds}s)...');
-    
-    // Start countdown from configured value
+
+    AppLogger.debug(
+      '📸 Starting capture countdown (${AppConstants.kCaptureCountdownSeconds}s)...',
+    );
+
     _countdownValue = AppConstants.kCaptureCountdownSeconds;
     notifyListeners();
-    
-    // Countdown 3 -> 2 -> 1 -> capture
+
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (_countdownValue == null) {
@@ -1150,24 +1152,31 @@ class CaptureViewModel extends ChangeNotifier {
         }
         return;
       }
-      
+
       if (_countdownValue! > 1) {
         _countdownValue = _countdownValue! - 1;
         notifyListeners();
       } else {
-        // Countdown finished, capture the photo
         timer.cancel();
         if (identical(_countdownTimer, timer)) {
           _countdownTimer = null;
         }
         _countdownValue = null;
         notifyListeners();
-        
-        // Small delay to ensure UI updates before capture
-        await Future.delayed(const Duration(milliseconds: 100));
-        await capturePhoto();
+
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await captureAction();
       }
     });
+  }
+
+  /// Starts a countdown and then captures a photo
+  /// Countdown duration is configured via AppConstants.kCaptureCountdownSeconds
+  Future<void> capturePhotoWithCountdown() async {
+    await captureWithCountdown(
+      capturePhoto,
+      canStart: () => isReady,
+    );
   }
   
   /// Cancels the countdown if in progress
