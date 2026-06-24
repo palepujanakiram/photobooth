@@ -50,6 +50,10 @@ void main() {
 
   test('ClientIdentification formatClientVersionLabel', () {
     expect(
+      ClientIdentification.formatClientVersionLabel('2026.6.24'),
+      '2026.06.24',
+    );
+    expect(
       ClientIdentification.formatClientVersionLabel('2026.5.100012'),
       '2026.05.10.0012',
     );

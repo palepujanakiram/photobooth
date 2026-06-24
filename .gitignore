@@ -63,8 +63,6 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots
 fastlane/test_output
-**/fastlane/credentials/*
-!**/fastlane/credentials/.gitkeep
 **/fastlane/play-store-*.json
 **/fastlane/*-service-account.json
 

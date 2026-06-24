@@ -148,7 +148,8 @@ flutter build ipa --release
 
 ```bash
 cd photobooth
-bundle exec fastlane android generatedbuild   # AAB → Google Play + Firebase App Distribution
+bundle exec fastlane android generatebuild   # AAB → Google Play + Firebase App Distribution
+bundle exec fastlane ios generatebuild       # IPA → App Store Connect (TestFlight)
 ```
 
 CI: GitHub Actions workflow **Mobile release** (`.github/workflows/mobile-release.yml`).
