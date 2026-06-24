@@ -48,66 +48,79 @@ class AppSplashScreenBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 28),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Center(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: bottomInset + 8),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: formMaxWidth),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: appColors.backgroundColor.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: appColors.dividerColor.withValues(alpha: 0.45),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    FadeTransition(
-                      opacity: fade,
-                      child: ScaleTransition(
-                        scale: scale,
-                        child: _AppSplashBrandingHeader(
-                          appColors: appColors,
-                          manageKiosk: args.manageKiosk,
-                          needsEntry: needsEntry,
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: formMaxWidth),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: appColors.backgroundColor.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: appColors.dividerColor.withValues(alpha: 0.45),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            FadeTransition(
+                              opacity: fade,
+                              child: ScaleTransition(
+                                scale: scale,
+                                child: _AppSplashBrandingHeader(
+                                  appColors: appColors,
+                                  manageKiosk: args.manageKiosk,
+                                  needsEntry: needsEntry,
+                                  compact: constraints.maxHeight < 520,
+                                ),
+                              ),
+                            ),
+                            if (bootstrapDone) ...[
+                              const SizedBox(height: 26),
+                              if (showManageSummary)
+                                _AppSplashManageSummary(
+                                  appColors: appColors,
+                                  storedCode: storedCode!,
+                                  busy: busy,
+                                  onManageEdit: onManageEdit,
+                                  onDisconnect: onDisconnect,
+                                ),
+                              if (showForm)
+                                _AppSplashKioskForm(
+                                  appColors: appColors,
+                                  showManageSummary: showManageSummary,
+                                  error: error,
+                                  busy: busy,
+                                  manageKiosk: args.manageKiosk,
+                                  buildCodeOrScanRow: buildCodeOrScanRow,
+                                  onSubmitCode: onSubmitCode,
+                                  onStaffLogin: onStaffLogin,
+                                ),
+                            ],
+                          ],
                         ),
                       ),
                     ),
-                    if (bootstrapDone) ...[
-                      const SizedBox(height: 26),
-                      if (showManageSummary)
-                        _AppSplashManageSummary(
-                          appColors: appColors,
-                          storedCode: storedCode!,
-                          busy: busy,
-                          onManageEdit: onManageEdit,
-                          onDisconnect: onDisconnect,
-                        ),
-                      if (showForm)
-                        _AppSplashKioskForm(
-                          appColors: appColors,
-                          showManageSummary: showManageSummary,
-                          error: error,
-                          busy: busy,
-                          manageKiosk: args.manageKiosk,
-                          buildCodeOrScanRow: buildCodeOrScanRow,
-                          onSubmitCode: onSubmitCode,
-                          onStaffLogin: onStaffLogin,
-                        ),
-                    ],
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -118,33 +131,37 @@ class _AppSplashBrandingHeader extends StatelessWidget {
     required this.appColors,
     required this.manageKiosk,
     required this.needsEntry,
+    this.compact = false,
   });
 
   final AppColors appColors;
   final bool manageKiosk;
   final bool needsEntry;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    final logoHeight = compact ? 48.0 : 72.0;
+    final titleSize = compact ? 20.0 : 22.0;
     return Column(
       children: [
         SizedBox(
-          height: 72,
+          height: logoHeight,
           child: Image.asset(
             AppConstants.kBrandLogoAsset,
             fit: BoxFit.contain,
             errorBuilder: (_, __, ___) => Icon(
               CupertinoIcons.sparkles,
-              size: 56,
+              size: compact ? 40 : 56,
               color: appColors.primaryColor,
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: compact ? 8 : 12),
         Text(
           AppConstants.kBrandName,
           style: TextStyle(
-            fontSize: 22,
+            fontSize: titleSize,
             fontWeight: FontWeight.w700,
             color: appColors.textColor,
           ),
@@ -157,7 +174,7 @@ class _AppSplashBrandingHeader extends StatelessWidget {
             needsEntry: needsEntry,
           ),
           style: TextStyle(
-            fontSize: 15,
+            fontSize: compact ? 14 : 15,
             color: appColors.secondaryTextColor,
           ),
           textAlign: TextAlign.center,

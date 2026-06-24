@@ -84,6 +84,8 @@ dependency_overrides:
     path: packages/camera_android_camerax
 
 flutter:
+  config:
+    enable-swift-package-manager: true
   uses-material-design: true
 
   assets:
