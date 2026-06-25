@@ -26,6 +26,7 @@ class AppSettingsModel {
   final bool? printerEnabled;
   final String? printerHost;
   final int? printerPort;
+  final String? printerPath;
   final bool? wcmPlusEnabled;
   final String? wcmPlusPath;
   final int? parallelImageCount;
@@ -66,6 +67,7 @@ class AppSettingsModel {
     this.printerEnabled,
     this.printerHost,
     this.printerPort,
+    this.printerPath,
     this.wcmPlusEnabled,
     this.wcmPlusPath,
     this.parallelImageCount,
@@ -111,6 +113,7 @@ class AppSettingsModel {
       printerEnabled: json['printerEnabled'] as bool?,
       printerHost: json['printerHost'] as String?,
       printerPort: (json['printerPort'] as num?)?.toInt(),
+      printerPath: json['printerPath'] as String?,
       wcmPlusEnabled: json['wcmPlusEnabled'] as bool?,
       wcmPlusPath: json['wcmPlusPath'] as String?,
       parallelImageCount: (json['parallelImageCount'] as num?)?.toInt(),

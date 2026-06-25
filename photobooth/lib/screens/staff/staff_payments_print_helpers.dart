@@ -4,6 +4,7 @@ import '../../models/app_settings_model.dart';
 import '../../services/api_service.dart';
 import '../../services/print_service.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/printer_endpoint.dart';
 import 'staff_payments_view_helpers.dart';
 
 /// Staff payment print flow state updates (Sonar S3776 extraction).
@@ -76,7 +77,7 @@ Future<void> staffPaymentsRunPrintJob({
 }) async {
   onState(loading: true, error: null, progressMessage: 'Preparing image...');
   try {
-    final endpoint = staffPaymentsPrinterEndpoint(settings);
+    final endpoint = resolvePrinterEndpoint(settings);
     final file = await publicApi.downloadImageToTemp(
       imageUrl,
       onProgress: (m) {
@@ -90,6 +91,7 @@ Future<void> staffPaymentsRunPrintJob({
       file,
       printerHost: endpoint.host,
       printerPort: endpoint.port,
+      printerPath: endpoint.path,
     );
     if (!isMounted()) return;
     onSuccess?.call();

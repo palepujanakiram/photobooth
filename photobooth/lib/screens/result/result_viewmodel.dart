@@ -19,6 +19,7 @@ import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
 import '../../utils/print_orientation.dart';
+import '../../utils/printer_endpoint.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/fcm_service.dart';
 import '../../services/payment_push_coordinator.dart';
@@ -270,21 +271,23 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
       _appSettingsManager?.settings?.paymentGatewayEnabled ?? true;
 
   static String _defaultPrinterHost(AppSettingsManager? manager) {
-    final fromApi = manager?.settings?.printerHost?.trim();
-    if (fromApi != null && fromApi.isNotEmpty) {
-      return fromApi;
-    }
-    return AppConstants.kDefaultPrinterHost;
+    return resolvePrinterEndpoint(manager?.settings).host;
+  }
+
+  PrinterEndpoint get _printerEndpoint =>
+      resolvePrinterEndpoint(_appSettingsManager?.settings);
+
+  /// Sync host/port/path from latest `/api/settings` (e.g. after fetch on Pay screen).
+  void refreshPrinterFromSettings() {
+    final endpoint = _printerEndpoint;
+    _printerHost = endpoint.host;
+    notifyListeners();
   }
 
   /// Port from `/api/settings` when valid; otherwise HTTP default (80).
-  int get effectivePrinterPort {
-    final p = _appSettingsManager?.settings?.printerPort;
-    if (p != null && p > 0 && p <= 65535) {
-      return p;
-    }
-    return 80;
-  }
+  int get effectivePrinterPort => _printerEndpoint.port;
+
+  String get effectivePrinterPath => _printerEndpoint.path;
 
   int get initialPrintPrice =>
       _appSettingsManager?.settings?.initialPrice ??

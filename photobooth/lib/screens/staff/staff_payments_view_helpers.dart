@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/app_settings_model.dart';
-import '../../utils/constants.dart';
+import '../../utils/printer_endpoint.dart';
 
 /// UI helpers for [StaffPaymentsScreen] (Sonar S3776 / S3358 extractions).
 Color staffPaymentStatusBadgeColor(String status) {
@@ -15,13 +15,6 @@ Color staffPaymentStatusBadgeColor(String status) {
 }
 
 ({String host, int port}) staffPaymentsPrinterEndpoint(AppSettingsModel? settings) {
-  final host = (settings?.printerHost?.trim().isNotEmpty ?? false)
-      ? settings!.printerHost!.trim()
-      : AppConstants.kDefaultPrinterHost;
-  final port = (settings?.printerPort != null &&
-          settings!.printerPort! > 0 &&
-          settings.printerPort! <= 65535)
-      ? settings.printerPort!
-      : 80;
-  return (host: host, port: port);
+  final endpoint = resolvePrinterEndpoint(settings);
+  return (host: endpoint.host, port: endpoint.port);
 }
