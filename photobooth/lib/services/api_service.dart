@@ -20,9 +20,6 @@ import '../utils/logger.dart';
 import '../utils/web_flow_trace.dart';
 import 'api_client.dart';
 import 'api_service_dio.dart';
-import 'file_helper.dart';
-import 'api_logging_interceptor.dart';
-import 'alice_inspector.dart';
 import 'client_identification.dart';
 import 'api_dio_errors.dart';
 import 'api_http_response.dart';
@@ -30,7 +27,6 @@ import 'generation_api_errors.dart';
 import 'kiosk_manager.dart';
 import 'session_manager.dart';
 import 'api_service_legacy_media.dart';
-import 'api_service_dio.dart';
 import 'api_parallel_sse_consumer.dart';
 import 'api_service_helpers.dart';
 import 'api_service_web_session_patch_stub.dart'
@@ -46,11 +42,6 @@ class ApiService {
     _dio = dio ?? createProductionApiDio();
     _aiDio = aiDio ?? (dio ?? createAiGenerationDio());
     _apiClient = ApiClient(_dio, baseUrl: AppConstants.kBaseUrl);
-  }
-
-  Dio _createAiGenerationDio({bool sseAccept = false}) {
-    if (_aiDio != null) return _aiDio!;
-    return createAiGenerationDio(sseAccept: sseAccept);
   }
 
   /// POST `/api/kiosk/shares` — mint a short-lived share link for a session.
@@ -780,10 +771,6 @@ class ApiService {
   }) async {
     AppLogger.debug(
         '📡 Parallel SSE generation session=$sessionId photo=$originalPhotoId theme=$themeId count=$count');
-
-    final slots = List<String>.filled(count, '');
-    final qualityByIndex = <int, double>{};
-    final completer = Completer<ParallelGenerationResult>();
 
     try {
       final response = await _aiDio.get(
