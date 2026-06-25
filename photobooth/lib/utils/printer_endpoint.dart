@@ -27,10 +27,9 @@ class PrinterEndpoint {
 ///
 /// `/` or empty → `/api/PrintImage` (DNP HTTP API).
 ///
-/// WCM Plus also serves a **guest web UI** at `/print`; that URL is not a print
-/// API and returns HTTP 500 on POST. The working HTTP endpoint on WCM is
-/// `/api/PrintImage` (multipart). Admin often sets `printerPath` to `/print`
-/// when meaning `wcmPlusPath` — remap that here so kiosks still print.
+/// WCM Plus serves a guest web UI at `/print` (GET 200, POST 500). HTTP print
+/// uses `/api/PrintImage`. Admin `printerPath` is often `/print` when meaning
+/// `wcmPlusPath` — remap so kiosks hit the working API.
 String resolvePrinterApiPath(String? rawPath) {
   final raw = rawPath?.trim() ?? '';
   if (raw.isEmpty || raw == '/') {
