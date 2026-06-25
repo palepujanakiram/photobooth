@@ -243,3 +243,15 @@ drivers = [
 
 [[plugin]]
 name = "trufflehog"
+
+# fastlane 2.236.1 pins excon < 1.0; CVE fix requires excon >= 1.5.0 (fastlane master relaxes bound).
+[[triage]]
+match.plugins = ["trivy", "osv-scanner"]
+match.rules = ["trivy:CVE-2026-54171", "osv-scanner:CVE-2026-54171"]
+set.ignored = true
+
+# Gemfile.lock has faraday 1.10.6 with GHSA-98m9-hrrm-r99r backport; Trivy/OSV DB lists 2.14.3+ only.
+[[triage]]
+match.plugins = ["trivy", "osv-scanner"]
+match.rules = ["trivy:CVE-2026-54297", "osv-scanner:CVE-2026-54297"]
+set.ignored = true
