@@ -123,6 +123,27 @@ Future<void> postNetworkPrintMultipart({
   AppLogger.debug('✅ Print request sent successfully');
 }
 
+/// Posts raw JPEG bytes for WCM Plus / custom HTTP print endpoints.
+Future<void> postRawJpegNetworkPrint({
+  required Dio dio,
+  required String apiPath,
+  required List<int> imageBytes,
+}) async {
+  AppLogger.debug(
+    '🖨️ Sending raw JPEG print to ${dio.options.baseUrl}$apiPath '
+    '(${imageBytes.length} bytes)',
+  );
+  await dio.post<void>(
+    apiPath,
+    data: imageBytes,
+    options: Options(
+      contentType: 'image/jpeg',
+      responseType: ResponseType.plain,
+    ),
+  );
+  AppLogger.debug('✅ Raw JPEG print request sent successfully');
+}
+
 Never throwMappedNetworkPrintDioError(DioException e, String baseUrl) {
   String errorMessage = 'Failed to print image';
   String errorType = 'unknown';

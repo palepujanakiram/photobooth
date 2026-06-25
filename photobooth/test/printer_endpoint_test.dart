@@ -11,9 +11,21 @@ void main() {
       expect(resolvePrinterApiPath('/'), '/api/PrintImage');
     });
 
-    test('custom path is preserved', () {
-      expect(resolvePrinterApiPath('/print'), '/print');
-      expect(resolvePrinterApiPath('print'), '/print');
+    test('WCM guest /print path maps to PrintImage API', () {
+      expect(resolvePrinterApiPath('/print'), '/api/PrintImage');
+      expect(resolvePrinterApiPath('print'), '/api/PrintImage');
+    });
+
+    test('other custom paths are preserved', () {
+      expect(resolvePrinterApiPath('/api/print'), '/api/print');
+    });
+  });
+
+  group('usesDnpMultipartPrintApi', () {
+    test('only DNP PrintImage path uses multipart', () {
+      expect(usesDnpMultipartPrintApi('/api/PrintImage'), isTrue);
+      expect(usesDnpMultipartPrintApi('/print'), isFalse);
+      expect(usesDnpMultipartPrintApi('/api/print'), isFalse);
     });
   });
 
@@ -28,7 +40,7 @@ void main() {
       );
       expect(endpoint.host, '172.16.4.113');
       expect(endpoint.port, 80);
-      expect(endpoint.path, '/print');
+      expect(endpoint.path, '/api/PrintImage');
       expect(endpoint.baseUrl, 'http://172.16.4.113');
     });
 
