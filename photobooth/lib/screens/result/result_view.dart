@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'result_payment_card_widgets.dart';
+import 'result_payment_qr_area.dart';
 import 'result_payment_status.dart';
 import 'result_viewmodel.dart';
 import '../../services/app_settings_manager.dart';
@@ -16,7 +17,6 @@ import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/centered_max_width.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
-import '../../views/widgets/kiosk_payment_qr_display.dart';
 import '../../views/widgets/delete_my_photos_action.dart';
 import '../../services/payment_push_coordinator.dart';
 import '../../services/kiosk_manager.dart';
@@ -541,7 +541,6 @@ class _ResultScreenState extends State<ResultScreen> {
       value: _viewModel!,
       child: Consumer2<ResultViewModel, AppSettingsManager>(
         builder: (context, viewModel, settingsManager, child) {
-          viewModel.refreshPrinterFromSettings();
           _scheduleThankYouNavigationIfNeeded(viewModel);
           return _buildPayScreenBody(
             context,
@@ -658,79 +657,12 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   Widget _buildPaymentQrArea(ResultViewModel viewModel, double maxQrWidth) {
-    final gatewayEnabled = viewModel.isPaymentGatewayEnabled;
-    if (!gatewayEnabled) {
-      // When payment gateway is disabled, show the static UPI QR instead of any init state/errors.
-      return Padding(
-        padding: const EdgeInsets.all(8),
-        child: Image.asset(
-          'lib/images/upi_qr_fallback.png',
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
-        ),
-      );
-    }
-    if (viewModel.paymentInitInProgress) {
-      return const SizedBox(
-        width: double.infinity,
-        height: 280,
-        child: Center(
-          child: Padding(
-            padding: EdgeInsets.all(12),
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
-      );
-    }
-    if (viewModel.paymentInitError != null) {
-      return Padding(
-        padding: const EdgeInsets.all(8),
-        child: Text(
-          viewModel.paymentInitError!,
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 11, color: Colors.grey.shade800),
-        ),
-      );
-    }
-    bool hasPayload(String? s) => (s?.trim().isNotEmpty ?? false);
-    if (!hasPayload(viewModel.qrImageUrl) &&
-        !hasPayload(viewModel.upiLink) &&
-        !hasPayload(viewModel.paymentLink)) {
-      return Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              CupertinoIcons.qrcode,
-              size: 48,
-              color: Colors.grey.shade600,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              viewModel.paymentInitError ??
-                  'UPI QR is not ready yet. Tap Retry or ask staff.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: viewModel.paymentInitInProgress
-                  ? null
-                  : () => viewModel.retryLoadPaymentQr(
-                        customerPhone: _customerPhone,
-                      ),
-              child: const Text('Retry QR'),
-            ),
-          ],
-        ),
-      );
-    }
-    return KioskPaymentQrDisplay(
-      qrImageUrl: viewModel.qrImageUrl,
-      upiLink: viewModel.upiLink,
-      paymentLink: viewModel.paymentLink,
-      maxContentWidth: maxQrWidth,
+    return ResultPaymentQrArea(
+      viewModel: viewModel,
+      maxQrWidth: maxQrWidth,
+      onRetry: () => viewModel.retryLoadPaymentQr(
+        customerPhone: _customerPhone,
+      ),
     );
   }
 
