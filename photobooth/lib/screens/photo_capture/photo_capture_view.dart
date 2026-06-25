@@ -64,6 +64,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   bool _uvcOpeningController = false;
   Timer? _uvcReconnectTimer;
   Timer? _uvcWarmupTimer;
+  Timer? _uvcSessionRecycleTimer;
   DateTime? _uvcShutterGraceUntil;
   DateTime? _uvcPreviewReadyAt;
   int _uvcPreviewGeneration = 0;
@@ -167,6 +168,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _uvcReconnectTimer = null;
     _uvcWarmupTimer?.cancel();
     _uvcWarmupTimer = null;
+    _cancelUvcSessionRecycleTimer();
     _uvcShutterGraceUntil = null;
     _uvcPreviewReadyAt = null;
     _lastUvcShutterAt = null;
@@ -175,6 +177,42 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _clearUvcTransientCaptureUi();
     _uvcOpeningController = false;
     _uvcInitializing = false;
+  }
+
+  void _cancelUvcSessionRecycleTimer() {
+    _uvcSessionRecycleTimer?.cancel();
+    _uvcSessionRecycleTimer = null;
+  }
+
+  void _armUvcSessionRecycleTimer() {
+    if (!UvcCaptureConfig.enableSessionRecycle) return;
+    _cancelUvcSessionRecycleTimer();
+    _uvcSessionRecycleTimer = Timer(
+      UvcCaptureConfig.sessionRecyclePeriod,
+      _onUvcSessionRecycleTick,
+    );
+  }
+
+  void _onUvcSessionRecycleTick() {
+    _uvcSessionRecycleTimer = null;
+    if (!mounted) return;
+    if (!uvcSessionRecycleMayRun(
+      sessionRecycleEnabled: UvcCaptureConfig.enableSessionRecycle,
+      isUsingUvc: _isUsingUvc,
+      mayAutoOpenLiveFeed: _uvcMayAutoOpenLiveFeed,
+      blocksConcurrentAutoOpen: _uvcBlocksConcurrentAutoOpen,
+      captureInFlight: _uvcCaptureInFlight,
+      isCapturing: _captureViewModel.isCapturing,
+      withinShutterGrace: _isWithinUvcShutterGrace,
+    )) {
+      _uvcSessionRecycleTimer = Timer(
+        UvcCaptureConfig.sessionRecycleRetryDelay,
+        _onUvcSessionRecycleTick,
+      );
+      return;
+    }
+    AppLogger.debug('UVC periodic session recycle');
+    unawaited(_resumeUvcLiveFeed(reason: 'sessionRecycle'));
   }
 
   Future<XFile> _takeUvcPicture(
@@ -362,6 +400,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _uvcReconnectTimer = null;
     _uvcWarmupTimer?.cancel();
     _uvcWarmupTimer = null;
+    _cancelUvcSessionRecycleTimer();
     _uvcDeviceEventsSub?.cancel();
     _uvcDeviceEventsSub = null;
     _hardwareKeySub?.cancel();
@@ -608,7 +647,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (_uvcCaptureInFlight || _captureViewModel.capturedPhoto != null) return;
 
     _captureViewModel.applyDefaultPreviewRotationForUvc();
-    _captureViewModel.disposeCamera();
+    await _captureViewModel.disposeCamera();
 
     if (!mounted) return;
     setState(() {
@@ -673,6 +712,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         });
         _attachUvcHardwareListeners(ctrl);
         await _setUvcShutterKeysEnabled(true);
+        _armUvcSessionRecycleTimer();
         AppLogger.debug(
           'UVC preview opened preset=${UvcCaptureConfig.resolutionPreset.name} '
           'gen=$_uvcPreviewGeneration',

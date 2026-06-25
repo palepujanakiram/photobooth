@@ -1,5 +1,7 @@
 import 'package:uvccamera/uvccamera.dart';
 
+import 'constants.dart';
+
 /// Tunable levers for USB/DSLR (UVC) capture on memory-constrained tablets.
 ///
 /// Built-in cameras use 1920 px / quality 85 from `image_helper.dart`.
@@ -11,14 +13,18 @@ import 'package:uvccamera/uvccamera.dart';
 /// | Performance | min    | 1280         | 80          | 450 ms          |
 /// | Balanced    | low    | 1536         | 85          | 300 ms          |
 /// | Quality     | medium | 1920         | 85          | 48 ms           |
+/// | **Active**  | medium | 1024         | 75          | 450 ms          |
 ///
-/// **Active profile** leans performance after tablet OOM during UVC normalize.
+/// **Active profile:** 720p preview (not 1080p), 1024px still normalize.
 class UvcCaptureConfig {
   UvcCaptureConfig._(); // coverage:ignore-line
 
-  /// Native UVC stream / still resolution (`min` < `low` < `medium`).
+  /// Native UVC preview / still stream target (~1280×720 via plugin `medium` preset).
+  ///
+  /// The `uvccamera` plugin does not expose FPS; the driver picks frame rate for the
+  /// negotiated format (often 30 fps at 720p MJPEG on capture cards).
   static const UvcCameraResolutionPreset resolutionPreset =
-      UvcCameraResolutionPreset.min;
+      UvcCameraResolutionPreset.medium;
 
   /// Max long edge after Dart-side normalize.
   static const int normalizeMaxDimension = 1024;
@@ -42,7 +48,9 @@ class UvcCaptureConfig {
   static const Duration preCaptureSettleDelay = Duration(milliseconds: 50);
 
   /// When true, keep the UVC session open while reviewing a still (retake reuses it).
-  static const bool keepControllerOpenDuringReview = true;
+  /// Off on low-memory kiosk so USB/GPU buffers are released during review.
+  static bool get keepControllerOpenDuringReview =>
+      !AppConstants.kLowMemoryKioskMode;
 
   /// Ignore preview-interrupt shutter signals right after the feed reconnects.
   static const Duration previewWarmupPeriod = Duration(milliseconds: 1500);
@@ -66,4 +74,13 @@ class UvcCaptureConfig {
   /// When true, skip background encode + face detection until the user taps Continue.
   /// Reduces RAM spikes and UI jank while reviewing the captured still on low-RAM tablets.
   static const bool deferUploadPrepUntilContinue = true;
+
+  /// Periodic full UVC teardown + reopen while idle on the live feed (driver leak mitigation).
+  static const bool enableSessionRecycle = true;
+
+  /// Interval between idle session recycles (stop preview → release → reopen).
+  static const Duration sessionRecyclePeriod = Duration(minutes: 25);
+
+  /// When recycle is deferred (capture in flight, reviewing, etc.), retry after this delay.
+  static const Duration sessionRecycleRetryDelay = Duration(minutes: 2);
 }

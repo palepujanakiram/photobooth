@@ -74,4 +74,79 @@ void main() {
       isFalse,
     );
   });
+
+  test('uvcSessionRecycleMayRun only on idle live UVC feed', () {
+    const idle = (
+      sessionRecycleEnabled: true,
+      isUsingUvc: true,
+      mayAutoOpenLiveFeed: true,
+      blocksConcurrentAutoOpen: false,
+      captureInFlight: false,
+      isCapturing: false,
+      withinShutterGrace: false,
+    );
+    expect(uvcSessionRecycleMayRun(
+      sessionRecycleEnabled: idle.sessionRecycleEnabled,
+      isUsingUvc: idle.isUsingUvc,
+      mayAutoOpenLiveFeed: idle.mayAutoOpenLiveFeed,
+      blocksConcurrentAutoOpen: idle.blocksConcurrentAutoOpen,
+      captureInFlight: idle.captureInFlight,
+      isCapturing: idle.isCapturing,
+      withinShutterGrace: idle.withinShutterGrace,
+    ), isTrue);
+    expect(uvcSessionRecycleMayRun(
+      sessionRecycleEnabled: false,
+      isUsingUvc: idle.isUsingUvc,
+      mayAutoOpenLiveFeed: idle.mayAutoOpenLiveFeed,
+      blocksConcurrentAutoOpen: idle.blocksConcurrentAutoOpen,
+      captureInFlight: idle.captureInFlight,
+      isCapturing: idle.isCapturing,
+      withinShutterGrace: idle.withinShutterGrace,
+    ), isFalse);
+    expect(uvcSessionRecycleMayRun(
+      sessionRecycleEnabled: idle.sessionRecycleEnabled,
+      isUsingUvc: idle.isUsingUvc,
+      mayAutoOpenLiveFeed: false,
+      blocksConcurrentAutoOpen: idle.blocksConcurrentAutoOpen,
+      captureInFlight: idle.captureInFlight,
+      isCapturing: idle.isCapturing,
+      withinShutterGrace: idle.withinShutterGrace,
+    ), isFalse);
+    expect(uvcSessionRecycleMayRun(
+      sessionRecycleEnabled: idle.sessionRecycleEnabled,
+      isUsingUvc: idle.isUsingUvc,
+      mayAutoOpenLiveFeed: idle.mayAutoOpenLiveFeed,
+      blocksConcurrentAutoOpen: true,
+      captureInFlight: idle.captureInFlight,
+      isCapturing: idle.isCapturing,
+      withinShutterGrace: idle.withinShutterGrace,
+    ), isFalse);
+    expect(uvcSessionRecycleMayRun(
+      sessionRecycleEnabled: idle.sessionRecycleEnabled,
+      isUsingUvc: idle.isUsingUvc,
+      mayAutoOpenLiveFeed: idle.mayAutoOpenLiveFeed,
+      blocksConcurrentAutoOpen: idle.blocksConcurrentAutoOpen,
+      captureInFlight: true,
+      isCapturing: idle.isCapturing,
+      withinShutterGrace: idle.withinShutterGrace,
+    ), isFalse);
+    expect(uvcSessionRecycleMayRun(
+      sessionRecycleEnabled: idle.sessionRecycleEnabled,
+      isUsingUvc: idle.isUsingUvc,
+      mayAutoOpenLiveFeed: idle.mayAutoOpenLiveFeed,
+      blocksConcurrentAutoOpen: idle.blocksConcurrentAutoOpen,
+      captureInFlight: idle.captureInFlight,
+      isCapturing: true,
+      withinShutterGrace: idle.withinShutterGrace,
+    ), isFalse);
+    expect(uvcSessionRecycleMayRun(
+      sessionRecycleEnabled: idle.sessionRecycleEnabled,
+      isUsingUvc: idle.isUsingUvc,
+      mayAutoOpenLiveFeed: idle.mayAutoOpenLiveFeed,
+      blocksConcurrentAutoOpen: idle.blocksConcurrentAutoOpen,
+      captureInFlight: idle.captureInFlight,
+      isCapturing: idle.isCapturing,
+      withinShutterGrace: true,
+    ), isFalse);
+  });
 }

@@ -28,8 +28,8 @@ Future<void> handleCapturedPhotoRetake({
   required bool Function() isMounted,
 }) async {
   if (kIsWeb) {
-    viewModel.disposeCamera();
-    if (!isMounted()) return;
+    await viewModel.disposeCamera();
+    if (!isMounted() || !context.mounted) return;
     await Navigator.of(context).pushReplacementNamed(
       AppConstants.kRouteCapture,
     );
@@ -59,7 +59,7 @@ Future<void> handleCapturedPhotoContinue({
     return;
   }
 
-  viewModel.disposeCamera();
+  await viewModel.disposeCamera();
   final photo = viewModel.capturedPhoto!;
   if (!isMounted() || !currentContext.mounted) return;
   WebFlowTrace.log('NAV', 'pushReplacementNamed theme-selection start');

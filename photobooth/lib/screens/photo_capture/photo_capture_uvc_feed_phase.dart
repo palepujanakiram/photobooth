@@ -38,3 +38,20 @@ bool uvcBlocksConcurrentAutoOpen({
       openingController ||
       phase == UvcFeedPhase.capturing;
 }
+
+/// Whether periodic UVC session recycle may run (idle live feed only).
+bool uvcSessionRecycleMayRun({
+  required bool sessionRecycleEnabled,
+  required bool isUsingUvc,
+  required bool mayAutoOpenLiveFeed,
+  required bool blocksConcurrentAutoOpen,
+  required bool captureInFlight,
+  required bool isCapturing,
+  required bool withinShutterGrace,
+}) {
+  if (!sessionRecycleEnabled || !isUsingUvc) return false;
+  if (!mayAutoOpenLiveFeed) return false;
+  if (blocksConcurrentAutoOpen || captureInFlight || isCapturing) return false;
+  if (withinShutterGrace) return false;
+  return true;
+}
