@@ -1,10 +1,18 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photobooth/models/app_settings_model.dart';
+import 'package:photobooth/utils/app_runtime_config.dart';
 import 'package:photobooth/utils/uvc_capture_config.dart';
 import 'package:uvccamera/uvccamera.dart';
 
 void main() {
+  tearDown(() {
+    AppRuntimeConfig.instance.applyFromSettings(
+      AppSettingsModel(showGenerationCommentary: false),
+    );
+  });
+
   test('UvcCaptureConfig uses stability-first profile defaults', () {
-    expect(UvcCaptureConfig.resolutionPreset, UvcCameraResolutionPreset.min);
+    expect(UvcCaptureConfig.resolutionPreset, UvcCameraResolutionPreset.medium);
     expect(UvcCaptureConfig.normalizeMaxDimension, 1024);
     expect(UvcCaptureConfig.normalizeJpegQuality, 75);
     expect(UvcCaptureConfig.postDisposeDelay, const Duration(milliseconds: 750));
@@ -21,5 +29,22 @@ void main() {
       const Duration(seconds: 10),
     );
     expect(UvcCaptureConfig.deferUploadPrepUntilContinue, isTrue);
+    expect(UvcCaptureConfig.enableSessionRecycle, isTrue);
+    expect(
+      UvcCaptureConfig.sessionRecyclePeriod,
+      const Duration(minutes: 25),
+    );
+    expect(
+      UvcCaptureConfig.sessionRecycleRetryDelay,
+      const Duration(minutes: 2),
+    );
+  });
+
+  test('keepControllerOpenDuringReview off in low-memory kiosk mode', () {
+    expect(UvcCaptureConfig.keepControllerOpenDuringReview, isTrue);
+    AppRuntimeConfig.instance.applyFromSettings(
+      AppSettingsModel(showGenerationCommentary: true),
+    );
+    expect(UvcCaptureConfig.keepControllerOpenDuringReview, isFalse);
   });
 }

@@ -1736,6 +1736,11 @@ class CaptureViewModel extends ChangeNotifier {
     _prepareUploadFuture = null;
   }
 
+  /// Drops in-memory upload payload after PATCH (base64 can be several MB).
+  void _releaseUploadPayloadMemory() {
+    _resetUploadPreparation();
+  }
+
   void _kickoffUploadPreparation({
     Duration initialDelay = const Duration(milliseconds: 48),
   }) {
@@ -2034,6 +2039,7 @@ class CaptureViewModel extends ChangeNotifier {
       );
 
       WebFlowTrace.log('UPLOAD', 'success');
+      _releaseUploadPayloadMemory();
       return true;
     } on TimeoutException catch (e) {
       WebFlowTrace.log('UPLOAD', 'ERROR TimeoutException $e');
@@ -2131,23 +2137,27 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Eagerly releases camera native buffers. Call before navigating away
   /// so the next screen doesn't overlap with camera heap on low-RAM devices.
-  void disposeCamera() {
-    try {
-      _cameraController?.removeListener(_onCameraControllerUpdate);
-      _cameraController?.dispose();
-    } catch (e, st) {
-      // Best-effort; do not throw from dispose paths.
-      AppLogger.error('disposeCamera failed', error: e, stackTrace: st);
-    }
+  Future<void> disposeCamera() async {
+    final ctrl = _cameraController;
     _cameraController = null;
     _nativeCameraDetails = null;
+    if (ctrl == null) return;
+    try {
+      ctrl.removeListener(_onCameraControllerUpdate);
+      await ctrl.dispose();
+    } catch (e, st) {
+      AppLogger.error('disposeCamera failed', error: e, stackTrace: st);
+    }
   }
 
   /// Disposes the camera controller
   @override
   void dispose() {
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
     _stopUploadTimer();
-    disposeCamera();
+    _releaseUploadPayloadMemory();
+    unawaited(disposeCamera());
     super.dispose();
   }
 }
