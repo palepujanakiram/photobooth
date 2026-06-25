@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:async' show Timer, unawaited;
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +8,7 @@ import 'theme_slideshow_timer_helpers.dart';
 import 'theme_slideshow_viewmodel.dart';
 import '../terms_and_conditions/terms_and_conditions_view.dart';
 import '../../utils/constants.dart';
-import '../../views/widgets/cached_network_image.dart';
+import 'theme_slideshow_image.dart';
 import '../../views/widgets/bottom_safe_area.dart';
 
 /// Enum for different slide transition types
@@ -69,21 +69,17 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
   void initState() {
     super.initState();
     _viewModel = ThemeSlideshowViewModel();
-    // Capture context before async operation
     final currentContext = context;
-    
-    // Listen to ViewModel changes to start slideshow when all images are loaded
+
     _viewModel.addListener(_onViewModelChanged);
-    
-    _viewModel.fetchThemes().then((_) {
-      if (mounted && currentContext.mounted) {
-        final imageUrls = _viewModel.getSampleImageUrls();
-        if (imageUrls.isNotEmpty) {
-          // Start preloading images (first image first, then rest)
-          _viewModel.preloadImages(currentContext);
-        }
+
+    if (currentContext.mounted) {
+      final imageUrls = _viewModel.getSampleImageUrls();
+      if (imageUrls.isNotEmpty) {
+        _viewModel.preloadImages(currentContext);
       }
-    });
+    }
+    unawaited(_viewModel.fetchThemes());
   }
 
   void _onViewModelChanged() {
@@ -396,8 +392,8 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
           width: double.infinity,
           height: double.infinity,
           decoration: const BoxDecoration(color: Colors.black),
-          child: CachedNetworkImage(
-            imageUrl: displayUrls[_currentIndex % displayUrls.length],
+          child: ThemeSlideshowImage(
+            path: displayUrls[_currentIndex % displayUrls.length],
             fit: BoxFit.cover,
             width: double.infinity,
             height: double.infinity,

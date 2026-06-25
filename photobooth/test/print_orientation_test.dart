@@ -48,5 +48,20 @@ void main() {
     expect(PrintOrientation.tryParse('landscape'), PrintOrientation.landscape);
     expect(PrintOrientation.tryParse('Portrait'), PrintOrientation.portrait);
     expect(PrintOrientation.tryParse(''), isNull);
+    expect(PrintOrientation.tryParse(null), isNull);
+    expect(PrintOrientation.tryParse('unknown'), isNull);
+  });
+
+  test('tryParse short forms', () {
+    expect(PrintOrientation.tryParse('p'), PrintOrientation.portrait);
+    expect(PrintOrientation.tryParse('l'), PrintOrientation.landscape);
+    expect(PrintOrientation.tryParse('L'), PrintOrientation.landscape);
+  });
+
+  test('apiValue and label', () {
+    expect(PrintOrientation.portrait.apiValue, 'portrait');
+    expect(PrintOrientation.landscape.apiValue, 'landscape');
+    expect(PrintOrientation.portrait.label, 'Portrait');
+    expect(PrintOrientation.landscape.label, 'Landscape');
   });
 }

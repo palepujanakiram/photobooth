@@ -5,8 +5,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart' show Colors, Scaffold;
 
-import '../theme_selection/theme_model.dart';
-import '../theme_selection/theme_preview_screen.dart';
 import 'bootstrap_route_args.dart';
 import 'kiosk_qr_scan_screen.dart';
 import '../../services/api_service.dart';
@@ -148,36 +146,9 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     _goToTerms(urls);
   }
 
+  /// Bundled slideshow assets load instantly; theme API samples are not used here.
   Future<List<String>> _loadThemeBackgroundUrls() async {
-    try {
-      final themes = await _api.getThemes();
-      final urls = _urlsForSlideshow(themes);
-      // Always prefer kiosk-enabled theme samples when available, but if the kiosk
-      // has only a few themes, mix in the default slideshow assets to avoid a
-      // tiled wallpaper look.
-      if (urls.isEmpty) return [];
-      if (urls.length >= 6) return urls;
-      final mixed = <String>[...urls];
-      mixed.addAll(kSlideshowAssetPaths);
-      // De-dupe while preserving order (theme samples first).
-      final seen = <String>{};
-      return mixed.where(seen.add).toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  List<String> _urlsForSlideshow(List<ThemeModel> themes) {
-    final seen = <String>{};
-    final out = <String>[];
-    for (final t in themes) {
-      final u = ThemePreviewScreen.resolveSampleImageUrl(t).trim();
-      if (u.isEmpty) continue;
-      if (seen.add(u)) out.add(u);
-    }
-    if (out.isEmpty) return [];
-    if (out.length == 1) return [out.first, out.first];
-    return out;
+    return List<String>.from(kSlideshowAssetPaths);
   }
 
   void _goToTerms(List<String> urls) {
@@ -523,6 +494,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
 
     return Scaffold(
       backgroundColor: appColors.backgroundColor,
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Stack(
           children: [

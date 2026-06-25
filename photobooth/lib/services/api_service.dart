@@ -19,13 +19,14 @@ import '../utils/session_user_image_validation.dart';
 import '../utils/logger.dart';
 import '../utils/web_flow_trace.dart';
 import 'api_client.dart';
+import 'api_service_dio.dart';
+import 'client_identification.dart';
 import 'api_dio_errors.dart';
 import 'api_http_response.dart';
 import 'generation_api_errors.dart';
 import 'kiosk_manager.dart';
 import 'session_manager.dart';
 import 'api_service_legacy_media.dart';
-import 'api_service_dio.dart';
 import 'api_parallel_sse_consumer.dart';
 import 'api_service_helpers.dart';
 import 'api_service_web_session_patch_stub.dart'
@@ -34,19 +35,13 @@ import 'api_service_web_session_patch_stub.dart'
 class ApiService {
   late final ApiClient _apiClient;
   late final Dio _dio;
-  final Dio? _aiDio;
+  late final Dio _aiDio;
   final Uuid _uuid = const Uuid();
 
-  /// Production constructor. Pass [dio] / [aiDio] in tests (see [test/helpers/mock_api_dio.dart]).
-  ApiService({Dio? dio, Dio? aiDio})
-      : _aiDio = aiDio {
+  ApiService({Dio? dio, Dio? aiDio}) {
     _dio = dio ?? createProductionApiDio();
+    _aiDio = aiDio ?? (dio ?? createAiGenerationDio());
     _apiClient = ApiClient(_dio, baseUrl: AppConstants.kBaseUrl);
-  }
-
-  Dio _createAiGenerationDio({bool sseAccept = false}) {
-    if (_aiDio != null) return _aiDio!;
-    return createAiGenerationDio(sseAccept: sseAccept);
   }
 
   /// POST `/api/kiosk/shares` — mint a short-lived share link for a session.
@@ -685,9 +680,9 @@ class ApiService {
     required String themeId,
     void Function(String message)? onProgress,
   }) async {
-    final dioWithTimeout = _createAiGenerationDio();
+
     final apiClientWithTimeout =
-        ApiClient(dioWithTimeout, baseUrl: AppConstants.kBaseUrl);
+        ApiClient(_aiDio, baseUrl: AppConstants.kBaseUrl);
 
     // Retry logic: try once, retry once on timeout
     int retryCount = 0;
@@ -777,13 +772,19 @@ class ApiService {
     AppLogger.debug(
         '📡 Parallel SSE generation session=$sessionId photo=$originalPhotoId theme=$themeId count=$count');
 
-    final dio = _createAiGenerationDio(sseAccept: true);
-
     try {
-      final response = await dio.get(
+      final response = await _aiDio.get(
         '/api/generate-stream-parallel',
-        queryParameters: {'sessionId': sessionId, 'count': count},
-        options: Options(responseType: ResponseType.stream),
+        queryParameters: {
+          'sessionId': sessionId,
+          'count': count,
+        },
+        options: Options(
+          responseType: ResponseType.stream,
+          headers: ClientIdentification.mergeHeaders({
+            'Accept': 'text/event-stream',
+          }),
+        ),
       );
 
       final body = response.data;
@@ -815,7 +816,7 @@ class ApiService {
 
   /// POST `/api/preprocess-image` — server person detection + consensus.
   ///
-  /// Await before theme selection; use [PreprocessImageResult.personCount] for filtering.
+  /// Fire-and-forget person-detection call; never throws — returns success=false on any error.
   Future<PreprocessImageResult> preprocessImage({
     required String sessionId,
     int? clientFaceCount,
@@ -834,28 +835,14 @@ class ApiService {
       if (raw is Map) {
         return PreprocessImageResult.fromJson(Map<String, dynamic>.from(raw));
       }
-      throw ApiException('Unexpected preprocess response from API');
+      return const PreprocessImageResult(success: false);
     } on DioException catch (e) {
       _handleWebNetworkError(e);
-
-      if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout ||
-          e.type == DioExceptionType.connectionError) {
-        throw ApiException(AppConstants.kErrorNetwork);
-      }
-
-      String errorMessage = AppConstants.kErrorApiCall;
-      if (e.response != null) {
-        final responseData = e.response?.data;
-        if (responseData is Map<String, dynamic>) {
-          errorMessage = responseData['message'] as String? ??
-              responseData['error'] as String? ??
-              'API Error: ${e.response?.statusCode}';
-        } else if (responseData is String) {
-          errorMessage = responseData;
-        }
-      }
-      throw ApiException(errorMessage, e.response?.statusCode);
+      AppLogger.debug('preprocessImage failed: ${e.message}');
+      return const PreprocessImageResult(success: false);
+    } catch (e) {
+      AppLogger.debug('preprocessImage failed: $e');
+      return const PreprocessImageResult(success: false);
     }
   }
 }

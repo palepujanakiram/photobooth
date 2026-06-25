@@ -28,6 +28,14 @@ if (flutterVersionName == null) {
 // App name used for APK output (e.g. photobooth-release.apk instead of app-release.apk)
 def appName = "photobooth"
 
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('keystore/key.properties')
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withReader('UTF-8') { reader ->
+        keystoreProperties.load(reader)
+    }
+}
+
 android {
     namespace "com.srisarani.fotozenai"
     compileSdk 36
@@ -59,9 +67,18 @@ android {
         setProperty("archivesBaseName", appName)
     }
 
+    signingConfigs {
+        release {
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
+            storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+            storePassword keystoreProperties['storePassword']
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             // Workaround: R8 can crash (NPE) while shrinking some Kotlin coroutines jars
             // on certain toolchain combinations. Disable minification until upstream fixes.
             minifyEnabled false
