@@ -4,10 +4,12 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   ResultViewModel get _r => this as ResultViewModel;
 
   /// Loads UPI payment link from POST /api/payment/initiate and exposes it for QR display.
-  Future<void> loadPaymentQr({String? customerPhone}) async {
+  Future<void> loadPaymentQr({
+    String? customerPhone,
+    bool force = false,
+  }) async {
     if (_r._paymentInitInProgress) return;
-    final existingId = _r._activePaymentId?.trim();
-    if (existingId != null && existingId.isNotEmpty) return;
+    if (!force && _r._shouldSkipPaymentInitiate()) return;
     final sessionId = _r._sessionManager.sessionId;
     if (sessionId == null || sessionId.isEmpty) {
       _r._paymentInitError = 'No session for payment. Go back and try again.';
@@ -20,9 +22,10 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     _r._paymentLink = null;
     _r._qrImageUrl = null;
     _r._upiLink = null;
-    _r._activePaymentId = null;
-    _r._paymentIdPollTimer?.cancel();
-    _r._sessionPollTimer?.cancel();
+    if (force) {
+      _r._activePaymentId = null;
+    }
+    _r.stopPaymentPolling();
     _r._paymentIdPollTicks = 0;
     _r._sessionPollTicks = 0;
     _r._paymentIdNullStreak = 0;
@@ -47,24 +50,31 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         customerPhone: customerPhone,
         fcmToken: fcmToken ?? '',
       );
+      _applyPaymentInitiateResult(result);
       if (kDebugMode) {
         AppLogger.debug(
-          'Payment initiate OK: id=${result.id} status=${result.status} — '
-          'confirm backend stores token + sends FCM from same Firebase project as the app',
+          'Payment initiate OK: id=${result.id} status=${result.status} '
+          'qr=${_r._qrImageUrl != null} upi=${_r._upiLink != null} '
+          'link=${_r._paymentLink != null}',
         );
       }
-      // For manual/static QR mode, backend may omit paymentLink but should still
-      // create a transaction with an id that admin can approve/reject.
-      _r._paymentLink = result.paymentLink;
-      _r._qrImageUrl = result.qrImageUrl;
-      _r._upiLink = result.upiLink;
-      final pid = result.id.trim();
-      _r._activePaymentId = pid.isNotEmpty ? pid : null;
+      if (!_r.hasPaymentQrPayload &&
+          _r._activePaymentId != null &&
+          _r._paymentInitiateAttempts < 1) {
+        _r._paymentInitiateAttempts += 1;
+        _r._paymentInitInProgress = false;
+        notifyListeners();
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+        if (_r._disposed) return;
+        return loadPaymentQr(customerPhone: customerPhone, force: true);
+      }
+      if (!_r.hasPaymentQrPayload) {
+        _r._paymentInitError =
+            'Could not load UPI QR from the server. Tap Retry below or ask staff.';
+      }
       if (_r._activePaymentId != null) {
         _startPaymentStatusPolling();
       }
-      // Backup: also poll session by sessionId (React Query style) so approval can
-      // still be detected even if paymentId polling/FCM is missing.
       _startSessionApprovalPolling(sessionId);
     } on ApiException catch (e) {
       _r._paymentInitError = e.message;
@@ -72,6 +82,42 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       _r._paymentInitError = 'Payment setup failed: $e';
     } finally {
       _r._paymentInitInProgress = false;
+      notifyListeners();
+    }
+  }
+
+  bool _shouldSkipPaymentInitiate() {
+    final existingId = _r._activePaymentId?.trim();
+    if (existingId == null || existingId.isEmpty) return false;
+    return _r.hasPaymentQrPayload;
+  }
+
+  void _applyPaymentInitiateResult(PaymentInitiateResult result) {
+    _r._paymentLink = result.paymentLink;
+    _r._qrImageUrl = result.qrImageUrl;
+    _r._upiLink = result.upiLink;
+    final pid = result.id.trim();
+    _r._activePaymentId = pid.isNotEmpty ? pid : null;
+  }
+
+  void _applyQrFieldsFromPollMap(Map<String, dynamic> raw) {
+    if (_r.hasPaymentQrPayload) return;
+    final parsed = PaymentInitiateResult.fromJson(raw);
+    var changed = false;
+    if (_r._qrImageUrl == null && parsed.qrImageUrl != null) {
+      _r._qrImageUrl = parsed.qrImageUrl;
+      changed = true;
+    }
+    if (_r._upiLink == null && parsed.upiLink != null) {
+      _r._upiLink = parsed.upiLink;
+      changed = true;
+    }
+    if (_r._paymentLink == null && parsed.paymentLink != null) {
+      _r._paymentLink = parsed.paymentLink;
+      changed = true;
+    }
+    if (changed) {
+      _r._paymentInitError = null;
       notifyListeners();
     }
   }
@@ -137,9 +183,11 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     _r._sessionNullStreak = 0;
     _r._sessionConsecutiveFailureTicks = 0;
 
-    final verdict = _verdictFromSession(raw);
+    _applyQrFieldsFromPollMap(raw);
+
+    final verdict = paymentVerdictFromSession(raw);
     switch (verdict) {
-      case _PollVerdict.approved:
+      case PaymentPollVerdict.approved:
         t.cancel();
         await onFcmPaymentPush(
           PaymentPushPayload(
@@ -149,7 +197,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
             body: 'Payment approved. Printing...',
           ),
         );
-      case _PollVerdict.failed:
+      case PaymentPollVerdict.failed:
         t.cancel();
         await onFcmPaymentPush(
           PaymentPushPayload(
@@ -159,44 +207,10 @@ mixin _ResultViewModelImpl on ChangeNotifier {
             body: AppStrings.paymentFailedRetryBody,
           ),
         );
-      case _PollVerdict.pending:
+      case PaymentPollVerdict.pending:
       case null:
         break;
     }
-  }
-
-  static _PollVerdict? _verdictFromSession(Map<String, dynamic> raw) {
-    dynamic pick(List<String> keys) {
-      for (final k in keys) {
-        if (raw.containsKey(k)) return raw[k];
-      }
-      return null;
-    }
-
-    final paidFlag = pick(const [
-      'paymentApproved',
-      'payment_approved',
-      'isPaid',
-      'paid',
-      'paymentConfirmed',
-    ]);
-    if (paidFlag is bool) {
-      return paidFlag ? _PollVerdict.approved : _PollVerdict.pending;
-    }
-
-    final status = pick(const [
-      'paymentStatus',
-      'payment_status',
-      'status',
-    ])?.toString().trim().toUpperCase();
-    if (status == null || status.isEmpty) return null;
-    if (status == 'APPROVED' || status == 'PAID' || status == 'CONFIRMED') {
-      return _PollVerdict.approved;
-    }
-    if (status == 'FAILED' || status == 'DECLINED' || status == 'REJECTED') {
-      return _PollVerdict.failed;
-    }
-    return _PollVerdict.pending;
   }
 
   Future<void> _onPaymentPollTick(Timer t) async {
@@ -243,9 +257,11 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     _r._paymentIdNullStreak = 0;
     _r._paymentIdConsecutiveFailureTicks = 0;
 
-    final verdict = _verdictFromPaymentStatusResponse(raw);
+    _applyQrFieldsFromPollMap(raw);
+
+    final verdict = paymentVerdictFromPaymentStatusResponse(raw);
     switch (verdict) {
-      case _PollVerdict.approved:
+      case PaymentPollVerdict.approved:
         t.cancel();
         await onFcmPaymentPush(
           PaymentPushPayload(
@@ -255,7 +271,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
             body: 'Payment approved. Proceed to print your photo.',
           ),
         );
-      case _PollVerdict.failed:
+      case PaymentPollVerdict.failed:
         t.cancel();
         await onFcmPaymentPush(
           PaymentPushPayload(
@@ -265,27 +281,9 @@ mixin _ResultViewModelImpl on ChangeNotifier {
             body: AppStrings.paymentFailedRetryBody,
           ),
         );
-      case _PollVerdict.pending:
+      case PaymentPollVerdict.pending:
       case null:
         break;
-    }
-  }
-
-  /// Parses `GET /api/payments/status/{id}` body: `status` is PENDING | APPROVED | FAILED.
-  static _PollVerdict? _verdictFromPaymentStatusResponse(
-    Map<String, dynamic> raw,
-  ) {
-    final s = raw['status']?.toString().trim().toUpperCase();
-    if (s == null || s.isEmpty) return null;
-    switch (s) {
-      case 'APPROVED':
-        return _PollVerdict.approved;
-      case 'FAILED':
-        return _PollVerdict.failed;
-      case 'PENDING':
-        return _PollVerdict.pending;
-      default:
-        return _PollVerdict.pending;
     }
   }
 
@@ -321,8 +319,8 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       final raw = await _r._apiService.fetchSession(sessionId);
       if (_r._disposed) return;
       if (raw != null) {
-        final verdict = _verdictFromSession(raw);
-        if (verdict == _PollVerdict.approved) {
+        final verdict = paymentVerdictFromSession(raw);
+        if (verdict == PaymentPollVerdict.approved) {
           await onFcmPaymentPush(
             PaymentPushPayload(
               type: PaymentPushCoordinator.typeApproved,
@@ -333,7 +331,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           );
           return;
         }
-        if (verdict == _PollVerdict.failed) {
+        if (verdict == PaymentPollVerdict.failed) {
           await onFcmPaymentPush(
             PaymentPushPayload(
               type: PaymentPushCoordinator.typeFailed,
@@ -439,10 +437,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   ///
   /// This does **not** delete anything on the server (transactions/audit can remain).
   Future<void> privacyWipeLocal() async {
-    _r._paymentIdPollTimer?.cancel();
-    _r._paymentIdPollTimer = null;
-    _r._sessionPollTimer?.cancel();
-    _r._sessionPollTimer = null;
+    _r.stopPaymentPolling();
     stopWhatsappDeliveryPolling();
     _r._downloadedFiles.clear();
     await endPhotoboothCustomerSessionLogged('result: privacyWipeLocal');

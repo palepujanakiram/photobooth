@@ -68,7 +68,18 @@ class PaymentInitiateResult {
     final m = _effectiveFields(json);
     return PaymentInitiateResult(
       id: _pick(m, const ['id', 'paymentId', 'payment_id']) ?? '',
-      paymentLink: _pick(m, const ['paymentLink', 'payment_link']),
+      paymentLink: _pick(m, const [
+        'paymentLink',
+        'payment_link',
+        'paymentUrl',
+        'payment_url',
+        'short_url',
+        'shortUrl',
+        'link',
+        'checkoutUrl',
+        'checkout_url',
+        'cf_payment_link',
+      ]),
       qrImageUrl: _pick(m, const [
         'qrImageUrl',
         'qr_image_url',
@@ -76,8 +87,21 @@ class PaymentInitiateResult {
         'hosted_qr_url',
         'qrUrl',
         'qr_url',
+        'qr_code',
+        'qrCode',
+        'qr_image',
+        'qrImage',
+        'image_url',
+        'imageUrl',
       ]),
-      upiLink: _pick(m, const ['upiLink', 'upi_link']),
+      upiLink: _pick(m, const [
+        'upiLink',
+        'upi_link',
+        'upiUri',
+        'upi_uri',
+        'upi_intent',
+        'upiIntent',
+      ]),
       status: _pick(m, const ['status', 'payment_status']) ?? 'PENDING',
     );
   }
