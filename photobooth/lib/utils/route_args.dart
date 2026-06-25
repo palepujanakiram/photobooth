@@ -1,6 +1,7 @@
 import '../screens/photo_capture/photo_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../screens/photo_generate/photo_generate_viewmodel.dart';
+import 'print_orientation.dart';
 import 'route_args_parsing.dart';
 
 class ThemeSelectionArgs {
@@ -50,6 +51,7 @@ class GenerateArgs {
 class ResultArgs {
   final List<GeneratedImage> generatedImages;
   final PhotoModel? originalPhoto;
+  final PrintOrientation printOrientation;
   final String? customerName;
   final String? customerPhone;
   final bool customerWhatsappOptIn;
@@ -57,6 +59,7 @@ class ResultArgs {
   const ResultArgs({
     required this.generatedImages,
     this.originalPhoto,
+    this.printOrientation = PrintOrientation.portrait,
     this.customerName,
     this.customerPhone,
     this.customerWhatsappOptIn = false,
@@ -72,6 +75,10 @@ class ResultArgs {
       return ResultArgs(
         generatedImages: generatedImages,
         originalPhoto: originalPhoto,
+        printOrientation: PrintOrientation.tryParse(
+              args['printOrientation']?.toString(),
+            ) ??
+            PrintOrientation.portrait,
         customerName: args['customerName']?.toString(),
         customerPhone: args['customerPhone']?.toString(),
         customerWhatsappOptIn: args['customerWhatsappOptIn'] == true,

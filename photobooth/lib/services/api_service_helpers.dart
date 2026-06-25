@@ -18,7 +18,7 @@ import 'session_manager.dart';
 Future<Map<String, dynamic>> kioskThemesQueryParameters() async {
   final kioskCode = (await KioskManager().getKioskCode())?.trim().toUpperCase();
   final kioskId = SessionManager().currentSession?.kioskId;
-  final qp = <String, dynamic>{};
+  final qp = <String, dynamic>{'active': true};
   if (kioskCode != null && kioskCode.isNotEmpty) {
     qp['kioskCode'] = kioskCode;
   }

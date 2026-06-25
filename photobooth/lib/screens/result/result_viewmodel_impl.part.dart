@@ -907,6 +907,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           files[i],
           printerHost: _r._printerHost,
           printerPort: _r.effectivePrinterPort,
+          printSize: _r._printOrientation.printSize,
         );
       }
     } on PrintException catch (e) {

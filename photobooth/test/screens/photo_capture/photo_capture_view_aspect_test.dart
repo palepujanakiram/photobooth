@@ -5,6 +5,17 @@ import 'package:photobooth/screens/photo_capture/photo_capture_viewmodel.dart';
 import 'package:photobooth/utils/constants.dart';
 
 void main() {
+  test('lockCaptureCardAspectRatio clamps external preview aspect', () {
+    final viewModel = CaptureViewModel();
+    addTearDown(viewModel.dispose);
+
+    viewModel.lockCaptureCardAspectRatio(1.78);
+    expect(viewModel.lockedCaptureCardAspectRatio, closeTo(1.78, 0.001));
+
+    viewModel.lockCaptureCardAspectRatio(0.1);
+    expect(viewModel.lockedCaptureCardAspectRatio, 0.35);
+  });
+
   testWidgets('captureCardAspectRatio uses viewport slot on phone portrait', (
     WidgetTester tester,
   ) async {

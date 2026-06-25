@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../utils/debug_overlay_clipboard.dart';
 import '../../utils/logger.dart';
 
 class DebugLogOverlay extends StatefulWidget {
@@ -18,7 +19,7 @@ class DebugLogOverlay extends StatefulWidget {
 
 class _DebugLogOverlayState extends State<DebugLogOverlay> {
   bool _collapsed = true;
-  bool _errorsOnly = true;
+  bool _errorsOnly = false;
 
   List<String> _filteredLines(List<String> lines) {
     if (!_errorsOnly) return lines;
@@ -60,6 +61,7 @@ class _DebugLogOverlayState extends State<DebugLogOverlay> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
                         'Logs',
@@ -69,41 +71,76 @@ class _DebugLogOverlayState extends State<DebugLogOverlay> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () => setState(() => _errorsOnly = !_errorsOnly),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: Text(
-                          _errorsOnly ? 'Errors' : 'All',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => setState(() => _collapsed = !_collapsed),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: Text(
-                          _collapsed ? 'Expand' : 'Collapse',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11,
-                          ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Wrap(
+                          alignment: WrapAlignment.end,
+                          spacing: 0,
+                          runSpacing: 0,
+                          children: [
+                            TextButton(
+                              onPressed: lines.isEmpty
+                                  ? null
+                                  : () => copyDebugPanelText(
+                                        context,
+                                        _filteredLines(lines).join('\n'),
+                                        feedback: 'Logs copied',
+                                      ),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text(
+                                'Copy',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  setState(() => _errorsOnly = !_errorsOnly),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: Text(
+                                _errorsOnly ? 'Errors' : 'All',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  setState(() => _collapsed = !_collapsed),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: Text(
+                                _collapsed ? 'Expand' : 'Collapse',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],

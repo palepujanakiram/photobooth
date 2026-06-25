@@ -5,7 +5,6 @@ import 'package:photobooth/screens/terms_and_conditions/terms_and_conditions_vie
 import 'package:photobooth/screens/theme_selection/theme_selection_viewmodel.dart';
 import 'package:photobooth/services/session_manager.dart';
 import 'package:photobooth/services/theme_manager.dart';
-import 'package:photobooth/utils/exceptions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../fakes/fake_api_service.dart';
@@ -13,9 +12,8 @@ import '../fakes/fake_kiosk_manager.dart';
 import '../fixtures/theme_fixtures.dart';
 
 class _PatchApi extends FakeApiService {
-  _PatchApi({this.throwPatch = false, this.frames = const []});
+  _PatchApi({this.frames = const []});
 
-  final bool throwPatch;
   final List<KioskFrameModel> frames;
 
   @override
@@ -28,7 +26,6 @@ class _PatchApi extends FakeApiService {
     int? personCount,
     Map<String, dynamic>? framingMetadata,
   }) async {
-    if (throwPatch) throw ApiException('patch fail');
     return {
       'id': sessionId,
       'termsAccepted': true,

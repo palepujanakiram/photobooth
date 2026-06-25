@@ -3,6 +3,16 @@ import 'dart:convert';
 import '../utils/exceptions.dart';
 import 'api_json_scan_utils.dart';
 
+/// Closing `"` for a session PATCH string value (fast path for echoed `data:image/…` URLs).
+int _sessionPatchValueCloseQuoteIndex(String raw, int valueStart) {
+  final innerStart = valueStart + 1;
+  if (innerStart < raw.length && raw.startsWith('data:image/', innerStart)) {
+    // Base64 data URLs do not embed `"`; avoid O(n) escape scanning on multi‑MB echoes.
+    return raw.indexOf('"', innerStart);
+  }
+  return jsonStringCloseQuoteIndex(raw, valueStart);
+}
+
 /// Index of the closing `"` for a JSON string starting at [openQuoteIndex] (`"` itself).
 /// Handles standard escapes (`\"`, `\\`, `\uXXXX`, etc.). Returns -1 if not found.
 int jsonStringCloseQuoteIndex(String raw, int openQuoteIndex) {
@@ -38,7 +48,7 @@ String stripEchoedUserImageUrlField(String raw) {
   final valueStart = ApiJsonScanUtils.skipLeadingWhitespace(raw, colon + 1);
   if (valueStart >= raw.length || raw[valueStart] != '"') return raw;
 
-  final valueCloseIdx = jsonStringCloseQuoteIndex(raw, valueStart);
+  final valueCloseIdx = _sessionPatchValueCloseQuoteIndex(raw, valueStart);
   if (valueCloseIdx < 0) return raw;
 
   final removeStart = ApiJsonScanUtils.indexOfLeadingCommaBefore(raw, keyIdx);
