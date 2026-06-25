@@ -17,6 +17,7 @@ import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/bottom_safe_area.dart';
 import '../../utils/route_args.dart';
 import '../../views/widgets/contact_before_pay_sheet.dart';
+import '../../utils/secure_image_url.dart';
 
 class PhotoReviewScreen extends StatefulWidget {
   const PhotoReviewScreen({super.key});
@@ -288,7 +289,9 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
 
       final generated = GeneratedImage(
         id: transformedImage.id,
-        imageUrl: transformedImage.imageUrl,
+        // Persist auth in the URL so later loads don't 403 if the session is
+        // cleared/expired during pay/print.
+        imageUrl: SecureImageUrl.withSessionId(transformedImage.imageUrl),
         theme: theme,
         isSelected: true,
       );

@@ -121,7 +121,9 @@ List<GeneratedImage> generatedImagesFromParallelResult({
     if (url.isEmpty) continue;
     newImages.add(GeneratedImage(
       id: newImageId(i),
-      imageUrl: url,
+      // Persist authorization in the URL so later image loads still work even
+      // if SessionManager is cleared/expired (e.g. during pay/print flow).
+      imageUrl: SecureImageUrl.withSessionId(url),
       theme: theme,
       isSelected: true,
     ));
