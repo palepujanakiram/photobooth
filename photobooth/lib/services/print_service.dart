@@ -7,8 +7,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../utils/constants.dart';
 import '../utils/exceptions.dart';
 import '../utils/logger.dart';
-import 'printer_api_client.dart';
 import 'error_reporting/error_reporting_manager.dart';
+import '../utils/printer_endpoint.dart' show resolvePrinterApiPath;
 import 'print_service_helpers.dart';
 
 Uri _printerHttpBaseUri(String host, int port) {
@@ -109,19 +109,23 @@ class PrintService {
     XFile imageFile, {
     required String printerHost,
     int printerPort = 80,
+    String? printerPath,
     String printSize = AppConstants.kPrintSizePortrait4x6,
   }) async {
-    final baseUri = _printerHttpBaseUri(printerHost, printerPort);
+    final host = printerHost.trim();
+    final baseUri = _printerHttpBaseUri(host, printerPort);
     final baseUrl = baseUri.origin;
+    final apiPath = resolvePrinterApiPath(printerPath);
 
     try {
-      AppLogger.debug('🖨️ Starting network print to $baseUrl...');
-      ErrorReportingManager.log('🖨️ Network print initiated to $baseUrl');
+      AppLogger.debug('🖨️ Starting network print to $baseUrl$apiPath...');
+      ErrorReportingManager.log('🖨️ Network print initiated to $baseUrl$apiPath');
 
       await ErrorReportingManager.setCustomKeys({
         'print_method': 'network',
-        'printer_host': printerHost.trim(),
+        'printer_host': host,
         'printer_port': printerPort.toString(),
+        'printer_path': apiPath,
         'printer_base_url': baseUrl,
         'image_path': imageFile.path,
       });
@@ -132,22 +136,17 @@ class PrintService {
       }
 
       final dio = createPrinterApiDio(baseUrl);
-      final printerClient =
-          PrinterApiClient(dio, baseUrl: baseUrl, errorLogger: null);
 
-      if (kIsWeb) {
-        await postNetworkPrintWeb(dio, baseUrl, imageBytes, printSize: printSize);
-        ErrorReportingManager.log('✅ Network print completed successfully (web)');
-        return;
-      }
-
-      await postNetworkPrintMobile(
-        printerClient: printerClient,
+      final deviceId =
+          kIsWeb ? 'flutter-photobooth-web' : 'flutter-photobooth-mobile';
+      await postNetworkPrintMultipart(
+        dio: dio,
+        apiPath: apiPath,
         imageBytes: imageBytes,
-        baseUrl: baseUrl,
         printSize: printSize,
+        deviceId: deviceId,
       );
-      ErrorReportingManager.log('✅ Network print completed successfully (mobile)');
+      ErrorReportingManager.log('✅ Network print completed successfully');
     } on DioException catch (e, stackTrace) {
       if (e.response?.data != null) {
         AppLogger.error(

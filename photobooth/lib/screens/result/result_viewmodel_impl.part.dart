@@ -356,6 +356,20 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     }
   }
 
+  /// Free checkout (payments disabled on kiosk): print immediately after BEHOLD.
+  Future<void> onFreeCheckoutPrint() async {
+    _r._fcmPaymentPushSuccess = true;
+    _r._fcmPaymentStatusDetail = 'Printing your photos…';
+    notifyListeners();
+    try {
+      await silentPrintToNetwork().timeout(const Duration(minutes: 2));
+    } on TimeoutException {
+      _r._errorMessage =
+          'Printing is taking longer than expected. Please check the printer connection and try again.';
+    }
+    notifyListeners();
+  }
+
   /// FCM or poll: updates inline Pay & Collect; on approval runs [silentPrintToNetwork] once.
   ///
   /// Also kicks off [ensurePostPaymentShareArtifacts] in parallel with print, so the
@@ -884,16 +898,31 @@ mixin _ResultViewModelImpl on ChangeNotifier {
 
   /// Silent print all images to network printer
   Future<void> silentPrintToNetwork() async {
+    _r.refreshPrinterFromSettings();
+
+    if (_r._appSettingsManager?.settings?.printerEnabled == false) {
+      _r._errorMessage = 'Printing is disabled in booth settings';
+      notifyListeners();
+      return;
+    }
+
     if (_r._printerHost.isEmpty) {
       _r._errorMessage = 'Please enter a printer address';
       notifyListeners();
       return;
     }
 
-    // Download files first if needed
-    if (!kIsWeb && _downloadedFilesList.length != _r._generatedImages.length) {
-      final success = await _ensureAllFilesDownloaded('silent');
-      if (!success) return;
+    if (_r._downloadedFilesList.length != _r._generatedImages.length) {
+      if (kIsWeb) {
+        for (final image in _r._generatedImages) {
+          if (!_r._downloadedFiles.containsKey(image.id)) {
+            _r._downloadedFiles[image.id] = XFile(image.imageUrl);
+          }
+        }
+      } else {
+        final success = await _ensureAllFilesDownloaded('silent');
+        if (!success) return;
+      }
     }
 
     _r._isSilentPrinting = true;
@@ -902,11 +931,15 @@ mixin _ResultViewModelImpl on ChangeNotifier {
 
     try {
       final files = _downloadedFilesList;
+      if (files.isEmpty) {
+        throw PrintException('No images available to print');
+      }
       for (int i = 0; i < files.length; i++) {
         await _r._printService.printImageToNetworkPrinter(
           files[i],
           printerHost: _r._printerHost,
           printerPort: _r.effectivePrinterPort,
+          printerPath: _r.effectivePrinterPath,
           printSize: _r._printOrientation.printSize,
         );
       }

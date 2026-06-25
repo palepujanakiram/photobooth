@@ -82,6 +82,7 @@ class _ResultScreenState extends State<ResultScreen> {
       customerPhone: _customerPhone,
       customerWhatsappOptIn: _customerWhatsappOptIn,
     );
+    _viewModel!.refreshPrinterFromSettings();
     _isInitialized = true;
     unawaited(_initPaymentMode());
   }
@@ -93,6 +94,9 @@ class _ResultScreenState extends State<ResultScreen> {
     final paymentsEnabled = _paymentsEnabledOverride ?? true;
     if (!paymentsEnabled) {
       PaymentPushCoordinator.instance.registerResultScreenCallback(null);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_triggerFreeModePrint());
+      });
       return;
     }
 
@@ -114,6 +118,18 @@ class _ResultScreenState extends State<ResultScreen> {
       _viewModel?.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _triggerFreeModePrint() async {
+    if (!mounted || _viewModel == null) return;
+    await _viewModel!.onFreeCheckoutPrint();
+    if (!mounted || _viewModel == null) return;
+    if (_viewModel!.hasError) {
+      AppSnackBar.showError(context, _viewModel!.errorMessage!);
+      return;
+    }
+    AppSnackBar.showSuccess(context, AppStrings.printJobSentSuccess);
+    await _navigateToThankYouIfEligible(_viewModel!);
   }
 
   /// FCM payment push: inline status under Pay & Collect; silent print on approval.
@@ -520,7 +536,8 @@ class _ResultScreenState extends State<ResultScreen> {
     return ChangeNotifierProvider.value(
       value: _viewModel!,
       child: Consumer2<ResultViewModel, AppSettingsManager>(
-        builder: (context, viewModel, _, child) {
+        builder: (context, viewModel, settingsManager, child) {
+          viewModel.refreshPrinterFromSettings();
           _scheduleThankYouNavigationIfNeeded(viewModel);
           return _buildPayScreenBody(
             context,

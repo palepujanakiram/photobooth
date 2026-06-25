@@ -9,10 +9,7 @@ import 'alice_inspector.dart';
 import 'api_logging_interceptor.dart';
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
 import 'error_reporting/error_reporting_manager.dart';
-import 'file_helper.dart';
 import 'kiosk_session_auth.dart';
-import 'print_file.dart';
-import 'printer_api_client.dart';
 
 /// Resolves image bytes from a local file or http(s) URL for network print.
 Future<List<int>> loadImageBytesForNetworkPrint(XFile imageFile) async {
@@ -73,11 +70,12 @@ Dio createPrinterApiDio(String baseUrl) {
   return dio;
 }
 
-Future<void> postNetworkPrintWeb(
-  Dio dio,
-  String baseUrl,
-  List<int> imageBytes, {
+Future<void> postNetworkPrintMultipart({
+  required Dio dio,
+  required String apiPath,
+  required List<int> imageBytes,
   String printSize = AppConstants.kPrintSizePortrait4x6,
+  required String deviceId,
 }) async {
   final formData = FormData.fromMap({
     'imageFile': MultipartFile.fromBytes(
@@ -87,43 +85,15 @@ Future<void> postNetworkPrintWeb(
     'printSize': printSize,
     'quantity': 1,
     'imageEdited': false,
-    'DeviceId': 'flutter-photobooth-web',
+    'DeviceId': deviceId,
   });
-  AppLogger.debug('🖨️ Sending print request to $baseUrl/api/PrintImage');
+  AppLogger.debug('🖨️ Sending print request to ${dio.options.baseUrl}$apiPath');
   await dio.post(
-    '/api/PrintImage',
+    apiPath,
     data: formData,
     options: Options(contentType: 'multipart/form-data'),
   );
-  AppLogger.debug('✅ Print request sent successfully (web)');
-}
-
-Future<void> postNetworkPrintMobile({
-  required PrinterApiClient printerClient,
-  required List<int> imageBytes,
-  required String baseUrl,
-  String printSize = AppConstants.kPrintSizePortrait4x6,
-}) async {
-  final tempDirPath = await FileHelper.getTempDirectoryPath();
-  final fileName = 'print_${DateTime.now().millisecondsSinceEpoch}.jpg';
-  final filePath = '$tempDirPath/$fileName';
-  final PrintFile tempFile = createPrintFile(filePath);
-  await tempFile.writeAsBytes(imageBytes);
-  AppLogger.debug('🖨️ Sending print request to $baseUrl/api/PrintImage');
-  try {
-    await printerClient.printImage(
-      tempFile.retrofitFile,
-      printSize,
-      1,
-      false,
-      'flutter-photobooth-mobile',
-    );
-    AppLogger.debug('✅ Print request sent successfully (mobile)');
-  } finally {
-    if (tempFile.existsSync()) {
-      await tempFile.delete();
-    }
-  }
+  AppLogger.debug('✅ Print request sent successfully');
 }
 
 Never throwMappedNetworkPrintDioError(DioException e, String baseUrl) {
