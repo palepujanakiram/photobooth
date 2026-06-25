@@ -1,0 +1,22 @@
+name: face_count
+description: >-
+  On-device face counting — ML Kit on Android, Apple Vision on iOS (simulator-safe;
+  google_mlkit iOS pods lack arm64-simulator slices on iOS 26+).
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.photobooth.face_count
+        pluginClass: FaceCountPlugin
+      ios:
+        pluginClass: FaceCountPlugin
