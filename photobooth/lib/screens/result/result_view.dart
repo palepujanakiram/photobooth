@@ -481,9 +481,13 @@ class _ResultScreenState extends State<ResultScreen> {
                               ),
                             ),
                             if (viewModel.fcmPaymentPushSuccess != true)
-                              const CenteredMaxWidth(
+                              CenteredMaxWidth(
                                 maxWidth: 360,
-                                child: DeleteMyPhotosButton(),
+                                child: DeleteMyPhotosButton(
+                                  onBeforeDelete: () async {
+                                    _viewModel?.stopPaymentPolling();
+                                  },
+                                ),
                               ),
                           ],
                         ),
@@ -692,10 +696,34 @@ class _ResultScreenState extends State<ResultScreen> {
     if (!hasPayload(viewModel.qrImageUrl) &&
         !hasPayload(viewModel.upiLink) &&
         !hasPayload(viewModel.paymentLink)) {
-      return Icon(
-        CupertinoIcons.qrcode,
-        size: 56,
-        color: Colors.grey.shade700,
+      return Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              CupertinoIcons.qrcode,
+              size: 48,
+              color: Colors.grey.shade600,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              viewModel.paymentInitError ??
+                  'UPI QR is not ready yet. Tap Retry or ask staff.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: viewModel.paymentInitInProgress
+                  ? null
+                  : () => viewModel.retryLoadPaymentQr(
+                        customerPhone: _customerPhone,
+                      ),
+              child: const Text('Retry QR'),
+            ),
+          ],
+        ),
       );
     }
     return KioskPaymentQrDisplay(

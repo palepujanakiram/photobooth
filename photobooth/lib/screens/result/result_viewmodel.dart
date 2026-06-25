@@ -26,12 +26,12 @@ import '../../services/fcm_service.dart';
 import '../../services/payment_push_coordinator.dart';
 import '../../services/whatsapp_push_coordinator.dart';
 import '../../models/kiosk_share_link_model.dart';
+import '../../models/payment_initiate_result.dart';
 import 'kiosk_receipt_share_fallback.dart';
+import 'result_payment_poll_helpers.dart';
 import 'result_viewmodel_share_helpers.dart';
 
 part 'result_viewmodel_impl.part.dart';
-
-enum _PollVerdict { approved, failed, pending }
 
 /// Outcome of the post-payment receipt POST, derived from the backend's
 /// `{ whatsappQueued, whatsappSkipReason, pdfError, ... }` response.
@@ -103,10 +103,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   String? _upiLink;
   String? _paymentInitError;
   bool _paymentInitInProgress = false;
-
-  /// Set when an FCM payment push is handled on the Pay & Collect screen (inline UI, no dialog).
-  String? _fcmPaymentStatusDetail;
-  bool? _fcmPaymentPushSuccess;
+  int _paymentInitiateAttempts = 0;
 
   /// Server payment id from initiate; used to poll when FCM is missing (emulator / tray only).
   String? _activePaymentId;
@@ -119,6 +116,10 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   int _paymentIdConsecutiveFailureTicks = 0;
   int _sessionConsecutiveFailureTicks = 0;
   bool _paymentOutcomeHandled = false;
+
+  /// Set when an FCM payment push is handled on the Pay & Collect screen (inline UI, no dialog).
+  String? _fcmPaymentStatusDetail;
+  bool? _fcmPaymentPushSuccess;
 
   bool _postPaymentSharePrepared = false;
   Future<void>? _postPaymentInflight;
@@ -161,6 +162,26 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   String? get upiLink => _upiLink;
   String? get paymentInitError => _paymentInitError;
   bool get paymentInitInProgress => _paymentInitInProgress;
+  bool get hasPaymentQrPayload => paymentQrPayloadPresent(
+        qrImageUrl: _qrImageUrl,
+        upiLink: _upiLink,
+        paymentLink: _paymentLink,
+      );
+
+  /// Stops payment/session polling (e.g. before customer deletes photos).
+  void stopPaymentPolling() {
+    _paymentIdPollTimer?.cancel();
+    _paymentIdPollTimer = null;
+    _sessionPollTimer?.cancel();
+    _sessionPollTimer = null;
+  }
+
+  /// Re-runs payment initiate (e.g. when the first response had an id but no QR).
+  Future<void> retryLoadPaymentQr({String? customerPhone}) {
+    _paymentInitiateAttempts = 0;
+    _activePaymentId = null;
+    return loadPaymentQr(customerPhone: customerPhone, force: true);
+  }
 
   String? get fcmPaymentStatusDetail => _fcmPaymentStatusDetail;
   bool? get fcmPaymentPushSuccess => _fcmPaymentPushSuccess;
