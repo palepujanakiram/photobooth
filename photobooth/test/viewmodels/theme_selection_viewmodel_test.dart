@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/theme_selection/theme_selection_viewmodel.dart';
 import 'package:photobooth/services/session_manager.dart';
 import 'package:photobooth/services/theme_manager.dart';
+import 'package:photobooth/utils/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../fakes/fake_api_service.dart';
@@ -46,6 +47,31 @@ void main() {
     await vm.setUseCardGridLayout(true);
     expect(vm.useCardGridLayout, isTrue);
     vm.dispose();
+  });
+
+  test('themeCarouselAutoScroll defaults off and persists', () async {
+    final vm = ThemeViewModel(apiService: FakeApiService());
+    await vm.loadLayoutPreference();
+    expect(vm.themeCarouselAutoScroll, isFalse);
+
+    await vm.setThemeCarouselAutoScroll(true);
+    expect(vm.themeCarouselAutoScroll, isTrue);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(
+      prefs.getBool(AppConstants.kPrefsThemeCarouselAutoScroll),
+      isTrue,
+    );
+
+    final vm2 = ThemeViewModel(apiService: FakeApiService());
+    await vm2.loadLayoutPreference();
+    expect(vm2.themeCarouselAutoScroll, isTrue);
+
+    await vm2.toggleThemeCarouselAutoScroll();
+    expect(vm2.themeCarouselAutoScroll, isFalse);
+
+    vm.dispose();
+    vm2.dispose();
   });
 
   test('updateSessionWithTheme requires session', () async {

@@ -18,10 +18,15 @@ void main() {
     await tm.fetchThemes();
     final vm = ThemeSlideshowViewModel(themeManager: tm);
     await vm.fetchThemes();
+<<<<<<< HEAD
     final themeUrl = resolveThemeSampleImageUrl(
       tm.themes.first.sampleImageUrl!,
     );
     expect(vm.getThemeForImageUrl(themeUrl)?.id, 't1');
+=======
+    // sampleTheme sets sampleImageUrl = '/t1.jpg'; resolve to absolute URL for matching.
+    expect(vm.getThemeForImageUrl(resolveThemeSampleImageUrl('/t1.jpg'))?.id, 't1');
+>>>>>>> main
     expect(vm.getThemeForImageUrl(''), isNull);
     vm.dispose();
   });

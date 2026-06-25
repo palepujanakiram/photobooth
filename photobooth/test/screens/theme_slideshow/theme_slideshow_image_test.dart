@@ -21,7 +21,11 @@ void main() {
   testWidgets('ThemeSlideshowImage renders network path via CachedNetworkImage',
       (tester) async {
     await tester.pumpWidget(
+<<<<<<< HEAD
       const MaterialApp(
+=======
+      MaterialApp(
+>>>>>>> main
         home: ThemeSlideshowImage(
           path: 'https://example.com/photo.jpg',
           width: 100,
@@ -36,7 +40,11 @@ void main() {
   testWidgets('ThemeSlideshowImage with asset path shows Image.asset',
       (tester) async {
     await tester.pumpWidget(
+<<<<<<< HEAD
       const MaterialApp(
+=======
+      MaterialApp(
+>>>>>>> main
         home: ThemeSlideshowImage(
           path: 'assets/images/placeholder.jpg',
           width: 100,

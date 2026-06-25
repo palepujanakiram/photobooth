@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/app_settings_manager.dart';
+import '../../services/session_manager.dart';
 import '../../services/whatsapp_push_coordinator.dart';
 import '../../utils/constants.dart';
 import '../../utils/logger.dart';
@@ -54,6 +55,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
       _viewModel = ResultViewModel(
         generatedImages: parsed.generatedImages,
         originalPhoto: parsed.originalPhoto,
+        printOrientation: SessionManager().printOrientation,
         appSettingsManager: context.read<AppSettingsManager>(),
       );
       _ownsViewModel = true;

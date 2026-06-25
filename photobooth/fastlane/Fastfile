@@ -28,8 +28,8 @@ APP_STORE_CONNECT_KEY_ID = '3Y28UQD6SG'
 APP_STORE_CONNECT_ISSUER_ID = 'cbbdda4e-337b-47d3-970b-297d14aee134'
 APP_STORE_CONNECT_API_KEY_PATH = File.expand_path('credentials/AuthKey_3Y28UQD6SG.p8', __dir__)
 
-def in_photobooth_root
-  Dir.chdir(photobooth_root) { yield }
+def in_photobooth_root(&block)
+  Dir.chdir(photobooth_root, &block)
 end
 
 def find_pubspec_path
@@ -125,6 +125,7 @@ def android_aab_path
   File.join(photobooth_root, 'build/app/outputs/bundle/release/app-release.aab')
 end
 
+<<<<<<< HEAD
 def ios_ipa_path
   Dir.glob(File.join(photobooth_root, 'build/ios/ipa/*.ipa')).first
 end
@@ -142,6 +143,33 @@ def validate_android_distribution_config!
       'Place the service account JSON there or update PLAY_STORE_JSON_KEY_PATH in Fastfile.'
     )
   end
+=======
+def validate_firebase_config!
+  return unless FIREBASE_TOKEN.nil? || FIREBASE_TOKEN.empty? || FIREBASE_TOKEN.include?('your_firebase_ci_token')
+
+  UI.user_error!('Set FIREBASE_TOKEN in fastlane/Fastfile (from `firebase login:ci`).')
+end
+
+def validate_firebase_app_id!
+  return unless FIREBASE_ANDROID_APP_ID.nil? || FIREBASE_ANDROID_APP_ID.empty?
+
+  UI.user_error!('Set FIREBASE_ANDROID_APP_ID in fastlane/Fastfile.')
+end
+
+def validate_play_store_key!
+  return if File.exist?(PLAY_STORE_JSON_KEY_PATH)
+
+  UI.user_error!(
+    "Play Store key not found at #{PLAY_STORE_JSON_KEY_PATH}. " \
+    'Place the service account JSON there or update PLAY_STORE_JSON_KEY_PATH in Fastfile.'
+  )
+end
+
+def validate_distribution_config!
+  validate_firebase_config!
+  validate_firebase_app_id!
+  validate_play_store_key!
+>>>>>>> main
 end
 
 def validate_ios_distribution_config!

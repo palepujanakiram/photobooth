@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,7 +9,6 @@ import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/exceptions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../fixtures/theme_fixtures.dart';
 import '../helpers/mock_api_dio.dart';
 import '../helpers/tiny_jpeg.dart';
 

@@ -35,6 +35,8 @@ class AppSettingsManager extends ChangeNotifier {
 
   Future<void> fetchSettings({bool forceRefresh = false}) async {
     if (!forceRefresh && _settings != null) {
+      // Keep [AppRuntimeConfig] in sync when callers reuse cached settings.
+      AppRuntimeConfig.instance.applyFromSettings(_settings);
       return;
     }
 

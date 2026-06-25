@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show ValueListenable, kIsWeb;
 
+import 'coalesced_string_list_notifier.dart';
 import 'constants.dart';
 import 'logger_stack_frame.dart';
 
@@ -19,10 +20,11 @@ enum LogLevel {
 /// A CocoaLumberjack-style logging utility that uses Flutter's recommended `dart:developer` log.
 class AppLogger {
   static const int _maxBufferedLines = 250;
-  static final ValueNotifier<List<String>> _recentLines =
-      ValueNotifier<List<String>>(<String>[]);
+  static final CoalescedStringListNotifier _recentLinesBuffer =
+      CoalescedStringListNotifier(maxLines: _maxBufferedLines);
 
-  static ValueListenable<List<String>> get recentLinesListenable => _recentLines;
+  static ValueListenable<List<String>> get recentLinesListenable =>
+      _recentLinesBuffer.lines;
 
   static void log(
     LogLevel level,
@@ -30,20 +32,31 @@ class AppLogger {
     Object? error,
     StackTrace? stackTrace,
   }) {
-    final site = parseLoggerCallSite(StackTrace.current);
-    final fileInfo = site?.location ?? 'unknown';
+    // Stack walks are costly on web when logging is very chatty during upload.
+    final fileInfo = kIsWeb
+        ? 'web'
+        : (parseLoggerCallSite(StackTrace.current)?.location ?? 'unknown');
     final formattedMessage = '[${level.label}] $fileInfo - $message';
-    _appendToRingBuffer(formattedMessage, error: error, stackTrace: stackTrace);
+    final logToConsole = AppConstants.kEnableLogOutput;
+    final logToHud = AppConstants.kShowDebugHud;
+    if (!logToConsole && !logToHud) return;
 
-    if (AppConstants.kEnableLogOutput) {
-      developer.log(
+    if (logToHud) {
+      _appendToRingBuffer(
         formattedMessage,
-        name: 'AppLogger',
-        level: level.value,
         error: error,
         stackTrace: stackTrace,
       );
     }
+    if (!logToConsole) return;
+
+    developer.log(
+      formattedMessage,
+      name: 'AppLogger',
+      level: level.value,
+      error: error,
+      stackTrace: stackTrace,
+    );
   }
 
   static void _appendToRingBuffer(
@@ -57,17 +70,12 @@ class AppLogger {
             '[+${formattedMessage.length - maxBufferedChars} chars]'
         : formattedMessage;
 
-    final current = _recentLines.value;
-    final next = <String>[
-      ...current,
+    _recentLinesBuffer.appendAll(<String>[
       forBuffer,
       if (error != null) '    ↳ error: $error',
       if (stackTrace != null)
         '    ↳ stack: ${stackTrace.toString().split('\n').first}',
-    ];
-    _recentLines.value = next.length > _maxBufferedLines
-        ? next.sublist(next.length - _maxBufferedLines)
-        : next;
+    ]);
   }
 
   static void debug(String message, {Object? error, StackTrace? stackTrace}) {

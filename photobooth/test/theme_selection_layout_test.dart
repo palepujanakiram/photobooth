@@ -9,8 +9,29 @@ void main() {
         width: 400,
         height: 800,
       ),
-      0.76,
+      0.92,
     );
+  });
+
+  test('carouselViewportFraction single theme uses full width', () {
+    expect(
+      ThemeSelectionLayoutMetrics.carouselViewportFraction(
+        width: 400,
+        height: 800,
+        themeCount: 1,
+      ),
+      1.0,
+    );
+  });
+
+  test('pickerCardSize fills portrait slot', () {
+    final size = ThemeSelectionLayoutMetrics.pickerCardSize(
+      maxWidth: 360,
+      maxHeight: 520,
+      aspect: 3 / 4.5,
+    );
+    expect(size.height, closeTo(520, 0.01));
+    expect(size.width, closeTo(346.67, 0.1));
   });
 
   test('gridCrossAxisCount tablet landscape', () {

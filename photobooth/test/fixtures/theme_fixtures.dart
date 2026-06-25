@@ -1,5 +1,4 @@
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
-import 'package:photobooth/services/api_service.dart';
 import 'package:photobooth/utils/exceptions.dart';
 
 import '../fakes/fake_api_service.dart';

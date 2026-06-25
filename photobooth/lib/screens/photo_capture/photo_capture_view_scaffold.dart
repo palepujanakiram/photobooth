@@ -1,12 +1,7 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
 
-import '../../services/app_settings_manager.dart';
-import '../../views/widgets/debug_ram_monitor_overlay.dart';
-import '../../views/widgets/debug_log_overlay.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
@@ -59,10 +54,10 @@ class PhotoCaptureScaffold extends StatelessWidget {
               child: FullScreenLoader(
                 text: 'Processing Your Photo',
                 loaderColor: Colors.blue,
-                elapsedSeconds: viewModel.uploadElapsedSeconds,
+                autonomousElapsed: true,
+                subtitle: viewModel.uploadStatusMessage ?? 'Please wait…',
               ),
             ),
-          const _PhotoCaptureDebugOverlays(),
         ],
       ),
     );
@@ -108,14 +103,14 @@ class PhotoCaptureScaffold extends StatelessWidget {
         onPressed: onBack,
       ),
       actions: [
-        if (viewModel.availableCameras.length > 1)
-          IconButton(
-            icon: Icon(
-              CupertinoIcons.camera_rotate,
-              color: _cameraActionsDisabled ? Colors.grey : Colors.white,
-            ),
-            onPressed: _cameraActionsDisabled ? null : onSelectCamera,
+        IconButton(
+          icon: Icon(
+            CupertinoIcons.camera_rotate,
+            color: _cameraActionsDisabled ? Colors.grey : Colors.white,
           ),
+          tooltip: 'Select camera',
+          onPressed: _cameraActionsDisabled ? null : onSelectCamera,
+        ),
         IconButton(
           icon: Icon(
             CupertinoIcons.rotate_right,
@@ -132,36 +127,6 @@ class PhotoCaptureScaffold extends StatelessWidget {
         ),
         const AppBarAliceAction(),
       ],
-    );
-  }
-}
-
-class _PhotoCaptureDebugOverlays extends StatelessWidget {
-  const _PhotoCaptureDebugOverlays();
-
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<AppSettingsManager>(
-      builder: (context, appSettings, _) {
-        if (kIsWeb || appSettings.settings?.showGenerationCommentary != true) {
-          return const SizedBox.shrink();
-        }
-        final top = MediaQuery.paddingOf(context).top + kToolbarHeight + 6;
-        return Stack(
-          children: [
-            Positioned(
-              left: 10,
-              top: top,
-              child: const DebugRamMonitorOverlay(),
-            ),
-            Positioned(
-              left: 10,
-              top: top + 52,
-              child: const DebugLogOverlay(),
-            ),
-          ],
-        );
-      },
     );
   }
 }

@@ -3,12 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http_mock_adapter/http_mock_adapter.dart';
 import 'package:photobooth/services/api_service.dart';
 import 'package:photobooth/services/session_manager.dart';
-import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/exceptions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../helpers/mock_api_dio.dart';
-import '../helpers/tiny_jpeg.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

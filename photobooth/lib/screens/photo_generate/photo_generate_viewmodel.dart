@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show ImmutableBuffer, instantiateImageCodecFromBuffer;
+
+import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart';
 import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
@@ -9,11 +12,13 @@ import '../theme_selection/theme_model.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
+import '../../utils/print_orientation.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
 import '../../services/generation_display_preferences.dart';
 import '../../models/parallel_generation_result.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
+import '../../utils/web_flow_trace.dart';
 
 part 'photo_generate_viewmodel_helpers.dart';
 
@@ -214,6 +219,9 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   PhotoModel? _originalPhoto;
   ThemeModel? _selectedTheme;
   List<GeneratedImage> _generatedImages = [];
+  double? _beholdHeroAspectRatio;
+  PrintOrientation _printOrientation = PrintOrientation.portrait;
+  bool _printOrientationTouched = false;
   bool _isGenerating = false;
   bool _isLoadingMore = false;
   String? _errorMessage;
@@ -260,10 +268,20 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     AppSettingsManager? appSettingsManager,
   })  : _apiService = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager(),
-        _appSettingsManager = appSettingsManager;
+        _appSettingsManager = appSettingsManager {
+    _printOrientation = _sessionManager.printOrientation;
+  }
 
   // Getters
   PhotoModel? get originalPhoto => _originalPhoto;
+
+  /// Width/height of the capture or generated hero (for BEHOLD card sizing).
+  double? get beholdHeroAspectRatio => _beholdHeroAspectRatio;
+
+  /// Print layout for preview + physical print (solo default portrait).
+  PrintOrientation get printOrientation => _printOrientation;
+
+  int? get sessionPersonCount => _sessionManager.personCount;
   ThemeModel? get selectedTheme => _selectedTheme;
   List<GeneratedImage> get generatedImages => _generatedImages;
   bool get isGenerating => _isGenerating;
@@ -530,6 +548,54 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _triesRemaining = (_maxRegenerationsAllowed - used)
         .clamp(0, _maxRegenerationsAllowed);
     _selectedHeroStampId = null;
+    _applyDefaultPrintOrientationFromSession();
+    unawaited(refreshBeholdHeroAspectRatio());
+    notifyListeners();
+  }
+
+  void _applyDefaultPrintOrientationFromSession() {
+    if (_printOrientationTouched) return;
+    _printOrientation = _sessionManager.printOrientation;
+  }
+
+  /// Customer override for print layout (updates preview frame + session).
+  void setPrintOrientation(PrintOrientation orientation) {
+    if (_printOrientation == orientation) return;
+    _printOrientationTouched = true;
+    _printOrientation = orientation;
+    _sessionManager.setPrintOrientation(orientation);
+    notifyListeners();
+    unawaited(_syncPrintOrientationToServer());
+  }
+
+  Future<void> _syncPrintOrientationToServer() async {
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null) return;
+    try {
+      await _apiService.updateSession(
+        sessionId: sessionId,
+        framingMetadata: <String, dynamic>{
+          'orientation': _printOrientation.apiValue,
+          'personCount': _sessionManager.personCount,
+          'mode': 'customer',
+        },
+      );
+    } catch (e) {
+      AppLogger.debug('Could not sync print orientation: $e');
+    }
+  }
+
+  /// Ensures server/session have latest orientation before payment/print.
+  Future<void> syncPrintOrientationBeforeCheckout() async {
+    _sessionManager.setPrintOrientation(_printOrientation);
+    await _syncPrintOrientationToServer();
+  }
+
+  /// Decode capture still aspect so BEHOLD matches photo orientation.
+  Future<void> refreshBeholdHeroAspectRatio() async {
+    final aspect = await aspectRatioFromXFile(_originalPhoto?.imageFile);
+    if (aspect == null || aspect == _beholdHeroAspectRatio) return;
+    _beholdHeroAspectRatio = aspect;
     notifyListeners();
   }
 
@@ -736,6 +802,17 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   void _handleGenerationSseEvent(String event, Map<String, dynamic> data) {
     _ingestRunIdFromSsePayload(data);
+    if (event == 'step' ||
+        event == 'image_complete' ||
+        event == 'complete' ||
+        event == 'image_failed') {
+      final step = data['step'] as String?;
+      final idx = data['index'];
+      WebFlowTrace.log(
+        'SSE',
+        '$event${step != null ? ' step=$step' : ''}${idx != null ? ' idx=$idx' : ''}',
+      );
+    }
     switch (event) {
       case 'status':
       case 'start':
@@ -887,8 +964,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     assignSucceeded?.call(true);
     _lastTransformationRunId = parallel.runId;
     try {
-      await _refreshGenerationRunStepsNow()
-          .timeout(const Duration(milliseconds: 900));
+      await _refreshGenerationRunStepsNow();
     } catch (_) {}
     final newImages = generatedImagesFromParallelResult(
       parallel: parallel,
@@ -899,6 +975,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _ensureNewestAlwaysSelected();
     _triesRemaining--;
     _clearHeroStamp();
+    unawaited(refreshBeholdHeroAspectRatio());
     onSuccessLog?.call();
     return true;
   }
@@ -929,8 +1006,16 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     _startGenerationRunPolling();
 
     try {
+      WebFlowTrace.log(
+        'GENERATE',
+        'begin theme=${_selectedTheme!.name} parallel=$_parallelSlotCount attempt=$_nextGenerateAttempt',
+      );
       try {
         await _appSettingsManager?.fetchSettings();
+        WebFlowTrace.log(
+          'GENERATE',
+          'settings_loaded parallel=$_parallelSlotCount',
+        );
       } catch (_) {
         // Use [resolveParallelImageCount] fallback if settings unavailable.
       }
@@ -938,10 +1023,9 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       ErrorReportingManager.log('Starting image generation');
       
       _updateProgress('Transforming your look...');
+      WebFlowTrace.log('GENERATE', 'api_call_start');
 
-      const generateTimeout = Duration(seconds: 120);
-      final parallel = await _apiService
-          .generateImages(
+      final parallel = await _apiService.generateImages(
         sessionId: _sessionManager.sessionId!,
         count: _parallelSlotCount,
         attempt: _nextGenerateAttempt,
@@ -949,17 +1033,16 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         themeId: _selectedTheme!.id,
         onProgress: (message) {
           _updateProgress(message);
+          WebFlowTrace.log('GENERATE', 'progress | $message');
         },
         onSseEvent: _parallelSlotCount > 1 ? _handleGenerationSseEvent : null,
-      )
-          .timeout(
-        generateTimeout,
-        onTimeout: () => throw TimeoutException(
-          'Generation timed out after ${generateTimeout.inSeconds} seconds',
-        ),
       );
 
       _stopTimer();
+      WebFlowTrace.log(
+        'GENERATE',
+        'api_call_done images=${parallel.imageUrlsBySlot.where((u) => u.isNotEmpty).length} elapsed=${_elapsedSeconds}s',
+      );
 
       // If the user pressed back/cancel while the request was in-flight, ignore late results.
       if (_isCancelled) {
@@ -967,7 +1050,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         return false;
       }
 
-      return await _completeParallelGeneration(
+      final ok = await _completeParallelGeneration(
         parallel,
         theme: _selectedTheme!,
         onSuccessLog: () {
@@ -976,11 +1059,13 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         },
         assignSucceeded: (v) => succeeded = v,
       );
-    } on TimeoutException {
-      _errorMessage = 'Generation took too long. Please try again.';
-      return false;
+      if (ok) {
+        WebFlowTrace.log('OUTPUT', 'result_ready images=${_generatedImages.length}');
+      }
+      return ok;
     } catch (e, stackTrace) {
       _stopTimer();
+      WebFlowTrace.log('GENERATE', 'ERROR $e');
       AppLogger.error('❌ Error generating image: $e');
       await ErrorReportingManager.recordError(
         e,
@@ -1038,28 +1123,17 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       
       AppLogger.debug('🎨 Trying different style with theme: ${newTheme.name}');
       
-      // Update session with the new theme (30s timeout)
-      const updateTimeout = Duration(seconds: 30);
+      // Update session with the new theme
       try {
-        final patch = await _apiService
-            .updateSession(
-              sessionId: _sessionManager.sessionId!,
-              selectedThemeId: newTheme.id,
-            )
-            .timeout(
-              updateTimeout,
-              onTimeout: () => throw TimeoutException(
-                'Update theme timed out after ${updateTimeout.inSeconds} seconds',
-              ),
-            );
+        final patch = await _apiService.updateSession(
+          sessionId: _sessionManager.sessionId!,
+          selectedThemeId: newTheme.id,
+        );
         _sessionManager.setSessionFromResponse(patch);
         _refreshMaxRegenerationsFromSettings();
         final usedAfter = _sessionManager.currentSession?.attemptsUsed ?? 0;
         _triesRemaining = (_maxRegenerationsAllowed - usedAfter)
             .clamp(0, _maxRegenerationsAllowed);
-      } on TimeoutException {
-        _errorMessage = 'Request took too long. Please try again.';
-        return false;
       } catch (e) {
         _errorMessage = 'Failed to update theme: $e';
         return false;
@@ -1073,9 +1147,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       
       _updateProgress('Transforming your look...');
 
-      const generateTimeout = Duration(seconds: 120);
-      final parallel = await _apiService
-          .generateImages(
+      final parallel = await _apiService.generateImages(
         sessionId: _sessionManager.sessionId!,
         count: _parallelSlotCount,
         attempt: _nextGenerateAttempt,
@@ -1085,12 +1157,6 @@ class PhotoGenerateViewModel extends ChangeNotifier {
           _updateProgress(message);
         },
         onSseEvent: _parallelSlotCount > 1 ? _handleGenerationSseEvent : null,
-      )
-          .timeout(
-        generateTimeout,
-        onTimeout: () => throw TimeoutException(
-          'Generation timed out after ${generateTimeout.inSeconds} seconds',
-        ),
       );
 
       _stopTimer();
@@ -1106,9 +1172,6 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         theme: newTheme,
         assignSucceeded: (v) => succeeded = v,
       );
-    } on TimeoutException {
-      _errorMessage = 'Generation took too long. Please try again.';
-      return false;
     } catch (e, stackTrace) {
       _stopTimer();
       AppLogger.error('❌ Error trying different style: $e');
