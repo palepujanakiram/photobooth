@@ -9,6 +9,8 @@ import '../utils/exceptions.dart';
 import '../utils/logger.dart';
 import 'error_reporting/error_reporting_manager.dart';
 import '../utils/printer_endpoint.dart' show resolvePrinterApiPath;
+import 'network_print_post_stub.dart'
+    if (dart.library.html) 'network_print_post_browser.dart';
 import 'print_service_helpers.dart';
 
 Uri _printerHttpBaseUri(String host, int port) {
@@ -154,12 +156,10 @@ class PrintService {
         throw PrintException('Image file is empty');
       }
 
-      final dio = createPrinterApiDio(baseUrl);
-
       final deviceId =
           kIsWeb ? 'flutter-photobooth-web' : 'flutter-photobooth-mobile';
-      await postNetworkPrintMultipart(
-        dio: dio,
+      await postLanPrinterMultipart(
+        baseUrl: baseUrl,
         apiPath: apiPath,
         imageBytes: imageBytes,
         printSize: printSize,
