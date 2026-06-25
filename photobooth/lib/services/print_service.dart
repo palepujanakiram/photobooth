@@ -130,7 +130,26 @@ class PrintService {
         'image_path': imageFile.path,
       });
 
-      final imageBytes = await loadImageBytesForNetworkPrint(imageFile);
+      List<int> imageBytes;
+      try {
+        imageBytes = await loadImageBytesForNetworkPrint(imageFile);
+      } on DioException catch (e, stackTrace) {
+        final status = e.response?.statusCode;
+        AppLogger.error(
+          'Image download for print failed ($status)',
+          error: e,
+          stackTrace: stackTrace,
+        );
+        if (status == 403) {
+          throw PrintException(
+            'Cannot download your photo for printing (session unauthorized). '
+            'Use Back to start and try the booth again.',
+          );
+        }
+        throw PrintException(
+          'Failed to download photo for printing (${status ?? "network error"})',
+        );
+      }
       if (imageBytes.isEmpty) {
         throw PrintException('Image file is empty');
       }

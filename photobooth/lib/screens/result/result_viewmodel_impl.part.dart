@@ -916,7 +916,9 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       if (kIsWeb) {
         for (final image in _r._generatedImages) {
           if (!_r._downloadedFiles.containsKey(image.id)) {
-            _r._downloadedFiles[image.id] = XFile(image.imageUrl);
+            _r._downloadedFiles[image.id] = XFile(
+              resolveRemoteImageUrlForPrint(image.imageUrl),
+            );
           }
         }
       } else {
