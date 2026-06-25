@@ -1,3 +1,6 @@
-# Appfile — Android package name for Play Console uploads.
+# Appfile — bundle / package IDs for store uploads.
 
 package_name('com.srisarani.fotozenai')
+
+app_identifier('com.srisarani.fotozenai')
+team_id('WR859F2ZHY')

@@ -1,13 +1,14 @@
 name: photobooth
 description: A Flutter photo booth application with AI transformations
 publish_to: 'none'
-# Date/time build tracking → splash / X-Client-* headers (yyyy.mm.dd.hhmm, 24h local).
+# Release version: YEAR.MONTH.DAY+buildNumber (see tool/sync_build_version.dart).
+# iOS Fastlane queries App Store Connect for the latest build on that version, then +1.
+# Android Fastlane queries Google Play for the highest version code (all tracks), then +1.
+# Local `dart run tool/sync_build_version.dart` increments the +suffix in pubspec.
 # Cursor/VS Code: Run Task → "flutter build apk (release)" (runs prebuild: sync version first).
 # CLI: ./scripts/flutter_with_version.sh build web   (plain `flutter build web` does not sync)
 #      dart run tool/sync_build_version.dart
-#   PATCH = DAY*10000 + HH*100 + MM; +suffix increments each sync (Play versionCode).
-version: 2026.6.21440+16
-
+version: 2026.6.24+2
 environment:
   sdk: '>=3.0.0 <4.0.0'
 
@@ -38,7 +39,9 @@ dependencies:
   
   # Image Processing
   image: ^4.1.3
-  google_mlkit_face_detection: ^0.12.0
+  # On-device face count: ML Kit (Android), Apple Vision (iOS — simulator-safe).
+  face_count:
+    path: packages/face_count
 
   # File Operations
   path_provider: ^2.1.1
@@ -89,6 +92,8 @@ dependency_overrides:
     path: packages/camera_android_camerax
 
 flutter:
+  config:
+    enable-swift-package-manager: true
   uses-material-design: true
 
   assets:

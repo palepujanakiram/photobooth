@@ -2,7 +2,7 @@
 
 require_relative 'podfile_helper'
 
-platform :ios, '17.0'
+platform :ios, '26.0'
 
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
@@ -29,5 +29,9 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '26.0'
+    end
   end
+  system('/bin/sh', File.join(__dir__, 'sync_spm_minimum_ios_version.sh'))
 end

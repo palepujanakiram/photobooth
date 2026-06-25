@@ -494,6 +494,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
 
     return Scaffold(
       backgroundColor: appColors.backgroundColor,
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Stack(
           children: [
