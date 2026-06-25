@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -12,7 +11,7 @@ import 'package:photobooth/services/api_logging/web_api_log_summary.dart';
 void main() {
   const truncator = LogTruncator(maxLoggedJsonLength: 200);
   const sanitizer = PayloadSanitizer();
-  final bodyFmt = ApiBodyLogFormatting(sanitizer, truncator);
+  const bodyFmt = ApiBodyLogFormatting(sanitizer, truncator);
   final reqFmt = ApiRequestFormatter(sanitizer, truncator);
   final resFmt = ApiResponseFormatter(sanitizer, truncator);
 

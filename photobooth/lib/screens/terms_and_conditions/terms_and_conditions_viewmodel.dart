@@ -200,9 +200,17 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
       return false;
     } on ApiException catch (e) {
       _errorMessage = e.message;
+      if (kIsWeb && kDebugMode) {
+        _errorMessage =
+            '${e.message}\n\nIf this is a CORS error on localhost, run ./run_chrome_dev.sh and flutter run -d chrome.';
+      }
       return false;
     } catch (e) {
       _errorMessage = 'Failed to accept terms: $e';
+      if (kIsWeb && kDebugMode) {
+        _errorMessage =
+            'Failed to accept terms: $e\n\nIf requests are blocked from localhost, use ./run_chrome_dev.sh.';
+      }
       return false;
     } finally {
       _stopTimer();

@@ -1,20 +1,25 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../utils/app_runtime_config.dart';
 import '../../utils/constants.dart';
 
-/// Centered loader with a compact gray panel (spinner; optional status text and timer).
-/// Debug-style lines (status, timer, subtitle, current process) follow
-/// `/api/settings` → `showGenerationCommentary` ([AppConstants.kshowDebugInfo]).
-/// [hint] is always shown when set. The rest of the screen stays clear; taps are blocked.
-class FullScreenLoader extends StatelessWidget {
+/// Centered loader with a compact gray panel (spinner + status text).
+///
+/// [text] and [subtitle] are always shown. Elapsed time uses [autonomousElapsed]
+/// (self-ticking) or [elapsedSeconds] from the parent when [AppConstants.kshowDebugInfo].
+/// [currentProcess] is debug-only commentary.
+class FullScreenLoader extends StatefulWidget {
   final String text;
   final Color loaderColor;
   /// When set, used as the **panel** background (not a full-screen scrim).
   final Color? backgroundColor;
   final Color? textColor;
   final int? elapsedSeconds;
+  /// When true, ticks elapsed time locally (keeps updating during parent rebuild gaps).
+  final bool autonomousElapsed;
   final String? subtitle;
   final String? currentProcess;
   final String? hint;
@@ -26,10 +31,57 @@ class FullScreenLoader extends StatelessWidget {
     this.backgroundColor,
     this.textColor,
     this.elapsedSeconds,
+    this.autonomousElapsed = false,
     this.subtitle,
     this.currentProcess,
     this.hint,
   });
+
+  @override
+  State<FullScreenLoader> createState() => _FullScreenLoaderState();
+}
+
+class _FullScreenLoaderState extends State<FullScreenLoader> {
+  Timer? _elapsedTimer;
+  int _autonomousElapsedSeconds = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autonomousElapsed) {
+      _startAutonomousElapsedTimer();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant FullScreenLoader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.autonomousElapsed && _elapsedTimer == null) {
+      _startAutonomousElapsedTimer();
+    } else if (!widget.autonomousElapsed) {
+      _stopAutonomousElapsedTimer();
+    }
+  }
+
+  @override
+  void dispose() {
+    _stopAutonomousElapsedTimer();
+    super.dispose();
+  }
+
+  void _startAutonomousElapsedTimer() {
+    _autonomousElapsedSeconds = 0;
+    _elapsedTimer?.cancel();
+    _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _autonomousElapsedSeconds++);
+    });
+  }
+
+  void _stopAutonomousElapsedTimer() {
+    _elapsedTimer?.cancel();
+    _elapsedTimer = null;
+  }
 
   static Color _defaultPanelColor(BuildContext context) {
     final brightness = Theme.of(context).brightness;
@@ -48,16 +100,25 @@ class FullScreenLoader extends StatelessWidget {
     return '${seconds}s';
   }
 
+  int? _resolvedElapsedSeconds(bool showDebugElapsed) {
+    if (widget.autonomousElapsed) return _autonomousElapsedSeconds;
+    if (showDebugElapsed) return widget.elapsedSeconds;
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final resolvedTextColor = textColor ?? CupertinoColors.white;
-    final panelColor = backgroundColor ?? _defaultPanelColor(context);
+    final resolvedTextColor = widget.textColor ?? CupertinoColors.white;
+    final panelColor = widget.backgroundColor ?? _defaultPanelColor(context);
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const ModalBarrier(color: Colors.transparent, dismissible: false),
-        Center(
+    return FocusScope(
+      canRequestFocus: false,
+      skipTraversal: true,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const ModalBarrier(color: Colors.transparent, dismissible: false),
+          Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 28),
             child: ConstrainedBox(
@@ -75,40 +136,47 @@ class FullScreenLoader extends StatelessWidget {
                     children: [
                       CupertinoActivityIndicator(
                         radius: 20,
-                        color: loaderColor,
+                        color: widget.loaderColor,
                       ),
+                      const SizedBox(height: 20),
+                      Text(
+                        widget.text,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: resolvedTextColor,
+                          letterSpacing: 0.5,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      if (widget.subtitle != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          widget.subtitle!,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: resolvedTextColor.withValues(alpha: 0.85),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                       ListenableBuilder(
                         listenable: AppRuntimeConfig.instance,
                         builder: (context, _) {
-                          if (!AppConstants.kshowDebugInfo) {
+                          final showDebugElapsed = AppConstants.kshowDebugInfo;
+                          final elapsed = _resolvedElapsedSeconds(showDebugElapsed);
+                          final showCurrentProcess = showDebugElapsed &&
+                              widget.currentProcess != null &&
+                              widget.currentProcess!.isNotEmpty;
+
+                          if (elapsed == null && !showCurrentProcess) {
                             return const SizedBox.shrink();
                           }
+
                           return Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const SizedBox(height: 20),
-                              Text(
-                                text,
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                  color: resolvedTextColor,
-                                  letterSpacing: 0.5,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                              if (subtitle != null) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  subtitle!,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: resolvedTextColor.withValues(alpha: 0.85),
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
-                              if (elapsedSeconds != null) ...[
+                              if (elapsed != null) ...[
                                 const SizedBox(height: 16),
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
@@ -121,7 +189,7 @@ class FullScreenLoader extends StatelessWidget {
                                     ),
                                     const SizedBox(width: 8),
                                     Text(
-                                      _formatTime(elapsedSeconds!),
+                                      _formatTime(elapsed),
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w500,
@@ -134,8 +202,7 @@ class FullScreenLoader extends StatelessWidget {
                                   ],
                                 ),
                               ],
-                              if (currentProcess != null &&
-                                  currentProcess!.isNotEmpty) ...[
+                              if (showCurrentProcess) ...[
                                 const SizedBox(height: 18),
                                 Container(
                                   width: double.infinity,
@@ -164,7 +231,7 @@ class FullScreenLoader extends StatelessWidget {
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Text(
-                                          currentProcess!,
+                                          widget.currentProcess!,
                                           style: TextStyle(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w500,
@@ -181,10 +248,10 @@ class FullScreenLoader extends StatelessWidget {
                           );
                         },
                       ),
-                      if (hint != null && hint!.isNotEmpty) ...[
+                      if (widget.hint != null && widget.hint!.isNotEmpty) ...[
                         const SizedBox(height: 20),
                         Text(
-                          hint!,
+                          widget.hint!,
                           style: TextStyle(
                             fontSize: 13,
                             color: resolvedTextColor.withValues(alpha: 0.75),
@@ -201,6 +268,7 @@ class FullScreenLoader extends StatelessWidget {
           ),
         ),
       ],
+      ),
     );
   }
 }

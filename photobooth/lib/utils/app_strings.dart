@@ -40,6 +40,31 @@ abstract final class AppStrings {
   /// Camera capture timeout reason (logging + recovery).
   static const takePictureTimeout = 'takePicture timeout';
 
+  /// Camera picker screen title.
+  static const selectCameraTitle = 'Select Camera';
+
+  /// Camera picker refresh action (app bar tooltip).
+  static const refreshCameras = 'Refresh cameras';
+
+  /// USB/UVC camera entry in the camera picker.
+  static const cameraPickerUsbCameraTitle = 'USB Camera (UVC)';
+
+  /// Camera picker: shown when no UVC cameras are connected.
+  static const cameraPickerUsbNoDevices = 'No USB camera detected.';
+
+  /// Shown on Android tablet/TV when only built-in cameras are enumerated.
+  static const cameraPickerBuiltInOnlyHint =
+      'Only built-in cameras were detected. Connect a USB camera, then tap '
+      'Refresh. If it still does not appear, this tablet may not expose USB '
+      'cameras to the system camera API.';
+
+  /// Shown when camera enumeration returns an empty list.
+  static const cameraPickerNoCameras =
+      'No cameras found. Connect a USB camera and tap Refresh.';
+
+  /// Shown while re-enumerating cameras in the picker.
+  static const cameraPickerRefreshing = 'Looking for cameras…';
+
   /// Payment push / poll notification titles and bodies.
   static const paymentConfirmedTitle = 'Payment confirmed';
   static const paymentNotCompletedTitle = 'Payment not completed';

@@ -17,7 +17,7 @@ void main() {
     imageFile: XFile('/tmp/x.jpg'),
     capturedAt: DateTime(2026, 1, 1),
   );
-  final theme = ThemeModel(
+  const theme = ThemeModel(
     id: 't1',
     categoryId: 'c1',
     name: 'Test',

@@ -77,7 +77,7 @@ class _DebugRamMonitorOverlayState extends State<DebugRamMonitorOverlay> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'RAM (RSS)',
+              kIsWeb ? 'JS heap' : 'RAM (RSS)',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.75),
                 fontSize: 10,

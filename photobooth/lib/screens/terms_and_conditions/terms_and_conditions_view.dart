@@ -29,11 +29,21 @@ class TermsAndConditionsScreen extends StatefulWidget {
 
 class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   late TermsAndConditionsViewModel _viewModel;
+  bool _redirectingToSplash = false;
 
   @override
   void initState() {
     super.initState();
     _viewModel = TermsAndConditionsViewModel();
+  }
+
+  void _redirectToSplashForKioskSetup() {
+    if (_redirectingToSplash || !mounted) return;
+    _redirectingToSplash = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacementNamed(AppConstants.kRouteSplash);
+    });
   }
 
   @override
@@ -70,10 +80,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
     if (!mounted) return;
     await _viewModel.reloadKioskFromStorage();
-  }
-
-  void _goToSplashLinkDevice() {
-    Navigator.of(context).pushReplacementNamed(AppConstants.kRouteSplash);
   }
 
   @override
@@ -130,12 +136,14 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                               );
                             }
                             if (kioskCode.isEmpty) {
+                              _redirectToSplashForKioskSetup();
                               return ConstrainedBox(
                                 constraints:
                                     BoxConstraints(maxWidth: cardMaxWidth),
-                                child: _buildKioskSetupRequired(
-                                  context,
-                                  appColors,
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    color: appColors.primaryColor,
+                                  ),
                                 ),
                               );
                             }
@@ -266,6 +274,22 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           ),
           
           SizedBox(height: layout.sectionGap(compact: compact)),
+
+          if (viewModel.hasError) ...[
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: cardPadding),
+              child: Text(
+                viewModel.errorMessage!,
+                style: const TextStyle(
+                  color: CupertinoColors.systemRed,
+                  fontSize: 14,
+                  height: 1.35,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            SizedBox(height: layout.innerSectionGap(compact: compact)),
+          ],
           
           // Action button
           Padding(
@@ -292,104 +316,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           ),
           
           const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildKioskSetupRequired(
-    BuildContext context,
-    AppColors appColors,
-  ) {
-    const cardPadding = 20.0;
-    return Container(
-      decoration: BoxDecoration(
-        color: appColors.cardBackgroundColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: appColors.shadowColor.withValues(alpha: 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(cardPadding, cardPadding, cardPadding, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 132,
-                  height: 40,
-                  child: Image.asset(
-                    AppConstants.kBrandLogoAsset,
-                    fit: BoxFit.contain,
-                    alignment: Alignment.centerLeft,
-                    errorBuilder: (_, __, ___) => Icon(
-                      CupertinoIcons.device_phone_portrait,
-                      size: 40,
-                      color: appColors.textColor,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Link this device',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: appColors.textColor,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(cardPadding, 16, cardPadding, cardPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'This booth needs a kiosk code before guests can use it. Use the code from your venue or admin dashboard.',
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: appColors.secondaryTextColor,
-                    height: 1.4,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 20),
-                Semantics(
-                  button: true,
-                  label: 'Enter kiosk code',
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: CupertinoButton(
-                      color: CupertinoColors.systemBlue,
-                      borderRadius: BorderRadius.circular(12),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      onPressed: _goToSplashLinkDevice,
-                      child: const Text(
-                        'Enter kiosk code',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: CupertinoColors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );

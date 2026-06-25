@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:photobooth/services/api_logging/body_log_formatting.dart';
 import 'package:photobooth/services/api_logging/log_truncator.dart';
 import 'package:photobooth/services/api_logging/payload_sanitizer.dart';
 import 'package:photobooth/services/api_logging/web_api_log_summary.dart';
