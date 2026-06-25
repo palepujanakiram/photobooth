@@ -14,7 +14,7 @@ import 'package:uvccamera/uvccamera.dart';
 ///
 /// **Active profile** leans performance after tablet OOM during UVC normalize.
 class UvcCaptureConfig {
-  UvcCaptureConfig._();
+  UvcCaptureConfig._(); // coverage:ignore-line
 
   /// Native UVC stream / still resolution (`min` < `low` < `medium`).
   static const UvcCameraResolutionPreset resolutionPreset =

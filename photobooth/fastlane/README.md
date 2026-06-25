@@ -13,71 +13,44 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 # Available Actions
 
-### firebase_all
-
-```sh
-[bundle exec] fastlane firebase_all
-```
-
-Build and upload both Android and iOS to Firebase
-
-----
-
-
 ## Android
 
-### android build_apk
+### android generatebuild
 
 ```sh
-[bundle exec] fastlane android build_apk
+[bundle exec] fastlane android generatebuild
 ```
 
-Build Android APK
+Sync version, build release AAB, upload to Google Play Console, and distribute via Firebase App Distribution
 
-### android build_aab
+### android build
 
 ```sh
-[bundle exec] fastlane android build_aab
+[bundle exec] fastlane android build
 ```
 
-Build Android App Bundle (AAB)
-
-### android firebase_android
-
-```sh
-[bundle exec] fastlane android firebase_android
-```
-
-Build and upload Android APK to Firebase App Distribution
-
-### android firebase_android_aab
-
-```sh
-[bundle exec] fastlane android firebase_android_aab
-```
-
-Build and upload Android App Bundle to Firebase App Distribution
+Sync version and build release AAB only (no upload)
 
 ----
 
 
 ## iOS
 
-### ios build_ipa
+### ios generatebuild
 
 ```sh
-[bundle exec] fastlane ios build_ipa
+[bundle exec] fastlane ios generatebuild
 ```
 
-Build iOS IPA
+Sync version, build release IPA, and upload to App Store Connect (TestFlight)
 
-### ios firebase_ios
+### ios build
 
 ```sh
-[bundle exec] fastlane ios firebase_ios
+[bundle exec] fastlane ios build
 ```
 
-Build and upload iOS IPA to Firebase App Distribution
+Sync version and build release IPA only (no upload)
 
 ----
 

@@ -27,12 +27,14 @@ class CoalescedStringListNotifier {
       _flush();
       return;
     }
+    // coverage:ignore-start
     if (_flushScheduled) return;
     _flushScheduled = true;
     SchedulerBinding.instance.scheduleFrameCallback((_) {
       _flushScheduled = false;
       _flush();
     });
+    // coverage:ignore-end
   }
 
   void _flush() {

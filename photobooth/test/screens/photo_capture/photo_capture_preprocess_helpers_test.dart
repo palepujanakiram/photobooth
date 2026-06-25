@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/preprocess_image_result.dart';
 import 'package:photobooth/screens/photo_capture/photo_capture_preprocess_helpers.dart';
 
+// ignore_for_file: avoid_redundant_argument_values
+
 void main() {
   group('resolvePersonCountAfterPreprocess', () {
     test('prefers preprocess personCount', () {
@@ -76,6 +78,67 @@ void main() {
         ),
         isTrue,
       );
+    });
+
+    test('false when session personCount provides signal', () {
+      expect(
+        isHardPreprocessFailure(
+          preprocess: const PreprocessImageResult(success: false),
+          clientFaceCount: 0,
+          sessionPersonCount: 2,
+        ),
+        isFalse,
+      );
+    });
+
+    test('false when preprocess personCount present despite success=false', () {
+      expect(
+        isHardPreprocessFailure(
+          preprocess: const PreprocessImageResult(success: false, personCount: 1),
+          clientFaceCount: 0,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('PreprocessImageResult.fromJson', () {
+    test('parses success and int personCount', () {
+      final r = PreprocessImageResult.fromJson({
+        'success': true,
+        'personCount': 2,
+      });
+      expect(r.success, isTrue);
+      expect(r.personCount, 2);
+      expect(r.framing, isNull);
+    });
+
+    test('parses num personCount via round()', () {
+      final r = PreprocessImageResult.fromJson({
+        'success': true,
+        'personCount': 2.7,
+      });
+      expect(r.personCount, 3);
+    });
+
+    test('parses framing map', () {
+      final r = PreprocessImageResult.fromJson({
+        'success': true,
+        'framing': {'x': 10, 'y': 20},
+      });
+      expect(r.framing, {'x': 10, 'y': 20});
+    });
+
+    test('ignores zero personCount', () {
+      final r = PreprocessImageResult.fromJson({'success': true, 'personCount': 0});
+      expect(r.personCount, isNull);
+    });
+
+    test('empty map defaults', () {
+      final r = PreprocessImageResult.fromJson({});
+      expect(r.success, isFalse);
+      expect(r.personCount, isNull);
+      expect(r.framing, isNull);
     });
   });
 }

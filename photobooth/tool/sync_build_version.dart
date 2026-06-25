@@ -1,14 +1,27 @@
-// Updates pubspec `version:` from [DateTime.now] and increments the +build counter.
+// Updates pubspec `version:` before release builds.
 //
-// Encoding matches [ClientIdentification.formatClientVersionLabel]:
-//   YEAR.MONTH.PATCH+buildNumber
-//   PATCH = day×10000 + hour×100 + minute (24h local time)
+// Version name: YEAR.MONTH.DAY (local calendar date).
+// Build number:
+//   - Pass `--build-number=N` (Fastlane sets this from App Store Connect / Google Play).
+//   - Otherwise increment the existing +suffix in pubspec (local builds only).
 //
 // Run from package root: dart run tool/sync_build_version.dart
 import 'dart:io';
 
 void main(List<String> args) {
   final dryRun = args.contains('--dry-run');
+  int? explicitBuild;
+  for (final arg in args) {
+    if (arg.startsWith('--build-number=')) {
+      explicitBuild = int.tryParse(arg.split('=').last.trim());
+      if (explicitBuild == null || explicitBuild < 1) {
+        stderr.writeln('sync_build_version: invalid --build-number value');
+        exitCode = 1;
+        return;
+      }
+    }
+  }
+
   final pubspec = File('pubspec.yaml');
   if (!pubspec.existsSync()) {
     stderr.writeln('sync_build_version: pubspec.yaml not found (cwd: ${Directory.current.path})');
@@ -26,18 +39,12 @@ void main(List<String> args) {
   }
 
   final now = DateTime.now();
-  final major = now.year;
-  final minor = now.month;
-  final patch = now.day * 10000 + now.hour * 100 + now.minute;
+  final versionName = '${now.year}.${now.month}.${now.day}';
 
   final currentFull = m.group(1)!.trim();
-  var build = 1;
-  final plus = currentFull.split('+');
-  if (plus.length == 2) {
-    build = (int.tryParse(plus[1].trim()) ?? 0) + 1;
-  }
+  final build = explicitBuild ?? _nextLocalBuildNumber(currentFull);
 
-  final newVersion = '$major.$minor.$patch+$build';
+  final newVersion = '$versionName+$build';
   if (dryRun) {
     stdout.writeln('Would set version: $newVersion');
     return;
@@ -46,4 +53,12 @@ void main(List<String> args) {
   final updated = text.replaceFirst(versionRe, 'version: $newVersion');
   pubspec.writeAsStringSync(updated);
   stdout.writeln('sync_build_version: version: $newVersion');
+}
+
+int _nextLocalBuildNumber(String currentFull) {
+  final plus = currentFull.split('+');
+  if (plus.length == 2) {
+    return (int.tryParse(plus[1].trim()) ?? 0) + 1;
+  }
+  return 1;
 }
