@@ -8,7 +8,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     String? customerPhone,
     bool force = false,
   }) async {
-    if (_r._paymentInitInProgress) return;
+    if (_r._paymentInitInProgress && !force) return;
     if (!force && _r._shouldSkipPaymentInitiate()) return;
     final sessionId = _r._sessionManager.sessionId;
     if (sessionId == null || sessionId.isEmpty) {
@@ -17,12 +17,13 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       return;
     }
 
+    final generation = ++_r._paymentInitiateGeneration;
     _r._paymentInitInProgress = true;
     _r._paymentInitError = null;
-    _r._paymentLink = null;
-    _r._qrImageUrl = null;
-    _r._upiLink = null;
     if (force) {
+      _r._paymentLink = null;
+      _r._qrImageUrl = null;
+      _r._upiLink = null;
       _r._activePaymentId = null;
     }
     _r.stopPaymentPolling();
@@ -50,6 +51,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         customerPhone: customerPhone,
         fcmToken: fcmToken ?? '',
       );
+      if (generation != _r._paymentInitiateGeneration) return;
       _applyPaymentInitiateResult(result);
       if (kDebugMode) {
         AppLogger.debug(
@@ -71,6 +73,8 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       if (!_r.hasPaymentQrPayload) {
         _r._paymentInitError =
             'Could not load UPI QR from the server. Tap Retry below or ask staff.';
+      } else {
+        _r._paymentInitError = null;
       }
       if (_r._activePaymentId != null) {
         _startPaymentStatusPolling();
@@ -81,8 +85,10 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     } catch (e) {
       _r._paymentInitError = 'Payment setup failed: $e';
     } finally {
-      _r._paymentInitInProgress = false;
-      notifyListeners();
+      if (generation == _r._paymentInitiateGeneration) {
+        _r._paymentInitInProgress = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -98,6 +104,9 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     _r._upiLink = result.upiLink;
     final pid = result.id.trim();
     _r._activePaymentId = pid.isNotEmpty ? pid : null;
+    if (_r.hasPaymentQrPayload) {
+      _r._paymentInitError = null;
+    }
   }
 
   void _applyQrFieldsFromPollMap(Map<String, dynamic> raw) {

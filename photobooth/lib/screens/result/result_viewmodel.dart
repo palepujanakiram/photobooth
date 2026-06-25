@@ -104,6 +104,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   String? _paymentInitError;
   bool _paymentInitInProgress = false;
   int _paymentInitiateAttempts = 0;
+  int _paymentInitiateGeneration = 0;
 
   /// Server payment id from initiate; used to poll when FCM is missing (emulator / tray only).
   String? _activePaymentId;
@@ -179,7 +180,9 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   /// Re-runs payment initiate (e.g. when the first response had an id but no QR).
   Future<void> retryLoadPaymentQr({String? customerPhone}) {
     _paymentInitiateAttempts = 0;
+    _paymentInitiateGeneration += 1;
     _activePaymentId = null;
+    _paymentInitError = null;
     return loadPaymentQr(customerPhone: customerPhone, force: true);
   }
 
@@ -300,10 +303,12 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
       resolvePrinterEndpoint(_appSettingsManager?.settings);
 
   /// Sync host/port/path from latest `/api/settings` (e.g. after fetch on Pay screen).
-  void refreshPrinterFromSettings() {
+  void refreshPrinterFromSettings({bool notify = true}) {
     final endpoint = _printerEndpoint;
-    _printerHost = endpoint.host;
-    notifyListeners();
+    final nextHost = endpoint.host;
+    if (nextHost == _printerHost) return;
+    _printerHost = nextHost;
+    if (notify) notifyListeners();
   }
 
   /// Port from `/api/settings` when valid; otherwise HTTP default (80).
