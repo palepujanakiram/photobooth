@@ -1,7 +1,19 @@
 import 'dart:math' as math;
 
+import 'package:flutter/material.dart' show Alignment;
+
 import 'photo_generate_viewmodel.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/constants.dart';
+
+/// Prefer the upper frame when cropping portrait captures in short cards.
+const Alignment kGenerationWaitPortraitFaceAlignment = Alignment(0, -0.22);
+
+/// Vertical space for the You/Style labels above anticipation cells.
+const double kGenerationWaitAnticipationLabelOverhead = 22;
+
+/// Gap between the two anticipation cells.
+const double kGenerationWaitAnticipationCellGap = 10;
 
 /// Scripted status lines when the server has not sent an update yet.
 const List<String> kGenerationWaitRotatingCopy = [
@@ -10,6 +22,21 @@ const List<String> kGenerationWaitRotatingCopy = [
   'Balancing light and color…',
   'Almost there — great portraits take a moment',
   'Polishing the details…',
+];
+
+/// Rotating educational tips shown during the wait screen footer.
+const List<String> kGenerationWaitDidYouKnowTips = [
+  'Our AI analyzes your unique features to create a personalized portrait.',
+  'Each style is trained on thousands of artistic references.',
+  'Your original photo is never shared with third parties.',
+  'The process combines computer vision and generative AI.',
+];
+
+/// Labels for the three-step generation wait stepper (index order).
+const List<String> kGenerationWaitStepperLabels = [
+  AppStrings.generationWaitStepAnalyzing,
+  AppStrings.generationWaitStepTransforming,
+  AppStrings.generationWaitStepFinalizing,
 ];
 
 /// Presentation model for the generation wait hero + storyboard.
@@ -55,6 +82,29 @@ String generationWaitRotatingCopy(int elapsedSeconds) {
   return kGenerationWaitRotatingCopy[index];
 }
 
+String generationWaitDidYouKnowTip(int elapsedSeconds) {
+  if (elapsedSeconds <= 0) return kGenerationWaitDidYouKnowTips.first;
+  final index = (elapsedSeconds ~/ 12) % kGenerationWaitDidYouKnowTips.length;
+  return kGenerationWaitDidYouKnowTips[index];
+}
+
+/// Active step for the 3-step wait UI: analyzing → transforming → finalizing.
+int generationWaitStepperActiveIndex(
+  PhotoGenerateViewModel vm,
+  GenerationWaitPresentation presentation,
+) {
+  if (generationWaitPolishingStarted(vm) || presentation.showPolishingOverlay) {
+    return 2;
+  }
+  if (previewUrlForStage(vm, 'ai_generation') != null) return 1;
+  if (previewUrlForStage(vm, 'background_removal') != null) return 1;
+  if (previewUrlForStage(vm, 'preprocessing') != null) return 0;
+  if (generationWaitHasPipelinePreviews(vm)) return 1;
+  if (presentation.storyboardIndex >= 2) return 2;
+  if (presentation.storyboardIndex >= 1) return 1;
+  return 0;
+}
+
 bool generationWaitCommentaryEnabled({
   required bool isWeb,
   required bool? showGenerationCommentary,
@@ -83,6 +133,30 @@ double generationWaitEffectiveProgress({
   if (hasServerPreviews) return pipelineProgress.clamp(0.0, 1.0);
   final pseudo = (elapsedSeconds / 45.0) * 0.28;
   return math.max(pipelineProgress, pseudo).clamp(0.0, 0.28);
+}
+
+/// Hide generic server/vm progress lines when act headline + chips already tell the story.
+bool generationWaitShouldShowLiveStatusCopy(
+  GenerationWaitPresentation presentation,
+) {
+  final headline = presentation.headline.trim();
+  if (headline.isEmpty) return false;
+  const hiddenHeadlines = {
+    'Starting your transformation',
+    'Transforming your look...',
+    'Adding your new style...',
+    'Your portrait is taking shape',
+  };
+  if (hiddenHeadlines.contains(headline)) return false;
+
+  final description = presentation.description.trim();
+  if (description.isEmpty) return true;
+
+  if (description == AppStrings.generationWaitExpectation ||
+      description == AppStrings.generationWaitTimeExpectation) {
+    return !hiddenHeadlines.contains(headline);
+  }
+  return true;
 }
 
 int generationWaitPseudoStoryboardIndex(int elapsedSeconds) {
@@ -208,5 +282,63 @@ GenerationWaitPresentation resolveGenerationWaitPresentation(
     imageUrl: imageUrl,
     showPolishingOverlay: showPolishingOverlay,
     stageChanged: stageChanged,
+  );
+}
+
+/// Fits [aspect] (width ÷ height) inside a box.
+({double width, double height}) fitGenerationWaitAspectInBox({
+  required double maxWidth,
+  required double maxHeight,
+  required double aspect,
+}) {
+  late double width;
+  late double height;
+  if (maxWidth / maxHeight > aspect) {
+    height = maxHeight;
+    width = height * aspect;
+  } else {
+    width = maxWidth;
+    height = width / aspect;
+  }
+  return (width: width, height: height);
+}
+
+/// Sizes the You | Style anticipation row for portrait booth captures.
+({double width, double height}) computeThemeAnticipationHeroSize({
+  required double maxWidth,
+  required double maxHeight,
+  double cellAspect = AppConstants.kThemeSelectedCardAspectRatio,
+}) {
+  final gap = maxWidth > 520
+      ? kGenerationWaitAnticipationCellGap
+      : kGenerationWaitAnticipationCellGap - 2;
+  final imageMaxH = math.max(
+    160.0,
+    maxHeight - kGenerationWaitAnticipationLabelOverhead,
+  );
+  final cellMaxW = math.max(100.0, (maxWidth - gap) / 2);
+
+  final cell = fitGenerationWaitAspectInBox(
+    maxWidth: cellMaxW,
+    maxHeight: imageMaxH,
+    aspect: cellAspect,
+  );
+
+  return (
+    width: cell.width * 2 + gap,
+    height: cell.height + kGenerationWaitAnticipationLabelOverhead,
+  );
+}
+
+/// Sizes the single-frame cinematic hero during pipeline previews.
+({double width, double height}) computeGenerationWaitCinematicHeroSize({
+  required double maxWidth,
+  required double maxHeight,
+  double aspect = AppConstants.kBeholdSingleResultDefaultAspectRatio,
+}) {
+  return fitGenerationWaitAspectInBox(
+    maxWidth: maxWidth,
+    maxHeight: math.max(180.0, maxHeight),
+    aspect: aspect,
   );
 }

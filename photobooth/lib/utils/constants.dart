@@ -130,7 +130,7 @@ class AppConstants {
   static const double kBeholdResultCardMaxHeightFractionLandscape = 0.62;
 
   /// BEHOLD single-result hero: use nearly all of the Expanded slot above the footer.
-  static const double kBeholdResultCardSlotHeightFraction = 0.94;
+  static const double kBeholdResultCardSlotHeightFraction = 0.98;
 
   /// On Generate Photo, generated-image cards scale to this factor when toggled (tap again restores 1.0).
   static const double kGeneratePhotoZoomedScale = 1.3;

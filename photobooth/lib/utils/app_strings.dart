@@ -92,6 +92,27 @@ abstract final class AppStrings {
   static const generationWaitExpectation =
       'This usually takes 30–60 seconds. Your portrait will appear step by step.';
 
+  static const generationWaitTimeExpectation = 'Usually takes 30–60 seconds';
+
+  static const generationWaitMasterpieceTitle = 'Creating your masterpiece';
+
+  static const generationWaitMasterpieceSubtitle =
+      'Our AI is crafting something extraordinary for you';
+
+  static const generationWaitStepAnalyzing = 'Analyzing';
+
+  static const generationWaitStepTransforming = 'Transforming';
+
+  static const generationWaitStepFinalizing = 'Finalizing';
+
+  static const generationWaitDidYouKnowTitle = 'Did you know?';
+
+  static const generationWaitPrivacyFooter =
+      'Your photos are secure and private';
+
+  static const generationWaitThemeReelTitle =
+      'More worlds to explore next time';
+
   static const generationWaitHeadlineStarting = 'Starting your transformation';
 
   static const generationWaitHeadlineCaptured = 'Captured';
@@ -123,12 +144,6 @@ abstract final class AppStrings {
 
   static const generationWaitStartOver = 'Start over';
 
-  static const generationWaitPossibilitiesTitle =
-      'YOUR AI MASTERPIECE IS BEING CREATED';
-
-  static const generationWaitPossibilitiesSubtitle =
-      'Meanwhile, see what is possible…';
-
   static const generationWaitLiveRevealHeadline = 'Your portrait is taking shape';
 
   static const generationWaitLiveRevealDesc =
@@ -138,4 +153,25 @@ abstract final class AppStrings {
 
   static const generationNoAttemptsRemaining =
       'No generation attempts remaining for this session. Use “Or add one more style” on your results, or start over.';
+
+  static const beholdReadyStepLabel = 'Step 3 of 3';
+
+  static const beholdReadyTitle = 'Your masterpiece is ready!';
+
+  static const beholdReadySubtitle =
+      'We hope you love your AI-transformed portrait.';
+
+  static const beholdReadyPrivacyFooter =
+      'Your photos are secure and private. We never store your images.';
+
+  static const beholdTransformationDetailsLink = 'View transformation details';
+
+  static const beholdContinueLabel = 'Continue';
+
+  static const beholdSelectedLabel = 'Selected';
+
+  static const generationProgressTitle = 'CREATE';
+
+  static const generationProgressSubtitle =
+      'Please wait while we craft your portrait';
 }

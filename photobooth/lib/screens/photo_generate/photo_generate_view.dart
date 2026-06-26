@@ -5,10 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/kiosk_manager.dart';
+import '../../views/widgets/kiosk_vertical_screen_layout.dart';
 import 'photo_generate_view_widgets.dart';
+import 'behold_result_ready_widgets.dart';
 import 'generation_wait_widgets.dart';
 import 'photo_generate_viewmodel.dart';
 import 'post_reveal_polishing_overlay.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
@@ -36,11 +39,7 @@ double _computeBeholdMaxRowHeight({
   required double reservedBelowRow,
 }) {
   if (fixedFooterOutside && singleResultReady) {
-    return math.max(
-      200.0,
-      (viewportHeight - interiorChromeAboveCard) *
-          AppConstants.kBeholdResultCardSlotHeightFraction,
-    );
+    return math.max(200.0, viewportHeight - interiorChromeAboveCard);
   }
   final heightFraction = isLandscape ? 0.80 : 0.68;
   final maxRowCap = isLandscape ? 1080.0 : 920.0;
@@ -68,7 +67,7 @@ double _interiorChromeAboveCardHeight({
       !viewportHeight.isFinite) {
     return 0.0;
   }
-  if (hasImages && !isGeneratingOrLoading) return 118.0;
+  if (hasImages && !isGeneratingOrLoading) return 0.0;
   if (isGeneratingOrLoading) return 88.0;
   return 0.0;
 }
@@ -86,8 +85,17 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   static const double _kBeholdStampStripExtraHeight = 62.0;
 
   double _beholdAppBarBelowTitleHeight(PhotoGenerateViewModel vm) {
+    if (_beholdShowsReadySuccessHeader(vm)) {
+      return kKioskAppBarReadyChromeHeight;
+    }
     if (!vm.showProgressStampStrip) return _kBeholdSubtitleBlockHeight;
     return _kBeholdSubtitleBlockHeight + _kBeholdStampStripExtraHeight;
+  }
+
+  bool _beholdShowsReadySuccessHeader(PhotoGenerateViewModel vm) {
+    final isGenerating =
+        vm.isGenerating && vm.generatedImages.isEmpty;
+    return vm.generatedImages.isNotEmpty && !isGenerating && !vm.isLoadingMore;
   }
 
   late PhotoGenerateViewModel _viewModel;
@@ -137,18 +145,19 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_viewModelCreated) {
-      final rawArgs = ModalRoute.of(context)?.settings.arguments;
-      if (rawArgs is PhotoGenerateViewModel) {
-        // Result-only route: receive a fully initialized ViewModel from the
-        // progress page (which ran generation).
-        _viewModel = rawArgs;
-        _viewModelCreated = true;
-        _isInitialized = true;
-        unawaited(_viewModel.refreshBeholdHeroAspectRatio());
+    final rawArgs = ModalRoute.of(context)?.settings.arguments;
+    if (rawArgs is PhotoGenerateViewModel) {
+      final isFirstBind = !_viewModelCreated;
+      _viewModel = rawArgs;
+      _viewModelCreated = true;
+      _isInitialized = true;
+      if (isFirstBind) {
         unawaited(_loadPaymentEnablement());
-        return;
       }
+      unawaited(_viewModel.refreshBeholdHeroAspectRatio());
+      return;
+    }
+    if (!_viewModelCreated) {
       _viewModel = PhotoGenerateViewModel(
         appSettingsManager: context.read<AppSettingsManager>(),
       );
@@ -292,31 +301,51 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                 Positioned.fill(
                   child: ThemeBackground(theme: viewModel.selectedTheme),
                 ),
-                SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      top: MediaQuery.paddingOf(context).top +
-                          kToolbarHeight +
-                          _beholdAppBarBelowTitleHeight(viewModel),
-                    ),
-                    child: Column(
-                      children: [
-                        Expanded(
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                return _buildMainContent(
-                                  context,
-                                  viewModel,
-                                  appColors,
-                                  isLandscape,
-                                  constraints.maxHeight,
-                                  constraints.maxWidth,
-                                );
-                              },
-                            ),
-                          ),
-                      ],
+                Positioned.fill(
+                  child: SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        top: MediaQuery.paddingOf(context).top +
+                            kToolbarHeight +
+                            _beholdAppBarBelowTitleHeight(viewModel),
+                      ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          if (_beholdShowsReadySuccessHeader(viewModel)) {
+                            return buildBeholdReadyScreenLayout(
+                              context: context,
+                              constraints: constraints,
+                              input: _photoGenerateMainContentInput(
+                                viewModel,
+                                appColors,
+                                isLandscape,
+                                viewportHeight: constraints.maxHeight,
+                                viewportWidth: constraints.maxWidth,
+                              ),
+                            );
+                          }
+                          final media = MediaQuery.sizeOf(context);
+                          final viewportH =
+                              constraints.maxHeight.isFinite &&
+                                      constraints.maxHeight > 0
+                                  ? constraints.maxHeight
+                                  : media.height * 0.65;
+                          final viewportW =
+                              constraints.maxWidth.isFinite &&
+                                      constraints.maxWidth > 0
+                                  ? constraints.maxWidth
+                                  : media.width;
+                          return _buildMainContent(
+                            context,
+                            viewModel,
+                            appColors,
+                            isLandscape,
+                            viewportH,
+                            viewportW,
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
@@ -332,6 +361,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     BuildContext context,
     PhotoGenerateViewModel viewModel,
   ) {
+    if (_beholdShowsReadySuccessHeader(viewModel)) {
+      return const BeholdReadyCompactAppBarChrome();
+    }
     return const Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -366,16 +398,50 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   ]) {
     return buildPhotoGenerateMainContent(
       context: context,
-      input: PhotoGenerateMainContentInput(
-        contentKey: _contentKey,
-        viewModel: viewModel,
-        appColors: appColors,
-        isLandscape: isLandscape,
+      input: _photoGenerateMainContentInput(
+        viewModel,
+        appColors,
+        isLandscape,
         viewportHeight: viewportHeight,
         viewportWidth: viewportWidth,
-        buildPhotosDisplay: _buildPhotosDisplay,
-        buildPhotosActionFooter: _buildPhotosActionFooter,
       ),
+    );
+  }
+
+  PhotoGenerateMainContentInput _photoGenerateMainContentInput(
+    PhotoGenerateViewModel viewModel,
+    AppColors appColors,
+    bool isLandscape, {
+    double? viewportHeight,
+    double? viewportWidth,
+  }) {
+    return PhotoGenerateMainContentInput(
+      contentKey: _contentKey,
+      viewModel: viewModel,
+      appColors: appColors,
+      isLandscape: isLandscape,
+      viewportHeight: viewportHeight,
+      viewportWidth: viewportWidth,
+      buildPhotosDisplay: _buildPhotosDisplay,
+      buildPhotosActionFooter: _buildPhotosActionFooter,
+      beholdReadyActions: BeholdReadyActionInput(
+        paymentsEnabled: _paymentsEnabledOverride ?? true,
+        isMounted: mounted,
+        onAddStyleSelected: (theme) {
+          viewModel.prepareToAddStyle(theme);
+          viewModel.tryDifferentStyle(theme);
+        },
+      ),
+      buildBeholdReadyHero: (ctx, vm, {required width, required height}) {
+        return buildBeholdReadyHeroWidget(
+          context: ctx,
+          viewModel: vm,
+          appColors: appColors,
+          width: width,
+          height: height,
+          buildTransformedSlotWidgets: _buildTransformedSlotWidgets,
+        );
+      },
     );
   }
 
@@ -521,6 +587,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     }
 
     const bool showRemoveButton = false;
+    final spotlightReady = images.length == 1 && !isLoadingMore && !isGenerating;
     final out = <Widget>[];
     if (isLoadingMore) {
       out.add(
@@ -540,6 +607,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
           cardWidth,
           cardHeight,
           showRemoveButton: showRemoveButton,
+          spotlightReadyLayout: spotlightReady,
         ),
       );
     }
@@ -551,25 +619,22 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     required double cardHeight,
     required Widget child,
     bool selected = false,
+    bool emphasizeReadyGlow = false,
   }) {
     return SizedBox(
       width: cardWidth,
       height: cardHeight,
-      child: Card(
-        margin: EdgeInsets.zero,
-        elevation: 8,
-        shadowColor: Colors.black.withValues(alpha: 0.38),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: selected
-                ? CupertinoColors.systemBlue.withValues(alpha: 0.85)
-                : const Color(0xFF4A4A4A),
-            width: selected ? 2.0 : 1.5,
-          ),
+      child: DecoratedBox(
+        decoration: beholdReadyHeroFrameDecoration(
+          selected: selected,
+          emphasizeGlow: emphasizeReadyGlow,
         ),
-        clipBehavior: Clip.antiAlias,
-        child: child,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(
+            emphasizeReadyGlow ? 13 : 11,
+          ),
+          child: child,
+        ),
       ),
     );
   }
@@ -644,6 +709,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     double cardWidth,
     double cardHeight, {
     bool showRemoveButton = false,
+    bool spotlightReadyLayout = false,
   }) {
     return SizedBox(
       width: cardWidth,
@@ -656,6 +722,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
             cardWidth: cardWidth,
             cardHeight: cardHeight,
             selected: image.isSelected,
+            emphasizeReadyGlow: spotlightReadyLayout,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -694,29 +761,31 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                       ),
                     ),
                   ),
-                Positioned(
-                  top: 10,
-                  left: 10,
-                  child: Material(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(10),
-                    child: InkWell(
+                if (!spotlightReadyLayout)
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: Material(
+                      color: Colors.black.withValues(alpha: 0.35),
                       borderRadius: BorderRadius.circular(10),
-                      onTap: () => _openGeneratedImagePreview(context, image),
-                      child: const Padding(
-                        padding: EdgeInsets.all(8),
-                        child: Icon(
-                          CupertinoIcons.fullscreen,
-                          size: 16,
-                          color: Colors.white,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () => _openGeneratedImagePreview(context, image),
+                        child: const Padding(
+                          padding: EdgeInsets.all(8),
+                          child: Icon(
+                            CupertinoIcons.fullscreen,
+                            size: 16,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
                 Positioned(
-                  top: 10,
-                  right: 10,
+                  top: spotlightReadyLayout ? null : 10,
+                  bottom: spotlightReadyLayout ? 12 : null,
+                  right: 12,
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
@@ -725,10 +794,13 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 180),
                         curve: Curves.easeOutCubic,
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: image.isSelected
-                              ? CupertinoColors.systemBlue.withValues(alpha: 0.92)
+                              ? kBeholdReadyAccent.withValues(alpha: 0.92)
                               : Colors.black.withValues(alpha: 0.35),
                           borderRadius: BorderRadius.circular(999),
                           border: Border.all(
@@ -750,7 +822,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                             if (image.isSelected) ...[
                               const SizedBox(width: 6),
                               const Text(
-                                'Selected',
+                                AppStrings.beholdSelectedLabel,
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 11,
@@ -765,35 +837,60 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
                     ),
                   ),
                 ),
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [
-                          Colors.black.withValues(alpha: 0.7),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
+                if (spotlightReadyLayout)
+                  Positioned(
+                    left: 14,
+                    bottom: 14,
+                    right: 88,
                     child: Text(
                       image.theme.name,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black54,
+                            blurRadius: 8,
+                          ),
+                        ],
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                  )
+                else
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 6,
+                        horizontal: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [
+                            Colors.black.withValues(alpha: 0.7),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                      child: Text(
+                        image.theme.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
-                ),
               ],
             ),
           ),

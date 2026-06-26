@@ -143,6 +143,114 @@ void main() {
     });
   });
 
+  group('generationWaitDidYouKnowTip', () {
+    test('rotates every 12 seconds', () {
+      expect(
+        generationWaitDidYouKnowTip(0),
+        kGenerationWaitDidYouKnowTips.first,
+      );
+      expect(
+        generationWaitDidYouKnowTip(12),
+        kGenerationWaitDidYouKnowTips[1],
+      );
+    });
+  });
+
+  group('generationWaitStepperActiveIndex', () {
+    test('starts at analyzing before previews', () {
+      final vm = PhotoGenerateViewModel();
+      vm.initialize(photo, theme);
+      final presentation = resolveGenerationWaitPresentation(
+        vm,
+        commentaryEnabled: true,
+      );
+      expect(
+        generationWaitStepperActiveIndex(vm, presentation),
+        0,
+      );
+    });
+
+    test('advances with pseudo storyboard during anticipation', () {
+      final vm = PhotoGenerateViewModel();
+      vm.initialize(photo, theme);
+      const presentation = GenerationWaitPresentation(
+        storyboardIndex: 2,
+        stageTitle: '3 · REVEAL',
+        headline: 'Rendering',
+        description: 'Applying style',
+        imageUrl: null,
+        showPolishingOverlay: false,
+        stageChanged: false,
+      );
+      expect(generationWaitStepperActiveIndex(vm, presentation), 2);
+    });
+
+    test('finalizing when polishing overlay is active', () {
+      final vm = PhotoGenerateViewModel();
+      vm.initialize(photo, theme);
+      const presentation = GenerationWaitPresentation(
+        storyboardIndex: 3,
+        stageTitle: '4 · FINISH',
+        headline: 'Finishing',
+        description: 'Polish',
+        imageUrl: 'https://example.com/ai.jpg',
+        showPolishingOverlay: true,
+        stageChanged: true,
+      );
+      expect(generationWaitStepperActiveIndex(vm, presentation), 2);
+    });
+  });
+
+  group('generationWaitShouldShowLiveStatusCopy', () {
+    test('hides generic vm progress headline', () {
+      const presentation = GenerationWaitPresentation(
+        storyboardIndex: 1,
+        stageTitle: 'x',
+        headline: 'Transforming your look...',
+        description: 'Applying your style…',
+        imageUrl: null,
+        showPolishingOverlay: false,
+        stageChanged: false,
+      );
+      expect(generationWaitShouldShowLiveStatusCopy(presentation), isFalse);
+    });
+
+    test('hides duplicate time expectation description', () {
+      const presentation = GenerationWaitPresentation(
+        storyboardIndex: 0,
+        stageTitle: 'x',
+        headline: 'Custom server message',
+        description: AppStrings.generationWaitExpectation,
+        imageUrl: null,
+        showPolishingOverlay: false,
+        stageChanged: false,
+      );
+      expect(generationWaitShouldShowLiveStatusCopy(presentation), isTrue);
+    });
+  });
+
+  group('computeThemeAnticipationHeroSize', () {
+    test('fills tall portrait slot instead of a short landscape strip', () {
+      final size = computeThemeAnticipationHeroSize(
+        maxWidth: 720,
+        maxHeight: 520,
+      );
+      expect(size.height, greaterThan(400));
+      expect(size.width, lessThanOrEqualTo(720));
+    });
+
+    test('uses portrait cell aspect ratio', () {
+      final size = computeThemeAnticipationHeroSize(
+        maxWidth: 720,
+        maxHeight: 520,
+      );
+      final gap = kGenerationWaitAnticipationCellGap;
+      final cellW = (size.width - gap) / 2;
+      final cellH = size.height - kGenerationWaitAnticipationLabelOverhead;
+      expect(cellW / cellH, closeTo(3 / 4.5, 0.02));
+    });
+  });
+
   group('resolveGenerationWaitPresentation', () {
     test('uses rotating copy before server previews', () {
       final vm = PhotoGenerateViewModel();
