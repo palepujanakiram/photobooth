@@ -267,6 +267,9 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   /// Prevents polling the previous session run (stale 75% isolate UI on regen).
   bool _awaitingFreshRunId = false;
 
+  /// Set by the progress screen after the cinematic reveal overlay completes.
+  bool _beholdEntranceFromProgressReveal = false;
+
   PhotoGenerateViewModel({
     ApiService? apiService,
     SessionManager? sessionManager,
@@ -1339,6 +1342,18 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       return img.copyWith(isSelected: img.id == newestId);
     }).toList();
     notifyListeners();
+  }
+
+  /// Marks that BEHOLD should play a light entrance after the progress reveal.
+  void markBeholdEntranceFromProgressReveal() {
+    _beholdEntranceFromProgressReveal = true;
+  }
+
+  /// Returns true once, then clears the entrance flag.
+  bool consumeBeholdEntranceFromProgressReveal() {
+    if (!_beholdEntranceFromProgressReveal) return false;
+    _beholdEntranceFromProgressReveal = false;
+    return true;
   }
 
   /// Clear error

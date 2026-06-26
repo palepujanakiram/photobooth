@@ -1,9 +1,14 @@
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart'
-    show CupertinoButton, CupertinoColors, CupertinoSlidingSegmentedControl;
+    show
+        CupertinoButton,
+        CupertinoColors,
+        CupertinoIcons,
+        CupertinoSlidingSegmentedControl;
 import 'package:flutter/material.dart';
 
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/secure_image_url.dart';
@@ -19,9 +24,26 @@ import '../photo_capture/photo_image_from_xfile_io.dart'
     as photo_image;
 import '../theme_selection/theme_model.dart';
 import '../transformation_details/transformation_details_view.dart';
+import 'behold_result_ready_widgets.dart';
 import 'photo_generate_behold_aspect.dart';
 import 'generation_wait_widgets.dart';
 import 'photo_generate_viewmodel.dart';
+
+/// True when BEHOLD shows one finished result (hero-max layout applies).
+bool isBeholdSingleResultReady(PhotoGenerateViewModel viewModel) {
+  final isGenerating =
+      viewModel.isGenerating && viewModel.generatedImages.isEmpty;
+  return viewModel.generatedImages.isNotEmpty &&
+      !isGenerating &&
+      !viewModel.isLoadingMore &&
+      viewModel.generatedImages.length <= 1;
+}
+
+/// Max width for the bottom Continue button (matches theme selection / capture).
+const double kBeholdReadyContinueMaxWidth = 360;
+
+/// Max width for orientation + secondary links under the hero.
+const double kBeholdReadyControlsMaxWidth = 520;
 
 /// Layout inputs for [buildGeneratedOnlyLayout] (Sonar S107).
 class GeneratedOnlyLayoutLayout {
@@ -76,6 +98,19 @@ typedef BeholdHeroCardBuilder = Widget Function(
   required double height,
 });
 
+/// Footer action dependencies for the BEHOLD ready split layout (Sonar S107).
+class BeholdReadyActionInput {
+  const BeholdReadyActionInput({
+    required this.paymentsEnabled,
+    required this.isMounted,
+    required this.onAddStyleSelected,
+  });
+
+  final bool paymentsEnabled;
+  final bool isMounted;
+  final void Function(ThemeModel theme) onAddStyleSelected;
+}
+
 /// Inputs for [buildPhotoGenerateMainContent] (Sonar S107).
 class PhotoGenerateMainContentInput {
   const PhotoGenerateMainContentInput({
@@ -87,6 +122,8 @@ class PhotoGenerateMainContentInput {
     this.viewportWidth,
     required this.buildPhotosDisplay,
     required this.buildPhotosActionFooter,
+    required this.beholdReadyActions,
+    required this.buildBeholdReadyHero,
   });
 
   final GlobalKey contentKey;
@@ -97,6 +134,8 @@ class PhotoGenerateMainContentInput {
   final double? viewportWidth;
   final PhotoGeneratePhotosDisplayBuilder buildPhotosDisplay;
   final PhotoGeneratePhotosActionFooterBuilder buildPhotosActionFooter;
+  final BeholdReadyActionInput beholdReadyActions;
+  final BeholdHeroCardBuilder buildBeholdReadyHero;
 }
 
 /// Builder callbacks for generated-only layouts (Sonar S107).
@@ -181,13 +220,40 @@ double beholdPortraitHeightCapFraction({
   return AppConstants.kCapturePreviewCardMaxHeightFractionPortrait;
 }
 
+/// Fits [aspect] inside a box without exceeding [maxWidth] or [maxHeight].
+({double width, double height}) fitBeholdHeroAspectInBox({
+  required double maxWidth,
+  required double maxHeight,
+  required double aspect,
+}) {
+  late double cardW;
+  late double cardH;
+  if (maxWidth / maxHeight > aspect) {
+    cardH = maxHeight;
+    cardW = cardH * aspect;
+  } else {
+    cardW = maxWidth;
+    cardH = cardW / aspect;
+  }
+  return (width: cardW, height: cardH);
+}
+
 /// Sizes the BEHOLD hero like CAPTURE: fill the available slot, then clamp to screen fractions.
 ({double width, double height}) computeBeholdHeroCardSize(
   BuildContext context, {
   required double maxWidth,
   required double maxHeight,
   required double aspect,
+  bool fillAvailableSlot = false,
 }) {
+  if (fillAvailableSlot) {
+    return fitBeholdHeroAspectInBox(
+      maxWidth: maxWidth,
+      maxHeight: maxHeight,
+      aspect: aspect,
+    );
+  }
+
   final media = MediaQuery.sizeOf(context);
   final isLandscape =
       MediaQuery.orientationOf(context) == Orientation.landscape;
@@ -205,16 +271,61 @@ double beholdPortraitHeightCapFraction({
   final capW = math.min(maxWidth, media.width * widthCapFrac);
   final capH = math.min(maxHeight, media.height * heightCapFrac);
 
-  late double cardW;
-  late double cardH;
-  if (capW / capH > aspect) {
-    cardH = capH;
-    cardW = cardH * aspect;
-  } else {
-    cardW = capW;
-    cardH = cardW / aspect;
+  return fitBeholdHeroAspectInBox(
+    maxWidth: capW,
+    maxHeight: capH,
+    aspect: aspect,
+  );
+}
+
+/// Builds the single-result BEHOLD hero card at explicit dimensions.
+Widget buildBeholdReadyHeroWidget({
+  required BuildContext context,
+  required PhotoGenerateViewModel viewModel,
+  required AppColors appColors,
+  required double width,
+  required double height,
+  required BeholdSlotWidgetsBuilder buildTransformedSlotWidgets,
+}) {
+  final slots = buildTransformedSlotWidgets(
+    context,
+    viewModel,
+    appColors,
+    width,
+    height,
+  );
+  if (slots.isEmpty) {
+    return _beholdReadyHeroMissingPlaceholder(width: width, height: height);
   }
-  return (width: cardW, height: cardH);
+  return SizedBox(
+    width: width,
+    height: height,
+    child: slots.first,
+  );
+}
+
+Widget _beholdReadyHeroMissingPlaceholder({
+  required double width,
+  required double height,
+}) {
+  return SizedBox(
+    width: width,
+    height: height,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: const Center(
+        child: Icon(
+          CupertinoIcons.photo,
+          color: Colors.white38,
+          size: 40,
+        ),
+      ),
+    ),
+  );
 }
 
 Widget? generatingHeroUnderlay(PhotoGenerateViewModel vm) {
@@ -443,6 +554,14 @@ Widget _buildPhotoGenerateViewportColumn({
   required double padding,
   required double maxWidth,
 }) {
+  if (isBeholdSingleResultReady(input.viewModel)) {
+    return _buildBeholdHeroMaxViewport(
+      context: context,
+      input: input,
+      maxWidth: maxWidth,
+    );
+  }
+
   final hasFooter = input.viewModel.generatedImages.isNotEmpty ||
       input.viewModel.isGenerating;
 
@@ -463,16 +582,170 @@ Widget _buildPhotoGenerateViewportColumn({
             },
           ),
         ),
-        if (hasFooter)
-          Center(
-            child: input.buildPhotosActionFooter(
-              context,
-              input.viewModel,
-              input.appColors,
-            ),
+        if (hasFooter) ...[
+          const SizedBox(height: 8),
+          input.buildPhotosActionFooter(
+            context,
+            input.viewModel,
+            input.appColors,
           ),
+        ],
       ],
     ),
+  );
+}
+
+/// BEHOLD ready layout: hero photo, controls, bottom Continue (no scroll).
+Widget buildBeholdReadyScreenLayout({
+  required BuildContext context,
+  required BoxConstraints constraints,
+  required PhotoGenerateMainContentInput input,
+}) {
+  const edgePadding = 12.0;
+  final actions = input.beholdReadyActions;
+  final vm = input.viewModel;
+  final media = MediaQuery.sizeOf(context);
+  final viewportH = _beholdReadyViewportHeight(
+    constraints,
+    media.height,
+    inputViewportHeight: input.viewportHeight,
+  );
+  final viewportW = _beholdReadyViewportWidth(constraints, input, media.width);
+  final continueButton = _buildContinueButton(
+    context: context,
+    viewModel: vm,
+    paymentsEnabled: actions.paymentsEnabled,
+    isGeneratingOrLoading: false,
+  );
+
+  return SizedBox(
+    width: viewportW,
+    height: viewportH,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: edgePadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, slot) {
+                final maxW = math.min(
+                  720.0,
+                  slot.maxWidth,
+                );
+                final aspect = beholdSingleResultCardAspectRatio(
+                  context,
+                  vm,
+                  maxWidth: maxW,
+                  maxHeight: slot.maxHeight,
+                );
+                final heroSize = computeBeholdHeroCardSize(
+                  context,
+                  maxWidth: maxW,
+                  maxHeight: slot.maxHeight,
+                  aspect: aspect,
+                  fillAvailableSlot: true,
+                );
+                return Center(
+                  child: SizedBox(
+                    width: heroSize.width,
+                    height: heroSize.height,
+                    child: input.buildBeholdReadyHero(
+                      context,
+                      vm,
+                      width: heroSize.width,
+                      height: heroSize.height,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: kBeholdReadyControlsMaxWidth,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildPrintOrientationBelowImage(viewModel: vm),
+                  const SizedBox(height: 8),
+                  _buildBeholdReadySecondaryLinks(
+                    context: context,
+                    viewModel: vm,
+                    actions: actions,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: kBeholdReadyContinueMaxWidth,
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                child: continueButton,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Center(child: BeholdReadyPrivacyFooter(compact: true)),
+          const SizedBox(height: 4),
+        ],
+      ),
+    ),
+  );
+}
+
+double _beholdReadyViewportHeight(
+  BoxConstraints constraints,
+  double screenH, {
+  double? inputViewportHeight,
+}) {
+  if (constraints.maxHeight.isFinite && constraints.maxHeight > 0) {
+    return constraints.maxHeight;
+  }
+  if (inputViewportHeight != null &&
+      inputViewportHeight.isFinite &&
+      inputViewportHeight > 0) {
+    return inputViewportHeight;
+  }
+  return math.max(200.0, screenH * 0.5);
+}
+
+double _beholdReadyViewportWidth(
+  BoxConstraints constraints,
+  PhotoGenerateMainContentInput input,
+  double screenW,
+) {
+  final fromInput = input.viewportWidth;
+  if (fromInput != null && fromInput.isFinite && fromInput > 0) {
+    return fromInput;
+  }
+  if (constraints.maxWidth.isFinite && constraints.maxWidth > 0) {
+    return constraints.maxWidth;
+  }
+  return screenW;
+}
+
+Widget _buildBeholdHeroMaxViewport({
+  required BuildContext context,
+  required PhotoGenerateMainContentInput input,
+  required double maxWidth,
+}) {
+  final h = input.viewportHeight;
+  final w = input.viewportWidth ?? maxWidth;
+  return buildBeholdReadyScreenLayout(
+    context: context,
+    constraints: BoxConstraints(
+      maxWidth: w.isFinite && w > 0 ? w : maxWidth,
+      maxHeight: h != null && h.isFinite && h > 0 ? h : double.infinity,
+    ),
+    input: input,
   );
 }
 
@@ -489,24 +762,37 @@ Widget _buildPhotoGenerateViewportScrollSlot({
   final contentH = slot.maxHeight.isFinite && slot.maxHeight > 0
       ? slot.maxHeight
       : input.viewportHeight;
+  final vm = input.viewModel;
+  final readySingle = isBeholdSingleResultReady(vm);
+
+  final display = SizedBox(
+    width: contentW,
+    child: input.buildPhotosDisplay(
+      context,
+      input.viewModel,
+      input.appColors,
+      input.isLandscape,
+      contentW,
+      contentH,
+      true,
+    ),
+  );
+
+  if (readySingle && slot.maxHeight.isFinite && slot.maxHeight > 0) {
+    return SizedBox(
+      height: slot.maxHeight,
+      width: contentW,
+      child: display,
+    );
+  }
+
   return SingleChildScrollView(
     physics: const ClampingScrollPhysics(),
     child: ConstrainedBox(
       constraints: BoxConstraints(minHeight: slot.maxHeight),
       child: Align(
         alignment: Alignment.center,
-        child: SizedBox(
-          width: contentW,
-          child: input.buildPhotosDisplay(
-            context,
-            input.viewModel,
-            input.appColors,
-            input.isLandscape,
-            contentW,
-            contentH,
-            true,
-          ),
-        ),
+        child: display,
       ),
     ),
   );
@@ -524,6 +810,37 @@ Widget buildPhotosActionFooter({
       viewModel.isGenerating && viewModel.generatedImages.isEmpty;
   final isLoadingMore = viewModel.isLoadingMore;
   final isGeneratingOrLoading = isGenerating || isLoadingMore;
+  final isReadyWithImages =
+      !isGeneratingOrLoading && viewModel.generatedImages.isNotEmpty;
+
+  if (isReadyWithImages) {
+    final actions = BeholdReadyActionInput(
+      paymentsEnabled: paymentsEnabled,
+      isMounted: isMounted,
+      onAddStyleSelected: onAddStyleSelected,
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildBeholdReadySecondaryStrip(
+          context: context,
+          viewModel: viewModel,
+          actions: actions,
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: _buildContinueButton(
+            context: context,
+            viewModel: viewModel,
+            paymentsEnabled: paymentsEnabled,
+            isGeneratingOrLoading: false,
+          ),
+        ),
+      ],
+    );
+  }
 
   return SizedBox(
     width: 360,
@@ -532,22 +849,12 @@ Widget buildPhotosActionFooter({
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (!isGeneratingOrLoading && viewModel.generatedImages.isNotEmpty)
-          _buildPrintOrientationToggle(viewModel: viewModel),
-        if (!isGeneratingOrLoading && viewModel.generatedImages.isNotEmpty)
-          const SizedBox(height: 12),
         _buildContinueButton(
           context: context,
           viewModel: viewModel,
           paymentsEnabled: paymentsEnabled,
           isGeneratingOrLoading: isGeneratingOrLoading,
         ),
-        if (!isGeneratingOrLoading &&
-            viewModel.lastTransformationRunId != null &&
-            viewModel.generatedImages.isNotEmpty)
-          _buildTransformationDetailsLink(context, viewModel),
-        if (paymentsEnabled && viewModel.selectedCount > 0)
-          _buildSelectedTotalLine(viewModel),
         if (canAddMoreStyle)
           _buildAddAnotherStyleButton(
             context: context,
@@ -555,73 +862,85 @@ Widget buildPhotosActionFooter({
             isMounted: isMounted,
             onAddStyleSelected: onAddStyleSelected,
           ),
-        if (!isGeneratingOrLoading && viewModel.generatedImages.isNotEmpty)
-          DeleteMyPhotosButton(
-            compact: true,
-            onBeforeDelete: () async {
-              viewModel.cancelOperation();
-            },
-          ),
+      ],
+    ),
+  );
+}
+
+Widget _buildBeholdReadySecondaryStrip({
+  required BuildContext context,
+  required PhotoGenerateViewModel viewModel,
+  required BeholdReadyActionInput actions,
+}) {
+  return Padding(
+    padding: const EdgeInsets.only(top: 10),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        _buildPrintOrientationBelowImage(viewModel: viewModel),
         const SizedBox(height: 10),
-        Center(
-          child: TextButton(
-            onPressed: () async {
-              viewModel.cancelOperation();
-              await endPhotoboothCustomerSessionLogged('generate_start_over');
-              if (!context.mounted) return;
-              await Navigator.pushNamedAndRemoveUntil(
-                context,
-                AppConstants.kRouteTerms,
-                (route) => false,
-                arguments: TermsRouteArgs(
-                  capturePhoto: viewModel.originalPhoto,
-                ),
-              );
-            },
-            child: Text(
-              'Start all over again',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.82),
-                decoration: TextDecoration.underline,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+        _buildBeholdReadySecondaryLinks(
+          context: context,
+          viewModel: viewModel,
+          actions: actions,
         ),
       ],
     ),
   );
 }
 
-Widget _buildPrintOrientationToggle({
+Widget _buildBeholdReadySecondaryLinks({
+  required BuildContext context,
+  required PhotoGenerateViewModel viewModel,
+  required BeholdReadyActionInput actions,
+}) {
+  final showTransformationDetails = viewModel.lastTransformationRunId != null;
+  final showTotal = actions.paymentsEnabled && viewModel.selectedCount > 0;
+  final canAddMoreStyle = viewModel.canShowAddAnotherStyleButton;
+
+  return Wrap(
+    alignment: WrapAlignment.center,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    spacing: 8,
+    runSpacing: 6,
+    children: [
+      if (showTransformationDetails)
+        _buildTransformationDetailsStripLink(context, viewModel),
+      if (showTotal) _buildSelectedTotalChip(viewModel),
+      _buildDeletePhotosStripLink(
+        context: context,
+        viewModel: viewModel,
+      ),
+      _buildStartOverStripLink(context: context, viewModel: viewModel),
+      if (canAddMoreStyle)
+        _buildAddAnotherStyleStripLink(
+          context: context,
+          viewModel: viewModel,
+          isMounted: actions.isMounted,
+          onAddStyleSelected: actions.onAddStyleSelected,
+        ),
+    ],
+  );
+}
+
+Widget _buildPrintOrientationBelowImage({
   required PhotoGenerateViewModel viewModel,
 }) {
-  final personHint = viewModel.sessionPersonCount;
-  final hintText = personHint == null
-      ? 'Choose how your photo prints'
-      : personHint <= 1
-          ? 'Solo photo — portrait suggested'
-          : 'Group of $personHint — landscape suggested';
-
   return Column(
+    mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       const Text(
         'Print orientation',
+        textAlign: TextAlign.center,
         style: TextStyle(
           color: Colors.white,
-          fontSize: 13,
+          fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
-        textAlign: TextAlign.center,
       ),
-      const SizedBox(height: 4),
-      Text(
-        hintText,
-        style: const TextStyle(color: Colors.white70, fontSize: 11),
-        textAlign: TextAlign.center,
-      ),
-      const SizedBox(height: 10),
+      const SizedBox(height: 8),
       CupertinoSlidingSegmentedControl<PrintOrientation>(
         groupValue: viewModel.printOrientation,
         backgroundColor: Colors.black.withValues(alpha: 0.35),
@@ -629,11 +948,11 @@ Widget _buildPrintOrientationToggle({
         children: {
           for (final orientation in PrintOrientation.values)
             orientation: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               child: Text(
                 orientation.label,
                 style: const TextStyle(
-                  fontSize: 13,
+                  fontSize: 11,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -647,6 +966,156 @@ Widget _buildPrintOrientationToggle({
   );
 }
 
+Widget _buildTransformationDetailsStripLink(
+  BuildContext context,
+  PhotoGenerateViewModel viewModel,
+) {
+  return TextButton.icon(
+    onPressed: () {
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => TransformationDetailsScreen(
+            runId: viewModel.lastTransformationRunId!,
+          ),
+        ),
+      );
+    },
+    icon: Icon(
+      Icons.photo_library_outlined,
+      size: 15,
+      color: kBeholdReadyAccent.withValues(alpha: 0.92),
+    ),
+    label: Text(
+      AppStrings.beholdTransformationDetailsLink,
+      style: TextStyle(
+        color: kBeholdReadyAccent.withValues(alpha: 0.92),
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+    style: TextButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      minimumSize: Size.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    ),
+  );
+}
+
+Widget _buildDeletePhotosStripLink({
+  required BuildContext context,
+  required PhotoGenerateViewModel viewModel,
+}) {
+  return TextButton.icon(
+    onPressed: () async {
+      viewModel.cancelOperation();
+      if (!context.mounted) return;
+      await confirmAndDeleteMyPhotos(context);
+    },
+    icon: Icon(
+      CupertinoIcons.delete,
+      size: 14,
+      color: CupertinoColors.destructiveRed,
+    ),
+    label: Text(
+      AppStrings.deleteMyPhotosLabel,
+      style: const TextStyle(
+        fontSize: 12,
+        color: CupertinoColors.destructiveRed,
+        decoration: TextDecoration.underline,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+    style: TextButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      minimumSize: Size.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    ),
+  );
+}
+
+Widget _buildStartOverStripLink({
+  required BuildContext context,
+  required PhotoGenerateViewModel viewModel,
+}) {
+  return TextButton.icon(
+    onPressed: () async {
+      viewModel.cancelOperation();
+      await endPhotoboothCustomerSessionLogged('generate_start_over');
+      if (!context.mounted) return;
+      await Navigator.pushNamedAndRemoveUntil(
+        context,
+        AppConstants.kRouteTerms,
+        (route) => false,
+        arguments: TermsRouteArgs(
+          capturePhoto: viewModel.originalPhoto,
+        ),
+      );
+    },
+    icon: Icon(
+      Icons.refresh_rounded,
+      size: 15,
+      color: Colors.white.withValues(alpha: 0.82),
+    ),
+    label: Text(
+      'Start all over again',
+      style: TextStyle(
+        color: Colors.white.withValues(alpha: 0.82),
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+    style: TextButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      minimumSize: Size.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    ),
+  );
+}
+
+Widget _buildAddAnotherStyleStripLink({
+  required BuildContext context,
+  required PhotoGenerateViewModel viewModel,
+  required bool isMounted,
+  required void Function(ThemeModel theme) onAddStyleSelected,
+}) {
+  return TextButton(
+    onPressed: (viewModel.isGenerating || viewModel.isLoadingMore)
+        ? null
+        : () async {
+            final result = await Navigator.pushNamed(
+              context,
+              AppConstants.kRouteHome,
+              arguments: {
+                if (viewModel.originalPhoto != null)
+                  'photo': viewModel.originalPhoto,
+                'addOneMoreStyle': true,
+                'usedThemeIds': List<String>.from(
+                  viewModel.generatedImages.map((e) => e.theme.id),
+                ),
+              },
+            );
+            if (!isMounted) return;
+            if (result is ThemeModel) {
+              onAddStyleSelected(result);
+            }
+          },
+    style: TextButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      minimumSize: Size.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    ),
+    child: const Text(
+      'Add another style',
+      style: TextStyle(
+        color: Colors.white70,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
+}
+
 Widget _buildContinueButton({
   required BuildContext context,
   required PhotoGenerateViewModel viewModel,
@@ -655,12 +1124,13 @@ Widget _buildContinueButton({
 }) {
   final canContinue =
       !isGeneratingOrLoading && viewModel.hasSelectedImages;
-  return CupertinoButton(
-    padding: const EdgeInsets.symmetric(vertical: 16),
-    color: canContinue
-        ? CupertinoColors.systemBlue
-        : CupertinoColors.systemGrey,
-    borderRadius: BorderRadius.circular(12),
+  final label = viewModel.selectedCount < viewModel.generatedImages.length
+      ? '${AppStrings.beholdContinueLabel} (${viewModel.selectedCount} of ${viewModel.generatedImages.length})'
+      : AppStrings.beholdContinueLabel;
+
+  return BeholdReadyContinueButton(
+    label: label,
+    enabled: canContinue,
     onPressed: canContinue
         ? () => _onPhotoGenerateContinuePressed(
               context: context,
@@ -668,16 +1138,6 @@ Widget _buildContinueButton({
               paymentsEnabled: paymentsEnabled,
             )
         : null,
-    child: Text(
-      viewModel.selectedCount < viewModel.generatedImages.length
-          ? 'Continue (${viewModel.selectedCount} of ${viewModel.generatedImages.length})'
-          : 'Continue',
-      style: const TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.bold,
-        color: CupertinoColors.white,
-      ),
-    ),
   );
 }
 
@@ -722,46 +1182,18 @@ Future<ContactBeforePayResult?> _photoGenerateContactBeforePay({
   return showContactBeforePaySheet(context);
 }
 
-Widget _buildTransformationDetailsLink(
-  BuildContext context,
-  PhotoGenerateViewModel viewModel,
-) {
-  return TextButton(
-    onPressed: () {
-      Navigator.push<void>(
-        context,
-        MaterialPageRoute<void>(
-          builder: (_) => TransformationDetailsScreen(
-            runId: viewModel.lastTransformationRunId!,
-          ),
-        ),
-      );
-    },
-    child: const Text(
-      'Transformation details',
-      style: TextStyle(
-        color: Colors.white70,
-        fontSize: 13,
-        decoration: TextDecoration.underline,
-      ),
-    ),
-  );
-}
-
-Widget _buildSelectedTotalLine(PhotoGenerateViewModel viewModel) {
+Widget _buildSelectedTotalChip(PhotoGenerateViewModel viewModel) {
   final extra = viewModel.selectedCount > 1
       ? '  (+₹${(viewModel.selectedCount - 1) * viewModel.additionalPrintPrice})'
       : '';
   return Padding(
-    padding: const EdgeInsets.only(top: 10),
-    child: Center(
-      child: Text(
-        'Total: ₹${viewModel.selectedTotalPrice}$extra',
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.78),
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+    child: Text(
+      'Total: ₹${viewModel.selectedTotalPrice}$extra',
+      style: TextStyle(
+        color: Colors.white.withValues(alpha: 0.78),
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
       ),
     ),
   );
@@ -915,7 +1347,7 @@ String beholdHeroMessage({
     if (isLoadingMore) return 'Adding your new style...';
     return 'Please wait while we create your masterpiece';
   }
-  if (hasImages) return 'Your masterpiece is ready';
+  if (hasImages) return AppStrings.beholdReadyTitle;
   return '';
 }
 
@@ -974,7 +1406,14 @@ Widget _buildBeholdHeroMessageBlock({
   required bool isGeneratingOrLoading,
   required PhotoGenerateViewModel viewModel,
   required bool showElapsed,
+  bool headerInAppBar = false,
 }) {
+  if (hasImages && !isGeneratingOrLoading && headerInAppBar) {
+    return const SizedBox.shrink();
+  }
+  if (hasImages && !isGeneratingOrLoading) {
+    return const BeholdReadySuccessHeader();
+  }
   if (message.isEmpty) return const SizedBox.shrink();
   return Column(
     mainAxisSize: MainAxisSize.min,
@@ -1014,6 +1453,35 @@ Widget _buildGeneratedOnlySingleSlotLayout({
   required GeneratedOnlySingleSlotState slot,
   required GeneratedOnlyLayoutBuilders builders,
 }) {
+  final readyInAppBar =
+      slot.hasImages && !slot.isGeneratingOrLoading && slot.fixedFooterOutside;
+  final message = beholdHeroMessage(
+    isGeneratingOrLoading: slot.isGeneratingOrLoading,
+    isLoadingMore: slot.isLoadingMore,
+    hasImages: slot.hasImages,
+  );
+
+  if (readyInAppBar) {
+    final readySlots = builders.buildTransformedSlotWidgets(
+      context,
+      viewModel,
+      appColors,
+      slot.screenWidth,
+      slot.maxRowHeight,
+    );
+    if (readySlots.isEmpty) {
+      return _beholdReadyHeroMissingPlaceholder(
+        width: slot.screenWidth,
+        height: slot.maxRowHeight,
+      );
+    }
+    return SizedBox(
+      width: slot.screenWidth,
+      height: slot.maxRowHeight,
+      child: readySlots.first,
+    );
+  }
+
   final size = computeBeholdHeroCardSize(
     context,
     maxWidth: slot.screenWidth,
@@ -1028,11 +1496,6 @@ Widget _buildGeneratedOnlySingleSlotLayout({
     appColors,
     cardW,
     cardH,
-  );
-  final message = beholdHeroMessage(
-    isGeneratingOrLoading: slot.isGeneratingOrLoading,
-    isLoadingMore: slot.isLoadingMore,
-    hasImages: slot.hasImages,
   );
 
   return Center(
@@ -1055,6 +1518,7 @@ Widget _buildGeneratedOnlySingleSlotLayout({
           isGeneratingOrLoading: slot.isGeneratingOrLoading,
           viewModel: viewModel,
           showElapsed: true,
+          headerInAppBar: readyInAppBar,
         ),
         _buildGeneratedOnlySingleSlotHero(
           context: context,
@@ -1176,6 +1640,9 @@ Widget _buildGeneratedOnlyGridLayout({
           isGeneratingOrLoading: slot.isGeneratingOrLoading,
           viewModel: viewModel,
           showElapsed: false,
+          headerInAppBar: slot.hasImages &&
+              !slot.isGeneratingOrLoading &&
+              slot.layout.fixedFooterOutside,
         ),
         SizedBox(
           width: screenWidth,

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cross_file/cross_file.dart';
@@ -7,333 +6,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/customer_session_lifecycle.dart';
-import '../../services/theme_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
 import '../../views/widgets/cached_network_image.dart';
-import '../theme_selection/theme_model.dart';
+import '../../views/widgets/kiosk_vertical_screen_layout.dart';
 import '../theme_selection/theme_preview_screen.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
     if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart'
     as photo_image;
 import 'generation_wait_helpers.dart';
+import 'generation_wait_story_helpers.dart';
+import 'generation_wait_phase2_widgets.dart';
+import 'generation_wait_theme_reel.dart';
 import 'photo_generate_viewmodel.dart';
 import 'post_reveal_polishing_overlay.dart';
-
-class GenerationPossibilitiesCollage extends StatefulWidget {
-  const GenerationPossibilitiesCollage({super.key});
-
-  @override
-  State<GenerationPossibilitiesCollage> createState() =>
-      _GenerationPossibilitiesCollageState();
-}
-
-class _GenerationPossibilitiesCollageState
-    extends State<GenerationPossibilitiesCollage>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-
-  static const _labels = <String>[
-    'Fantasy Kingdom',
-    'Anime Hero',
-    'Royal Wedding',
-    'Superhero',
-    'Mystic Kingdom',
-    'Bollywood Star',
-    'Pixar Character',
-    'Sweet Pop Dreamland',
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    unawaited(ThemeManager().fetchThemes());
-    _c = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 18),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  List<_CollageCardModel> _resolveCards() {
-    final themes = ThemeManager().getActiveThemes();
-    final byName = <String, ThemeModel>{};
-    for (final t in themes) {
-      final k = t.name.trim().toLowerCase();
-      if (k.isEmpty) continue;
-      byName.putIfAbsent(k, () => t);
-    }
-
-    ThemeModel? bestMatch(String label) {
-      final want = label.trim().toLowerCase();
-      if (want.isEmpty) return null;
-      // Exact match first.
-      final exact = byName[want];
-      if (exact != null) return exact;
-      // Partial match: look for themes whose name contains the label words.
-      for (final t in themes) {
-        final name = t.name.trim().toLowerCase();
-        if (name.contains(want)) return t;
-      }
-      return null;
-    }
-
-    return _labels.map((label) {
-      final theme = bestMatch(label);
-      final url = theme == null ? '' : ThemePreviewScreen.resolveSampleImageUrl(theme);
-      return _CollageCardModel(
-        label: label,
-        imageUrl: url,
-      );
-    }).toList(growable: false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cards = _resolveCards();
-    final w = MediaQuery.sizeOf(context).width;
-    final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
-    final height = isLandscape ? 240.0 : 220.0;
-    final maxW = math.min(w * 0.94, 720.0);
-
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxW),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            AppStrings.generationWaitPossibilitiesSubtitle,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.78),
-              fontSize: 12,
-              height: 1.2,
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: height,
-            child: AnimatedBuilder(
-              animation: _c,
-              builder: (context, _) {
-                final t = _c.value;
-                return Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    // Subtle parallax haze behind cards.
-                    Positioned.fill(
-                      child: Opacity(
-                        opacity: 0.25,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: RadialGradient(
-                              center: Alignment(
-                                math.sin(t * math.pi * 2) * 0.35,
-                                math.cos(t * math.pi * 2) * 0.25,
-                              ),
-                              radius: 1.1,
-                              colors: [
-                                CupertinoColors.systemBlue.withValues(alpha: 0.35),
-                                Colors.transparent,
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    for (var i = 0; i < cards.length; i++)
-                      _CollageFloatingCard(
-                        model: cards[i],
-                        index: i,
-                        t: t,
-                      ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CollageCardModel {
-  const _CollageCardModel({
-    required this.label,
-    required this.imageUrl,
-  });
-
-  final String label;
-  final String imageUrl;
-}
-
-class _CollageFloatingCard extends StatelessWidget {
-  const _CollageFloatingCard({
-    required this.model,
-    required this.index,
-    required this.t,
-  });
-
-  final _CollageCardModel model;
-  final int index;
-  final double t;
-
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final w = (math.min(size.width * 0.94, 720.0));
-    final h = MediaQuery.orientationOf(context) == Orientation.landscape ? 240.0 : 220.0;
-
-    // Layout: 8 cards in a loose collage.
-    // Using normalized positions so it scales from tablet to desktop.
-    const positions = <Offset>[
-      Offset(0.02, 0.10),
-      Offset(0.36, 0.04),
-      Offset(0.70, 0.12),
-      Offset(0.10, 0.48),
-      Offset(0.44, 0.44),
-      Offset(0.76, 0.48),
-      Offset(0.26, 0.72),
-      Offset(0.62, 0.74),
-    ];
-    final p = positions[index % positions.length];
-
-    final baseX = p.dx * w;
-    final baseY = p.dy * h;
-
-    final phase = (t * math.pi * 2) + index * 0.55;
-    final floatY = math.sin(phase) * 6.0;
-    final floatX = math.cos(phase * 0.8) * 4.0;
-    final zoom = 1.0 + (math.sin(phase * 0.6) * 0.04);
-    final tilt = math.sin(phase * 0.7) * 0.03;
-
-    final cardW = (w * 0.26).clamp(120.0, 190.0);
-    final cardH = (cardW * 1.18).clamp(150.0, 230.0);
-
-    return Positioned(
-      left: (baseX + floatX).clamp(0.0, w - cardW),
-      top: (baseY + floatY).clamp(0.0, h - cardH),
-      child: Transform(
-        alignment: Alignment.center,
-        transform: Matrix4.identity()
-          ..translateByDouble(cardW / 2, cardH / 2, 0, 0)
-          ..rotateZ(tilt)
-          ..scaleByDouble(zoom, zoom, 1, 0)
-          ..translateByDouble(-cardW / 2, -cardH / 2, 0, 0),
-        child: _CollageCard(
-          width: cardW,
-          height: cardH,
-          model: model,
-        ),
-      ),
-    );
-  }
-}
-
-class _CollageCard extends StatelessWidget {
-  const _CollageCard({
-    required this.width,
-    required this.height,
-    required this.model,
-  });
-
-  final double width;
-  final double height;
-  final _CollageCardModel model;
-
-  @override
-  Widget build(BuildContext context) {
-    final imageUrl = model.imageUrl.trim();
-    final hasImage = imageUrl.isNotEmpty;
-    final bg = DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: 0.10),
-            Colors.white.withValues(alpha: 0.04),
-          ],
-        ),
-      ),
-      child: Center(
-        child: Text(
-          model.label,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    );
-
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white24, width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 10,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (hasImage)
-            CachedNetworkImage(
-              imageUrl: imageUrl,
-              fit: BoxFit.cover,
-              filterQuality: FilterQuality.low,
-              placeholder: bg,
-              errorWidget: bg,
-            )
-          else
-            bg,
-          Positioned(
-            left: 10,
-            right: 10,
-            bottom: 10,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: ColoredBox(
-                color: Colors.black.withValues(alpha: 0.38),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  child: Text(
-                    model.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 /// Slow zoom/pan on the capture still so the wait state feels alive.
 class KenBurnsCaptureImage extends StatefulWidget {
@@ -343,12 +31,14 @@ class KenBurnsCaptureImage extends StatefulWidget {
     required this.width,
     required this.height,
     this.fit = BoxFit.cover,
+    this.alignment = kGenerationWaitPortraitFaceAlignment,
   });
 
   final XFile imageFile;
   final double width;
   final double height;
   final BoxFit fit;
+  final Alignment alignment;
 
   @override
   State<KenBurnsCaptureImage> createState() => _KenBurnsCaptureImageState();
@@ -395,6 +85,7 @@ class _KenBurnsCaptureImageState extends State<KenBurnsCaptureImage>
         widget.width,
         widget.height,
         fit: widget.fit,
+        alignment: widget.alignment,
       ),
     );
   }
@@ -422,22 +113,11 @@ class ThemeAnticipationHero extends StatelessWidget {
         : ThemePreviewScreen.resolveSampleImageUrl(theme);
     final gap = width > 520 ? 10.0 : 8.0;
     final cellW = (width - gap) / 2;
+    final imageH = math.max(80.0, height - kGenerationWaitAnticipationLabelOverhead);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (theme != null) ...[
-          Text(
-            '${AppStrings.generationWaitThemeIntoPrefix} ${theme.name}',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-              fontSize: 16,
-            ),
-          ),
-          const SizedBox(height: 10),
-        ],
         SizedBox(
           width: width,
           height: height,
@@ -450,7 +130,7 @@ class ThemeAnticipationHero extends StatelessWidget {
                       ? KenBurnsCaptureImage(
                           imageFile: photo.imageFile,
                           width: cellW,
-                          height: height,
+                          height: imageH,
                         )
                       : const ColoredBox(color: Colors.black),
                 ),
@@ -459,7 +139,7 @@ class ThemeAnticipationHero extends StatelessWidget {
               Expanded(
                 child: _labeledCell(
                   label: AppStrings.generationWaitAfterLabel,
-                  child: _afterCell(sampleUrl, cellW, height),
+                  child: _afterCell(sampleUrl, cellW, imageH),
                 ),
               ),
             ],
@@ -505,11 +185,15 @@ class ThemeAnticipationHero extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        CachedNetworkImage(
-          imageUrl: sampleUrl,
+        FittedBox(
           fit: BoxFit.cover,
-          filterQuality: FilterQuality.medium,
-          errorWidget: const _ShimmerPlaceholder(),
+          alignment: kGenerationWaitPortraitFaceAlignment,
+          child: CachedNetworkImage(
+            imageUrl: sampleUrl,
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.medium,
+            errorWidget: const _ShimmerPlaceholder(),
+          ),
         ),
         Container(
           color: Colors.black.withValues(alpha: 0.28),
@@ -1042,7 +726,7 @@ class GenerationWaitHeroCard extends StatelessWidget {
       child: ClipRect(
         child: FittedBox(
           fit: BoxFit.cover,
-          alignment: Alignment.center,
+          alignment: kGenerationWaitPortraitFaceAlignment,
           child: CachedNetworkImage(
             imageUrl: imageUrl.trim(),
             fit: BoxFit.cover,
@@ -1080,14 +764,9 @@ class GenerationWaitHeroCard extends StatelessWidget {
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 10),
-          Text(
-            '${AppStrings.generationWaitElapsedLabel}: ${viewModel.elapsedSeconds}s',
-            style: const TextStyle(
-              color: Colors.white70,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-            ),
+          const SizedBox(height: 14),
+          GenerationWaitEducationalFooter(
+            elapsedSeconds: viewModel.elapsedSeconds,
           ),
         ],
       ),
@@ -1103,12 +782,16 @@ class GenerationWaitCinematicHero extends StatelessWidget {
     required this.presentation,
     required this.width,
     required this.height,
+    this.showPolishingStripBelow = true,
   });
 
   final PhotoGenerateViewModel viewModel;
   final GenerationWaitPresentation presentation;
   final double width;
   final double height;
+
+  /// When false, [PostRevealPolishingOverlay] is omitted (kiosk footer owns it).
+  final bool showPolishingStripBelow;
 
   @override
   Widget build(BuildContext context) {
@@ -1170,7 +853,7 @@ class GenerationWaitCinematicHero extends StatelessWidget {
             ),
           ),
         ),
-        if (presentation.showPolishingOverlay) ...[
+        if (showPolishingStripBelow && presentation.showPolishingOverlay) ...[
           const SizedBox(height: 10),
           PostRevealPolishingOverlay(
             steps: viewModel.generationRunStepPreviews,
@@ -1209,7 +892,7 @@ class GenerationWaitCinematicHero extends StatelessWidget {
       height: height,
       child: FittedBox(
         fit: BoxFit.cover,
-        alignment: Alignment.center,
+        alignment: kGenerationWaitPortraitFaceAlignment,
         child: CachedNetworkImage(
           imageUrl: imageUrl.trim(),
           fit: BoxFit.cover,
@@ -1223,73 +906,6 @@ class GenerationWaitCinematicHero extends StatelessWidget {
   }
 }
 
-/// Status line + honest progress during the anticipation wait phase.
-class GenerationWaitStatusFooter extends StatelessWidget {
-  const GenerationWaitStatusFooter({
-    super.key,
-    required this.viewModel,
-    required this.presentation,
-  });
-
-  final PhotoGenerateViewModel viewModel;
-  final GenerationWaitPresentation presentation;
-
-  @override
-  Widget build(BuildContext context) {
-    final progress = generationWaitEffectiveProgress(
-      pipelineProgress: viewModel.pipelineFunnelProgress,
-      elapsedSeconds: viewModel.elapsedSeconds,
-      hasServerPreviews: generationWaitHasPipelinePreviews(viewModel),
-    );
-
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 720),
-      child: Column(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: progress > 0.02 ? progress : null,
-              minHeight: 4,
-              backgroundColor: Colors.white12,
-              color: CupertinoColors.activeBlue,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            presentation.headline,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              fontSize: 18,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            presentation.description,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 13,
-              height: 1.25,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            '${AppStrings.generationWaitElapsedLabel}: ${viewModel.elapsedSeconds}s',
-            style: const TextStyle(
-              color: Colors.white70,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Full progress-route body with phased anticipation → pipeline UX.
 class GenerationWaitBody extends StatefulWidget {
   const GenerationWaitBody({
@@ -1298,12 +914,16 @@ class GenerationWaitBody extends StatefulWidget {
     required this.cardWidth,
     required this.cardHeight,
     this.onStampTap,
+    this.useKioskLayout = false,
   });
 
   final PhotoGenerateViewModel viewModel;
   final double cardWidth;
   final double cardHeight;
   final void Function(int index)? onStampTap;
+
+  /// POSE-style top→bottom zones (progress route). Off when embedded in BEHOLD scroll.
+  final bool useKioskLayout;
 
   @override
   State<GenerationWaitBody> createState() => _GenerationWaitBodyState();
@@ -1337,8 +957,34 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
     }
 
     final showAnticipation = generationWaitShowAnticipationPhase(vm);
-    final anticipationHeight = widget.cardHeight * 0.48;
-    final revealHeight = widget.cardHeight * 0.62;
+
+    if (widget.useKioskLayout) {
+      return AnimatedSwitcher(
+        duration: const Duration(milliseconds: 480),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        child: showAnticipation
+            ? KeyedSubtree(
+                key: const ValueKey('anticipation'),
+                child: _buildKioskWaitStage(
+                  vm,
+                  presentation,
+                  anticipation: true,
+                ),
+              )
+            : KeyedSubtree(
+                key: const ValueKey('reveal'),
+                child: _buildKioskWaitStage(
+                  vm,
+                  presentation,
+                  anticipation: false,
+                ),
+              ),
+      );
+    }
+
+    final anticipationHeight = widget.cardHeight * 0.72;
+    final revealHeight = widget.cardHeight * 0.78;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 480),
@@ -1364,6 +1010,86 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
     );
   }
 
+  Widget _buildKioskWaitStage(
+    PhotoGenerateViewModel vm,
+    GenerationWaitPresentation presentation, {
+    required bool anticipation,
+  }) {
+    final showFaceScan = generationWaitShowFaceScanChecklist(vm, presentation);
+    final faceCount = generationWaitFaceScanCompletedCount(vm.elapsedSeconds);
+    final showPolish =
+        !anticipation && presentation.showPolishingOverlay;
+
+    return KioskVerticalScreenLayout(
+      horizontalPadding: 0,
+      heroMaxWidth: 720,
+      maxFooterWidth: 720,
+      footerScrollable: true,
+      maxFooterHeight: showPolish ? 228 : 196,
+      chrome: GenerationWaitStoryHeader(
+        viewModel: vm,
+        presentation: presentation,
+        compact: true,
+        hideRewardWhenPolishing: showPolish,
+      ),
+      hero: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxW = math.min(widget.cardWidth, constraints.maxWidth);
+          final maxH = constraints.maxHeight;
+          final size = anticipation
+              ? computeThemeAnticipationHeroSize(
+                  maxWidth: maxW,
+                  maxHeight: maxH,
+                )
+              : computeGenerationWaitCinematicHeroSize(
+                  maxWidth: maxW,
+                  maxHeight: maxH,
+                );
+
+          Widget buildHeroImage(double width, double height) {
+            if (anticipation) {
+              return ThemeAnticipationHero(
+                viewModel: vm,
+                width: width,
+                height: height,
+              );
+            }
+            return GenerationWaitCinematicHero(
+              viewModel: vm,
+              presentation: presentation,
+              width: width,
+              height: height,
+              showPolishingStripBelow: false,
+            );
+          }
+
+          return SizedBox(
+            width: size.width,
+            height: size.height,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Stack(
+                clipBehavior: Clip.hardEdge,
+                alignment: Alignment.center,
+                children: [
+                  buildHeroImage(size.width, size.height),
+                  if (showFaceScan)
+                    GenerationWaitFaceScanOverlay(completedCount: faceCount),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+      footer: _buildWaitStageFooter(
+        vm,
+        presentation,
+        compact: true,
+        showPolishStrip: showPolish,
+      ),
+    );
+  }
+
   Widget _buildLiveRevealStage(
     PhotoGenerateViewModel vm,
     GenerationWaitPresentation presentation,
@@ -1372,16 +1098,9 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
-          AppStrings.generationWaitPossibilitiesTitle,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-            fontSize: 16,
-            letterSpacing: 1.2,
-            height: 1.2,
-          ),
+        GenerationWaitStoryHeader(
+          viewModel: vm,
+          presentation: presentation,
         ),
         const SizedBox(height: 14),
         GenerationWaitCinematicHero(
@@ -1391,10 +1110,7 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
           height: heroHeight,
         ),
         const SizedBox(height: 16),
-        GenerationWaitStatusFooter(
-          viewModel: vm,
-          presentation: presentation,
-        ),
+        _buildWaitStageFooter(vm, presentation),
       ],
     );
   }
@@ -1407,26 +1123,9 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
-          AppStrings.generationWaitPossibilitiesTitle,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-            fontSize: 16,
-            letterSpacing: 1.2,
-            height: 1.2,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          AppStrings.generationWaitExpectation,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.78),
-            fontSize: 12,
-            height: 1.25,
-          ),
+        GenerationWaitStoryHeader(
+          viewModel: vm,
+          presentation: presentation,
         ),
         const SizedBox(height: 14),
         ThemeAnticipationHero(
@@ -1435,13 +1134,87 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
           height: anticipationHeight,
         ),
         const SizedBox(height: 16),
-        const GenerationPossibilitiesCollage(),
-        const SizedBox(height: 16),
-        GenerationWaitStatusFooter(
-          viewModel: vm,
-          presentation: presentation,
-        ),
+        _buildWaitStageFooter(vm, presentation),
       ],
+    );
+  }
+
+  Widget _buildWaitStageFooter(
+    PhotoGenerateViewModel vm,
+    GenerationWaitPresentation presentation, {
+    bool compact = false,
+    bool showPolishStrip = false,
+  }) {
+    final showLiveStatus = !compact &&
+        generationWaitShouldShowLiveStatusCopy(presentation);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showPolishStrip) ...[
+          PostRevealPolishingOverlay(
+            steps: vm.generationRunStepPreviews,
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (showLiveStatus) _buildLiveStatusCopy(presentation),
+        GenerationWaitEducationalFooter(
+          elapsedSeconds: vm.elapsedSeconds,
+          compact: compact,
+          hideFactWhenPolishing: showPolishStrip,
+        ),
+        if (!compact) ...[
+          const SizedBox(height: 14),
+          GenerationWaitThemePreviewReel(
+            excludeThemeId: vm.selectedTheme?.id,
+          ),
+          GenerationWaitMarketingTagline(elapsedSeconds: vm.elapsedSeconds),
+        ] else ...[
+          const SizedBox(height: 10),
+          GenerationWaitThemePreviewReel(
+            excludeThemeId: vm.selectedTheme?.id,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildLiveStatusCopy(GenerationWaitPresentation presentation) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: Column(
+          children: [
+            if (presentation.headline.isNotEmpty)
+              Text(
+                presentation.headline,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            if (presentation.description.isNotEmpty &&
+                presentation.description.trim() !=
+                    AppStrings.generationWaitExpectation &&
+                presentation.description.trim() !=
+                    AppStrings.generationWaitTimeExpectation) ...[
+              const SizedBox(height: 4),
+              Text(
+                presentation.description,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  height: 1.25,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
