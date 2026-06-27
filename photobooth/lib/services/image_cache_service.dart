@@ -9,6 +9,7 @@ import 'package:path/path.dart' as path;
 import '../utils/constants.dart';
 import '../utils/logger.dart';
 import 'protected_image_loader.dart';
+import 'image_cache_source.dart';
 
 /// Service for caching theme images to disk for persistent storage
 class ImageCacheService {
@@ -107,7 +108,17 @@ class ImageCacheService {
       AppLogger.debug('ImageCacheService: downloading and caching image: $imageUrl');
       final cacheFile = File(await _getCacheFilePath(imageUrl));
       final Uint8List bytes;
-      if (ProtectedImageLoader.isProtectedUrl(imageUrl)) {
+      final inlineDataUrl = extractInlineImageDataUrl(imageUrl);
+      if (inlineDataUrl != null) {
+        final decoded = decodeInlineImageDataUrl(inlineDataUrl);
+        if (decoded == null || decoded.isEmpty) {
+          AppLogger.error(
+            'ImageCacheService: invalid inline image data URL',
+          );
+          return null;
+        }
+        bytes = decoded;
+      } else if (ProtectedImageLoader.isProtectedUrl(imageUrl)) {
         bytes = await ProtectedImageLoader.instance.fetchBytes(imageUrl);
       } else {
         final response = await http.get(Uri.parse(imageUrl)).timeout(

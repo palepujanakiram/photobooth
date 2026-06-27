@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'utils/constants.dart';
 import 'utils/logger.dart';
 import 'services/error_reporting/error_reporting_manager.dart';
+import 'screens/photo_capture/photo_capture_camera_error_helpers.dart';
 
 /// True for known non-fatal image pipeline errors we already surface in widgets.
 bool isFilteredImageError(Object error) {
@@ -47,10 +48,10 @@ void configureFlutterErrorHandlers() {
   };
 
   PlatformDispatcher.instance.onError = (error, stack) {
-    if (isFilteredImageError(error)) {
+    if (isFilteredImageError(error) || isHandledCameraPipelineError(error)) {
       if (kDebugMode) {
         AppLogger.error(
-          'Image loading error (non-fatal, handled by UI): $error',
+          'Non-fatal pipeline error (handled by UI): $error',
           error: error,
           stackTrace: stack,
         );

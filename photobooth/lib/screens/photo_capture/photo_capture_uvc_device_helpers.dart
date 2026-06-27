@@ -17,7 +17,11 @@ Future<bool> ensureUvcPermissions(UvcCameraDevice device) async {
     final requested = await Permission.camera.request();
     if (!requested.isGranted) return false;
   }
-  return UvcCamera.requestDevicePermission(device);
+  try {
+    return await UvcCamera.requestDevicePermission(device);
+  } catch (_) {
+    return false;
+  }
 }
 
 /// Loads the first attached UVC / USB camera on Android, or null when unavailable.
