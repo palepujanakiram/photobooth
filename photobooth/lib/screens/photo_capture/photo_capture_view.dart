@@ -24,6 +24,7 @@ import 'photo_capture_viewmodel.dart';
 import 'photo_model.dart';
 import 'photo_image_from_xfile_io.dart' if (dart.library.html) 'photo_image_from_xfile_web.dart' as photo_image;
 import '../../utils/app_runtime_config.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/device_classifier.dart';
 import '../../utils/logger.dart';
@@ -65,6 +66,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Timer? _uvcReconnectTimer;
   Timer? _uvcWarmupTimer;
   Timer? _uvcSessionRecycleTimer;
+  Timer? _uvcIdleSleepTimer;
+  bool _uvcFeedAsleep = false;
+  bool _uvcLifecyclePaused = false;
   DateTime? _uvcShutterGraceUntil;
   DateTime? _uvcPreviewReadyAt;
   int _uvcPreviewGeneration = 0;
@@ -111,10 +115,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _captureViewModel.isCapturing ||
       _captureViewModel.capturedPhoto != null;
 
-  bool get _uvcMayAutoOpenLiveFeed =>
-      _uvcPhase == UvcFeedPhase.live &&
-      !_uvcCaptureInFlight &&
-      _captureViewModel.capturedPhoto == null;
+  bool get _uvcMayAutoOpenLiveFeed => uvcMayAutoOpenLiveFeed(
+        phase: _uvcPhase,
+        captureInFlight: _uvcCaptureInFlight,
+        hasCapturedPhoto: _captureViewModel.capturedPhoto != null,
+        feedAsleep: _uvcFeedAsleep,
+      );
 
   bool get _uvcBlocksConcurrentAutoOpen => uvcBlocksConcurrentAutoOpen(
         initializing: _uvcInitializing,
@@ -130,7 +136,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _uvcPreviewReadyAt = DateTime.now();
     _uvcWarmupTimer?.cancel();
     _uvcWarmupTimer = Timer(UvcCaptureConfig.previewWarmupPeriod, () {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      setState(() {});
+      _resetUvcIdleSleepTimer();
     });
   }
 
@@ -169,6 +177,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _uvcWarmupTimer?.cancel();
     _uvcWarmupTimer = null;
     _cancelUvcSessionRecycleTimer();
+    _cancelUvcIdleSleepTimer();
+    _uvcFeedAsleep = false;
+    _uvcLifecyclePaused = false;
     _uvcShutterGraceUntil = null;
     _uvcPreviewReadyAt = null;
     _lastUvcShutterAt = null;
@@ -182,6 +193,48 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void _cancelUvcSessionRecycleTimer() {
     _uvcSessionRecycleTimer?.cancel();
     _uvcSessionRecycleTimer = null;
+  }
+
+  void _cancelUvcIdleSleepTimer() {
+    _uvcIdleSleepTimer?.cancel();
+    _uvcIdleSleepTimer = null;
+  }
+
+  bool get _uvcIdleSleepMayCloseFeed => uvcIdleSleepMayCloseFeed(
+        idleSleepEnabled: UvcCaptureConfig.idleSleepEnabled,
+        isUsingUvc: _isUsingUvc,
+        phase: _uvcPhase,
+        captureInFlight: _uvcCaptureInFlight,
+        isCapturing: _captureViewModel.isCapturing,
+        hasCapturedPhoto: _captureViewModel.capturedPhoto != null,
+        withinShutterGrace: _isWithinUvcShutterGrace,
+        feedAsleep: _uvcFeedAsleep,
+      );
+
+  void _resetUvcIdleSleepTimer() {
+    _cancelUvcIdleSleepTimer();
+    if (!_uvcIdleSleepMayCloseFeed) return;
+    _uvcIdleSleepTimer = Timer(UvcCaptureConfig.idleSleepPeriod, () {
+      unawaited(_onUvcIdleSleepTick());
+    });
+  }
+
+  Future<void> _onUvcIdleSleepTick() async {
+    _uvcIdleSleepTimer = null;
+    if (!mounted || !_uvcIdleSleepMayCloseFeed) return;
+    AppLogger.debug('UVC idle sleep — closing live feed');
+    _uvcFeedAsleep = true;
+    _cancelUvcSessionRecycleTimer();
+    await _closeUvcController();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _wakeUvcFromIdleSleep() async {
+    if (!_uvcFeedAsleep) return;
+    _uvcFeedAsleep = false;
+    if (!mounted) return;
+    setState(() {});
+    await _resumeUvcLiveFeed(reason: 'idleWake');
   }
 
   void _armUvcSessionRecycleTimer() {
@@ -401,6 +454,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _uvcWarmupTimer?.cancel();
     _uvcWarmupTimer = null;
     _cancelUvcSessionRecycleTimer();
+    _cancelUvcIdleSleepTimer();
     _uvcDeviceEventsSub?.cancel();
     _uvcDeviceEventsSub = null;
     _hardwareKeySub?.cancel();
@@ -418,12 +472,35 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_isUsingUvc) return;
+
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      if (uvcLifecycleShouldPauseFeed(
+        lifecyclePauseEnabled: UvcCaptureConfig.lifecyclePauseEnabled,
+        isUsingUvc: _isUsingUvc,
+        holdLiveFeedClosed: _uvcHoldLiveFeedClosed,
+        hasOpenController: _uvcController != null,
+      )) {
+        _uvcLifecyclePaused = true;
+        _cancelUvcIdleSleepTimer();
+        unawaited(_closeUvcController());
+      }
+      return;
+    }
+
     if (state == AppLifecycleState.resumed &&
-        _isUsingUvc &&
-        _uvcController == null &&
-        !_uvcHoldLiveFeedClosed &&
-        !_uvcBlocksConcurrentAutoOpen &&
-        !_isWithinUvcShutterGrace) {
+        uvcLifecycleShouldResumeFeed(
+          lifecyclePauseEnabled: UvcCaptureConfig.lifecyclePauseEnabled,
+          isUsingUvc: _isUsingUvc,
+          lifecyclePaused: _uvcLifecyclePaused,
+          mayAutoOpenLiveFeed: _uvcMayAutoOpenLiveFeed,
+          blocksConcurrentAutoOpen: _uvcBlocksConcurrentAutoOpen,
+          withinShutterGrace: _isWithinUvcShutterGrace,
+          hasOpenController: _uvcController != null,
+        )) {
+      _uvcLifecyclePaused = false;
       _scheduleUvcReconnect('appResumed');
     }
   }
@@ -703,6 +780,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         if (!mounted) return;
         opened = ctrl;
         _uvcPreviewGeneration++;
+        _uvcFeedAsleep = false;
         _armUvcPreviewWarmup();
         setState(() {
           _uvcController = ctrl;
@@ -778,6 +856,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _lastUvcShutterAt = DateTime.now();
     _armUvcShutterGrace();
     _uvcReconnectTimer?.cancel();
+    _cancelUvcIdleSleepTimer();
+    _uvcFeedAsleep = false;
     unawaited(_captureUvc(_captureViewModel, source: source));
   }
 
@@ -869,6 +949,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                 style: TextStyle(color: Colors.white70),
               ),
             ],
+          ),
+        ),
+      );
+    }
+
+    if (_uvcFeedAsleep) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => unawaited(_wakeUvcFromIdleSleep()),
+        child: const ColoredBox(
+          color: Colors.black,
+          child: Center(
+            child: Text(
+              AppStrings.uvcTapToWakePreview,
+              style: TextStyle(color: Colors.white70, fontSize: 16, height: 1.4),
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
       );
@@ -1013,6 +1110,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _uvcPhase = UvcFeedPhase.capturing;
       _uvcCaptureInFlight = true;
       _uvcReconnectTimer?.cancel();
+      _cancelUvcIdleSleepTimer();
       if (mounted) setState(() {});
       final cameraId =
           'uvc:${device.vendorId}:${device.productId}:${device.name}';
@@ -1667,11 +1765,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           ElevatedButton(
             style: captureScreenButtonStyle(),
             onPressed: viewModel.canContinueUpload
-                ? () => handleCapturedPhotoContinue(
+                ? () async {
+                    await handleCapturedPhotoContinue(
                       context: context,
                       viewModel: viewModel,
                       isMounted: () => mounted,
-                    )
+                      releaseUvcResources:
+                          _isUsingUvc ? _disposeUvc : null,
+                    );
+                  }
                 : null,
             child: viewModel.isUploading
                 ? const SizedBox(

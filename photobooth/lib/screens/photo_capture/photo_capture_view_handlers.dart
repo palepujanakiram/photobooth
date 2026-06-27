@@ -38,15 +38,21 @@ Future<void> handleCapturedPhotoRetake({
   viewModel.clearCapturedPhoto();
 }
 
-/// Continue: upload, release camera, navigate to theme selection.
+/// Continue: release cameras, upload, navigate to theme selection.
 Future<void> handleCapturedPhotoContinue({
   required BuildContext context,
   required CaptureViewModel viewModel,
   required bool Function() isMounted,
+  Future<void> Function()? releaseUvcResources,
 }) async {
   if (!viewModel.canContinueUpload || viewModel.isUploading) return;
   final currentContext = context;
   if (!isMounted() || !currentContext.mounted) return;
+
+  await releaseUvcResources?.call();
+  await viewModel.disposeCamera();
+  if (!isMounted() || !currentContext.mounted) return;
+
   final success = await viewModel.uploadPhotoToSession();
   if (!isMounted() || !currentContext.mounted) return;
   if (!success || viewModel.capturedPhoto == null) {
@@ -59,7 +65,6 @@ Future<void> handleCapturedPhotoContinue({
     return;
   }
 
-  await viewModel.disposeCamera();
   final photo = viewModel.capturedPhoto!;
   if (!isMounted() || !currentContext.mounted) return;
   WebFlowTrace.log('NAV', 'pushReplacementNamed theme-selection start');

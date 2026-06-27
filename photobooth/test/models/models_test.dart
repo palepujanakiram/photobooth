@@ -24,6 +24,15 @@ void main() {
     expect(m.activeLanguages, ['en', 'hi']);
   });
 
+  test('AppSettingsModel.fromJson parses commentary and thermal flags', () {
+    final m = AppSettingsModel.fromJson({
+      'showGenerationCommentary': true,
+      'thermalSafeMode': true,
+    });
+    expect(m.showGenerationCommentary, isTrue);
+    expect(m.thermalSafeMode, isTrue);
+  });
+
   test('KioskInfoModel.isValid requires id and code', () {
     expect(
       KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'}).isValid,

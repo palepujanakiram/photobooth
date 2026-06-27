@@ -3,26 +3,35 @@ import 'package:flutter/painting.dart';
 
 import '../models/app_settings_model.dart';
 
-/// Runtime flags driven by [AppSettingsModel.showGenerationCommentary] from `/api/settings`.
+/// Runtime flags driven by `/api/settings` ([AppSettingsModel]).
 ///
 /// Default is **off** until settings load. When `showGenerationCommentary == true`:
 /// - **Native:** "Low memory kiosk" optimizations ([AppConstants.kLowMemoryKioskMode])
 /// - **Web:** on-screen Logs / Perf trace / JS-heap HUD and loader debug lines.
-/// - On-screen debug HUD (Logs, Perf trace, RAM or JS heap), API logging when
-///   [AppConstants.kEnableLogOutput], loader debug lines, native camera info pane (non-web).
+///
+/// When `thermalSafeMode == true`: UVC idle feed sleep and lifecycle pause on capture.
 class AppRuntimeConfig extends ChangeNotifier {
   AppRuntimeConfig._();
   static final AppRuntimeConfig instance = AppRuntimeConfig._();
 
   bool _showGenerationCommentary = false;
+  bool _thermalSafeMode = false;
 
-  /// Mirrors `/api/settings` → `showGenerationCommentary`. Drives all debug / kiosk-RAM behavior.
+  /// Mirrors `/api/settings` → `showGenerationCommentary`. Drives debug / kiosk-RAM behavior.
   bool get showGenerationCommentary => _showGenerationCommentary;
 
+  /// Mirrors `/api/settings` → `thermalSafeMode`. Drives UVC thermal relief on capture.
+  bool get thermalSafeMode => _thermalSafeMode;
+
   void applyFromSettings(AppSettingsModel? settings) {
-    final next = settings?.showGenerationCommentary == true;
-    if (next == _showGenerationCommentary) return;
-    _showGenerationCommentary = next;
+    final nextCommentary = settings?.showGenerationCommentary == true;
+    final nextThermal = settings?.thermalSafeMode == true;
+    if (nextCommentary == _showGenerationCommentary &&
+        nextThermal == _thermalSafeMode) {
+      return;
+    }
+    _showGenerationCommentary = nextCommentary;
+    _thermalSafeMode = nextThermal;
     notifyListeners();
   }
 }
@@ -38,7 +47,8 @@ void applyFlutterImageCacheLimits() {
     ic.maximumSizeBytes = 100 * 1024 * 1024;
     return;
   }
-  final low = AppRuntimeConfig.instance.showGenerationCommentary;
+  final low = AppRuntimeConfig.instance.showGenerationCommentary ||
+      AppRuntimeConfig.instance.thermalSafeMode;
   if (low) {
     ic.maximumSize = 40;
     ic.maximumSizeBytes = 50 * 1024 * 1024;

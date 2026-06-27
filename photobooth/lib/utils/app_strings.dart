@@ -65,6 +65,10 @@ abstract final class AppStrings {
   /// Shown while re-enumerating cameras in the picker.
   static const cameraPickerRefreshing = 'Looking for cameras…';
 
+  /// UVC idle sleep: tap to reopen the live DSLR feed after thermal relief closed it.
+  static const uvcTapToWakePreview =
+      'Tap when ready\nto start the camera preview';
+
   /// Payment push / poll notification titles and bodies.
   static const paymentConfirmedTitle = 'Payment confirmed';
   static const paymentNotCompletedTitle = 'Payment not completed';

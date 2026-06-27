@@ -15,6 +15,9 @@ class AppSettingsModel {
   final int? compressionMaxDimension;
   /// When true (from `/api/settings`), show generation commentary; also RAM monitor on capture.
   final bool? showGenerationCommentary;
+
+  /// When true, enables UVC thermal relief (idle feed sleep, lifecycle pause) on capture.
+  final bool? thermalSafeMode;
   final String? defaultAiProvider;
   final String? fallbackAiProvider;
   final bool? enableControlNet;
@@ -56,6 +59,7 @@ class AppSettingsModel {
     this.compressionQuality,
     this.compressionMaxDimension,
     this.showGenerationCommentary,
+    this.thermalSafeMode,
     this.defaultAiProvider,
     this.fallbackAiProvider,
     this.enableControlNet,
@@ -99,8 +103,8 @@ class AppSettingsModel {
       upscaleUseAI: json['upscaleUseAI'] as bool?,
       compressionQuality: json['compressionQuality'] as int?,
       compressionMaxDimension: json['compressionMaxDimension'] as int?,
-      // TODO: use json value when backend defaults showGenerationCommentary to false.
-      showGenerationCommentary: false,
+      showGenerationCommentary: json['showGenerationCommentary'] as bool?,
+      thermalSafeMode: json['thermalSafeMode'] as bool?,
       defaultAiProvider: json['defaultAiProvider'] as String?,
       fallbackAiProvider: json['fallbackAiProvider'] as String?,
       enableControlNet: json['enableControlNet'] as bool?,

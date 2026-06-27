@@ -20,7 +20,7 @@ void main() {
     expect(UvcCaptureConfig.preCaptureSettleDelay, const Duration(milliseconds: 50));
     expect(UvcCaptureConfig.captureFlashDuration, const Duration(milliseconds: 120));
     expect(UvcCaptureConfig.uiCaptureCooldown, const Duration(milliseconds: 600));
-    expect(UvcCaptureConfig.keepControllerOpenDuringReview, isTrue);
+    expect(UvcCaptureConfig.keepControllerOpenDuringReview, isFalse);
     expect(UvcCaptureConfig.previewWarmupPeriod, const Duration(milliseconds: 1500));
     expect(UvcCaptureConfig.shutterGracePeriod, const Duration(seconds: 4));
     expect(UvcCaptureConfig.takePictureTimeout, const Duration(seconds: 10));
@@ -32,19 +32,29 @@ void main() {
     expect(UvcCaptureConfig.enableSessionRecycle, isTrue);
     expect(
       UvcCaptureConfig.sessionRecyclePeriod,
-      const Duration(minutes: 25),
+      const Duration(minutes: 8),
     );
     expect(
       UvcCaptureConfig.sessionRecycleRetryDelay,
       const Duration(minutes: 2),
     );
+    expect(UvcCaptureConfig.idleSleepPeriod, const Duration(seconds: 45));
+    expect(UvcCaptureConfig.idleSleepEnabled, isTrue);
+    expect(UvcCaptureConfig.lifecyclePauseEnabled, isTrue);
+    expect(UvcCaptureConfig.thermalReliefEnabled, isFalse);
   });
 
-  test('keepControllerOpenDuringReview off in low-memory kiosk mode', () {
-    expect(UvcCaptureConfig.keepControllerOpenDuringReview, isTrue);
+  test('thermalReliefEnabled when thermalSafeMode or commentary kiosk mode', () {
+    expect(UvcCaptureConfig.thermalReliefEnabled, isFalse);
+
+    AppRuntimeConfig.instance.applyFromSettings(
+      AppSettingsModel(thermalSafeMode: true),
+    );
+    expect(UvcCaptureConfig.thermalReliefEnabled, isTrue);
+
     AppRuntimeConfig.instance.applyFromSettings(
       AppSettingsModel(showGenerationCommentary: true),
     );
-    expect(UvcCaptureConfig.keepControllerOpenDuringReview, isFalse);
+    expect(UvcCaptureConfig.thermalReliefEnabled, isTrue);
   });
 }

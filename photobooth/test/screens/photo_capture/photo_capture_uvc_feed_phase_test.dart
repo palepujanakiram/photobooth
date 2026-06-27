@@ -149,4 +149,113 @@ void main() {
       withinShutterGrace: true,
     ), isFalse);
   });
+
+  test('uvcMayAutoOpenLiveFeed blocks when feed is asleep', () {
+    expect(
+      uvcMayAutoOpenLiveFeed(
+        phase: UvcFeedPhase.live,
+        captureInFlight: false,
+        hasCapturedPhoto: false,
+        feedAsleep: true,
+      ),
+      isFalse,
+    );
+    expect(
+      uvcMayAutoOpenLiveFeed(
+        phase: UvcFeedPhase.live,
+        captureInFlight: false,
+        hasCapturedPhoto: false,
+        feedAsleep: false,
+      ),
+      isTrue,
+    );
+  });
+
+  test('uvcIdleSleepMayCloseFeed only on idle live UVC', () {
+    const ready = (
+      idleSleepEnabled: true,
+      isUsingUvc: true,
+      phase: UvcFeedPhase.live,
+      captureInFlight: false,
+      isCapturing: false,
+      hasCapturedPhoto: false,
+      withinShutterGrace: false,
+      feedAsleep: false,
+    );
+    expect(uvcIdleSleepMayCloseFeed(
+      idleSleepEnabled: ready.idleSleepEnabled,
+      isUsingUvc: ready.isUsingUvc,
+      phase: ready.phase,
+      captureInFlight: ready.captureInFlight,
+      isCapturing: ready.isCapturing,
+      hasCapturedPhoto: ready.hasCapturedPhoto,
+      withinShutterGrace: ready.withinShutterGrace,
+      feedAsleep: ready.feedAsleep,
+    ), isTrue);
+    expect(uvcIdleSleepMayCloseFeed(
+      idleSleepEnabled: ready.idleSleepEnabled,
+      isUsingUvc: ready.isUsingUvc,
+      phase: UvcFeedPhase.reviewing,
+      captureInFlight: ready.captureInFlight,
+      isCapturing: ready.isCapturing,
+      hasCapturedPhoto: ready.hasCapturedPhoto,
+      withinShutterGrace: ready.withinShutterGrace,
+      feedAsleep: ready.feedAsleep,
+    ), isFalse);
+    expect(uvcIdleSleepMayCloseFeed(
+      idleSleepEnabled: ready.idleSleepEnabled,
+      isUsingUvc: ready.isUsingUvc,
+      phase: ready.phase,
+      captureInFlight: ready.captureInFlight,
+      isCapturing: ready.isCapturing,
+      hasCapturedPhoto: ready.hasCapturedPhoto,
+      withinShutterGrace: ready.withinShutterGrace,
+      feedAsleep: true,
+    ), isFalse);
+  });
+
+  test('uvcLifecycleShouldPauseFeed when controller is open', () {
+    expect(uvcLifecycleShouldPauseFeed(
+      lifecyclePauseEnabled: true,
+      isUsingUvc: true,
+      holdLiveFeedClosed: false,
+      hasOpenController: true,
+    ), isTrue);
+    expect(uvcLifecycleShouldPauseFeed(
+      lifecyclePauseEnabled: true,
+      isUsingUvc: true,
+      holdLiveFeedClosed: true,
+      hasOpenController: true,
+    ), isFalse);
+  });
+
+  test('uvcLifecycleShouldResumeFeed after pause or when feed closed', () {
+    expect(uvcLifecycleShouldResumeFeed(
+      lifecyclePauseEnabled: true,
+      isUsingUvc: true,
+      lifecyclePaused: true,
+      mayAutoOpenLiveFeed: true,
+      blocksConcurrentAutoOpen: false,
+      withinShutterGrace: false,
+      hasOpenController: false,
+    ), isTrue);
+    expect(uvcLifecycleShouldResumeFeed(
+      lifecyclePauseEnabled: true,
+      isUsingUvc: true,
+      lifecyclePaused: false,
+      mayAutoOpenLiveFeed: true,
+      blocksConcurrentAutoOpen: false,
+      withinShutterGrace: false,
+      hasOpenController: false,
+    ), isTrue);
+    expect(uvcLifecycleShouldResumeFeed(
+      lifecyclePauseEnabled: true,
+      isUsingUvc: true,
+      lifecyclePaused: false,
+      mayAutoOpenLiveFeed: false,
+      blocksConcurrentAutoOpen: false,
+      withinShutterGrace: false,
+      hasOpenController: true,
+    ), isFalse);
+  });
 }
