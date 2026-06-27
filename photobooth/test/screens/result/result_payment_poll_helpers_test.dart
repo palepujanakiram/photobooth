@@ -19,6 +19,24 @@ void main() {
     );
   });
 
+  test('paymentVerdictFromStatusString maps created and active to pending', () {
+    expect(
+      paymentVerdictFromStatusString('CREATED'),
+      PaymentPollVerdict.pending,
+    );
+    expect(
+      paymentVerdictFromStatusString('ACTIVE'),
+      PaymentPollVerdict.pending,
+    );
+  });
+
+  test('paymentVerdictFromPaymentStatusResponse reads status field', () {
+    expect(
+      paymentVerdictFromPaymentStatusResponse({'status': 'FAILED'}),
+      PaymentPollVerdict.failed,
+    );
+  });
+
   test('paymentVerdictFromSession ignores session lifecycle status', () {
     expect(
       paymentVerdictFromSession({'status': 'CONFIRMED'}),

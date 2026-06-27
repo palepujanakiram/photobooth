@@ -156,7 +156,7 @@ class PrintService {
         throw PrintException('Image file is empty');
       }
 
-      final deviceId =
+      const deviceId =
           kIsWeb ? 'flutter-photobooth-web' : 'flutter-photobooth-mobile';
       await postLanPrinterMultipart(
         baseUrl: baseUrl,

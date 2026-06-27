@@ -223,7 +223,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final timeout = source == 'preview_interrupt'
         ? UvcCaptureConfig.interruptTakePictureTimeout
         : UvcCaptureConfig.takePictureTimeout;
-    final retryDelay = UvcCaptureConfig.interruptTakePictureRetryDelay;
+    const retryDelay = UvcCaptureConfig.interruptTakePictureRetryDelay;
 
     Object? lastError;
     for (var attempt = 0; attempt < attempts; attempt++) {
@@ -988,7 +988,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }
       if (source == 'ui_button' && _uvcLastUiCaptureEndedAt != null) {
         final elapsed = DateTime.now().difference(_uvcLastUiCaptureEndedAt!);
-        final cooldown = UvcCaptureConfig.uiCaptureCooldown;
+        const cooldown = UvcCaptureConfig.uiCaptureCooldown;
         if (elapsed < cooldown) {
           await Future<void>.delayed(cooldown - elapsed);
           if (!mounted) return;
@@ -1473,8 +1473,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                       ),
                     ),
                   if (_showCaptureFlash)
-                    Positioned.fill(
-                      child: const ColoredBox(color: Colors.white),
+                    const Positioned.fill(
+                      child: ColoredBox(color: Colors.white),
                     ),
                 ],
               ),
