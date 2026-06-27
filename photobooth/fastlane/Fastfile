@@ -147,17 +147,30 @@ def assert_ios_export_options!
   UI.user_error!("Export options plist not found at #{IOS_EXPORT_OPTIONS_PLIST}.")
 end
 
+def assert_bugsnag_api_key!
+  in_photobooth_root do
+    sh('source scripts/load_env.sh && load_photobooth_env "$(pwd)" && test -n "${BUGSNAG_API_KEY:-}"')
+  end
+rescue StandardError
+  UI.user_error!(
+    'BUGSNAG_API_KEY is required for release builds. ' \
+    'Add it to photobooth/.env (see .env.example) or set the BUGSNAG_API_KEY env var (CI).'
+  )
+end
+
 def build_android_aab
   log_build_version('Android App Bundle (AAB)')
-  in_photobooth_root { sh('flutter build appbundle --release') }
+  assert_bugsnag_api_key!
+  in_photobooth_root { sh('./scripts/flutter_with_version.sh build appbundle --release') }
   path = PhotoboothFastfile.android_aab_path
   UI.user_error!("AAB not found at #{path}") unless File.exist?(path)
 end
 
 def build_ios_ipa
   log_build_version('iOS IPA')
+  assert_bugsnag_api_key!
   in_photobooth_root do
-    sh("flutter build ipa --release --export-options-plist=#{IOS_EXPORT_OPTIONS_PLIST}")
+    sh("./scripts/flutter_with_version.sh build ipa --release --export-options-plist=#{IOS_EXPORT_OPTIONS_PLIST}")
   end
   ipa = Dir.glob(PhotoboothFastfile.ios_ipa_glob).first
   UI.user_error!('IPA not found under build/ios/ipa/') unless ipa

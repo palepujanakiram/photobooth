@@ -20,7 +20,7 @@
       "dependsOn": ["prebuild: sync version"],
       "dependsOrder": "sequence",
       "type": "shell",
-      "command": "flutter build apk --release",
+      "command": "./scripts/flutter_with_version.sh build apk --release",
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -35,7 +35,7 @@
       "dependsOn": ["prebuild: sync version"],
       "dependsOrder": "sequence",
       "type": "shell",
-      "command": "flutter build appbundle --release",
+      "command": "./scripts/flutter_with_version.sh build appbundle --release",
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -47,7 +47,7 @@
       "dependsOn": ["prebuild: sync version"],
       "dependsOrder": "sequence",
       "type": "shell",
-      "command": "flutter build ios --release",
+      "command": "./scripts/flutter_with_version.sh build ios --release",
       "options": {
         "cwd": "${workspaceFolder}"
       },
