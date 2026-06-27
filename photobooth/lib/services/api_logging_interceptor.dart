@@ -88,6 +88,7 @@ class ApiLoggingInterceptor extends Interceptor {
             ? formatWebApiErrorSummary(err)
             : _responseFormatter.formatError(err),
         error: err,
+        report: false,
       );
       
       // Log API failure to Bugsnag with detailed context and timing

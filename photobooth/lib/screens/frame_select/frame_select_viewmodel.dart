@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../models/kiosk_frame_model.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
+import '../../utils/error_reporting_helpers.dart';
 import '../../utils/exceptions.dart';
 
 class FrameSelectViewModel extends ChangeNotifier {
@@ -36,9 +39,17 @@ class FrameSelectViewModel extends ChangeNotifier {
       _errorMessage = e.message;
       _frames = [];
       return false;
-    } catch (e) {
+    } catch (e, st) {
       _errorMessage = e.toString();
       _frames = [];
+      unawaited(
+        reportIssue(
+          'Failed to load kiosk frames',
+          e,
+          st,
+          extraInfo: {'source': 'frame_select_load'},
+        ),
+      );
       return false;
     } finally {
       _isLoading = false;
@@ -72,8 +83,16 @@ class FrameSelectViewModel extends ChangeNotifier {
     } on ApiException catch (e) {
       _errorMessage = e.message;
       return false;
-    } catch (e) {
+    } catch (e, st) {
       _errorMessage = e.toString();
+      unawaited(
+        reportIssue(
+          'Failed to patch selected frame',
+          e,
+          st,
+          extraInfo: {'source': 'frame_select_patch'},
+        ),
+      );
       return false;
     } finally {
       _isSaving = false;

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show ValueListenable, kIsWeb;
 
 import 'coalesced_string_list_notifier.dart';
 import 'constants.dart';
+import 'error_reporting_helpers.dart';
 import 'logger_stack_frame.dart';
 
 /// Log levels matching CocoaLumberjack-style logging
@@ -90,7 +91,15 @@ class AppLogger {
     log(LogLevel.warning, message, error: error, stackTrace: stackTrace);
   }
 
-  static void error(String message, {Object? error, StackTrace? stackTrace}) {
+  static void error(
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+    bool report = true,
+  }) {
     log(LogLevel.error, message, error: error, stackTrace: stackTrace);
+    if (report && error != null) {
+      maybeAutoReportError(message, error, stackTrace);
+    }
   }
 }

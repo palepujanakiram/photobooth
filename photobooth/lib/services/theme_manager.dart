@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show VoidCallback, visibleForTesting;
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/exceptions.dart';
 import '../utils/app_config.dart';
+import '../utils/error_reporting_helpers.dart';
 import '../utils/logger.dart';
 import 'api_service.dart';
 import 'kiosk_manager.dart';
@@ -118,8 +121,16 @@ class ThemeManager {
         return List.unmodifiable(_cachedThemes);
       }
       rethrow;
-    } catch (e) {
+    } catch (e, st) {
       _errorMessage = 'Failed to fetch themes: $e';
+      unawaited(
+        reportIssue(
+          'Failed to fetch themes',
+          e,
+          st,
+          extraInfo: {'source': 'theme_manager'},
+        ),
+      );
       _isLoading = false;
       _notifyListeners();
       if (_cachedThemes.isNotEmpty) {
