@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:ui'
     show Size, ImmutableBuffer, instantiateImageCodecFromBuffer;
 import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, defaultTargetPlatform, kIsWeb;
-import 'package:flutter/services.dart' show MethodChannel;
+import 'package:flutter/services.dart' show MethodChannel, PlatformException;
 import 'package:camera/camera.dart';
 import 'package:camera/camera.dart' as cam show availableCameras;
 import 'package:image_picker/image_picker.dart';
@@ -29,6 +29,7 @@ import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_camera_config.dart';
 import 'photo_capture_preview_rotation.dart';
 import 'photo_capture_preprocess_helpers.dart';
+import 'photo_capture_camera_error_helpers.dart';
 import 'photo_capture_viewmodel_helpers.dart';
 
 class CaptureViewModel extends ChangeNotifier {
@@ -196,7 +197,14 @@ class CaptureViewModel extends ChangeNotifier {
           !_shouldUseStreamOnlyCapture() &&
           desc != null &&
           _looksLikeCameraXRecoverableError(desc)) {
-        unawaited(_recoverCamera(reason: 'controller.hasError(recoverable)', details: desc));
+        unawaited(
+          _recoverCamera(
+            reason: 'controller.hasError(recoverable)',
+            details: desc,
+          ).catchError((Object e, StackTrace st) {
+            AppLogger.error('Camera recovery failed', error: e, stackTrace: st);
+          }),
+        );
       }
     }
     notifyListeners();
@@ -789,7 +797,7 @@ class CaptureViewModel extends ChangeNotifier {
       _assignEnumeratedCameras(allCameras);
       notifyListeners();
     } on TimeoutException catch (e, stackTrace) {
-      _errorMessage = 'Camera took too long to load. Please try again.';
+      _errorMessage = cameraLoadFailureMessage(e);
       unawaited(
         reportCameraNotFound(
           reason: 'Camera enumeration timed out',
@@ -800,8 +808,21 @@ class CaptureViewModel extends ChangeNotifier {
           },
         ),
       );
+    } on PlatformException catch (e, stackTrace) {
+      _errorMessage = cameraLoadFailureMessage(e);
+      unawaited(
+        reportCameraNotFound(
+          reason: 'loadCameras failed',
+          error: e,
+          stackTrace: stackTrace,
+          extraInfo: {
+            'error': e.toString(),
+            'errorType': e.runtimeType.toString(),
+          },
+        ),
+      );
     } catch (e, stackTrace) {
-      _errorMessage = 'Failed to load cameras: $e';
+      _errorMessage = cameraLoadFailureMessage(e);
       await ErrorReportingManager.recordError(
         e,
         stackTrace,
@@ -941,7 +962,11 @@ class CaptureViewModel extends ChangeNotifier {
       _isInitializing = false;
       _errorMessage = null;
       notifyListeners();
-      unawaited(_finishCameraSetup(camera));
+      unawaited(
+        _finishCameraSetup(camera).catchError((Object e, StackTrace st) {
+          AppLogger.error('finishCameraSetup failed', error: e, stackTrace: st);
+        }),
+      );
       return true;
     } catch (_) {
       return false;
@@ -1028,7 +1053,11 @@ class CaptureViewModel extends ChangeNotifier {
     _currentZoom = 1.0;
     _errorMessage = null;
     _markCameraAvailabilityRestored();
-    unawaited(_finishCameraSetup(camera));
+    unawaited(
+      _finishCameraSetup(camera).catchError((Object e, StackTrace st) {
+        AppLogger.error('finishCameraSetup failed', error: e, stackTrace: st);
+      }),
+    );
   }
 
   Future<void> _handleCameraInitializationError(
@@ -1050,7 +1079,7 @@ class CaptureViewModel extends ChangeNotifier {
       return;
     }
     if (e is app_exceptions.CameraException) {
-      _errorMessage = e.message;
+      _errorMessage = cameraLoadFailureMessage(e);
       ErrorReportingManager.log('❌ Camera exception during initialization');
       await ErrorReportingManager.recordError(
         e,
@@ -1061,10 +1090,27 @@ class CaptureViewModel extends ChangeNotifier {
           'camera_name': camera.name,
           'camera_direction': camera.lensDirection.toString(),
         },
+        fatal: false,
       );
       return;
     }
-    _errorMessage = 'Failed to initialize camera: $e';
+    if (e is PlatformException) {
+      _errorMessage = cameraLoadFailureMessage(e);
+      ErrorReportingManager.log('❌ Platform camera error during initialization');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'Camera platform exception',
+        extraInfo: {
+          'message': e.message,
+          'code': e.code,
+          'camera_name': camera.name,
+        },
+        fatal: false,
+      );
+      return;
+    }
+    _errorMessage = cameraLoadFailureMessage(e);
     ErrorReportingManager.log('❌ Unexpected error during camera initialization');
     await ErrorReportingManager.recordError(
       e,

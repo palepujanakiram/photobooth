@@ -11,6 +11,7 @@ import 'package:camera_native_details/camera_native_details.dart';
 import 'package:uvccamera/uvccamera.dart';
 import 'photo_capture_camera_picker_screen.dart';
 import 'photo_capture_preview_rotation.dart';
+import 'photo_capture_camera_error_helpers.dart';
 import 'photo_capture_uvc_device_helpers.dart';
 import 'photo_capture_uvc_feed_phase.dart';
 import 'photo_capture_uvc_raster_capture.dart';
@@ -95,6 +96,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     } finally {
       gate.complete();
     }
+  }
+
+  void _safeUnawaited(Future<void> future, {required String label}) {
+    unawaited(
+      future.catchError((Object e, StackTrace st) {
+        AppLogger.error(label, error: e, stackTrace: st);
+        if (!mounted) return;
+        if (isHandledCameraPipelineError(e)) {
+          setState(() {
+            _uvcPhase = UvcFeedPhase.error;
+            _uvcError ??= cameraLoadFailureMessage(e);
+            _uvcInitializing = false;
+            _uvcOpeningController = false;
+          });
+        }
+      }),
+    );
   }
 
   void _armUvcShutterGrace() {
@@ -212,7 +230,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return;
     }
     AppLogger.debug('UVC periodic session recycle');
-    unawaited(_resumeUvcLiveFeed(reason: 'sessionRecycle'));
+    _safeUnawaited(
+      _resumeUvcLiveFeed(reason: 'sessionRecycle'),
+      label: 'UVC session recycle failed',
+    );
   }
 
   Future<XFile> _takeUvcPicture(
@@ -573,7 +594,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         return;
       }
 
-      final device = _uvcDevice!;
+      final device = _uvcDevice;
+      if (device == null) return;
       final permitted = await ensureUvcPermissions(device);
       if (!mounted) return;
       if (!permitted) {
@@ -616,6 +638,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           ),
         );
       }
+    } catch (e, st) {
+      AppLogger.error('UVC resume live feed failed ($reason)', error: e, stackTrace: st);
+      if (!mounted) return;
+      setState(() {
+        _uvcPhase = UvcFeedPhase.error;
+        _uvcError = cameraLoadFailureMessage(e);
+        _uvcInitializing = false;
+      });
     } finally {
       if (mounted) {
         setState(() => _uvcInitializing = false);
@@ -664,7 +694,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         if (_uvcMayAutoOpenLiveFeed &&
             _uvcController == null &&
             !_uvcBlocksConcurrentAutoOpen) {
-          unawaited(_openUvcController());
+          _safeUnawaited(
+            _openUvcController(),
+            label: 'UVC open failed (device connected event)',
+          );
         }
       case UvcCameraDeviceEventType.disconnected:
       case UvcCameraDeviceEventType.detached:
@@ -702,7 +735,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         return;
       }
       AppLogger.debug('UVC reconnect scheduled ($reason)');
-      unawaited(_resumeUvcLiveFeed(reason: reason));
+      _safeUnawaited(
+        _resumeUvcLiveFeed(reason: reason),
+        label: 'UVC reconnect failed',
+      );
     });
   }
 
@@ -765,16 +801,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       });
 
       UvcCameraController? opened;
+      UvcCameraController? pending;
       try {
-        final ctrl = UvcCameraController(
+        pending = UvcCameraController(
           device: device,
           resolutionPreset: UvcCaptureConfig.resolutionPreset,
         );
-        await ctrl.initialize();
+        await pending.initialize();
         if (!mounted) return;
         await _captureViewModel.refreshDisplayRotation();
         if (!mounted) return;
-        opened = ctrl;
+        opened = pending;
+        pending = null;
+        final ctrl = opened;
         _uvcPreviewGeneration++;
         _armUvcPreviewWarmup();
         setState(() {
@@ -792,12 +831,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           'gen=$_uvcPreviewGeneration',
         );
       } catch (e, st) {
+        final pendingCtrl = pending;
+        if (pendingCtrl != null) {
+          try {
+            await pendingCtrl.dispose();
+          } catch (_) {
+            // Best-effort cleanup after a failed open.
+          }
+        }
         AppLogger.error('UVC open failed (main preview)', error: e, stackTrace: st);
         if (!mounted) return;
         setState(() {
           _uvcInitializing = false;
           _uvcPhase = UvcFeedPhase.error;
-          _uvcError = 'Failed to initialize USB camera: $e';
+          _uvcError = cameraLoadFailureMessage(e);
         });
         unawaited(
           _captureViewModel.reportCameraNotFound(
@@ -869,42 +916,69 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   void _attachUvcHardwareListeners(UvcCameraController ctrl) {
     _detachUvcHardwareListeners();
-    _attachUvcControllerListener(ctrl);
-    _uvcButtonSub = ctrl.cameraButtonEvents.listen((event) {
-      _triggerUvcCapture(
-        source: 'uvc_button',
-        button: event.button,
-        state: event.state,
+    if (!ctrl.value.isInitialized) {
+      AppLogger.debug('UVC hardware listeners skipped: controller not initialized');
+      return;
+    }
+    try {
+      _attachUvcControllerListener(ctrl);
+      _uvcButtonSub = ctrl.cameraButtonEvents.listen(
+        (event) {
+          _triggerUvcCapture(
+            source: 'uvc_button',
+            button: event.button,
+            state: event.state,
+          );
+        },
+        onError: (Object e, StackTrace st) {
+          AppLogger.error('UVC button stream error', error: e, stackTrace: st);
+        },
       );
-    });
-    _uvcStatusSub = ctrl.cameraStatusEvents.listen((event) {
-      AppLogger.debug(
-        'UVC status class=${event.payload.statusClass.name} '
-        'event=${event.payload.event} selector=${event.payload.selector}',
+      _uvcStatusSub = ctrl.cameraStatusEvents.listen(
+        (event) {
+          AppLogger.debug(
+            'UVC status class=${event.payload.statusClass.name} '
+            'event=${event.payload.event} selector=${event.payload.selector}',
+          );
+        },
+        onError: (Object e, StackTrace st) {
+          AppLogger.error('UVC status stream error', error: e, stackTrace: st);
+        },
       );
-    });
-    _uvcErrorSub = ctrl.cameraErrorEvents.listen((event) {
-      if (event.error.type != UvcCameraErrorType.previewInterrupted) return;
-      AppLogger.debug(
-        'UVC previewInterrupted reason=${event.error.reason}',
+      _uvcErrorSub = ctrl.cameraErrorEvents.listen(
+        (event) {
+          if (event.error.type != UvcCameraErrorType.previewInterrupted) return;
+          AppLogger.debug(
+            'UVC previewInterrupted reason=${event.error.reason}',
+          );
+          if (_shouldIgnorePreviewInterrupt(event.error)) {
+            AppLogger.debug('UVC previewInterrupted ignored');
+            return;
+          }
+          if (!shouldTriggerUvcShutterFromInterrupt(lastCaptureAt: _lastUvcShutterAt)) {
+            AppLogger.debug('UVC previewInterrupted debounced');
+            return;
+          }
+          _lastUvcShutterAt = DateTime.now();
+          _armUvcShutterGrace();
+          _uvcReconnectTimer?.cancel();
+          // DSLR clean-HDMI: body shutter pauses the feed — capture like UI button.
+          unawaited(_captureUvc(
+            _captureViewModel,
+            source: 'preview_interrupt',
+          ));
+        },
+        onError: (Object e, StackTrace st) {
+          AppLogger.error('UVC error stream error', error: e, stackTrace: st);
+        },
       );
-      if (_shouldIgnorePreviewInterrupt(event.error)) {
-        AppLogger.debug('UVC previewInterrupted ignored');
-        return;
-      }
-      if (!shouldTriggerUvcShutterFromInterrupt(lastCaptureAt: _lastUvcShutterAt)) {
-        AppLogger.debug('UVC previewInterrupted debounced');
-        return;
-      }
-      _lastUvcShutterAt = DateTime.now();
-      _armUvcShutterGrace();
-      _uvcReconnectTimer?.cancel();
-      // DSLR clean-HDMI: body shutter pauses the feed — capture like UI button.
-      unawaited(_captureUvc(
-        _captureViewModel,
-        source: 'preview_interrupt',
-      ));
-    });
+    } catch (e, st) {
+      AppLogger.error(
+        'UVC hardware listeners unavailable; preview continues without them',
+        error: e,
+        stackTrace: st,
+      );
+    }
   }
 
   Future<void> _showCameraSelectionDialog(
@@ -982,7 +1056,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                 TextButton(
                   onPressed: _uvcInitializing || _uvcOpeningController
                       ? null
-                      : () => unawaited(_resumeUvcLiveFeed(reason: 'retryTap')),
+                      : () => _safeUnawaited(
+                            _resumeUvcLiveFeed(reason: 'retryTap'),
+                            label: 'UVC retry open failed',
+                          ),
                   child: const Text('Retry USB camera'),
                 ),
               ],

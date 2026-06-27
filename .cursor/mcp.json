@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "bugsnag": {
+      "command": "npx",
+      "args": ["-y", "bugsnag-mcp-server"],
+      "envFile": "${workspaceFolder}/.cursor/mcp.env"
+    }
+  }
+}
