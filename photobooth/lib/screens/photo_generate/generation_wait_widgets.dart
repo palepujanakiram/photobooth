@@ -702,7 +702,7 @@ class GenerationWaitHeroCard extends StatelessWidget {
   Widget _networkStageImage(BuildContext context, String imageUrl) {
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final cacheW = (width * dpr).ceil().clamp(64, 2048);
-    final loading = const Center(
+    const loading = Center(
       child: SizedBox(
         width: 28,
         height: 28,
@@ -1231,9 +1231,9 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
             size: 40,
           ),
           const SizedBox(height: 12),
-          Text(
+          const Text(
             AppStrings.generationWaitErrorTitle,
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w700,
               fontSize: 18,

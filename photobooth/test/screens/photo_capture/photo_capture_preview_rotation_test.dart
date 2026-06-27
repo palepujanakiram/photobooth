@@ -30,6 +30,19 @@ void main() {
       );
     });
 
+    test('applies front-camera rotation formula', () {
+      expect(
+        previewAutoQuarterTurnsForSensor(
+          applyAndroidRotationWorkaround: true,
+          sensorOrientationDegrees: 270,
+          isFrontCamera: true,
+          isExternalFeed: false,
+          displayRotationIndex: 2,
+        ),
+        3,
+      );
+    });
+
     test('returns zero when workaround disabled', () {
       expect(
         previewAutoQuarterTurnsForSensor(

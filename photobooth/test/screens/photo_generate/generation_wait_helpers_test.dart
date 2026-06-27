@@ -244,7 +244,7 @@ void main() {
         maxWidth: 720,
         maxHeight: 520,
       );
-      final gap = kGenerationWaitAnticipationCellGap;
+      const gap = kGenerationWaitAnticipationCellGap;
       final cellW = (size.width - gap) / 2;
       final cellH = size.height - kGenerationWaitAnticipationLabelOverhead;
       expect(cellW / cellH, closeTo(3 / 4.5, 0.02));

@@ -1012,14 +1012,14 @@ Widget _buildDeletePhotosStripLink({
       if (!context.mounted) return;
       await confirmAndDeleteMyPhotos(context);
     },
-    icon: Icon(
+    icon: const Icon(
       CupertinoIcons.delete,
       size: 14,
       color: CupertinoColors.destructiveRed,
     ),
-    label: Text(
+    label: const Text(
       AppStrings.deleteMyPhotosLabel,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 12,
         color: CupertinoColors.destructiveRed,
         decoration: TextDecoration.underline,
