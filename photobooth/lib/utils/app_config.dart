@@ -37,4 +37,10 @@ class AppConfig {
   static Map<String, String> get authorizationBearerHeader => {
         'Authorization': 'Bearer $apiBearerToken',
       };
+
+  /// Bugsnag API key for release/profile mobile builds (see [main.dart]).
+  ///
+  /// Set in `photobooth/.env` as `BUGSNAG_API_KEY=…`; release builds pick it up
+  /// via `scripts/flutter_with_version.sh` (`--dart-define=BUGSNAG_API_KEY=…`).
+  static const String bugsnagApiKey = String.fromEnvironment('BUGSNAG_API_KEY');
 }

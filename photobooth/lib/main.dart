@@ -29,8 +29,7 @@ import 'services/payment_push_coordinator.dart';
 import 'services/api_service.dart';
 import 'services/client_identification.dart';
 import 'services/session_manager.dart';
-
-const String _kBugsnagApiKey = String.fromEnvironment('BUGSNAG_API_KEY');
+import 'utils/app_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -56,30 +55,31 @@ Future<void> main() async {
   // repeated validation failures, which slows or blocks the main thread. Cameras
   // are loaded when the user opens the Capture screen (with timeout).
 
-  // Initialize Bugsnag only when native plugin is available (iOS/Android; not on web/tests)
-  if (!kIsWeb) {
+  // Bugsnag: release/profile mobile only (debug skips it; key from photobooth/.env at build time).
+  final bugsnagActive = !kIsWeb &&
+      !kDebugMode &&
+      AppConfig.bugsnagApiKey.isNotEmpty;
+  if (bugsnagActive) {
     try {
-      if (_kBugsnagApiKey.isNotEmpty) {
-        await bugsnag.start(
-          apiKey: _kBugsnagApiKey,
-          enabledBreadcrumbTypes: const {
-            BugsnagEnabledBreadcrumbType.error,
-            BugsnagEnabledBreadcrumbType.navigation,
-            BugsnagEnabledBreadcrumbType.request,
-            BugsnagEnabledBreadcrumbType.state,
-            BugsnagEnabledBreadcrumbType.user,
-          },
-          maxBreadcrumbs: 50,
-        );
-      } else if (kDebugMode) {
-        AppLogger.error(
-          'BUGSNAG_API_KEY not provided; Bugsnag disabled. '
-          'Pass via --dart-define=BUGSNAG_API_KEY=...',
-        );
-      }
+      await bugsnag.start(
+        apiKey: AppConfig.bugsnagApiKey,
+        enabledBreadcrumbTypes: const {
+          BugsnagEnabledBreadcrumbType.error,
+          BugsnagEnabledBreadcrumbType.navigation,
+          BugsnagEnabledBreadcrumbType.request,
+          BugsnagEnabledBreadcrumbType.state,
+          BugsnagEnabledBreadcrumbType.user,
+        },
+        maxBreadcrumbs: 50,
+      );
     } on MissingPluginException catch (_) {
       // Native Bugsnag plugin not available (e.g. unit tests, or platform not linked)
     }
+  } else if (!kIsWeb && !kDebugMode && AppConfig.bugsnagApiKey.isEmpty) {
+    AppLogger.error(
+      'BUGSNAG_API_KEY missing for release/profile build; Bugsnag disabled. '
+      'Add BUGSNAG_API_KEY to photobooth/.env and rebuild with scripts/flutter_with_version.sh.',
+    );
   }
 
   // Fire-and-forget cleanup of temp images
@@ -87,7 +87,7 @@ Future<void> main() async {
 
   // Initialize ErrorReportingManager (Bugsnag only on platforms where native plugin exists)
   await ErrorReportingManager.initialize(
-    enableBugsnag: !kIsWeb,
+    enableBugsnag: bugsnagActive,
   );
 
   configureFlutterErrorHandlers();
