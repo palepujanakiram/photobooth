@@ -7,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/session_manager.dart';
 import '../../utils/constants.dart';
+import '../../utils/error_reporting_helpers.dart';
 import '../../utils/exceptions.dart';
 
 class ReviewViewModel extends ChangeNotifier {
@@ -142,17 +143,33 @@ class ReviewViewModel extends ChangeNotifier {
       _currentProcess = '';
       notifyListeners();
       return _transformedImage;
-    } on TimeoutException {
+    } on TimeoutException catch (e, st) {
       _errorMessage = 'Generation took too long. Please try again.';
+      unawaited(
+        reportIssue(
+          'Photo review transformation timed out',
+          e,
+          st,
+          extraInfo: {'source': 'photo_review_transform'},
+        ),
+      );
       return null;
     } on ApiException catch (e) {
       final statusInfo = e.statusCode != null ? ' (Status: ${e.statusCode})' : '';
       final timeInfo = _elapsedSeconds > 0 ? ' [Took ${_elapsedSeconds}s]' : '';
       _errorMessage = '${e.userFacingMessage}$statusInfo$timeInfo';
       return null;
-    } catch (e) {
+    } catch (e, st) {
       final timeInfo = _elapsedSeconds > 0 ? ' [Took ${_elapsedSeconds}s]' : '';
       _errorMessage = 'Failed to transform photo: ${e.toString()}$timeInfo';
+      unawaited(
+        reportIssue(
+          'Photo review transformation failed',
+          e,
+          st,
+          extraInfo: {'source': 'photo_review_transform'},
+        ),
+      );
       return null;
     } finally {
       _isTransforming = false;
