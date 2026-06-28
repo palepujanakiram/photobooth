@@ -44,7 +44,9 @@ class GenerationApiFailure {
           'API Error: $httpStatusCode';
       final detailText = responseBody['details'] as String?;
       final runId = responseBody['runId'] as String?;
-      if (detailText != null && detailText.isNotEmpty) {
+      if (detailText != null &&
+          detailText.isNotEmpty &&
+          detailText.trim() != userMessage.trim()) {
         userMessage = '$userMessage: $detailText';
       }
       if (runId != null) {
