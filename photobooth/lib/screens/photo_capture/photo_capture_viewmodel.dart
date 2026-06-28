@@ -23,6 +23,7 @@ import 'camera_description_label.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/logger.dart';
 import '../../utils/web_flow_trace.dart';
+import '../../utils/web_upload_error_hint.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_camera_config.dart';
@@ -1987,6 +1988,14 @@ class CaptureViewModel extends ChangeNotifier {
       return false;
     }
 
+    final kioskToken = _sessionManager.kioskAuthToken;
+    if (kioskToken == null || kioskToken.isEmpty) {
+      _errorMessage =
+          'Session authentication is missing. Please go back and accept Terms again.';
+      notifyListeners();
+      return false;
+    }
+
     _isUploading = true;
     _errorMessage = null;
     _uploadStatusMessage = 'Preparing photo…';
@@ -2064,26 +2073,16 @@ class CaptureViewModel extends ChangeNotifier {
       WebFlowTrace.log('UPLOAD', 'ERROR TimeoutException $e');
       _errorMessage =
           'Upload took too long. Please check your connection and try again.';
-      if (kIsWeb) {
-        _errorMessage =
-            '$_errorMessage\n\nOn localhost web, run ./run_web_dev.sh (starts API proxy on :8787).';
-      }
+      _errorMessage = '$_errorMessage${webUploadErrorHint()}';
       return false;
     } on app_exceptions.ApiException catch (e) {
       WebFlowTrace.log('UPLOAD', 'ERROR ApiException ${e.message}');
-      _errorMessage = e.message;
-      if (kIsWeb) {
-        _errorMessage =
-            '${e.message}\n\nOn localhost web, run ./run_web_dev.sh (API proxy).';
-      }
+      _errorMessage = '${e.message}${webUploadErrorHint(apiError: e)}';
       return false;
     } catch (e) {
       WebFlowTrace.log('UPLOAD', 'ERROR $e');
       _errorMessage = 'Failed to upload photo: ${e.toString()}';
-      if (kIsWeb) {
-        _errorMessage =
-            'Failed to upload photo: $e\n\nOn localhost web, run ./run_web_dev.sh (API proxy).';
-      }
+      _errorMessage = '$_errorMessage${webUploadErrorHint()}';
       return false;
     } finally {
       _stopUploadTimer();
