@@ -1,3 +1,5 @@
+import '../../utils/json_parse_helpers.dart';
+
 class ThemeModel {
   final String id;
   final String categoryId;
@@ -74,37 +76,37 @@ class ThemeModel {
   }
 
   factory ThemeModel.fromJson(Map<String, dynamic> json) {
-    String? stringOrNull(dynamic v) {
-      if (v == null) return null;
-      if (v is String) return v;
-      return v.toString();
-    }
-
     // Backends sometimes rename this field (sampleImageUrl vs imageUrl, etc.).
     // Keep a single `sampleImageUrl` surface in the app by accepting common aliases.
-    final sample = stringOrNull(json['sampleImageUrl']) ??
-        stringOrNull(json['imageUrl']) ??
-        stringOrNull(json['image_url']) ??
-        stringOrNull(json['themeImageUrl']) ??
-        stringOrNull(json['theme_image_url']);
+    final sample = JsonParseHelpers.stringOrNull(json['sampleImageUrl']) ??
+        JsonParseHelpers.stringOrNull(json['imageUrl']) ??
+        JsonParseHelpers.stringOrNull(json['image_url']) ??
+        JsonParseHelpers.stringOrNull(json['themeImageUrl']) ??
+        JsonParseHelpers.stringOrNull(json['theme_image_url']);
 
     return ThemeModel(
-      id: json['id'] as String,
-      categoryId: json['categoryId'] as String,
-      categoryName: json['categoryName'] as String?,
-      name: json['name'] as String,
-      description: json['description'] as String,
-      promptText: json['promptText'] as String,
-      negativePrompt: json['negativePrompt'] as String?,
+      id: JsonParseHelpers.stringValue(json['id']),
+      categoryId: JsonParseHelpers.stringValue(
+        json['categoryId'] ?? json['category_id'],
+      ),
+      categoryName: JsonParseHelpers.stringOrNull(json['categoryName']),
+      name: JsonParseHelpers.stringValue(json['name']),
+      description: JsonParseHelpers.stringValue(json['description']),
+      promptText: JsonParseHelpers.stringValue(
+        json['promptText'] ?? json['prompt'],
+      ),
+      negativePrompt: JsonParseHelpers.stringOrNull(json['negativePrompt']),
       sampleImageUrl: sample,
-      isActive: json['isActive'] as bool?,
-      displayOrder: json['displayOrder'] as int?,
-      applicableSolo: json['applicableSolo'] as bool?,
-      applicableCouple: json['applicableCouple'] as bool?,
-      applicableSmallGroup: json['applicableSmallGroup'] as bool?,
-      applicableLargeGroup: json['applicableLargeGroup'] as bool?,
-      backgroundColor: json['backgroundColor'] as String?,
-      textColor: json['textColor'] as String?,
+      isActive: JsonParseHelpers.boolOrNull(json['isActive']),
+      displayOrder: JsonParseHelpers.intOrNull(json['displayOrder']),
+      applicableSolo: JsonParseHelpers.boolOrNull(json['applicableSolo']),
+      applicableCouple: JsonParseHelpers.boolOrNull(json['applicableCouple']),
+      applicableSmallGroup:
+          JsonParseHelpers.boolOrNull(json['applicableSmallGroup']),
+      applicableLargeGroup:
+          JsonParseHelpers.boolOrNull(json['applicableLargeGroup']),
+      backgroundColor: JsonParseHelpers.stringOrNull(json['backgroundColor']),
+      textColor: JsonParseHelpers.stringOrNull(json['textColor']),
     );
   }
 

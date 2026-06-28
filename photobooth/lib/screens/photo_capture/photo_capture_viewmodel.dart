@@ -37,6 +37,17 @@ class CaptureViewModel extends ChangeNotifier {
   static List<CameraDescription>? _cachedAvailableCameras;
   CameraController? _cameraController;
 
+  /// Set true in [dispose]. Post-await work should bail before mutating state.
+  bool _disposed = false;
+  bool get isDisposed => _disposed;
+
+  /// No-op once [_disposed] — safe for fire-and-forget camera/upload callbacks.
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
   /// Preloads camera list in main() (like the camera package example).
   /// Only caches when list is non-empty so Android without permission still does full load on screen open.
   static Future<void> preloadCameras() async {
@@ -1030,10 +1041,13 @@ class CaptureViewModel extends ChangeNotifier {
 
   Future<void> _finishCameraSetup(CameraDescription camera) async {
     final controller = _cameraController;
-    if (controller == null || !controller.value.isInitialized) return;
+    if (controller == null || !controller.value.isInitialized || _disposed) {
+      return;
+    }
 
     try {
       final rotation = await _fetchDisplayRotation();
+      if (_disposed) return;
       _displayRotation = rotation;
       AppLogger.debug('   Display rotation: $rotation');
       await maybeLockAndroidPortraitCapture(
@@ -1041,15 +1055,19 @@ class CaptureViewModel extends ChangeNotifier {
         camera: camera,
         displayRotation: rotation,
       );
+      if (_disposed) return;
       await _applyDefaultPreviewRotationForDevice();
       notifyListeners();
     } catch (_) {
       // Preview can still work without this metadata.
     }
 
+    if (_disposed) return;
     await _loadZoomInBackground();
+    if (_disposed) return;
 
     final details = await fetchNativeCameraDetails(camera.name);
+    if (_disposed) return;
     _nativeCameraDetails = details;
     if (details != null) {
       logNativeCameraDetails(details);
@@ -1060,7 +1078,7 @@ class CaptureViewModel extends ChangeNotifier {
   /// Loads zoom range in background with timeout so init never hangs.
   Future<void> _loadZoomInBackground() async {
     final ctrl = _cameraController;
-    if (ctrl == null || !ctrl.value.isInitialized) return;
+    if (ctrl == null || !ctrl.value.isInitialized || _disposed) return;
 
     // camera_web only supports zoom when the track exposes `zoom` in
     // getCapabilities(); otherwise getMin/getMax/setZoom throw and emit
@@ -1085,6 +1103,7 @@ class CaptureViewModel extends ChangeNotifier {
         _zoomLoadTimeout,
         onTimeout: () => throw TimeoutException('getMaxZoomLevel'),
       );
+      if (_disposed) return;
       // Keep preview at minimum zoom (no zoom buttons in UI).
       await ctrl.setZoomLevel(minZ);
     } on CameraException {
@@ -2153,6 +2172,7 @@ class CaptureViewModel extends ChangeNotifier {
   /// Disposes the camera controller
   @override
   void dispose() {
+    _disposed = true;
     _countdownTimer?.cancel();
     _countdownTimer = null;
     _stopUploadTimer();

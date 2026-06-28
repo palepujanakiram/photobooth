@@ -1,5 +1,7 @@
 import 'package:camera/camera.dart';
 
+import '../../utils/json_parse_helpers.dart';
+
 class PhotoModel {
   final String id;
   final XFile imageFile;
@@ -42,14 +44,16 @@ class PhotoModel {
   }
 
   factory PhotoModel.fromJson(Map<String, dynamic> json) {
-    // Note: XFile.fromData() or similar may be needed for deserialization
-    // For now, this assumes path-based reconstruction
+    final imagePath = JsonParseHelpers.stringValue(json['imagePath']);
+    final capturedRaw = JsonParseHelpers.stringOrNull(json['capturedAt']);
     return PhotoModel(
-      id: json['id'] as String,
-      imageFile: XFile(json['imagePath'] as String),
-      capturedAt: DateTime.parse(json['capturedAt'] as String),
-      cameraId: json['cameraId'] as String?,
-      isTransformed: json['isTransformed'] as bool? ?? false,
+      id: JsonParseHelpers.stringValue(json['id']),
+      imageFile: XFile(imagePath),
+      capturedAt: capturedRaw != null
+          ? (DateTime.tryParse(capturedRaw) ?? DateTime.now())
+          : DateTime.now(),
+      cameraId: JsonParseHelpers.stringOrNull(json['cameraId']),
+      isTransformed: JsonParseHelpers.boolOrNull(json['isTransformed']) ?? false,
     );
   }
 }

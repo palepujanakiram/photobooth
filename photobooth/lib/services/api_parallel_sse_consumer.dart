@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 
 import '../models/parallel_generation_result.dart';
+import '../utils/constants.dart';
 import '../utils/exceptions.dart';
 import 'api_sse_dispatch.dart';
 
@@ -11,6 +12,7 @@ import 'api_sse_dispatch.dart';
 Future<ParallelGenerationResult> consumeParallelGenerationSseStream(
   ResponseBody body, {
   required int slotCount,
+  Duration timeout = AppConstants.kAiGenerationTimeout,
   void Function(String message)? onProgress,
   void Function(String eventType, Map<String, dynamic> json)? onSseEvent,
 }) async {
@@ -27,22 +29,35 @@ Future<ParallelGenerationResult> consumeParallelGenerationSseStream(
     onSseEvent: onSseEvent,
   );
 
+  StreamSubscription<String>? decodedSub;
   try {
-    await for (final chunk in utf8.decoder.bind(body.stream)) {
-      buffer.write(chunk);
-      while (_drainNextSseBlock(buffer, dispatchArgs)) {
-        if (completer.isCompleted) {
-          return await completer.future;
+    decodedSub = utf8.decoder.bind(body.stream).listen(
+      (chunk) {
+        buffer.write(chunk);
+        while (_drainNextSseBlock(buffer, dispatchArgs)) {
+          if (completer.isCompleted) return;
         }
-      }
-    }
-    _dispatchTrailingSseBuffer(buffer, dispatchArgs);
-  } catch (e) {
-    _completeParallelSseStreamError(completer, e);
-  }
+      },
+      onError: (Object e, StackTrace _) {
+        _completeParallelSseStreamError(completer, e);
+      },
+      onDone: () {
+        _dispatchTrailingSseBuffer(buffer, dispatchArgs);
+        _completeParallelSseStreamIfNeeded(completer, slots, qualityByIndex);
+      },
+      cancelOnError: true,
+    );
 
-  _completeParallelSseStreamIfNeeded(completer, slots, qualityByIndex);
-  return completer.future;
+    final result = await completer.future.timeout(
+      timeout,
+      onTimeout: () => throw ApiException(
+        'Parallel generation stream timed out after ${timeout.inSeconds}s',
+      ),
+    );
+    return result;
+  } finally {
+    await decodedSub?.cancel();
+  }
 }
 
 class _ParallelSseDispatchArgs {

@@ -6,13 +6,13 @@
 class AppConfig {
   // API Configuration
   /// Base URL for the API endpoints
-  /// 
+  ///
   /// For development with CORS issues, you can use:
   /// - A CORS proxy: 'https://cors-anywhere.herokuapp.com/https://fotozenai.fly.dev'
   /// - A local proxy server: 'http://localhost:8080/api'
-  /// 
+  ///
   /// For production, ensure the server has proper CORS headers configured.
-  /// 
+  ///
   /// Base URL for the API endpoints
   /// NOTE: For web development, you MUST run Chrome with CORS disabled
   /// See QUICK_CORS_FIX.md or run: ./run_chrome_dev.sh
@@ -24,17 +24,19 @@ class AppConfig {
 
   /// JWT for `Authorization: Bearer …` on API calls (e.g. Supabase anon / edge gateway).
   ///
-  /// Client apps cannot hide this from a determined user; treat it as a **public** credential
-  /// and enforce authorization on the server (RLS, session checks, rate limits).
+  /// **Public credential** — enforce authorization on the server (RLS, session checks,
+  /// rate limits). Do not commit production tokens; pass at build time:
+  /// `--dart-define=API_BEARER_TOKEN=<jwt>`.
   ///
-  /// Override per build: `--dart-define=API_BEARER_TOKEN=<jwt>`.
+  /// Local/dev: export the Supabase **anon** role JWT via dart-define or CI secret.
   static const String apiBearerToken = String.fromEnvironment(
     'API_BEARER_TOKEN',
-    defaultValue:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0cm5lZm9lcXZlYXRqeGZpaWljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NjMwNDYsImV4cCI6MjA3ODUzOTA0Nn0.Fu-PIP3VIKxAQde9dvLqvZqPFdlOCDiHwKL4M1A4nSo',
+    defaultValue: '',
   );
 
-  static Map<String, String> get authorizationBearerHeader => {
-        'Authorization': 'Bearer $apiBearerToken',
-      };
+  static Map<String, String> get authorizationBearerHeader {
+    final token = apiBearerToken.trim();
+    if (token.isEmpty) return const {};
+    return {'Authorization': 'Bearer $token'};
+  }
 }

@@ -102,6 +102,17 @@ void main() {
     expect(t == ThemeModel.fromJson({'id': 't1', 'categoryId': 'c1', 'name': 'x', 'description': 'd', 'promptText': 'p'}), isTrue);
   });
 
+  test('ThemeModel.fromJson tolerates null optional fields', () {
+    final t = ThemeModel.fromJson({
+      'id': 't2',
+      'name': 'Solo',
+      'promptText': 'prompt',
+    });
+    expect(t.categoryId, '');
+    expect(t.description, '');
+    expect(t.name, 'Solo');
+  });
+
   test('TransformedImageModel toJson round-trip', () {
     final m = TransformedImageModel(
       id: 'g1',

@@ -1,3 +1,5 @@
+import '../utils/json_parse_helpers.dart';
+
 class AppSettingsModel {
   final String? id;
   final String? accountId;
@@ -90,51 +92,53 @@ class AppSettingsModel {
     return AppSettingsModel(
       id: json['id'] as String?,
       accountId: json['accountId'] as String?,
-      maxRegenerations: json['maxRegenerations'] as int?,
-      freeRegenerations: json['freeRegenerations'] as int?,
-      regenerationPrice: json['regenerationPrice'] as int?,
+      maxRegenerations: JsonParseHelpers.intOrNull(json['maxRegenerations']),
+      freeRegenerations: JsonParseHelpers.intOrNull(json['freeRegenerations']),
+      regenerationPrice: JsonParseHelpers.intOrNull(json['regenerationPrice']),
       regenerationApprovalRequired:
-          json['regenerationApprovalRequired'] as bool?,
-      initialPrice: (json['initialPrice'] as num?)?.toInt(),
-      additionalPrintPrice: (json['additionalPrintPrice'] as num?)?.toInt(),
-      printLayout: json['printLayout'] as String?,
-      upscaleEnabled: json['upscaleEnabled'] as bool?,
-      upscaleScale: json['upscaleScale'] as int?,
-      upscaleUseAI: json['upscaleUseAI'] as bool?,
-      compressionQuality: json['compressionQuality'] as int?,
-      compressionMaxDimension: json['compressionMaxDimension'] as int?,
-      showGenerationCommentary: json['showGenerationCommentary'] as bool?,
-      thermalSafeMode: json['thermalSafeMode'] as bool?,
-      defaultAiProvider: json['defaultAiProvider'] as String?,
-      fallbackAiProvider: json['fallbackAiProvider'] as String?,
-      enableControlNet: json['enableControlNet'] as bool?,
-      enableInstantId: json['enableInstantId'] as bool?,
-      instantIdStrength: json['instantIdStrength'] as int?,
-      enableFluxKontext: json['enableFluxKontext'] as bool?,
+          JsonParseHelpers.boolOrNull(json['regenerationApprovalRequired']),
+      initialPrice: JsonParseHelpers.intOrNull(json['initialPrice']),
+      additionalPrintPrice:
+          JsonParseHelpers.intOrNull(json['additionalPrintPrice']),
+      printLayout: JsonParseHelpers.stringOrNull(json['printLayout']),
+      upscaleEnabled: JsonParseHelpers.boolOrNull(json['upscaleEnabled']),
+      upscaleScale: JsonParseHelpers.intOrNull(json['upscaleScale']),
+      upscaleUseAI: JsonParseHelpers.boolOrNull(json['upscaleUseAI']),
+      compressionQuality: JsonParseHelpers.intOrNull(json['compressionQuality']),
+      compressionMaxDimension:
+          JsonParseHelpers.intOrNull(json['compressionMaxDimension']),
+      showGenerationCommentary:
+          JsonParseHelpers.boolOrNull(json['showGenerationCommentary']),
+      thermalSafeMode: JsonParseHelpers.boolOrNull(json['thermalSafeMode']),
+      defaultAiProvider: JsonParseHelpers.stringOrNull(json['defaultAiProvider']),
+      fallbackAiProvider:
+          JsonParseHelpers.stringOrNull(json['fallbackAiProvider']),
+      enableControlNet: JsonParseHelpers.boolOrNull(json['enableControlNet']),
+      enableInstantId: JsonParseHelpers.boolOrNull(json['enableInstantId']),
+      instantIdStrength: JsonParseHelpers.intOrNull(json['instantIdStrength']),
+      enableFluxKontext: JsonParseHelpers.boolOrNull(json['enableFluxKontext']),
       activeLanguages: (json['activeLanguages'] as List<dynamic>?)
           ?.map((language) => language.toString())
           .toList(),
-      photoUploadAllowed: json['photoUploadAllowed'] as bool?,
-      printerEnabled: json['printerEnabled'] as bool?,
-      printerHost: json['printerHost'] as String?,
-      printerPort: (json['printerPort'] as num?)?.toInt(),
-      printerPath: json['printerPath'] as String?,
-      wcmPlusEnabled: json['wcmPlusEnabled'] as bool?,
-      wcmPlusPath: json['wcmPlusPath'] as String?,
-      parallelImageCount: (json['parallelImageCount'] as num?)?.toInt(),
-      targetFraming: json['targetFraming'] as String?,
-      showFramingGuide: json['showFramingGuide'] as bool?,
-      paymentGatewayEnabled: json['paymentGatewayEnabled'] as bool?,
-      paymentGatewayEnvironment: json['paymentGatewayEnvironment'] as String?,
-      watermarkEnabled: json['watermarkEnabled'] as bool?,
-      exifStampEnabled: json['exifStampEnabled'] as bool?,
-      c2paSigningEnabled: json['c2paSigningEnabled'] as bool?,
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'] as String)
-          : null,
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.parse(json['updatedAt'] as String)
-          : null,
+      photoUploadAllowed: JsonParseHelpers.boolOrNull(json['photoUploadAllowed']),
+      printerEnabled: JsonParseHelpers.boolOrNull(json['printerEnabled']),
+      printerHost: JsonParseHelpers.stringOrNull(json['printerHost']),
+      printerPort: JsonParseHelpers.intOrNull(json['printerPort']),
+      printerPath: JsonParseHelpers.stringOrNull(json['printerPath']),
+      wcmPlusEnabled: JsonParseHelpers.boolOrNull(json['wcmPlusEnabled']),
+      wcmPlusPath: JsonParseHelpers.stringOrNull(json['wcmPlusPath']),
+      parallelImageCount: JsonParseHelpers.intOrNull(json['parallelImageCount']),
+      targetFraming: JsonParseHelpers.stringOrNull(json['targetFraming']),
+      showFramingGuide: JsonParseHelpers.boolOrNull(json['showFramingGuide']),
+      paymentGatewayEnabled:
+          JsonParseHelpers.boolOrNull(json['paymentGatewayEnabled']),
+      paymentGatewayEnvironment:
+          JsonParseHelpers.stringOrNull(json['paymentGatewayEnvironment']),
+      watermarkEnabled: JsonParseHelpers.boolOrNull(json['watermarkEnabled']),
+      exifStampEnabled: JsonParseHelpers.boolOrNull(json['exifStampEnabled']),
+      c2paSigningEnabled: JsonParseHelpers.boolOrNull(json['c2paSigningEnabled']),
+      createdAt: JsonParseHelpers.dateTimeOrNull(json['createdAt']),
+      updatedAt: JsonParseHelpers.dateTimeOrNull(json['updatedAt']),
     );
   }
 }
