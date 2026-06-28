@@ -49,7 +49,8 @@ Required before Play Console upload:
      -alias fotozen-upload
    ```
    Store the `.jks` somewhere durable (1Password / encrypted backup) — losing it means losing the ability to push updates without a key reset request to Google.
-2. Create `android/keystore/key.properties`:
+   **Never commit** `fotozen-upload.jks` or `key.properties` — they are gitignored. If either was ever pushed, rotate the upload key via [Play Console → App integrity → Upload key](https://support.google.com/googleplay/android-developer/answer/9842756) and treat the old password as compromised.
+2. Create `android/keystore/key.properties` (local file only):
    ```
    storePassword=...
    keyPassword=...
