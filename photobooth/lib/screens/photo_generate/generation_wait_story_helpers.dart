@@ -28,7 +28,7 @@ const List<String> kGenerationWaitMarketingTaglines = [
   'Your face. Reimagined.',
   'Hollywood-quality AI portraits.',
   'Printed in seconds.',
-  'AI keeps your likeness close.',
+  'Likeness checked by AI.',
 ];
 
 /// Premium fact cards (title + body) for the wait footer.
@@ -36,7 +36,7 @@ const List<({String title, String body})> kGenerationWaitFactCards = [
   (
     title: 'Your likeness',
     body:
-        'We keep your facial likeness as close as possible. AI styling may vary slightly.',
+        'We preserve your likeness using AI face-similarity checks. Highly stylized themes may slightly vary.',
   ),
   (
     title: 'Luxury costumes',

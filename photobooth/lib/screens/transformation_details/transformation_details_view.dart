@@ -82,11 +82,20 @@ class _RunBody extends StatelessWidget {
     final meta = parseRunMetadata(run);
     final applied = parseAppliedSettings(meta);
     final finalPrompt = finalPromptFromAiStep(findAiGenerationStep(steps));
+    final identityVerification = parseIdentityVerification(
+      payload: payload,
+      run: run,
+      steps: steps,
+    );
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         _headerCard(context, run),
+        if (identityVerification != null) ...[
+          const SizedBox(height: 12),
+          _identityVerificationCard(context, identityVerification),
+        ],
         const SizedBox(height: 12),
         _jsonCard(context, 'Applied settings', applied),
         if (finalPrompt != null && finalPrompt.isNotEmpty) ...[
@@ -104,6 +113,62 @@ class _RunBody extends StatelessWidget {
         const SizedBox(height: 8),
         ...steps.map((s) => _stepTile(context, s)),
       ],
+    );
+  }
+
+  Widget _identityVerificationCard(
+    BuildContext context,
+    Map<String, dynamic> identityVerification,
+  ) {
+    final lines = identityVerificationSummaryLines(identityVerification);
+    final passed = identityVerification['passed'];
+    final icon = passed is bool && passed
+        ? Icons.verified_outlined
+        : Icons.warning_amber_outlined;
+    final iconColor = passed is bool && passed
+        ? Colors.green.shade700
+        : Colors.orange.shade800;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: iconColor, size: 22),
+                const SizedBox(width: 8),
+                Text(
+                  'Identity verification',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ...lines.map(
+              (line) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(line),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text(
+                'Raw JSON',
+                style: TextStyle(fontSize: 13),
+              ),
+              children: [
+                SelectableText(
+                  const JsonEncoder.withIndent(' ').convert(identityVerification),
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
