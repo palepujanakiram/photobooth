@@ -97,6 +97,10 @@ void main() {
   test('payload sanitizer masks auth and truncates data urls', () {
     const s = PayloadSanitizer();
     expect(s.maskAuthorization('Bearer abcdefghijklmnopqrst'), contains('...'));
+    expect(
+      s.maskSensitiveHeader('X-Kiosk-Session-Token', 'abcdefghijklmnop'),
+      isNot(contains('abcdefghijklmnop')),
+    );
     final out = s.sanitizeString(
       'data:image/jpeg;base64,${'x' * 300}',
     );

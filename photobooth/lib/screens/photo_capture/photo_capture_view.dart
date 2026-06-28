@@ -31,6 +31,7 @@ import '../../utils/logger.dart';
 import '../../utils/uvc_capture_config.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
+import '../../services/uvc_device_event_hub.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/centered_max_width.dart';
 import 'photo_capture_rotation_screen.dart';
@@ -650,7 +651,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void _attachUvcDeviceEvents() {
     if (defaultTargetPlatform != TargetPlatform.android) return;
     _uvcDeviceEventsSub?.cancel();
-    _uvcDeviceEventsSub = UvcCamera.deviceEventStream.listen(
+    _uvcDeviceEventsSub = UvcDeviceEventHub.instance.listen(
       _onUvcDeviceEvent,
       onError: (err, st) {
         AppLogger.error('UVC deviceEventStream error', error: err, stackTrace: st);

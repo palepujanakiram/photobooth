@@ -7,6 +7,10 @@ abstract final class AppStrings {
   /// Shown after a successful silent print to the network printer.
   static const printJobSentSuccess = 'Print job sent successfully!';
 
+  /// Generic print failure when the underlying error must not be shown to guests.
+  static const printFailedGeneric =
+      'Failed to print. Please check the printer and try again.';
+
   /// Browser / Dio message when a web request cannot reach the API (CORS, offline).
   static const failedToFetch = 'Failed to fetch';
 

@@ -77,7 +77,7 @@ void main() {
       expect(sm.hasSession, isFalse);
     });
 
-    test('rethrows API failures from server delete', () async {
+    test('still wipes local session when server delete fails', () async {
       SharedPreferences.setMockInitialValues({});
       final sm = SessionManager();
       sm.setSessionFromResponse({
@@ -100,7 +100,7 @@ void main() {
         deletion.deleteMyPhotos(),
         throwsA(isA<ApiException>()),
       );
-      expect(sm.sessionId, 'sess-fail');
+      expect(sm.hasSession, isFalse);
     });
   });
 

@@ -952,7 +952,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     } on PrintException catch (e) {
       _r._errorMessage = e.message;
     } catch (e) {
-      _r._errorMessage = 'Failed to print: $e';
+      _r._errorMessage = AppStrings.printFailedGeneric;
     } finally {
       _r._isSilentPrinting = false;
       notifyListeners();
@@ -1004,7 +1004,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     } on PrintException catch (e) {
       _r._errorMessage = e.message;
     } catch (e) {
-      _r._errorMessage = 'Failed to print: $e';
+      _r._errorMessage = AppStrings.printFailedGeneric;
     } finally {
       _r._isDialogPrinting = false;
       notifyListeners();

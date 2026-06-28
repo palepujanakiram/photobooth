@@ -10,19 +10,23 @@ Future<void> postLanPrinterMultipart({
   required String deviceId,
 }) async {
   final dio = createPrinterApiDio(baseUrl);
-  if (usesDnpMultipartPrintApi(apiPath)) {
-    await postNetworkPrintMultipart(
+  try {
+    if (usesDnpMultipartPrintApi(apiPath)) {
+      await postNetworkPrintMultipart(
+        dio: dio,
+        apiPath: apiPath,
+        imageBytes: imageBytes,
+        printSize: printSize,
+        deviceId: deviceId,
+      );
+      return;
+    }
+    await postRawJpegNetworkPrint(
       dio: dio,
       apiPath: apiPath,
       imageBytes: imageBytes,
-      printSize: printSize,
-      deviceId: deviceId,
     );
-    return;
+  } finally {
+    dio.close(force: true);
   }
-  await postRawJpegNetworkPrint(
-    dio: dio,
-    apiPath: apiPath,
-    imageBytes: imageBytes,
-  );
 }

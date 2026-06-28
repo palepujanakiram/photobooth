@@ -4,6 +4,7 @@ import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter/foundation.dart' show kIsWeb;
+import '../utils/app_strings.dart';
 import '../utils/constants.dart';
 import '../utils/exceptions.dart';
 import '../utils/logger.dart';
@@ -74,7 +75,7 @@ class PrintService {
         },
       );
       
-      throw PrintException('Failed to print image: $e');
+      throw PrintException(AppStrings.printFailedGeneric);
     }
   }
 
@@ -205,7 +206,7 @@ class PrintService {
         },
       );
       
-      throw PrintException('Failed to print image: $e');
+      throw PrintException(AppStrings.printFailedGeneric);
     }
   }
 }

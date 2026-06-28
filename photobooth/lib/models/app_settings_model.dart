@@ -90,8 +90,8 @@ class AppSettingsModel {
 
   factory AppSettingsModel.fromJson(Map<String, dynamic> json) {
     return AppSettingsModel(
-      id: json['id'] as String?,
-      accountId: json['accountId'] as String?,
+      id: JsonParseHelpers.stringOrNull(json['id']),
+      accountId: JsonParseHelpers.stringOrNull(json['accountId']),
       maxRegenerations: JsonParseHelpers.intOrNull(json['maxRegenerations']),
       freeRegenerations: JsonParseHelpers.intOrNull(json['freeRegenerations']),
       regenerationPrice: JsonParseHelpers.intOrNull(json['regenerationPrice']),
