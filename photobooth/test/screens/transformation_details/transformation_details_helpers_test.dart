@@ -32,24 +32,39 @@ void main() {
       expect(result?['retryCount'], 2);
     });
 
-    test('reads from ai_generation step metadata', () {
+    test('reads flattened embedding fields on run object', () {
+      final result = parseIdentityVerification(
+        payload: {},
+        run: {
+          'passed': true,
+          'embeddingMinSimilarity': 88,
+          'embeddingAvgSimilarity': 92,
+          'embeddingThresholdUsed': 80,
+          'personCountMatch': true,
+        },
+        steps: [],
+      );
+      expect(result?['passed'], isTrue);
+      expect(result?['embeddingMinSimilarity'], 88);
+    });
+
+    test('reads from any step metadata not only ai_generation', () {
       final result = parseIdentityVerification(
         payload: {},
         run: {},
         steps: [
           {
-            'stage': 'ai_generation',
+            'stage': 'c2pa_sign',
             'metadata': {
               'identity_verification': {
-                'avgFaceScore': 0.91,
-                'perFaceScores': [0.9, 0.92],
+                'passed': true,
+                'embeddingMinSimilarity': 100,
               },
             },
           },
         ],
       );
-      expect(result?['avgFaceScore'], 0.91);
-      expect(result?['perFaceScores'], [0.9, 0.92]);
+      expect(result?['embeddingMinSimilarity'], 100);
     });
   });
 

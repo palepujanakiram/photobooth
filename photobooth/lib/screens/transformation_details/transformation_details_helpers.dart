@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// Parsing helpers for transformation details API payload (Sonar S3776).
 List<Map<String, dynamic>> parseTransformationSteps(dynamic stepsRaw) {
   if (stepsRaw is! List) return <Map<String, dynamic>>[];
@@ -46,39 +48,79 @@ Map<String, dynamic>? _mapOrNull(dynamic value) {
   return null;
 }
 
+bool _looksLikeIdentityVerification(Map<String, dynamic> data) {
+  if (data.containsKey('passed') &&
+      (_identityField(data, [
+            'embeddingMinSimilarity',
+            'minFaceScore',
+            'embeddingAvgSimilarity',
+            'avgFaceScore',
+          ]) !=
+          null)) {
+    return true;
+  }
+  return _identityField(data, [
+        'embeddingMinSimilarity',
+        'embeddingAvgSimilarity',
+        'embeddingThresholdUsed',
+      ]) !=
+      null;
+}
+
+Map<String, dynamic>? _identityFromMap(dynamic value) {
+  if (value is String && value.trim().isNotEmpty) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+  final map = _mapOrNull(value);
+  if (map != null && _looksLikeIdentityVerification(map)) {
+    return map;
+  }
+  if (map != null) {
+    final nested = _mapOrNull(map['identityVerification']) ??
+        _mapOrNull(map['identity_verification']);
+    if (nested != null) return nested;
+  }
+  return null;
+}
+
+Map<String, dynamic>? _identityFromStep(Map<String, dynamic> step) {
+  for (final key in ['metadata', 'outputData', 'inputData']) {
+    final found = _identityFromMap(step[key]);
+    if (found != null) return found;
+  }
+  return null;
+}
+
 /// Identity verification block from generation run API (`identity_verification` JSON).
 Map<String, dynamic>? parseIdentityVerification({
   required Map<String, dynamic> payload,
   required Map<String, dynamic> run,
   required List<Map<String, dynamic>> steps,
 }) {
-  final topLevel = _mapOrNull(payload['identityVerification']) ??
-      _mapOrNull(payload['identity_verification']);
-  if (topLevel != null) return topLevel;
-
-  final meta = parseRunMetadata(run);
-  final fromMeta = _mapOrNull(meta['identityVerification']) ??
-      _mapOrNull(meta['identity_verification']);
-  if (fromMeta != null) return fromMeta;
-
-  final generationLog = payload['generationLog'] ?? payload['generation_log'];
-  if (generationLog is Map) {
-    final fromLog = _mapOrNull(generationLog['identityVerification']) ??
-        _mapOrNull(generationLog['identity_verification']);
-    if (fromLog != null) return fromLog;
+  for (final source in [
+    payload,
+    run,
+    parseRunMetadata(run),
+    payload['generationLog'],
+    payload['generation_log'],
+    payload['log'],
+  ]) {
+    final found = _identityFromMap(source);
+    if (found != null) return found;
   }
 
-  final aiStep = findAiGenerationStep(steps);
-  if (aiStep != null) {
-    for (final key in ['metadata', 'outputData']) {
-      final block = aiStep[key];
-      if (block is Map) {
-        final nested = _mapOrNull(block['identityVerification']) ??
-            _mapOrNull(block['identity_verification']);
-        if (nested != null) return nested;
-      }
-    }
+  for (final step in steps) {
+    final found = _identityFromStep(step);
+    if (found != null) return found;
   }
+
   return null;
 }
 
