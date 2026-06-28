@@ -7,8 +7,8 @@ const List<String> kGenerationWaitFaceScanLines = [
   'Hair detected',
   'Lighting matched',
   'Pose analyzed',
-  'Expressions preserved',
-  'Identity locked',
+  'Expression noted',
+  'Likeness mapped',
 ];
 
 /// Dynamic activity quotes — rotate every 5 seconds (no percentages).
@@ -28,14 +28,15 @@ const List<String> kGenerationWaitMarketingTaglines = [
   'Your face. Reimagined.',
   'Hollywood-quality AI portraits.',
   'Printed in seconds.',
-  'Identity preserved with AI.',
+  'AI keeps your likeness close.',
 ];
 
 /// Premium fact cards (title + body) for the wait footer.
 const List<({String title, String body})> kGenerationWaitFactCards = [
   (
-    title: 'Identity locked',
-    body: 'Your face is preserved exactly — not a random AI face.',
+    title: 'Your likeness',
+    body:
+        'We keep your facial likeness as close as possible. AI styling may vary slightly.',
   ),
   (
     title: 'Luxury costumes',
@@ -138,7 +139,7 @@ List<GenerationWaitRewardBeat> resolveGenerationWaitRewardChecklist(
   GenerationWaitPresentation presentation,
 ) {
   const labels = [
-    'Identity',
+    'Likeness',
     'Lighting',
     'Costume',
     'Background',

@@ -1336,8 +1336,8 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
     } else {
       index = 0;
       stageTitle = '1 · DETECT';
-      headline = 'Face locked';
-      description = 'Live preview';
+      headline = 'Face detected';
+      description = 'Analyzing your portrait';
     }
 
     // Important UX: keep the photo canvas clean (no UI overlays).
