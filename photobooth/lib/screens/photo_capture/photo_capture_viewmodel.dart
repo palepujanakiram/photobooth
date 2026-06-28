@@ -2109,6 +2109,16 @@ class CaptureViewModel extends ChangeNotifier {
       return false;
     }
 
+    if (kIsWeb) {
+      final kioskToken = _sessionManager.kioskAuthToken;
+      if (kioskToken == null || kioskToken.isEmpty) {
+        _errorMessage =
+            'Session authentication is missing. Please return to Terms and start again.';
+        notifyListeners();
+        return false;
+      }
+    }
+
     _isUploading = true;
     _errorMessage = null;
     notifyListeners();

@@ -1,0 +1,15 @@
+.git
+.dart_tool
+.idea
+.vscode
+coverage
+*.iml
+
+# Keep build/web for Docker; ignore other build outputs.
+build/*
+!build/web
+
+android/.gradle
+ios/Pods
+ios/.symlinks
+packages/**/build

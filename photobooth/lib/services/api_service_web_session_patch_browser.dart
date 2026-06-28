@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 // ignore: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:html' as html;
 
@@ -47,8 +48,7 @@ Future<String> patchSessionPhotoBodyOnWeb({
     xhr.abort();
     finishError(
       TimeoutException(
-        'Photo upload timed out after ${timeout.inSeconds} seconds. '
-        'On localhost web, run ./run_web_dev.sh (API proxy).',
+        'Photo upload timed out after ${timeout.inSeconds} seconds.',
       ),
     );
   });
@@ -64,17 +64,16 @@ Future<String> patchSessionPhotoBodyOnWeb({
       completer.complete(xhr.responseText ?? '');
       return;
     }
-    finishError(ApiException('Upload failed (HTTP $status)', status));
+    finishError(
+      ApiException(_sessionPatchFailureMessage(status, xhr.responseText), status),
+    );
   });
 
   xhr.onError.listen((_) {
     abortTimer.cancel();
     WebFlowTrace.log('PATCH_HTTP', 'xhr_onError');
     finishError(
-      ApiException(
-        'Network error during photo upload. '
-        'On localhost web, run ./run_web_dev.sh (API proxy).',
-      ),
+      ApiException('Network error during photo upload.'),
     );
   });
 
@@ -94,4 +93,22 @@ Future<String> patchSessionPhotoBodyOnWeb({
   xhr.send(jsonBody);
 
   return completer.future;
+}
+
+String _sessionPatchFailureMessage(int status, String? responseText) {
+  final body = responseText?.trim();
+  if (body != null && body.isNotEmpty) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map) {
+        final err = decoded['error'] ?? decoded['message'];
+        if (err is String && err.trim().isNotEmpty) {
+          return 'Upload failed (HTTP $status): ${err.trim()}';
+        }
+      }
+    } on FormatException {
+      // Fall through to generic message.
+    }
+  }
+  return 'Upload failed (HTTP $status)';
 }
