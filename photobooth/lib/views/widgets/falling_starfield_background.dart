@@ -3,10 +3,15 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../utils/route_visibility_mixin.dart';
+
 /// Full-screen overlay: drifting star dots plus a single occasional shooting-star streak
 /// (random direction each pass, short fast sweep, sparse timing).
 class FallingStarfieldBackground extends StatefulWidget {
-  const FallingStarfieldBackground({super.key});
+  const FallingStarfieldBackground({super.key, this.animating = true});
+
+  /// When false, the animation controller is stopped to save GPU/CPU on offscreen routes.
+  final bool animating;
 
   @override
   State<FallingStarfieldBackground> createState() =>
@@ -42,14 +47,33 @@ class _FallingStarfieldBackgroundState extends State<FallingStarfieldBackground>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 25),
-    )..repeat();
+    );
+    _syncAnimationRunning();
     _controller.addListener(_onTick);
+  }
+
+  @override
+  void didUpdateWidget(covariant FallingStarfieldBackground oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.animating != widget.animating) {
+      _syncAnimationRunning();
+    }
+  }
+
+  void _syncAnimationRunning() {
+    if (widget.animating) {
+      if (!_controller.isAnimating) {
+        _controller.repeat();
+      }
+    } else {
+      _controller.stop();
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      if (!_controller.isAnimating) {
+      if (widget.animating && !_controller.isAnimating) {
         _controller.repeat();
       }
     } else {
@@ -219,5 +243,27 @@ class _SeededRandom {
   double nextDouble() {
     _state = (_a * _state + _c) & _mask;
     return _state.toDouble() / _mask.toDouble();
+  }
+}
+
+/// Starfield that pauses when another route is pushed on top (saves GPU on deep stacks).
+class RouteAwareFallingStarfield extends StatefulWidget {
+  const RouteAwareFallingStarfield({super.key});
+
+  @override
+  State<RouteAwareFallingStarfield> createState() =>
+      _RouteAwareFallingStarfieldState();
+}
+
+class _RouteAwareFallingStarfieldState extends State<RouteAwareFallingStarfield>
+    with RouteVisibilityMixin {
+  @override
+  void onRouteVisibilityChanged(bool visible) {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FallingStarfieldBackground(animating: routeIsVisible);
   }
 }

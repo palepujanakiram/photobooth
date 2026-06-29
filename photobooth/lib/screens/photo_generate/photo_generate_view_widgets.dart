@@ -1160,6 +1160,8 @@ Future<void> _onPhotoGenerateContinuePressed({
 
   if (!context.mounted) return;
 
+  viewModel.trimMemoryWhenRouteInactive();
+
   await Navigator.pushNamed(
     context,
     AppConstants.kRouteResult,

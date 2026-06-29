@@ -79,7 +79,7 @@ class UvcCaptureConfig {
   static const bool enableSessionRecycle = true;
 
   /// Interval between idle session recycles (stop preview → release → reopen).
-  static const Duration sessionRecyclePeriod = Duration(minutes: 25);
+  static const Duration sessionRecyclePeriod = Duration(minutes: 15);
 
   /// When recycle is deferred (capture in flight, reviewing, etc.), retry after this delay.
   static const Duration sessionRecycleRetryDelay = Duration(minutes: 2);

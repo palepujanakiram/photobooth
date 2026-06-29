@@ -24,6 +24,7 @@ import 'theme_selection_carousel_page.dart';
 import 'theme_selection_on_continue_helpers.dart';
 import 'theme_selection_loaded_body.dart';
 import '../../utils/route_args.dart';
+import '../../utils/route_visibility_mixin.dart';
 
 class ThemeSelectionScreen extends StatefulWidget {
   const ThemeSelectionScreen({super.key});
@@ -32,7 +33,8 @@ class ThemeSelectionScreen extends StatefulWidget {
   State<ThemeSelectionScreen> createState() => _ThemeSelectionScreenState();
 }
 
-class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
+class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
+    with RouteVisibilityMixin {
   PhotoModel? _photoFromCapture;
   bool _addOneMoreStyle = false;
   List<String> _usedThemeIds = const [];
@@ -159,6 +161,23 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
       _lastCarouselThemeCount = count;
       _startCarouselTimer(viewModel);
     }
+  }
+
+  @override
+  void onRouteVisibilityChanged(bool visible) {
+    if (!visible) {
+      _stopCarouselTimer();
+      _autoScrollResumeTimer?.cancel();
+      _autoScrollResumeTimer = null;
+      _stopTimer();
+      return;
+    }
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !routeIsVisible) return;
+      final viewModel = context.read<ThemeViewModel>();
+      _syncCarouselTimer(viewModel);
+    });
   }
 
   @override
@@ -562,7 +581,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen> {
           ),
         ),
         const Positioned.fill(
-          child: FallingStarfieldBackground(),
+          child: RouteAwareFallingStarfield(),
         ),
       ],
     );

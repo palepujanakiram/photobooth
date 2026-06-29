@@ -32,7 +32,7 @@ void main() {
     expect(UvcCaptureConfig.enableSessionRecycle, isTrue);
     expect(
       UvcCaptureConfig.sessionRecyclePeriod,
-      const Duration(minutes: 25),
+      const Duration(minutes: 15),
     );
     expect(
       UvcCaptureConfig.sessionRecycleRetryDelay,

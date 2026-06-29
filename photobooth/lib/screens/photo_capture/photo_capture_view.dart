@@ -532,7 +532,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       await _handleRetake(context);
       return;
     }
-    Navigator.pop(context);
+    if (!mounted) return;
+    Navigator.of(context).pushReplacementNamed(AppConstants.kRouteTerms);
   }
 
   Future<void> _restoreUvcLiveFeedAfterRetake() async {
