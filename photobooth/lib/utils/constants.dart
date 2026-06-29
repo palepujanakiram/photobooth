@@ -218,7 +218,7 @@ class AppConstants {
   static const int kCaptureCountdownSeconds = 5;
 
   /// POSE screen: return to Terms after this much user inactivity (live feed or review).
-  static const Duration kCaptureScreenIdleResetDuration = Duration(minutes: 5);
+  static const Duration kCaptureScreenIdleResetDuration = Duration(minutes: 3);
 
   /// How long the idle-reset snackbar stays visible before navigating away.
   static const Duration kCaptureScreenIdleResetSnackDuration =

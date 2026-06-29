@@ -67,7 +67,7 @@ abstract final class AppStrings {
 
   /// POSE screen: shown briefly before returning to Terms after idle timeout.
   static const captureScreenIdleResetMessage =
-      'No activity for 5 minutes. Returning to the welcome screen…';
+      'Idle activity is detected so going back';
 
   /// Payment push / poll notification titles and bodies.
   static const paymentConfirmedTitle = 'Payment confirmed';
