@@ -19,12 +19,15 @@ import 'photo_capture_uvc_take_picture_helpers.dart';
 import 'photo_capture_uvc_shutter_helpers.dart';
 import 'photo_capture_view_aspect.dart';
 import 'photo_capture_view_handlers.dart';
+import 'photo_capture_exit_handlers.dart';
+import 'photo_capture_idle_policy.dart';
 import 'photo_capture_view_layout.dart';
 import 'photo_capture_view_scaffold.dart';
 import 'photo_capture_viewmodel.dart';
 import 'photo_model.dart';
 import 'photo_image_from_xfile_io.dart' if (dart.library.html) 'photo_image_from_xfile_web.dart' as photo_image;
 import '../../utils/app_runtime_config.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/device_classifier.dart';
 import '../../utils/logger.dart';
@@ -73,6 +76,86 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Future<void> _uvcOp = Future<void>.value();
 
   bool _prefillApplied = false;
+  Timer? _poseIdleTimer;
+  bool _navigatingAwayFromCapture = false;
+  bool _appInForeground = true;
+
+  CaptureScreenIdleInput _poseIdleInput(CaptureViewModel viewModel) {
+    return CaptureScreenIdleInput(
+      isNavigatingAway: _navigatingAwayFromCapture,
+      isCapturing: viewModel.isCapturing,
+      isUploading: viewModel.isUploading,
+      isCountingDown: viewModel.isCountingDown,
+      appInForeground: _appInForeground,
+    );
+  }
+
+  void _stopPoseIdleTimer() {
+    _poseIdleTimer?.cancel();
+    _poseIdleTimer = null;
+  }
+
+  void _syncPoseIdleTimer(CaptureViewModel viewModel) {
+    if (!captureScreenIdleTimerShouldRun(_poseIdleInput(viewModel))) {
+      _stopPoseIdleTimer();
+      return;
+    }
+    if (_poseIdleTimer?.isActive == true) return;
+    _armPoseIdleTimer();
+  }
+
+  void _armPoseIdleTimer() {
+    _stopPoseIdleTimer();
+    _poseIdleTimer = Timer(AppConstants.kCaptureScreenIdleResetDuration, () {
+      unawaited(_onPoseIdleTimeout());
+    });
+  }
+
+  void _notePoseUserActivity() {
+    if (_navigatingAwayFromCapture) return;
+    if (!captureScreenIdleTimerShouldRun(_poseIdleInput(_captureViewModel))) {
+      return;
+    }
+    _armPoseIdleTimer();
+  }
+
+  void _onCaptureViewModelStateChanged() {
+    if (!mounted) return;
+    _syncPoseIdleTimer(_captureViewModel);
+  }
+
+  Future<void> _releaseCaptureHardware() async {
+    _stopPoseIdleTimer();
+    _cancelUvcSessionRecycleTimer();
+    await _disposeUvc();
+    await _captureViewModel.disposeCamera();
+  }
+
+  Future<void> _exitCaptureToTerms({required String sessionEndContext}) async {
+    if (_navigatingAwayFromCapture) return;
+    _navigatingAwayFromCapture = true;
+    _stopPoseIdleTimer();
+    await exitCaptureScreenToTerms(
+      context: context,
+      isMounted: () => mounted,
+      releaseCaptureHardware: _releaseCaptureHardware,
+      sessionEndContext: sessionEndContext,
+    );
+  }
+
+  Future<void> _onPoseIdleTimeout() async {
+    if (!mounted || _navigatingAwayFromCapture) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(AppStrings.captureScreenIdleResetMessage),
+        duration: AppConstants.kCaptureScreenIdleResetSnackDuration,
+      ),
+    );
+    await Future<void>.delayed(AppConstants.kCaptureScreenIdleResetSnackDelay);
+    if (!mounted || _navigatingAwayFromCapture) return;
+    await _exitCaptureToTerms(sessionEndContext: 'capture_idle_timeout');
+  }
 
   @override
   void didChangeDependencies() {
@@ -302,11 +385,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _captureViewModel = CaptureViewModel();
+    _captureViewModel.addListener(_onCaptureViewModelStateChanged);
     _attachUvcDeviceEvents();
 
     _hardwareKeySub?.cancel();
     _hardwareKeySub = HardwareKeyService.events.listen((e) async {
       if (!e.isActionDown) return;
+      _notePoseUserActivity();
       if (_captureViewModel.capturedPhoto != null) return;
       if (!UvcHardwareKeyCodes.isShutterKey(e.keyCode)) return;
       if (_isUsingUvc && _uvcController?.value.isInitialized == true) {
@@ -328,6 +413,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       await _captureViewModel.loadPreviewRotation();
       if (!mounted) return;
       await _resetAndInitializeCameras();
+      if (!mounted) return;
+      _syncPoseIdleTimer(_captureViewModel);
     });
   }
 
@@ -431,6 +518,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _captureViewModel.removeListener(_onCaptureViewModelStateChanged);
+    _stopPoseIdleTimer();
     _uvcReconnectTimer?.cancel();
     _uvcReconnectTimer = null;
     _uvcWarmupTimer?.cancel();
@@ -453,6 +542,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final inForeground = state == AppLifecycleState.resumed;
+    if (_appInForeground != inForeground) {
+      _appInForeground = inForeground;
+      if (inForeground) {
+        _syncPoseIdleTimer(_captureViewModel);
+      } else {
+        _stopPoseIdleTimer();
+      }
+    }
     if (state == AppLifecycleState.resumed &&
         _isUsingUvc &&
         _uvcController == null &&
@@ -528,12 +626,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   Future<void> _handleCaptureBack(BuildContext context) async {
+    _notePoseUserActivity();
     if (_captureViewModel.capturedPhoto != null) {
       await _handleRetake(context);
       return;
     }
-    if (!mounted) return;
-    Navigator.of(context).pushReplacementNamed(AppConstants.kRouteTerms);
+    await _exitCaptureToTerms(sessionEndContext: 'capture_back');
   }
 
   Future<void> _restoreUvcLiveFeedAfterRetake() async {
@@ -1422,19 +1520,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           return ListenableBuilder(
             listenable: AppRuntimeConfig.instance,
             builder: (context, _) {
-              return PhotoCaptureScaffold(
-                viewModel: viewModel,
-                onBack: () => unawaited(_handleCaptureBack(context)),
-                onSelectCamera: () =>
-                    _showCameraSelectionDialog(context, viewModel),
-                onOpenRotation: () =>
-                    _openPreviewRotationScreen(context, viewModel),
-                onReloadCameras: () =>
-                    _resetAndInitializeCameras(forceRefresh: true),
-                body: Builder(
-                  builder: (context) => _buildCaptureBodyContent(
-                    context,
-                    Provider.of<CaptureViewModel>(context, listen: true),
+              return Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: (_) => _notePoseUserActivity(),
+                child: PhotoCaptureScaffold(
+                  viewModel: viewModel,
+                  onBack: () => unawaited(_handleCaptureBack(context)),
+                  onSelectCamera: () =>
+                      _showCameraSelectionDialog(context, viewModel),
+                  onOpenRotation: () =>
+                      _openPreviewRotationScreen(context, viewModel),
+                  onReloadCameras: () =>
+                      _resetAndInitializeCameras(forceRefresh: true),
+                  body: Builder(
+                    builder: (context) => _buildCaptureBodyContent(
+                      context,
+                      Provider.of<CaptureViewModel>(context, listen: true),
+                    ),
                   ),
                 ),
               );
@@ -1836,11 +1938,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           ElevatedButton(
             style: captureScreenButtonStyle(),
             onPressed: viewModel.canContinueUpload
-                ? () => handleCapturedPhotoContinue(
+                ? () async {
+                    _navigatingAwayFromCapture = true;
+                    _stopPoseIdleTimer();
+                    await handleCapturedPhotoContinue(
                       context: context,
                       viewModel: viewModel,
                       isMounted: () => mounted,
-                    )
+                      releaseCaptureHardware: _releaseCaptureHardware,
+                    );
+                  }
                 : null,
             child: viewModel.isUploading
                 ? const SizedBox(

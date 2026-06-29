@@ -217,6 +217,17 @@ class AppConstants {
   // Camera capture countdown (in seconds)
   static const int kCaptureCountdownSeconds = 5;
 
+  /// POSE screen: return to Terms after this much user inactivity (live feed or review).
+  static const Duration kCaptureScreenIdleResetDuration = Duration(minutes: 5);
+
+  /// How long the idle-reset snackbar stays visible before navigating away.
+  static const Duration kCaptureScreenIdleResetSnackDuration =
+      Duration(seconds: 3);
+
+  /// Pause after showing the idle-reset snackbar so the guest can read it.
+  static const Duration kCaptureScreenIdleResetSnackDelay =
+      Duration(milliseconds: 2500);
+
   /// On-screen debug HUD: Logs panel, Perf trace (+ E2E summary), RAM / JS heap.
   /// Driven by `/api/settings` → `showGenerationCommentary` (not [kEnableLogOutput]).
   static bool get kShowDebugHud =>
