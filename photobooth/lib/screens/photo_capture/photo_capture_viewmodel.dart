@@ -1772,9 +1772,7 @@ class CaptureViewModel extends ChangeNotifier {
       AppLogger.debug('✅ Gallery photo normalized and saved');
       
       // Get camera ID (use current camera if available, otherwise use 'gallery')
-      final cameraId = _cameraController?.description.name ?? 
-                       _currentCamera?.name ?? 
-                       'gallery';
+      const cameraId = 'gallery';
       final photoId = _uuid.v4();
 
       _lockedCaptureCardAspectRatio = null;

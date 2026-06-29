@@ -1,14 +1,5 @@
-import 'dart:async' show unawaited;
-
-import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/painting.dart';
-
-import '../services/file_helper.dart';
-import 'logger.dart';
-
-/// Test hook for [respondToAppMemoryPressure] temp cleanup.
-@visibleForTesting
-Future<void> Function() memoryPressureTempCleanup = FileHelper.cleanupTempImages;
 
 /// Drops decoded images that no longer have listeners (safe mid-session).
 void trimFlutterMemoryCaches({bool aggressive = false}) {
@@ -20,13 +11,13 @@ void trimFlutterMemoryCaches({bool aggressive = false}) {
   }
 }
 
-/// Best-effort RAM relief when the OS reports memory pressure.
+/// Best-effort RAM relief when the OS reports memory pressure or RSS is high.
+///
+/// Trims Flutter's decoded [ImageCache] only. Temp image files on disk are left
+/// intact so Pay & Collect can still print after payment (those paths use
+/// `transformed_*` under the app temp dir). Temp cleanup runs at session end
+/// via [FileHelper.cleanupTempImages] in lifecycle/privacy flows.
 void respondToAppMemoryPressure() {
   if (kIsWeb) return;
   trimFlutterMemoryCaches(aggressive: true);
-  unawaited(
-    memoryPressureTempCleanup().catchError((Object e, StackTrace st) {
-      AppLogger.debug('Memory pressure temp cleanup failed: $e');
-    }),
-  );
 }

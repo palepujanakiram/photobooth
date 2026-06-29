@@ -20,6 +20,7 @@ import 'photo_capture_uvc_shutter_helpers.dart';
 import 'photo_capture_view_aspect.dart';
 import 'photo_capture_view_handlers.dart';
 import 'photo_capture_exit_handlers.dart';
+import 'photo_capture_gallery_handlers.dart';
 import 'photo_capture_idle_policy.dart';
 import 'photo_capture_view_layout.dart';
 import 'photo_capture_view_scaffold.dart';
@@ -220,12 +221,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       uvcFeedPhaseBlocksLivePreview(_uvcPhase) ||
       _uvcCaptureInFlight ||
       _captureViewModel.isCapturing ||
-      _captureViewModel.capturedPhoto != null;
+      _captureViewModel.capturedPhoto != null ||
+      _captureViewModel.isSelectingFromGallery;
 
   bool get _uvcMayAutoOpenLiveFeed =>
       _uvcPhase == UvcFeedPhase.live &&
       !_uvcCaptureInFlight &&
-      _captureViewModel.capturedPhoto == null;
+      _captureViewModel.capturedPhoto == null &&
+      !_captureViewModel.isSelectingFromGallery;
 
   bool get _uvcBlocksConcurrentAutoOpen => uvcBlocksConcurrentAutoOpen(
         initializing: _uvcInitializing,
@@ -566,7 +569,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         _uvcController == null &&
         !_uvcHoldLiveFeedClosed &&
         !_uvcBlocksConcurrentAutoOpen &&
-        !_isWithinUvcShutterGrace) {
+        !_isWithinUvcShutterGrace &&
+        !_captureViewModel.isSelectingFromGallery) {
       _scheduleUvcReconnect('appResumed');
     }
   }
@@ -618,6 +622,44 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       } catch (_) {
         // Best-effort.
       }
+    }
+  }
+
+  Future<void> _handleSelectFromGallery(CaptureViewModel viewModel) async {
+    await pauseCapturePreviewForGallery(
+      isUsingUvc: _isUsingUvc,
+      closeUvc: _closeUvcController,
+      disposeBuiltInCamera: _captureViewModel.disposeCamera,
+      setUvcPhase: (phase) => _uvcPhase = phase,
+      cancelUvcSessionRecycle: _cancelUvcSessionRecycleTimer,
+    );
+    if (!mounted) return;
+    setState(() {});
+
+    try {
+      await viewModel.selectFromGallery();
+    } finally {
+      if (!mounted) return;
+      final accepted = viewModel.capturedPhoto != null;
+      await finalizeGallerySelection(
+        isUsingUvc: _isUsingUvc,
+        photoAccepted: accepted,
+        closeUvc: _closeUvcController,
+        disposeBuiltInCamera: _captureViewModel.disposeCamera,
+        setUvcPhase: (phase) => _uvcPhase = phase,
+        cancelUvcReconnect: () => _uvcReconnectTimer?.cancel(),
+        bumpPreviewGeneration: () => _uvcPreviewGeneration++,
+      );
+      if (!accepted) {
+        await resumeCapturePreviewAfterGallery(
+          isUsingUvc: _isUsingUvc,
+          hasCapturedPhoto: viewModel.capturedPhoto != null,
+          setUvcPhase: (phase) => _uvcPhase = phase,
+          resumeUvcLiveFeed: (reason) => _resumeUvcLiveFeed(reason: reason),
+          resumeBuiltInPreview: _captureViewModel.resumeLivePreviewAfterRetake,
+        );
+      }
+      if (mounted) setState(() {});
     }
   }
 
@@ -1139,6 +1181,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   Widget _buildUvcPreview(BuildContext context, CaptureViewModel viewModel) {
+    if (viewModel.isSelectingFromGallery) {
+      return buildGallerySelectionPlaceholder();
+    }
+
     // Spinner while grabbing still or normalizing (matches in-app Capture UX).
     if ((viewModel.isCapturing || _uvcCaptureInFlight) &&
         viewModel.capturedPhoto == null) {
@@ -1500,7 +1546,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (viewModel.hasError && viewModel.capturedPhoto == null && !_isUsingUvc) {
       return _buildCaptureFatalErrorState(context, viewModel);
     }
-    if (!_isUsingUvc && !viewModel.isReady && viewModel.capturedPhoto == null) {
+    if (!_isUsingUvc &&
+        !viewModel.isSelectingFromGallery &&
+        !viewModel.isReady &&
+        viewModel.capturedPhoto == null) {
       return const Center(
         child: Text(
           'Camera not ready',
@@ -1509,9 +1558,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       );
     }
 
-    final previewWidget = _isUsingUvc
-        ? _buildUvcPreview(context, viewModel)
-        : _buildCameraPreviewWithRotation(context, viewModel);
+    final previewWidget = viewModel.isSelectingFromGallery
+        ? buildGallerySelectionPlaceholder()
+        : _isUsingUvc
+            ? _buildUvcPreview(context, viewModel)
+            : _buildCameraPreviewWithRotation(context, viewModel);
     final hasCapturedPhoto = viewModel.capturedPhoto != null;
     return Padding(
       padding: const EdgeInsets.only(left: 12, right: 12),
@@ -2041,7 +2092,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               onPressed:
                   (viewModel.isCapturing || viewModel.isSelectingFromGallery)
                       ? null
-                      : () async => await viewModel.selectFromGallery(),
+                      : () async => _handleSelectFromGallery(viewModel),
               icon: viewModel.isSelectingFromGallery
                   ? const SizedBox(
                       width: 20,
