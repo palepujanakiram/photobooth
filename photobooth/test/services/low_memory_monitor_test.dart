@@ -164,6 +164,30 @@ void main() {
     );
   });
 
+  test('evaluate triggers memory relief when RSS exceeds threshold', () async {
+    var relieved = false;
+    final monitor = LowMemoryMonitor(reportHandler: (_) async {});
+    monitor.onProcessRssAboveThreshold = () => relieved = true;
+    await monitor.evaluate(
+      const DeviceMemorySnapshot(processRssBytes: 900 * 1024 * 1024),
+      trigger: 'poll',
+    );
+    expect(relieved, isTrue);
+  });
+
+  test('poll telemetry keys are breadcrumb-only', () {
+    final monitor = LowMemoryMonitor();
+    expect(monitor.isInformationalTelemetry('process_rss_above_threshold'), isTrue);
+    expect(monitor.isInformationalTelemetry('system_available_below_threshold'), isTrue);
+    expect(monitor.isInformationalTelemetry('system_low_memory_flag'), isTrue);
+    expect(monitor.isInformationalTelemetry('unknown'), isFalse);
+  });
+
+  test('unknown memory keys still recordError for diagnostics', () async {
+    final monitor = LowMemoryMonitor();
+    await monitor.reportOnce(reasonKey: 'unknown_key');
+  });
+
   test('reasonForKey default branch', () {
     final monitor = LowMemoryMonitor();
     expect(monitor.reasonForKey('unknown'), 'Device memory low');

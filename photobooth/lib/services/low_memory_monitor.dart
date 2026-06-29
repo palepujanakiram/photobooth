@@ -6,6 +6,7 @@ import '../models/device_memory_snapshot.dart';
 import '../utils/constants.dart';
 import '../utils/device_memory_info.dart';
 import '../utils/logger.dart';
+import '../utils/memory_pressure_response.dart';
 import 'error_reporting/error_reporting_manager.dart';
 
 /// Payload passed to [LowMemoryMonitor.reportHandler] in tests.
@@ -23,7 +24,7 @@ class LowMemoryReport {
   final String trigger;
 }
 
-/// Polls device memory and reports low-RAM conditions to Bugsnag (deduped).
+/// Polls device memory and logs low-RAM telemetry to Bugsnag as breadcrumbs (deduped).
 class LowMemoryMonitor {
   LowMemoryMonitor({
     Future<DeviceMemorySnapshot> Function()? readSnapshot,
@@ -66,6 +67,10 @@ class LowMemoryMonitor {
   @visibleForTesting
   final Future<void> Function(LowMemoryReport report)? reportHandler;
 
+  /// Invoked when poll detects process RSS above threshold (default: trim caches).
+  @visibleForTesting
+  void Function() onProcessRssAboveThreshold = respondToAppMemoryPressure;
+
   Timer? _pollTimer;
   final Map<String, DateTime> _lastReportedAt = {};
 
@@ -90,7 +95,7 @@ class LowMemoryMonitor {
 
   /// Breadcrumb-only signal from [WidgetsBindingObserver.didHaveMemoryPressure].
   /// Avoids Bugsnag error noise and extra snapshot work while the OS is under RAM stress.
-  /// Threshold breaches are still reported from [_poll] via [evaluate].
+  /// Poll-based threshold breaches are also breadcrumb-only via [_reportOnce].
   Future<void> _logMemoryPressureSignal() async {
     final handler = reportHandler;
     if (handler != null) {
@@ -208,6 +213,33 @@ class LowMemoryMonitor {
   @visibleForTesting
   String reasonForKey(String key) => _reasonForKey(key);
 
+  @visibleForTesting
+  bool isInformationalTelemetry(String reasonKey) {
+    switch (reasonKey) {
+      case 'process_rss_above_threshold':
+      case 'system_available_below_threshold':
+      case 'system_low_memory_flag':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /// Exposed for unit tests (covers non-telemetry [_reportOnce] paths).
+  @visibleForTesting
+  Future<void> reportOnce({
+    required String reasonKey,
+    DeviceMemorySnapshot snapshot = const DeviceMemorySnapshot(),
+    String trigger = 'poll',
+    String? reason,
+  }) =>
+      _reportOnce(
+        reasonKey: reasonKey,
+        snapshot: snapshot,
+        trigger: trigger,
+        reason: reason ?? _reasonForKey(reasonKey),
+      );
+
   Future<void> _reportOnce({
     required String reasonKey,
     required DeviceMemorySnapshot snapshot,
@@ -240,9 +272,18 @@ class LowMemoryMonitor {
       snapshot: snapshot,
       trigger: trigger,
     );
+    if (reasonKey == 'process_rss_above_threshold') {
+      onProcessRssAboveThreshold();
+    }
+
     final handler = reportHandler;
     if (handler != null) {
       await handler(report);
+      return;
+    }
+
+    if (isInformationalTelemetry(reasonKey)) {
+      ErrorReportingManager.log(reason);
       return;
     }
 
