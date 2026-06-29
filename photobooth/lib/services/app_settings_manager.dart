@@ -62,9 +62,13 @@ class AppSettingsManager extends ChangeNotifier {
         AppRuntimeConfig.instance.applyFromSettings(_settings);
         applyFlutterImageCacheLimits();
         AliceInspector.syncWithRuntimeConfig();
-      } catch (e) {
+      } catch (e, st) {
         _errorMessage = e.toString();
-        AppLogger.error('Failed to fetch app settings: $e');
+        AppLogger.error(
+          'Failed to fetch app settings',
+          error: e,
+          stackTrace: st,
+        );
       } finally {
         _isLoading = false;
         notifyListeners();

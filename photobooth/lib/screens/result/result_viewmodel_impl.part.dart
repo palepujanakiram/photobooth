@@ -82,8 +82,16 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       _startSessionApprovalPolling(sessionId);
     } on ApiException catch (e) {
       _r._paymentInitError = e.message;
-    } catch (e) {
+    } catch (e, st) {
       _r._paymentInitError = 'Payment setup failed: $e';
+      unawaited(
+        reportIssue(
+          'Payment setup failed',
+          e,
+          st,
+          extraInfo: {'source': 'result_payment_init'},
+        ),
+      );
     } finally {
       if (generation == _r._paymentInitiateGeneration) {
         _r._paymentInitInProgress = false;
@@ -727,7 +735,14 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         _r._kioskFallbackShareExpiresAt = kiosk.expiresAt;
       }
     } catch (e, st) {
-      AppLogger.debug('post-payment kiosk share mint failed: $e\n$st');
+      unawaited(
+        reportIssue(
+          'Post-payment kiosk share mint failed',
+          e,
+          st,
+          extraInfo: {'source': 'result_post_payment_share'},
+        ),
+      );
     }
   }
 
@@ -745,7 +760,14 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         _ingestReceiptShareFields(receipt);
       }
     } catch (e, st) {
-      AppLogger.debug('postSessionReceipt failed (outer): $e\n$st');
+      unawaited(
+        reportIssue(
+          'postSessionReceipt failed (outer)',
+          e,
+          st,
+          extraInfo: {'source': 'result_post_payment_receipt'},
+        ),
+      );
     }
   }
 
@@ -846,7 +868,14 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       final model = KioskShareLinkModel.fromJson(raw);
       return model.isValid ? model : null;
     } catch (e, st) {
-      AppLogger.debug('mintCustomerShareLink failed: $e\n$st');
+      unawaited(
+        reportIssue(
+          'mintCustomerShareLink failed',
+          e,
+          st,
+          extraInfo: {'source': 'result_mint_share_link'},
+        ),
+      );
       return null;
     }
   }
@@ -883,8 +912,16 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       _r._downloadingForAction = '';
       notifyListeners();
       return true;
-    } catch (e) {
+    } catch (e, st) {
       _r._errorMessage = 'Failed to download images: $e';
+      unawaited(
+        reportIssue(
+          'Failed to download images for print/share',
+          e,
+          st,
+          extraInfo: {'source': 'result_download_images', 'forAction': forAction},
+        ),
+      );
       _r._isDownloading = false;
       _r._downloadingForAction = '';
       notifyListeners();
@@ -949,10 +986,26 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           printSize: _r._printOrientation.printSize,
         );
       }
-    } on PrintException catch (e) {
+    } on PrintException catch (e, st) {
       _r._errorMessage = e.message;
-    } catch (e) {
+      unawaited(
+        reportIssue(
+          'Silent network print failed',
+          e,
+          st,
+          extraInfo: {'source': 'result_silent_print'},
+        ),
+      );
+    } catch (e, st) {
       _r._errorMessage = 'Failed to print: $e';
+      unawaited(
+        reportIssue(
+          'Silent network print failed',
+          e,
+          st,
+          extraInfo: {'source': 'result_silent_print'},
+        ),
+      );
     } finally {
       _r._isSilentPrinting = false;
       notifyListeners();
@@ -1001,10 +1054,26 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       for (int i = 0; i < files.length; i++) {
         await _r._printService.printImageWithDialog(files[i]);
       }
-    } on PrintException catch (e) {
+    } on PrintException catch (e, st) {
       _r._errorMessage = e.message;
-    } catch (e) {
+      unawaited(
+        reportIssue(
+          'Dialog print failed',
+          e,
+          st,
+          extraInfo: {'source': 'result_dialog_print'},
+        ),
+      );
+    } catch (e, st) {
       _r._errorMessage = 'Failed to print: $e';
+      unawaited(
+        reportIssue(
+          'Dialog print failed',
+          e,
+          st,
+          extraInfo: {'source': 'result_dialog_print'},
+        ),
+      );
     } finally {
       _r._isDialogPrinting = false;
       notifyListeners();
@@ -1041,10 +1110,26 @@ mixin _ResultViewModelImpl on ChangeNotifier {
             'Check out my ${files.length} AI generated photo${files.length > 1 ? 's' : ''}!',
         sharePositionOrigin: sharePositionOrigin,
       );
-    } on ShareException catch (e) {
+    } on ShareException catch (e, st) {
       _r._errorMessage = e.message;
-    } catch (e) {
+      unawaited(
+        reportIssue(
+          'Share images failed',
+          e,
+          st,
+          extraInfo: {'source': 'result_share'},
+        ),
+      );
+    } catch (e, st) {
       _r._errorMessage = 'Failed to share: $e';
+      unawaited(
+        reportIssue(
+          'Share images failed',
+          e,
+          st,
+          extraInfo: {'source': 'result_share'},
+        ),
+      );
     } finally {
       _r._isSharing = false;
       notifyListeners();

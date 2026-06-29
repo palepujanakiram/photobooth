@@ -67,6 +67,7 @@ bool ignored(String path) {
     'device_classifier_web.dart',
     'device_classifier_io.dart',
     'process_rss_io.dart',
+    'device_memory_info_io.dart',
     'api_client_web_stub.dart',
     'printer_api_client_web_stub.dart',
     'dio_web_config.dart',

@@ -21,6 +21,7 @@ import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/printer_endpoint.dart';
+import '../../utils/error_reporting_helpers.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/fcm_service.dart';
 import '../../services/payment_push_coordinator.dart';

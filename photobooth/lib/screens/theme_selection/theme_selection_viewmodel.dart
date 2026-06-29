@@ -9,6 +9,7 @@ import '../../utils/constants.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
+import '../../utils/error_reporting_helpers.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/theme_filter.dart';
 
@@ -240,8 +241,16 @@ class ThemeViewModel extends ChangeNotifier {
         _themes = [];
         notifyListeners();
       }
-    } catch (e) {
+    } catch (e, st) {
       _errorMessage = 'Failed to load themes: $e';
+      unawaited(
+        reportIssue(
+          'Failed to load themes',
+          e,
+          st,
+          extraInfo: {'source': 'theme_selection_load'},
+        ),
+      );
       // If ThemeManager has cached themes, use them
       if (_themeManager.hasThemes) {
         _onThemesUpdated();
@@ -337,14 +346,30 @@ class ThemeViewModel extends ChangeNotifier {
       _sessionManager.setSessionFromResponse(response);
 
       return true;
-    } on TimeoutException {
+    } on TimeoutException catch (e, st) {
       _errorMessage = AppStrings.requestTimeoutConnection;
+      unawaited(
+        reportIssue(
+          'Update session with theme timed out',
+          e,
+          st,
+          extraInfo: {'source': 'theme_selection_update_session'},
+        ),
+      );
       return false;
     } on ApiException catch (e) {
       _errorMessage = e.message;
       return false;
-    } catch (e) {
+    } catch (e, st) {
       _errorMessage = 'Failed to update session with theme: ${e.toString()}';
+      unawaited(
+        reportIssue(
+          'Failed to update session with theme',
+          e,
+          st,
+          extraInfo: {'source': 'theme_selection_update_session'},
+        ),
+      );
       return false;
     } finally {
       _isUpdatingSession = false;
@@ -386,15 +411,31 @@ class ThemeViewModel extends ChangeNotifier {
           );
       _sessionManager.setSessionFromResponse(response);
       return true;
-    } on TimeoutException {
+    } on TimeoutException catch (e, st) {
       _errorMessage =
           AppStrings.requestTimeoutConnection;
+      unawaited(
+        reportIssue(
+          'Sync single frame selection timed out',
+          e,
+          st,
+          extraInfo: {'source': 'theme_selection_sync_single_frame'},
+        ),
+      );
       return false;
     } on ApiException catch (e) {
       _errorMessage = e.message;
       return false;
-    } catch (e) {
+    } catch (e, st) {
       _errorMessage = e.toString();
+      unawaited(
+        reportIssue(
+          'Sync single frame selection failed',
+          e,
+          st,
+          extraInfo: {'source': 'theme_selection_sync_single_frame'},
+        ),
+      );
       return false;
     } finally {
       _isUpdatingSession = false;
@@ -432,15 +473,31 @@ class ThemeViewModel extends ChangeNotifier {
           );
       _sessionManager.setSessionFromResponse(response);
       return true;
-    } on TimeoutException {
+    } on TimeoutException catch (e, st) {
       _errorMessage =
           AppStrings.requestTimeoutConnection;
+      unawaited(
+        reportIssue(
+          'Sync auto-skipped frame selection timed out',
+          e,
+          st,
+          extraInfo: {'source': 'theme_selection_sync_auto_skip_frame'},
+        ),
+      );
       return false;
     } on ApiException catch (e) {
       _errorMessage = e.message;
       return false;
-    } catch (e) {
+    } catch (e, st) {
       _errorMessage = e.toString();
+      unawaited(
+        reportIssue(
+          'Sync auto-skipped frame selection failed',
+          e,
+          st,
+          extraInfo: {'source': 'theme_selection_sync_auto_skip_frame'},
+        ),
+      );
       return false;
     } finally {
       _isUpdatingSession = false;

@@ -29,6 +29,7 @@ import 'services/payment_push_coordinator.dart';
 import 'services/api_service.dart';
 import 'services/client_identification.dart';
 import 'services/session_manager.dart';
+import 'services/low_memory_monitor.dart';
 import 'utils/app_config.dart';
 
 Future<void> main() async {
@@ -95,6 +96,10 @@ Future<void> main() async {
   await SessionManager().restore();
 
   logErrorReportingReady();
+
+  if (!kIsWeb) {
+    LowMemoryMonitor.instance.start();
+  }
 
   final navigatorKey = GlobalKey<NavigatorState>();
   AliceInspector.initialize(navigatorKey);
@@ -279,12 +284,20 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
 
   @override
   void dispose() {
+    if (!kIsWeb) {
+      LowMemoryMonitor.instance.stop();
+    }
     _fcmForegroundSub?.cancel();
     _fcmOpenedAppSub?.cancel();
     _fcmTokenRefreshSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _appSettingsManager.dispose();
     super.dispose();
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    LowMemoryMonitor.instance.onMemoryPressure();
   }
 
   @override

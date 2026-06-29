@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:ui'
     show Size, ImmutableBuffer, instantiateImageCodecFromBuffer;
 import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, defaultTargetPlatform, kIsWeb;
-import 'package:flutter/services.dart' show MethodChannel;
+import 'package:flutter/services.dart' show MethodChannel, PlatformException;
 import 'package:camera/camera.dart';
 import 'package:camera/camera.dart' as cam show availableCameras;
 import 'package:image_picker/image_picker.dart';
@@ -22,12 +22,14 @@ import '../../utils/uvc_capture_config.dart';
 import 'camera_description_label.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/logger.dart';
+import '../../utils/error_reporting_helpers.dart';
 import '../../utils/web_flow_trace.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_camera_config.dart';
 import 'photo_capture_preview_rotation.dart';
 import 'photo_capture_preprocess_helpers.dart';
+import 'photo_capture_camera_error_helpers.dart';
 import 'photo_capture_viewmodel_helpers.dart';
 
 class CaptureViewModel extends ChangeNotifier {
@@ -112,6 +114,9 @@ class CaptureViewModel extends ChangeNotifier {
   /// validation can retry for a long time; we timeout so the UI stays responsive.
   static const _loadCamerasTimeout = Duration(seconds: 25);
 
+  /// Avoid duplicate Bugsnag events when the user taps Retry repeatedly.
+  final Set<String> _reportedCameraNotFoundReasons = {};
+
   /// Camera preview rotation in degrees (0, 90, 180, 270). Persisted in SharedPreferences.
   int _previewRotationDegrees = AppConstants.kCameraPreviewRotationDefault;
   bool _isPreviewRotationConfiguredByUser = false;
@@ -192,7 +197,14 @@ class CaptureViewModel extends ChangeNotifier {
           !_shouldUseStreamOnlyCapture() &&
           desc != null &&
           _looksLikeCameraXRecoverableError(desc)) {
-        unawaited(_recoverCamera(reason: 'controller.hasError(recoverable)', details: desc));
+        unawaited(
+          _recoverCamera(
+            reason: 'controller.hasError(recoverable)',
+            details: desc,
+          ).catchError((Object e, StackTrace st) {
+            AppLogger.error('Camera recovery failed', error: e, stackTrace: st);
+          }),
+        );
       }
     }
     notifyListeners();
@@ -574,10 +586,54 @@ class CaptureViewModel extends ChangeNotifier {
   void _applyCachedCameraList() {
     if (_cachedAvailableCameras == null) return;
     _availableCameras = _externalCamerasFirst(_cachedAvailableCameras!);
+    if (_cachedAvailableCameras!.isEmpty) {
+      _errorMessage = kIsWeb
+          ? 'No camera detected. Allow camera access in the browser, or use Gallery if enabled.'
+          : 'No cameras available';
+      unawaited(
+        reportCameraNotFound(
+          reason: 'No cameras detected',
+          extraInfo: const {'source': 'cached_enumeration'},
+        ),
+      );
+      return;
+    }
+    _markCameraAvailabilityRestored();
     if (_currentCamera == null && _availableCameras.isNotEmpty) {
       _currentCamera = _pickDefaultCamera(_availableCameras);
     }
   }
+
+  /// Reports missing/unavailable camera to Bugsnag (once per [reason] per session until restored).
+  Future<void> reportCameraNotFound({
+    required String reason,
+    Object? error,
+    StackTrace? stackTrace,
+    Map<String, dynamic>? extraInfo,
+  }) async {
+    if (_reportedCameraNotFoundReasons.contains(reason)) return;
+    _reportedCameraNotFoundReasons.add(reason);
+
+    ErrorReportingManager.log('❌ $reason');
+    await ErrorReportingManager.recordError(
+      error ?? Exception(reason),
+      stackTrace ?? StackTrace.current,
+      reason: reason,
+      extraInfo: {
+        'platform': defaultTargetPlatform.name,
+        if (_deviceType != null) 'deviceType': _deviceType.toString(),
+        if (extraInfo != null) ...extraInfo,
+      },
+      fatal: false,
+    );
+  }
+
+  /// Clears dedupe so a later genuine outage can be reported again.
+  void markCameraAvailabilityRestored() {
+    _reportedCameraNotFoundReasons.clear();
+  }
+
+  void _markCameraAvailabilityRestored() => markCameraAvailabilityRestored();
 
   Future<bool> _ensureAndroidCameraPermission() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
@@ -590,21 +646,22 @@ class CaptureViewModel extends ChangeNotifier {
     AppLogger.debug('📷 Permission result: $result');
     if (result.isGranted) return true;
     _errorMessage = 'Camera permission is required to detect and use cameras.';
+    unawaited(
+      reportCameraNotFound(
+        reason: 'Camera permission denied',
+        extraInfo: {'permission_status': result.toString()},
+      ),
+    );
     return false;
   }
 
   Future<void> _reportEmptyCameraEnumeration() async {
-    ErrorReportingManager.log('❌ Camera enumeration returned 0 cameras');
-    await ErrorReportingManager.recordError(
-      Exception('Camera enumeration returned 0 cameras'),
-      StackTrace.current,
+    await reportCameraNotFound(
       reason: 'No cameras detected',
-      extraInfo: {
-        'platform': defaultTargetPlatform.name,
-        'message':
-            'availableCameras() returned empty list; no exception thrown',
+      extraInfo: const {
+        'source': 'empty_enumeration',
+        'message': 'availableCameras() returned empty list; no exception thrown',
       },
-      fatal: false,
     );
   }
 
@@ -614,6 +671,8 @@ class CaptureViewModel extends ChangeNotifier {
           ? 'No camera detected. Allow camera access in the browser, or use Gallery if enabled.'
           : 'No cameras available';
       unawaited(_reportEmptyCameraEnumeration());
+    } else {
+      _markCameraAvailabilityRestored();
     }
     AppLogger.debug('📷 Detected ${allCameras.length} camera(s):');
     for (final c in allCameras) {
@@ -737,11 +796,33 @@ class CaptureViewModel extends ChangeNotifier {
 
       _assignEnumeratedCameras(allCameras);
       notifyListeners();
-    } on TimeoutException {
-      _errorMessage = 'Camera took too long to load. Please try again.';
-      ErrorReportingManager.log('❌ Camera enumeration timed out');
+    } on TimeoutException catch (e, stackTrace) {
+      _errorMessage = cameraLoadFailureMessage(e);
+      unawaited(
+        reportCameraNotFound(
+          reason: 'Camera enumeration timed out',
+          error: e,
+          stackTrace: stackTrace,
+          extraInfo: {
+            'timeout_seconds': _loadCamerasTimeout.inSeconds,
+          },
+        ),
+      );
+    } on PlatformException catch (e, stackTrace) {
+      _errorMessage = cameraLoadFailureMessage(e);
+      unawaited(
+        reportCameraNotFound(
+          reason: 'loadCameras failed',
+          error: e,
+          stackTrace: stackTrace,
+          extraInfo: {
+            'error': e.toString(),
+            'errorType': e.runtimeType.toString(),
+          },
+        ),
+      );
     } catch (e, stackTrace) {
-      _errorMessage = 'Failed to load cameras: $e';
+      _errorMessage = cameraLoadFailureMessage(e);
       await ErrorReportingManager.recordError(
         e,
         stackTrace,
@@ -812,12 +893,26 @@ class CaptureViewModel extends ChangeNotifier {
         } else {
           AppLogger.debug('⚠️ No cameras available');
           _errorMessage = 'No cameras available';
+          unawaited(
+            reportCameraNotFound(
+              reason: 'No cameras detected',
+              extraInfo: const {'source': 'reset_and_initialize'},
+            ),
+          );
           notifyListeners();
         }
       })().timeout(initTimeout);
-    } on TimeoutException catch (_) {
+    } on TimeoutException catch (e, stackTrace) {
       AppLogger.debug('⏱️ Camera initialization timed out after ${initTimeout.inSeconds}s');
       _errorMessage = 'Camera took too long to start. Please try again.';
+      unawaited(
+        reportCameraNotFound(
+          reason: 'Camera initialization timed out',
+          error: e,
+          stackTrace: stackTrace,
+          extraInfo: {'timeout_seconds': initTimeout.inSeconds},
+        ),
+      );
       _isInitializing = false;
       notifyListeners();
     }
@@ -867,7 +962,11 @@ class CaptureViewModel extends ChangeNotifier {
       _isInitializing = false;
       _errorMessage = null;
       notifyListeners();
-      unawaited(_finishCameraSetup(camera));
+      unawaited(
+        _finishCameraSetup(camera).catchError((Object e, StackTrace st) {
+          AppLogger.error('finishCameraSetup failed', error: e, stackTrace: st);
+        }),
+      );
       return true;
     } catch (_) {
       return false;
@@ -953,7 +1052,12 @@ class CaptureViewModel extends ChangeNotifier {
     _maxZoom = null;
     _currentZoom = 1.0;
     _errorMessage = null;
-    unawaited(_finishCameraSetup(camera));
+    _markCameraAvailabilityRestored();
+    unawaited(
+      _finishCameraSetup(camera).catchError((Object e, StackTrace st) {
+        AppLogger.error('finishCameraSetup failed', error: e, stackTrace: st);
+      }),
+    );
   }
 
   Future<void> _handleCameraInitializationError(
@@ -975,7 +1079,7 @@ class CaptureViewModel extends ChangeNotifier {
       return;
     }
     if (e is app_exceptions.CameraException) {
-      _errorMessage = e.message;
+      _errorMessage = cameraLoadFailureMessage(e);
       ErrorReportingManager.log('❌ Camera exception during initialization');
       await ErrorReportingManager.recordError(
         e,
@@ -986,10 +1090,27 @@ class CaptureViewModel extends ChangeNotifier {
           'camera_name': camera.name,
           'camera_direction': camera.lensDirection.toString(),
         },
+        fatal: false,
       );
       return;
     }
-    _errorMessage = 'Failed to initialize camera: $e';
+    if (e is PlatformException) {
+      _errorMessage = cameraLoadFailureMessage(e);
+      ErrorReportingManager.log('❌ Platform camera error during initialization');
+      await ErrorReportingManager.recordError(
+        e,
+        stackTrace,
+        reason: 'Camera platform exception',
+        extraInfo: {
+          'message': e.message,
+          'code': e.code,
+          'camera_name': camera.name,
+        },
+        fatal: false,
+      );
+      return;
+    }
+    _errorMessage = cameraLoadFailureMessage(e);
     ErrorReportingManager.log('❌ Unexpected error during camera initialization');
     await ErrorReportingManager.recordError(
       e,
@@ -1703,6 +1824,48 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  /// Re-opens the live camera preview after [clearCapturedPhoto] (Retake / back).
+  ///
+  /// Stream-only and external/Android TV paths often leave the preview texture
+  /// stale after capture; a controlled re-init avoids "Camera not ready" on the
+  /// next shot.
+  Future<void> resumeLivePreviewAfterRetake() async {
+    if (_capturedPhoto != null || _isCapturing) return;
+
+    final camera = _currentCamera;
+    if (camera == null) {
+      await resetAndInitializeCameras();
+      return;
+    }
+
+    final ctrl = _cameraController;
+    final needsReinit = ctrl == null ||
+        !ctrl.value.isInitialized ||
+        ctrl.value.hasError ||
+        _shouldUseStreamOnlyCapture();
+
+    if (!needsReinit) {
+      notifyListeners();
+      return;
+    }
+
+    try {
+      await _hardResetCameraController();
+      _cameraGeneration++;
+      await delayBeforeCameraReopen();
+      await initializeCamera(camera);
+    } catch (e, st) {
+      AppLogger.error(
+        'resumeLivePreviewAfterRetake failed',
+        error: e,
+        stackTrace: st,
+      );
+      _errorMessage =
+          'Failed to restore camera preview. Tap reload to try again.';
+      notifyListeners();
+    }
+  }
+
   /// Clears the captured photo and any error messages
   void clearCapturedPhoto() {
     // Treat "Retake" as a hard reset of any in-flight UI state so the user can
@@ -2041,10 +2204,18 @@ class CaptureViewModel extends ChangeNotifier {
       WebFlowTrace.log('UPLOAD', 'success');
       _releaseUploadPayloadMemory();
       return true;
-    } on TimeoutException catch (e) {
+    } on TimeoutException catch (e, st) {
       WebFlowTrace.log('UPLOAD', 'ERROR TimeoutException $e');
       _errorMessage =
           'Upload took too long. Please check your connection and try again.';
+      unawaited(
+        reportIssue(
+          'Photo upload timed out',
+          e,
+          st,
+          extraInfo: {'source': 'photo_capture_upload'},
+        ),
+      );
       if (kIsWeb) {
         _errorMessage =
             '$_errorMessage\n\nOn localhost web, run ./run_web_dev.sh (starts API proxy on :8787).';
@@ -2058,9 +2229,17 @@ class CaptureViewModel extends ChangeNotifier {
             '${e.message}\n\nOn localhost web, run ./run_web_dev.sh (API proxy).';
       }
       return false;
-    } catch (e) {
+    } catch (e, st) {
       WebFlowTrace.log('UPLOAD', 'ERROR $e');
       _errorMessage = 'Failed to upload photo: ${e.toString()}';
+      unawaited(
+        reportIssue(
+          'Photo upload failed',
+          e,
+          st,
+          extraInfo: {'source': 'photo_capture_upload'},
+        ),
+      );
       if (kIsWeb) {
         _errorMessage =
             'Failed to upload photo: $e\n\nOn localhost web, run ./run_web_dev.sh (API proxy).';
@@ -2120,14 +2299,30 @@ class CaptureViewModel extends ChangeNotifier {
 
       _sessionManager.setSessionFromResponse(response);
       return true;
-    } on TimeoutException {
+    } on TimeoutException catch (e, st) {
       _errorMessage = 'Request took too long. Please check your connection and try again.';
+      unawaited(
+        reportIssue(
+          'Update session timed out',
+          e,
+          st,
+          extraInfo: {'source': 'photo_capture_update_session'},
+        ),
+      );
       return false;
     } on app_exceptions.ApiException catch (e) {
       _errorMessage = e.message;
       return false;
-    } catch (e) {
+    } catch (e, st) {
       _errorMessage = 'Failed to update session: ${e.toString()}';
+      unawaited(
+        reportIssue(
+          'Failed to update session',
+          e,
+          st,
+          extraInfo: {'source': 'photo_capture_update_session'},
+        ),
+      );
       return false;
     } finally {
       _isUploading = false;

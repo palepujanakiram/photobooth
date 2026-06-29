@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../services/theme_manager.dart';
 import '../../services/image_cache_service.dart';
 import '../../utils/logger.dart';
+import '../../utils/error_reporting_helpers.dart';
 import '../../utils/theme_image_urls.dart';
 import '../../views/widgets/animated_slideshow_background.dart'
     show kSlideshowAssetPaths;
@@ -107,8 +108,15 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
     try {
       await _themeManager.fetchThemes(forceRefresh: forceRefresh);
       _onThemesUpdated();
-    } catch (e) {
-      AppLogger.debug('Background theme prefetch failed: $e');
+    } catch (e, st) {
+      unawaited(
+        reportIssue(
+          'Background theme prefetch failed',
+          e,
+          st,
+          extraInfo: {'source': 'theme_slideshow_prefetch'},
+        ),
+      );
       if (_themeManager.hasThemes) {
         _onThemesUpdated();
       }
@@ -156,10 +164,17 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
       _areAllImagesLoaded = true;
       _isPreloadingImages = false;
       notifyListeners();
-    } catch (e) {
+    } catch (e, st) {
       if (_isDisposed) return;
+      unawaited(
+        reportIssue(
+          'Slideshow image preload failed',
+          e,
+          st,
+          extraInfo: {'source': 'theme_slideshow_preload'},
+        ),
+      );
       // Fallback: use all URLs even if preload failed
-      AppLogger.debug('Error during image preloading: $e');
       _preloadedImageUrls = imageUrls;
       _isFirstImageLoaded = imageUrls.isNotEmpty;
       _areAllImagesLoaded = true; // Mark as done so animation can start

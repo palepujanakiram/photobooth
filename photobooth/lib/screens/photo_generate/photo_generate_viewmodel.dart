@@ -13,6 +13,7 @@ import '../../utils/constants.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
+import '../../utils/error_reporting_helpers.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
@@ -1209,8 +1210,16 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         _sessionManager.setSessionFromResponse(patch);
         _refreshMaxRegenerationsFromSettings();
         _applyAttemptsBudgetFromSession();
-      } catch (e) {
+      } catch (e, st) {
         _errorMessage = 'Failed to update theme: $e';
+        unawaited(
+          reportIssue(
+            'Failed to update theme for different style',
+            e,
+            st,
+            extraInfo: {'source': 'photo_generate_try_style'},
+          ),
+        );
         return false;
       }
 
