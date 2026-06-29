@@ -7,7 +7,11 @@ import 'package:flutter/foundation.dart'
 
 /// Default [FirebaseOptions] for native mobile builds only. Web uses [isFirebaseConfigured].
 class DefaultFirebaseOptions {
-  static bool get isFirebaseConfigured => !kIsWeb;
+  static bool get isFirebaseConfigured {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
 
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {

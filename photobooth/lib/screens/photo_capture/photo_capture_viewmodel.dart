@@ -18,6 +18,7 @@ import '../../utils/device_classifier.dart';
 import '../../utils/app_device_type.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
+import '../../utils/platform_capabilities.dart';
 import '../../utils/uvc_capture_config.dart';
 import 'camera_description_label.dart';
 import '../../utils/app_strings.dart';
@@ -485,7 +486,10 @@ class CaptureViewModel extends ChangeNotifier {
     _uploadTimer?.cancel();
     _uploadTimer = null;
   }
+  bool get isDesktopCaptureMode => usesDesktopPhotoPicker;
+
   bool get isReady {
+    if (isDesktopCaptureMode) return !_isLoadingCameras;
     return _cameraController != null &&
         _cameraController!.value.isInitialized;
   }
@@ -728,6 +732,13 @@ class CaptureViewModel extends ChangeNotifier {
     _isLoadingCameras = true;
     _errorMessage = null;
     notifyListeners();
+
+    if (usesDesktopPhotoPicker) {
+      _isLoadingCameras = false;
+      _availableCameras = [];
+      notifyListeners();
+      return;
+    }
 
     try {
       if (!forceRefresh && _cachedAvailableCameras != null) {
@@ -1622,6 +1633,62 @@ class CaptureViewModel extends ChangeNotifier {
         }
       }
     });
+  }
+
+  /// Windows / macOS / Linux: pick from webcam or file (no `camera` plugin).
+  Future<void> capturePhotoFromDesktopPicker({bool preferCamera = true}) async {
+    if (!usesDesktopPhotoPicker || _isCapturing || _isSelectingFromGallery) {
+      return;
+    }
+
+    _isCapturing = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final picker = ImagePicker();
+      XFile? imageFile;
+      if (preferCamera) {
+        try {
+          imageFile = await picker.pickImage(
+            source: ImageSource.camera,
+            maxWidth: 1920,
+            maxHeight: 1080,
+            imageQuality: AppConstants.kGalleryPickerImageQuality,
+          );
+        } catch (_) {
+          imageFile = null;
+        }
+      }
+      imageFile ??= await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: AppConstants.kGalleryPickerImageQuality,
+      );
+
+      if (imageFile == null) {
+        return;
+      }
+
+      final normalizedFile =
+          await ImageHelper.normalizeAndSaveCapturedPhoto(imageFile);
+      await _assignCapturedPhotoModel(
+        normalizedFile,
+        cameraIdOverride: 'desktop',
+      );
+    } catch (e, st) {
+      _errorMessage = 'Failed to capture photo: $e';
+      await ErrorReportingManager.recordError(
+        e,
+        st,
+        reason: 'desktop picker capture failed',
+        fatal: false,
+      );
+    } finally {
+      _isCapturing = false;
+      notifyListeners();
+    }
   }
 
   /// Selects a photo from the device gallery

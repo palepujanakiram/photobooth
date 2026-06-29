@@ -16,6 +16,7 @@ import 'photo_capture_uvc_feed_phase.dart';
 import 'photo_capture_uvc_raster_capture.dart';
 import 'photo_capture_uvc_take_picture_helpers.dart';
 import 'photo_capture_uvc_shutter_helpers.dart';
+import 'photo_capture_desktop_body.dart';
 import 'photo_capture_view_aspect.dart';
 import 'photo_capture_view_handlers.dart';
 import 'photo_capture_view_layout.dart';
@@ -1300,6 +1301,28 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     BuildContext context,
     CaptureViewModel viewModel,
   ) {
+    if (viewModel.isDesktopCaptureMode) {
+      if (viewModel.capturedPhoto == null) {
+        final allowGallery = context.select<AppSettingsManager, bool>(
+          (m) => m.settings?.photoUploadAllowed == true,
+        );
+        return PhotoCaptureDesktopBody(
+          viewModel: viewModel,
+          showGallery: allowGallery,
+          onTakePhoto: () => viewModel.capturePhotoFromDesktopPicker(),
+          onPickGallery: () => viewModel.selectFromGallery(),
+        );
+      }
+      return Padding(
+        padding: const EdgeInsets.only(left: 12, right: 12),
+        child: _buildCaptureColumn(
+          context: context,
+          viewModel: viewModel,
+          hasCapturedPhoto: true,
+          previewWidget: const SizedBox.shrink(),
+        ),
+      );
+    }
     if (viewModel.isLoadingCameras) return _buildDetectingCamerasState();
     if (viewModel.isInitializing) {
       return const Center(child: CircularProgressIndicator(color: Colors.white));

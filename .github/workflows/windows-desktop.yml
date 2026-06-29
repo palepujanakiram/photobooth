@@ -1,0 +1,43 @@
+# Build Flutter Windows desktop release (artifact upload).
+name: Windows desktop build
+
+on:
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: photobooth
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Sync build version
+        run: dart run tool/sync_build_version.dart
+
+      - name: Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: dart analyze lib/
+
+      - name: Unit tests
+        run: flutter test test/utils/platform_capabilities_test.dart
+
+      - name: Build Windows release
+        run: flutter build windows --release --dart-define=BASE_URL=https://fotozenai.fly.dev
+
+      - name: Upload Release folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: fotozen-windows-x64
+          path: photobooth/build/windows/x64/runner/Release/

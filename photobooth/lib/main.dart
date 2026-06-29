@@ -29,6 +29,7 @@ import 'services/payment_push_coordinator.dart';
 import 'services/api_service.dart';
 import 'services/client_identification.dart';
 import 'services/session_manager.dart';
+import 'utils/platform_capabilities.dart';
 
 const String _kBugsnagApiKey = String.fromEnvironment('BUGSNAG_API_KEY');
 
@@ -44,7 +45,7 @@ Future<void> main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    if (!kIsWeb) {
+    if (supportsFirebaseMessaging) {
       FirebaseMessaging.onBackgroundMessage(
         firebaseMessagingBackgroundHandler,
       );
@@ -57,7 +58,7 @@ Future<void> main() async {
   // are loaded when the user opens the Capture screen (with timeout).
 
   // Initialize Bugsnag only when native plugin is available (iOS/Android; not on web/tests)
-  if (!kIsWeb) {
+  if (supportsBugsnagNative) {
     try {
       if (_kBugsnagApiKey.isNotEmpty) {
         await bugsnag.start(
@@ -87,7 +88,7 @@ Future<void> main() async {
 
   // Initialize ErrorReportingManager (Bugsnag only on platforms where native plugin exists)
   await ErrorReportingManager.initialize(
-    enableBugsnag: !kIsWeb,
+    enableBugsnag: supportsBugsnagNative,
   );
 
   configureFlutterErrorHandlers();
@@ -126,7 +127,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
     WidgetsBinding.instance.addObserver(this);
     PaymentPushCoordinator.instance.attachNavigator(widget.navigatorKey);
     _appSettingsManager.fetchSettings(forceRefresh: true);
-    if (!kIsWeb && DefaultFirebaseOptions.isFirebaseConfigured) {
+    if (supportsFirebaseMessaging) {
       unawaited(_setupPaymentFcmListeners());
     }
   }
@@ -291,7 +292,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _appSettingsManager.fetchSettings(forceRefresh: true);
-      if (!kIsWeb && DefaultFirebaseOptions.isFirebaseConfigured) {
+      if (supportsFirebaseMessaging) {
         unawaited(
           PaymentPushCoordinator.instance.flushPendingStoragePayment(),
         );
