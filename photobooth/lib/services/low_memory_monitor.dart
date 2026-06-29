@@ -85,11 +85,30 @@ class LowMemoryMonitor {
 
   void onMemoryPressure() {
     if (kIsWeb) return;
-    unawaited(
-      _readSnapshot().then(
-        (snapshot) => evaluate(snapshot, trigger: 'memory_pressure'),
-      ),
-    );
+    unawaited(_logMemoryPressureSignal());
+  }
+
+  /// Breadcrumb-only signal from [WidgetsBindingObserver.didHaveMemoryPressure].
+  /// Avoids Bugsnag error noise and extra snapshot work while the OS is under RAM stress.
+  /// Threshold breaches are still reported from [_poll] via [evaluate].
+  Future<void> _logMemoryPressureSignal() async {
+    final handler = reportHandler;
+    if (handler != null) {
+      await handler(
+        const LowMemoryReport(
+          reasonKey: 'os_memory_pressure',
+          reason: 'OS reported memory pressure',
+          snapshot: DeviceMemorySnapshot(),
+          trigger: 'memory_pressure',
+        ),
+      );
+      return;
+    }
+
+    await ErrorReportingManager.setCustomKeys({
+      'memory_trigger': 'memory_pressure',
+    });
+    ErrorReportingManager.log('OS reported memory pressure');
   }
 
   Future<void> _poll() async {

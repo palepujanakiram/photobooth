@@ -60,5 +60,95 @@ void main() {
 
       expect(steps, ['release', 'session', 'terms']);
     });
+
+    testWidgets('skips session end when endCustomerSession is false', (
+      tester,
+    ) async {
+      final steps = <String>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          routes: {
+            AppConstants.kRouteTerms: (_) {
+              steps.add('terms');
+              return const Scaffold(body: Text('terms'));
+            },
+          },
+          home: Builder(
+            builder: (context) {
+              return Scaffold(
+                body: ElevatedButton(
+                  onPressed: () async {
+                    await exitCaptureScreenToTerms(
+                      context: context,
+                      isMounted: () => true,
+                      releaseCaptureHardware: () async {
+                        steps.add('release');
+                      },
+                      sessionEndContext: 'capture_back',
+                      endCustomerSession: false,
+                      endSession: (context) async {
+                        steps.add('session');
+                      },
+                    );
+                  },
+                  child: const Text('exit'),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('exit'));
+      await tester.pumpAndSettle();
+
+      expect(steps, ['release', 'terms']);
+    });
+
+    testWidgets('continues to Terms when hardware release fails', (
+      tester,
+    ) async {
+      final steps = <String>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          routes: {
+            AppConstants.kRouteTerms: (_) {
+              steps.add('terms');
+              return const Scaffold(body: Text('terms'));
+            },
+          },
+          home: Builder(
+            builder: (context) {
+              return Scaffold(
+                body: ElevatedButton(
+                  onPressed: () async {
+                    await exitCaptureScreenToTerms(
+                      context: context,
+                      isMounted: () => true,
+                      releaseCaptureHardware: () async {
+                        steps.add('release');
+                        throw StateError('camera dispose failed');
+                      },
+                      sessionEndContext: 'test',
+                      endSession: (context) async {
+                        steps.add('session');
+                      },
+                    );
+                  },
+                  child: const Text('exit'),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('exit'));
+      await tester.pumpAndSettle();
+
+      expect(steps, ['release', 'session', 'terms']);
+    });
   });
 }

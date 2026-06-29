@@ -107,7 +107,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void _armPoseIdleTimer() {
     _stopPoseIdleTimer();
     _poseIdleTimer = Timer(AppConstants.kCaptureScreenIdleResetDuration, () {
-      unawaited(_onPoseIdleTimeout());
+      _safeUnawaited(
+        _onPoseIdleTimeout(),
+        label: 'POSE idle timeout failed',
+      );
     });
   }
 
@@ -131,7 +134,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     await _captureViewModel.disposeCamera();
   }
 
-  Future<void> _exitCaptureToTerms({required String sessionEndContext}) async {
+  Future<void> _exitCaptureToTerms({
+    required String sessionEndContext,
+    required bool endCustomerSession,
+  }) async {
     if (_navigatingAwayFromCapture) return;
     _navigatingAwayFromCapture = true;
     _stopPoseIdleTimer();
@@ -140,6 +146,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       isMounted: () => mounted,
       releaseCaptureHardware: _releaseCaptureHardware,
       sessionEndContext: sessionEndContext,
+      endCustomerSession: endCustomerSession,
     );
   }
 
@@ -154,7 +161,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
     await Future<void>.delayed(AppConstants.kCaptureScreenIdleResetSnackDelay);
     if (!mounted || _navigatingAwayFromCapture) return;
-    await _exitCaptureToTerms(sessionEndContext: 'capture_idle_timeout');
+    await _exitCaptureToTerms(
+      sessionEndContext: 'capture_idle_timeout',
+      endCustomerSession: true,
+    );
   }
 
   @override
@@ -631,7 +641,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       await _handleRetake(context);
       return;
     }
-    await _exitCaptureToTerms(sessionEndContext: 'capture_back');
+    await _exitCaptureToTerms(
+      sessionEndContext: 'capture_back',
+      endCustomerSession: false,
+    );
   }
 
   Future<void> _restoreUvcLiveFeedAfterRetake() async {
@@ -874,7 +887,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           },
         ),
       );
-      return true;
+      return false;
     }
 
     await _openUvcController();

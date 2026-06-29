@@ -14,22 +14,37 @@ Future<void> releaseCaptureScreenHardware({
   await viewModel.disposeCamera();
 }
 
-/// Ends the customer session, releases camera hardware, and returns to Terms.
+/// Releases camera hardware and returns to Terms.
+///
+/// When [endCustomerSession] is true (idle timeout), clears the customer session
+/// before navigation. Back navigation keeps the session so the guest can re-enter
+/// capture without creating a new session.
 Future<void> exitCaptureScreenToTerms({
   required BuildContext context,
   required bool Function() isMounted,
   required Future<void> Function() releaseCaptureHardware,
   required String sessionEndContext,
   Future<void> Function(String context)? endSession,
+  bool endCustomerSession = true,
 }) async {
   if (!isMounted() || !context.mounted) return;
 
   AppLogger.debug('POSE exit → Terms ($sessionEndContext)');
-  await releaseCaptureHardware();
+  try {
+    await releaseCaptureHardware();
+  } catch (e, st) {
+    AppLogger.error(
+      'POSE hardware release failed ($sessionEndContext)',
+      error: e,
+      stackTrace: st,
+    );
+  }
   if (!isMounted() || !context.mounted) return;
 
-  await (endSession ?? endPhotoboothCustomerSessionLogged)(sessionEndContext);
-  if (!isMounted() || !context.mounted) return;
+  if (endCustomerSession) {
+    await (endSession ?? endPhotoboothCustomerSessionLogged)(sessionEndContext);
+    if (!isMounted() || !context.mounted) return;
+  }
 
   await Navigator.of(context).pushReplacementNamed(AppConstants.kRouteTerms);
 }

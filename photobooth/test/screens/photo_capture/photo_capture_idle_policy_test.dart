@@ -2,15 +2,29 @@ import 'package:photobooth/screens/photo_capture/photo_capture_idle_policy.dart'
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  const active = CaptureScreenIdleInput(
-    isNavigatingAway: false,
-    isCapturing: false,
-    isUploading: false,
-    isCountingDown: false,
-    appInForeground: true,
-  );
+  group('CaptureScreenIdleInput', () {
+    test('stores constructor fields', () {
+      final input = CaptureScreenIdleInput(
+        isNavigatingAway: false,
+        isCapturing: false,
+        isUploading: false,
+        isCountingDown: false,
+        appInForeground: true,
+      );
+      expect(input.isCapturing, isFalse);
+      expect(input.appInForeground, isTrue);
+    });
+  });
 
   group('captureScreenIdleTimerShouldRun', () {
+    const active = CaptureScreenIdleInput(
+      isNavigatingAway: false,
+      isCapturing: false,
+      isUploading: false,
+      isCountingDown: false,
+      appInForeground: true,
+    );
+
     test('runs on idle live feed', () {
       expect(captureScreenIdleTimerShouldRun(active), isTrue);
     });

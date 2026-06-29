@@ -86,21 +86,23 @@ void main() {
     );
   });
 
-  test('isHandledCameraPipelineError matches additional usb/camera strings', () {
-    expect(
-      isHandledCameraPipelineError(Exception('Failed to initialize USB camera')),
-      isTrue,
-    );
+  test('isHandledCameraPipelineError matches CameraX zero cameras', () {
     expect(
       isHandledCameraPipelineError(
-        Exception('PlatformException(IllegalStateException, camera busy)'),
+        PlatformException(
+          code: 'ExecutionException',
+          message:
+              'java.util.concurrent.ExecutionException: '
+              'CameraUnavailableException: Available cameras: 0',
+        ),
       ),
       isTrue,
     );
+  });
+
+  test('isHandledCameraPipelineError matches usb-only platform failures', () {
     expect(
-      isHandledCameraPipelineError(
-        Exception('PlatformException: usb device missing'),
-      ),
+      isHandledCameraPipelineError(Exception('platformexception usb offline')),
       isTrue,
     );
   });

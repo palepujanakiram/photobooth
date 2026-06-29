@@ -23,13 +23,13 @@ import 'camera_description_label.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/logger.dart';
 import '../../utils/error_reporting_helpers.dart';
+import 'photo_capture_camera_error_helpers.dart';
 import '../../utils/web_flow_trace.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_camera_config.dart';
 import 'photo_capture_preview_rotation.dart';
 import 'photo_capture_preprocess_helpers.dart';
-import 'photo_capture_camera_error_helpers.dart';
 import 'photo_capture_viewmodel_helpers.dart';
 
 class CaptureViewModel extends ChangeNotifier {
@@ -615,6 +615,10 @@ class CaptureViewModel extends ChangeNotifier {
     _reportedCameraNotFoundReasons.add(reason);
 
     ErrorReportingManager.log('❌ $reason');
+    if (error != null && isHandledCameraPipelineError(error)) {
+      return;
+    }
+
     await ErrorReportingManager.recordError(
       error ?? Exception(reason),
       stackTrace ?? StackTrace.current,
@@ -823,13 +827,18 @@ class CaptureViewModel extends ChangeNotifier {
       );
     } catch (e, stackTrace) {
       _errorMessage = cameraLoadFailureMessage(e);
-      await ErrorReportingManager.recordError(
-        e,
-        stackTrace,
-        reason: 'loadCameras failed',
-        extraInfo: {'error': e.toString(), 'errorType': e.runtimeType.toString()},
-        fatal: false,
-      );
+      if (!isHandledCameraPipelineError(e)) {
+        await ErrorReportingManager.recordError(
+          e,
+          stackTrace,
+          reason: 'loadCameras failed',
+          extraInfo: {
+            'error': e.toString(),
+            'errorType': e.runtimeType.toString(),
+          },
+          fatal: false,
+        );
+      }
       notifyListeners();
     } finally {
       _isLoadingCameras = false;

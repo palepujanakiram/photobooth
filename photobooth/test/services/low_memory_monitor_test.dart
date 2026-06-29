@@ -135,6 +135,27 @@ void main() {
     expect(reports, greaterThanOrEqualTo(2));
   });
 
+  test('onMemoryPressure logs breadcrumb without recordError', () async {
+    var breadcrumb = false;
+    final monitor = LowMemoryMonitor(
+      reportHandler: (report) async {
+        expect(report.reasonKey, 'os_memory_pressure');
+        expect(report.trigger, 'memory_pressure');
+        breadcrumb = true;
+      },
+    );
+    monitor.onMemoryPressure();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(breadcrumb, isTrue);
+  });
+
+  test('onMemoryPressure uses ErrorReportingManager when reportHandler is null',
+      () async {
+    final monitor = LowMemoryMonitor();
+    monitor.onMemoryPressure();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  });
+
   test('evaluate uses ErrorReportingManager when reportHandler is null', () async {
     final monitor = LowMemoryMonitor();
     await monitor.evaluate(
