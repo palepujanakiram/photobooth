@@ -340,7 +340,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final uvcDevice = _uvcDevice;
     if (uvcDevice != null) {
       _captureViewModel.setDeviceType(null);
-      await _bindUvcDevice(uvcDevice);
+      await _ensureUvcDeviceBound(uvcDevice);
       if (!mounted) return;
       try {
         final deviceType = await DeviceClassifier.getDeviceType(context);
@@ -366,7 +366,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       final firstUvc = await probeFirstUvcDevice();
       if (!mounted) return;
       if (firstUvc != null) {
-        await _bindUvcDevice(firstUvc);
+        await _ensureUvcDeviceBound(firstUvc);
         if (!mounted) return;
         try {
           final deviceType = await DeviceClassifier.getDeviceType(context);
@@ -743,20 +743,24 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     });
   }
 
-  Future<void> _bindUvcDevice(UvcCameraDevice device) async {
-    if (_uvcCaptureInFlight || _captureViewModel.capturedPhoto != null) return;
+  /// Binds [device] for live preview. Returns false when bind is skipped (e.g.
+  /// a route-prefilled still is still set).
+  Future<bool> _bindUvcDevice(UvcCameraDevice device) async {
+    if (_uvcCaptureInFlight || _captureViewModel.capturedPhoto != null) {
+      return false;
+    }
 
     _captureViewModel.applyDefaultPreviewRotationForUvc();
     await _captureViewModel.disposeCamera();
 
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() {
       _uvcDevice = device;
       _uvcError = null;
     });
 
     final ok = await ensureUvcPermissions(device);
-    if (!mounted) return;
+    if (!mounted) return false;
     if (!ok) {
       setState(() {
         _uvcInitializing = false;
@@ -772,10 +776,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           },
         ),
       );
-      return;
+      return true;
     }
 
     await _openUvcController();
+    return true;
+  }
+
+  /// Opens UVC when connected; clears stale route prefill once so POSE always
+  /// gets a live feed after "Start all over again" or similar re-entry.
+  Future<void> _ensureUvcDeviceBound(UvcCameraDevice device) async {
+    if (await _bindUvcDevice(device)) return;
+    if (_captureViewModel.capturedPhoto == null) return;
+    _captureViewModel.clearCapturedPhoto();
+    await _bindUvcDevice(device);
   }
 
   Future<void> _openUvcController() async {
