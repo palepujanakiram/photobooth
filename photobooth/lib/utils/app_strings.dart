@@ -65,6 +65,10 @@ abstract final class AppStrings {
   /// Shown while re-enumerating cameras in the picker.
   static const cameraPickerRefreshing = 'Looking for cameras…';
 
+  /// POSE screen: shown briefly before returning to Terms after idle timeout.
+  static const captureScreenIdleResetMessage =
+      'Idle activity is detected so going back';
+
   /// Payment push / poll notification titles and bodies.
   static const paymentConfirmedTitle = 'Payment confirmed';
   static const paymentNotCompletedTitle = 'Payment not completed';

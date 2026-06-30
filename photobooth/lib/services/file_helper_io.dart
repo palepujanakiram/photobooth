@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
+import '../utils/file_helper_temp_cleanup.dart';
+
 /// IO (mobile/desktop) implementation of FileHelper
 class FileHelper {
   /// Gets a temporary directory path
@@ -32,8 +34,8 @@ class FileHelper {
 
       await for (final entity in dir.list(followLinks: false)) {
         if (entity is File) {
-          final name = path.basename(entity.path).toLowerCase();
-          if (_shouldDeleteTempImage(name)) {
+          final name = path.basename(entity.path);
+          if (shouldDeleteTempImageFileName(name)) {
             try {
               await entity.delete();
             } catch (_) {
@@ -47,39 +49,4 @@ class FileHelper {
     }
   }
 
-  static bool _shouldDeleteTempImage(String fileName) {
-    final isImage = fileName.endsWith('.jpg') ||
-        fileName.endsWith('.jpeg') ||
-        fileName.endsWith('.png') ||
-        fileName.endsWith('.gif') ||
-        fileName.endsWith('.webp');
-    if (!isImage) {
-      return false;
-    }
-
-    const prefixes = [
-      'upload_',
-      'transformed_',
-      'print_',
-      'capture_',
-      'captured_',
-      'photo_',
-      'img_',
-      'pxl_',
-      'cap',
-      'camera_',
-    ];
-
-    for (final prefix in prefixes) {
-      if (fileName.startsWith(prefix)) {
-        return true;
-      }
-    }
-
-    if (fileName.contains('capture') || fileName.contains('camera')) {
-      return true;
-    }
-
-    return false;
-  }
 }

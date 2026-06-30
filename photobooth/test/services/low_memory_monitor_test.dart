@@ -135,12 +135,57 @@ void main() {
     expect(reports, greaterThanOrEqualTo(2));
   });
 
+  test('onMemoryPressure logs breadcrumb without recordError', () async {
+    var breadcrumb = false;
+    final monitor = LowMemoryMonitor(
+      reportHandler: (report) async {
+        expect(report.reasonKey, 'os_memory_pressure');
+        expect(report.trigger, 'memory_pressure');
+        breadcrumb = true;
+      },
+    );
+    monitor.onMemoryPressure();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(breadcrumb, isTrue);
+  });
+
+  test('onMemoryPressure uses ErrorReportingManager when reportHandler is null',
+      () async {
+    final monitor = LowMemoryMonitor();
+    monitor.onMemoryPressure();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  });
+
   test('evaluate uses ErrorReportingManager when reportHandler is null', () async {
     final monitor = LowMemoryMonitor();
     await monitor.evaluate(
       const DeviceMemorySnapshot(availableSystemBytes: 50 * 1024 * 1024),
       trigger: 'poll',
     );
+  });
+
+  test('evaluate triggers memory relief when RSS exceeds threshold', () async {
+    var relieved = false;
+    final monitor = LowMemoryMonitor(reportHandler: (_) async {});
+    monitor.onProcessRssAboveThreshold = () => relieved = true;
+    await monitor.evaluate(
+      const DeviceMemorySnapshot(processRssBytes: 900 * 1024 * 1024),
+      trigger: 'poll',
+    );
+    expect(relieved, isTrue);
+  });
+
+  test('poll telemetry keys are breadcrumb-only', () {
+    final monitor = LowMemoryMonitor();
+    expect(monitor.isInformationalTelemetry('process_rss_above_threshold'), isTrue);
+    expect(monitor.isInformationalTelemetry('system_available_below_threshold'), isTrue);
+    expect(monitor.isInformationalTelemetry('system_low_memory_flag'), isTrue);
+    expect(monitor.isInformationalTelemetry('unknown'), isFalse);
+  });
+
+  test('unknown memory keys still recordError for diagnostics', () async {
+    final monitor = LowMemoryMonitor();
+    await monitor.reportOnce(reasonKey: 'unknown_key');
   });
 
   test('reasonForKey default branch', () {

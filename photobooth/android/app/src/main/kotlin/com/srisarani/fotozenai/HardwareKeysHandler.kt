@@ -54,6 +54,7 @@ class HardwareKeysHandler(
             KeyEvent.KEYCODE_VOLUME_UP,
             KeyEvent.KEYCODE_VOLUME_DOWN,
             -> true
+
             else -> false
         }
 

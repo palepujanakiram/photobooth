@@ -13,7 +13,9 @@ import 'package:overlay_support/overlay_support.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
 import 'app_routes.dart';
 import 'main_error_handlers.dart';
+import 'utils/app_route_observer.dart';
 import 'utils/app_route_tracker.dart';
+import 'utils/memory_pressure_response.dart';
 import 'utils/app_runtime_config.dart';
 import 'utils/constants.dart';
 import 'utils/logger.dart';
@@ -297,6 +299,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
 
   @override
   void didHaveMemoryPressure() {
+    respondToAppMemoryPressure();
     LowMemoryMonitor.instance.onMemoryPressure();
   }
 
@@ -329,7 +332,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
           builder: (context, _) {
             return MaterialApp(
               navigatorKey: widget.navigatorKey,
-              navigatorObservers: [_routeTracker],
+              navigatorObservers: [_routeTracker, appRouteObserver],
               title: AppConstants.kBrandName,
               debugShowCheckedModeBanner: false,
               builder: (context, child) {

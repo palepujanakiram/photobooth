@@ -1,7 +1,5 @@
 import 'package:uvccamera/uvccamera.dart';
 
-import 'constants.dart';
-
 /// Tunable levers for USB/DSLR (UVC) capture on memory-constrained tablets.
 ///
 /// Built-in cameras use 1920 px / quality 85 from `image_helper.dart`.
@@ -48,9 +46,10 @@ class UvcCaptureConfig {
   static const Duration preCaptureSettleDelay = Duration(milliseconds: 50);
 
   /// When true, keep the UVC session open while reviewing a still (retake reuses it).
-  /// Off on low-memory kiosk so USB/GPU buffers are released during review.
-  static bool get keepControllerOpenDuringReview =>
-      !AppConstants.kLowMemoryKioskMode;
+  ///
+  /// Always false on production kiosks: closing the native feed during review
+  /// cuts CPU/heat and avoids Android PlatformView overlaying the captured still.
+  static const bool keepControllerOpenDuringReview = false;
 
   /// Ignore preview-interrupt shutter signals right after the feed reconnects.
   static const Duration previewWarmupPeriod = Duration(milliseconds: 1500);
@@ -79,7 +78,7 @@ class UvcCaptureConfig {
   static const bool enableSessionRecycle = true;
 
   /// Interval between idle session recycles (stop preview → release → reopen).
-  static const Duration sessionRecyclePeriod = Duration(minutes: 25);
+  static const Duration sessionRecyclePeriod = Duration(minutes: 15);
 
   /// When recycle is deferred (capture in flight, reviewing, etc.), retry after this delay.
   static const Duration sessionRecycleRetryDelay = Duration(minutes: 2);

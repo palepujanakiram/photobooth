@@ -1,4 +1,7 @@
+import 'dart:async' show unawaited;
+
 import '../utils/logger.dart';
+import 'file_helper.dart';
 import 'payment_push_coordinator.dart';
 import 'session_manager.dart';
 
@@ -10,6 +13,7 @@ import 'session_manager.dart';
 Future<void> endPhotoboothCustomerSession() async {
   await PaymentPushCoordinator.instance.resetForNextCustomer();
   await SessionManager().endCustomerSession();
+  unawaited(FileHelper.cleanupTempImages());
 }
 
 /// Same as [endPhotoboothCustomerSession] but logs and swallows errors so navigation

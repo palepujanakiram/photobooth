@@ -937,6 +937,20 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         .toList();
   }
 
+  /// Drops cached paths when temp files were removed (e.g. prior memory cleanup).
+  void _evictStaleDownloadedFiles() {
+    if (kIsWeb) return;
+    final staleIds = <String>[];
+    for (final entry in _r._downloadedFiles.entries) {
+      if (!createPrintFile(entry.value.path).existsSync()) {
+        staleIds.add(entry.key);
+      }
+    }
+    for (final id in staleIds) {
+      _r._downloadedFiles.remove(id);
+    }
+  }
+
   /// Silent print all images to network printer
   Future<void> silentPrintToNetwork() async {
     _r.refreshPrinterFromSettings();
@@ -963,6 +977,13 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           }
         }
       } else {
+        _evictStaleDownloadedFiles();
+        final success = await _ensureAllFilesDownloaded('silent');
+        if (!success) return;
+      }
+    } else if (!kIsWeb) {
+      _evictStaleDownloadedFiles();
+      if (_r._downloadedFilesList.length != _r._generatedImages.length) {
         final success = await _ensureAllFilesDownloaded('silent');
         if (!success) return;
       }

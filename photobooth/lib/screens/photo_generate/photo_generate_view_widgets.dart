@@ -18,7 +18,6 @@ import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/delete_my_photos_action.dart';
 import '../../views/widgets/contact_before_pay_sheet.dart';
 import '../../services/customer_session_lifecycle.dart';
-import '../splash/bootstrap_route_args.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
     if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart'
     as photo_image;
@@ -1047,9 +1046,6 @@ Widget _buildStartOverStripLink({
         context,
         AppConstants.kRouteTerms,
         (route) => false,
-        arguments: TermsRouteArgs(
-          capturePhoto: viewModel.originalPhoto,
-        ),
       );
     },
     icon: Icon(
@@ -1159,6 +1155,8 @@ Future<void> _onPhotoGenerateContinuePressed({
   await viewModel.syncPrintOrientationBeforeCheckout();
 
   if (!context.mounted) return;
+
+  viewModel.trimMemoryWhenRouteInactive();
 
   await Navigator.pushNamed(
     context,

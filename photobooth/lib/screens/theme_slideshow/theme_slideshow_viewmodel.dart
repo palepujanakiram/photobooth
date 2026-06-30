@@ -38,7 +38,8 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
     _isDisposed = true;
     // Remove listener when ViewModel is disposed
     if (_themeManagerListener != null) {
-      _themeManager.removeListener(_themeManagerListener!);
+      _themeManagerListener!();
+      _themeManagerListener = null;
     }
     super.dispose();
   }

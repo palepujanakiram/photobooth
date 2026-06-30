@@ -18,6 +18,7 @@ import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../utils/route_args.dart';
+import '../../utils/route_visibility_mixin.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
 import '../../views/widgets/cached_network_image.dart';
@@ -79,7 +80,8 @@ class PhotoGenerateScreen extends StatefulWidget {
   State<PhotoGenerateScreen> createState() => _PhotoGenerateScreenState();
 }
 
-class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
+class _PhotoGenerateScreenState extends State<PhotoGenerateScreen>
+    with RouteVisibilityMixin {
   /// AppBar [bottom]: subtitle line + optional stamp strip (must match [PreferredSize]).
   static const double _kBeholdSubtitleBlockHeight = 28.0;
   static const double _kBeholdStampStripExtraHeight = 62.0;
@@ -104,6 +106,13 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen> {
   final GlobalKey _contentKey = GlobalKey();
 
   bool? _paymentsEnabledOverride;
+
+  @override
+  void onRouteVisibilityChanged(bool visible) {
+    if (!visible && _viewModelCreated) {
+      _viewModel.trimMemoryWhenRouteInactive();
+    }
+  }
 
   void _openGeneratedImagePreview(
     BuildContext context,
