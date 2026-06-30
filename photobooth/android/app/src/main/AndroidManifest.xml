@@ -19,23 +19,14 @@
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.external" android:required="false"/>
-    <!-- Override CameraX plugin merge: TV boxes often have no built-in camera. -->
-    <uses-feature
-        android:name="android.hardware.camera.any"
-        android:required="false"
-        tools:replace="android:required"/>
-    <!-- RECORD_AUDIO from camera plugin; kiosk uses USB camera without a mic. -->
-    <uses-feature android:name="android.hardware.microphone" android:required="false"/>
     <!-- Allow install and run on Android TV (D-pad/remote; no touchscreen) -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
-    <uses-feature android:name="android.hardware.faketouch" android:required="false"/>
     <uses-feature android:name="android.software.leanback" android:required="false"/>
 
     <application
         android:label="Fotozen AI"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:banner="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
@@ -52,7 +43,6 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
-                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
             <!-- USB/UVC camera attach support (for UVC plugin / kiosk rigs). -->
             <intent-filter>

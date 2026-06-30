@@ -4,7 +4,7 @@ import 'package:uvccamera/uvccamera.dart';
 
 void main() {
   test('UvcCaptureConfig uses stability-first profile defaults', () {
-    expect(UvcCaptureConfig.resolutionPreset, UvcCameraResolutionPreset.low);
+    expect(UvcCaptureConfig.resolutionPreset, UvcCameraResolutionPreset.medium);
     expect(UvcCaptureConfig.normalizeMaxDimension, 1024);
     expect(UvcCaptureConfig.normalizeJpegQuality, 75);
     expect(UvcCaptureConfig.postDisposeDelay, const Duration(milliseconds: 750));
