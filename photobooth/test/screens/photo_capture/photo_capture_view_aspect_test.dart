@@ -5,14 +5,6 @@ import 'package:photobooth/screens/photo_capture/photo_capture_viewmodel.dart';
 import 'package:photobooth/utils/constants.dart';
 
 void main() {
-  test('applyDefaultPreviewRotationForUvc clears manual rotation', () {
-    final viewModel = CaptureViewModel();
-    addTearDown(viewModel.dispose);
-
-    viewModel.applyDefaultPreviewRotationForUvc();
-    expect(viewModel.previewRotationDegrees, 0);
-  });
-
   test('lockCaptureCardAspectRatio clamps external preview aspect', () {
     final viewModel = CaptureViewModel();
     addTearDown(viewModel.dispose);

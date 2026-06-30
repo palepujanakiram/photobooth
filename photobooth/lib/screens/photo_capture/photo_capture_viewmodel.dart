@@ -18,7 +18,6 @@ import '../../utils/device_classifier.dart';
 import '../../utils/app_device_type.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
-import '../../utils/uvc_capture_config.dart';
 import 'camera_description_label.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/logger.dart';
@@ -278,29 +277,6 @@ class CaptureViewModel extends ChangeNotifier {
     );
   }
 
-  /// UVC / USB DSLR feeds are delivered upright; no auto-rotation.
-  int get uvcPreviewAutoQuarterTurns => 0;
-
-  int get uvcPreviewEffectiveQuarterTurns =>
-      (uvcPreviewAutoQuarterTurns + (_previewRotationDegrees ~/ 90) % 4) % 4;
-
-  Size? uvcPreviewDisplaySizeForCard({
-    required double frameWidth,
-    required double frameHeight,
-  }) {
-    if (frameWidth <= 0 || frameHeight <= 0) return null;
-    final baseAspect = frameWidth / frameHeight;
-    final turns = uvcPreviewEffectiveQuarterTurns;
-    final displayAspect = turns.isOdd ? 1 / baseAspect : baseAspect;
-    final (width, height) = previewDisplayDimensions(
-      previewSize: Size(frameWidth, frameHeight),
-      effectiveQuarterTurns: turns,
-      displayAspectRatio: displayAspect,
-    );
-    if (width <= 0 || height <= 0) return null;
-    return Size(width, height);
-  }
-
   int _previewQuarterTurnsForSensor({
     required int sensorOrientation,
     required bool isFrontCamera,
@@ -326,17 +302,10 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
-  /// Locks capture-card aspect from an external preview (e.g. USB/UVC) before teardown.
+  /// Locks capture-card aspect from live preview before teardown (e.g. gallery pause).
   void lockCaptureCardAspectRatio(double aspectRatio) {
     if (aspectRatio <= 0) return;
     _lockedCaptureCardAspectRatio = aspectRatio.clamp(0.35, 2.85);
-  }
-
-  /// Resets manual preview rotation when switching to USB/UVC (built-in values are often wrong).
-  void applyDefaultPreviewRotationForUvc() {
-    if (_previewRotationDegrees == 0) return;
-    _previewRotationDegrees = 0;
-    notifyListeners();
   }
 
   /// Native camera characteristics (Android Camera2; default/placeholder on iOS/Web). Fetched after camera init.
@@ -705,73 +674,6 @@ class CaptureViewModel extends ChangeNotifier {
   /// Reloads the camera list from the platform (e.g. after plugging in USB).
   Future<void> refreshCameraEnumeration() async {
     await loadCameras(forceRefresh: true);
-  }
-
-  /// Sets [capturedPhoto] from an externally provided file (e.g. USB/UVC camera).
-  /// This reuses the same normalization and upload-prep pipeline as the built-in camera.
-  Future<void> setCapturedPhotoFromExternalFile({
-    required XFile rawFile,
-    required String cameraId,
-    bool force = false,
-  }) async {
-    if (!force && (_isCapturing || _isUploading)) return;
-    final isUvc = cameraId.startsWith('uvc:');
-    _isCapturing = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    // Let the capture flash / overlay paint before heavy isolate work.
-    await Future<void>.delayed(Duration.zero);
-
-    try {
-      XFile savedFile;
-      try {
-        savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
-          rawFile,
-          flipHorizontal: false,
-          fixBgrChannelOrder: isUvc,
-          maxDimension: isUvc ? UvcCaptureConfig.normalizeMaxDimension : null,
-          jpegQuality: isUvc ? UvcCaptureConfig.normalizeJpegQuality : null,
-        );
-        if (isUvc) {
-          await ImageHelper.tryDeleteLocalFile(rawFile.path);
-        }
-      } catch (normalizeError, normalizeSt) {
-        if (!isUvc) rethrow;
-        AppLogger.error(
-          'UVC normalize failed; using raw still',
-          error: normalizeError,
-          stackTrace: normalizeSt,
-        );
-        savedFile = rawFile;
-      }
-      if (isUvc) {
-        await Future<void>.delayed(const Duration(milliseconds: 16));
-      }
-      await _assignCapturedPhotoModel(
-        savedFile,
-        cameraIdOverride: cameraId,
-        skipCapturedImagePixelSizeDecode: isUvc,
-        uploadPrepDelay: isUvc
-            ? UvcCaptureConfig.uploadPrepDelay
-            : const Duration(milliseconds: 48),
-        skipUploadPrep:
-            isUvc && UvcCaptureConfig.deferUploadPrepUntilContinue,
-      );
-    } catch (e, st) {
-      _errorMessage = 'USB camera capture failed: $e';
-      await ErrorReportingManager.recordError(
-        e,
-        st,
-        reason: 'setCapturedPhotoFromExternalFile failed',
-        extraInfo: {'cameraId': cameraId},
-        fatal: false,
-      );
-      notifyListeners();
-    } finally {
-      _isCapturing = false;
-      notifyListeners();
-    }
   }
 
   /// Loads available cameras when user opens Capture screen.
@@ -1967,6 +1869,17 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  bool _shouldSkipClientFaceCountForUpload(PhotoModel photo) {
+    if (_deviceType == AppDeviceType.androidTv) return true;
+    final cameraId = photo.cameraId;
+    if (cameraId == null || cameraId == 'gallery') return false;
+    for (final camera in _availableCameras) {
+      if (camera.name != cameraId) continue;
+      return isExternalCaptureCamera(camera, _looksLikeExternalCameraName);
+    }
+    return _looksLikeExternalCameraName(cameraId);
+  }
+
   Future<String> _buildUploadPayload(PhotoModel photo) async {
     var imageFile = photo.imageFile;
     if (kIsWeb) {
@@ -1978,12 +1891,12 @@ class CaptureViewModel extends ChangeNotifier {
     WebFlowTrace.log('UPLOAD_PREP', 'encode_start');
     final base64 = await ImageHelper.encodeImageForUpload(imageFile);
     WebFlowTrace.log('UPLOAD_PREP', 'encode_done len=${base64.length}');
-    final isUvc = photo.cameraId?.startsWith('uvc:') ?? false;
-    if (isUvc) {
-      // Face ML Kit decodes the full image again — skip on UVC/tablet to avoid OOM;
+    final skipClientFaceCount = _shouldSkipClientFaceCountForUpload(photo);
+    if (skipClientFaceCount) {
+      // Face ML Kit decodes the full image again — skip on external/USB feeds to avoid OOM;
       // server preprocess refines person count after PATCH.
       _preparedClientFaceCount = 0;
-      WebFlowTrace.log('UPLOAD_PREP', 'face_skipped uvc=true');
+      WebFlowTrace.log('UPLOAD_PREP', 'face_skipped external=true');
     } else {
       _preparedClientFaceCount = await detectFaceCountFromXFile(imageFile);
       WebFlowTrace.log(

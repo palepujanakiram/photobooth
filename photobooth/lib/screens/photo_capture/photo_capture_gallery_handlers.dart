@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'photo_capture_uvc_feed_phase.dart';
-
 /// Placeholder shown while the system gallery picker is open (no live preview).
 Widget buildGallerySelectionPlaceholder() {
   return const ColoredBox(
@@ -22,57 +20,27 @@ Widget buildGallerySelectionPlaceholder() {
   );
 }
 
-/// Stops UVC / built-in preview before opening the gallery picker.
+/// Stops CameraX preview before opening the gallery picker.
 Future<void> pauseCapturePreviewForGallery({
-  required bool isUsingUvc,
-  required Future<void> Function() closeUvc,
-  required Future<void> Function() disposeBuiltInCamera,
-  required void Function(UvcFeedPhase phase) setUvcPhase,
-  required void Function() cancelUvcSessionRecycle,
+  required Future<void> Function() disposeCamera,
 }) async {
-  cancelUvcSessionRecycle();
-  if (isUsingUvc) {
-    setUvcPhase(UvcFeedPhase.capturing);
-    await closeUvc();
-    return;
-  }
-  await disposeBuiltInCamera();
+  await disposeCamera();
 }
 
 /// Keeps preview closed after a gallery photo is accepted (review still).
 Future<void> finalizeGallerySelection({
-  required bool isUsingUvc,
   required bool photoAccepted,
-  required Future<void> Function() closeUvc,
-  required Future<void> Function() disposeBuiltInCamera,
-  required void Function(UvcFeedPhase phase) setUvcPhase,
-  required void Function() cancelUvcReconnect,
-  required void Function() bumpPreviewGeneration,
+  required Future<void> Function() disposeCamera,
 }) async {
   if (!photoAccepted) return;
-  if (isUsingUvc) {
-    cancelUvcReconnect();
-    setUvcPhase(UvcFeedPhase.reviewing);
-    await closeUvc();
-    bumpPreviewGeneration();
-    return;
-  }
-  await disposeBuiltInCamera();
+  await disposeCamera();
 }
 
 /// Restores live preview when gallery selection is cancelled or fails.
 Future<void> resumeCapturePreviewAfterGallery({
-  required bool isUsingUvc,
   required bool hasCapturedPhoto,
-  required void Function(UvcFeedPhase phase) setUvcPhase,
-  required Future<void> Function(String reason) resumeUvcLiveFeed,
   required Future<void> Function() resumeBuiltInPreview,
 }) async {
   if (hasCapturedPhoto) return;
-  if (isUsingUvc) {
-    setUvcPhase(UvcFeedPhase.live);
-    await resumeUvcLiveFeed('galleryCancelled');
-    return;
-  }
   await resumeBuiltInPreview();
 }

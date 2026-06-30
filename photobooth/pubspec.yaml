@@ -25,8 +25,6 @@ dependencies:
 
   # Camera (^0.11.4+ ensures camera_android_camerax 0.6.30+ for external/USB camera on Android TV)
   camera: ^0.11.4
-  # USB/UVC camera (Android only). Used when CameraX cannot enumerate external cameras.
-  uvccamera: ^0.0.13
   camera_native_details:
     path: packages/camera_native_details
   image_picker: ^1.0.7

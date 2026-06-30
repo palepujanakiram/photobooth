@@ -10,7 +10,6 @@ class HardwareKeysHandler(
 ) {
     private val channel = MethodChannel(messenger, CHANNEL_NAME)
     private var enabled: Boolean = false
-    private var uvcShutterKeysEnabled: Boolean = false
 
     init {
         channel.setMethodCallHandler(::onMethodCall)
@@ -19,20 +18,7 @@ class HardwareKeysHandler(
     fun handleKeyEvent(event: KeyEvent): Boolean {
         if (!enabled) return false
         val code = event.keyCode
-        if (uvcShutterKeysEnabled && isUvcShutterKeyCode(code)) {
-            channel.invokeMethod(
-                "onKey",
-                mapOf(
-                    "keyCode" to code,
-                    "action" to event.action,
-                    "timestampMs" to event.eventTime,
-                ),
-            )
-            return true
-        }
-        if (code != KeyEvent.KEYCODE_VOLUME_UP && code != KeyEvent.KEYCODE_VOLUME_DOWN) {
-            return false
-        }
+        if (!isCaptureShutterKeyCode(code)) return false
         channel.invokeMethod(
             "onKey",
             mapOf(
@@ -44,7 +30,7 @@ class HardwareKeysHandler(
         return true
     }
 
-    private fun isUvcShutterKeyCode(code: Int): Boolean =
+    private fun isCaptureShutterKeyCode(code: Int): Boolean =
         when (code) {
             KeyEvent.KEYCODE_CAMERA,
             KeyEvent.KEYCODE_FOCUS,
@@ -66,12 +52,6 @@ class HardwareKeysHandler(
             "setEnabled" -> {
                 val args = call.arguments as? Map<*, *>
                 enabled = args?.get("enabled") as? Boolean ?: false
-                result.success(null)
-            }
-
-            "setUvcShutterKeysEnabled" -> {
-                val args = call.arguments as? Map<*, *>
-                uvcShutterKeysEnabled = args?.get("enabled") as? Boolean ?: false
                 result.success(null)
             }
 

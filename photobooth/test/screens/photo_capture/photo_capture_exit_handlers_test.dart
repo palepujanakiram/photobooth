@@ -6,15 +6,11 @@ import 'package:photobooth/utils/constants.dart';
 
 void main() {
   group('releaseCaptureScreenHardware', () {
-    test('disposes UVC before CameraX', () async {
-      final steps = <String>[];
-      await releaseCaptureScreenHardware(
-        disposeUvc: () async {
-          steps.add('uvc');
-        },
-        viewModel: CaptureViewModel(),
-      );
-      expect(steps, ['uvc']);
+    test('disposes CameraX session', () async {
+      final viewModel = CaptureViewModel();
+      addTearDown(viewModel.dispose);
+
+      await releaseCaptureScreenHardware(viewModel: viewModel);
     });
   });
 

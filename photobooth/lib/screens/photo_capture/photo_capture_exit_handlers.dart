@@ -5,12 +5,10 @@ import '../../utils/constants.dart';
 import '../../utils/logger.dart';
 import 'photo_capture_viewmodel.dart';
 
-/// Releases CameraX and any UVC session owned by the capture screen.
+/// Releases the CameraX session owned by the capture screen.
 Future<void> releaseCaptureScreenHardware({
-  required Future<void> Function() disposeUvc,
   required CaptureViewModel viewModel,
 }) async {
-  await disposeUvc();
   await viewModel.disposeCamera();
 }
 
