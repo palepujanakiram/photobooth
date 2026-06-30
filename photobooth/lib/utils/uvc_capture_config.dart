@@ -11,18 +11,18 @@ import 'package:uvccamera/uvccamera.dart';
 /// | Performance | min    | 1280         | 80          | 450 ms          |
 /// | Balanced    | low    | 1536         | 85          | 300 ms          |
 /// | Quality     | medium | 1920         | 85          | 48 ms           |
-/// | **Active**  | medium | 1024         | 75          | 450 ms          |
+/// | **Active**  | low    | 1024         | 75          | 450 ms          |
 ///
-/// **Active profile:** 720p preview (not 1080p), 1024px still normalize.
+/// **Active profile:** ~480p preview (CPU-bound Android TV kiosks), 1024px still normalize.
 class UvcCaptureConfig {
   UvcCaptureConfig._(); // coverage:ignore-line
 
-  /// Native UVC preview / still stream target (~1280×720 via plugin `medium` preset).
+  /// Native UVC preview / still stream target (~640×480 via plugin `low` preset).
   ///
   /// The `uvccamera` plugin does not expose FPS; the driver picks frame rate for the
-  /// negotiated format (often 30 fps at 720p MJPEG on capture cards).
+  /// negotiated format (often 30 fps at 480p MJPEG on capture cards).
   static const UvcCameraResolutionPreset resolutionPreset =
-      UvcCameraResolutionPreset.medium;
+      UvcCameraResolutionPreset.low;
 
   /// Max long edge after Dart-side normalize.
   static const int normalizeMaxDimension = 1024;
