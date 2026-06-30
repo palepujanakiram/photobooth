@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-# shellcheck source=load_env.sh
+# shellcheck source=scripts/load_env.sh
 source "${ROOT}/scripts/load_env.sh"
 load_photobooth_env "$ROOT"
 
