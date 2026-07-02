@@ -136,9 +136,11 @@ class AppConstants {
   static const double kGeneratePhotoZoomedScale = 1.3;
   static const String kContinueButtonText = 'Continue';
 
-  /// When true (from `/api/settings` → `showGenerationCommentary`), optimizes for
-  /// low-RAM Android TV / kiosk (2 GB): tighter image caches, lighter gallery pick,
-  /// smaller theme disk cache.
+  /// When true (from `/api/settings` → `showGenerationCommentary`), enables debug HUD
+  /// and applies tighter RAM tuning for legacy ~2 GB Android TV / kiosk boxes.
+  ///
+  /// **Production kiosks:** target **4 GB RAM**; use default (non-commentary) thresholds
+  /// in [LowMemoryMonitor] (~400 MB free system, ~800 MB app RSS).
   ///
   /// **Web:** always `false` — commentary there only enables logging/debug UI; kiosk RAM
   /// tuning would shrink [ImageCache] during capture/upload and block navigation.
@@ -214,6 +216,17 @@ class AppConstants {
 
   // Camera capture countdown (in seconds)
   static const int kCaptureCountdownSeconds = 5;
+
+  /// POSE screen: return to Terms after this much user inactivity (live feed or review).
+  static const Duration kCaptureScreenIdleResetDuration = Duration(minutes: 3);
+
+  /// How long the idle-reset snackbar stays visible before navigating away.
+  static const Duration kCaptureScreenIdleResetSnackDuration =
+      Duration(seconds: 3);
+
+  /// Pause after showing the idle-reset snackbar so the guest can read it.
+  static const Duration kCaptureScreenIdleResetSnackDelay =
+      Duration(milliseconds: 2500);
 
   /// On-screen debug HUD: Logs panel, Perf trace (+ E2E summary), RAM / JS heap.
   /// Driven by `/api/settings` → `showGenerationCommentary` (not [kEnableLogOutput]).

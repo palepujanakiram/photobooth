@@ -73,6 +73,10 @@ abstract final class AppStrings {
   static const uvcTapToWakePreview =
       'Tap when ready\nto start the camera preview';
 
+  /// POSE screen: shown briefly before returning to Terms after idle timeout.
+  static const captureScreenIdleResetMessage =
+      'Idle activity is detected so going back';
+
   /// Payment push / poll notification titles and bodies.
   static const paymentConfirmedTitle = 'Payment confirmed';
   static const paymentNotCompletedTitle = 'Payment not completed';

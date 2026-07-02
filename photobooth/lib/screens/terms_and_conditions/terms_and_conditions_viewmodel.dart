@@ -6,6 +6,7 @@ import '../../services/kiosk_manager.dart';
 import '../../services/session_manager.dart';
 import '../../services/file_helper.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/error_reporting_helpers.dart';
 import '../../utils/logger.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 
@@ -195,8 +196,16 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
       }
       
       return true;
-    } on TimeoutException {
+    } on TimeoutException catch (e, st) {
       _errorMessage = 'Request took too long. Please check your connection and try again.';
+      unawaited(
+        reportIssue(
+          'Accept terms timed out',
+          e,
+          st,
+          extraInfo: {'source': 'terms_accept'},
+        ),
+      );
       return false;
     } on ApiException catch (e) {
       _errorMessage = e.message;
@@ -205,8 +214,16 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
             '${e.message}\n\nIf this is a CORS error on localhost, run ./run_chrome_dev.sh and flutter run -d chrome.';
       }
       return false;
-    } catch (e) {
+    } catch (e, st) {
       _errorMessage = 'Failed to accept terms: $e';
+      unawaited(
+        reportIssue(
+          'Failed to accept terms',
+          e,
+          st,
+          extraInfo: {'source': 'terms_accept'},
+        ),
+      );
       if (kIsWeb && kDebugMode) {
         _errorMessage =
             'Failed to accept terms: $e\n\nIf requests are blocked from localhost, use ./run_chrome_dev.sh.';

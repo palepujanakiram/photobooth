@@ -50,8 +50,10 @@ class UvcCaptureConfig {
   static const Duration preCaptureSettleDelay = Duration(milliseconds: 50);
 
   /// When true, keep the UVC session open while reviewing a still (retake reuses it).
-  /// Off for thermal relief — USB/GPU buffers release during review.
-  static bool get keepControllerOpenDuringReview => false;
+  ///
+  /// Always false on production kiosks: closing the native feed during review
+  /// cuts CPU/heat and avoids Android PlatformView overlaying the captured still.
+  static const bool keepControllerOpenDuringReview = false;
 
   /// Ignore preview-interrupt shutter signals right after the feed reconnects.
   static const Duration previewWarmupPeriod = Duration(milliseconds: 1500);

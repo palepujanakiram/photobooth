@@ -44,4 +44,14 @@ void main() {
     expect(vm.getSampleImageUrls(), isNotEmpty);
     vm.dispose();
   });
+
+  test('dispose unsubscribes ThemeManager listener', () async {
+    final tm = ThemeManager.forTesting(ThemesFakeApi([sampleTheme('t1')]));
+    var vmUpdatesAfterDispose = 0;
+    final vm = ThemeSlideshowViewModel(themeManager: tm);
+    vm.addListener(() => vmUpdatesAfterDispose++);
+    vm.dispose();
+    await tm.fetchThemes(forceRefresh: true);
+    expect(vmUpdatesAfterDispose, 0);
+  });
 }

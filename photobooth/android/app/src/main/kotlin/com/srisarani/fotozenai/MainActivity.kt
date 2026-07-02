@@ -16,6 +16,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         DisplayMethodChannel.register(flutterEngine, this)
+        DeviceMemoryMethodChannel.register(flutterEngine, this)
         hardwareKeysHandler = HardwareKeysHandler.attach(flutterEngine)
     }
 

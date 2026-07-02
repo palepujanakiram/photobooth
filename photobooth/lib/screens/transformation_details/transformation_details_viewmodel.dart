@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../services/api_service.dart';
+import '../../utils/error_reporting_helpers.dart';
 import '../../utils/exceptions.dart';
 
 class TransformationDetailsViewModel extends ChangeNotifier {
@@ -29,9 +32,17 @@ class TransformationDetailsViewModel extends ChangeNotifier {
     } on ApiException catch (e) {
       _errorMessage = e.userFacingMessage;
       _payload = null;
-    } catch (e) {
+    } catch (e, st) {
       _errorMessage = e.toString();
       _payload = null;
+      unawaited(
+        reportIssue(
+          'Failed to load generation run details',
+          e,
+          st,
+          extraInfo: {'source': 'transformation_details', 'runId': runId},
+        ),
+      );
     } finally {
       _loading = false;
       notifyListeners();

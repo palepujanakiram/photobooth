@@ -5,7 +5,6 @@ import '../../services/api_service.dart';
 import '../../services/print_service.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/printer_endpoint.dart';
-import 'staff_payments_view_helpers.dart';
 
 /// Staff payment print flow state updates (Sonar S3776 extraction).
 typedef StaffPaymentsPrintStateSink = void Function({

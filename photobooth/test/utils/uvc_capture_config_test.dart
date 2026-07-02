@@ -5,12 +5,6 @@ import 'package:photobooth/utils/uvc_capture_config.dart';
 import 'package:uvccamera/uvccamera.dart';
 
 void main() {
-  tearDown(() {
-    AppRuntimeConfig.instance.applyFromSettings(
-      AppSettingsModel(showGenerationCommentary: false),
-    );
-  });
-
   test('UvcCaptureConfig uses stability-first profile defaults', () {
     expect(UvcCaptureConfig.resolutionPreset, UvcCameraResolutionPreset.medium);
     expect(UvcCaptureConfig.normalizeMaxDimension, 1024);

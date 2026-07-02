@@ -118,7 +118,7 @@ class ThemeBackground extends StatelessWidget {
           ),
         ),
         const Positioned.fill(
-          child: FallingStarfieldBackground(),
+          child: RouteAwareFallingStarfield(),
         ),
       ],
     );

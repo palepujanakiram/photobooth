@@ -43,14 +43,10 @@ Future<void> handleCapturedPhotoContinue({
   required BuildContext context,
   required CaptureViewModel viewModel,
   required bool Function() isMounted,
-  Future<void> Function()? releaseUvcResources,
+  Future<void> Function()? releaseCaptureHardware,
 }) async {
   if (!viewModel.canContinueUpload || viewModel.isUploading) return;
   final currentContext = context;
-  if (!isMounted() || !currentContext.mounted) return;
-
-  await releaseUvcResources?.call();
-  await viewModel.disposeCamera();
   if (!isMounted() || !currentContext.mounted) return;
 
   final success = await viewModel.uploadPhotoToSession();
@@ -65,6 +61,11 @@ Future<void> handleCapturedPhotoContinue({
     return;
   }
 
+  if (releaseCaptureHardware != null) {
+    await releaseCaptureHardware();
+  } else {
+    await viewModel.disposeCamera();
+  }
   final photo = viewModel.capturedPhoto!;
   if (!isMounted() || !currentContext.mounted) return;
   WebFlowTrace.log('NAV', 'pushReplacementNamed theme-selection start');

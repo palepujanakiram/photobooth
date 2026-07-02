@@ -81,7 +81,18 @@ class _PhotoCaptureCameraPickerScreenState
 
   Future<void> _refreshCameras() async {
     await widget.viewModel.refreshCameraEnumeration();
-    await _refreshUvcOnly();
+    final uvcDevices = await (_uvcDevicesFuture = _loadUvcDevices());
+    if (mounted &&
+        widget.viewModel.availableCameras.isEmpty &&
+        uvcDevices.isEmpty &&
+        !widget.viewModel.isLoadingCameras) {
+      await widget.viewModel.reportCameraNotFound(
+        reason: 'No cameras found in picker',
+        extraInfo: {
+          if (_uvcDebugLine != null) 'uvc_debug': _uvcDebugLine,
+        },
+      );
+    }
     if (mounted) setState(() {});
   }
 

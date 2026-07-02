@@ -58,7 +58,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         await _viewModel.acceptTermsAndCreateSession(_viewModel.kioskCode);
 
     if (success && mounted) {
-      Navigator.pushNamed(
+      Navigator.pushReplacementNamed(
         context,
         AppConstants.kRouteCapture,
         arguments: _capturePrefillPhoto == null

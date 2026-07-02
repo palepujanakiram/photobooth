@@ -74,4 +74,6 @@ jobs:
           echo "$PLAY_STORE_JSON_KEY_DATA" > fastlane/credentials/play-store-service-account.json
 
       - name: Fastlane android generatebuild
+        env:
+          BUGSNAG_API_KEY: ${{ secrets.BUGSNAG_API_KEY }}
         run: bundle exec fastlane android generatebuild

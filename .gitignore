@@ -66,6 +66,7 @@ fastlane/test_output
 # Environment variables
 .env
 .env.local
+.cursor/mcp.env
 
 # Local business/docs artifacts (do not commit)
 *.xlsx

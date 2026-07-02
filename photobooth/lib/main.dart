@@ -13,7 +13,9 @@ import 'package:overlay_support/overlay_support.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
 import 'app_routes.dart';
 import 'main_error_handlers.dart';
+import 'utils/app_route_observer.dart';
 import 'utils/app_route_tracker.dart';
+import 'utils/memory_pressure_response.dart';
 import 'utils/app_runtime_config.dart';
 import 'utils/constants.dart';
 import 'utils/logger.dart';
@@ -29,9 +31,9 @@ import 'services/payment_push_coordinator.dart';
 import 'services/api_service.dart';
 import 'services/client_identification.dart';
 import 'services/session_manager.dart';
+import 'services/low_memory_monitor.dart';
+import 'utils/app_config.dart';
 import 'utils/platform_capabilities.dart';
-
-const String _kBugsnagApiKey = String.fromEnvironment('BUGSNAG_API_KEY');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -57,30 +59,31 @@ Future<void> main() async {
   // repeated validation failures, which slows or blocks the main thread. Cameras
   // are loaded when the user opens the Capture screen (with timeout).
 
-  // Initialize Bugsnag only when native plugin is available (iOS/Android; not on web/tests)
-  if (supportsBugsnagNative) {
+  // Bugsnag: release/profile mobile only (debug skips it; key from photobooth/.env at build time).
+  final bugsnagActive = supportsBugsnagNative &&
+      !kDebugMode &&
+      AppConfig.bugsnagApiKey.isNotEmpty;
+  if (bugsnagActive) {
     try {
-      if (_kBugsnagApiKey.isNotEmpty) {
-        await bugsnag.start(
-          apiKey: _kBugsnagApiKey,
-          enabledBreadcrumbTypes: const {
-            BugsnagEnabledBreadcrumbType.error,
-            BugsnagEnabledBreadcrumbType.navigation,
-            BugsnagEnabledBreadcrumbType.request,
-            BugsnagEnabledBreadcrumbType.state,
-            BugsnagEnabledBreadcrumbType.user,
-          },
-          maxBreadcrumbs: 50,
-        );
-      } else if (kDebugMode) {
-        AppLogger.error(
-          'BUGSNAG_API_KEY not provided; Bugsnag disabled. '
-          'Pass via --dart-define=BUGSNAG_API_KEY=...',
-        );
-      }
+      await bugsnag.start(
+        apiKey: AppConfig.bugsnagApiKey,
+        enabledBreadcrumbTypes: const {
+          BugsnagEnabledBreadcrumbType.error,
+          BugsnagEnabledBreadcrumbType.navigation,
+          BugsnagEnabledBreadcrumbType.request,
+          BugsnagEnabledBreadcrumbType.state,
+          BugsnagEnabledBreadcrumbType.user,
+        },
+        maxBreadcrumbs: 50,
+      );
     } on MissingPluginException catch (_) {
       // Native Bugsnag plugin not available (e.g. unit tests, or platform not linked)
     }
+  } else if (!kIsWeb && !kDebugMode && AppConfig.bugsnagApiKey.isEmpty) {
+    AppLogger.error(
+      'BUGSNAG_API_KEY missing for release/profile build; Bugsnag disabled. '
+      'Add BUGSNAG_API_KEY to photobooth/.env and rebuild with scripts/flutter_with_version.sh.',
+    );
   }
 
   // Fire-and-forget cleanup of temp images
@@ -88,7 +91,7 @@ Future<void> main() async {
 
   // Initialize ErrorReportingManager (Bugsnag only on platforms where native plugin exists)
   await ErrorReportingManager.initialize(
-    enableBugsnag: supportsBugsnagNative,
+    enableBugsnag: bugsnagActive,
   );
 
   configureFlutterErrorHandlers();
@@ -96,6 +99,10 @@ Future<void> main() async {
   await SessionManager().restore();
 
   logErrorReportingReady();
+
+  if (!kIsWeb) {
+    LowMemoryMonitor.instance.start();
+  }
 
   final navigatorKey = GlobalKey<NavigatorState>();
   AliceInspector.initialize(navigatorKey);
@@ -280,12 +287,21 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
 
   @override
   void dispose() {
+    if (!kIsWeb) {
+      LowMemoryMonitor.instance.stop();
+    }
     _fcmForegroundSub?.cancel();
     _fcmOpenedAppSub?.cancel();
     _fcmTokenRefreshSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _appSettingsManager.dispose();
     super.dispose();
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    respondToAppMemoryPressure();
+    LowMemoryMonitor.instance.onMemoryPressure();
   }
 
   @override
@@ -317,7 +333,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
           builder: (context, _) {
             return MaterialApp(
               navigatorKey: widget.navigatorKey,
-              navigatorObservers: [_routeTracker],
+              navigatorObservers: [_routeTracker, appRouteObserver],
               title: AppConstants.kBrandName,
               debugShowCheckedModeBanner: false,
               builder: (context, child) {

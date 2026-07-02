@@ -3,6 +3,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/theme_slideshow/theme_slideshow_image.dart';
 
 void main() {
+  test('ThemeSlideshowImage constructor accepts optional layout widgets', () {
+    const placeholder = SizedBox.shrink();
+    const error = Icon(Icons.error);
+    // Non-const so the constructor is exercised for coverage (const is compile-time only).
+    // ignore: prefer_const_constructors
+    final widget = ThemeSlideshowImage(
+      path: 'https://example.com/photo.jpg',
+      fit: BoxFit.contain,
+      width: 200,
+      height: 100,
+      placeholder: placeholder,
+      errorWidget: error,
+    );
+    expect(widget.path, 'https://example.com/photo.jpg');
+    expect(widget.fit, BoxFit.contain);
+    expect(widget.width, 200);
+    expect(widget.height, 100);
+    expect(widget.placeholder, placeholder);
+    expect(widget.errorWidget, error);
+  });
+
   group('isSlideshowAssetImagePath', () {
     test('returns true for assets/ prefix', () {
       expect(isSlideshowAssetImagePath('assets/images/foo.jpg'), isTrue);
