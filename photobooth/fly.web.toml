@@ -15,7 +15,7 @@
 #   fly secrets set FLUTTER_WEB_URL=https://fotozen-web.fly.dev -a fotozenai
 
 app = "fotozen-web"
-primary_region = "sin"
+primary_region = "bom"
 
 [build]
   dockerfile = "Dockerfile.web"
