@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../services/client_identification.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
@@ -67,6 +68,7 @@ Widget _transformationDetailsBody({
     payload: vm.payload!,
     clientDisplayElapsedSeconds: clientDisplayElapsedSeconds,
     fallbackSessionId: fallbackSessionId,
+    activeSessionId: vm.activeSessionId,
   );
 }
 
@@ -106,12 +108,14 @@ class _RunBody extends StatelessWidget {
     required this.payload,
     this.clientDisplayElapsedSeconds,
     this.fallbackSessionId,
+    this.activeSessionId,
   });
 
   final String runId;
   final Map<String, dynamic> payload;
   final int? clientDisplayElapsedSeconds;
   final String? fallbackSessionId;
+  final String? activeSessionId;
 
   @override
   Widget build(BuildContext context) {
@@ -128,8 +132,9 @@ class _RunBody extends StatelessWidget {
       run: run,
       steps: steps,
     );
-    final sessionId =
-        sessionIdFromRun(run) ?? fallbackSessionId?.trim();
+    final sessionId = sessionIdFromRun(run) ??
+        activeSessionId?.trim() ??
+        fallbackSessionId?.trim();
     final resolvedRunId = runIdFromRun(run) ?? runId.trim();
 
     return ListView(
@@ -162,6 +167,15 @@ class _RunBody extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         ...steps.map((s) => _stepTile(context, s)),
+        const SizedBox(height: 24),
+        Center(
+          child: Text(
+            ClientIdentification.versionFooterLabel,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ),
       ],
     );
   }
@@ -252,6 +266,12 @@ class _RunBody extends StatelessWidget {
             const SizedBox(height: 8),
             Text('Status: $status'),
             if (theme != null && theme.isNotEmpty) Text('Theme: $theme'),
+            const SizedBox(height: 8),
+            Text(
+              'Log correlation',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 4),
             Text(
               '${AppStrings.transformationDetailsDisplayTimeLabel}: '
               '${formatClientDisplayElapsed(clientDisplayElapsedSeconds)}',
