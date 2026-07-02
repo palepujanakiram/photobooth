@@ -51,22 +51,26 @@ Future<List<int>> loadImageBytesForNetworkPrint(XFile imageFile) async {
         receiveTimeout: const Duration(seconds: 30),
       ),
     );
-    configureDioForWeb(downloadDio);
-    if (kDebugMode) {
-      downloadDio.interceptors.add(ApiLoggingInterceptor());
-      downloadDio.interceptors.add(AliceDioProxyInterceptor());
+    try {
+      configureDioForWeb(downloadDio);
+      if (kDebugMode) {
+        downloadDio.interceptors.add(ApiLoggingInterceptor());
+        downloadDio.interceptors.add(AliceDioProxyInterceptor());
+      }
+      addKioskSessionTokenInterceptor(downloadDio);
+      final response = await downloadDio.get<List<int>>(
+        url,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final imageBytes = response.data ?? [];
+      if (imageBytes.isEmpty) {
+        throw PrintException('Downloaded image from URL is empty');
+      }
+      AppLogger.debug('✅ Downloaded ${imageBytes.length} bytes from URL');
+      return imageBytes;
+    } finally {
+      downloadDio.close(force: true);
     }
-    addKioskSessionTokenInterceptor(downloadDio);
-    final response = await downloadDio.get<List<int>>(
-      url,
-      options: Options(responseType: ResponseType.bytes),
-    );
-    final imageBytes = response.data ?? [];
-    if (imageBytes.isEmpty) {
-      throw PrintException('Downloaded image from URL is empty');
-    }
-    AppLogger.debug('✅ Downloaded ${imageBytes.length} bytes from URL');
-    return imageBytes;
   }
   return imageFile.readAsBytes();
 }

@@ -105,9 +105,9 @@ String tryDifferentStyleErrorMessage(Object e) {
 
 String generateImageErrorMessage(Object e) {
   if (e is ApiException) {
-    return 'Generation failed: ${e.userFacingMessage}';
+    return e.userFacingMessage;
   }
-  return 'Generation failed: ${e.toString()}';
+  return e.toString();
 }
 
 List<GeneratedImage> generatedImagesFromParallelResult({

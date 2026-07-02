@@ -1,0 +1,15 @@
+# Static Flutter web build served by nginx.
+#
+# Build assets first (from photobooth/):
+#   dart run tool/sync_build_version.dart
+#   flutter build web --release --dart-define=BASE_URL=https://fotozenai.fly.dev
+#
+# Deploy:
+#   fly deploy -c fly.web.toml
+
+FROM nginx:1.27-alpine
+
+COPY build/web /usr/share/nginx/html
+COPY deploy/nginx.web.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 8080

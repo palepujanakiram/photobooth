@@ -27,12 +27,15 @@ class CustomerDataDeletion {
 
   /// DELETE `/api/sessions/{id}` when possible, then clear kiosk customer state.
   Future<void> deleteMyPhotos() async {
-    final sessionId = _sessionManager.sessionId;
-    if (sessionId != null) {
-      await _deleteSessionOnServer(sessionId);
+    try {
+      final sessionId = _sessionManager.sessionId;
+      if (sessionId != null) {
+        await _deleteSessionOnServer(sessionId);
+      }
+    } finally {
+      await endPhotoboothCustomerSessionLogged('deleteMyPhotos');
+      await FileHelper.cleanupTempImages();
     }
-    await endPhotoboothCustomerSessionLogged('deleteMyPhotos');
-    await FileHelper.cleanupTempImages();
   }
 }
 

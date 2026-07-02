@@ -14,6 +14,20 @@ class PayloadSanitizer {
     return '${auth.substring(0, 10)}...${auth.substring(auth.length - 4)}';
   }
 
+  /// Masks sensitive HTTP header values (tokens, cookies, API keys).
+  String maskSensitiveHeader(String name, String value) {
+    final lower = name.toLowerCase();
+    if (lower == 'authorization') {
+      return maskAuthorization(value);
+    }
+    if (lower.contains('token') ||
+        lower.contains('cookie') ||
+        lower == 'x-api-key') {
+      return maskAuthorization(value);
+    }
+    return value;
+  }
+
   dynamic sanitizeData(dynamic data) {
     if (data == null) return null;
     if (data is Map) {

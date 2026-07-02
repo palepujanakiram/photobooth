@@ -33,6 +33,7 @@ import 'services/client_identification.dart';
 import 'services/session_manager.dart';
 import 'services/low_memory_monitor.dart';
 import 'utils/app_config.dart';
+import 'utils/platform_capabilities.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,7 +47,7 @@ Future<void> main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    if (!kIsWeb) {
+    if (supportsFirebaseMessaging) {
       FirebaseMessaging.onBackgroundMessage(
         firebaseMessagingBackgroundHandler,
       );
@@ -59,7 +60,7 @@ Future<void> main() async {
   // are loaded when the user opens the Capture screen (with timeout).
 
   // Bugsnag: release/profile mobile only (debug skips it; key from photobooth/.env at build time).
-  final bugsnagActive = !kIsWeb &&
+  final bugsnagActive = supportsBugsnagNative &&
       !kDebugMode &&
       AppConfig.bugsnagApiKey.isNotEmpty;
   if (bugsnagActive) {
@@ -133,7 +134,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
     WidgetsBinding.instance.addObserver(this);
     PaymentPushCoordinator.instance.attachNavigator(widget.navigatorKey);
     _appSettingsManager.fetchSettings(forceRefresh: true);
-    if (!kIsWeb && DefaultFirebaseOptions.isFirebaseConfigured) {
+    if (supportsFirebaseMessaging) {
       unawaited(_setupPaymentFcmListeners());
     }
   }
@@ -307,7 +308,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _appSettingsManager.fetchSettings(forceRefresh: true);
-      if (!kIsWeb && DefaultFirebaseOptions.isFirebaseConfigured) {
+      if (supportsFirebaseMessaging) {
         unawaited(
           PaymentPushCoordinator.instance.flushPendingStoragePayment(),
         );

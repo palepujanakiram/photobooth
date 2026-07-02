@@ -92,8 +92,8 @@ class ApiBodyLogFormatting {
     if (headers.isEmpty) return;
     buffer.writeln('\n$title:');
     headers.forEach((key, value) {
-      if (key.toLowerCase() == 'authorization' && value is String) {
-        buffer.writeln('  $key: ${_sanitizer.maskAuthorization(value)}');
+      if (value is String) {
+        buffer.writeln('  $key: ${_sanitizer.maskSensitiveHeader(key, value)}');
       } else {
         buffer.writeln('  $key: $value');
       }

@@ -1,5 +1,16 @@
 import '../utils/logger.dart';
 
+Map<String, dynamic>? identityVerificationFromResponse(
+  Map<String, dynamic> response,
+) {
+  final raw =
+      response['identityVerification'] ?? response['identity_verification'];
+  if (raw is Map) {
+    return Map<String, dynamic>.from(raw);
+  }
+  return null;
+}
+
 /// Debug logging for POST /api/generate-image metadata block.
 void logGenerateImageResponseMetadata(Map<String, dynamic> response) {
   final runId = response['runId'] as String?;
@@ -7,7 +18,15 @@ void logGenerateImageResponseMetadata(Map<String, dynamic> response) {
   final timing = response['timing'] as Map<String, dynamic>?;
   final faceVerification = response['faceVerification'] as Map<String, dynamic>?;
   final evaluation = response['evaluation'] as Map<String, dynamic>?;
-  if (runId == null && framing == null && timing == null) return;
+  final identityVerification = identityVerificationFromResponse(response);
+  if (runId == null &&
+      framing == null &&
+      timing == null &&
+      faceVerification == null &&
+      evaluation == null &&
+      identityVerification == null) {
+    return;
+  }
 
   AppLogger.debug('📊 Generation metadata:');
   _logRunId(runId);
@@ -15,6 +34,7 @@ void logGenerateImageResponseMetadata(Map<String, dynamic> response) {
   _logTiming(timing);
   _logFaceVerification(faceVerification);
   _logEvaluation(evaluation);
+  _logIdentityVerification(identityVerification);
 }
 
 void _logRunId(String? runId) {
@@ -56,5 +76,25 @@ void _logEvaluation(Map<String, dynamic>? evaluation) {
   AppLogger.debug(
     '   Evaluation: composite=${evaluation['compositeScore']}, '
     'identity=${evaluation['identityScore']}, prompt=${evaluation['promptScore']}',
+  );
+}
+
+void _logIdentityVerification(Map<String, dynamic>? identityVerification) {
+  if (identityVerification == null) return;
+  final passed = identityVerification['passed'];
+  final minScore = identityVerification['minFaceScore'] ??
+      identityVerification['embeddingMinSimilarity'];
+  final avgScore = identityVerification['avgFaceScore'] ??
+      identityVerification['embeddingAvgSimilarity'];
+  final threshold = identityVerification['thresholdUsed'] ??
+      identityVerification['embeddingThresholdUsed'];
+  final retries = identityVerification['retryCount'];
+  final failed = identityVerification['failedFaceIndices'] ??
+      identityVerification['embeddingFailedFaceIndices'];
+  final personCountMatch = identityVerification['personCountMatch'];
+  AppLogger.debug(
+    '   Identity verification: passed=$passed personCountMatch=$personCountMatch '
+    'min=$minScore avg=$avgScore threshold=$threshold '
+    'retries=$retries failedFaces=$failed',
   );
 }

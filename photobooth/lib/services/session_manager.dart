@@ -184,8 +184,7 @@ class SessionManager extends ChangeNotifier {
     final s = _currentSession;
     if (s == null) return null;
     final now = DateTime.now();
-    final expiryCutoff = now.add(kSessionExpiryGrace);
-    if (s.expiresAt.isBefore(expiryCutoff)) {
+    if (s.expiresAt.add(kSessionExpiryGrace).isBefore(now)) {
       if (!_expiryClearScheduled) {
         _expiryClearScheduled = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -214,11 +213,13 @@ class SessionManager extends ChangeNotifier {
   /// Check if a session exists
   bool get hasSession => currentSession != null;
 
-  /// Check if session is expired
+  /// Check if session is expired (allows [kSessionExpiryGrace] after [expiresAt]).
   bool get isSessionExpired {
     final s = _currentSession;
     if (s == null) return true;
-    return s.expiresAt.isBefore(DateTime.now().add(kSessionExpiryGrace));
+    return s.expiresAt
+        .add(kSessionExpiryGrace)
+        .isBefore(DateTime.now());
   }
 
   Future<void> _persistCurrentSession() async {

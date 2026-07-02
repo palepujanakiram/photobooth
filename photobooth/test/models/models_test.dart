@@ -24,6 +24,15 @@ void main() {
     expect(m.activeLanguages, ['en', 'hi']);
   });
 
+  test('AppSettingsModel.fromJson parses commentary and thermal flags', () {
+    final m = AppSettingsModel.fromJson({
+      'showGenerationCommentary': true,
+      'thermalSafeMode': true,
+    });
+    expect(m.showGenerationCommentary, isTrue);
+    expect(m.thermalSafeMode, isTrue);
+  });
+
   test('KioskInfoModel.isValid requires id and code', () {
     expect(
       KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'}).isValid,
@@ -91,6 +100,17 @@ void main() {
     expect(t.prompt, 'p');
     expect(t.copyWith((p) => p.name = 'N2').name, 'N2');
     expect(t == ThemeModel.fromJson({'id': 't1', 'categoryId': 'c1', 'name': 'x', 'description': 'd', 'promptText': 'p'}), isTrue);
+  });
+
+  test('ThemeModel.fromJson tolerates null optional fields', () {
+    final t = ThemeModel.fromJson({
+      'id': 't2',
+      'name': 'Solo',
+      'promptText': 'prompt',
+    });
+    expect(t.categoryId, '');
+    expect(t.description, '');
+    expect(t.name, 'Solo');
   });
 
   test('TransformedImageModel toJson round-trip', () {

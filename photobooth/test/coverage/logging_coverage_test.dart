@@ -117,8 +117,17 @@ void main() {
     expect(buf5.toString(), contains('truncated'));
 
     final buf6 = StringBuffer();
-    bodyFmt.appendHeaders(buf6, {'Authorization': 'Bearer x'});
-    expect(buf6.toString(), contains('Authorization'));
+    bodyFmt.appendHeaders(buf6, {
+      'Authorization': 'Bearer x',
+      'X-Kiosk-Session-Token': 'kiosk-secret-token-abcdefghijklmnop',
+      'X-Staff-Token': 'staff-secret-token-abcdefghijklmnop',
+      'Content-Type': 'application/json',
+    });
+    final headerLog = buf6.toString();
+    expect(headerLog, contains('Authorization'));
+    expect(headerLog, isNot(contains('kiosk-secret-token-abcdefghijklmnop')));
+    expect(headerLog, isNot(contains('staff-secret-token-abcdefghijklmnop')));
+    expect(headerLog, contains('application/json'));
   });
 
   test('PayloadSanitizer nested map and prettyJson', () {

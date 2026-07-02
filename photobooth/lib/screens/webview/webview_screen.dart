@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' show RouteSettings, Scaffold;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../../utils/platform_capabilities.dart';
 import '../../views/widgets/app_colors.dart';
 
 /// Loads [url] in a [WebViewWidget] with loading and error states.
@@ -50,7 +54,26 @@ class _WebViewScreenState extends State<WebViewScreen> {
   @override
   void initState() {
     super.initState();
+    if (!supportsEmbeddedWebView) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_openExternallyAndPop());
+      });
+      return;
+    }
     _initializeWebView();
+  }
+
+  Future<void> _openExternallyAndPop() async {
+    final url = widget.url.trim();
+    if (url.isEmpty) {
+      if (mounted) Navigator.of(context).maybePop();
+      return;
+    }
+    final uri = Uri.tryParse(url);
+    if (uri != null && await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+    if (mounted) Navigator.of(context).maybePop();
   }
 
   void _initializeWebView() {
@@ -140,6 +163,19 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
   Widget _buildBody(BuildContext context) {
     final appColors = AppColors.of(context);
+
+    if (!supportsEmbeddedWebView) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Opening in your browser…',
+            style: TextStyle(color: appColors.textColor),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
 
     if (widget.url.isEmpty) {
       return Center(

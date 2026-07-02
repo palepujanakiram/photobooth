@@ -28,6 +28,73 @@ bool uvcMayResumeLiveFeed({
       uvcFeedPhaseBlocksLivePreview(phase);
 }
 
+/// Whether the live UVC feed may auto-open (not asleep, not reviewing).
+bool uvcMayAutoOpenLiveFeed({
+  required UvcFeedPhase phase,
+  required bool captureInFlight,
+  required bool hasCapturedPhoto,
+  required bool feedAsleep,
+}) {
+  return phase == UvcFeedPhase.live &&
+      !captureInFlight &&
+      !hasCapturedPhoto &&
+      !feedAsleep;
+}
+
+/// Whether idle sleep may close the live UVC feed.
+bool uvcIdleSleepMayCloseFeed({
+  required bool idleSleepEnabled,
+  required bool isUsingUvc,
+  required UvcFeedPhase phase,
+  required bool captureInFlight,
+  required bool isCapturing,
+  required bool hasCapturedPhoto,
+  required bool withinShutterGrace,
+  required bool feedAsleep,
+}) {
+  if (!idleSleepEnabled || !isUsingUvc || feedAsleep) return false;
+  if (phase != UvcFeedPhase.live) return false;
+  if (captureInFlight || isCapturing || hasCapturedPhoto) return false;
+  if (withinShutterGrace) return false;
+  return true;
+}
+
+/// Whether app lifecycle should pause (close) the UVC feed.
+bool uvcLifecycleShouldPauseFeed({
+  required bool lifecyclePauseEnabled,
+  required bool isUsingUvc,
+  required bool holdLiveFeedClosed,
+  required bool hasOpenController,
+}) {
+  if (!lifecyclePauseEnabled || !isUsingUvc) return false;
+  if (holdLiveFeedClosed) return false;
+  return hasOpenController;
+}
+
+/// Whether app lifecycle resume should reopen the UVC feed.
+bool uvcLifecycleShouldResumeFeed({
+  required bool lifecyclePauseEnabled,
+  required bool isUsingUvc,
+  required bool lifecyclePaused,
+  required bool mayAutoOpenLiveFeed,
+  required bool blocksConcurrentAutoOpen,
+  required bool withinShutterGrace,
+  required bool hasOpenController,
+}) {
+  if (!lifecyclePauseEnabled || !isUsingUvc) return false;
+  if (!lifecyclePaused) {
+    return isUsingUvc &&
+        !hasOpenController &&
+        mayAutoOpenLiveFeed &&
+        !blocksConcurrentAutoOpen &&
+        !withinShutterGrace;
+  }
+  return mayAutoOpenLiveFeed &&
+      !blocksConcurrentAutoOpen &&
+      !withinShutterGrace &&
+      !hasOpenController;
+}
+
 /// Block auto-open / reconnect while the feed is mid-transition.
 bool uvcBlocksConcurrentAutoOpen({
   required bool initializing,

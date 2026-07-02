@@ -1,4 +1,8 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:uvccamera/uvccamera.dart';
+
+import 'app_runtime_config.dart';
+import 'constants.dart';
 
 /// Tunable levers for USB/DSLR (UVC) capture on memory-constrained tablets.
 ///
@@ -78,8 +82,23 @@ class UvcCaptureConfig {
   static const bool enableSessionRecycle = true;
 
   /// Interval between idle session recycles (stop preview → release → reopen).
-  static const Duration sessionRecyclePeriod = Duration(minutes: 15);
+  static const Duration sessionRecyclePeriod = Duration(minutes: 8);
 
   /// When recycle is deferred (capture in flight, reviewing, etc.), retry after this delay.
   static const Duration sessionRecycleRetryDelay = Duration(minutes: 2);
+
+  /// UVC thermal relief from `/api/settings` or low-memory kiosk mode.
+  static bool get thermalReliefEnabled =>
+      !kIsWeb &&
+      (AppRuntimeConfig.instance.thermalSafeMode ||
+          AppConstants.kLowMemoryKioskMode);
+
+  /// Close the live UVC feed after [idleSleepPeriod] with no capture activity.
+  static bool get idleSleepEnabled => !kIsWeb;
+
+  /// Idle time before closing the live feed (tap preview to reopen).
+  static const Duration idleSleepPeriod = Duration(seconds: 45);
+
+  /// Close UVC when the app is backgrounded; reopen on resume.
+  static bool get lifecyclePauseEnabled => !kIsWeb;
 }

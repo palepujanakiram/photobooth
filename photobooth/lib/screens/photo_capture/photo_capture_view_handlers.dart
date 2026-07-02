@@ -38,7 +38,7 @@ Future<void> handleCapturedPhotoRetake({
   viewModel.clearCapturedPhoto();
 }
 
-/// Continue: upload, release camera, navigate to theme selection.
+/// Continue: release cameras, upload, navigate to theme selection.
 Future<void> handleCapturedPhotoContinue({
   required BuildContext context,
   required CaptureViewModel viewModel,
@@ -48,6 +48,7 @@ Future<void> handleCapturedPhotoContinue({
   if (!viewModel.canContinueUpload || viewModel.isUploading) return;
   final currentContext = context;
   if (!isMounted() || !currentContext.mounted) return;
+
   final success = await viewModel.uploadPhotoToSession();
   if (!isMounted() || !currentContext.mounted) return;
   if (!success || viewModel.capturedPhoto == null) {

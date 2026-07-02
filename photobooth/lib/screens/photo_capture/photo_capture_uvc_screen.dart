@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:uvccamera/uvccamera.dart';
 
 import '../../services/error_reporting/error_reporting_manager.dart';
+import '../../services/uvc_device_event_hub.dart';
 import '../../utils/logger.dart';
 import 'photo_capture_viewmodel.dart';
 
@@ -51,7 +52,7 @@ class _PhotoCaptureUvcScreenState extends State<PhotoCaptureUvcScreen> {
   void _attachDeviceEvents() {
     if (defaultTargetPlatform != TargetPlatform.android) return;
     _deviceEventsSub?.cancel();
-    _deviceEventsSub = UvcCamera.deviceEventStream.listen((e) {
+    _deviceEventsSub = UvcDeviceEventHub.instance.listen((e) {
       final isSameDevice = e.device.vendorId == widget.device.vendorId &&
           e.device.productId == widget.device.productId &&
           e.device.name == widget.device.name;

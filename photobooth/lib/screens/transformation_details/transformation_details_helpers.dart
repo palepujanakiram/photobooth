@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// Parsing helpers for transformation details API payload (Sonar S3776).
 List<Map<String, dynamic>> parseTransformationSteps(dynamic stepsRaw) {
   if (stepsRaw is! List) return <Map<String, dynamic>>[];
@@ -37,6 +39,180 @@ Map<String, dynamic> parseAppliedSettings(Map<String, dynamic> meta) {
     return Map<String, dynamic>.from(meta['appliedSettings'] as Map);
   }
   return <String, dynamic>{};
+}
+
+Map<String, dynamic>? _mapOrNull(dynamic value) {
+  if (value is Map) {
+    return Map<String, dynamic>.from(value);
+  }
+  return null;
+}
+
+bool _looksLikeIdentityVerification(Map<String, dynamic> data) {
+  if (data.containsKey('passed') &&
+      (_identityField(data, [
+            'embeddingMinSimilarity',
+            'minFaceScore',
+            'embeddingAvgSimilarity',
+            'avgFaceScore',
+          ]) !=
+          null)) {
+    return true;
+  }
+  return _identityField(data, [
+        'embeddingMinSimilarity',
+        'embeddingAvgSimilarity',
+        'embeddingThresholdUsed',
+      ]) !=
+      null;
+}
+
+Map<String, dynamic>? _identityFromMap(dynamic value) {
+  if (value is String && value.trim().isNotEmpty) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+  final map = _mapOrNull(value);
+  if (map != null && _looksLikeIdentityVerification(map)) {
+    return map;
+  }
+  if (map != null) {
+    final nested = _mapOrNull(map['identityVerification']) ??
+        _mapOrNull(map['identity_verification']);
+    if (nested != null) return nested;
+  }
+  return null;
+}
+
+Map<String, dynamic>? _identityFromStep(Map<String, dynamic> step) {
+  for (final key in ['metadata', 'outputData', 'inputData']) {
+    final found = _identityFromMap(step[key]);
+    if (found != null) return found;
+  }
+  return null;
+}
+
+/// Identity verification block from generation run API (`identity_verification` JSON).
+Map<String, dynamic>? parseIdentityVerification({
+  required Map<String, dynamic> payload,
+  required Map<String, dynamic> run,
+  required List<Map<String, dynamic>> steps,
+}) {
+  for (final source in [
+    payload,
+    run,
+    parseRunMetadata(run),
+    payload['generationLog'],
+    payload['generation_log'],
+    payload['log'],
+  ]) {
+    final found = _identityFromMap(source);
+    if (found != null) return found;
+  }
+
+  for (final step in steps) {
+    final found = _identityFromStep(step);
+    if (found != null) return found;
+  }
+
+  return null;
+}
+
+dynamic _identityField(Map<String, dynamic> data, List<String> keys) {
+  for (final key in keys) {
+    if (data.containsKey(key)) return data[key];
+  }
+  return null;
+}
+
+String formatIdentityVerificationScore(dynamic value) {
+  if (value is! num) return value?.toString() ?? '—';
+  if (value > 0 && value <= 1) {
+    return '${(value * 100).round()}%';
+  }
+  return '${value.round()}%';
+}
+
+/// Human-readable lines for the transformation details identity card.
+///
+/// Supports backend shapes:
+/// - `minFaceScore` / `avgFaceScore` / `thresholdUsed` / `failedFaceIndices`
+/// - `embeddingMinSimilarity` / `embeddingAvgSimilarity` / `embeddingThresholdUsed` /
+///   `embeddingFailedFaceIndices` (0–100 scale)
+List<String> identityVerificationSummaryLines(Map<String, dynamic> data) {
+  final lines = <String>[];
+  final passed = data['passed'];
+  if (passed is bool) {
+    lines.add('Result: ${passed ? 'Passed' : 'Failed'}');
+  }
+  final personCountMatch = _identityField(data, ['personCountMatch']);
+  if (personCountMatch is bool) {
+    lines.add('Face count match: ${personCountMatch ? 'Yes' : 'No'}');
+  }
+  final threshold = _identityField(data, [
+    'thresholdUsed',
+    'embeddingThresholdUsed',
+  ]);
+  if (threshold != null) {
+    lines.add('Threshold: ${formatIdentityVerificationScore(threshold)}');
+  }
+  final minScore = _identityField(data, [
+    'minFaceScore',
+    'embeddingMinSimilarity',
+  ]);
+  if (minScore != null) {
+    lines.add('Min face score: ${formatIdentityVerificationScore(minScore)}');
+  }
+  final avgScore = _identityField(data, [
+    'avgFaceScore',
+    'embeddingAvgSimilarity',
+  ]);
+  if (avgScore != null) {
+    lines.add('Avg face score: ${formatIdentityVerificationScore(avgScore)}');
+  }
+  final perFace = _identityField(data, [
+    'perFaceScores',
+    'embeddingPerFaceSimilarities',
+  ]);
+  if (perFace is List && perFace.isNotEmpty) {
+    final formatted = perFace
+        .map(formatIdentityVerificationScore)
+        .join(', ');
+    lines.add('Per-face scores: $formatted');
+  }
+  final failed = _identityField(data, [
+    'failedFaceIndices',
+    'embeddingFailedFaceIndices',
+  ]);
+  if (failed is List && failed.isNotEmpty) {
+    lines.add('Failed face indices: ${failed.join(', ')}');
+  }
+  final retryCount = data['retryCount'];
+  if (retryCount is num) {
+    lines.add('Retries: ${retryCount.round()}');
+  }
+  final themeName = data['themeName']?.toString();
+  if (themeName != null && themeName.isNotEmpty) {
+    lines.add('Theme: $themeName');
+  } else {
+    final themeId = data['themeId']?.toString();
+    if (themeId != null && themeId.isNotEmpty) {
+      lines.add('Theme ID: $themeId');
+    }
+  }
+  final snippet = data['promptSnippet']?.toString();
+  if (snippet != null && snippet.isNotEmpty) {
+    final trimmed =
+        snippet.length > 120 ? '${snippet.substring(0, 120)}…' : snippet;
+    lines.add('Prompt snippet: $trimmed');
+  }
+  return lines;
 }
 
 String? finalPromptFromAiStep(Map<String, dynamic>? aiStep) {

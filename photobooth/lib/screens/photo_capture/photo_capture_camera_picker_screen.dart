@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:uvccamera/uvccamera.dart';
 
 import '../../services/error_reporting/error_reporting_manager.dart';
+import '../../services/uvc_device_event_hub.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/logger.dart';
 import 'photo_capture_camera_selection_helpers.dart';
@@ -54,7 +55,7 @@ class _PhotoCaptureCameraPickerScreenState
   void _attachUvcDeviceEvents() {
     if (defaultTargetPlatform != TargetPlatform.android) return;
     _uvcDeviceEventsSub?.cancel();
-    _uvcDeviceEventsSub = UvcCamera.deviceEventStream.listen(
+    _uvcDeviceEventsSub = UvcDeviceEventHub.instance.listen(
       (e) {
         AppLogger.debug(
           '🔌 UVC device event: ${e.type.name} '

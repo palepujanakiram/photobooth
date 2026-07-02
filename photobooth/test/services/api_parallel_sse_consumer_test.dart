@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -90,5 +91,21 @@ void main() {
     final result = await consumeParallelGenerationSseStream(body, slotCount: 2);
     expect(result.success, isTrue);
     expect(result.imageUrlsBySlot.first, contains('partial.jpg'));
+  });
+
+  test('consumeParallelGenerationSseStream times out on stalled stream', () async {
+    final controller = StreamController<Uint8List>();
+    addTearDown(controller.close);
+    final body = ResponseBody(controller.stream, 200);
+    await expectLater(
+      consumeParallelGenerationSseStream(
+        body,
+        slotCount: 1,
+        timeout: const Duration(milliseconds: 50),
+      ),
+      throwsA(
+        predicate<ApiException>((e) => e.message.contains('timed out')),
+      ),
+    );
   });
 }

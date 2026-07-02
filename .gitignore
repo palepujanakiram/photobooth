@@ -43,9 +43,6 @@ photobooth/build/
 **/*.keystore
 **/*.jks.zip
 **/*keystore*.zip
-!photobooth/android/keystore/
-!photobooth/android/keystore/fotozen-upload.jks
-!photobooth/android/keystore/key.properties
 
 # Symbolication related
 app.*.symbols

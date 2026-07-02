@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photobooth/models/app_settings_model.dart';
+import 'package:photobooth/utils/app_runtime_config.dart';
 import 'package:photobooth/utils/uvc_capture_config.dart';
 import 'package:uvccamera/uvccamera.dart';
 
@@ -24,11 +26,29 @@ void main() {
     expect(UvcCaptureConfig.enableSessionRecycle, isTrue);
     expect(
       UvcCaptureConfig.sessionRecyclePeriod,
-      const Duration(minutes: 15),
+      const Duration(minutes: 8),
     );
     expect(
       UvcCaptureConfig.sessionRecycleRetryDelay,
       const Duration(minutes: 2),
     );
+    expect(UvcCaptureConfig.idleSleepPeriod, const Duration(seconds: 45));
+    expect(UvcCaptureConfig.idleSleepEnabled, isTrue);
+    expect(UvcCaptureConfig.lifecyclePauseEnabled, isTrue);
+    expect(UvcCaptureConfig.thermalReliefEnabled, isFalse);
+  });
+
+  test('thermalReliefEnabled when thermalSafeMode or commentary kiosk mode', () {
+    expect(UvcCaptureConfig.thermalReliefEnabled, isFalse);
+
+    AppRuntimeConfig.instance.applyFromSettings(
+      AppSettingsModel(thermalSafeMode: true),
+    );
+    expect(UvcCaptureConfig.thermalReliefEnabled, isTrue);
+
+    AppRuntimeConfig.instance.applyFromSettings(
+      AppSettingsModel(showGenerationCommentary: true),
+    );
+    expect(UvcCaptureConfig.thermalReliefEnabled, isTrue);
   });
 }

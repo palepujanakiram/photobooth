@@ -29,11 +29,13 @@ class SecureImageUrl {
   /// Resolves relative API paths to an absolute URL (no `sessionId` appended).
   static String absolutize(String url) => _absolutizeIfRelative(url);
 
-  /// Returns [url] with `sessionId=<currentSessionId>` appended when it points to `/api/img/...`
-  /// and no other access token is already present.
-  static String withSessionId(String url, {String? sessionId}) {
+  /// Returns [url] with `sessionId` and `kioskToken` when needed for `/api/img/...`.
+  static String withSessionId(String url, {String? sessionId, String? kioskToken}) {
     final sid = (sessionId ?? SessionManager().sessionId)?.trim();
-    if (sid == null || sid.isEmpty) return url;
+    final token = (kioskToken ?? SessionManager().kioskAuthToken)?.trim();
+    if ((sid == null || sid.isEmpty) && (token == null || token.isEmpty)) {
+      return url;
+    }
 
     // If it's a protected image path and relative, make it absolute first.
     final maybeAbsolute = _isProtectedImgPath(url.trimLeft())
@@ -50,10 +52,15 @@ class SecureImageUrl {
     if (!_isProtectedImgPath(uri.path)) return maybeAbsolute;
 
     final qp = Map<String, String>.from(uri.queryParameters);
-    if (qp.containsKey('sessionId') || qp.containsKey('shareToken')) {
+    if (qp.containsKey('shareToken')) {
       return uri.toString();
     }
-    qp['sessionId'] = sid;
+    if (sid != null && sid.isNotEmpty && !qp.containsKey('sessionId')) {
+      qp['sessionId'] = sid;
+    }
+    if (token != null && token.isNotEmpty && !qp.containsKey('kioskToken')) {
+      qp['kioskToken'] = token;
+    }
     return uri.replace(queryParameters: qp).toString();
   }
 

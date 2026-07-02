@@ -1018,7 +1018,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         ),
       );
     } catch (e, st) {
-      _r._errorMessage = 'Failed to print: $e';
+      _r._errorMessage = AppStrings.printFailedGeneric;
       unawaited(
         reportIssue(
           'Silent network print failed',
@@ -1086,7 +1086,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         ),
       );
     } catch (e, st) {
-      _r._errorMessage = 'Failed to print: $e';
+      _r._errorMessage = AppStrings.printFailedGeneric;
       unawaited(
         reportIssue(
           'Dialog print failed',

@@ -35,17 +35,19 @@ void main() {
     );
     final mgr = AppSettingsManager(
       apiService: _SettingsApi(
-        AppSettingsModel(showGenerationCommentary: true),
+        AppSettingsModel(showGenerationCommentary: true, thermalSafeMode: true),
       ),
     );
     await mgr.fetchSettings();
     expect(AppRuntimeConfig.instance.showGenerationCommentary, isTrue);
+    expect(AppRuntimeConfig.instance.thermalSafeMode, isTrue);
 
     AppRuntimeConfig.instance.applyFromSettings(
       AppSettingsModel(showGenerationCommentary: false),
     );
     await mgr.fetchSettings();
     expect(AppRuntimeConfig.instance.showGenerationCommentary, isTrue);
+    expect(AppRuntimeConfig.instance.thermalSafeMode, isTrue);
   });
 
   test('fetchSettings records error string', () async {

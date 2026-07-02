@@ -19,8 +19,10 @@ Uint8List cameraImageToJpegBytes(CameraImage image) {
   final vBytes = vPlane.bytes;
 
   final yRowStride = yPlane.bytesPerRow;
-  final uvRowStride = uPlane.bytesPerRow;
-  final uvPixelStride = uPlane.bytesPerPixel ?? 1;
+  final uRowStride = uPlane.bytesPerRow;
+  final vRowStride = vPlane.bytesPerRow;
+  final uPixelStride = uPlane.bytesPerPixel ?? 1;
+  final vPixelStride = vPlane.bytesPerPixel ?? 1;
 
   final out = img.Image(width: width, height: height);
 
@@ -32,14 +34,16 @@ Uint8List cameraImageToJpegBytes(CameraImage image) {
 
   for (int y = 0; y < height; y++) {
     final yRowOffset = yRowStride * y;
-    final uvRowOffset = uvRowStride * (y >> 1);
+    final uRowOffset = uRowStride * (y >> 1);
+    final vRowOffset = vRowStride * (y >> 1);
     for (int x = 0; x < width; x++) {
       final yIndex = yRowOffset + x;
-      final uvIndex = uvRowOffset + (x >> 1) * uvPixelStride;
+      final uIndex = uRowOffset + (x >> 1) * uPixelStride;
+      final vIndex = vRowOffset + (x >> 1) * vPixelStride;
 
       final yVal = yBytes[yIndex] & 0xFF;
-      final uVal = (uBytes[uvIndex] & 0xFF) - 128;
-      final vVal = (vBytes[uvIndex] & 0xFF) - 128;
+      final uVal = (uBytes[uIndex] & 0xFF) - 128;
+      final vVal = (vBytes[vIndex] & 0xFF) - 128;
 
       final r = (yVal + 1.402 * vVal).round();
       final g = (yVal - 0.344136 * uVal - 0.714136 * vVal).round();

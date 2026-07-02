@@ -7,6 +7,10 @@ abstract final class AppStrings {
   /// Shown after a successful silent print to the network printer.
   static const printJobSentSuccess = 'Print job sent successfully!';
 
+  /// Generic print failure when the underlying error must not be shown to guests.
+  static const printFailedGeneric =
+      'Failed to print. Please check the printer and try again.';
+
   /// Browser / Dio message when a web request cannot reach the API (CORS, offline).
   static const failedToFetch = 'Failed to fetch';
 
@@ -64,6 +68,10 @@ abstract final class AppStrings {
 
   /// Shown while re-enumerating cameras in the picker.
   static const cameraPickerRefreshing = 'Looking for cameras…';
+
+  /// UVC idle sleep: tap to reopen the live DSLR feed after thermal relief closed it.
+  static const uvcTapToWakePreview =
+      'Tap when ready\nto start the camera preview';
 
   /// POSE screen: shown briefly before returning to Terms after idle timeout.
   static const captureScreenIdleResetMessage =

@@ -1,0 +1,43 @@
+# Fly.io — Fotozen photobooth Flutter web (static nginx).
+#
+# Deploy (single machine, no HA pair — important when region capacity is tight):
+#   ./scripts/deploy_web_fly.sh
+#
+# Or manually:
+#   dart run tool/sync_build_version.dart
+#   flutter build web --release --dart-define=BASE_URL=https://fotozenai.fly.dev
+#   fly deploy -c fly.web.toml --ha=false
+#   fly scale count 1 -y -c fly.web.toml
+#
+# First-time: fly apps create fotozen-web
+# API CORS: fotozenai must allow this origin (built into zenai/server/index.ts).
+# After first deploy, also set on the API app if you use a custom domain:
+#   fly secrets set FLUTTER_WEB_URL=https://fotozen-web.fly.dev -a fotozenai
+
+app = "fotozen-web"
+primary_region = "bom"
+
+[build]
+  dockerfile = "Dockerfile.web"
+
+[deploy]
+  strategy = "rolling"
+  max_unavailable = 1
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    method = "get"
+    path = "/"
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

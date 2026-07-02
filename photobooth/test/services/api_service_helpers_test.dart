@@ -279,7 +279,26 @@ void main() {
         'identityScore': 0.8,
         'promptScore': 0.7,
       },
+      'identity_verification': {
+        'passed': true,
+        'embeddingMinSimilarity': 100,
+        'embeddingAvgSimilarity': 100,
+        'embeddingThresholdUsed': 75,
+        'personCountMatch': true,
+        'embeddingFailedFaceIndices': [],
+      },
     });
+  });
+
+  test('identityVerificationFromResponse accepts camelCase and snake_case', () {
+    expect(
+      identityVerificationFromResponse({'identityVerification': {'passed': true}}),
+      isNotNull,
+    );
+    expect(
+      identityVerificationFromResponse({'identity_verification': {'passed': false}}),
+      isNotNull,
+    );
   });
 }
 

@@ -4,6 +4,26 @@ import 'package:photobooth/services/generation_api_errors.dart';
 import 'package:photobooth/utils/exceptions.dart';
 
 void main() {
+  test('fromDioException skips details when identical to error', () {
+    final dioError = DioException(
+      requestOptions: RequestOptions(path: '/api/generate-image'),
+      response: Response(
+        requestOptions: RequestOptions(path: '/'),
+        statusCode: 500,
+        data: {
+          'error': 'Generated image did not preserve facial identity. Please try again.',
+          'details':
+              'Generated image did not preserve facial identity. Please try again.',
+        },
+      ),
+    );
+    final failure = GenerationApiFailure.fromDioException(dioError);
+    expect(
+      failure.userMessage,
+      'Generated image did not preserve facial identity. Please try again.',
+    );
+  });
+
   test('fromDioException parses error and details from JSON body', () {
     final dioError = DioException(
       requestOptions: RequestOptions(path: '/api/generate-image'),

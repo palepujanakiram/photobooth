@@ -18,6 +18,7 @@ import '../../utils/device_classifier.dart';
 import '../../utils/app_device_type.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
+import '../../utils/platform_capabilities.dart';
 import '../../utils/uvc_capture_config.dart';
 import 'camera_description_label.dart';
 import '../../utils/app_strings.dart';
@@ -25,6 +26,7 @@ import '../../utils/logger.dart';
 import '../../utils/error_reporting_helpers.dart';
 import 'photo_capture_camera_error_helpers.dart';
 import '../../utils/web_flow_trace.dart';
+import '../../utils/web_upload_error_hint.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_camera_config.dart';
@@ -38,6 +40,17 @@ class CaptureViewModel extends ChangeNotifier {
   final Uuid _uuid = const Uuid();
   static List<CameraDescription>? _cachedAvailableCameras;
   CameraController? _cameraController;
+
+  /// Set true in [dispose]. Post-await work should bail before mutating state.
+  bool _disposed = false;
+  bool get isDisposed => _disposed;
+
+  /// No-op once [_disposed] — safe for fire-and-forget camera/upload callbacks.
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
 
   /// Preloads camera list in main() (like the camera package example).
   /// Only caches when list is non-empty so Android without permission still does full load on screen open.
@@ -485,7 +498,10 @@ class CaptureViewModel extends ChangeNotifier {
     _uploadTimer?.cancel();
     _uploadTimer = null;
   }
+  bool get isDesktopCaptureMode => usesDesktopPhotoPicker;
+
   bool get isReady {
+    if (isDesktopCaptureMode) return !_isLoadingCameras;
     return _cameraController != null &&
         _cameraController!.value.isInitialized;
   }
@@ -779,6 +795,13 @@ class CaptureViewModel extends ChangeNotifier {
     _isLoadingCameras = true;
     _errorMessage = null;
     notifyListeners();
+
+    if (usesDesktopPhotoPicker) {
+      _isLoadingCameras = false;
+      _availableCameras = [];
+      notifyListeners();
+      return;
+    }
 
     try {
       if (!forceRefresh && _cachedAvailableCameras != null) {
@@ -1160,10 +1183,13 @@ class CaptureViewModel extends ChangeNotifier {
 
   Future<void> _finishCameraSetup(CameraDescription camera) async {
     final controller = _cameraController;
-    if (controller == null || !controller.value.isInitialized) return;
+    if (controller == null || !controller.value.isInitialized || _disposed) {
+      return;
+    }
 
     try {
       final rotation = await _fetchDisplayRotation();
+      if (_disposed) return;
       _displayRotation = rotation;
       AppLogger.debug('   Display rotation: $rotation');
       await maybeLockAndroidPortraitCapture(
@@ -1171,15 +1197,19 @@ class CaptureViewModel extends ChangeNotifier {
         camera: camera,
         displayRotation: rotation,
       );
+      if (_disposed) return;
       await _applyDefaultPreviewRotationForDevice();
       notifyListeners();
     } catch (_) {
       // Preview can still work without this metadata.
     }
 
+    if (_disposed) return;
     await _loadZoomInBackground();
+    if (_disposed) return;
 
     final details = await fetchNativeCameraDetails(camera.name);
+    if (_disposed) return;
     _nativeCameraDetails = details;
     if (details != null) {
       logNativeCameraDetails(details);
@@ -1190,7 +1220,7 @@ class CaptureViewModel extends ChangeNotifier {
   /// Loads zoom range in background with timeout so init never hangs.
   Future<void> _loadZoomInBackground() async {
     final ctrl = _cameraController;
-    if (ctrl == null || !ctrl.value.isInitialized) return;
+    if (ctrl == null || !ctrl.value.isInitialized || _disposed) return;
 
     // camera_web only supports zoom when the track exposes `zoom` in
     // getCapabilities(); otherwise getMin/getMax/setZoom throw and emit
@@ -1215,6 +1245,7 @@ class CaptureViewModel extends ChangeNotifier {
         _zoomLoadTimeout,
         onTimeout: () => throw TimeoutException('getMaxZoomLevel'),
       );
+      if (_disposed) return;
       // Keep preview at minimum zoom (no zoom buttons in UI).
       await ctrl.setZoomLevel(minZ);
     } on CameraException {
@@ -1734,6 +1765,62 @@ class CaptureViewModel extends ChangeNotifier {
     });
   }
 
+  /// Windows / macOS / Linux: pick from webcam or file (no `camera` plugin).
+  Future<void> capturePhotoFromDesktopPicker({bool preferCamera = true}) async {
+    if (!usesDesktopPhotoPicker || _isCapturing || _isSelectingFromGallery) {
+      return;
+    }
+
+    _isCapturing = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final picker = ImagePicker();
+      XFile? imageFile;
+      if (preferCamera) {
+        try {
+          imageFile = await picker.pickImage(
+            source: ImageSource.camera,
+            maxWidth: 1920,
+            maxHeight: 1080,
+            imageQuality: AppConstants.kGalleryPickerImageQuality,
+          );
+        } catch (_) {
+          imageFile = null;
+        }
+      }
+      imageFile ??= await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: AppConstants.kGalleryPickerImageQuality,
+      );
+
+      if (imageFile == null) {
+        return;
+      }
+
+      final normalizedFile =
+          await ImageHelper.normalizeAndSaveCapturedPhoto(imageFile);
+      await _assignCapturedPhotoModel(
+        normalizedFile,
+        cameraIdOverride: 'desktop',
+      );
+    } catch (e, st) {
+      _errorMessage = 'Failed to capture photo: $e';
+      await ErrorReportingManager.recordError(
+        e,
+        st,
+        reason: 'desktop picker capture failed',
+        fatal: false,
+      );
+    } finally {
+      _isCapturing = false;
+      notifyListeners();
+    }
+  }
+
   /// Selects a photo from the device gallery
   /// This is a fallback option when camera is not working properly
   Future<void> selectFromGallery() async {
@@ -2138,6 +2225,14 @@ class CaptureViewModel extends ChangeNotifier {
       return false;
     }
 
+    final kioskToken = _sessionManager.kioskAuthToken;
+    if (kioskToken == null || kioskToken.isEmpty) {
+      _errorMessage =
+          'Session authentication is missing. Please go back and accept Terms again.';
+      notifyListeners();
+      return false;
+    }
+
     _isUploading = true;
     _errorMessage = null;
     _uploadStatusMessage = 'Preparing photo…';
@@ -2215,6 +2310,7 @@ class CaptureViewModel extends ChangeNotifier {
       WebFlowTrace.log('UPLOAD', 'ERROR TimeoutException $e');
       _errorMessage =
           'Upload took too long. Please check your connection and try again.';
+      _errorMessage = '$_errorMessage${webUploadErrorHint()}';
       unawaited(
         reportIssue(
           'Photo upload timed out',
@@ -2223,22 +2319,15 @@ class CaptureViewModel extends ChangeNotifier {
           extraInfo: {'source': 'photo_capture_upload'},
         ),
       );
-      if (kIsWeb) {
-        _errorMessage =
-            '$_errorMessage\n\nOn localhost web, run ./run_web_dev.sh (starts API proxy on :8787).';
-      }
       return false;
     } on app_exceptions.ApiException catch (e) {
       WebFlowTrace.log('UPLOAD', 'ERROR ApiException ${e.message}');
-      _errorMessage = e.message;
-      if (kIsWeb) {
-        _errorMessage =
-            '${e.message}\n\nOn localhost web, run ./run_web_dev.sh (API proxy).';
-      }
+      _errorMessage = '${e.message}${webUploadErrorHint(apiError: e)}';
       return false;
     } catch (e, st) {
       WebFlowTrace.log('UPLOAD', 'ERROR $e');
       _errorMessage = 'Failed to upload photo: ${e.toString()}';
+      _errorMessage = '$_errorMessage${webUploadErrorHint()}';
       unawaited(
         reportIssue(
           'Photo upload failed',
@@ -2247,10 +2336,6 @@ class CaptureViewModel extends ChangeNotifier {
           extraInfo: {'source': 'photo_capture_upload'},
         ),
       );
-      if (kIsWeb) {
-        _errorMessage =
-            'Failed to upload photo: $e\n\nOn localhost web, run ./run_web_dev.sh (API proxy).';
-      }
       return false;
     } finally {
       _stopUploadTimer();
@@ -2275,6 +2360,16 @@ class CaptureViewModel extends ChangeNotifier {
       _errorMessage = 'No active session found. Please accept terms first.';
       notifyListeners();
       return false;
+    }
+
+    if (kIsWeb) {
+      final kioskToken = _sessionManager.kioskAuthToken;
+      if (kioskToken == null || kioskToken.isEmpty) {
+        _errorMessage =
+            'Session authentication is missing. Please return to Terms and start again.';
+        notifyListeners();
+        return false;
+      }
     }
 
     _isUploading = true;
@@ -2355,6 +2450,7 @@ class CaptureViewModel extends ChangeNotifier {
   /// Disposes the camera controller
   @override
   void dispose() {
+    _disposed = true;
     _countdownTimer?.cancel();
     _countdownTimer = null;
     _stopUploadTimer();
