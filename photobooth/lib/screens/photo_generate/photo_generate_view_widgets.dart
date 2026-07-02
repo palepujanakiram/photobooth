@@ -976,6 +976,8 @@ Widget _buildTransformationDetailsStripLink(
         MaterialPageRoute<void>(
           builder: (_) => TransformationDetailsScreen(
             runId: viewModel.lastTransformationRunId!,
+            clientDisplayElapsedSeconds: viewModel.elapsedSeconds,
+            fallbackSessionId: viewModel.sessionId,
           ),
         ),
       );

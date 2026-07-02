@@ -305,6 +305,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   bool get canShowAddAnotherStyleButton =>
       generatedImages.length < _maxRegenerationsAllowed && triesRemaining > 0;
   int get elapsedSeconds => _elapsedSeconds;
+  String? get sessionId => _sessionManager.sessionId;
   String get progressMessage => _progressMessage;
   bool get isCancelled => _isCancelled;
 

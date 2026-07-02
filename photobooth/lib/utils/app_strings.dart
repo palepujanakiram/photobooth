@@ -178,6 +178,20 @@ abstract final class AppStrings {
 
   static const beholdTransformationDetailsLink = 'View transformation details';
 
+  static const transformationDetailsDisplayTimeLabel =
+      'Time to show on screen';
+
+  static const transformationDetailsServerDurationLabel = 'Server duration';
+
+  static const transformationDetailsSessionIdLabel = 'Session ID';
+
+  static const transformationDetailsRunIdLabel = 'Run ID';
+
+  static const transformationDetailsCopyLogIdsLabel = 'Copy for logs';
+
+  static const transformationDetailsCopiedLogIds =
+      'Copied session and run IDs for logs';
+
   static const beholdContinueLabel = 'Continue';
 
   static const beholdSelectedLabel = 'Selected';

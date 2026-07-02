@@ -1,8 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../utils/app_strings.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
 import '../../views/widgets/cached_network_image.dart';
@@ -15,9 +17,13 @@ class TransformationDetailsScreen extends StatelessWidget {
   const TransformationDetailsScreen({
     super.key,
     required this.runId,
+    this.clientDisplayElapsedSeconds,
+    this.fallbackSessionId,
   });
 
   final String runId;
+  final int? clientDisplayElapsedSeconds;
+  final String? fallbackSessionId;
 
   @override
   Widget build(BuildContext context) {
@@ -27,12 +33,21 @@ class TransformationDetailsScreen extends StatelessWidget {
         vm.load();
         return vm;
       },
-      child: const _TransformationDetailsBody(),
+      child: _TransformationDetailsBody(
+        runId: runId,
+        clientDisplayElapsedSeconds: clientDisplayElapsedSeconds,
+        fallbackSessionId: fallbackSessionId,
+      ),
     );
   }
 }
 
-Widget _transformationDetailsBody(TransformationDetailsViewModel vm) {
+Widget _transformationDetailsBody({
+  required TransformationDetailsViewModel vm,
+  required String runId,
+  int? clientDisplayElapsedSeconds,
+  String? fallbackSessionId,
+}) {
   if (vm.isLoading) {
     return const Center(child: CircularProgressIndicator());
   }
@@ -47,11 +62,24 @@ Widget _transformationDetailsBody(TransformationDetailsViewModel vm) {
       ),
     );
   }
-  return _RunBody(payload: vm.payload!);
+  return _RunBody(
+    runId: runId,
+    payload: vm.payload!,
+    clientDisplayElapsedSeconds: clientDisplayElapsedSeconds,
+    fallbackSessionId: fallbackSessionId,
+  );
 }
 
 class _TransformationDetailsBody extends StatelessWidget {
-  const _TransformationDetailsBody();
+  const _TransformationDetailsBody({
+    required this.runId,
+    this.clientDisplayElapsedSeconds,
+    this.fallbackSessionId,
+  });
+
+  final String runId;
+  final int? clientDisplayElapsedSeconds;
+  final String? fallbackSessionId;
 
   @override
   Widget build(BuildContext context) {
@@ -62,15 +90,28 @@ class _TransformationDetailsBody extends StatelessWidget {
         title: const Text('Transformation details'),
         actions: const [AppBarAliceAction()],
       ),
-      body: _transformationDetailsBody(vm),
+      body: _transformationDetailsBody(
+        vm: vm,
+        runId: runId,
+        clientDisplayElapsedSeconds: clientDisplayElapsedSeconds,
+        fallbackSessionId: fallbackSessionId,
+      ),
     );
   }
 }
 
 class _RunBody extends StatelessWidget {
-  const _RunBody({required this.payload});
+  const _RunBody({
+    required this.runId,
+    required this.payload,
+    this.clientDisplayElapsedSeconds,
+    this.fallbackSessionId,
+  });
 
+  final String runId;
   final Map<String, dynamic> payload;
+  final int? clientDisplayElapsedSeconds;
+  final String? fallbackSessionId;
 
   @override
   Widget build(BuildContext context) {
@@ -87,11 +128,20 @@ class _RunBody extends StatelessWidget {
       run: run,
       steps: steps,
     );
+    final sessionId =
+        sessionIdFromRun(run) ?? fallbackSessionId?.trim();
+    final resolvedRunId = runIdFromRun(run) ?? runId.trim();
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _headerCard(context, run),
+        _headerCard(
+          context,
+          run: run,
+          sessionId: sessionId,
+          runId: resolvedRunId,
+          clientDisplayElapsedSeconds: clientDisplayElapsedSeconds,
+        ),
         if (identityVerification != null) ...[
           const SizedBox(height: 12),
           _identityVerificationCard(context, identityVerification),
@@ -172,10 +222,23 @@ class _RunBody extends StatelessWidget {
     );
   }
 
-  Widget _headerCard(BuildContext context, Map<String, dynamic> run) {
+  Widget _headerCard(
+    BuildContext context, {
+    required Map<String, dynamic> run,
+    required String? sessionId,
+    required String runId,
+    int? clientDisplayElapsedSeconds,
+  }) {
     final status = run['status']?.toString() ?? '';
     final theme = run['themeName']?.toString() ?? run['themeId']?.toString();
     final duration = run['durationMs'];
+    final logClipboard = buildTransformationLogClipboardText(
+      sessionId: sessionId,
+      runId: runId,
+      clientDisplayElapsedSeconds: clientDisplayElapsedSeconds,
+      serverDurationMs: duration,
+    );
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -189,10 +252,90 @@ class _RunBody extends StatelessWidget {
             const SizedBox(height: 8),
             Text('Status: $status'),
             if (theme != null && theme.isNotEmpty) Text('Theme: $theme'),
-            if (duration != null) Text('Duration: $duration ms'),
+            Text(
+              '${AppStrings.transformationDetailsDisplayTimeLabel}: '
+              '${formatClientDisplayElapsed(clientDisplayElapsedSeconds)}',
+            ),
+            Text(
+              '${AppStrings.transformationDetailsServerDurationLabel}: '
+              '${formatServerDurationMs(duration)}',
+            ),
+            if (sessionId != null && sessionId.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _copyableIdRow(
+                context,
+                label: AppStrings.transformationDetailsSessionIdLabel,
+                value: sessionId,
+              ),
+            ],
+            const SizedBox(height: 4),
+            _copyableIdRow(
+              context,
+              label: AppStrings.transformationDetailsRunIdLabel,
+              value: runId,
+            ),
+            if (logClipboard.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => _copyLogBundle(context, logClipboard),
+                  icon: const Icon(Icons.copy, size: 16),
+                  label: const Text(AppStrings.transformationDetailsCopyLogIdsLabel),
+                ),
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _copyLogBundle(BuildContext context, String text) async {
+    final messenger = ScaffoldMessenger.of(context);
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text(AppStrings.transformationDetailsCopiedLogIds),
+      ),
+    );
+  }
+
+  Widget _copyableIdRow(
+    BuildContext context, {
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+              const SizedBox(height: 2),
+              SelectableText(
+                value,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'Copy $label',
+          onPressed: () => _copyLogBundle(context, value),
+          icon: const Icon(Icons.copy, size: 18),
+          visualDensity: VisualDensity.compact,
+        ),
+      ],
     );
   }
 

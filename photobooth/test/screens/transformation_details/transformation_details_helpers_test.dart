@@ -105,4 +105,34 @@ void main() {
       expect(lines.any((l) => l.startsWith('Prompt snippet:')), isTrue);
     });
   });
+
+  group('log support fields', () {
+    test('sessionIdFromRun and runIdFromRun read ids', () {
+      expect(
+        sessionIdFromRun({'sessionId': ' sess-1 '}),
+        'sess-1',
+      );
+      expect(runIdFromRun({'id': 'run-9'}), 'run-9');
+      expect(runIdFromRun({'runId': 'run-alt'}), 'run-alt');
+    });
+
+    test('formatClientDisplayElapsed and formatServerDurationMs', () {
+      expect(formatClientDisplayElapsed(42), '42s');
+      expect(formatClientDisplayElapsed(null), '—');
+      expect(formatServerDurationMs(1234.6), '1235 ms');
+      expect(formatServerDurationMs('x'), '—');
+    });
+
+    test('buildTransformationLogClipboardText bundles ids and timing', () {
+      expect(
+        buildTransformationLogClipboardText(
+          sessionId: 'sess-1',
+          runId: 'run-9',
+          clientDisplayElapsedSeconds: 38,
+          serverDurationMs: 41000,
+        ),
+        'sessionId=sess-1 runId=run-9 displaySeconds=38 serverDurationMs=41000',
+      );
+    });
+  });
 }
