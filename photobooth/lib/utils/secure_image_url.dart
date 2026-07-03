@@ -16,6 +16,21 @@ class SecureImageUrl {
     return path.startsWith('/api/img/') || path.startsWith('api/img/');
   }
 
+  /// Path segment for protected-image checks (handles absolute URLs).
+  static String? _pathFromUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return null;
+    final uri = Uri.tryParse(trimmed);
+    if (uri != null && uri.hasScheme) return uri.path;
+    return trimmed;
+  }
+
+  static bool _isProtectedImageUrl(String url) {
+    final path = _pathFromUrl(url);
+    if (path == null || path.isEmpty) return false;
+    return _isProtectedImgPath(path);
+  }
+
   static String _baseUrlNoTrailingSlash() {
     const b = AppConfig.baseUrl;
     return b.endsWith('/') ? b.substring(0, b.length - 1) : b;
@@ -60,10 +75,9 @@ class SecureImageUrl {
       return url;
     }
 
-    // If it's a protected image path and relative, make it absolute first.
-    final maybeAbsolute = _isProtectedImgPath(url.trimLeft())
-        ? _absolutizeIfRelative(url)
-        : url;
+    // Protected `/api/img/*` must be absolute; rewrite API host to same-origin on web.
+    final maybeAbsolute =
+        _isProtectedImageUrl(url) ? _absolutizeIfRelative(url) : url;
 
     final Uri uri;
     try {

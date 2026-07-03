@@ -16,6 +16,17 @@ void main() {
     expect(url!, contains('/api/img/preview'));
   });
 
+  test('withSessionId appends session for absolute api img URLs', () {
+    final url = SecureImageUrl.withSessionId(
+      'https://fotozenai.fly.dev/api/img/generated/abc.jpg',
+      sessionId: 'sess-1',
+      kioskToken: 'kiosk-1',
+    );
+    expect(url, contains('/api/img/generated/abc.jpg'));
+    expect(url, contains('sessionId=sess-1'));
+    expect(url, contains('kioskToken=kiosk-1'));
+  });
+
   test('previewUrlFromStepMap returns null when missing', () {
     expect(SecureImageUrl.previewUrlFromStepMap({}), isNull);
   });

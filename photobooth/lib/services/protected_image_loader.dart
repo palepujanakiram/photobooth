@@ -46,7 +46,7 @@ class ProtectedImageLoader {
 
   /// Fetches image bytes with `X-Kiosk-Session-Token` (and bearer auth if configured).
   Future<Uint8List> fetchBytes(String url) async {
-    final secured = SecureImageUrl.withSessionId(url);
+    final secured = SecureImageUrl.withSessionId(SecureImageUrl.absolutize(url));
     final uri = Uri.parse(secured);
     final response = await _dio.getUri<Uint8List>(
       uri,
