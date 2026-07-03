@@ -1,5 +1,10 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 import '../services/session_manager.dart';
 import 'app_config.dart';
+
+/// Known API hosts that may appear in absolute URLs returned by the backend.
+const _knownApiHosts = {'fotozenai.fly.dev', 'fotozenai-test.fly.dev'};
 
 /// Helpers for accessing protected image endpoints.
 ///
@@ -11,15 +16,48 @@ class SecureImageUrl {
     return path.startsWith('/api/img/') || path.startsWith('api/img/');
   }
 
+  /// Path segment for protected-image checks (handles absolute URLs).
+  static String? _pathFromUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return null;
+    final uri = Uri.tryParse(trimmed);
+    if (uri != null && uri.hasScheme) return uri.path;
+    return trimmed;
+  }
+
+  static bool _isProtectedImageUrl(String url) {
+    final path = _pathFromUrl(url);
+    if (path == null || path.isEmpty) return false;
+    return _isProtectedImgPath(path);
+  }
+
   static String _baseUrlNoTrailingSlash() {
     const b = AppConfig.baseUrl;
     return b.endsWith('/') ? b.substring(0, b.length - 1) : b;
   }
 
+  /// On web, rewrite absolute API URLs to [AppConfig.baseUrl] (same-origin proxy).
+  static String rewriteKnownApiHost(String url) {
+    if (!kIsWeb) return url;
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return url;
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || !uri.hasScheme) return url;
+    if (!_knownApiHosts.contains(uri.host.toLowerCase())) return url;
+    final base = Uri.parse(_baseUrlNoTrailingSlash());
+    return uri
+        .replace(
+          scheme: base.scheme,
+          host: base.host,
+          port: base.hasPort ? base.port : null,
+        )
+        .toString();
+  }
+
   static String _absolutizeIfRelative(String url) {
     final trimmed = url.trim();
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      return trimmed;
+      return rewriteKnownApiHost(trimmed);
     }
     final base = _baseUrlNoTrailingSlash();
     if (trimmed.startsWith('/')) return '$base$trimmed';
@@ -37,10 +75,9 @@ class SecureImageUrl {
       return url;
     }
 
-    // If it's a protected image path and relative, make it absolute first.
-    final maybeAbsolute = _isProtectedImgPath(url.trimLeft())
-        ? _absolutizeIfRelative(url)
-        : url;
+    // Protected `/api/img/*` must be absolute; rewrite API host to same-origin on web.
+    final maybeAbsolute =
+        _isProtectedImageUrl(url) ? _absolutizeIfRelative(url) : url;
 
     final Uri uri;
     try {

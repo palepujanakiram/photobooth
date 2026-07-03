@@ -73,6 +73,12 @@ abstract final class AppStrings {
   static const uvcTapToWakePreview =
       'Tap when ready\nto start the camera preview';
 
+  static const uvcReconnectingMessage = 'Reconnecting USB camera…';
+
+  static const uvcReconnectFailedMessage =
+      'USB camera keeps disconnecting. Check the cable and USB port, then tap '
+      'Retry USB camera.';
+
   /// POSE screen: shown briefly before returning to Terms after idle timeout.
   static const captureScreenIdleResetMessage =
       'Idle activity is detected so going back';
@@ -177,6 +183,20 @@ abstract final class AppStrings {
       'Your photos are secure and private. We never store your images.';
 
   static const beholdTransformationDetailsLink = 'View transformation details';
+
+  static const transformationDetailsDisplayTimeLabel =
+      'Time to show on screen';
+
+  static const transformationDetailsServerDurationLabel = 'Server duration';
+
+  static const transformationDetailsSessionIdLabel = 'Session ID';
+
+  static const transformationDetailsRunIdLabel = 'Run ID';
+
+  static const transformationDetailsCopyLogIdsLabel = 'Copy for logs';
+
+  static const transformationDetailsCopiedLogIds =
+      'Copied session and run IDs for logs';
 
   static const beholdContinueLabel = 'Continue';
 

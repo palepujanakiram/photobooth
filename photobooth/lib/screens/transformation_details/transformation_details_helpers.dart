@@ -235,3 +235,46 @@ Map<String, dynamic>? findAiGenerationStep(List<Map<String, dynamic>> steps) {
   }
   return null;
 }
+
+/// Session id from `run.sessionId` (authoritative for log correlation).
+String? sessionIdFromRun(Map<String, dynamic> run) {
+  final id = run['sessionId']?.toString().trim();
+  if (id == null || id.isEmpty) return null;
+  return id;
+}
+
+/// Run id from `run.id` / `run.runId`.
+String? runIdFromRun(Map<String, dynamic> run) {
+  for (final key in ['id', 'runId']) {
+    final id = run[key]?.toString().trim();
+    if (id != null && id.isNotEmpty) return id;
+  }
+  return null;
+}
+
+String formatClientDisplayElapsed(int? elapsedSeconds) {
+  if (elapsedSeconds == null || elapsedSeconds < 0) return '—';
+  return '${elapsedSeconds}s';
+}
+
+String formatServerDurationMs(dynamic durationMs) {
+  if (durationMs is! num) return '—';
+  return '${durationMs.round()} ms';
+}
+
+/// One-line bundle for pasting into backend / Fly logs.
+String buildTransformationLogClipboardText({
+  required String? sessionId,
+  required String? runId,
+  int? clientDisplayElapsedSeconds,
+  dynamic serverDurationMs,
+}) {
+  final parts = <String>[
+    if (sessionId != null && sessionId.isNotEmpty) 'sessionId=$sessionId',
+    if (runId != null && runId.isNotEmpty) 'runId=$runId',
+    if (clientDisplayElapsedSeconds != null && clientDisplayElapsedSeconds >= 0)
+      'displaySeconds=$clientDisplayElapsedSeconds',
+    if (serverDurationMs is num) 'serverDurationMs=${serverDurationMs.round()}',
+  ];
+  return parts.join(' ');
+}

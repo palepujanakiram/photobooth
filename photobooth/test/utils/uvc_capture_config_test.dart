@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/app_settings_model.dart';
+import 'package:photobooth/utils/app_device_type.dart';
 import 'package:photobooth/utils/app_runtime_config.dart';
 import 'package:photobooth/utils/uvc_capture_config.dart';
 import 'package:uvccamera/uvccamera.dart';
@@ -50,5 +51,33 @@ void main() {
       AppSettingsModel(showGenerationCommentary: true),
     );
     expect(UvcCaptureConfig.thermalReliefEnabled, isTrue);
+  });
+
+  test('Android TV uses longer reopen delay and disables session recycle', () {
+    expect(
+      UvcCaptureConfig.reopenFeedDelayFor(AppDeviceType.androidTv),
+      const Duration(milliseconds: 2200),
+    );
+    expect(
+      UvcCaptureConfig.reopenFeedDelayFor(AppDeviceType.androidPhone),
+      UvcCaptureConfig.reopenFeedDelay,
+    );
+    expect(
+      UvcCaptureConfig.enableSessionRecycleFor(AppDeviceType.androidTv),
+      isFalse,
+    );
+    expect(
+      UvcCaptureConfig.enableSessionRecycleFor(AppDeviceType.androidTablet),
+      isTrue,
+    );
+    expect(UvcCaptureConfig.maxAutoReconnectAttempts, 5);
+    expect(
+      UvcCaptureConfig.resolutionPresetFor(AppDeviceType.androidTv),
+      UvcCameraResolutionPreset.low,
+    );
+    expect(
+      UvcCaptureConfig.resolutionPresetFor(AppDeviceType.androidPhone),
+      UvcCaptureConfig.resolutionPreset,
+    );
   });
 }

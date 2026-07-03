@@ -1,19 +1,13 @@
-import '../utils/constants.dart';
+import '../utils/secure_image_url.dart';
 import 'session_manager.dart';
 
-/// Ensures URLs returned by the backend can be used by Dio.
+/// Ensures URLs returned by the backend can be used by Dio / [Image.network].
 String resolveApiImageUrl(String raw) {
   final trimmed = raw.trim();
   if (trimmed.isEmpty) return trimmed;
 
   final compact = trimmed.replaceAll(RegExp(r'\s+'), '');
-
-  if (compact.startsWith('http://') || compact.startsWith('https://')) {
-    return compact;
-  }
-
-  final base = Uri.parse(AppConstants.kBaseUrl);
-  return base.resolve(compact).toString();
+  return SecureImageUrl.absolutize(compact);
 }
 
 /// Adds session context for protected generated image endpoints when needed.

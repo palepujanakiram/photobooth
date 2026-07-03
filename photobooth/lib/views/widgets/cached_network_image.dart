@@ -71,11 +71,12 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
     });
 
     try {
-      final securedUrl = SecureImageUrl.withSessionId(widget.imageUrl);
+      final resolvedUrl = SecureImageUrl.absolutize(widget.imageUrl);
+      final securedUrl = SecureImageUrl.withSessionId(resolvedUrl);
 
-      if (ProtectedImageLoader.isProtectedUrl(widget.imageUrl)) {
+      if (ProtectedImageLoader.isProtectedUrl(resolvedUrl)) {
         final bytes = await ProtectedImageLoader.instance.fetchBytes(
-          widget.imageUrl,
+          resolvedUrl,
         );
         if (mounted) {
           setState(() {
@@ -100,6 +101,16 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
       _cacheInBackground(securedUrl);
     } catch (e) {
       AppLogger.debug('Error loading cached image: $e');
+      if (!mounted) return;
+      if (ProtectedImageLoader.isProtectedUrl(
+        SecureImageUrl.absolutize(widget.imageUrl),
+      )) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+        return;
+      }
       _finishLoading();
     }
   }
@@ -168,7 +179,8 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
 
   @override
   Widget build(BuildContext context) {
-    final securedUrl = SecureImageUrl.withSessionId(widget.imageUrl);
+    final securedUrl =
+        SecureImageUrl.withSessionId(SecureImageUrl.absolutize(widget.imageUrl));
     if (_isLoading && widget.placeholder != null) {
       return widget.placeholder!;
     }

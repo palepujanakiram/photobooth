@@ -14,6 +14,7 @@ import 'photo_capture_preview_rotation.dart';
 import 'photo_capture_camera_error_helpers.dart';
 import 'photo_capture_uvc_device_helpers.dart';
 import 'photo_capture_uvc_feed_phase.dart';
+import 'photo_capture_uvc_reconnect_helpers.dart';
 import 'photo_capture_uvc_raster_capture.dart';
 import 'photo_capture_uvc_take_picture_helpers.dart';
 import 'photo_capture_uvc_shutter_helpers.dart';
@@ -28,6 +29,7 @@ import 'photo_capture_view_scaffold.dart';
 import 'photo_capture_viewmodel.dart';
 import 'photo_model.dart';
 import 'photo_image_from_xfile_io.dart' if (dart.library.html) 'photo_image_from_xfile_web.dart' as photo_image;
+import '../../utils/app_device_type.dart';
 import '../../utils/app_runtime_config.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
@@ -76,6 +78,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   bool _uvcFeedAsleep = false;
   bool _uvcLifecyclePaused = false;
   DateTime? _uvcShutterGraceUntil;
+  DateTime? _uvcIgnoreDisconnectUntil;
+  int _uvcAutoReconnectAttempts = 0;
+  bool _uvcReconnectInFlight = false;
+  Timer? _uvcTvProbeTimer;
   DateTime? _uvcPreviewReadyAt;
   int _uvcPreviewGeneration = 0;
   DateTime? _uvcLastUiCaptureEndedAt;
@@ -222,6 +228,40 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         graceUntil: _uvcShutterGraceUntil,
       );
 
+  void _extendUvcDisconnectIgnore(Duration extension) {
+    _uvcIgnoreDisconnectUntil = uvcLaterDisconnectIgnoreUntil(
+      current: _uvcIgnoreDisconnectUntil,
+      extension: extension,
+    );
+  }
+
+  bool get _shouldIgnoreUvcDisconnectEvent => uvcShouldIgnoreDisconnectEvent(
+        ignoreDisconnectUntil: _uvcIgnoreDisconnectUntil,
+        initializing: _uvcInitializing,
+        openingController: _uvcOpeningController,
+        reconnectInFlight: _uvcReconnectInFlight,
+        withinShutterGrace: _isWithinUvcShutterGrace,
+        holdLiveFeedClosed: _uvcHoldLiveFeedClosed,
+        phase: _uvcPhase,
+      );
+
+  void _resetUvcAutoReconnectAttempts() {
+    _uvcAutoReconnectAttempts = 0;
+    _uvcIgnoreDisconnectUntil = null;
+  }
+
+  void _markUvcReconnectExhausted() {
+    _uvcReconnectTimer?.cancel();
+    _uvcReconnectTimer = null;
+    if (!mounted) return;
+    setState(() {
+      _uvcPhase = UvcFeedPhase.error;
+      _uvcError = AppStrings.uvcReconnectFailedMessage;
+      _uvcInitializing = false;
+      _uvcOpeningController = false;
+    });
+  }
+
   bool get _uvcHoldLiveFeedClosed =>
       uvcFeedPhaseBlocksLivePreview(_uvcPhase) ||
       _uvcCaptureInFlight ||
@@ -352,7 +392,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   void _armUvcSessionRecycleTimer() {
-    if (!UvcCaptureConfig.enableSessionRecycle) return;
+    if (!UvcCaptureConfig.enableSessionRecycleFor(_captureViewModel.deviceType)) {
+      return;
+    }
     _cancelUvcSessionRecycleTimer();
     _uvcSessionRecycleTimer = Timer(
       UvcCaptureConfig.sessionRecyclePeriod,
@@ -364,7 +406,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _uvcSessionRecycleTimer = null;
     if (!mounted) return;
     if (!uvcSessionRecycleMayRun(
-      sessionRecycleEnabled: UvcCaptureConfig.enableSessionRecycle,
+      sessionRecycleEnabled: UvcCaptureConfig.enableSessionRecycleFor(
+        _captureViewModel.deviceType,
+      ),
       isUsingUvc: _isUsingUvc,
       mayAutoOpenLiveFeed: _uvcMayAutoOpenLiveFeed,
       blocksConcurrentAutoOpen: _uvcBlocksConcurrentAutoOpen,
@@ -486,71 +530,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   /// Common function to reset and initialize cameras
   /// Used both when entering the screen and when tapping the reload button
-  /// Uses sync tablet check so cameras load immediately; does not block on slow getDeviceType().
   Future<void> _resetAndInitializeCameras({bool forceRefresh = false}) async {
     if (!mounted) return;
 
-    final uvcDevice = _uvcDevice;
-    if (uvcDevice != null) {
-      _captureViewModel.setDeviceType(null);
-      await _ensureUvcDeviceBound(uvcDevice);
-      if (!mounted) return;
-      try {
-        final deviceType = await DeviceClassifier.getDeviceType(context);
-        if (mounted) _captureViewModel.setDeviceType(deviceType);
-      } catch (e, st) {
-        AppLogger.error(
-          'Failed to detect device type',
-          error: e,
-          stackTrace: st,
-        );
-        await ErrorReportingManager.recordError(
-          e,
-          st,
-          reason: 'getDeviceType failed',
-          fatal: false,
-        );
-      }
-      return;
-    }
-
-    // Prefer USB/UVC DSLR when plugged in (more reliable than CameraX external).
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      final firstUvc = await probeFirstUvcDevice();
-      if (!mounted) return;
-      if (firstUvc != null) {
-        await _ensureUvcDeviceBound(firstUvc);
-        if (!mounted) return;
-        try {
-          final deviceType = await DeviceClassifier.getDeviceType(context);
-          if (mounted) _captureViewModel.setDeviceType(deviceType);
-        } catch (e, st) {
-          AppLogger.error(
-            'Failed to detect device type',
-            error: e,
-            stackTrace: st,
-          );
-          await ErrorReportingManager.recordError(
-            e,
-            st,
-            reason: 'getDeviceType failed',
-            fatal: false,
-          );
-        }
-        return;
-      }
-    }
-
-    await _disposeUvc();
-    _captureViewModel.setDeviceType(null);
-    await _captureViewModel.resetAndInitializeCameras(
-      forceRefresh: forceRefresh,
-    );
-    if (!mounted) return;
-    // Run after camera: device_info + MediaQuery — avoids overlapping with
-    // availableCameras() / initialize() native heap spike.
+    AppDeviceType? deviceType;
     try {
-      final deviceType = await DeviceClassifier.getDeviceType(context);
+      deviceType = await DeviceClassifier.getDeviceType(context);
       if (mounted) _captureViewModel.setDeviceType(deviceType);
     } catch (e, st) {
       AppLogger.error(
@@ -565,7 +550,110 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         fatal: false,
       );
     }
+
+    if (_uvcFeedIsHealthy && !_uvcFeedAsleep) {
+      return;
+    }
+
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final uvcReady = await _tryInitializeUvc(preferred: _uvcDevice);
+      if (!mounted) return;
+      if (uvcReady) {
+        _startUvcTvProbeIfNeeded();
+        return;
+      }
+      await _clearUvcBinding();
+    }
+
+    await _captureViewModel.resetAndInitializeCameras(
+      forceRefresh: forceRefresh,
+    );
+    if (!mounted) return;
+    _startUvcTvProbeIfNeeded();
     await _reportCaptureScreenNoCameraIfNeeded();
+  }
+
+  bool get _uvcFeedIsHealthy =>
+      _uvcDevice != null && _uvcController?.value.isInitialized == true;
+
+  Future<bool> _tryInitializeUvc({UvcCameraDevice? preferred}) async {
+    if (!mounted || _captureViewModel.capturedPhoto != null) return false;
+    final device = preferred ??
+        await probeFirstUvcDevice(requestCameraPermission: true);
+    if (device == null) return false;
+    return _ensureUvcDeviceBound(device);
+  }
+
+  Future<void> _clearUvcBinding() async {
+    _uvcTvProbeTimer?.cancel();
+    _uvcTvProbeTimer = null;
+    _uvcReconnectTimer?.cancel();
+    _resetUvcAutoReconnectAttempts();
+    _uvcReconnectInFlight = false;
+    await _closeUvcController();
+    if (!mounted) return;
+    setState(() {
+      _uvcDevice = null;
+      _uvcError = null;
+      _uvcInitializing = false;
+      _uvcOpeningController = false;
+      _uvcPhase = UvcFeedPhase.live;
+    });
+  }
+
+  void _startUvcTvProbeIfNeeded() {
+    if (_captureViewModel.deviceType != AppDeviceType.androidTv) return;
+    if (_uvcFeedIsHealthy) {
+      _uvcTvProbeTimer?.cancel();
+      _uvcTvProbeTimer = null;
+      return;
+    }
+    if (_captureViewModel.isReady && !_isUsingUvc) {
+      _uvcTvProbeTimer?.cancel();
+      _uvcTvProbeTimer = null;
+      return;
+    }
+    _uvcTvProbeTimer ??= Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
+      if (_uvcFeedIsHealthy || _captureViewModel.capturedPhoto != null) {
+        _uvcTvProbeTimer?.cancel();
+        _uvcTvProbeTimer = null;
+        return;
+      }
+      if (_uvcReconnectInFlight || _uvcBlocksConcurrentAutoOpen) return;
+      if (_captureViewModel.isReady && !_isUsingUvc) return;
+      _safeUnawaited(
+        _tryInitializeUvc(),
+        label: 'UVC TV periodic probe failed',
+      );
+    });
+  }
+
+  Future<void> _tryBindUvcFromHotplug(UvcCameraDevice eventDevice) async {
+    if (!mounted ||
+        _uvcDevice != null ||
+        _captureViewModel.capturedPhoto != null) {
+      return;
+    }
+    if (_uvcReconnectInFlight || _uvcBlocksConcurrentAutoOpen) return;
+
+    final device = await resolveUvcDeviceForHotplug(
+      eventDevice,
+      requestCameraPermission: true,
+    );
+    if (!mounted || device == null) return;
+
+    final ok = await _ensureUvcDeviceBound(device);
+    if (!mounted) return;
+    if (ok) {
+      _uvcTvProbeTimer?.cancel();
+      _uvcTvProbeTimer = null;
+      return;
+    }
+    await _clearUvcBinding();
+    if (!mounted) return;
+    await _captureViewModel.resetAndInitializeCameras();
+    if (mounted) _startUvcTvProbeIfNeeded();
   }
 
   Future<void> _reportCaptureScreenNoCameraIfNeeded() async {
@@ -588,6 +676,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _stopPoseIdleTimer();
     _uvcReconnectTimer?.cancel();
     _uvcReconnectTimer = null;
+    _uvcTvProbeTimer?.cancel();
+    _uvcTvProbeTimer = null;
     _uvcWarmupTimer?.cancel();
     _uvcWarmupTimer = null;
     _cancelUvcSessionRecycleTimer();
@@ -687,6 +777,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   Future<void> _closeUvcControllerUnlocked() async {
+    _extendUvcDisconnectIgnore(UvcCaptureConfig.reconnectIgnoreDisconnectPeriod);
     _detachUvcHardwareListeners();
     _detachUvcControllerListener();
     await _setUvcShutterKeysEnabled(false);
@@ -795,6 +886,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!mounted || _uvcDevice == null) {
       return;
     }
+    if (_uvcReconnectInFlight) {
+      AppLogger.debug('UVC resume skipped — reconnect already in flight');
+      return;
+    }
+    if (reason == 'retryTap') {
+      _resetUvcAutoReconnectAttempts();
+    }
     if (!uvcMayResumeLiveFeed(
       phase: _uvcPhase,
       hasCapturedPhoto: _captureViewModel.capturedPhoto != null,
@@ -802,11 +900,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return;
     }
 
+    _uvcReconnectInFlight = true;
     _uvcReconnectTimer?.cancel();
     _uvcShutterGraceUntil = null;
     _lastUvcShutterAt = null;
     _clearUvcTransientCaptureUi();
     _uvcPhase = UvcFeedPhase.live;
+    _extendUvcDisconnectIgnore(UvcCaptureConfig.reconnectIgnoreDisconnectPeriod);
 
     if (!mounted) return;
     setState(() {
@@ -820,7 +920,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         PaintingBinding.instance.imageCache.clear();
         PaintingBinding.instance.imageCache.clearLiveImages();
       }
-      await Future<void>.delayed(UvcCaptureConfig.reopenFeedDelay);
+      final reopenDelay = UvcCaptureConfig.reopenFeedDelayFor(
+        _captureViewModel.deviceType,
+      );
+      _extendUvcDisconnectIgnore(reopenDelay + const Duration(seconds: 1));
+      await Future<void>.delayed(reopenDelay);
       if (!mounted || _uvcDevice == null || !_uvcMayAutoOpenLiveFeed) {
         return;
       }
@@ -878,6 +982,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         _uvcInitializing = false;
       });
     } finally {
+      _uvcReconnectInFlight = false;
       if (mounted) {
         setState(() => _uvcInitializing = false);
       }
@@ -890,6 +995,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _uvcDevice = null;
     _uvcError = null;
     _uvcPreviewGeneration = 0;
+    _resetUvcAutoReconnectAttempts();
+    _uvcReconnectInFlight = false;
   }
 
   bool get _isUsingUvc => _uvcDevice != null;
@@ -906,6 +1013,17 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   void _onUvcDeviceEvent(UvcCameraDeviceEvent event) {
+    if (_uvcDevice == null) {
+      if (event.type == UvcCameraDeviceEventType.attached ||
+          event.type == UvcCameraDeviceEventType.connected) {
+        _safeUnawaited(
+          _tryBindUvcFromHotplug(event.device),
+          label: 'UVC hotplug bind failed',
+        );
+      }
+      return;
+    }
+
     final bound = _uvcDevice;
     if (bound == null || !uvcDeviceMatches(event.device, bound)) return;
 
@@ -932,18 +1050,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         }
       case UvcCameraDeviceEventType.disconnected:
       case UvcCameraDeviceEventType.detached:
-        if (_uvcHoldLiveFeedClosed ||
-            _isWithinUvcShutterGrace ||
-            _uvcPhase != UvcFeedPhase.live) {
+        if (_shouldIgnoreUvcDisconnectEvent) {
+          AppLogger.debug(
+            'UVC ${event.type.name} ignored (intentional close / in flight)',
+          );
           return;
         }
         unawaited(() async {
           await _closeUvcController();
           if (!mounted) return;
           setState(() {
-            _uvcInitializing = false;
+            _uvcInitializing = true;
             _uvcOpeningController = false;
-            _uvcError = 'USB camera disconnected. Reconnecting…';
+            _uvcError = null;
           });
           _scheduleUvcReconnect(event.type.name);
         }());
@@ -953,19 +1072,34 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void _scheduleUvcReconnect(String reason) {
     if (!_isUsingUvc ||
         !_uvcMayAutoOpenLiveFeed ||
-        _uvcBlocksConcurrentAutoOpen) {
+        _uvcBlocksConcurrentAutoOpen ||
+        _uvcReconnectInFlight) {
       return;
     }
+    if (!uvcMayScheduleAutoReconnect(
+      attemptCount: _uvcAutoReconnectAttempts,
+      maxAttempts: UvcCaptureConfig.maxAutoReconnectAttempts,
+    )) {
+      _markUvcReconnectExhausted();
+      return;
+    }
+
+    _uvcAutoReconnectAttempts++;
     _uvcReconnectTimer?.cancel();
-    _uvcReconnectTimer = Timer(const Duration(milliseconds: 650), () {
+    final delay = uvcReconnectBackoffDelay(_uvcAutoReconnectAttempts);
+    _uvcReconnectTimer = Timer(delay, () {
       if (!mounted) return;
       if (_uvcDevice == null ||
           _uvcController != null ||
           !_uvcMayAutoOpenLiveFeed ||
-          _uvcBlocksConcurrentAutoOpen) {
+          _uvcBlocksConcurrentAutoOpen ||
+          _uvcReconnectInFlight) {
         return;
       }
-      AppLogger.debug('UVC reconnect scheduled ($reason)');
+      AppLogger.debug(
+        'UVC reconnect scheduled ($reason) attempt=$_uvcAutoReconnectAttempts '
+        'delayMs=${delay.inMilliseconds}',
+      );
       _safeUnawaited(
         _resumeUvcLiveFeed(reason: reason),
         label: 'UVC reconnect failed',
@@ -993,6 +1127,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!mounted) return false;
     if (!ok) {
       setState(() {
+        _uvcDevice = null;
         _uvcInitializing = false;
         _uvcError = 'USB camera permission was not granted.';
       });
@@ -1010,16 +1145,24 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     await _openUvcController();
+    if (!mounted) return false;
+    if (_uvcController?.value.isInitialized != true) {
+      setState(() {
+        _uvcDevice = null;
+        _uvcInitializing = false;
+      });
+      return false;
+    }
     return true;
   }
 
   /// Opens UVC when connected; clears stale route prefill once so POSE always
   /// gets a live feed after "Start all over again" or similar re-entry.
-  Future<void> _ensureUvcDeviceBound(UvcCameraDevice device) async {
-    if (await _bindUvcDevice(device)) return;
-    if (_captureViewModel.capturedPhoto == null) return;
+  Future<bool> _ensureUvcDeviceBound(UvcCameraDevice device) async {
+    if (await _bindUvcDevice(device)) return true;
+    if (_captureViewModel.capturedPhoto == null) return false;
     _captureViewModel.clearCapturedPhoto();
-    await _bindUvcDevice(device);
+    return _bindUvcDevice(device);
   }
 
   Future<void> _openUvcController() async {
@@ -1050,7 +1193,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       try {
         pending = UvcCameraController(
           device: device,
-          resolutionPreset: UvcCaptureConfig.resolutionPreset,
+          resolutionPreset: UvcCaptureConfig.resolutionPresetFor(
+            _captureViewModel.deviceType,
+          ),
         );
         await pending.initialize();
         if (!mounted) return;
@@ -1071,9 +1216,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         _attachUvcHardwareListeners(ctrl);
         await _setUvcShutterKeysEnabled(true);
         _armUvcSessionRecycleTimer();
+        _resetUvcAutoReconnectAttempts();
         _captureViewModel.markCameraAvailabilityRestored();
         AppLogger.debug(
-          'UVC preview opened preset=${UvcCaptureConfig.resolutionPreset.name} '
+          'UVC preview opened preset='
+          '${UvcCaptureConfig.resolutionPresetFor(_captureViewModel.deviceType).name} '
           'gen=$_uvcPreviewGeneration',
         );
       } catch (e, st) {
@@ -1247,7 +1394,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     if (picked is UvcCameraDevice) {
-      await _bindUvcDevice(picked);
+      await _ensureUvcDeviceBound(picked);
     }
   }
 
@@ -1305,7 +1452,26 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
     final ctrl = _uvcController;
     if (_uvcInitializing) {
-      return const Center(child: CircularProgressIndicator(color: Colors.white));
+      final message = _uvcAutoReconnectAttempts > 0
+          ? AppStrings.uvcReconnectingMessage
+          : 'Connecting USB camera…';
+      return ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Colors.white),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                style: const TextStyle(color: Colors.white70),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
     }
     if (_uvcError != null) {
       return ColoredBox(

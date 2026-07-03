@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/transformation_details/transformation_details_viewmodel.dart';
+import 'package:photobooth/services/session_manager.dart';
 import 'package:photobooth/utils/exceptions.dart';
 
 import '../fakes/fake_api_service.dart';
@@ -18,6 +19,8 @@ class _RunApi extends FakeApiService {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('load populates payload', () async {
     final vm = TransformationDetailsViewModel(
       runId: 'run-1',
@@ -36,5 +39,23 @@ void main() {
     await vm.load();
     expect(vm.errorMessage, isNotNull);
     expect(vm.payload, isNull);
+  });
+
+  test('activeSessionId reflects SessionManager', () {
+    SessionManager().setSessionFromResponse({
+      'id': 'sess-abc',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.now().toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': [],
+      'expiresAt': DateTime.now().add(const Duration(hours: 1)).toIso8601String(),
+    });
+    addTearDown(SessionManager().clearSession);
+
+    final vm = TransformationDetailsViewModel(
+      runId: 'run-1',
+      apiService: _RunApi(),
+    );
+    expect(vm.activeSessionId, 'sess-abc');
   });
 }

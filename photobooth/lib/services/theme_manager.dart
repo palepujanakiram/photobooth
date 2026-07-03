@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show VoidCallback, visibleForTesting;
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/exceptions.dart';
-import '../utils/app_config.dart';
+import '../utils/theme_image_urls.dart';
 import '../utils/error_reporting_helpers.dart';
 import '../utils/logger.dart';
 import 'api_service.dart';
@@ -181,30 +181,12 @@ class ThemeManager {
             theme.sampleImageUrl != null && 
             theme.sampleImageUrl!.isNotEmpty)
         .map((theme) {
-          final imageUrl = theme.sampleImageUrl!.trim();
-          // Check if URL is already absolute
-          if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-            // Validate URL format
-            try {
-              Uri.parse(imageUrl);
-              return imageUrl;
-            } catch (e) {
-              AppLogger.debug('Invalid absolute URL format: $imageUrl');
-              return null;
-            }
-          }
-          // Prepend base URL if it's a relative path
-          final baseUrl = AppConfig.baseUrl.endsWith('/')
-              ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
-              : AppConfig.baseUrl;
-          final relativePath = imageUrl.startsWith('/') ? imageUrl : '/$imageUrl';
-          final fullUrl = '$baseUrl$relativePath';
-          // Validate constructed URL
+          final fullUrl = resolveThemeSampleImageUrl(theme.sampleImageUrl!);
           try {
             Uri.parse(fullUrl);
             return fullUrl;
           } catch (e) {
-            AppLogger.debug('Invalid constructed URL format: $fullUrl');
+            AppLogger.debug('Invalid theme sample image URL: $fullUrl');
             return null;
           }
         })

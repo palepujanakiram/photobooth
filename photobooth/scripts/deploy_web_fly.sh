@@ -11,7 +11,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-BASE_URL="${BASE_URL:-https://fotozenai.fly.dev}"
+# Same-origin API via nginx proxy (deploy/nginx.web.conf) — avoids browser CORS.
+WEB_PUBLIC_URL="${WEB_PUBLIC_URL:-https://fotozen-web.fly.dev}"
+BASE_URL="${BASE_URL:-$WEB_PUBLIC_URL}"
 FLY_CONFIG="${FLY_CONFIG:-fly.web.toml}"
 
 dart run tool/sync_build_version.dart
