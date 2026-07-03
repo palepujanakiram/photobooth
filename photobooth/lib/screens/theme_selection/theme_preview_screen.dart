@@ -3,7 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
-import '../../utils/app_config.dart';
+import '../../utils/theme_image_urls.dart';
 import '../../views/widgets/cached_network_image.dart';
 import 'theme_model.dart';
 
@@ -23,12 +23,7 @@ class ThemePreviewScreen extends StatelessWidget {
   static String resolveSampleImageUrl(ThemeModel theme) {
     final raw = theme.sampleImageUrl?.trim() ?? '';
     if (raw.isEmpty) return '';
-    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
-    final baseUrl = AppConfig.baseUrl.endsWith('/')
-        ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
-        : AppConfig.baseUrl;
-    final path = raw.startsWith('/') ? raw : '/$raw';
-    return '$baseUrl$path';
+    return resolveThemeSampleImageUrl(raw);
   }
 
   @override

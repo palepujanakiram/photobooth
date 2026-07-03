@@ -1,14 +1,15 @@
 import 'app_config.dart';
+import 'secure_image_url.dart';
 
 /// Resolves a theme [sampleImageUrl] from the API to an absolute HTTP(S) URL.
 ///
-/// Relative paths are joined with [AppConfig.baseUrl] the same way as
-/// [ThemeSlideshowViewModel.getSampleImageUrls] and [ThemeCard], so slideshow,
-/// theme picker, and review screens all show the same image address.
+/// Relative paths (e.g. `/objects/themes/...`) are joined with [AppConfig.baseUrl].
+/// Absolute API-host URLs are rewritten to same-origin on web via [SecureImageUrl].
 String resolveThemeSampleImageUrl(String imageUrl) {
   final trimmed = imageUrl.trim();
+  if (trimmed.isEmpty) return trimmed;
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    return trimmed;
+    return SecureImageUrl.rewriteKnownApiHost(trimmed);
   }
   final baseUrl = AppConfig.baseUrl.endsWith('/')
       ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)

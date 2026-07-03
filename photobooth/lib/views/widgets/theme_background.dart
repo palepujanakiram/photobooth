@@ -1,7 +1,7 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../../screens/theme_selection/theme_model.dart';
-import '../../utils/app_config.dart';
+import '../../utils/theme_image_urls.dart';
 import 'cached_network_image.dart';
 import 'falling_starfield_background.dart';
 
@@ -13,18 +13,9 @@ class ThemeBackground extends StatelessWidget {
   final ThemeModel? theme;
 
   static String _themeSampleImageUrl(ThemeModel? theme) {
-    if (theme?.sampleImageUrl == null || theme!.sampleImageUrl!.isEmpty) {
-      return '';
-    }
-    final imageUrl = theme.sampleImageUrl!;
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-      return imageUrl;
-    }
-    final baseUrl = AppConfig.baseUrl.endsWith('/')
-        ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
-        : AppConfig.baseUrl;
-    final path = imageUrl.startsWith('/') ? imageUrl : '/$imageUrl';
-    return '$baseUrl$path';
+    final raw = theme?.sampleImageUrl?.trim() ?? '';
+    if (raw.isEmpty) return '';
+    return resolveThemeSampleImageUrl(raw);
   }
 
   static Color? _parseThemeBackgroundColor(String? hexColor) {

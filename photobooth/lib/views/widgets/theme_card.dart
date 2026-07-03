@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import '../../screens/theme_selection/theme_model.dart';
-import '../../utils/app_config.dart';
+import '../../utils/theme_image_urls.dart';
 import 'cached_network_image.dart';
 
 class ThemeCard extends StatelessWidget {
@@ -31,20 +31,9 @@ class ThemeCard extends StatelessWidget {
   });
 
   String _getImageUrl() {
-    if (theme.sampleImageUrl == null || theme.sampleImageUrl!.isEmpty) {
-      return '';
-    }
-    final imageUrl = theme.sampleImageUrl!;
-    // Check if URL is already absolute
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-      return imageUrl;
-    }
-    // Prepend base URL if it's a relative path
-    final baseUrl = AppConfig.baseUrl.endsWith('/')
-        ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
-        : AppConfig.baseUrl;
-    final relativePath = imageUrl.startsWith('/') ? imageUrl : '/$imageUrl';
-    return '$baseUrl$relativePath';
+    final raw = theme.sampleImageUrl?.trim() ?? '';
+    if (raw.isEmpty) return '';
+    return resolveThemeSampleImageUrl(raw);
   }
 
   /// Parses hex color string to Color

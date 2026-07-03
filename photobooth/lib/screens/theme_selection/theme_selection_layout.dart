@@ -1,5 +1,5 @@
-import '../../utils/app_config.dart';
 import '../../utils/constants.dart';
+import '../../utils/theme_image_urls.dart';
 
 /// Responsive layout helpers for [ThemeSelectionScreen] (carousel + card grid).
 class ThemeSelectionLayoutMetrics {
@@ -55,15 +55,6 @@ class ThemeSelectionLayoutMetrics {
   }
 
   /// Resolves theme sample image URL like [ThemeCard] / slideshow.
-  static String resolveThemeImageUrl(String imageUrl) {
-    final trimmed = imageUrl.trim();
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      return trimmed;
-    }
-    final base = AppConfig.baseUrl.endsWith('/')
-        ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
-        : AppConfig.baseUrl;
-    final path = trimmed.startsWith('/') ? trimmed : '/$trimmed';
-    return '$base$path';
-  }
+  static String resolveThemeImageUrl(String imageUrl) =>
+      resolveThemeSampleImageUrl(imageUrl);
 }
