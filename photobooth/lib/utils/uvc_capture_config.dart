@@ -29,6 +29,14 @@ class UvcCaptureConfig {
   static const UvcCameraResolutionPreset resolutionPreset =
       UvcCameraResolutionPreset.medium;
 
+  /// TV boxes negotiate more reliably at 640×480 (`low`).
+  static UvcCameraResolutionPreset resolutionPresetFor(AppDeviceType? deviceType) {
+    if (deviceType == AppDeviceType.androidTv) {
+      return UvcCameraResolutionPreset.low;
+    }
+    return resolutionPreset;
+  }
+
   /// Max long edge after Dart-side normalize.
   static const int normalizeMaxDimension = 1024;
 

@@ -77,6 +77,35 @@ void main() {
     );
   });
 
+  test('camerasForDeviceType keeps external only on Android TV', () {
+    const external = CameraDescription(
+      name: 'USB Webcam',
+      lensDirection: CameraLensDirection.external,
+      sensorOrientation: 0,
+    );
+    const front = CameraDescription(
+      name: 'Front',
+      lensDirection: CameraLensDirection.front,
+      sensorOrientation: 270,
+    );
+    expect(
+      camerasForDeviceType(
+        cameras: [front, external],
+        deviceType: AppDeviceType.androidTv,
+        looksLikeExternalName: (_) => false,
+      ),
+      [external],
+    );
+    expect(
+      camerasForDeviceType(
+        cameras: [front, external],
+        deviceType: AppDeviceType.androidPhone,
+        looksLikeExternalName: (_) => false,
+      ),
+      [front],
+    );
+  });
+
   test('uniqueCamerasByDisplayName keeps one entry per display name', () {
     const dupFront = CameraDescription(
       name: 'Front-alt',

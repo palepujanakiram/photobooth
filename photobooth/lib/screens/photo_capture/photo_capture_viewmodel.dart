@@ -21,6 +21,7 @@ import '../../utils/image_helper.dart';
 import '../../utils/platform_capabilities.dart';
 import '../../utils/uvc_capture_config.dart';
 import 'camera_description_label.dart';
+import 'photo_capture_camera_selection_helpers.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/logger.dart';
 import '../../utils/error_reporting_helpers.dart';
@@ -565,7 +566,12 @@ class CaptureViewModel extends ChangeNotifier {
   /// Set device type from UI (from [DeviceClassifier.getDeviceType]).
   /// Used to filter cameras: tablet/TV → external only, phone → built-in only.
   void setDeviceType(AppDeviceType? type) {
+    final changed = _deviceType != type;
     _deviceType = type;
+    if (changed && _cachedAvailableCameras != null) {
+      _applyCachedCameraList();
+      notifyListeners();
+    }
     unawaited(_applyDefaultPreviewRotationForDevice());
   }
 
@@ -601,8 +607,13 @@ class CaptureViewModel extends ChangeNotifier {
 
   void _applyCachedCameraList() {
     if (_cachedAvailableCameras == null) return;
-    _availableCameras = _externalCamerasFirst(_cachedAvailableCameras!);
-    if (_cachedAvailableCameras!.isEmpty) {
+    final filtered = camerasForDeviceType(
+      cameras: _cachedAvailableCameras!,
+      deviceType: _deviceType,
+      looksLikeExternalName: _looksLikeExternalCameraName,
+    );
+    _availableCameras = _externalCamerasFirst(filtered);
+    if (filtered.isEmpty) {
       _errorMessage = kIsWeb
           ? 'No camera detected. Allow camera access in the browser, or use Gallery if enabled.'
           : 'No cameras available';
@@ -698,8 +709,13 @@ class CaptureViewModel extends ChangeNotifier {
     for (final c in allCameras) {
       AppLogger.debug('  - Name: "${c.name}", Direction: ${c.lensDirection}');
     }
-    _availableCameras = _externalCamerasFirst(allCameras);
     _cachedAvailableCameras = List<CameraDescription>.from(allCameras);
+    final filtered = camerasForDeviceType(
+      cameras: allCameras,
+      deviceType: _deviceType,
+      looksLikeExternalName: _looksLikeExternalCameraName,
+    );
+    _availableCameras = _externalCamerasFirst(filtered);
     AppLogger.debug(
       '📋 CaptureViewModel.loadCameras - Device: $_deviceType, '
       'showing ${_availableCameras.length} camera(s):',
@@ -709,6 +725,10 @@ class CaptureViewModel extends ChangeNotifier {
       AppLogger.debug(
         '   ${i + 1}. ${cameraDescriptionLabel(c)} (${c.lensDirection})',
       );
+    }
+    if (_currentCamera != null &&
+        !_availableCameras.any((c) => c.name == _currentCamera!.name)) {
+      _currentCamera = null;
     }
     if (_currentCamera == null && _availableCameras.isNotEmpty) {
       _currentCamera = _pickDefaultCamera(_availableCameras);

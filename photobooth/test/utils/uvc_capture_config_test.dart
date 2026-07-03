@@ -71,5 +71,13 @@ void main() {
       isTrue,
     );
     expect(UvcCaptureConfig.maxAutoReconnectAttempts, 5);
+    expect(
+      UvcCaptureConfig.resolutionPresetFor(AppDeviceType.androidTv),
+      UvcCameraResolutionPreset.low,
+    );
+    expect(
+      UvcCaptureConfig.resolutionPresetFor(AppDeviceType.androidPhone),
+      UvcCaptureConfig.resolutionPreset,
+    );
   });
 }
