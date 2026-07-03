@@ -5,6 +5,7 @@ import 'package:photobooth/screens/photo_generate/generation_wait_helpers.dart';
 import 'package:photobooth/screens/photo_generate/photo_generate_viewmodel.dart';
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
 import 'package:photobooth/utils/app_strings.dart';
+import 'package:photobooth/utils/constants.dart';
 
 void main() {
   const theme = ThemeModel(
@@ -229,6 +230,25 @@ void main() {
     });
   });
 
+  group('generationWaitHeroCellAspectRatio', () {
+    test('portrait for solo and couples', () {
+      expect(generationWaitUsesLandscapeCards(1), isFalse);
+      expect(generationWaitUsesLandscapeCards(2), isFalse);
+      expect(
+        generationWaitHeroCellAspectRatio(2),
+        AppConstants.kThemeSelectedCardAspectRatio,
+      );
+    });
+
+    test('landscape for groups of three or more', () {
+      expect(generationWaitUsesLandscapeCards(3), isTrue);
+      expect(
+        generationWaitHeroCellAspectRatio(3),
+        AppConstants.kBeholdSingleResultDefaultAspectRatio,
+      );
+    });
+  });
+
   group('computeThemeAnticipationHeroSize', () {
     test('fills tall portrait slot instead of a short landscape strip', () {
       final size = computeThemeAnticipationHeroSize(
@@ -239,7 +259,7 @@ void main() {
       expect(size.width, lessThanOrEqualTo(720));
     });
 
-    test('uses portrait cell aspect ratio', () {
+    test('uses portrait cell aspect ratio by default', () {
       final size = computeThemeAnticipationHeroSize(
         maxWidth: 720,
         maxHeight: 520,
@@ -248,6 +268,18 @@ void main() {
       final cellW = (size.width - gap) / 2;
       final cellH = size.height - kGenerationWaitAnticipationLabelOverhead;
       expect(cellW / cellH, closeTo(3 / 4.5, 0.02));
+    });
+
+    test('uses landscape cell aspect for group sessions', () {
+      final size = computeThemeAnticipationHeroSize(
+        maxWidth: 720,
+        maxHeight: 520,
+        cellAspect: generationWaitHeroCellAspectRatio(3),
+      );
+      const gap = kGenerationWaitAnticipationCellGap;
+      final cellW = (size.width - gap) / 2;
+      final cellH = size.height - kGenerationWaitAnticipationLabelOverhead;
+      expect(cellW / cellH, closeTo(3 / 2, 0.02));
     });
   });
 

@@ -108,6 +108,8 @@ class ThemeAnticipationHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = viewModel.selectedTheme;
     final photo = viewModel.originalPhoto;
+    final captureAlignment =
+        generationWaitCaptureImageAlignment(viewModel.sessionPersonCount);
     final sampleUrl = theme == null
         ? ''
         : ThemePreviewScreen.resolveSampleImageUrl(theme);
@@ -131,6 +133,7 @@ class ThemeAnticipationHero extends StatelessWidget {
                           imageFile: photo.imageFile,
                           width: cellW,
                           height: imageH,
+                          alignment: captureAlignment,
                         )
                       : const ColoredBox(color: Colors.black),
                 ),
@@ -139,7 +142,12 @@ class ThemeAnticipationHero extends StatelessWidget {
               Expanded(
                 child: _labeledCell(
                   label: AppStrings.generationWaitAfterLabel,
-                  child: _afterCell(sampleUrl, cellW, imageH),
+                  child: _afterCell(
+                    sampleUrl,
+                    cellW,
+                    imageH,
+                    alignment: captureAlignment,
+                  ),
                 ),
               ),
             ],
@@ -178,7 +186,12 @@ class ThemeAnticipationHero extends StatelessWidget {
     );
   }
 
-  Widget _afterCell(String sampleUrl, double cellW, double height) {
+  Widget _afterCell(
+    String sampleUrl,
+    double cellW,
+    double height, {
+    required Alignment alignment,
+  }) {
     if (sampleUrl.isEmpty) {
       return const _ShimmerPlaceholder();
     }
@@ -187,7 +200,7 @@ class ThemeAnticipationHero extends StatelessWidget {
       children: [
         FittedBox(
           fit: BoxFit.cover,
-          alignment: kGenerationWaitPortraitFaceAlignment,
+          alignment: alignment,
           child: CachedNetworkImage(
             imageUrl: sampleUrl,
             fit: BoxFit.cover,
@@ -702,6 +715,8 @@ class GenerationWaitHeroCard extends StatelessWidget {
   Widget _networkStageImage(BuildContext context, String imageUrl) {
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final cacheW = (width * dpr).ceil().clamp(64, 2048);
+    final captureAlignment =
+        generationWaitCaptureImageAlignment(viewModel.sessionPersonCount);
     const loading = Center(
       child: SizedBox(
         width: 28,
@@ -717,6 +732,7 @@ class GenerationWaitHeroCard extends StatelessWidget {
             imageFile: viewModel.originalPhoto!.imageFile,
             width: width,
             height: height,
+            alignment: captureAlignment,
           )
         : loading;
 
@@ -726,7 +742,7 @@ class GenerationWaitHeroCard extends StatelessWidget {
       child: ClipRect(
         child: FittedBox(
           fit: BoxFit.cover,
-          alignment: kGenerationWaitPortraitFaceAlignment,
+          alignment: captureAlignment,
           child: CachedNetworkImage(
             imageUrl: imageUrl.trim(),
             fit: BoxFit.cover,
@@ -878,12 +894,15 @@ class GenerationWaitCinematicHero extends StatelessWidget {
   Widget _networkImage(BuildContext context, String imageUrl) {
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final cacheW = (width * dpr).ceil().clamp(64, 2048);
+    final captureAlignment =
+        generationWaitCaptureImageAlignment(viewModel.sessionPersonCount);
     final photo = viewModel.originalPhoto;
     final fallback = photo != null
         ? KenBurnsCaptureImage(
             imageFile: photo.imageFile,
             width: width,
             height: height,
+            alignment: captureAlignment,
           )
         : const ColoredBox(color: Colors.black);
 
@@ -892,7 +911,7 @@ class GenerationWaitCinematicHero extends StatelessWidget {
       height: height,
       child: FittedBox(
         fit: BoxFit.cover,
-        alignment: kGenerationWaitPortraitFaceAlignment,
+        alignment: captureAlignment,
         child: CachedNetworkImage(
           imageUrl: imageUrl.trim(),
           fit: BoxFit.cover,
@@ -1036,14 +1055,18 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
         builder: (context, constraints) {
           final maxW = math.min(widget.cardWidth, constraints.maxWidth);
           final maxH = constraints.maxHeight;
+          final cellAspect =
+              generationWaitHeroCellAspectRatio(vm.sessionPersonCount);
           final size = anticipation
               ? computeThemeAnticipationHeroSize(
                   maxWidth: maxW,
                   maxHeight: maxH,
+                  cellAspect: cellAspect,
                 )
               : computeGenerationWaitCinematicHeroSize(
                   maxWidth: maxW,
                   maxHeight: maxH,
+                  aspect: cellAspect,
                 );
 
           Widget buildHeroImage(double width, double height) {
@@ -1095,6 +1118,12 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
     GenerationWaitPresentation presentation,
     double heroHeight,
   ) {
+    final cellAspect = generationWaitHeroCellAspectRatio(vm.sessionPersonCount);
+    final size = computeGenerationWaitCinematicHeroSize(
+      maxWidth: widget.cardWidth,
+      maxHeight: heroHeight,
+      aspect: cellAspect,
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1106,8 +1135,8 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
         GenerationWaitCinematicHero(
           viewModel: vm,
           presentation: presentation,
-          width: widget.cardWidth,
-          height: heroHeight,
+          width: size.width,
+          height: size.height,
         ),
         const SizedBox(height: 16),
         _buildWaitStageFooter(vm, presentation),
@@ -1120,6 +1149,12 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
     GenerationWaitPresentation presentation,
     double anticipationHeight,
   ) {
+    final cellAspect = generationWaitHeroCellAspectRatio(vm.sessionPersonCount);
+    final size = computeThemeAnticipationHeroSize(
+      maxWidth: widget.cardWidth,
+      maxHeight: anticipationHeight,
+      cellAspect: cellAspect,
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1130,8 +1165,8 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
         const SizedBox(height: 14),
         ThemeAnticipationHero(
           viewModel: vm,
-          width: widget.cardWidth,
-          height: anticipationHeight,
+          width: size.width,
+          height: size.height,
         ),
         const SizedBox(height: 16),
         _buildWaitStageFooter(vm, presentation),

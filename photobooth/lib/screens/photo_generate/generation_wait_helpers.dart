@@ -9,6 +9,28 @@ import '../../utils/constants.dart';
 /// Prefer the upper frame when cropping portrait captures in short cards.
 const Alignment kGenerationWaitPortraitFaceAlignment = Alignment(0, -0.22);
 
+/// Center crop for group captures in landscape anticipation cells.
+const Alignment kGenerationWaitGroupCaptureAlignment = Alignment.center;
+
+/// Groups (3+ people) use landscape cells so wide shots are not cropped at the sides.
+bool generationWaitUsesLandscapeCards(int? personCount) {
+  final count = personCount != null && personCount > 0 ? personCount : 1;
+  return count > 2;
+}
+
+/// Width ÷ height for You | Style cells and cinematic hero during CREATE wait.
+double generationWaitHeroCellAspectRatio(int? personCount) {
+  return generationWaitUsesLandscapeCards(personCount)
+      ? AppConstants.kBeholdSingleResultDefaultAspectRatio
+      : AppConstants.kThemeSelectedCardAspectRatio;
+}
+
+Alignment generationWaitCaptureImageAlignment(int? personCount) {
+  return generationWaitUsesLandscapeCards(personCount)
+      ? kGenerationWaitGroupCaptureAlignment
+      : kGenerationWaitPortraitFaceAlignment;
+}
+
 /// Vertical space for the You/Style labels above anticipation cells.
 const double kGenerationWaitAnticipationLabelOverhead = 22;
 
@@ -303,7 +325,7 @@ GenerationWaitPresentation resolveGenerationWaitPresentation(
   return (width: width, height: height);
 }
 
-/// Sizes the You | Style anticipation row for portrait booth captures.
+/// Sizes the You | Style anticipation row (portrait solo/couple, landscape groups).
 ({double width, double height}) computeThemeAnticipationHeroSize({
   required double maxWidth,
   required double maxHeight,

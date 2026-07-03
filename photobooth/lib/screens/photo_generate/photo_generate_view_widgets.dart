@@ -25,6 +25,7 @@ import '../theme_selection/theme_model.dart';
 import '../transformation_details/transformation_details_view.dart';
 import 'behold_result_ready_widgets.dart';
 import 'photo_generate_behold_aspect.dart';
+import 'generation_wait_helpers.dart';
 import 'generation_wait_widgets.dart';
 import 'photo_generate_viewmodel.dart';
 
@@ -1286,7 +1287,7 @@ Widget buildGeneratedOnlyLayout({
         maxRowHeight * 1.15,
         MediaQuery.sizeOf(context).height * 0.58,
       ),
-      aspect: 3 / 2,
+      aspect: generationWaitHeroCellAspectRatio(viewModel.sessionPersonCount),
     );
     return Center(
       child: SingleChildScrollView(
