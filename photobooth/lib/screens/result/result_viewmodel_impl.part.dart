@@ -374,13 +374,17 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   /// Free checkout (payments disabled on kiosk): print immediately after BEHOLD.
   Future<void> onFreeCheckoutPrint() async {
     _r._fcmPaymentPushSuccess = true;
-    _r._fcmPaymentStatusDetail = 'Printing your photos…';
+    _r._fcmPaymentStatusDetail = kIsWeb
+        ? 'Preparing your photos…'
+        : 'Printing your photos…';
     notifyListeners();
-    try {
-      await silentPrintToNetwork().timeout(const Duration(minutes: 2));
-    } on TimeoutException {
-      _r._errorMessage =
-          'Printing is taking longer than expected. Please check the printer connection and try again.';
+    if (!kIsWeb) {
+      try {
+        await silentPrintToNetwork().timeout(const Duration(minutes: 2));
+      } on TimeoutException {
+        _r._errorMessage =
+            'Printing is taking longer than expected. Please check the printer connection and try again.';
+      }
     }
     notifyListeners();
   }
@@ -405,11 +409,13 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       // _navigateToThankYouIfEligible is a no-op.
       unawaited(ensurePostPaymentShareArtifacts());
 
-      try {
-        await silentPrintToNetwork().timeout(const Duration(minutes: 2));
-      } on TimeoutException {
-        _r._errorMessage =
-            'Printing is taking longer than expected. Please check the printer connection and try again.';
+      if (!kIsWeb) {
+        try {
+          await silentPrintToNetwork().timeout(const Duration(minutes: 2));
+        } on TimeoutException {
+          _r._errorMessage =
+              'Printing is taking longer than expected. Please check the printer connection and try again.';
+        }
       }
       notifyListeners();
       return;
@@ -420,10 +426,14 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   }
 
   static String _fcmApprovedDetailText(PaymentPushPayload payload) {
-    final body = payload.body ??
-        (payload.amount != null && payload.amount!.isNotEmpty
+    final defaultBody = kIsWeb
+        ? (payload.amount != null && payload.amount!.isNotEmpty
+            ? '₹${payload.amount} paid successfully. Preparing your digital copy.'
+            : 'Payment approved. Preparing your digital copy.')
+        : (payload.amount != null && payload.amount!.isNotEmpty
             ? '₹${payload.amount} paid successfully. Proceed to print your photo.'
             : 'Payment approved. Proceed to print your photo.');
+    final body = payload.body ?? defaultBody;
     final title = payload.title?.trim();
     if (title != null && title.isNotEmpty) {
       return '$title\n$body';

@@ -31,6 +31,12 @@ class ThemeViewModel extends ChangeNotifier {
   String? _errorMessage;
   bool _showNoThemesMessage = false;
   VoidCallback? _themeManagerListener;
+  VoidCallback? _sessionListener;
+  String? _boundSessionId;
+  int _selectionResetToken = 0;
+
+  /// Bumped when picker state is cleared for a new customer session (sync carousel UI).
+  int get selectionResetToken => _selectionResetToken;
 
   ThemeViewModel({
     ThemeManager? themeManager,
@@ -41,10 +47,16 @@ class ThemeViewModel extends ChangeNotifier {
         _sessionManager = sessionManager ?? SessionManager() {
     // Listen to ThemeManager updates; [addListener] returns an unsubscribe callback.
     _themeManagerListener = _themeManager.addListener(_onThemesUpdated);
+    _sessionListener = _onSessionChanged;
+    _sessionManager.addListener(_sessionListener!);
+    _onSessionChanged();
   }
 
   @override
   void dispose() {
+    if (_sessionListener != null) {
+      _sessionManager.removeListener(_sessionListener!);
+    }
     _themeManagerListener?.call();
     super.dispose();
   }
@@ -283,7 +295,54 @@ class ThemeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Clears the selected theme
+  /// Clears carousel / armed state when a new kiosk customer session starts.
+  void resetForNewCustomer() {
+    _selectedTheme = null;
+    _armedTheme = null;
+    _carouselIndex = 0;
+    _selectedCategoryId = 'All';
+    _selectionResetToken++;
+    _applyDefaultThemeSelection();
+    notifyListeners();
+  }
+
+  void _applyDefaultThemeSelection() {
+    final list = filteredThemes;
+    if (list.isEmpty) {
+      _selectedTheme = null;
+      return;
+    }
+    _carouselIndex = 0;
+    _selectedTheme = list[0];
+  }
+
+  void _onSessionChanged() {
+    final session = _sessionManager.currentSession;
+    if (session == null) {
+      if (_boundSessionId != null || _armedTheme != null) {
+        _boundSessionId = null;
+        resetForNewCustomer();
+      }
+      return;
+    }
+
+    final sessionId = session.id;
+    final themeUnset = session.selectedThemeId == null ||
+        session.selectedThemeId!.trim().isEmpty;
+
+    if (_boundSessionId != sessionId && themeUnset) {
+      _boundSessionId = sessionId;
+      resetForNewCustomer();
+      return;
+    }
+
+    _boundSessionId = sessionId;
+  }
+
+  /// Idempotent sync when the theme picker screen opens (covers missed notifications).
+  void bindToCurrentSession() => _onSessionChanged();
+
+  /// Clears the selected theme (legacy; prefer [resetForNewCustomer] on session handoff).
   void clearSelection() {
     _selectedTheme = null;
     _armedTheme = null;

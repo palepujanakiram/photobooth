@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -157,11 +158,18 @@ class _ResultScreenState extends State<ResultScreen> {
     if (viewModel.fcmPaymentPushSuccess == true) {
       _failureIdleTimer?.cancel();
       _failureSecondsLeft = 0;
-      if (viewModel.hasError) {
+      if (viewModel.hasError && !kIsWeb) {
         AppSnackBar.showError(context, viewModel.errorMessage!);
         return;
       }
-      AppSnackBar.showSuccess(context, AppStrings.printJobSentSuccess);
+      if (!viewModel.hasError) {
+        AppSnackBar.showSuccess(
+          context,
+          kIsWeb
+              ? AppStrings.paymentConfirmedTitle
+              : AppStrings.printJobSentSuccess,
+        );
+      }
       await _navigateToThankYouIfEligible(viewModel);
       return;
     }
@@ -242,7 +250,8 @@ class _ResultScreenState extends State<ResultScreen> {
 
   Future<void> _navigateToThankYouIfEligible(ResultViewModel viewModel) async {
     if (!mounted || _didNavigateToThankYou) return;
-    if (viewModel.fcmPaymentPushSuccess != true || viewModel.hasError) return;
+    if (viewModel.fcmPaymentPushSuccess != true) return;
+    if (viewModel.hasError && !kIsWeb) return;
     _didNavigateToThankYou = true;
     try {
       await viewModel.ensurePostPaymentShareArtifacts();
@@ -319,7 +328,8 @@ class _ResultScreenState extends State<ResultScreen> {
       return;
     }
     if (_didNavigateToThankYou || _thankYouNavigationScheduled) return;
-    if (viewModel.hasError || viewModel.isPrinting) return;
+    if (viewModel.isPrinting) return;
+    if (viewModel.hasError && !kIsWeb) return;
 
     _thankYouNavigationScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {

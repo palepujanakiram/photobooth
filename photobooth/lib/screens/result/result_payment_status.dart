@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'result_viewmodel.dart';
 
@@ -27,7 +28,9 @@ class ResultPaymentStatusPresentation {
     }
     if (paymentSucceeded) {
       return ResultPaymentStatusPresentation(
-        statusMessage: 'Payment confirmed. Printing...',
+        statusMessage: kIsWeb
+            ? 'Payment confirmed. Preparing your digital copy…'
+            : 'Payment confirmed. Printing...',
         statusMessageColor: Colors.green.shade200,
       );
     }

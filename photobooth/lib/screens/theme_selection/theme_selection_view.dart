@@ -51,6 +51,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
   bool _isAutoScrollPaused = false;
   /// Tracks [PageController.viewportFraction] so we can rebuild when phone vs tablet layout changes.
   double? _carouselViewportFraction;
+  int _lastSelectionResetToken = 0;
 
   void _startTimer() {
     _elapsedSeconds = 0;
@@ -176,6 +177,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !routeIsVisible) return;
       final viewModel = context.read<ThemeViewModel>();
+      viewModel.bindToCurrentSession();
       _syncCarouselTimer(viewModel);
     });
   }
@@ -199,6 +201,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
       });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final viewModel = context.read<ThemeViewModel>();
+      viewModel.bindToCurrentSession();
       final themeManager = ThemeManager();
       if (themeManager.hasThemes) {
         viewModel.updateFromCache();
@@ -736,6 +739,17 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_pageController!.hasClients) {
           _pageController!.jumpToPage(0);
+        }
+      });
+    }
+
+    if (_lastSelectionResetToken != viewModel.selectionResetToken) {
+      _lastSelectionResetToken = viewModel.selectionResetToken;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageController?.hasClients == true) {
+          _pageController!.jumpToPage(
+            viewModel.carouselIndex.clamp(0, filtered.length - 1),
+          );
         }
       });
     }

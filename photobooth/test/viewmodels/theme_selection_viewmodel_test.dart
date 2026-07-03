@@ -84,4 +84,30 @@ void main() {
     expect(ok, isFalse);
     vm.dispose();
   });
+
+  test('resetForNewCustomer clears armed theme when session changes', () async {
+    final tm = ThemeManager.forTesting(ThemesFakeApi([
+      sampleTheme('t1'),
+      sampleTheme('t2'),
+    ]));
+    await tm.fetchThemes();
+    final vm = ThemeViewModel(themeManager: tm, apiService: FakeApiService());
+    await vm.loadThemes();
+    vm.armTheme(vm.themes[1]);
+    expect(vm.armedTheme?.id, 't2');
+
+    SessionManager().setSessionFromResponse({
+      'id': 'sess-new',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': <dynamic>[],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+    });
+
+    expect(vm.hasArmedTheme, isFalse);
+    expect(vm.selectedTheme?.id, 't1');
+    expect(vm.carouselIndex, 0);
+    vm.dispose();
+  });
 }

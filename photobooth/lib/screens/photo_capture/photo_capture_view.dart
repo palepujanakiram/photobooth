@@ -2091,7 +2091,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     ),
                   if (!_showCaptureFlash &&
                       !hasCapturedPhoto &&
-                      (viewModel.isCapturing || _uvcCaptureInFlight))
+                      (viewModel.isCapturing || _uvcCaptureInFlight) &&
+                      !_isUsingUvc)
                     Positioned.fill(
                       child: ColoredBox(
                         color: Colors.black.withValues(alpha: 0.35),
@@ -2300,14 +2301,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                   }
                 : null,
             child: viewModel.isUploading
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
-                    ),
-                  )
+                ? const Text('Processing…')
                 : Text(
                     viewModel.isPreparingUploadPayload
                         ? 'Preparing…'
@@ -2379,17 +2373,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                   (viewModel.isCapturing || viewModel.isSelectingFromGallery)
                       ? null
                       : () async => _handleSelectFromGallery(viewModel),
-              icon: viewModel.isSelectingFromGallery
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : const Icon(CupertinoIcons.photo, size: 20),
-              label: const Text('Gallery'),
+              icon: const Icon(CupertinoIcons.photo, size: 20),
+              label: Text(
+                viewModel.isSelectingFromGallery ? 'Selecting…' : 'Gallery',
+              ),
             ),
             const SizedBox(height: 12),
           ],
@@ -2412,17 +2399,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                       await viewModel.capturePhotoWithCountdown();
                     }
                   },
-            icon: (viewModel.isCapturing || _uvcCaptureInFlight)
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
-                    ),
-                  )
-                : const Icon(CupertinoIcons.camera, size: 20),
-            label: const Text('Capture'),
+            icon: const Icon(CupertinoIcons.camera, size: 20),
+            label: Text(
+              (viewModel.isCapturing || _uvcCaptureInFlight)
+                  ? 'Capturing…'
+                  : 'Capture',
+            ),
           ),
         ],
       ),
