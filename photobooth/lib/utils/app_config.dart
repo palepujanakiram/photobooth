@@ -8,10 +8,11 @@ class AppConfig {
   /// Base URL for the API endpoints
   ///
   /// For development with CORS issues, you can use:
-  /// - A CORS proxy: 'https://cors-anywhere.herokuapp.com/https://fotozenai.fly.dev'
-  /// - A local proxy server: 'http://localhost:8080/api'
+  /// - A local proxy: `./run_web_dev.sh` (recommended for web dev)
+  /// - Direct API: `--dart-define=BASE_URL=https://fotozenai.fly.dev` (requires server CORS)
   ///
-  /// For production, ensure the server has proper CORS headers configured.
+  /// For production Flutter web on Fly.io, use same-origin BASE_URL
+  /// (`https://fotozen-web.fly.dev`); nginx proxies `/api/*` to the API app.
   ///
   /// Base URL for the API endpoints
   /// NOTE: For web development, you MUST run Chrome with CORS disabled

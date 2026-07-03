@@ -2,7 +2,7 @@
 #
 # Build assets first (from photobooth/):
 #   dart run tool/sync_build_version.dart
-#   flutter build web --release --dart-define=BASE_URL=https://fotozenai.fly.dev
+#   flutter build web --release --dart-define=BASE_URL=https://fotozen-web.fly.dev
 #
 # Deploy:
 #   fly deploy -c fly.web.toml

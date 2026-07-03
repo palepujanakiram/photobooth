@@ -73,6 +73,12 @@ abstract final class AppStrings {
   static const uvcTapToWakePreview =
       'Tap when ready\nto start the camera preview';
 
+  static const uvcReconnectingMessage = 'Reconnecting USB camera…';
+
+  static const uvcReconnectFailedMessage =
+      'USB camera keeps disconnecting. Check the cable and USB port, then tap '
+      'Retry USB camera.';
+
   /// POSE screen: shown briefly before returning to Terms after idle timeout.
   static const captureScreenIdleResetMessage =
       'Idle activity is detected so going back';

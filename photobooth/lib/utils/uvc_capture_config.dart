@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:uvccamera/uvccamera.dart';
 
+import 'app_device_type.dart';
 import 'app_runtime_config.dart';
 import 'constants.dart';
 
@@ -39,6 +40,27 @@ class UvcCaptureConfig {
 
   /// Extra pause before reopening live feed after capture/close (native release).
   static const Duration reopenFeedDelay = Duration(milliseconds: 1200);
+
+  /// Ignore USB `disconnected` events shortly after an intentional native close.
+  static const Duration reconnectIgnoreDisconnectPeriod =
+      Duration(seconds: 3);
+
+  /// Auto-reconnect attempts before showing a stable error (tap Retry).
+  static const int maxAutoReconnectAttempts = 5;
+
+  /// Android TV: longer USB settle time before reopening the feed.
+  static Duration reopenFeedDelayFor(AppDeviceType? deviceType) {
+    if (deviceType == AppDeviceType.androidTv) {
+      return const Duration(milliseconds: 2200);
+    }
+    return reopenFeedDelay;
+  }
+
+  /// Periodic session recycle is disabled on TV — teardown/reopen churn is unstable.
+  static bool enableSessionRecycleFor(AppDeviceType? deviceType) {
+    if (deviceType == AppDeviceType.androidTv) return false;
+    return enableSessionRecycle;
+  }
 
   /// Brief white shutter flash (not held for the whole takePicture wait).
   static const Duration captureFlashDuration = Duration(milliseconds: 120);

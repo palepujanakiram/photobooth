@@ -5,14 +5,13 @@
 #
 # Or manually:
 #   dart run tool/sync_build_version.dart
-#   flutter build web --release --dart-define=BASE_URL=https://fotozenai.fly.dev
+#   flutter build web --release --dart-define=BASE_URL=https://fotozen-web.fly.dev
 #   fly deploy -c fly.web.toml --ha=false
 #   fly scale count 1 -y -c fly.web.toml
 #
 # First-time: fly apps create fotozen-web
-# API CORS: fotozenai must allow this origin (built into zenai/server/index.ts).
-# After first deploy, also set on the API app if you use a custom domain:
-#   fly secrets set FLUTTER_WEB_URL=https://fotozen-web.fly.dev -a fotozenai
+# API calls use same-origin BASE_URL; nginx proxies /api/* → fotozenai.fly.dev.
+# Override upstream in deploy/nginx.web.conf or set a custom WEB_PUBLIC_URL when building.
 
 app = "fotozen-web"
 primary_region = "bom"
@@ -29,7 +28,7 @@ primary_region = "bom"
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
 
   [[http_service.checks]]
     method = "get"

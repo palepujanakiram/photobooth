@@ -1,5 +1,10 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 import '../services/session_manager.dart';
 import 'app_config.dart';
+
+/// Known API hosts that may appear in absolute URLs returned by the backend.
+const _knownApiHosts = {'fotozenai.fly.dev', 'fotozenai-test.fly.dev'};
 
 /// Helpers for accessing protected image endpoints.
 ///
@@ -16,10 +21,28 @@ class SecureImageUrl {
     return b.endsWith('/') ? b.substring(0, b.length - 1) : b;
   }
 
+  /// On web, rewrite absolute API URLs to [AppConfig.baseUrl] (same-origin proxy).
+  static String rewriteKnownApiHost(String url) {
+    if (!kIsWeb) return url;
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return url;
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || !uri.hasScheme) return url;
+    if (!_knownApiHosts.contains(uri.host.toLowerCase())) return url;
+    final base = Uri.parse(_baseUrlNoTrailingSlash());
+    return uri
+        .replace(
+          scheme: base.scheme,
+          host: base.host,
+          port: base.hasPort ? base.port : null,
+        )
+        .toString();
+  }
+
   static String _absolutizeIfRelative(String url) {
     final trimmed = url.trim();
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      return trimmed;
+      return rewriteKnownApiHost(trimmed);
     }
     final base = _baseUrlNoTrailingSlash();
     if (trimmed.startsWith('/')) return '$base$trimmed';

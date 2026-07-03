@@ -14,6 +14,7 @@ import 'photo_capture_preview_rotation.dart';
 import 'photo_capture_camera_error_helpers.dart';
 import 'photo_capture_uvc_device_helpers.dart';
 import 'photo_capture_uvc_feed_phase.dart';
+import 'photo_capture_uvc_reconnect_helpers.dart';
 import 'photo_capture_uvc_raster_capture.dart';
 import 'photo_capture_uvc_take_picture_helpers.dart';
 import 'photo_capture_uvc_shutter_helpers.dart';
@@ -76,6 +77,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   bool _uvcFeedAsleep = false;
   bool _uvcLifecyclePaused = false;
   DateTime? _uvcShutterGraceUntil;
+  DateTime? _uvcIgnoreDisconnectUntil;
+  int _uvcAutoReconnectAttempts = 0;
+  bool _uvcReconnectInFlight = false;
   DateTime? _uvcPreviewReadyAt;
   int _uvcPreviewGeneration = 0;
   DateTime? _uvcLastUiCaptureEndedAt;
@@ -222,6 +226,40 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         graceUntil: _uvcShutterGraceUntil,
       );
 
+  void _extendUvcDisconnectIgnore(Duration extension) {
+    _uvcIgnoreDisconnectUntil = uvcLaterDisconnectIgnoreUntil(
+      current: _uvcIgnoreDisconnectUntil,
+      extension: extension,
+    );
+  }
+
+  bool get _shouldIgnoreUvcDisconnectEvent => uvcShouldIgnoreDisconnectEvent(
+        ignoreDisconnectUntil: _uvcIgnoreDisconnectUntil,
+        initializing: _uvcInitializing,
+        openingController: _uvcOpeningController,
+        reconnectInFlight: _uvcReconnectInFlight,
+        withinShutterGrace: _isWithinUvcShutterGrace,
+        holdLiveFeedClosed: _uvcHoldLiveFeedClosed,
+        phase: _uvcPhase,
+      );
+
+  void _resetUvcAutoReconnectAttempts() {
+    _uvcAutoReconnectAttempts = 0;
+    _uvcIgnoreDisconnectUntil = null;
+  }
+
+  void _markUvcReconnectExhausted() {
+    _uvcReconnectTimer?.cancel();
+    _uvcReconnectTimer = null;
+    if (!mounted) return;
+    setState(() {
+      _uvcPhase = UvcFeedPhase.error;
+      _uvcError = AppStrings.uvcReconnectFailedMessage;
+      _uvcInitializing = false;
+      _uvcOpeningController = false;
+    });
+  }
+
   bool get _uvcHoldLiveFeedClosed =>
       uvcFeedPhaseBlocksLivePreview(_uvcPhase) ||
       _uvcCaptureInFlight ||
@@ -352,7 +390,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   void _armUvcSessionRecycleTimer() {
-    if (!UvcCaptureConfig.enableSessionRecycle) return;
+    if (!UvcCaptureConfig.enableSessionRecycleFor(_captureViewModel.deviceType)) {
+      return;
+    }
     _cancelUvcSessionRecycleTimer();
     _uvcSessionRecycleTimer = Timer(
       UvcCaptureConfig.sessionRecyclePeriod,
@@ -364,7 +404,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _uvcSessionRecycleTimer = null;
     if (!mounted) return;
     if (!uvcSessionRecycleMayRun(
-      sessionRecycleEnabled: UvcCaptureConfig.enableSessionRecycle,
+      sessionRecycleEnabled: UvcCaptureConfig.enableSessionRecycleFor(
+        _captureViewModel.deviceType,
+      ),
       isUsingUvc: _isUsingUvc,
       mayAutoOpenLiveFeed: _uvcMayAutoOpenLiveFeed,
       blocksConcurrentAutoOpen: _uvcBlocksConcurrentAutoOpen,
@@ -687,6 +729,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   Future<void> _closeUvcControllerUnlocked() async {
+    _extendUvcDisconnectIgnore(UvcCaptureConfig.reconnectIgnoreDisconnectPeriod);
     _detachUvcHardwareListeners();
     _detachUvcControllerListener();
     await _setUvcShutterKeysEnabled(false);
@@ -795,6 +838,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!mounted || _uvcDevice == null) {
       return;
     }
+    if (_uvcReconnectInFlight) {
+      AppLogger.debug('UVC resume skipped — reconnect already in flight');
+      return;
+    }
+    if (reason == 'retryTap') {
+      _resetUvcAutoReconnectAttempts();
+    }
     if (!uvcMayResumeLiveFeed(
       phase: _uvcPhase,
       hasCapturedPhoto: _captureViewModel.capturedPhoto != null,
@@ -802,11 +852,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return;
     }
 
+    _uvcReconnectInFlight = true;
     _uvcReconnectTimer?.cancel();
     _uvcShutterGraceUntil = null;
     _lastUvcShutterAt = null;
     _clearUvcTransientCaptureUi();
     _uvcPhase = UvcFeedPhase.live;
+    _extendUvcDisconnectIgnore(UvcCaptureConfig.reconnectIgnoreDisconnectPeriod);
 
     if (!mounted) return;
     setState(() {
@@ -820,7 +872,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         PaintingBinding.instance.imageCache.clear();
         PaintingBinding.instance.imageCache.clearLiveImages();
       }
-      await Future<void>.delayed(UvcCaptureConfig.reopenFeedDelay);
+      final reopenDelay = UvcCaptureConfig.reopenFeedDelayFor(
+        _captureViewModel.deviceType,
+      );
+      _extendUvcDisconnectIgnore(reopenDelay + const Duration(seconds: 1));
+      await Future<void>.delayed(reopenDelay);
       if (!mounted || _uvcDevice == null || !_uvcMayAutoOpenLiveFeed) {
         return;
       }
@@ -878,6 +934,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         _uvcInitializing = false;
       });
     } finally {
+      _uvcReconnectInFlight = false;
       if (mounted) {
         setState(() => _uvcInitializing = false);
       }
@@ -890,6 +947,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _uvcDevice = null;
     _uvcError = null;
     _uvcPreviewGeneration = 0;
+    _resetUvcAutoReconnectAttempts();
+    _uvcReconnectInFlight = false;
   }
 
   bool get _isUsingUvc => _uvcDevice != null;
@@ -932,18 +991,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         }
       case UvcCameraDeviceEventType.disconnected:
       case UvcCameraDeviceEventType.detached:
-        if (_uvcHoldLiveFeedClosed ||
-            _isWithinUvcShutterGrace ||
-            _uvcPhase != UvcFeedPhase.live) {
+        if (_shouldIgnoreUvcDisconnectEvent) {
+          AppLogger.debug(
+            'UVC ${event.type.name} ignored (intentional close / in flight)',
+          );
           return;
         }
         unawaited(() async {
           await _closeUvcController();
           if (!mounted) return;
           setState(() {
-            _uvcInitializing = false;
+            _uvcInitializing = true;
             _uvcOpeningController = false;
-            _uvcError = 'USB camera disconnected. Reconnecting…';
+            _uvcError = null;
           });
           _scheduleUvcReconnect(event.type.name);
         }());
@@ -953,19 +1013,34 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void _scheduleUvcReconnect(String reason) {
     if (!_isUsingUvc ||
         !_uvcMayAutoOpenLiveFeed ||
-        _uvcBlocksConcurrentAutoOpen) {
+        _uvcBlocksConcurrentAutoOpen ||
+        _uvcReconnectInFlight) {
       return;
     }
+    if (!uvcMayScheduleAutoReconnect(
+      attemptCount: _uvcAutoReconnectAttempts,
+      maxAttempts: UvcCaptureConfig.maxAutoReconnectAttempts,
+    )) {
+      _markUvcReconnectExhausted();
+      return;
+    }
+
+    _uvcAutoReconnectAttempts++;
     _uvcReconnectTimer?.cancel();
-    _uvcReconnectTimer = Timer(const Duration(milliseconds: 650), () {
+    final delay = uvcReconnectBackoffDelay(_uvcAutoReconnectAttempts);
+    _uvcReconnectTimer = Timer(delay, () {
       if (!mounted) return;
       if (_uvcDevice == null ||
           _uvcController != null ||
           !_uvcMayAutoOpenLiveFeed ||
-          _uvcBlocksConcurrentAutoOpen) {
+          _uvcBlocksConcurrentAutoOpen ||
+          _uvcReconnectInFlight) {
         return;
       }
-      AppLogger.debug('UVC reconnect scheduled ($reason)');
+      AppLogger.debug(
+        'UVC reconnect scheduled ($reason) attempt=$_uvcAutoReconnectAttempts '
+        'delayMs=${delay.inMilliseconds}',
+      );
       _safeUnawaited(
         _resumeUvcLiveFeed(reason: reason),
         label: 'UVC reconnect failed',
@@ -1071,6 +1146,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         _attachUvcHardwareListeners(ctrl);
         await _setUvcShutterKeysEnabled(true);
         _armUvcSessionRecycleTimer();
+        _resetUvcAutoReconnectAttempts();
         _captureViewModel.markCameraAvailabilityRestored();
         AppLogger.debug(
           'UVC preview opened preset=${UvcCaptureConfig.resolutionPreset.name} '
@@ -1305,7 +1381,26 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
     final ctrl = _uvcController;
     if (_uvcInitializing) {
-      return const Center(child: CircularProgressIndicator(color: Colors.white));
+      final message = _uvcAutoReconnectAttempts > 0
+          ? AppStrings.uvcReconnectingMessage
+          : 'Connecting USB camera…';
+      return ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Colors.white),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                style: const TextStyle(color: Colors.white70),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
     }
     if (_uvcError != null) {
       return ColoredBox(
