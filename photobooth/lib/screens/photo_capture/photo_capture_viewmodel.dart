@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:ui'
     show Size, ImmutableBuffer, instantiateImageCodecFromBuffer;
-import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, defaultTargetPlatform, kIsWeb, visibleForTesting;
 import 'package:flutter/services.dart' show MethodChannel, PlatformException;
 import 'package:camera/camera.dart';
 import 'package:camera/camera.dart' as cam show availableCameras;
@@ -43,6 +43,17 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Whether a prior [loadCameras] / [warmCameraEnumerationCache] filled the static cache.
   static bool get hasEnumerationCache => _cachedAvailableCameras != null;
+
+  /// True when Terms preload enumerated at least one openable camera for POSE.
+  bool get preferEnumeratedCameraPath {
+    final cached = _cachedAvailableCameras;
+    if (cached == null || cached.isEmpty) return false;
+    return captureCamerasForDevice(
+      cameras: cached,
+      deviceType: _deviceType,
+      looksLikeExternalName: _looksLikeExternalCameraName,
+    ).isNotEmpty;
+  }
   CameraController? _cameraController;
 
   /// Set true in [dispose]. Post-await work should bail before mutating state.
@@ -67,6 +78,94 @@ class CaptureViewModel extends ChangeNotifier {
     } on Exception {
       _cachedAvailableCameras = null;
     }
+  }
+
+  static CameraController? _prewarmedController;
+  static CameraDescription? _prewarmedCamera;
+  static AppDeviceType? _prewarmedForDeviceType;
+
+  static bool get hasPrewarmedCamera =>
+      _prewarmedController?.value.isInitialized == true;
+
+  static AppDeviceType? get prewarmedDeviceType => _prewarmedForDeviceType;
+
+  /// Opens the live CameraX feed during Terms idle time so POSE can adopt instantly.
+  static Future<void> prewarmLiveCamera({AppDeviceType? deviceType}) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (_prewarmedController?.value.isInitialized == true) return;
+    try {
+      if (_cachedAvailableCameras == null) {
+        await preloadCameras();
+      }
+      final cached = _cachedAvailableCameras;
+      if (cached == null || cached.isEmpty) return;
+      await disposePrewarm();
+      final candidates = captureCamerasForDevice(
+        cameras: cached,
+        deviceType: deviceType,
+        looksLikeExternalName: looksLikeExternalCameraName,
+      );
+      if (candidates.isEmpty) return;
+      final picked = pickPreferredCaptureCamera(
+        cameras: cached,
+        deviceType: deviceType,
+        looksLikeExternalName: looksLikeExternalCameraName,
+      );
+      final isExternal = isExternalCaptureCamera(
+        picked,
+        looksLikeExternalCameraName,
+      );
+      final ctrl = CameraController(
+        picked,
+        captureResolutionPreset(
+          deviceType: deviceType,
+          isExternal: isExternal,
+        ),
+        enableAudio: false,
+        imageFormatGroup: captureStreamFormat(
+          deviceType: deviceType,
+          isExternal: isExternal,
+        ),
+      );
+      await ctrl.initialize().timeout(const Duration(seconds: 15));
+      _prewarmedController = ctrl;
+      _prewarmedCamera = picked;
+      _prewarmedForDeviceType = deviceType;
+      AppLogger.debug(
+        '✅ Prewarmed camera: ${cameraDescriptionLabel(picked)}',
+      );
+    } catch (e, st) {
+      AppLogger.debug('Prewarm camera skipped/failed: $e');
+      await disposePrewarm();
+      unawaited(
+        ErrorReportingManager.recordError(
+          e,
+          st,
+          reason: 'prewarmLiveCamera failed',
+          fatal: false,
+        ),
+      );
+    }
+  }
+
+  static Future<void> disposePrewarm() async {
+    final ctrl = _prewarmedController;
+    _prewarmedController = null;
+    _prewarmedCamera = null;
+    _prewarmedForDeviceType = null;
+    if (ctrl == null) return;
+    try {
+      await ctrl.dispose();
+    } catch (_) {
+      // Best-effort teardown of unused prewarm.
+    }
+  }
+
+  @visibleForTesting
+  static void resetPrewarmForTest() {
+    _prewarmedController = null;
+    _prewarmedCamera = null;
+    _prewarmedForDeviceType = null;
   }
   PhotoModel? _capturedPhoto;
   /// Decoded pixel size of [_capturedPhoto] (for UI card aspect). Null until decode finishes.
@@ -527,26 +626,28 @@ class CaptureViewModel extends ChangeNotifier {
     return 'Camera';
   }
 
-  /// Picks the default camera: prefer real external (HDMI/USB), then built-in **front** when
-  /// both front and back exist (kiosk selfie tablets), else back, else first.
-  /// On iPad the plugin can misreport built-in as external, so we prefer by name (UUID) first.
   CameraDescription _pickDefaultCamera(List<CameraDescription> cameras) {
+    return _pickDefaultCameraFromList(cameras);
+  }
+
+  static CameraDescription _pickDefaultCameraFromList(
+    List<CameraDescription> cameras,
+  ) {
     if (cameras.isEmpty) {
       throw StateError('No cameras available');
     }
-    // 1) Prefer by name (UUID = real external on iOS; avoids mislabeled built-in)
-    final byName = cameras.where((c) => _looksLikeExternalCameraName(c.name)).toList();
+    final byName = cameras
+        .where((c) => looksLikeExternalCameraName(c.name))
+        .toList();
     if (byName.isNotEmpty) {
       return byName.first;
     }
-    // 2) Then by lensDirection.external (HDMI capture card, USB webcam, etc.)
-    final byDirection = cameras.where(
-      (c) => c.lensDirection == CameraLensDirection.external,
-    ).toList();
+    final byDirection = cameras
+        .where((c) => c.lensDirection == CameraLensDirection.external)
+        .toList();
     if (byDirection.isNotEmpty) {
       return byDirection.first;
     }
-    // 3) Built-in only: prefer front when both front and back exist (kiosk / tablet selfie)
     final fronts = cameras
         .where((c) => c.lensDirection == CameraLensDirection.front)
         .toList();
@@ -560,13 +661,57 @@ class CaptureViewModel extends ChangeNotifier {
     return cameras.first;
   }
 
+  /// Transfers the Terms-screen prewarm into this screen instance.
+  bool adoptPrewarmIfAvailable() => _tryAdoptPrewarmedCamera();
+
+  bool _tryAdoptPrewarmedCamera() {
+    final ctrl = _prewarmedController;
+    final camera = _prewarmedCamera;
+    final prewarmedType = _prewarmedForDeviceType;
+    if (ctrl == null || camera == null || !ctrl.value.isInitialized) {
+      return false;
+    }
+    if (_deviceType != null &&
+        prewarmedType != null &&
+        _deviceType != prewarmedType) {
+      unawaited(disposePrewarm());
+      return false;
+    }
+    _prewarmedController = null;
+    _prewarmedCamera = null;
+    _prewarmedForDeviceType = null;
+
+    if (_cachedAvailableCameras != null) {
+      _applyCachedCameraList();
+    } else {
+      _availableCameras = [camera];
+    }
+    _currentCamera = camera;
+    _cameraController = ctrl;
+    _cameraGeneration++;
+    _errorMessage = null;
+    _minZoom = null;
+    _maxZoom = null;
+    _currentZoom = 1.0;
+    ctrl.addListener(_onCameraControllerUpdate);
+    _markCameraAvailabilityRestored();
+    unawaited(
+      _finishCameraSetup(camera).catchError((Object e, StackTrace st) {
+        AppLogger.error('finishCameraSetup failed', error: e, stackTrace: st);
+      }),
+    );
+    notifyListeners();
+    AppLogger.debug('✅ Adopted prewarmed camera on POSE entry');
+    return true;
+  }
+
   /// True if camera name looks like a real external device (e.g. iOS UUID).
   /// Excludes built-in cameras whose names contain "built-in" (plugin can misreport direction).
   bool _looksLikeExternalCameraName(String name) =>
       looksLikeExternalCameraName(name);
 
   /// Set device type from UI (from [DeviceClassifier.getDeviceType]).
-  /// Used to filter cameras: tablet/TV → external only, phone → built-in only.
+  /// Used to filter cameras: tablet/TV → external first with built-in fallback.
   void setDeviceType(AppDeviceType? type) {
     final changed = _deviceType != type;
     _deviceType = type;
@@ -594,27 +739,14 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Sorts cameras so external ones come first (for default selection and list order).
-  List<CameraDescription> _externalCamerasFirst(List<CameraDescription> cameras) {
-    if (cameras.length <= 1) return cameras;
-    final list = List<CameraDescription>.from(cameras);
-    list.sort((a, b) {
-      final aExt = a.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(a.name);
-      final bExt = b.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(b.name);
-      if (aExt == bExt) return 0;
-      return aExt ? -1 : 1;
-    });
-    return list;
-  }
-
   void _applyCachedCameraList() {
     if (_cachedAvailableCameras == null) return;
-    final filtered = camerasForDeviceType(
+    final filtered = captureCamerasForDevice(
       cameras: _cachedAvailableCameras!,
       deviceType: _deviceType,
       looksLikeExternalName: _looksLikeExternalCameraName,
     );
-    _availableCameras = _externalCamerasFirst(filtered);
+    _availableCameras = filtered;
     if (filtered.isEmpty) {
       _errorMessage = kIsWeb
           ? 'No camera detected. Allow camera access in the browser, or use Gallery if enabled.'
@@ -711,12 +843,12 @@ class CaptureViewModel extends ChangeNotifier {
       AppLogger.debug('  - Name: "${c.name}", Direction: ${c.lensDirection}');
     }
     _cachedAvailableCameras = List<CameraDescription>.from(allCameras);
-    final filtered = camerasForDeviceType(
+    final filtered = captureCamerasForDevice(
       cameras: allCameras,
       deviceType: _deviceType,
       looksLikeExternalName: _looksLikeExternalCameraName,
     );
-    _availableCameras = _externalCamerasFirst(filtered);
+    _availableCameras = filtered;
     AppLogger.debug(
       '📋 CaptureViewModel.loadCameras - Device: $_deviceType, '
       'showing ${_availableCameras.length} camera(s):',
@@ -958,6 +1090,10 @@ class CaptureViewModel extends ChangeNotifier {
     try {
       await (() async {
         await loadCameras(forceRefresh: forceRefresh);
+        if (!forceRefresh && _tryAdoptPrewarmedCamera()) {
+          return;
+        }
+        await disposePrewarm();
         if (_availableCameras.isNotEmpty) {
           _currentCamera = _pickDefaultCamera(_availableCameras);
           AppLogger.debug(

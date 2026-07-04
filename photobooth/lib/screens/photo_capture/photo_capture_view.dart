@@ -85,6 +85,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Timer? _uvcTvProbeTimer;
   Timer? _uvcEntryProbeTimer;
   Future<void> _captureInitOp = Future<void>.value();
+  bool _skipUvcForCameraXSession = false;
   DateTime? _uvcPreviewReadyAt;
   int _uvcPreviewGeneration = 0;
   DateTime? _uvcLastUiCaptureEndedAt;
@@ -522,18 +523,65 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      await HardwareKeyService.setEnabled(true);
-      _hardwareKeysEnabled = true;
-      // Await prefs before camera so SharedPreferences I/O does not overlap native
-      // camera enumeration / CameraController.initialize (reduces peak contention on 2 GB devices).
-      await _captureViewModel.loadPreviewRotation();
-      if (!mounted) return;
-      await _resetAndInitializeCameras();
-      if (!mounted) return;
-      _syncPoseIdleTimer(_captureViewModel);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _schedulePoseSetupAfterTransition();
     });
+  }
+
+  /// Defers camera work until the route transition finishes (smoother POSE entry).
+  void _schedulePoseSetupAfterTransition() {
+    if (!mounted) return;
+
+    void beginSetup() {
+      if (!mounted) return;
+      unawaited(_beginPoseCaptureSetup());
+    }
+
+    if (CaptureViewModel.hasPrewarmedCamera) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => beginSetup());
+      return;
+    }
+
+    final animation = ModalRoute.of(context)?.animation;
+    if (animation != null && !animation.isCompleted) {
+      void onStatus(AnimationStatus status) {
+        if (status == AnimationStatus.completed) {
+          animation.removeStatusListener(onStatus);
+          beginSetup();
+        }
+      }
+      animation.addStatusListener(onStatus);
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => beginSetup());
+  }
+
+  Future<void> _beginPoseCaptureSetup() async {
+    if (!mounted) return;
+    unawaited(
+      HardwareKeyService.setEnabled(true).then((_) {
+        if (mounted) _hardwareKeysEnabled = true;
+      }),
+    );
+
+    final prewarmedType = CaptureViewModel.prewarmedDeviceType;
+    if (prewarmedType != null && _captureViewModel.deviceType == null) {
+      _captureViewModel.setDeviceType(prewarmedType);
+    }
+
+    if (CaptureViewModel.hasPrewarmedCamera &&
+        _captureViewModel.adoptPrewarmIfAvailable()) {
+      unawaited(_captureViewModel.loadPreviewRotation());
+      _syncPoseIdleTimer(_captureViewModel);
+      return;
+    }
+
+    await _captureViewModel.loadPreviewRotation();
+    if (!mounted) return;
+    await _resetAndInitializeCameras();
+    if (!mounted) return;
+    _syncPoseIdleTimer(_captureViewModel);
   }
 
   /// Common function to reset and initialize cameras
@@ -578,23 +626,30 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return;
     }
 
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      if (!CaptureViewModel.hasEnumerationCache) {
-        unawaited(_captureViewModel.warmCameraEnumerationCache());
-      }
+    _skipUvcForCameraXSession = _captureViewModel.preferEnumeratedCameraPath;
+
+    if (defaultTargetPlatform == TargetPlatform.android &&
+        !_skipUvcForCameraXSession) {
       await UvcSessionCoordinator.waitBeforeOpen(
         deviceType: _captureViewModel.deviceType,
       );
       if (!mounted) return;
-      final uvcReady = await _tryInitializeUvcQuick(preferred: _uvcDevice);
+
+      final uvcAttached = await hasAttachedUvcDevices();
       if (!mounted) return;
-      if (uvcReady) {
-        unawaited(_captureViewModel.warmCameraEnumerationCache());
-        _stopUvcEntryProbe();
-        _startUvcTvProbeIfNeeded();
-        return;
+
+      if (uvcAttached) {
+        unawaited(CaptureViewModel.disposePrewarm());
+        final uvcReady = await _tryInitializeUvcQuick(preferred: _uvcDevice);
+        if (!mounted) return;
+        if (uvcReady) {
+          unawaited(_captureViewModel.warmCameraEnumerationCache());
+          _stopUvcEntryProbe();
+          _startUvcTvProbeIfNeeded();
+          return;
+        }
+        await _clearUvcBinding();
       }
-      await _clearUvcBinding();
     }
 
     await _captureViewModel.resetAndInitializeCameras(
@@ -603,6 +658,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!mounted) return;
     if (!_uvcFeedIsHealthy &&
         !_captureViewModel.isReady &&
+        !_captureViewModel.isLoadingCameras &&
+        !_captureViewModel.isInitializing &&
+        !_skipUvcForCameraXSession &&
         defaultTargetPlatform == TargetPlatform.android) {
       _startUvcEntryProbe();
     } else {
@@ -617,7 +675,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!mounted) return false;
     try {
       return await _tryInitializeUvc(preferred: preferred).timeout(
-        UvcCaptureConfig.openTimeout,
+        UvcCaptureConfig.quickOpenTimeout,
         onTimeout: () {
           throw TimeoutException('UVC open timed out');
         },
@@ -645,6 +703,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         _stopUvcEntryProbe();
         return;
       }
+      if (_skipUvcForCameraXSession ||
+          _captureViewModel.isLoadingCameras ||
+          _captureViewModel.isInitializing) {
+        return;
+      }
       if (_uvcReconnectInFlight || _uvcBlocksConcurrentAutoOpen) return;
       _safeUnawaited(
         _probeUvcForEntry(),
@@ -659,7 +722,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   Future<void> _probeUvcForEntry() async {
-    if (!mounted || _uvcFeedIsHealthy) return;
+    if (!mounted || _uvcFeedIsHealthy || _skipUvcForCameraXSession) return;
+    if (_captureViewModel.isLoadingCameras ||
+        _captureViewModel.isInitializing) {
+      return;
+    }
     await _captureInitOp.catchError((_) {});
     if (!mounted || _uvcFeedIsHealthy) return;
     final ok = await _tryInitializeUvc();
@@ -726,6 +793,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   Future<void> _tryBindUvcFromHotplug(UvcCameraDevice eventDevice) async {
+    if (_skipUvcForCameraXSession) return;
     await _captureInitOp.catchError((_) {});
     if (!mounted ||
         _uvcDevice != null ||
@@ -1130,6 +1198,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   void _onUvcDeviceEvent(UvcCameraDeviceEvent event) {
     if (_uvcDevice == null) {
+      if (_skipUvcForCameraXSession) return;
       if (event.type == UvcCameraDeviceEventType.attached ||
           event.type == UvcCameraDeviceEventType.connected) {
         _safeUnawaited(
@@ -1889,7 +1958,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
-  Widget _buildDetectingCamerasState() {
+  Widget _buildStartingCameraState({String message = AppStrings.captureStartingPreview}) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1897,7 +1966,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           const CircularProgressIndicator(color: Colors.white),
           const SizedBox(height: 20),
           Text(
-            'Detecting cameras…',
+            message,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.9),
               fontSize: 16,
@@ -1947,6 +2016,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
+  bool _isCapturePreviewStarting(CaptureViewModel viewModel) {
+    if (viewModel.capturedPhoto != null) return false;
+    if (viewModel.isDesktopCaptureMode) return viewModel.isLoadingCameras;
+    if (viewModel.isLoadingCameras || viewModel.isInitializing) return true;
+    if (_isUsingUvc) {
+      if (_uvcInitializing || _uvcOpeningController) return true;
+      final ctrl = _uvcController;
+      return ctrl == null || !ctrl.value.isInitialized;
+    }
+    if (viewModel.availableCameras.isEmpty && !viewModel.hasError) {
+      return viewModel.isLoadingCameras || viewModel.isInitializing;
+    }
+    return !viewModel.isReady;
+  }
+
   Widget _buildCaptureBodyContent(
     BuildContext context,
     CaptureViewModel viewModel,
@@ -1973,41 +2057,50 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         ),
       );
     }
-    if (viewModel.isLoadingCameras) return _buildDetectingCamerasState();
-    if (viewModel.isInitializing) {
-      return const Center(child: CircularProgressIndicator(color: Colors.white));
-    }
-    if (viewModel.availableCameras.isEmpty && !viewModel.hasError && !_isUsingUvc) {
-      return _buildNoCamerasYetState(context);
-    }
-    if (viewModel.hasError && viewModel.capturedPhoto == null && !_isUsingUvc) {
-      return _buildCaptureFatalErrorState(context, viewModel);
-    }
-    if (!_isUsingUvc &&
-        !viewModel.isSelectingFromGallery &&
-        !viewModel.isReady &&
-        viewModel.capturedPhoto == null) {
-      return const Center(
-        child: Text(
-          'Camera not ready',
-          style: TextStyle(color: Colors.white),
+
+    final Widget body;
+    final String phase;
+    if (_isCapturePreviewStarting(viewModel)) {
+      final startingMessage = CaptureViewModel.hasPrewarmedCamera
+          ? AppStrings.openingCameraOverlay
+          : AppStrings.captureStartingPreview;
+      phase = 'starting-$startingMessage';
+      body = _buildStartingCameraState(message: startingMessage);
+    } else if (viewModel.availableCameras.isEmpty &&
+        !viewModel.hasError &&
+        !_isUsingUvc) {
+      phase = 'no-cameras';
+      body = _buildNoCamerasYetState(context);
+    } else if (viewModel.hasError &&
+        viewModel.capturedPhoto == null &&
+        !_isUsingUvc) {
+      phase = 'error';
+      body = _buildCaptureFatalErrorState(context, viewModel);
+    } else {
+      final previewWidget = viewModel.isSelectingFromGallery
+          ? buildGallerySelectionPlaceholder()
+          : _isUsingUvc
+              ? _buildUvcPreview(context, viewModel)
+              : _buildCameraPreviewWithRotation(context, viewModel);
+      final hasCapturedPhoto = viewModel.capturedPhoto != null;
+      phase = hasCapturedPhoto ? 'captured' : 'live';
+      body = Padding(
+        padding: const EdgeInsets.only(left: 12, right: 12),
+        child: _buildCaptureColumn(
+          context: context,
+          viewModel: viewModel,
+          hasCapturedPhoto: hasCapturedPhoto,
+          previewWidget: previewWidget,
         ),
       );
     }
 
-    final previewWidget = viewModel.isSelectingFromGallery
-        ? buildGallerySelectionPlaceholder()
-        : _isUsingUvc
-            ? _buildUvcPreview(context, viewModel)
-            : _buildCameraPreviewWithRotation(context, viewModel);
-    final hasCapturedPhoto = viewModel.capturedPhoto != null;
-    return Padding(
-      padding: const EdgeInsets.only(left: 12, right: 12),
-      child: _buildCaptureColumn(
-        context: context,
-        viewModel: viewModel,
-        hasCapturedPhoto: hasCapturedPhoto,
-        previewWidget: previewWidget,
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      switchInCurve: Curves.easeOut,
+      child: KeyedSubtree(
+        key: ValueKey<String>(phase),
+        child: body,
       ),
     );
   }

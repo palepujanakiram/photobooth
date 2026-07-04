@@ -106,6 +106,71 @@ void main() {
     );
   });
 
+  test('captureCamerasForDevice prefers external then falls back on Android TV', () {
+    expect(
+      captureCamerasForDevice(
+        cameras: [front, external],
+        deviceType: AppDeviceType.androidTv,
+        looksLikeExternalName: (_) => false,
+      ),
+      [external],
+    );
+    expect(
+      captureCamerasForDevice(
+        cameras: [front, back],
+        deviceType: AppDeviceType.androidTv,
+        looksLikeExternalName: (_) => false,
+      ),
+      [front, back],
+    );
+  });
+
+  test('pickPreferredCaptureCamera chooses external when present', () {
+    expect(
+      pickPreferredCaptureCamera(
+        cameras: [front, external],
+        deviceType: AppDeviceType.androidTv,
+        looksLikeExternalName: (_) => false,
+      ),
+      external,
+    );
+    expect(
+      pickPreferredCaptureCamera(
+        cameras: [front],
+        deviceType: AppDeviceType.androidTv,
+        looksLikeExternalName: (_) => false,
+      ),
+      front,
+    );
+  });
+
+  test('kioskHasCachedExternalCamera true for TV with cached external', () {
+    expect(
+      kioskHasCachedExternalCamera(
+        cached: [external],
+        deviceType: AppDeviceType.androidTv,
+        looksLikeExternalName: (_) => false,
+      ),
+      isTrue,
+    );
+    expect(
+      kioskHasCachedExternalCamera(
+        cached: [front],
+        deviceType: AppDeviceType.androidTv,
+        looksLikeExternalName: (_) => false,
+      ),
+      isFalse,
+    );
+    expect(
+      kioskHasCachedExternalCamera(
+        cached: [external],
+        deviceType: AppDeviceType.androidPhone,
+        looksLikeExternalName: (_) => false,
+      ),
+      isFalse,
+    );
+  });
+
   test('uniqueCamerasByDisplayName keeps one entry per display name', () {
     const dupFront = CameraDescription(
       name: 'Front-alt',

@@ -1,13 +1,21 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart'
-    show Colors, Divider, Orientation, Scaffold, CircularProgressIndicator;
+    show Colors, Divider, Orientation, Scaffold, CircularProgressIndicator, RouteSettings;
 import 'package:provider/provider.dart';
 import 'terms_and_conditions_viewmodel.dart';
 import 'terms_layout_metrics.dart';
 import '../../utils/constants.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/camera_permission_helper.dart';
+import '../../utils/app_device_type.dart';
+import '../../utils/device_classifier.dart';
+import '../../utils/kiosk_page_route.dart';
+import '../photo_capture/photo_capture_view.dart';
+import '../photo_capture/photo_capture_viewmodel.dart';
 import '../splash/bootstrap_route_args.dart';
 import '../webview/webview_screen.dart';
 import '../../views/widgets/app_snackbar.dart';
@@ -33,6 +41,7 @@ class TermsAndConditionsScreen extends StatefulWidget {
 class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   late TermsAndConditionsViewModel _viewModel;
   bool _redirectingToSplash = false;
+  bool _navigatingToCapture = false;
   Object? _capturePrefillPhoto;
 
   @override
@@ -40,8 +49,24 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     super.initState();
     _viewModel = TermsAndConditionsViewModel();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(primeCameraPermissionOnTermsLaunch());
+      unawaited(_primeCaptureScreenOnLaunch());
     });
+  }
+
+  /// Permission, enumeration, and live-camera prewarm while the guest reads terms.
+  Future<void> _primeCaptureScreenOnLaunch() async {
+    await primeCameraPermissionOnTermsLaunch();
+    if (defaultTargetPlatform != TargetPlatform.android || !mounted) return;
+    await CaptureViewModel.preloadCameras();
+    if (!mounted) return;
+    AppDeviceType? deviceType;
+    try {
+      deviceType = await DeviceClassifier.getDeviceType(context);
+    } catch (_) {
+      // POSE will classify again if this fails.
+    }
+    if (!mounted) return;
+    unawaited(CaptureViewModel.prewarmLiveCamera(deviceType: deviceType));
   }
 
   void _redirectToSplashForKioskSetup() {
@@ -55,6 +80,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
 
   @override
   void dispose() {
+    if (!_navigatingToCapture) {
+      unawaited(CaptureViewModel.disposePrewarm());
+    }
     _viewModel.dispose();
     super.dispose();
   }
@@ -64,12 +92,21 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         await _viewModel.acceptTermsAndCreateSession(_viewModel.kioskCode);
 
     if (success && mounted) {
-      Navigator.pushReplacementNamed(
+      _navigatingToCapture = true;
+      setState(() {});
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      await pushReplacementKioskFade<void, void>(
         context,
-        AppConstants.kRouteCapture,
-        arguments: _capturePrefillPhoto == null
-            ? null
-            : <String, Object?>{'photo': _capturePrefillPhoto},
+        PhotoCaptureScreen(
+          key: ValueKey<Object?>(_capturePrefillPhoto),
+        ),
+        settings: RouteSettings(
+          name: AppConstants.kRouteCapture,
+          arguments: _capturePrefillPhoto == null
+              ? null
+              : <String, Object?>{'photo': _capturePrefillPhoto},
+        ),
       );
     } else if (mounted && _viewModel.hasError) {
       AppSnackBar.showError(
@@ -179,10 +216,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
               // Full screen loader overlay
               Consumer<TermsAndConditionsViewModel>(
                 builder: (context, viewModel, child) {
-                  if (viewModel.isSubmitting) {
+                  if (viewModel.isSubmitting || _navigatingToCapture) {
                     return Positioned.fill(
                       child: FullScreenLoader(
-                        text: 'Creating Session',
+                        text: _navigatingToCapture
+                            ? AppStrings.openingCameraOverlay
+                            : 'Creating Session',
                         loaderColor: Colors.blue,
                         elapsedSeconds: viewModel.elapsedSeconds,
                       ),

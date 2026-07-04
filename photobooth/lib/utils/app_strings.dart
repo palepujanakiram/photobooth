@@ -73,6 +73,10 @@ abstract final class AppStrings {
   static const uvcTapToWakePreview =
       'Tap when ready\nto start the camera preview';
 
+  static const captureStartingPreview = 'Starting camera…';
+
+  static const openingCameraOverlay = 'Opening camera…';
+
   static const uvcReconnectingMessage = 'Reconnecting USB camera…';
 
   static const uvcReconnectFailedMessage =

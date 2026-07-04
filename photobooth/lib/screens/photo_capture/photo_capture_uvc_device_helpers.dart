@@ -28,6 +28,19 @@ Future<bool> ensureUvcPermissions(UvcCameraDevice device) async {
   }
 }
 
+/// True when at least one UVC device is attached (fast probe, no open).
+Future<bool> hasAttachedUvcDevices() async {
+  if (defaultTargetPlatform != TargetPlatform.android) return false;
+  try {
+    if (!await UvcCamera.isSupported()) return false;
+    if (!await ensureAndroidCameraPermissionForUvc()) return false;
+    final devices = await UvcCamera.getDevices();
+    return devices.isNotEmpty;
+  } catch (_) {
+    return false;
+  }
+}
+
 /// Loads the first attached UVC / USB camera on Android, or null when unavailable.
 Future<UvcCameraDevice?> probeFirstUvcDevice({
   bool requestCameraPermission = false,

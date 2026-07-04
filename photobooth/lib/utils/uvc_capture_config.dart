@@ -43,8 +43,11 @@ class UvcCaptureConfig {
   /// JPEG quality after normalize.
   static const int normalizeJpegQuality = 75;
 
-  /// Max wait for [UvcCameraController.initialize] on POSE entry.
+  /// Max wait for [UvcCameraController.initialize] on POSE entry (retries / reopen).
   static const Duration openTimeout = Duration(seconds: 3);
+
+  /// Short cap for the first UVC attempt so CameraX fallback is not blocked.
+  static const Duration quickOpenTimeout = Duration(milliseconds: 1500);
 
   /// Pause after UVC dispose before reading the still (lets USB/GPU buffers free).
   static const Duration postDisposeDelay = Duration(milliseconds: 750);
