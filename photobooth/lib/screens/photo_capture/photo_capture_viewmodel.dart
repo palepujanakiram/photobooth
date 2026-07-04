@@ -80,19 +80,70 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  /// True when Terms preload found at least one camera that POSE can open.
+  static bool hasOpenableCaptureCamera({AppDeviceType? deviceType}) {
+    final cached = _cachedAvailableCameras;
+    if (cached == null || cached.isEmpty) return false;
+    return captureCamerasForDevice(
+      cameras: cached,
+      deviceType: deviceType,
+      looksLikeExternalName: looksLikeExternalCameraName,
+    ).isNotEmpty;
+  }
+
+  @visibleForTesting
+  static void resetCameraCacheForTest() {
+    _cachedAvailableCameras = null;
+  }
+
+  @visibleForTesting
+  static void setCachedCamerasForTest(List<CameraDescription> cameras) {
+    _cachedAvailableCameras = List<CameraDescription>.from(cameras);
+  }
+
   static CameraController? _prewarmedController;
   static CameraDescription? _prewarmedCamera;
   static AppDeviceType? _prewarmedForDeviceType;
+  static Future<void>? _prewarmInFlight;
 
   static bool get hasPrewarmedCamera =>
       _prewarmedController?.value.isInitialized == true;
 
   static AppDeviceType? get prewarmedDeviceType => _prewarmedForDeviceType;
 
+  /// Waits for Terms-screen prewarm started with [prewarmLiveCamera].
+  static Future<void> awaitPrewarmIfInFlight({
+    Duration timeout = const Duration(seconds: 16),
+  }) async {
+    final task = _prewarmInFlight;
+    if (task == null) return;
+    try {
+      await task.timeout(timeout);
+    } on TimeoutException {
+      AppLogger.debug('Prewarm still in flight after ${timeout.inSeconds}s');
+    }
+  }
+
   /// Opens the live CameraX feed during Terms idle time so POSE can adopt instantly.
   static Future<void> prewarmLiveCamera({AppDeviceType? deviceType}) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     if (_prewarmedController?.value.isInitialized == true) return;
+    if (_prewarmInFlight != null) {
+      await _prewarmInFlight;
+      return;
+    }
+    final task = _prewarmLiveCameraBody(deviceType: deviceType);
+    _prewarmInFlight = task;
+    try {
+      await task;
+    } finally {
+      if (identical(_prewarmInFlight, task)) {
+        _prewarmInFlight = null;
+      }
+    }
+  }
+
+  static Future<void> _prewarmLiveCameraBody({AppDeviceType? deviceType}) async {
     try {
       if (_cachedAvailableCameras == null) {
         await preloadCameras();
@@ -166,6 +217,7 @@ class CaptureViewModel extends ChangeNotifier {
     _prewarmedController = null;
     _prewarmedCamera = null;
     _prewarmedForDeviceType = null;
+    _prewarmInFlight = null;
   }
   PhotoModel? _capturedPhoto;
   /// Decoded pixel size of [_capturedPhoto] (for UI card aspect). Null until decode finishes.
@@ -945,10 +997,6 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Loads available cameras when user opens Capture screen.
   Future<void> loadCameras({bool forceRefresh = false}) async {
-    _isLoadingCameras = true;
-    _errorMessage = null;
-    notifyListeners();
-
     if (usesDesktopPhotoPicker) {
       _isLoadingCameras = false;
       _availableCameras = [];
@@ -956,13 +1004,19 @@ class CaptureViewModel extends ChangeNotifier {
       return;
     }
 
-    try {
-      if (!forceRefresh && _cachedAvailableCameras != null) {
-        _applyCachedCameraList();
-        notifyListeners();
-        return;
-      }
+    if (!forceRefresh && _cachedAvailableCameras != null) {
+      _applyCachedCameraList();
+      _isLoadingCameras = false;
+      _errorMessage = null;
+      notifyListeners();
+      return;
+    }
 
+    _isLoadingCameras = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
       if (!await _ensureAndroidCameraPermission()) {
         return;
       }
@@ -1052,43 +1106,62 @@ class CaptureViewModel extends ChangeNotifier {
       return;
     }
 
+    if (!forceRefresh &&
+        _cameraController != null &&
+        _cameraController!.value.isInitialized &&
+        _availableCameras.isNotEmpty) {
+      AppLogger.debug('✅ Camera already ready — skipping reset');
+      return;
+    }
+
     // Clear any captured photo
     _capturedPhoto = null;
     _capturedImagePixelSize = null;
     _lockedCaptureCardAspectRatio = null;
     
-    // Dispose current camera controller
-    if (_cameraController != null) {
-      AppLogger.debug('   Disposing current camera controller...');
-      final ctrl = _cameraController;
-      _cameraController = null;
-      _cameraGeneration++;
-      notifyListeners();
-      try {
-        ctrl!.removeListener(_onCameraControllerUpdate);
-        await ctrl.dispose();
-      } catch (e, stackTrace) {
-        AppLogger.debug('   ⚠️ Warning: Error disposing camera: $e');
-        ErrorReportingManager.log('⚠️ Warning: Error disposing camera controller');
-        await ErrorReportingManager.recordError(
-          e,
-          stackTrace,
-          reason: 'Error disposing camera controller during reset',
-          extraInfo: {'error': e.toString()},
-          fatal: false,
-        );
-      }
-    }
-
-    // Clear current camera selection
-    _currentCamera = null;
-    
-    // Clear any previous errors
-    _errorMessage = null;
-    
     const initTimeout = Duration(seconds: 25);
     try {
       await (() async {
+        if (!forceRefresh) {
+          await CaptureViewModel.awaitPrewarmIfInFlight();
+          if (_cameraController?.value.isInitialized == true &&
+              _availableCameras.isNotEmpty) {
+            return;
+          }
+          if (_tryAdoptPrewarmedCamera()) {
+            return;
+          }
+        }
+
+        // Dispose current camera controller before a fresh open.
+        if (_cameraController != null) {
+          AppLogger.debug('   Disposing current camera controller...');
+          final ctrl = _cameraController;
+          _cameraController = null;
+          _cameraGeneration++;
+          notifyListeners();
+          try {
+            ctrl!.removeListener(_onCameraControllerUpdate);
+            await ctrl.dispose();
+          } catch (e, stackTrace) {
+            AppLogger.debug('   ⚠️ Warning: Error disposing camera: $e');
+            ErrorReportingManager.log('⚠️ Warning: Error disposing camera controller');
+            await ErrorReportingManager.recordError(
+              e,
+              stackTrace,
+              reason: 'Error disposing camera controller during reset',
+              extraInfo: {'error': e.toString()},
+              fatal: false,
+            );
+          }
+        }
+
+        // Clear current camera selection
+        _currentCamera = null;
+        
+        // Clear any previous errors
+        _errorMessage = null;
+
         await loadCameras(forceRefresh: forceRefresh);
         if (!forceRefresh && _tryAdoptPrewarmedCamera()) {
           return;

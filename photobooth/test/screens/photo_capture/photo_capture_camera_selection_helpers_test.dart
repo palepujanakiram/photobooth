@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/photo_capture/photo_capture_camera_selection_helpers.dart';
+import 'package:photobooth/screens/photo_capture/photo_capture_viewmodel.dart';
 import 'package:photobooth/utils/app_device_type.dart';
 import 'package:photobooth/utils/app_strings.dart';
 
@@ -183,5 +184,24 @@ void main() {
     );
     expect(unique, hasLength(2));
     expect(unique.map((c) => c.name), ['Front', 'Back']);
+  });
+
+  group('CaptureViewModel.hasOpenableCaptureCamera', () {
+    tearDown(CaptureViewModel.resetCameraCacheForTest);
+
+    test('returns false when cache is empty', () {
+      CaptureViewModel.resetCameraCacheForTest();
+      expect(CaptureViewModel.hasOpenableCaptureCamera(), isFalse);
+    });
+
+    test('returns true when cached external camera exists for kiosk', () {
+      CaptureViewModel.setCachedCamerasForTest([external, front]);
+      expect(
+        CaptureViewModel.hasOpenableCaptureCamera(
+          deviceType: AppDeviceType.androidTv,
+        ),
+        isTrue,
+      );
+    });
   });
 }

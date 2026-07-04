@@ -69,6 +69,30 @@ abstract final class AppStrings {
   /// Shown while re-enumerating cameras in the picker.
   static const cameraPickerRefreshing = 'Looking for cameras…';
 
+  /// Non-blocking status on Terms while cameras are enumerated on entry.
+  static const termsDetectingCameras = 'Detecting cameras…';
+
+  /// Terms Continue label while camera detection is still running.
+  static const termsContinueWhenReady = 'Continue when ready';
+
+  /// Full-screen overlay while the session API runs after Terms accept.
+  static const termsCreatingSession = 'Creating session…';
+
+  /// Terms banner when no camera is available after enumeration.
+  static const termsNoCameraDetected =
+      'No camera detected. Connect a USB camera and tap Retry.';
+
+  /// Terms banner when camera permission was denied.
+  static const termsCameraPermissionDenied =
+      'Camera permission is required. Enable it in Settings, then tap Retry.';
+
+  /// Terms banner when camera priming failed unexpectedly.
+  static const termsCameraDetectionFailed =
+      'Could not detect cameras. Tap Retry.';
+
+  /// Retry action on Terms camera status banner.
+  static const termsRetryCameraDetection = 'Retry';
+
   /// UVC idle sleep: tap to reopen the live DSLR feed after thermal relief closed it.
   static const uvcTapToWakePreview =
       'Tap when ready\nto start the camera preview';

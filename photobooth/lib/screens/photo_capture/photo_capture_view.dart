@@ -505,6 +505,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     WidgetsBinding.instance.addObserver(this);
     _captureViewModel = CaptureViewModel();
     _captureViewModel.addListener(_onCaptureViewModelStateChanged);
+    _tryAdoptTermsPrewarmOnInit();
+    _skipUvcForCameraXSession =
+        _captureViewModel.isReady ||
+        _captureViewModel.preferEnumeratedCameraPath ||
+        CaptureViewModel.hasEnumerationCache;
     _attachUvcDeviceEvents();
 
     _hardwareKeySub?.cancel();
@@ -524,8 +529,32 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_captureViewModel.isReady) {
+        unawaited(_finishPrewarmPoseSetup());
+        return;
+      }
       _schedulePoseSetupAfterTransition();
     });
+  }
+
+  void _tryAdoptTermsPrewarmOnInit() {
+    if (!CaptureViewModel.hasPrewarmedCamera) return;
+    final prewarmedType = CaptureViewModel.prewarmedDeviceType;
+    if (prewarmedType != null) {
+      _captureViewModel.setDeviceType(prewarmedType);
+    }
+    _captureViewModel.adoptPrewarmIfAvailable();
+  }
+
+  Future<void> _finishPrewarmPoseSetup() async {
+    if (!mounted) return;
+    unawaited(
+      HardwareKeyService.setEnabled(true).then((_) {
+        if (mounted) _hardwareKeysEnabled = true;
+      }),
+    );
+    unawaited(_captureViewModel.loadPreviewRotation());
+    _syncPoseIdleTimer(_captureViewModel);
   }
 
   /// Defers camera work until the route transition finishes (smoother POSE entry).
@@ -565,16 +594,26 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }),
     );
 
+    await CaptureViewModel.awaitPrewarmIfInFlight();
+    if (!mounted) return;
+
     final prewarmedType = CaptureViewModel.prewarmedDeviceType;
     if (prewarmedType != null && _captureViewModel.deviceType == null) {
       _captureViewModel.setDeviceType(prewarmedType);
     }
 
-    if (CaptureViewModel.hasPrewarmedCamera &&
-        _captureViewModel.adoptPrewarmIfAvailable()) {
-      unawaited(_captureViewModel.loadPreviewRotation());
-      _syncPoseIdleTimer(_captureViewModel);
+    if (!_captureViewModel.isReady) {
+      _tryAdoptTermsPrewarmOnInit();
+    }
+
+    if (_captureViewModel.isReady) {
+      _skipUvcForCameraXSession = true;
+      await _finishPrewarmPoseSetup();
       return;
+    }
+
+    if (_captureViewModel.preferEnumeratedCameraPath) {
+      _skipUvcForCameraXSession = true;
     }
 
     await _captureViewModel.loadPreviewRotation();
@@ -603,6 +642,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   Future<void> _resetAndInitializeCamerasBody({bool forceRefresh = false}) async {
     if (!mounted) return;
+
+    if (!forceRefresh &&
+        _captureViewModel.isReady &&
+        _captureViewModel.preferEnumeratedCameraPath) {
+      _skipUvcForCameraXSession = true;
+      _syncPoseIdleTimer(_captureViewModel);
+      return;
+    }
 
     AppDeviceType? deviceType;
     try {
@@ -2061,9 +2108,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final Widget body;
     final String phase;
     if (_isCapturePreviewStarting(viewModel)) {
-      final startingMessage = CaptureViewModel.hasPrewarmedCamera
-          ? AppStrings.openingCameraOverlay
-          : AppStrings.captureStartingPreview;
+      final startingMessage = AppStrings.captureStartingPreview;
       phase = 'starting-$startingMessage';
       body = _buildStartingCameraState(message: startingMessage);
     } else if (viewModel.availableCameras.isEmpty &&
