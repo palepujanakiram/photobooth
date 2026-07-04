@@ -8,7 +8,7 @@ publish_to: 'none'
 # Cursor/VS Code: Run Task → "flutter build apk (release)" (runs prebuild: sync version first).
 # CLI: ./scripts/flutter_with_version.sh build web   (plain `flutter build web` does not sync)
 #      dart run tool/sync_build_version.dart
-version: 2026.7.3+11
+version: 2026.7.4+14
 environment:
   sdk: '>=3.0.0 <4.0.0'
 
@@ -51,17 +51,17 @@ dependencies:
   permission_handler: ^12.0.1
 
   # Sharing
-  share_plus: ^11.0.0
+  share_plus: ^13.2.0
   cross_file: ^0.3.3
 
   # Printing
   printing: ^5.12.0
 
   # Utilities
-  package_info_plus: ^8.0.0
-  device_info_plus: ^10.1.0
-  shared_preferences: ^2.2.2
-  flutter_secure_storage: ^9.2.4
+  package_info_plus: ^10.2.0
+  device_info_plus: ^13.2.0
+  shared_preferences: ^2.5.5
+  flutter_secure_storage: ^10.0.0
   uuid: ^4.2.1
   pdf: ^3.11.3
   url_launcher: ^6.2.2
@@ -90,6 +90,7 @@ dev_dependencies:
 dependency_overrides:
   camera_android_camerax:
     path: packages/camera_android_camerax
+  shared_preferences_android: ^2.4.26
 
 flutter:
   config:
