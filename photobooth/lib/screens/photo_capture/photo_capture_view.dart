@@ -2349,6 +2349,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                               cardH,
                               // Match live preview: full-bleed cover (no black “stencil”), smooth shutter transition.
                               fit: BoxFit.cover,
+                              sharpDisplay: true,
                             )
                           : KeyedSubtree(
                               // Web builds can aggressively reuse platform views / textures.

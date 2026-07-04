@@ -18,7 +18,7 @@ ResolutionPreset captureResolutionPreset({
   required bool isExternal,
 }) {
   if (deviceType == AppDeviceType.androidTv) {
-    return ResolutionPreset.low;
+    return ResolutionPreset.medium;
   }
   if (isExternal) {
     return ResolutionPreset.medium;
