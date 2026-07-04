@@ -27,13 +27,29 @@ Widget imageFromXFile(XFile file) {
 
 /// Same as [imageFromXFile] but with explicit width/height. [fit] defaults to [BoxFit.contain];
 /// use [BoxFit.cover] when the photo aspect (e.g. landscape webcam) differs from a portrait card.
+///
+/// When [sharpDisplay] is true (post-capture review), decode the full still so review
+/// is not softened by [cacheWidth] / [cacheHeight] downscaling.
 Widget imageFromXFileSized(
   XFile file,
   double width,
   double height, {
   BoxFit fit = BoxFit.contain,
   Alignment alignment = Alignment.center,
+  bool sharpDisplay = false,
 }) {
+  if (sharpDisplay) {
+    return Image.file(
+      File(file.path),
+      width: width,
+      height: height,
+      fit: fit,
+      alignment: alignment,
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.none,
+    );
+  }
+
   return Builder(
     builder: (context) {
       final dpr = MediaQuery.devicePixelRatioOf(context);

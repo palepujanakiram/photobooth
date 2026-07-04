@@ -42,6 +42,7 @@ import com.serenegiant.usb.USBMonitor;
     public void onDettach(@NonNull UsbDevice device) {
         Log.v(TAG, "onDettach: device=" + device);
 
+        uvcCameraPlatform.closeCamerasForDevice(device.getDeviceName());
         uvcCameraPlatform.castDeviceDetachedEvent(device);
     }
 
@@ -63,6 +64,7 @@ import com.serenegiant.usb.USBMonitor;
     public void onDisconnect(@NonNull UsbDevice device, @NonNull USBMonitor.UsbControlBlock ctrlBlock) {
         Log.v(TAG, "onDisconnect: device=" + device + ", ctrlBlock=" + ctrlBlock);
 
+        uvcCameraPlatform.closeCamerasForDevice(device.getDeviceName());
         uvcCameraPlatform.castDeviceDisconnectedEvent(device);
     }
 

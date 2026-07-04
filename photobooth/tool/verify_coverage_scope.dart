@@ -138,6 +138,8 @@ bool ignored(String path) {
     // ML Kit platform channel — not unit-testable on VM.
     'face_count_service_io.dart',
     'face_count_service.dart',
+    // TTS + audioplayers platform channels — not unit-testable on VM.
+    'capture_sound_service.dart',
     // Complex screen widget with UVC streaming/platform channels.
     'photo_capture_camera_picker_screen.dart',
     // Singleton with static Dio that makes real network calls; tested via isProtectedUrl.

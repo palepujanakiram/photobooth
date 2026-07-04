@@ -19,6 +19,7 @@ Widget imageFromXFileSized(
   double height, {
   BoxFit fit = BoxFit.contain,
   Alignment alignment = Alignment.center,
+  bool sharpDisplay = false,
 }) {
   return Image.network(
     file.path,

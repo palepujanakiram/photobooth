@@ -9,6 +9,7 @@
 * (fix) Replace deprecated `SurfaceProducer.Callback.onSurfaceDestroyed()` with
   `onSurfaceCleanup()` (Flutter 3.28+).
 * (fix) Use context-aware `MediaRecorder` constructor on API 31+.
+* (fix) Detach surface callback/display before native destroy; ignore stale surface error events.
 
 ## 0.0.13
 

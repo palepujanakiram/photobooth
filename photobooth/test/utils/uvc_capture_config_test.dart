@@ -11,6 +11,7 @@ void main() {
     expect(UvcCaptureConfig.normalizeMaxDimension, 1024);
     expect(UvcCaptureConfig.normalizeJpegQuality, 75);
     expect(UvcCaptureConfig.postDisposeDelay, const Duration(milliseconds: 750));
+    expect(UvcCaptureConfig.quickOpenTimeout, const Duration(milliseconds: 1500));
     expect(UvcCaptureConfig.reopenFeedDelay, const Duration(milliseconds: 1200));
     expect(UvcCaptureConfig.preCaptureSettleDelay, const Duration(milliseconds: 50));
     expect(UvcCaptureConfig.captureFlashDuration, const Duration(milliseconds: 120));

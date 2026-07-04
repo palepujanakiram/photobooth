@@ -30,6 +30,10 @@ void main() {
     expect(uvcDeviceMatches(deviceA, deviceC), isFalse);
   });
 
+  test('hasAttachedUvcDevices returns false on non-Android test host', () async {
+    expect(await hasAttachedUvcDevices(), isFalse);
+  });
+
   test('probeFirstUvcDevice returns null on non-Android test host', () async {
     final device = await probeFirstUvcDevice();
     expect(device, isNull);

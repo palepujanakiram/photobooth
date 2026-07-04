@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:ui'
     show Size, ImmutableBuffer, instantiateImageCodecFromBuffer;
-import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart' show ChangeNotifier, TargetPlatform, defaultTargetPlatform, kIsWeb, visibleForTesting;
 import 'package:flutter/services.dart' show MethodChannel, PlatformException;
 import 'package:camera/camera.dart';
 import 'package:camera/camera.dart' as cam show availableCameras;
 import 'package:image_picker/image_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
+import '../../utils/camera_permission_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'photo_model.dart';
@@ -29,6 +29,7 @@ import 'photo_capture_camera_error_helpers.dart';
 import '../../utils/web_flow_trace.dart';
 import '../../utils/web_upload_error_hint.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
+import '../../services/capture_sound_service.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_camera_config.dart';
 import 'photo_capture_preview_rotation.dart';
@@ -40,6 +41,20 @@ class CaptureViewModel extends ChangeNotifier {
   final SessionManager _sessionManager;
   final Uuid _uuid = const Uuid();
   static List<CameraDescription>? _cachedAvailableCameras;
+
+  /// Whether a prior [loadCameras] / [warmCameraEnumerationCache] filled the static cache.
+  static bool get hasEnumerationCache => _cachedAvailableCameras != null;
+
+  /// True when Terms preload enumerated at least one openable camera for POSE.
+  bool get preferEnumeratedCameraPath {
+    final cached = _cachedAvailableCameras;
+    if (cached == null || cached.isEmpty) return false;
+    return captureCamerasForDevice(
+      cameras: cached,
+      deviceType: _deviceType,
+      looksLikeExternalName: _looksLikeExternalCameraName,
+    ).isNotEmpty;
+  }
   CameraController? _cameraController;
 
   /// Set true in [dispose]. Post-await work should bail before mutating state.
@@ -64,6 +79,146 @@ class CaptureViewModel extends ChangeNotifier {
     } on Exception {
       _cachedAvailableCameras = null;
     }
+  }
+
+  /// True when Terms preload found at least one camera that POSE can open.
+  static bool hasOpenableCaptureCamera({AppDeviceType? deviceType}) {
+    final cached = _cachedAvailableCameras;
+    if (cached == null || cached.isEmpty) return false;
+    return captureCamerasForDevice(
+      cameras: cached,
+      deviceType: deviceType,
+      looksLikeExternalName: looksLikeExternalCameraName,
+    ).isNotEmpty;
+  }
+
+  @visibleForTesting
+  static void resetCameraCacheForTest() {
+    _cachedAvailableCameras = null;
+  }
+
+  @visibleForTesting
+  static void setCachedCamerasForTest(List<CameraDescription> cameras) {
+    _cachedAvailableCameras = List<CameraDescription>.from(cameras);
+  }
+
+  static CameraController? _prewarmedController;
+  static CameraDescription? _prewarmedCamera;
+  static AppDeviceType? _prewarmedForDeviceType;
+  static Future<void>? _prewarmInFlight;
+
+  static bool get hasPrewarmedCamera =>
+      _prewarmedController?.value.isInitialized == true;
+
+  static AppDeviceType? get prewarmedDeviceType => _prewarmedForDeviceType;
+
+  /// Waits for Terms-screen prewarm started with [prewarmLiveCamera].
+  static Future<void> awaitPrewarmIfInFlight({
+    Duration timeout = const Duration(seconds: 16),
+  }) async {
+    final task = _prewarmInFlight;
+    if (task == null) return;
+    try {
+      await task.timeout(timeout);
+    } on TimeoutException {
+      AppLogger.debug('Prewarm still in flight after ${timeout.inSeconds}s');
+    }
+  }
+
+  /// Opens the live CameraX feed during Terms idle time so POSE can adopt instantly.
+  static Future<void> prewarmLiveCamera({AppDeviceType? deviceType}) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (_prewarmedController?.value.isInitialized == true) return;
+    if (_prewarmInFlight != null) {
+      await _prewarmInFlight;
+      return;
+    }
+    final task = _prewarmLiveCameraBody(deviceType: deviceType);
+    _prewarmInFlight = task;
+    try {
+      await task;
+    } finally {
+      if (identical(_prewarmInFlight, task)) {
+        _prewarmInFlight = null;
+      }
+    }
+  }
+
+  static Future<void> _prewarmLiveCameraBody({AppDeviceType? deviceType}) async {
+    try {
+      if (_cachedAvailableCameras == null) {
+        await preloadCameras();
+      }
+      final cached = _cachedAvailableCameras;
+      if (cached == null || cached.isEmpty) return;
+      await disposePrewarm();
+      final candidates = captureCamerasForDevice(
+        cameras: cached,
+        deviceType: deviceType,
+        looksLikeExternalName: looksLikeExternalCameraName,
+      );
+      if (candidates.isEmpty) return;
+      final picked = pickPreferredCaptureCamera(
+        cameras: cached,
+        deviceType: deviceType,
+        looksLikeExternalName: looksLikeExternalCameraName,
+      );
+      final isExternal = isExternalCaptureCamera(
+        picked,
+        looksLikeExternalCameraName,
+      );
+      final ctrl = CameraController(
+        picked,
+        captureResolutionPreset(
+          deviceType: deviceType,
+          isExternal: isExternal,
+        ),
+        enableAudio: false,
+        imageFormatGroup: captureStreamFormat(
+          deviceType: deviceType,
+          isExternal: isExternal,
+        ),
+      );
+      await ctrl.initialize().timeout(const Duration(seconds: 15));
+      _prewarmedController = ctrl;
+      _prewarmedCamera = picked;
+      _prewarmedForDeviceType = deviceType;
+      AppLogger.debug(
+        '✅ Prewarmed camera: ${cameraDescriptionLabel(picked)}',
+      );
+    } catch (e, st) {
+      AppLogger.debug('Prewarm camera skipped/failed: $e');
+      await disposePrewarm();
+      unawaited(
+        ErrorReportingManager.recordError(
+          e,
+          st,
+          reason: 'prewarmLiveCamera failed',
+          fatal: false,
+        ),
+      );
+    }
+  }
+
+  static Future<void> disposePrewarm() async {
+    final ctrl = _prewarmedController;
+    _prewarmedController = null;
+    _prewarmedCamera = null;
+    _prewarmedForDeviceType = null;
+    if (ctrl == null) return;
+    try {
+      await ctrl.dispose();
+    } catch (_) {
+      // Best-effort teardown of unused prewarm.
+    }
+  }
+
+  @visibleForTesting
+  static void resetPrewarmForTest() {
+    _prewarmedController = null;
+    _prewarmedCamera = null;
+    _prewarmedForDeviceType = null;
+    _prewarmInFlight = null;
   }
   PhotoModel? _capturedPhoto;
   /// Decoded pixel size of [_capturedPhoto] (for UI card aspect). Null until decode finishes.
@@ -92,6 +247,7 @@ class CaptureViewModel extends ChangeNotifier {
   // Serializes camera operations (dispose/init/capture/stream) to avoid races on Android TV.
   Future<void> _cameraOp = Future<void>.value();
   int _cameraGeneration = 0;
+  int get cameraGeneration => _cameraGeneration;
 
   Future<T> _withCameraLock<T>(Future<T> Function() fn) {
     final next = Completer<void>();
@@ -116,7 +272,7 @@ class CaptureViewModel extends ChangeNotifier {
   
   // Countdown timer for capture
   int? _countdownValue;
-  Timer? _countdownTimer;
+  int _countdownGeneration = 0;
 
   /// Zoom range and current value; null when zoom is not supported.
   double? _minZoom;
@@ -141,8 +297,12 @@ class CaptureViewModel extends ChangeNotifier {
   CaptureViewModel({
     ApiService? apiService,
     SessionManager? sessionManager,
+    CaptureSoundService? captureSoundService,
   })  : _apiService = apiService ?? ApiService(),
-        _sessionManager = sessionManager ?? SessionManager();
+        _sessionManager = sessionManager ?? SessionManager(),
+        _captureSoundService = captureSoundService ?? CaptureSoundService();
+
+  final CaptureSoundService _captureSoundService;
 
   CameraController? get cameraController => _cameraController;
   PhotoModel? get capturedPhoto => _capturedPhoto;
@@ -170,9 +330,7 @@ class CaptureViewModel extends ChangeNotifier {
   bool get isPreparingUploadPayload =>
       _prepareUploadFuture != null && _preparedUploadBase64 == null;
   bool get canContinueUpload =>
-      !isCapturing &&
-      !isUploading &&
-      (!kIsWeb || !isPreparingUploadPayload);
+      !isCapturing && !isUploading;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
   int? get countdownValue => _countdownValue;
@@ -525,26 +683,28 @@ class CaptureViewModel extends ChangeNotifier {
     return 'Camera';
   }
 
-  /// Picks the default camera: prefer real external (HDMI/USB), then built-in **front** when
-  /// both front and back exist (kiosk selfie tablets), else back, else first.
-  /// On iPad the plugin can misreport built-in as external, so we prefer by name (UUID) first.
   CameraDescription _pickDefaultCamera(List<CameraDescription> cameras) {
+    return _pickDefaultCameraFromList(cameras);
+  }
+
+  static CameraDescription _pickDefaultCameraFromList(
+    List<CameraDescription> cameras,
+  ) {
     if (cameras.isEmpty) {
       throw StateError('No cameras available');
     }
-    // 1) Prefer by name (UUID = real external on iOS; avoids mislabeled built-in)
-    final byName = cameras.where((c) => _looksLikeExternalCameraName(c.name)).toList();
+    final byName = cameras
+        .where((c) => looksLikeExternalCameraName(c.name))
+        .toList();
     if (byName.isNotEmpty) {
       return byName.first;
     }
-    // 2) Then by lensDirection.external (HDMI capture card, USB webcam, etc.)
-    final byDirection = cameras.where(
-      (c) => c.lensDirection == CameraLensDirection.external,
-    ).toList();
+    final byDirection = cameras
+        .where((c) => c.lensDirection == CameraLensDirection.external)
+        .toList();
     if (byDirection.isNotEmpty) {
       return byDirection.first;
     }
-    // 3) Built-in only: prefer front when both front and back exist (kiosk / tablet selfie)
     final fronts = cameras
         .where((c) => c.lensDirection == CameraLensDirection.front)
         .toList();
@@ -558,13 +718,57 @@ class CaptureViewModel extends ChangeNotifier {
     return cameras.first;
   }
 
+  /// Transfers the Terms-screen prewarm into this screen instance.
+  bool adoptPrewarmIfAvailable() => _tryAdoptPrewarmedCamera();
+
+  bool _tryAdoptPrewarmedCamera() {
+    final ctrl = _prewarmedController;
+    final camera = _prewarmedCamera;
+    final prewarmedType = _prewarmedForDeviceType;
+    if (ctrl == null || camera == null || !ctrl.value.isInitialized) {
+      return false;
+    }
+    if (_deviceType != null &&
+        prewarmedType != null &&
+        _deviceType != prewarmedType) {
+      unawaited(disposePrewarm());
+      return false;
+    }
+    _prewarmedController = null;
+    _prewarmedCamera = null;
+    _prewarmedForDeviceType = null;
+
+    if (_cachedAvailableCameras != null) {
+      _applyCachedCameraList();
+    } else {
+      _availableCameras = [camera];
+    }
+    _currentCamera = camera;
+    _cameraController = ctrl;
+    _cameraGeneration++;
+    _errorMessage = null;
+    _minZoom = null;
+    _maxZoom = null;
+    _currentZoom = 1.0;
+    ctrl.addListener(_onCameraControllerUpdate);
+    _markCameraAvailabilityRestored();
+    unawaited(
+      _finishCameraSetup(camera).catchError((Object e, StackTrace st) {
+        AppLogger.error('finishCameraSetup failed', error: e, stackTrace: st);
+      }),
+    );
+    notifyListeners();
+    AppLogger.debug('✅ Adopted prewarmed camera on POSE entry');
+    return true;
+  }
+
   /// True if camera name looks like a real external device (e.g. iOS UUID).
   /// Excludes built-in cameras whose names contain "built-in" (plugin can misreport direction).
   bool _looksLikeExternalCameraName(String name) =>
       looksLikeExternalCameraName(name);
 
   /// Set device type from UI (from [DeviceClassifier.getDeviceType]).
-  /// Used to filter cameras: tablet/TV → external only, phone → built-in only.
+  /// Used to filter cameras: tablet/TV → external first with built-in fallback.
   void setDeviceType(AppDeviceType? type) {
     final changed = _deviceType != type;
     _deviceType = type;
@@ -592,27 +796,14 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Sorts cameras so external ones come first (for default selection and list order).
-  List<CameraDescription> _externalCamerasFirst(List<CameraDescription> cameras) {
-    if (cameras.length <= 1) return cameras;
-    final list = List<CameraDescription>.from(cameras);
-    list.sort((a, b) {
-      final aExt = a.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(a.name);
-      final bExt = b.lensDirection == CameraLensDirection.external || _looksLikeExternalCameraName(b.name);
-      if (aExt == bExt) return 0;
-      return aExt ? -1 : 1;
-    });
-    return list;
-  }
-
   void _applyCachedCameraList() {
     if (_cachedAvailableCameras == null) return;
-    final filtered = camerasForDeviceType(
+    final filtered = captureCamerasForDevice(
       cameras: _cachedAvailableCameras!,
       deviceType: _deviceType,
       looksLikeExternalName: _looksLikeExternalCameraName,
     );
-    _availableCameras = _externalCamerasFirst(filtered);
+    _availableCameras = filtered;
     if (filtered.isEmpty) {
       _errorMessage = kIsWeb
           ? 'No camera detected. Allow camera access in the browser, or use Gallery if enabled.'
@@ -670,17 +861,16 @@ class CaptureViewModel extends ChangeNotifier {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return true;
     }
-    final status = await Permission.camera.status;
-    if (status.isGranted) return true;
-    AppLogger.debug('📷 Camera permission not granted, requesting...');
-    final result = await Permission.camera.request();
-    AppLogger.debug('📷 Permission result: $result');
-    if (result.isGranted) return true;
+    final granted = await ensureCameraPermission(requestIfNeeded: false);
+    if (granted) return true;
+    AppLogger.debug(
+      '📷 Camera permission not granted (prompted on Terms screen)',
+    );
     _errorMessage = 'Camera permission is required to detect and use cameras.';
     unawaited(
       reportCameraNotFound(
         reason: 'Camera permission denied',
-        extraInfo: {'permission_status': result.toString()},
+        extraInfo: const {'permission_status': 'denied'},
       ),
     );
     return false;
@@ -710,12 +900,12 @@ class CaptureViewModel extends ChangeNotifier {
       AppLogger.debug('  - Name: "${c.name}", Direction: ${c.lensDirection}');
     }
     _cachedAvailableCameras = List<CameraDescription>.from(allCameras);
-    final filtered = camerasForDeviceType(
+    final filtered = captureCamerasForDevice(
       cameras: allCameras,
       deviceType: _deviceType,
       looksLikeExternalName: _looksLikeExternalCameraName,
     );
-    _availableCameras = _externalCamerasFirst(filtered);
+    _availableCameras = filtered;
     AppLogger.debug(
       '📋 CaptureViewModel.loadCameras - Device: $_deviceType, '
       'showing ${_availableCameras.length} camera(s):',
@@ -812,10 +1002,6 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Loads available cameras when user opens Capture screen.
   Future<void> loadCameras({bool forceRefresh = false}) async {
-    _isLoadingCameras = true;
-    _errorMessage = null;
-    notifyListeners();
-
     if (usesDesktopPhotoPicker) {
       _isLoadingCameras = false;
       _availableCameras = [];
@@ -823,13 +1009,19 @@ class CaptureViewModel extends ChangeNotifier {
       return;
     }
 
-    try {
-      if (!forceRefresh && _cachedAvailableCameras != null) {
-        _applyCachedCameraList();
-        notifyListeners();
-        return;
-      }
+    if (!forceRefresh && _cachedAvailableCameras != null) {
+      _applyCachedCameraList();
+      _isLoadingCameras = false;
+      _errorMessage = null;
+      notifyListeners();
+      return;
+    }
 
+    _isLoadingCameras = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
       if (!await _ensureAndroidCameraPermission()) {
         return;
       }
@@ -889,6 +1081,24 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  /// Fills the static enumeration cache without toggling [isLoadingCameras].
+  ///
+  /// When the first POSE visit uses UVC only, [loadCameras] never runs; warming
+  /// the cache avoids a 15–25s CameraX enumeration on the next visit.
+  Future<void> warmCameraEnumerationCache() async {
+    if (_cachedAvailableCameras != null || usesDesktopPhotoPicker) return;
+    try {
+      if (!await _ensureAndroidCameraPermission()) return;
+      final allCameras = await cam.availableCameras().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw TimeoutException('warmCameraEnumerationCache'),
+      );
+      _assignEnumeratedCameras(allCameras);
+    } catch (_) {
+      // Best-effort background warm.
+    }
+  }
+
   /// Resets the camera screen and initializes with the first available camera
   /// This is a common function used both when entering the screen and when reloading
   Future<void> resetAndInitializeCameras({bool forceRefresh = false}) async {
@@ -901,41 +1111,67 @@ class CaptureViewModel extends ChangeNotifier {
       return;
     }
 
+    if (!forceRefresh &&
+        _cameraController != null &&
+        _cameraController!.value.isInitialized &&
+        _availableCameras.isNotEmpty) {
+      AppLogger.debug('✅ Camera already ready — skipping reset');
+      return;
+    }
+
     // Clear any captured photo
     _capturedPhoto = null;
     _capturedImagePixelSize = null;
     _lockedCaptureCardAspectRatio = null;
     
-    // Dispose current camera controller
-    if (_cameraController != null) {
-      AppLogger.debug('   Disposing current camera controller...');
-      try {
-        _cameraController!.removeListener(_onCameraControllerUpdate);
-        await _cameraController!.dispose();
-      } catch (e, stackTrace) {
-        AppLogger.debug('   ⚠️ Warning: Error disposing camera: $e');
-        ErrorReportingManager.log('⚠️ Warning: Error disposing camera controller');
-        await ErrorReportingManager.recordError(
-          e,
-          stackTrace,
-          reason: 'Error disposing camera controller during reset',
-          extraInfo: {'error': e.toString()},
-          fatal: false,
-        );
-      }
-      _cameraController = null;
-    }
-
-    // Clear current camera selection
-    _currentCamera = null;
-    
-    // Clear any previous errors
-    _errorMessage = null;
-    
     const initTimeout = Duration(seconds: 25);
     try {
       await (() async {
+        if (!forceRefresh) {
+          await CaptureViewModel.awaitPrewarmIfInFlight();
+          if (_cameraController?.value.isInitialized == true &&
+              _availableCameras.isNotEmpty) {
+            return;
+          }
+          if (_tryAdoptPrewarmedCamera()) {
+            return;
+          }
+        }
+
+        // Dispose current camera controller before a fresh open.
+        if (_cameraController != null) {
+          AppLogger.debug('   Disposing current camera controller...');
+          final ctrl = _cameraController;
+          _cameraController = null;
+          _cameraGeneration++;
+          notifyListeners();
+          try {
+            ctrl!.removeListener(_onCameraControllerUpdate);
+            await ctrl.dispose();
+          } catch (e, stackTrace) {
+            AppLogger.debug('   ⚠️ Warning: Error disposing camera: $e');
+            ErrorReportingManager.log('⚠️ Warning: Error disposing camera controller');
+            await ErrorReportingManager.recordError(
+              e,
+              stackTrace,
+              reason: 'Error disposing camera controller during reset',
+              extraInfo: {'error': e.toString()},
+              fatal: false,
+            );
+          }
+        }
+
+        // Clear current camera selection
+        _currentCamera = null;
+        
+        // Clear any previous errors
+        _errorMessage = null;
+
         await loadCameras(forceRefresh: forceRefresh);
+        if (!forceRefresh && _tryAdoptPrewarmedCamera()) {
+          return;
+        }
+        await disposePrewarm();
         if (_availableCameras.isNotEmpty) {
           _currentCamera = _pickDefaultCamera(_availableCameras);
           AppLogger.debug(
@@ -1026,22 +1262,21 @@ class CaptureViewModel extends ChangeNotifier {
   }
 
   Future<void> _disposeCameraControllerForSwitch() async {
-    final hadController = _cameraController != null;
-    if (_cameraController == null) return;
+    final ctrl = _cameraController;
+    if (ctrl == null) return;
     AppLogger.debug('🔄 Disposing existing camera controller before switch...');
+    _cameraController = null;
+    _cameraGeneration++;
+    notifyListeners();
     try {
-      _cameraController!.removeListener(_onCameraControllerUpdate);
-      await _cameraController!.dispose();
+      ctrl.removeListener(_onCameraControllerUpdate);
+      await ctrl.dispose();
     } catch (e) {
       AppLogger.debug('   ⚠️ Warning: Error disposing existing controller: $e');
     }
-    _cameraController = null;
-    _cameraGeneration++;
-    if (hadController) {
-      await Future.delayed(
-        Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
-      );
-    }
+    await Future.delayed(
+      Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
+    );
   }
 
   void _logCameraInitializationStart(CameraDescription camera) {
@@ -1235,6 +1470,7 @@ class CaptureViewModel extends ChangeNotifier {
       logNativeCameraDetails(details);
     }
     notifyListeners();
+    unawaited(warmUpCaptureShutterSound());
   }
 
   /// Loads zoom range in background with timeout so init never hangs.
@@ -1308,6 +1544,13 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  /// Plays the capture shutter cue (best-effort; does not block capture).
+  Future<void> playCaptureShutterSound() => _captureSoundService.playShutter();
+
+  /// Warms the shutter clip while the live feed is idle.
+  Future<void> warmUpCaptureShutterSound() =>
+      _captureSoundService.warmUp();
+
   /// Runs a countdown then [captureAction] (built-in CameraX or UVC).
   Future<void> captureWithCountdown(
     Future<void> Function() captureAction, {
@@ -1321,34 +1564,32 @@ class CaptureViewModel extends ChangeNotifier {
       '📸 Starting capture countdown (${AppConstants.kCaptureCountdownSeconds}s)...',
     );
 
+    final generation = ++_countdownGeneration;
     _countdownValue = AppConstants.kCaptureCountdownSeconds;
     notifyListeners();
 
-    _countdownTimer?.cancel();
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      if (_countdownValue == null) {
-        timer.cancel();
-        if (identical(_countdownTimer, timer)) {
-          _countdownTimer = null;
+    try {
+      for (var step = _countdownValue!; step >= 1; step--) {
+        if (generation != _countdownGeneration || !canStart()) return;
+        _countdownValue = step;
+        notifyListeners();
+        if (step > 1) {
+          await Future<void>.delayed(const Duration(seconds: 1));
         }
-        return;
       }
 
-      if (_countdownValue! > 1) {
-        _countdownValue = _countdownValue! - 1;
-        notifyListeners();
-      } else {
-        timer.cancel();
-        if (identical(_countdownTimer, timer)) {
-          _countdownTimer = null;
-        }
+      if (generation != _countdownGeneration || !canStart()) return;
+      _countdownValue = null;
+      notifyListeners();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (generation != _countdownGeneration || !canStart()) return;
+      await captureAction();
+    } finally {
+      if (generation == _countdownGeneration) {
         _countdownValue = null;
         notifyListeners();
-
-        await Future<void>.delayed(const Duration(milliseconds: 100));
-        await captureAction();
       }
-    });
+    }
   }
 
   /// Starts a countdown and then captures a photo
@@ -1362,8 +1603,8 @@ class CaptureViewModel extends ChangeNotifier {
   
   /// Cancels the countdown if in progress
   void cancelCountdown() {
-    _countdownTimer?.cancel();
-    _countdownTimer = null;
+    _countdownGeneration++;
+    unawaited(_captureSoundService.cancel());
     _countdownValue = null;
     notifyListeners();
   }
@@ -1525,6 +1766,7 @@ class CaptureViewModel extends ChangeNotifier {
       WebFlowTrace.reset(label: 'capture');
       WebFlowTrace.log('CAPTURE', 'shutter_begin kIsWeb=$kIsWeb isReady=$isReady');
       final imageFile = await _obtainRawCaptureFile();
+      unawaited(playCaptureShutterSound());
       final isFrontCamera =
           _currentCamera?.lensDirection == CameraLensDirection.front;
       WebFlowTrace.log('CAPTURE', 'normalize_start');
@@ -1701,13 +1943,17 @@ class CaptureViewModel extends ChangeNotifier {
   }
 
   Future<void> _hardResetCameraController() async {
-    try {
-      _cameraController?.removeListener(_onCameraControllerUpdate);
-      await _cameraController?.dispose();
-    } catch (_) {
-      // Best-effort.
-    } finally {
-      _cameraController = null;
+    final ctrl = _cameraController;
+    _cameraController = null;
+    if (ctrl != null) {
+      _cameraGeneration++;
+      notifyListeners();
+      try {
+        ctrl.removeListener(_onCameraControllerUpdate);
+        await ctrl.dispose();
+      } catch (_) {
+        // Best-effort.
+      }
     }
   }
 
@@ -1749,15 +1995,18 @@ class CaptureViewModel extends ChangeNotifier {
 
       try {
         // Best-effort full reset.
-        try {
-          _cameraController?.removeListener(_onCameraControllerUpdate);
-          await _cameraController?.dispose();
-        } catch (_) {
-          // ignore
-        } finally {
-          _cameraController = null;
-        }
+        final ctrl = _cameraController;
+        _cameraController = null;
         _cameraGeneration++;
+        notifyListeners();
+        if (ctrl != null) {
+          try {
+            ctrl.removeListener(_onCameraControllerUpdate);
+            await ctrl.dispose();
+          } catch (_) {
+            // ignore
+          }
+        }
 
         await Future.delayed(
           Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
@@ -1823,6 +2072,7 @@ class CaptureViewModel extends ChangeNotifier {
 
       final normalizedFile =
           await ImageHelper.normalizeAndSaveCapturedPhoto(imageFile);
+      unawaited(playCaptureShutterSound());
       await _assignCapturedPhotoModel(
         normalizedFile,
         cameraIdOverride: 'desktop',
@@ -1984,8 +2234,8 @@ class CaptureViewModel extends ChangeNotifier {
   void clearCapturedPhoto() {
     // Treat "Retake" as a hard reset of any in-flight UI state so the user can
     // always return to live preview, even if an upload/countdown was running.
-    _countdownTimer?.cancel();
-    _countdownTimer = null;
+    _countdownGeneration++;
+    unawaited(_captureSoundService.cancel());
     _countdownValue = null;
 
     _uploadTimer?.cancel();
@@ -2018,12 +2268,38 @@ class CaptureViewModel extends ChangeNotifier {
     _resetUploadPreparation();
   }
 
+  /// Background encode while the user reviews a UVC still ([UvcCaptureConfig.deferUploadPrepUntilContinue]).
+  void kickoffDeferredUploadPreparation({
+    Duration initialDelay = Duration.zero,
+  }) {
+    _kickoffUploadPreparation(initialDelay: initialDelay);
+  }
+
+  /// Marks the Continue upload flow as started so the UI can show progress
+  /// before native camera teardown or JPEG encode runs.
+  void beginContinueUpload() {
+    if (_isUploading || _capturedPhoto == null) return;
+    _isUploading = true;
+    _errorMessage = null;
+    _uploadStatusMessage = 'Preparing photo…';
+    _startUploadTimer();
+    notifyListeners();
+  }
+
   void _kickoffUploadPreparation({
     Duration initialDelay = const Duration(milliseconds: 48),
   }) {
     final photo = _capturedPhoto;
     if (photo == null) return;
-    _resetUploadPreparation();
+    if (_preparedUploadBase64 != null && _prepareUploadPhotoId == photo.id) {
+      return;
+    }
+    if (_prepareUploadFuture != null) {
+      return;
+    }
+    if (_prepareUploadPhotoId != null && _prepareUploadPhotoId != photo.id) {
+      _resetUploadPreparation();
+    }
     WebFlowTrace.log('UPLOAD_PREP', 'kickoff photoId=${photo.id}');
     _prepareUploadFuture = () async {
       await Future<void>.delayed(initialDelay);
@@ -2231,7 +2507,7 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Called when user taps "Continue" button in Capture Photo screen
   /// Uploads photo, saves client person count, and fires server preprocess in background.
-  Future<bool> uploadPhotoToSession() async {
+  Future<bool> uploadPhotoToSession({bool uploadAlreadyStarted = false}) async {
     if (_capturedPhoto == null) {
       _errorMessage = 'No photo captured. Please capture a photo first.';
       notifyListeners();
@@ -2253,11 +2529,11 @@ class CaptureViewModel extends ChangeNotifier {
       return false;
     }
 
-    _isUploading = true;
-    _errorMessage = null;
-    _uploadStatusMessage = 'Preparing photo…';
-    _startUploadTimer();
-    notifyListeners();
+    if (!uploadAlreadyStarted) {
+      beginContinueUpload();
+    } else if (!_isUploading) {
+      beginContinueUpload();
+    }
 
     final sidShort = sessionId.length <= 8 ? sessionId : '${sessionId.substring(0, 8)}…';
     WebFlowTrace.log('UPLOAD', 'begin sessionId=$sidShort kIsWeb=$kIsWeb');
@@ -2471,10 +2747,11 @@ class CaptureViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _countdownTimer?.cancel();
-    _countdownTimer = null;
+    _countdownGeneration++;
+    _countdownValue = null;
     _stopUploadTimer();
     _releaseUploadPayloadMemory();
+    unawaited(_captureSoundService.dispose());
     unawaited(disposeCamera());
     super.dispose();
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:cross_file/cross_file.dart';
+import 'dart:async';
 
 import 'uvccamera_button_event.dart';
 import 'uvccamera_device.dart';
@@ -12,6 +13,20 @@ import 'uvccamera_status_event.dart';
 
 class UvcCameraPlatform extends UvcCameraPlatformInterface {
   final _nativeMethodChannel = const MethodChannel('uvccamera/native');
+
+  static Future<void> _nativeSessionTail = Future<void>.value();
+
+  static Future<T> _runNativeExclusive<T>(Future<T> Function() action) {
+    final completer = Completer<T>();
+    _nativeSessionTail = _nativeSessionTail.catchError((_) {}).then((_) async {
+      try {
+        completer.complete(await action());
+      } catch (e, st) {
+        completer.completeError(e, st);
+      }
+    });
+    return completer.future;
+  }
 
   final EventChannel _deviceEventChannel = EventChannel('uvccamera/device_events');
   Stream<UvcCameraDeviceEvent>? _deviceEventStream;
@@ -60,25 +75,29 @@ class UvcCameraPlatform extends UvcCameraPlatformInterface {
 
   @override
   Future<int> openCamera(UvcCameraDevice device, UvcCameraResolutionPreset resolutionPreset) async {
-    final result = await _nativeMethodChannel.invokeMethod<int>('openCamera', {
-      'deviceName': device.name,
-      'resolutionPreset': resolutionPreset.name,
+    return _runNativeExclusive(() async {
+      final result = await _nativeMethodChannel.invokeMethod<int>('openCamera', {
+        'deviceName': device.name,
+        'resolutionPreset': resolutionPreset.name,
+      });
+      if (result == null) {
+        throw PlatformException(code: 'UNKNOWN', message: 'Unable to open camera for device: $device');
+      }
+      return result;
     });
-    if (result == null) {
-      throw PlatformException(code: 'UNKNOWN', message: 'Unable to open camera for device: $device');
-    }
-    return result;
   }
 
   @override
   Future<void> closeCamera(int cameraId) async {
-    _statusEventChannels.remove(cameraId);
-    _statusEventStreams.remove(cameraId);
+    await _runNativeExclusive(() async {
+      _statusEventChannels.remove(cameraId);
+      _statusEventStreams.remove(cameraId);
 
-    _buttonEventChannels.remove(cameraId);
-    _buttonEventStreams.remove(cameraId);
+      _buttonEventChannels.remove(cameraId);
+      _buttonEventStreams.remove(cameraId);
 
-    await _nativeMethodChannel.invokeMethod<void>('closeCamera', {'cameraId': cameraId});
+      await _nativeMethodChannel.invokeMethod<void>('closeCamera', {'cameraId': cameraId});
+    });
   }
 
   @override

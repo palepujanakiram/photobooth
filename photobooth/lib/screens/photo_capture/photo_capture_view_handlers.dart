@@ -1,9 +1,13 @@
+import 'dart:async' show TimeoutException, unawaited;
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
+import '../../services/uvc_session_coordinator.dart';
 import '../../utils/constants.dart';
 import '../../utils/route_args.dart';
 import '../../utils/web_flow_trace.dart';
+import '../../utils/logger.dart';
 import '../../views/widgets/app_snackbar.dart';
 import 'photo_capture_viewmodel.dart';
 
@@ -38,7 +42,7 @@ Future<void> handleCapturedPhotoRetake({
   viewModel.clearCapturedPhoto();
 }
 
-/// Continue: release cameras, upload, navigate to theme selection.
+/// Continue: upload, navigate to theme selection; release cameras in parallel.
 Future<void> handleCapturedPhotoContinue({
   required BuildContext context,
   required CaptureViewModel viewModel,
@@ -49,7 +53,27 @@ Future<void> handleCapturedPhotoContinue({
   final currentContext = context;
   if (!isMounted() || !currentContext.mounted) return;
 
-  final success = await viewModel.uploadPhotoToSession();
+  // Paint "Processing…" before any await — native UVC teardown can block the
+  // platform thread long enough to look like a freeze while still on "Preparing…".
+  viewModel.beginContinueUpload();
+  await Future<void>.delayed(Duration.zero);
+  if (!isMounted() || !currentContext.mounted) return;
+
+  final releaseFuture = releaseCaptureHardware != null
+      ? releaseCaptureHardware()
+      : viewModel.disposeCamera();
+  UvcSessionCoordinator.trackTeardown(releaseFuture);
+  unawaited(
+    releaseFuture.catchError((Object e, StackTrace st) {
+      AppLogger.error(
+        'releaseCaptureHardware failed during continue',
+        error: e,
+        stackTrace: st,
+      );
+    }),
+  );
+
+  final success = await viewModel.uploadPhotoToSession(uploadAlreadyStarted: true);
   if (!isMounted() || !currentContext.mounted) return;
   if (!success || viewModel.capturedPhoto == null) {
     if (viewModel.hasError && currentContext.mounted) {
@@ -60,12 +84,18 @@ Future<void> handleCapturedPhotoContinue({
     }
     return;
   }
-
-  if (releaseCaptureHardware != null) {
-    await releaseCaptureHardware();
-  } else {
-    await viewModel.disposeCamera();
+  try {
+    await releaseFuture.timeout(const Duration(seconds: 4));
+  } on TimeoutException {
+    AppLogger.error('releaseCaptureHardware timed out before leaving POSE');
+  } catch (e, st) {
+    AppLogger.error(
+      'releaseCaptureHardware failed before leaving POSE',
+      error: e,
+      stackTrace: st,
+    );
   }
+  if (!isMounted() || !currentContext.mounted) return;
   final photo = viewModel.capturedPhoto!;
   if (!isMounted() || !currentContext.mounted) return;
   WebFlowTrace.log('NAV', 'pushReplacementNamed theme-selection start');

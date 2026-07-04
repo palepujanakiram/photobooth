@@ -1,10 +1,19 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart'
-    show Colors, Divider, Orientation, Scaffold, CircularProgressIndicator;
+    show Colors, Divider, Orientation, Scaffold, CircularProgressIndicator, RouteSettings;
 import 'package:provider/provider.dart';
 import 'terms_and_conditions_viewmodel.dart';
+import 'terms_camera_priming.dart';
 import 'terms_layout_metrics.dart';
 import '../../utils/constants.dart';
+import '../../utils/app_strings.dart';
+import '../../utils/camera_permission_helper.dart';
+import '../../utils/device_classifier.dart';
+import '../../utils/kiosk_page_route.dart';
+import '../photo_capture/photo_capture_view.dart';
+import '../photo_capture/photo_capture_viewmodel.dart';
 import '../splash/bootstrap_route_args.dart';
 import '../webview/webview_screen.dart';
 import '../../views/widgets/app_snackbar.dart';
@@ -30,12 +39,59 @@ class TermsAndConditionsScreen extends StatefulWidget {
 class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   late TermsAndConditionsViewModel _viewModel;
   bool _redirectingToSplash = false;
+  bool _navigatingToCapture = false;
   Object? _capturePrefillPhoto;
+  TermsCameraPrimingPhase _cameraPrimingPhase = TermsCameraPrimingPhase.detecting;
+
+  bool get _cameraPrimingComplete =>
+      _cameraPrimingPhase == TermsCameraPrimingPhase.skipped ||
+      _cameraPrimingPhase == TermsCameraPrimingPhase.ready;
+
+  bool get _canStartExperience =>
+      _cameraPrimingComplete && !_navigatingToCapture;
 
   @override
   void initState() {
     super.initState();
     _viewModel = TermsAndConditionsViewModel();
+    if (!isNativeMobileCameraPlatform) {
+      _cameraPrimingPhase = TermsCameraPrimingPhase.skipped;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_primeCaptureScreenOnLaunch());
+    });
+  }
+
+  /// Permission, enumeration, and live-camera prewarm while the guest reads terms.
+  Future<void> _primeCaptureScreenOnLaunch() async {
+    if (!isNativeMobileCameraPlatform) return;
+
+    if (mounted) {
+      setState(() => _cameraPrimingPhase = TermsCameraPrimingPhase.detecting);
+    }
+
+    final result = await runTermsCameraPriming(
+      ensurePermission: () => ensureCameraPermission(),
+      preloadCameras: CaptureViewModel.preloadCameras,
+      classifyDevice: () async {
+        if (!mounted) return null;
+        return DeviceClassifier.getDeviceType(context);
+      },
+      startPrewarm: (deviceType) =>
+          CaptureViewModel.prewarmLiveCamera(deviceType: deviceType),
+      hasOpenableCamera: (deviceType) =>
+          CaptureViewModel.hasOpenableCaptureCamera(deviceType: deviceType),
+      isCameraPlatform: isNativeMobileCameraPlatform,
+    );
+
+    if (!mounted) return;
+    setState(() => _cameraPrimingPhase = result.phase);
+  }
+
+  Future<void> _retryCameraPriming() async {
+    if (!isNativeMobileCameraPlatform) return;
+    setState(() => _cameraPrimingPhase = TermsCameraPrimingPhase.detecting);
+    await _primeCaptureScreenOnLaunch();
   }
 
   void _redirectToSplashForKioskSetup() {
@@ -49,6 +105,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
 
   @override
   void dispose() {
+    if (!_navigatingToCapture) {
+      unawaited(CaptureViewModel.disposePrewarm());
+    }
     _viewModel.dispose();
     super.dispose();
   }
@@ -58,12 +117,18 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         await _viewModel.acceptTermsAndCreateSession(_viewModel.kioskCode);
 
     if (success && mounted) {
-      Navigator.pushReplacementNamed(
+      _navigatingToCapture = true;
+      await pushReplacementKioskFade<void, void>(
         context,
-        AppConstants.kRouteCapture,
-        arguments: _capturePrefillPhoto == null
-            ? null
-            : <String, Object?>{'photo': _capturePrefillPhoto},
+        PhotoCaptureScreen(
+          key: ValueKey<Object?>(_capturePrefillPhoto),
+        ),
+        settings: RouteSettings(
+          name: AppConstants.kRouteCapture,
+          arguments: _capturePrefillPhoto == null
+              ? null
+              : <String, Object?>{'photo': _capturePrefillPhoto},
+        ),
       );
     } else if (mounted && _viewModel.hasError) {
       AppSnackBar.showError(
@@ -170,19 +235,19 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                 ],
               ),
               
-              // Full screen loader overlay
+              // Session API overlay only — camera is prepared on Terms before Continue.
               Consumer<TermsAndConditionsViewModel>(
                 builder: (context, viewModel, child) {
-                  if (viewModel.isSubmitting) {
-                    return Positioned.fill(
-                      child: FullScreenLoader(
-                        text: 'Creating Session',
-                        loaderColor: Colors.blue,
-                        elapsedSeconds: viewModel.elapsedSeconds,
-                      ),
-                    );
+                  if (!viewModel.isSubmitting) {
+                    return const SizedBox.shrink();
                   }
-                  return const SizedBox.shrink();
+                  return Positioned.fill(
+                    child: FullScreenLoader(
+                      text: AppStrings.termsCreatingSession,
+                      loaderColor: Colors.blue,
+                      elapsedSeconds: viewModel.elapsedSeconds,
+                    ),
+                  );
                 },
               ),
             ],
@@ -261,7 +326,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           
           // Divider
           Divider(height: 1, color: appColors.dividerColor),
-          
+
+          _buildCameraPrimingBanner(appColors, layout, compact: compact),
+
           // Content
           Padding(
             padding: EdgeInsets.all(cardPadding),
@@ -328,6 +395,112 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           
           const SizedBox(height: 16),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCameraPrimingBanner(
+    AppColors appColors,
+    TermsLayoutMetrics layout, {
+    bool compact = false,
+  }) {
+    switch (_cameraPrimingPhase) {
+      case TermsCameraPrimingPhase.skipped:
+      case TermsCameraPrimingPhase.ready:
+        return const SizedBox.shrink();
+      case TermsCameraPrimingPhase.detecting:
+        return _buildCameraPrimingStatusRow(
+          appColors: appColors,
+          layout: layout,
+          compact: compact,
+          message: AppStrings.termsDetectingCameras,
+          showSpinner: true,
+        );
+      case TermsCameraPrimingPhase.permissionDenied:
+        return _buildCameraPrimingStatusRow(
+          appColors: appColors,
+          layout: layout,
+          compact: compact,
+          message: AppStrings.termsCameraPermissionDenied,
+          showRetry: true,
+        );
+      case TermsCameraPrimingPhase.noneFound:
+        return _buildCameraPrimingStatusRow(
+          appColors: appColors,
+          layout: layout,
+          compact: compact,
+          message: AppStrings.termsNoCameraDetected,
+          showRetry: true,
+        );
+      case TermsCameraPrimingPhase.failed:
+        return _buildCameraPrimingStatusRow(
+          appColors: appColors,
+          layout: layout,
+          compact: compact,
+          message: AppStrings.termsCameraDetectionFailed,
+          showRetry: true,
+        );
+    }
+  }
+
+  Widget _buildCameraPrimingStatusRow({
+    required AppColors appColors,
+    required TermsLayoutMetrics layout,
+    required String message,
+    bool compact = false,
+    bool showSpinner = false,
+    bool showRetry = false,
+  }) {
+    final padding = layout.cardPadding(compact: compact);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(padding, padding, padding, 0),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: appColors.backgroundColor,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (showSpinner) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: CupertinoActivityIndicator(
+                  color: appColors.primaryColor,
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: appColors.secondaryTextColor,
+                  height: 1.35,
+                ),
+              ),
+            ),
+            if (showRetry) ...[
+              const SizedBox(width: 8),
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                onPressed: _retryCameraPriming,
+                child: Text(
+                  AppStrings.termsRetryCameraDetection,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: appColors.primaryColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -449,28 +622,33 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Widget _buildActionButtons(TermsAndConditionsViewModel viewModel, AppColors appColors) {
+    final canSubmit = viewModel.canSubmit && _canStartExperience;
+    final buttonLabel = _cameraPrimingPhase == TermsCameraPrimingPhase.detecting
+        ? AppStrings.termsContinueWhenReady
+        : 'Start Your Experience';
+
     return CenteredMaxWidth(
       maxWidth: 360,
       child: SizedBox(
         width: double.infinity,
         child: CupertinoButton(
           padding: const EdgeInsets.symmetric(vertical: 16),
-          color: viewModel.canSubmit
+          color: canSubmit
               ? CupertinoColors.systemBlue
               : CupertinoColors.systemGrey,
           borderRadius: BorderRadius.circular(12),
-          onPressed: viewModel.canSubmit ? _handleAccept : null,
+          onPressed: canSubmit ? _handleAccept : null,
           child: viewModel.isSubmitting
               ? const CupertinoActivityIndicator(
                   color: CupertinoColors.white,
                 )
               : Text(
-                  'Start Your Experience',
+                  buttonLabel,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: _startButtonLabelColor(
-                      viewModel.canSubmit,
+                      canSubmit,
                       appColors,
                     ),
                   ),

@@ -13,6 +13,7 @@ import io.flutter.view.TextureRegistry;
  */
 /* package-private */ record UvcCameraResources(
         int cameraId,
+        String deviceName,
         TextureRegistry.SurfaceProducer surfaceSurfaceProducer,
         Surface surface,
         UVCCamera camera,
