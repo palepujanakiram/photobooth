@@ -39,6 +39,7 @@ import '../../utils/uvc_capture_config.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/uvc_device_event_hub.dart';
+import '../../services/uvc_session_coordinator.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/centered_max_width.dart';
 import 'photo_capture_rotation_screen.dart';
@@ -82,6 +83,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   int _uvcAutoReconnectAttempts = 0;
   bool _uvcReconnectInFlight = false;
   Timer? _uvcTvProbeTimer;
+  Timer? _uvcEntryProbeTimer;
+  Future<void> _captureInitOp = Future<void>.value();
   DateTime? _uvcPreviewReadyAt;
   int _uvcPreviewGeneration = 0;
   DateTime? _uvcLastUiCaptureEndedAt;
@@ -142,7 +145,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Future<void> _releaseCaptureHardware() async {
     _stopPoseIdleTimer();
     _cancelUvcSessionRecycleTimer();
-    await _disposeUvc();
+    _cancelUvcIdleSleepTimer();
+    _uvcReconnectTimer?.cancel();
+    _uvcReconnectInFlight = false;
+    _uvcDeviceEventsSub?.cancel();
+    _uvcDeviceEventsSub = null;
+    await _disposeUvcForNavigation();
     await _captureViewModel.disposeCamera();
   }
 
@@ -533,6 +541,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Future<void> _resetAndInitializeCameras({bool forceRefresh = false}) async {
     if (!mounted) return;
 
+    final initGate = Completer<void>();
+    final previousInit = _captureInitOp;
+    _captureInitOp = initGate.future;
+    await previousInit.catchError((_) {});
+
+    try {
+      await _resetAndInitializeCamerasBody(forceRefresh: forceRefresh);
+    } finally {
+      initGate.complete();
+    }
+  }
+
+  Future<void> _resetAndInitializeCamerasBody({bool forceRefresh = false}) async {
+    if (!mounted) return;
+
     AppDeviceType? deviceType;
     try {
       deviceType = await DeviceClassifier.getDeviceType(context);
@@ -556,9 +579,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     if (defaultTargetPlatform == TargetPlatform.android) {
-      final uvcReady = await _tryInitializeUvc(preferred: _uvcDevice);
+      if (!CaptureViewModel.hasEnumerationCache) {
+        unawaited(_captureViewModel.warmCameraEnumerationCache());
+      }
+      await UvcSessionCoordinator.waitBeforeOpen(
+        deviceType: _captureViewModel.deviceType,
+      );
+      if (!mounted) return;
+      final uvcReady = await _tryInitializeUvcQuick(preferred: _uvcDevice);
       if (!mounted) return;
       if (uvcReady) {
+        unawaited(_captureViewModel.warmCameraEnumerationCache());
+        _stopUvcEntryProbe();
         _startUvcTvProbeIfNeeded();
         return;
       }
@@ -569,8 +601,71 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       forceRefresh: forceRefresh,
     );
     if (!mounted) return;
+    if (!_uvcFeedIsHealthy &&
+        !_captureViewModel.isReady &&
+        defaultTargetPlatform == TargetPlatform.android) {
+      _startUvcEntryProbe();
+    } else {
+      _stopUvcEntryProbe();
+    }
     _startUvcTvProbeIfNeeded();
     await _reportCaptureScreenNoCameraIfNeeded();
+  }
+
+  /// One quick UVC attempt with timeout so CameraX can start without a 20s block.
+  Future<bool> _tryInitializeUvcQuick({UvcCameraDevice? preferred}) async {
+    if (!mounted) return false;
+    try {
+      return await _tryInitializeUvc(preferred: preferred).timeout(
+        UvcCaptureConfig.openTimeout,
+        onTimeout: () {
+          throw TimeoutException('UVC open timed out');
+        },
+      );
+    } on TimeoutException {
+      await _closeUvcControllerUnlocked();
+      return false;
+    } catch (_) {
+      await _closeUvcControllerUnlocked();
+      return false;
+    }
+  }
+
+  void _startUvcEntryProbe() {
+    _uvcEntryProbeTimer?.cancel();
+    unawaited(_probeUvcForEntry());
+    _uvcEntryProbeTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted ||
+          _uvcFeedIsHealthy ||
+          _captureViewModel.capturedPhoto != null) {
+        _stopUvcEntryProbe();
+        return;
+      }
+      if (_captureViewModel.isReady && !_isUsingUvc) {
+        _stopUvcEntryProbe();
+        return;
+      }
+      if (_uvcReconnectInFlight || _uvcBlocksConcurrentAutoOpen) return;
+      _safeUnawaited(
+        _probeUvcForEntry(),
+        label: 'UVC entry probe failed',
+      );
+    });
+  }
+
+  void _stopUvcEntryProbe() {
+    _uvcEntryProbeTimer?.cancel();
+    _uvcEntryProbeTimer = null;
+  }
+
+  Future<void> _probeUvcForEntry() async {
+    if (!mounted || _uvcFeedIsHealthy) return;
+    await _captureInitOp.catchError((_) {});
+    if (!mounted || _uvcFeedIsHealthy) return;
+    final ok = await _tryInitializeUvc();
+    if (!mounted || !ok) return;
+    _stopUvcEntryProbe();
+    setState(() {});
   }
 
   bool get _uvcFeedIsHealthy =>
@@ -579,7 +674,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Future<bool> _tryInitializeUvc({UvcCameraDevice? preferred}) async {
     if (!mounted || _captureViewModel.capturedPhoto != null) return false;
     final device = preferred ??
-        await probeFirstUvcDevice(requestCameraPermission: true);
+        await probeFirstUvcDevice();
     if (device == null) return false;
     return _ensureUvcDeviceBound(device);
   }
@@ -587,6 +682,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Future<void> _clearUvcBinding() async {
     _uvcTvProbeTimer?.cancel();
     _uvcTvProbeTimer = null;
+    _stopUvcEntryProbe();
     _uvcReconnectTimer?.cancel();
     _resetUvcAutoReconnectAttempts();
     _uvcReconnectInFlight = false;
@@ -630,6 +726,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   Future<void> _tryBindUvcFromHotplug(UvcCameraDevice eventDevice) async {
+    await _captureInitOp.catchError((_) {});
     if (!mounted ||
         _uvcDevice != null ||
         _captureViewModel.capturedPhoto != null) {
@@ -639,13 +736,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
     final device = await resolveUvcDeviceForHotplug(
       eventDevice,
-      requestCameraPermission: true,
     );
     if (!mounted || device == null) return;
 
     final ok = await _ensureUvcDeviceBound(device);
     if (!mounted) return;
     if (ok) {
+      _stopUvcEntryProbe();
       _uvcTvProbeTimer?.cancel();
       _uvcTvProbeTimer = null;
       return;
@@ -678,6 +775,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _uvcReconnectTimer = null;
     _uvcTvProbeTimer?.cancel();
     _uvcTvProbeTimer = null;
+    _stopUvcEntryProbe();
     _uvcWarmupTimer?.cancel();
     _uvcWarmupTimer = null;
     _cancelUvcSessionRecycleTimer();
@@ -692,7 +790,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (_uvcShutterKeysEnabled) {
       HardwareKeyService.setUvcShutterKeysEnabled(false);
     }
-    unawaited(_disposeUvc());
+    unawaited(
+      _disposeUvc().catchError((Object e, StackTrace st) {
+        AppLogger.error('UVC dispose failed on screen dispose', error: e, stackTrace: st);
+      }),
+    );
     _captureViewModel.dispose();
     super.dispose();
   }
@@ -785,8 +887,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final ctrl = _uvcController;
     _uvcController = null;
     if (ctrl != null) {
+      final teardown = ctrl.dispose();
+      UvcSessionCoordinator.trackTeardown(teardown);
       try {
-        await ctrl.dispose();
+        await teardown;
       } catch (_) {
         // Best-effort.
       }
@@ -992,6 +1096,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Future<void> _disposeUvc() async {
     _resetUvcLiveFeedSessionFlags();
     await _closeUvcController();
+    _clearUvcBindingState();
+  }
+
+  /// Teardown when leaving capture — bypasses [_withUvcLock] so Continue cannot
+  /// block behind a slow in-flight UVC open/capture.
+  Future<void> _disposeUvcForNavigation() async {
+    _resetUvcLiveFeedSessionFlags();
+    await _closeUvcControllerUnlocked();
+    _clearUvcBindingState();
+  }
+
+  void _clearUvcBindingState() {
     _uvcDevice = null;
     _uvcError = null;
     _uvcPreviewGeneration = 0;
@@ -1153,6 +1269,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       });
       return false;
     }
+    _stopUvcEntryProbe();
     return true;
   }
 
@@ -1197,7 +1314,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             _captureViewModel.deviceType,
           ),
         );
-        await pending.initialize();
+        await pending.initialize().timeout(
+          UvcCaptureConfig.openTimeout,
+          onTimeout: () => throw TimeoutException('UVC controller initialize'),
+        );
         if (!mounted) return;
         await _captureViewModel.refreshDisplayRotation();
         if (!mounted) return;
@@ -1215,6 +1335,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         });
         _attachUvcHardwareListeners(ctrl);
         await _setUvcShutterKeysEnabled(true);
+        UvcSessionCoordinator.markSessionStarted();
         _armUvcSessionRecycleTimer();
         _resetUvcAutoReconnectAttempts();
         _captureViewModel.markCameraAvailabilityRestored();
@@ -1570,11 +1691,24 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     CaptureViewModel viewModel, {
     required String source,
   }) async {
+    final device = _uvcDevice;
+    if (device == null ||
+        _uvcPhase == UvcFeedPhase.capturing ||
+        _uvcPhase == UvcFeedPhase.reviewing ||
+        viewModel.capturedPhoto != null ||
+        viewModel.isCapturing) {
+      return;
+    }
+
+    final cameraId =
+        'uvc:${device.vendorId}:${device.productId}:${device.name}';
+    XFile? capturedFile;
+    var captureFailed = false;
+
     await _withUvcLock(() async {
       final ctrl = _uvcController;
-      final device = _uvcDevice;
       if (ctrl == null ||
-          device == null ||
+          _uvcDevice == null ||
           _uvcPhase == UvcFeedPhase.capturing ||
           _uvcPhase == UvcFeedPhase.reviewing ||
           viewModel.capturedPhoto != null ||
@@ -1613,9 +1747,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _uvcReconnectTimer?.cancel();
       _cancelUvcIdleSleepTimer();
       if (mounted) setState(() {});
-      final cameraId =
-          'uvc:${device.vendorId}:${device.productId}:${device.name}';
-      var captureSucceeded = false;
 
       try {
         AppLogger.debug('UVC capture start source=$source');
@@ -1637,38 +1768,17 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           await Future<void>.delayed(UvcCaptureConfig.preCaptureSettleDelay);
         }
         await Future<void>.delayed(Duration.zero);
-        final file = await _obtainUvcStillFile(ctrl, source: source);
+        capturedFile = await _obtainUvcStillFile(ctrl, source: source);
         if (mounted) setState(() => _showCaptureFlash = false);
 
-        final keepFeedOpen = UvcCaptureConfig.keepControllerOpenDuringReview;
-        if (!keepFeedOpen) {
+        if (!UvcCaptureConfig.keepControllerOpenDuringReview) {
           _detachUvcHardwareListeners();
           await _closeUvcControllerUnlocked();
           await Future<void>.delayed(UvcCaptureConfig.postDisposeDelay);
           if (mounted) setState(() {});
         }
-
-        await viewModel.setCapturedPhotoFromExternalFile(
-          rawFile: file,
-          cameraId: cameraId,
-          force: true,
-        );
-        if (!mounted) return;
-        if (viewModel.capturedPhoto == null) {
-          _uvcPhase = UvcFeedPhase.error;
-          setState(() {
-            _uvcError = viewModel.errorMessage ??
-                'USB camera capture failed. Tap Retry USB camera.';
-          });
-          return;
-        }
-        captureSucceeded = true;
-        _uvcPhase = UvcFeedPhase.reviewing;
-        _uvcReconnectTimer?.cancel();
-        if (source == 'ui_button') {
-          _uvcLastUiCaptureEndedAt = DateTime.now();
-        }
       } catch (e, st) {
+        captureFailed = true;
         AppLogger.error(
           'UVC capture failed source=$source',
           error: e,
@@ -1682,7 +1792,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               : 'USB camera capture failed: $e';
         });
       } finally {
-        if (!captureSucceeded && _uvcPhase != UvcFeedPhase.reviewing) {
+        if (capturedFile == null && !captureFailed) {
+          _detachUvcHardwareListeners();
+          await _closeUvcControllerUnlocked();
+        } else if (captureFailed) {
           _detachUvcHardwareListeners();
           await _closeUvcControllerUnlocked();
         }
@@ -1690,6 +1803,44 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         if (mounted) setState(() {});
       }
     });
+
+    if (!mounted || capturedFile == null) {
+      return;
+    }
+
+    try {
+      await viewModel.setCapturedPhotoFromExternalFile(
+        rawFile: capturedFile!,
+        cameraId: cameraId,
+        force: true,
+      );
+      if (!mounted) return;
+      if (viewModel.capturedPhoto == null) {
+        _uvcPhase = UvcFeedPhase.error;
+        setState(() {
+          _uvcError = viewModel.errorMessage ??
+              'USB camera capture failed. Tap Retry USB camera.';
+        });
+        return;
+      }
+      _uvcPhase = UvcFeedPhase.reviewing;
+      _uvcReconnectTimer?.cancel();
+      if (source == 'ui_button') {
+        _uvcLastUiCaptureEndedAt = DateTime.now();
+      }
+      if (mounted) setState(() {});
+    } catch (e, st) {
+      AppLogger.error(
+        'UVC capture normalize failed source=$source',
+        error: e,
+        stackTrace: st,
+      );
+      if (!mounted) return;
+      _uvcPhase = UvcFeedPhase.error;
+      setState(() {
+        _uvcError = 'USB camera capture failed: $e';
+      });
+    }
   }
 
   Future<void> _openPreviewRotationScreen(BuildContext context, CaptureViewModel viewModel) async {
@@ -2132,7 +2283,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       );
     }
 
-    final preview = _buildPlatformPreview(controller);
+    final preview = _buildPlatformPreview(context, viewModel, controller);
     final effectiveQuarterTurns =
         (viewModel.previewAutoQuarterTurns +
                 (viewModel.previewRotationDegrees ~/ 90) % 4) %
@@ -2147,8 +2298,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
-  Widget _buildPlatformPreview(CameraController controller) {
-    return CameraPreview(controller);
+  Widget _buildPlatformPreview(
+    BuildContext context,
+    CaptureViewModel viewModel,
+    CameraController controller,
+  ) {
+    if (!controller.value.isInitialized) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      );
+    }
+    return CameraPreview(
+      controller,
+      key: ValueKey<int>(viewModel.cameraGeneration),
+    );
   }
 
   String _effectiveRotationLabel(CaptureViewModel viewModel) {

@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart'
     show Colors, Divider, Orientation, Scaffold, CircularProgressIndicator;
@@ -5,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'terms_and_conditions_viewmodel.dart';
 import 'terms_layout_metrics.dart';
 import '../../utils/constants.dart';
+import '../../utils/camera_permission_helper.dart';
 import '../splash/bootstrap_route_args.dart';
 import '../webview/webview_screen.dart';
 import '../../views/widgets/app_snackbar.dart';
@@ -36,6 +39,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   void initState() {
     super.initState();
     _viewModel = TermsAndConditionsViewModel();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(primeCameraPermissionOnTermsLaunch());
+    });
   }
 
   void _redirectToSplashForKioskSetup() {

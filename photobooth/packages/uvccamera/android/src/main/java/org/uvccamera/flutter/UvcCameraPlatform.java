@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.util.Pair;
+import android.view.Surface;
 
 import androidx.annotation.NonNull;
 
@@ -113,6 +114,11 @@ import io.flutter.view.TextureRegistry;
      * Opened camera resources
      */
     private final Map<Integer, UvcCameraResources> camerasResources = new ConcurrentHashMap<>();
+
+    /**
+     * Serializes native open/close so a new session cannot race an in-flight teardown.
+     */
+    private final Object cameraLifecycleLock = new Object();
 
     /**
      * Constructs a new {@link UvcCameraPlatform} instance
@@ -376,6 +382,16 @@ import io.flutter.view.TextureRegistry;
     public int openCamera(final @NonNull String deviceName, final int desiredFrameArea) {
         Log.v(TAG, "openCamera: deviceName=" + deviceName + ", desiredFrameArea=" + desiredFrameArea);
 
+        synchronized (cameraLifecycleLock) {
+            if (!camerasResources.isEmpty()) {
+                Log.w(TAG, "openCamera: closing stale cameras before open");
+                closeAllCamerasLocked();
+            }
+            return openCameraLocked(deviceName, desiredFrameArea);
+        }
+    }
+
+    private int openCameraLocked(final @NonNull String deviceName, final int desiredFrameArea) {
         final var device = findDeviceByName(deviceName);
         if (device == null) {
             throw new IllegalArgumentException("Device not found: " + deviceName);
@@ -396,7 +412,7 @@ import io.flutter.view.TextureRegistry;
         try {
             camera.open(deviceCtrlBlock);
         } catch (final Exception e) {
-            camera.destroy();
+            releaseCameraSafely(camera);
             throw new IllegalStateException("Failed to open camera", e);
         }
         Log.d(TAG, "openCamera: camera opened");
@@ -406,7 +422,7 @@ import io.flutter.view.TextureRegistry;
         try {
             supportedSizes = camera.getSupportedSizeList();
         } catch (final Exception e) {
-            destroyCameraSafely(camera);
+            releaseCameraSafely(camera);
             throw new IllegalStateException("Failed to get supported sizes", e);
         }
         final var supportedSizesWithAreaDelta = new ArrayList<Pair<Size, Integer>>(supportedSizes.size());
@@ -428,7 +444,7 @@ import io.flutter.view.TextureRegistry;
         try {
             camera.setStatusCallback(statusCallback);
         } catch (final Exception e) {
-            destroyCameraSafely(camera);
+            releaseCameraSafely(camera);
             throw new IllegalStateException("Failed to set status callback", e);
         }
         Log.d(TAG, "openCamera: status callback set");
@@ -439,7 +455,7 @@ import io.flutter.view.TextureRegistry;
         try {
             camera.setButtonCallback(buttonCallback);
         } catch (final Exception e) {
-            destroyCameraSafely(camera);
+            releaseCameraSafely(camera);
             throw new IllegalStateException("Failed to set button callback", e);
         }
 
@@ -460,7 +476,7 @@ import io.flutter.view.TextureRegistry;
             }
         }
         if (frameFormat == null) {
-            destroyCameraSafely(camera);
+            releaseCameraSafely(camera);
             throw new IllegalStateException("No supported frame format found");
         }
         Log.d(TAG, "openCamera: preview size and frame format set: frameFormat=" + frameFormat);
@@ -475,7 +491,7 @@ import io.flutter.view.TextureRegistry;
             camera.setPreviewDisplay(cameraSurface);
             camera.startPreview();
         } catch (final Exception e) {
-            destroyCameraSafely(camera);
+            releaseCameraSafely(camera);
             cameraSurfaceProducer.release();
             throw new IllegalStateException("Failed to start preview", e);
         }
@@ -508,6 +524,7 @@ import io.flutter.view.TextureRegistry;
 
         camerasResources.put(cameraId, new UvcCameraResources(
                 cameraId,
+                deviceName,
                 cameraSurfaceProducer,
                 cameraSurface,
                 camera,
@@ -532,6 +549,40 @@ import io.flutter.view.TextureRegistry;
      * @param cameraId the camera ID
      */
     public void closeCamera(final int cameraId) {
+        synchronized (cameraLifecycleLock) {
+            closeCameraLocked(cameraId);
+        }
+    }
+
+    /**
+     * Closes any open cameras for [deviceName] while the USB fd is still valid.
+     *
+     * <p>Must run from {@link USBMonitor.OnDeviceConnectListener#onDisconnect} before the
+     * monitor releases the connection — otherwise {@link UVCCamera#destroy()} can fdsan
+     * SIGABRT on Android 11+.
+     */
+    /* package-private */ void closeCamerasForDevice(final @NonNull String deviceName) {
+        synchronized (cameraLifecycleLock) {
+            final var staleIds = new ArrayList<Integer>();
+            for (final var entry : camerasResources.entrySet()) {
+                if (deviceName.equals(entry.getValue().deviceName())) {
+                    staleIds.add(entry.getKey());
+                }
+            }
+            for (final int staleId : staleIds) {
+                closeCameraLocked(staleId);
+            }
+        }
+    }
+
+    private void closeAllCamerasLocked() {
+        final var staleIds = new ArrayList<>(camerasResources.keySet());
+        for (final int staleId : staleIds) {
+            closeCameraLocked(staleId);
+        }
+    }
+
+    private void closeCameraLocked(final int cameraId) {
         Log.v(TAG, "closeCamera: cameraId=" + cameraId);
 
         final var cameraResources = camerasResources.remove(cameraId);
@@ -554,12 +605,28 @@ import io.flutter.view.TextureRegistry;
             Log.w(TAG, "closeCamera: failed to release media recorder", e);
         }
 
+        Log.d(TAG, "closeCamera: unsetting camera surface producer callback");
+        try {
+            cameraResources.surfaceSurfaceProducer().setCallback(null);
+            Log.d(TAG, "closeCamera: camera surface producer callback unset");
+        } catch (final Exception e) {
+            Log.w(TAG, "closeCamera: failed to unset camera surface producer callback", e);
+        }
+
         Log.d(TAG, "closeCamera: stopping preview");
         try {
             cameraResources.camera().stopPreview();
             Log.d(TAG, "closeCamera: preview stopped");
         } catch (final Exception e) {
             Log.w(TAG, "closeCamera: failed to stop preview", e);
+        }
+
+        Log.d(TAG, "closeCamera: unsetting preview display");
+        try {
+            cameraResources.camera().setPreviewDisplay((Surface) null);
+            Log.d(TAG, "closeCamera: preview display unset");
+        } catch (final Exception e) {
+            Log.w(TAG, "closeCamera: failed to unset preview display", e);
         }
 
         Log.d(TAG, "closeCamera: unsetting button callback");
@@ -578,16 +645,8 @@ import io.flutter.view.TextureRegistry;
             Log.w(TAG, "closeCamera: failed to unset status callback", e);
         }
 
-        Log.d(TAG, "closeCamera: destroying camera");
-        destroyCameraSafely(cameraResources.camera());
-
-        Log.d(TAG, "closeCamera: unsetting camera surface producer callback");
-        try {
-            cameraResources.surfaceSurfaceProducer().setCallback(null);
-            Log.d(TAG, "closeCamera: camera surface producer callback unset");
-        } catch (final Exception e) {
-            Log.w(TAG, "closeCamera: failed to unset camera surface producer callback", e);
-        }
+        Log.d(TAG, "closeCamera: releasing camera");
+        releaseCameraSafely(cameraResources.camera());
 
         Log.d(TAG, "closeCamera: releasing camera surface producer");
         try {
@@ -633,7 +692,8 @@ import io.flutter.view.TextureRegistry;
 
         final var cameraResources = camerasResources.get(cameraId);
         if (cameraResources == null) {
-            throw new IllegalArgumentException("Camera resources not found: " + cameraId);
+            Log.w(TAG, "castCameraErrorEvent: camera already closed, ignoring");
+            return;
         }
 
         final var eventSink = cameraResources.errorEventStreamHandler().getEventSink();
@@ -1158,21 +1218,24 @@ import io.flutter.view.TextureRegistry;
     }
 
     /**
-     * Releases a {@link UVCCamera} without double-closing native USB file descriptors.
-     *
-     * <p>{@link UVCCamera#destroy()} already invokes {@link UVCCamera#close()}, which calls
-     * {@code nativeRelease}. Calling {@code close()} and {@code destroy()} in sequence triggers
-     * fdsan SIGABRT on Android 11+ when the USB fd is closed twice.
+     * Releases preview + native UVC handle once. Prefer {@link UVCCamera#close()} over
+     * {@link UVCCamera#destroy()} — destroy() can fdsan SIGABRT if the USB fd was already
+     * released by {@link USBMonitor} on disconnect.
      */
-    private static void destroyCameraSafely(final UVCCamera camera) {
+    private static void releaseCameraSafely(final UVCCamera camera) {
         if (camera == null) {
             return;
         }
         try {
-            camera.destroy();
-            Log.d(TAG, "destroyCameraSafely: camera destroyed");
-        } catch (final Exception e) {
-            Log.w(TAG, "destroyCameraSafely: failed to destroy camera", e);
+            camera.stopPreview();
+        } catch (final Throwable ignored) {
+            // Best-effort.
+        }
+        try {
+            camera.close();
+            Log.d(TAG, "releaseCameraSafely: camera closed");
+        } catch (final Throwable e) {
+            Log.w(TAG, "releaseCameraSafely: close failed", e);
         }
     }
 

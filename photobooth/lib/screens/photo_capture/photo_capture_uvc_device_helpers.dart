@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
-import 'package:permission_handler/permission_handler.dart';
 import 'package:uvccamera/uvccamera.dart';
+import '../../utils/camera_permission_helper.dart';
 
 /// True when [a] and [b] refer to the same physical UVC device.
 bool uvcDeviceMatches(UvcCameraDevice a, UvcCameraDevice b) {
@@ -10,12 +10,11 @@ bool uvcDeviceMatches(UvcCameraDevice a, UvcCameraDevice b) {
 }
 
 /// Camera permission must be granted before UVC device permission (plugin requirement).
-Future<bool> ensureAndroidCameraPermissionForUvc() async {
+Future<bool> ensureAndroidCameraPermissionForUvc({
+  bool requestIfNeeded = false,
+}) async {
   if (defaultTargetPlatform != TargetPlatform.android) return false;
-  final cameraStatus = await Permission.camera.status;
-  if (cameraStatus.isGranted) return true;
-  final requested = await Permission.camera.request();
-  return requested.isGranted;
+  return ensureCameraPermission(requestIfNeeded: requestIfNeeded);
 }
 
 /// Camera permission must be granted before UVC device permission (plugin requirement).
@@ -36,8 +35,9 @@ Future<UvcCameraDevice?> probeFirstUvcDevice({
   if (defaultTargetPlatform != TargetPlatform.android) return null;
   try {
     if (!await UvcCamera.isSupported()) return null;
-    if (requestCameraPermission &&
-        !await ensureAndroidCameraPermissionForUvc()) {
+    if (!await ensureAndroidCameraPermissionForUvc(
+      requestIfNeeded: requestCameraPermission,
+    )) {
       return null;
     }
     final devices = await UvcCamera.getDevices();
@@ -56,8 +56,9 @@ Future<UvcCameraDevice?> resolveUvcDeviceForHotplug(
   if (defaultTargetPlatform != TargetPlatform.android) return null;
   try {
     if (!await UvcCamera.isSupported()) return null;
-    if (requestCameraPermission &&
-        !await ensureAndroidCameraPermissionForUvc()) {
+    if (!await ensureAndroidCameraPermissionForUvc(
+      requestIfNeeded: requestCameraPermission,
+    )) {
       return null;
     }
     final devices = await UvcCamera.getDevices();

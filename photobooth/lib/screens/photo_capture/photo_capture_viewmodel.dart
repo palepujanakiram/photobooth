@@ -6,7 +6,7 @@ import 'package:flutter/services.dart' show MethodChannel, PlatformException;
 import 'package:camera/camera.dart';
 import 'package:camera/camera.dart' as cam show availableCameras;
 import 'package:image_picker/image_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
+import '../../utils/camera_permission_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'photo_model.dart';
@@ -40,6 +40,9 @@ class CaptureViewModel extends ChangeNotifier {
   final SessionManager _sessionManager;
   final Uuid _uuid = const Uuid();
   static List<CameraDescription>? _cachedAvailableCameras;
+
+  /// Whether a prior [loadCameras] / [warmCameraEnumerationCache] filled the static cache.
+  static bool get hasEnumerationCache => _cachedAvailableCameras != null;
   CameraController? _cameraController;
 
   /// Set true in [dispose]. Post-await work should bail before mutating state.
@@ -92,6 +95,7 @@ class CaptureViewModel extends ChangeNotifier {
   // Serializes camera operations (dispose/init/capture/stream) to avoid races on Android TV.
   Future<void> _cameraOp = Future<void>.value();
   int _cameraGeneration = 0;
+  int get cameraGeneration => _cameraGeneration;
 
   Future<T> _withCameraLock<T>(Future<T> Function() fn) {
     final next = Completer<void>();
@@ -170,9 +174,7 @@ class CaptureViewModel extends ChangeNotifier {
   bool get isPreparingUploadPayload =>
       _prepareUploadFuture != null && _preparedUploadBase64 == null;
   bool get canContinueUpload =>
-      !isCapturing &&
-      !isUploading &&
-      (!kIsWeb || !isPreparingUploadPayload);
+      !isCapturing && !isUploading;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
   int? get countdownValue => _countdownValue;
@@ -670,17 +672,16 @@ class CaptureViewModel extends ChangeNotifier {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return true;
     }
-    final status = await Permission.camera.status;
-    if (status.isGranted) return true;
-    AppLogger.debug('📷 Camera permission not granted, requesting...');
-    final result = await Permission.camera.request();
-    AppLogger.debug('📷 Permission result: $result');
-    if (result.isGranted) return true;
+    final granted = await ensureCameraPermission(requestIfNeeded: false);
+    if (granted) return true;
+    AppLogger.debug(
+      '📷 Camera permission not granted (prompted on Terms screen)',
+    );
     _errorMessage = 'Camera permission is required to detect and use cameras.';
     unawaited(
       reportCameraNotFound(
         reason: 'Camera permission denied',
-        extraInfo: {'permission_status': result.toString()},
+        extraInfo: const {'permission_status': 'denied'},
       ),
     );
     return false;
@@ -889,6 +890,24 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  /// Fills the static enumeration cache without toggling [isLoadingCameras].
+  ///
+  /// When the first POSE visit uses UVC only, [loadCameras] never runs; warming
+  /// the cache avoids a 15–25s CameraX enumeration on the next visit.
+  Future<void> warmCameraEnumerationCache() async {
+    if (_cachedAvailableCameras != null || usesDesktopPhotoPicker) return;
+    try {
+      if (!await _ensureAndroidCameraPermission()) return;
+      final allCameras = await cam.availableCameras().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw TimeoutException('warmCameraEnumerationCache'),
+      );
+      _assignEnumeratedCameras(allCameras);
+    } catch (_) {
+      // Best-effort background warm.
+    }
+  }
+
   /// Resets the camera screen and initializes with the first available camera
   /// This is a common function used both when entering the screen and when reloading
   Future<void> resetAndInitializeCameras({bool forceRefresh = false}) async {
@@ -909,9 +928,13 @@ class CaptureViewModel extends ChangeNotifier {
     // Dispose current camera controller
     if (_cameraController != null) {
       AppLogger.debug('   Disposing current camera controller...');
+      final ctrl = _cameraController;
+      _cameraController = null;
+      _cameraGeneration++;
+      notifyListeners();
       try {
-        _cameraController!.removeListener(_onCameraControllerUpdate);
-        await _cameraController!.dispose();
+        ctrl!.removeListener(_onCameraControllerUpdate);
+        await ctrl.dispose();
       } catch (e, stackTrace) {
         AppLogger.debug('   ⚠️ Warning: Error disposing camera: $e');
         ErrorReportingManager.log('⚠️ Warning: Error disposing camera controller');
@@ -923,7 +946,6 @@ class CaptureViewModel extends ChangeNotifier {
           fatal: false,
         );
       }
-      _cameraController = null;
     }
 
     // Clear current camera selection
@@ -1026,22 +1048,21 @@ class CaptureViewModel extends ChangeNotifier {
   }
 
   Future<void> _disposeCameraControllerForSwitch() async {
-    final hadController = _cameraController != null;
-    if (_cameraController == null) return;
+    final ctrl = _cameraController;
+    if (ctrl == null) return;
     AppLogger.debug('🔄 Disposing existing camera controller before switch...');
+    _cameraController = null;
+    _cameraGeneration++;
+    notifyListeners();
     try {
-      _cameraController!.removeListener(_onCameraControllerUpdate);
-      await _cameraController!.dispose();
+      ctrl.removeListener(_onCameraControllerUpdate);
+      await ctrl.dispose();
     } catch (e) {
       AppLogger.debug('   ⚠️ Warning: Error disposing existing controller: $e');
     }
-    _cameraController = null;
-    _cameraGeneration++;
-    if (hadController) {
-      await Future.delayed(
-        Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
-      );
-    }
+    await Future.delayed(
+      Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
+    );
   }
 
   void _logCameraInitializationStart(CameraDescription camera) {
@@ -1701,13 +1722,17 @@ class CaptureViewModel extends ChangeNotifier {
   }
 
   Future<void> _hardResetCameraController() async {
-    try {
-      _cameraController?.removeListener(_onCameraControllerUpdate);
-      await _cameraController?.dispose();
-    } catch (_) {
-      // Best-effort.
-    } finally {
-      _cameraController = null;
+    final ctrl = _cameraController;
+    _cameraController = null;
+    if (ctrl != null) {
+      _cameraGeneration++;
+      notifyListeners();
+      try {
+        ctrl.removeListener(_onCameraControllerUpdate);
+        await ctrl.dispose();
+      } catch (_) {
+        // Best-effort.
+      }
     }
   }
 
@@ -1749,15 +1774,18 @@ class CaptureViewModel extends ChangeNotifier {
 
       try {
         // Best-effort full reset.
-        try {
-          _cameraController?.removeListener(_onCameraControllerUpdate);
-          await _cameraController?.dispose();
-        } catch (_) {
-          // ignore
-        } finally {
-          _cameraController = null;
-        }
+        final ctrl = _cameraController;
+        _cameraController = null;
         _cameraGeneration++;
+        notifyListeners();
+        if (ctrl != null) {
+          try {
+            ctrl.removeListener(_onCameraControllerUpdate);
+            await ctrl.dispose();
+          } catch (_) {
+            // ignore
+          }
+        }
 
         await Future.delayed(
           Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
@@ -2018,12 +2046,38 @@ class CaptureViewModel extends ChangeNotifier {
     _resetUploadPreparation();
   }
 
+  /// Background encode while the user reviews a UVC still ([UvcCaptureConfig.deferUploadPrepUntilContinue]).
+  void kickoffDeferredUploadPreparation({
+    Duration initialDelay = Duration.zero,
+  }) {
+    _kickoffUploadPreparation(initialDelay: initialDelay);
+  }
+
+  /// Marks the Continue upload flow as started so the UI can show progress
+  /// before native camera teardown or JPEG encode runs.
+  void beginContinueUpload() {
+    if (_isUploading || _capturedPhoto == null) return;
+    _isUploading = true;
+    _errorMessage = null;
+    _uploadStatusMessage = 'Preparing photo…';
+    _startUploadTimer();
+    notifyListeners();
+  }
+
   void _kickoffUploadPreparation({
     Duration initialDelay = const Duration(milliseconds: 48),
   }) {
     final photo = _capturedPhoto;
     if (photo == null) return;
-    _resetUploadPreparation();
+    if (_preparedUploadBase64 != null && _prepareUploadPhotoId == photo.id) {
+      return;
+    }
+    if (_prepareUploadFuture != null) {
+      return;
+    }
+    if (_prepareUploadPhotoId != null && _prepareUploadPhotoId != photo.id) {
+      _resetUploadPreparation();
+    }
     WebFlowTrace.log('UPLOAD_PREP', 'kickoff photoId=${photo.id}');
     _prepareUploadFuture = () async {
       await Future<void>.delayed(initialDelay);
@@ -2231,7 +2285,7 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Called when user taps "Continue" button in Capture Photo screen
   /// Uploads photo, saves client person count, and fires server preprocess in background.
-  Future<bool> uploadPhotoToSession() async {
+  Future<bool> uploadPhotoToSession({bool uploadAlreadyStarted = false}) async {
     if (_capturedPhoto == null) {
       _errorMessage = 'No photo captured. Please capture a photo first.';
       notifyListeners();
@@ -2253,11 +2307,11 @@ class CaptureViewModel extends ChangeNotifier {
       return false;
     }
 
-    _isUploading = true;
-    _errorMessage = null;
-    _uploadStatusMessage = 'Preparing photo…';
-    _startUploadTimer();
-    notifyListeners();
+    if (!uploadAlreadyStarted) {
+      beginContinueUpload();
+    } else if (!_isUploading) {
+      beginContinueUpload();
+    }
 
     final sidShort = sessionId.length <= 8 ? sessionId : '${sessionId.substring(0, 8)}…';
     WebFlowTrace.log('UPLOAD', 'begin sessionId=$sidShort kIsWeb=$kIsWeb');
