@@ -328,6 +328,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   Future<void> _pulseCaptureFlash() async {
     if (!mounted) return;
+    unawaited(_captureViewModel.playCaptureShutterSound());
     setState(() => _showCaptureFlash = true);
     await Future<void>.delayed(UvcCaptureConfig.captureFlashDuration);
     if (!mounted) return;
@@ -1455,6 +1456,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         _armUvcSessionRecycleTimer();
         _resetUvcAutoReconnectAttempts();
         _captureViewModel.markCameraAvailabilityRestored();
+        unawaited(_captureViewModel.warmUpCaptureShutterSound());
         AppLogger.debug(
           'UVC preview opened preset='
           '${UvcCaptureConfig.resolutionPresetFor(_captureViewModel.deviceType).name} '
@@ -2542,33 +2544,52 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   /// Builds the on-screen capture countdown overlay (e.g. 5, 4, 3…).
   Widget _buildCountdownOverlay(BuildContext context, int countdownValue) {
+    final showIntro =
+        countdownValue == AppConstants.kCaptureCountdownSeconds;
     return Container(
       color: Colors.black.withValues(alpha: 0.5),
       child: Center(
-        child: Container(
-          width: 150,
-          height: 150,
-          decoration: BoxDecoration(
-            color: Colors.grey.withValues(alpha: 0.7),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 30,
-                spreadRadius: 10,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (showIntro) ...[
+              Text(
+                AppStrings.captureCountdownIntro,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white.withValues(alpha: 0.95),
+                ),
+                textAlign: TextAlign.center,
               ),
+              const SizedBox(height: 20),
             ],
-          ),
-          child: Center(
-            child: Text(
-              '$countdownValue',
-              style: const TextStyle(
-                fontSize: 80,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+            Container(
+              width: 150,
+              height: 150,
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.7),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 30,
+                    spreadRadius: 10,
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Text(
+                  '$countdownValue',
+                  style: const TextStyle(
+                    fontSize: 80,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );

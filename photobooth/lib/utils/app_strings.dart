@@ -93,6 +93,9 @@ abstract final class AppStrings {
   /// Retry action on Terms camera status banner.
   static const termsRetryCameraDetection = 'Retry';
 
+  /// Spoken once at the start of the POSE capture countdown.
+  static const captureCountdownIntro = 'Be ready for photo';
+
   /// UVC idle sleep: tap to reopen the live DSLR feed after thermal relief closed it.
   static const uvcTapToWakePreview =
       'Tap when ready\nto start the camera preview';

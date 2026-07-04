@@ -29,6 +29,7 @@ import 'photo_capture_camera_error_helpers.dart';
 import '../../utils/web_flow_trace.dart';
 import '../../utils/web_upload_error_hint.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
+import '../../services/capture_sound_service.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_camera_config.dart';
 import 'photo_capture_preview_rotation.dart';
@@ -271,7 +272,7 @@ class CaptureViewModel extends ChangeNotifier {
   
   // Countdown timer for capture
   int? _countdownValue;
-  Timer? _countdownTimer;
+  int _countdownGeneration = 0;
 
   /// Zoom range and current value; null when zoom is not supported.
   double? _minZoom;
@@ -296,8 +297,12 @@ class CaptureViewModel extends ChangeNotifier {
   CaptureViewModel({
     ApiService? apiService,
     SessionManager? sessionManager,
+    CaptureSoundService? captureSoundService,
   })  : _apiService = apiService ?? ApiService(),
-        _sessionManager = sessionManager ?? SessionManager();
+        _sessionManager = sessionManager ?? SessionManager(),
+        _captureSoundService = captureSoundService ?? CaptureSoundService();
+
+  final CaptureSoundService _captureSoundService;
 
   CameraController? get cameraController => _cameraController;
   PhotoModel? get capturedPhoto => _capturedPhoto;
@@ -1465,6 +1470,7 @@ class CaptureViewModel extends ChangeNotifier {
       logNativeCameraDetails(details);
     }
     notifyListeners();
+    unawaited(warmUpCaptureShutterSound());
   }
 
   /// Loads zoom range in background with timeout so init never hangs.
@@ -1538,6 +1544,13 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  /// Plays the capture shutter cue (best-effort; does not block capture).
+  Future<void> playCaptureShutterSound() => _captureSoundService.playShutter();
+
+  /// Warms the shutter clip while the live feed is idle.
+  Future<void> warmUpCaptureShutterSound() =>
+      _captureSoundService.warmUp();
+
   /// Runs a countdown then [captureAction] (built-in CameraX or UVC).
   Future<void> captureWithCountdown(
     Future<void> Function() captureAction, {
@@ -1551,34 +1564,32 @@ class CaptureViewModel extends ChangeNotifier {
       '📸 Starting capture countdown (${AppConstants.kCaptureCountdownSeconds}s)...',
     );
 
+    final generation = ++_countdownGeneration;
     _countdownValue = AppConstants.kCaptureCountdownSeconds;
     notifyListeners();
 
-    _countdownTimer?.cancel();
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      if (_countdownValue == null) {
-        timer.cancel();
-        if (identical(_countdownTimer, timer)) {
-          _countdownTimer = null;
+    try {
+      for (var step = _countdownValue!; step >= 1; step--) {
+        if (generation != _countdownGeneration || !canStart()) return;
+        _countdownValue = step;
+        notifyListeners();
+        if (step > 1) {
+          await Future<void>.delayed(const Duration(seconds: 1));
         }
-        return;
       }
 
-      if (_countdownValue! > 1) {
-        _countdownValue = _countdownValue! - 1;
-        notifyListeners();
-      } else {
-        timer.cancel();
-        if (identical(_countdownTimer, timer)) {
-          _countdownTimer = null;
-        }
+      if (generation != _countdownGeneration || !canStart()) return;
+      _countdownValue = null;
+      notifyListeners();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (generation != _countdownGeneration || !canStart()) return;
+      await captureAction();
+    } finally {
+      if (generation == _countdownGeneration) {
         _countdownValue = null;
         notifyListeners();
-
-        await Future<void>.delayed(const Duration(milliseconds: 100));
-        await captureAction();
       }
-    });
+    }
   }
 
   /// Starts a countdown and then captures a photo
@@ -1592,8 +1603,8 @@ class CaptureViewModel extends ChangeNotifier {
   
   /// Cancels the countdown if in progress
   void cancelCountdown() {
-    _countdownTimer?.cancel();
-    _countdownTimer = null;
+    _countdownGeneration++;
+    unawaited(_captureSoundService.cancel());
     _countdownValue = null;
     notifyListeners();
   }
@@ -1755,6 +1766,7 @@ class CaptureViewModel extends ChangeNotifier {
       WebFlowTrace.reset(label: 'capture');
       WebFlowTrace.log('CAPTURE', 'shutter_begin kIsWeb=$kIsWeb isReady=$isReady');
       final imageFile = await _obtainRawCaptureFile();
+      unawaited(playCaptureShutterSound());
       final isFrontCamera =
           _currentCamera?.lensDirection == CameraLensDirection.front;
       WebFlowTrace.log('CAPTURE', 'normalize_start');
@@ -2060,6 +2072,7 @@ class CaptureViewModel extends ChangeNotifier {
 
       final normalizedFile =
           await ImageHelper.normalizeAndSaveCapturedPhoto(imageFile);
+      unawaited(playCaptureShutterSound());
       await _assignCapturedPhotoModel(
         normalizedFile,
         cameraIdOverride: 'desktop',
@@ -2221,8 +2234,8 @@ class CaptureViewModel extends ChangeNotifier {
   void clearCapturedPhoto() {
     // Treat "Retake" as a hard reset of any in-flight UI state so the user can
     // always return to live preview, even if an upload/countdown was running.
-    _countdownTimer?.cancel();
-    _countdownTimer = null;
+    _countdownGeneration++;
+    unawaited(_captureSoundService.cancel());
     _countdownValue = null;
 
     _uploadTimer?.cancel();
@@ -2734,10 +2747,11 @@ class CaptureViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _countdownTimer?.cancel();
-    _countdownTimer = null;
+    _countdownGeneration++;
+    _countdownValue = null;
     _stopUploadTimer();
     _releaseUploadPayloadMemory();
+    unawaited(_captureSoundService.dispose());
     unawaited(disposeCamera());
     super.dispose();
   }
