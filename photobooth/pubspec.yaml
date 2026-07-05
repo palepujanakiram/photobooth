@@ -92,7 +92,7 @@ dev_dependencies:
 dependency_overrides:
   camera_android_camerax:
     path: packages/camera_android_camerax
-  shared_preferences_android: ^2.4.26
+  shared_preferences_android: 2.4.23
 
 flutter:
   config:
