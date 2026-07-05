@@ -153,6 +153,40 @@ void main() {
     );
   });
 
+  test('resolvePaymentThumbUrl reads latestImageUrl from payment row', () {
+    expect(
+      StaffPaymentsPayloadUtils.resolvePaymentThumbUrl(
+        {
+          'latestImageUrl': '/api/img/generated/thumb.jpg',
+          'sessionId': 'sess-4',
+        },
+        sessionId: 'sess-4',
+      ),
+      contains('thumb.jpg'),
+    );
+    expect(
+      StaffPaymentsPayloadUtils.resolvePaymentThumbUrl(
+        {
+          'latestImageUrl': null,
+          'session': {
+            'generatedImages': [
+              {'imageUrl': '/api/img/generated/nested.jpg'},
+            ],
+          },
+        },
+        sessionId: 'sess-5',
+      ),
+      contains('nested.jpg'),
+    );
+    expect(
+      StaffPaymentsPayloadUtils.resolvePaymentThumbUrl(
+        {'sessionId': 'sess-6'},
+        sessionId: 'sess-6',
+      ),
+      isNull,
+    );
+  });
+
   test('userImageFieldFromSession reads user image fields', () {
     expect(
       StaffPaymentsPayloadUtils.userImageFieldFromSession({

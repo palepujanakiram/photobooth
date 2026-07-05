@@ -7,7 +7,9 @@ import '../utils/constants.dart';
 import '../utils/secure_image_url.dart';
 import 'client_identification.dart';
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
+import '../utils/app_strings.dart';
 import 'kiosk_session_auth.dart';
+import 'staff_session_manager.dart';
 
 /// Loads `/api/img/*` resources with kiosk session auth headers.
 ///
@@ -46,9 +48,38 @@ class ProtectedImageLoader {
 
   /// Fetches image bytes with `X-Kiosk-Session-Token` (and bearer auth if configured).
   Future<Uint8List> fetchBytes(String url) async {
+    return _fetchBytesWithDio(_dio, url);
+  }
+
+  /// Fetches protected `/api/img/*` bytes using [X-Staff-Token] when present.
+  Future<Uint8List> fetchBytesWithStaffAuth(String url) async {
+    final token = await StaffSessionManager().getToken();
+    if (token == null || token.isEmpty) {
+      return fetchBytes(url);
+    }
+    return _fetchBytesWithDio(_staffDio(token), url);
+  }
+
+  static Dio _staffDio(String staffToken) {
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: AppConfig.baseUrl,
+        connectTimeout: AppConstants.kApiTimeout,
+        receiveTimeout: AppConstants.kApiTimeout,
+        headers: ClientIdentification.mergeHeaders({
+          ...AppConfig.authorizationBearerHeader,
+          AppStrings.staffTokenHeader: staffToken,
+        }),
+      ),
+    );
+    configureDioForWeb(dio);
+    return dio;
+  }
+
+  Future<Uint8List> _fetchBytesWithDio(Dio dio, String url) async {
     final secured = SecureImageUrl.withSessionId(SecureImageUrl.absolutize(url));
     final uri = Uri.parse(secured);
-    final response = await _dio.getUri<Uint8List>(
+    final response = await dio.getUri<Uint8List>(
       uri,
       options: Options(
         responseType: ResponseType.bytes,
