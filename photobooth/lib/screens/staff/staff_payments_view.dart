@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/staff_api_service.dart';
-import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/print_service.dart';
 import '../../utils/constants.dart';
@@ -22,7 +21,6 @@ class StaffPaymentsScreen extends StatefulWidget {
 
 class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
   final _api = StaffApiService();
-  final _publicApi = ApiService();
   final _printService = PrintService();
 
   bool _loading = false;
@@ -75,23 +73,14 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     return any?.trim() ?? '';
   }
 
-  static String _paymentThumbUrlFromPayload(Map<String, dynamic> p) {
-    return StaffPaymentsPayloadUtils.pickString(p, const [
-      'thumbnailUrl',
-      'thumbUrl',
-      'imageUrl',
-      'image_url',
-      'generatedImageUrl',
-      'generated_image_url',
-      'photoUrl',
-      'photo_url',
-      'sessionImageUrl',
-      'previewUrl',
-    ]);
-  }
-
   static String _paymentImageUrlForPrintFromPayload(Map<String, dynamic> p) {
-    // Prefer explicit image URL keys (over thumbnails).
+    final fromThumb = StaffPaymentsPayloadUtils.resolvePaymentThumbUrl(
+      p,
+      sessionId: _sessionId(p),
+    );
+    if (fromThumb != null && fromThumb.isNotEmpty) return fromThumb;
+
+    // Prefer explicit full-size keys when distinct from thumbnail.
     return StaffPaymentsPayloadUtils.pickString(p, const [
       'imageUrl',
       'image_url',
@@ -103,6 +92,12 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
   }
 
   Future<String?> _resolveImageUrlForPrint(Map<String, dynamic> payment) async {
+    final fromPayload = StaffPaymentsPayloadUtils.resolvePaymentThumbUrl(
+      payment,
+      sessionId: _sessionId(payment),
+    );
+    if (fromPayload != null && fromPayload.isNotEmpty) return fromPayload;
+
     final fromPaymentRaw = _paymentImageUrlForPrintFromPayload(payment).trim();
     final sid = _sessionId(payment).trim();
     if (fromPaymentRaw.isNotEmpty) {
@@ -113,7 +108,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     }
 
     if (sid.isEmpty) return null;
-    final raw = await _publicApi.fetchSession(sid);
+    final raw = await _api.fetchSession(sid);
     if (!mounted || raw == null) return null;
     return StaffPaymentsPayloadUtils.resolveSessionImageUrl(
       raw,
@@ -121,14 +116,28 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     );
   }
 
-  Future<void> _ensureSessionThumbLoaded(String sessionId) async {
+  Future<void> _ensureSessionThumbLoaded(
+    String sessionId, {
+    Map<String, dynamic>? payment,
+  }) async {
     final sid = sessionId.trim();
     if (sid.isEmpty) return;
     if (_sessionThumbUrlCache.containsKey(sid)) return;
     if (_sessionThumbLoadInFlight.contains(sid)) return;
     _sessionThumbLoadInFlight.add(sid);
     try {
-      final raw = await _publicApi.fetchSession(sid);
+      if (payment != null) {
+        final fromPayload = StaffPaymentsPayloadUtils.resolvePaymentThumbUrl(
+          payment,
+          sessionId: sid,
+        );
+        if (fromPayload != null && fromPayload.isNotEmpty) {
+          setState(() => _sessionThumbUrlCache[sid] = fromPayload);
+          return;
+        }
+      }
+
+      final raw = await _api.fetchSession(sid);
       if (!mounted || raw == null) return;
 
       final imageUrl = StaffPaymentsPayloadUtils.resolveSessionImageUrl(
@@ -146,13 +155,20 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
         // Store as a sentinel; renderer will decode.
         setState(() => _sessionThumbUrlCache[sid] = userImage);
       }
+    } catch (_) {
+      // Best-effort preview; payment list remains usable without a thumb.
     } finally {
       _sessionThumbLoadInFlight.remove(sid);
     }
   }
 
-  Widget _buildThumb(String sessionId, String payloadUrl) {
-    final sid = sessionId.trim();
+  Widget _buildThumb(Map<String, dynamic> payment) {
+    final sid = _sessionId(payment);
+    final payloadUrl = StaffPaymentsPayloadUtils.resolvePaymentThumbUrl(
+          payment,
+          sessionId: sid,
+        ) ??
+        '';
     final resolved = staffPaymentThumbResolvedUrl(
       sessionId: sid,
       payloadUrl: payloadUrl,
@@ -160,7 +176,9 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     );
 
     if (resolved.isEmpty) {
-      if (sid.isNotEmpty) _ensureSessionThumbLoaded(sid);
+      if (sid.isNotEmpty) {
+        _ensureSessionThumbLoaded(sid, payment: payment);
+      }
       return staffPaymentThumbPlaceholder();
     }
 
@@ -260,7 +278,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     if (!mounted || imageUrl == null) return;
 
     await staffPaymentsRunPrintJob(
-      publicApi: _publicApi,
+      staffApi: _api,
       printService: _printService,
       settings: context.read<AppSettingsManager>().settings,
       imageUrl: imageUrl,
@@ -443,7 +461,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
             status: _paymentStatus(p),
             sessionId: sid,
             amount: StaffPaymentCard.amountFromPayload(p),
-            thumb: _buildThumb(sid, _paymentThumbUrlFromPayload(p)),
+            thumb: _buildThumb(p),
             loading: _loading,
             showDecisionButtons: showDecisionButtons,
             onApprove: () => _approve(p),

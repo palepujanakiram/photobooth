@@ -1,7 +1,9 @@
 import 'dart:convert';
 
+import 'package:camera/camera.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:uuid/uuid.dart';
 
 import '../utils/app_strings.dart';
 import '../utils/constants.dart';
@@ -10,6 +12,7 @@ import '../utils/logger.dart';
 import 'api_logging_interceptor.dart';
 import 'alice_inspector.dart';
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
+import 'api_service_legacy_media.dart';
 import 'client_identification.dart';
 import 'staff_session_manager.dart';
 
@@ -184,6 +187,68 @@ class StaffApiService {
         e.response?.statusCode,
       );
     }
+  }
+
+  /// Staff-authenticated session details (for payment thumbnails / print).
+  ///
+  /// Tries `/api/staff/sessions/:id` then `/api/sessions/:id` with [X-Staff-Token].
+  Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
+    final sid = sessionId.trim();
+    if (sid.isEmpty) return null;
+
+    final token = await _sessionManager.getToken();
+    if (token == null || token.isEmpty) {
+      throw ApiException('Staff session expired. Please log in again.');
+    }
+
+    const prefixes = ['/api/staff/sessions/', '/api/sessions/'];
+    for (final prefix in prefixes) {
+      try {
+        final r = await _dio.get<dynamic>(
+          '$prefix$sid',
+          options: Options(
+            headers: {AppStrings.staffTokenHeader: token},
+            validateStatus: (c) => c != null && c >= 200 && c < 500,
+            responseType: ResponseType.json,
+          ),
+        );
+        if (r.statusCode == 200) {
+          return _asJsonMap(r.data);
+        }
+      } on DioException catch (e) {
+        if (kDebugMode) {
+          AppLogger.debug('Staff fetchSession $prefix$sid failed: ${e.message}');
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Download a protected `/api/img/*` URL using staff auth (for print flow).
+  Future<XFile> downloadImageToTemp(
+    String imageUrl, {
+    void Function(String message)? onProgress,
+  }) async {
+    final token = await _sessionManager.getToken();
+    if (token == null || token.isEmpty) {
+      throw ApiException('Staff session expired. Please log in again.');
+    }
+
+    final dio = Dio(_dio.options);
+    configureDioForWeb(dio);
+    dio.options = dio.options.copyWith(
+      headers: {
+        ...dio.options.headers,
+        AppStrings.staffTokenHeader: token,
+      },
+    );
+
+    return ApiServiceLegacyMedia.downloadImageToTemp(
+      dio: dio,
+      uuid: const Uuid(),
+      imageUrl: imageUrl,
+      onProgress: onProgress,
+    );
   }
 
   Future<void> approvePayment({required String paymentId}) async {

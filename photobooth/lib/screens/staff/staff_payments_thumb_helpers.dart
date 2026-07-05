@@ -1,8 +1,12 @@
+import 'dart:typed_data';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../services/protected_image_loader.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/secure_image_url.dart';
 import 'staff_payments_payload_utils.dart';
 
 /// Thumbnail rendering for staff payment rows (Sonar S3776 extraction).
@@ -25,16 +29,97 @@ Widget staffPaymentThumbImage({
     if (fromB64 != null) return fromB64;
   }
 
-  return ClipRRect(
-    borderRadius: BorderRadius.circular(10),
-    child: Image.network(
-      resolved,
-      width: 54,
-      height: 54,
-      fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => placeholder(),
-    ),
+  return StaffPaymentThumbNetworkImage(
+    imageUrl: resolved,
+    placeholder: placeholder,
   );
+}
+
+class StaffPaymentThumbNetworkImage extends StatefulWidget {
+  const StaffPaymentThumbNetworkImage({
+    super.key,
+    required this.imageUrl,
+    required this.placeholder,
+  });
+
+  final String imageUrl;
+  final Widget Function() placeholder;
+
+  @override
+  State<StaffPaymentThumbNetworkImage> createState() =>
+      _StaffPaymentThumbNetworkImageState();
+}
+
+class _StaffPaymentThumbNetworkImageState
+    extends State<StaffPaymentThumbNetworkImage> {
+  Uint8List? _bytes;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(StaffPaymentThumbNetworkImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() {
+      _bytes = null;
+      _failed = false;
+    });
+
+    final resolved = SecureImageUrl.absolutize(widget.imageUrl.trim());
+    if (resolved.isEmpty) {
+      if (mounted) setState(() => _failed = true);
+      return;
+    }
+
+    try {
+      final loader = ProtectedImageLoader.instance;
+      final bytes = ProtectedImageLoader.isProtectedUrl(resolved)
+          ? await loader.fetchBytesWithStaffAuth(resolved)
+          : await loader.fetchBytes(resolved);
+      if (!mounted) return;
+      setState(() => _bytes = bytes);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _failed = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_failed) return widget.placeholder();
+    final bytes = _bytes;
+    if (bytes == null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          width: 54,
+          height: 54,
+          child: widget.placeholder(),
+        ),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Image.memory(
+        bytes,
+        width: 54,
+        height: 54,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => widget.placeholder(),
+      ),
+    );
+  }
 }
 
 Widget _staffPaymentDataUrlThumb(

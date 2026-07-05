@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/app_settings_model.dart';
-import '../../services/api_service.dart';
+import '../../services/staff_api_service.dart';
 import '../../services/print_service.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/printer_endpoint.dart';
@@ -66,7 +66,7 @@ Future<bool> staffPaymentsConfirmPrintDialog(
 
 /// Download image and send to network printer (Sonar S3776 extraction).
 Future<void> staffPaymentsRunPrintJob({
-  required ApiService publicApi,
+  required StaffApiService staffApi,
   required PrintService printService,
   required AppSettingsModel? settings,
   required String imageUrl,
@@ -77,7 +77,7 @@ Future<void> staffPaymentsRunPrintJob({
   onState(loading: true, error: null, progressMessage: 'Preparing image...');
   try {
     final endpoint = resolvePrinterEndpoint(settings);
-    final file = await publicApi.downloadImageToTemp(
+    final file = await staffApi.downloadImageToTemp(
       imageUrl,
       onProgress: (m) {
         if (!isMounted()) return;

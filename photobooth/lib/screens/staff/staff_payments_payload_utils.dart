@@ -62,14 +62,24 @@ abstract final class StaffPaymentsPayloadUtils {
   static String absolutizeIfRelative(String url) {
     final trimmed = url.trim();
     if (trimmed.isEmpty) return '';
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      return trimmed;
-    }
     if (trimmed.startsWith(AppStrings.dataImagePrefix)) return trimmed;
-    final base = baseUrlNoTrailingSlash();
-    if (trimmed.startsWith('/')) return '$base$trimmed';
-    return '$base/$trimmed';
+    return SecureImageUrl.absolutize(trimmed);
   }
+
+  static const List<String> paymentThumbUrlKeys = [
+    'latestImageUrl',
+    'latest_image_url',
+    'thumbnailUrl',
+    'thumbUrl',
+    'imageUrl',
+    'image_url',
+    'generatedImageUrl',
+    'generated_image_url',
+    'photoUrl',
+    'photo_url',
+    'sessionImageUrl',
+    'previewUrl',
+  ];
 
   static String normalizeImageUrl(String raw, {String? sessionId}) {
     final t = raw.trim();
@@ -108,6 +118,8 @@ abstract final class StaffPaymentsPayloadUtils {
       'thumbnailUrl',
       'thumbUrl',
       'previewUrl',
+      'latestImageUrl',
+      'latest_image_url',
     ]) {
       final v = m[k];
       if (v is String && looksLikeUrl(v)) return v;
@@ -158,14 +170,21 @@ abstract final class StaffPaymentsPayloadUtils {
     Map<String, dynamic> raw, {
     required String sessionId,
   }) {
+    final latest = pickString(raw, const ['latestImageUrl', 'latest_image_url']);
+    if (latest.isNotEmpty) {
+      return normalizeImageUrl(latest, sessionId: sessionId);
+    }
+
     final generated =
         raw['generatedImages'] ?? raw['generated_images'] ?? raw['images'];
     if (generated is List && generated.isNotEmpty) {
-      final fromFirst = imageUrlFromGeneratedEntry(
-        generated.first,
-        sessionId: sessionId,
-      );
-      if (fromFirst != null) return fromFirst;
+      for (var i = generated.length - 1; i >= 0; i--) {
+        final fromEntry = imageUrlFromGeneratedEntry(
+          generated[i],
+          sessionId: sessionId,
+        );
+        if (fromEntry != null) return fromEntry;
+      }
     }
     final any = deepFindFirstUrl(raw);
     if (any != null) {
@@ -177,5 +196,28 @@ abstract final class StaffPaymentsPayloadUtils {
   /// Bare base64 user image field from session payload (no data-URL prefix).
   static String userImageFieldFromSession(Map<String, dynamic> raw) {
     return pickString(raw, const ['userImageUrl', 'user_image_url']);
+  }
+
+  /// Thumbnail URL from a staff payment row (flat fields, then nested session).
+  static String? resolvePaymentThumbUrl(
+    Map<String, dynamic> payment, {
+    required String sessionId,
+  }) {
+    final sid = sessionId.trim();
+    final direct = pickString(payment, paymentThumbUrlKeys);
+    if (direct.isNotEmpty) {
+      return normalizeImageUrl(direct, sessionId: sid.isEmpty ? null : sid);
+    }
+
+    final sessionObj = payment['session'];
+    if (sessionObj is Map) {
+      final fromSession = resolveSessionImageUrl(
+        Map<String, dynamic>.from(sessionObj),
+        sessionId: sid,
+      );
+      if (fromSession != null) return fromSession;
+    }
+
+    return null;
   }
 }
