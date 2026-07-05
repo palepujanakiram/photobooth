@@ -9,6 +9,7 @@ import '../../utils/exceptions.dart';
 import 'staff_payment_card.dart';
 import 'staff_payments_payload_utils.dart';
 import 'staff_payments_thumb_helpers.dart';
+import 'staff_payments_preview_helpers.dart';
 import 'staff_payments_print_helpers.dart';
 import '../../views/widgets/app_colors.dart';
 
@@ -178,18 +179,36 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     }
   }
 
-  Widget _buildThumb(Map<String, dynamic> payment) {
+  String _resolvedThumbUrl(Map<String, dynamic> payment) {
     final sid = _sessionId(payment);
     final payloadUrl = StaffPaymentsPayloadUtils.resolvePaymentThumbUrl(
           payment,
           sessionId: sid,
         ) ??
         '';
-    final resolved = staffPaymentThumbResolvedUrl(
+    return staffPaymentThumbResolvedUrl(
       sessionId: sid,
       payloadUrl: payloadUrl,
       sessionThumbUrlCache: _sessionThumbUrlCache,
     );
+  }
+
+  void _openThumbPreview(Map<String, dynamic> payment) {
+    final sid = _sessionId(payment);
+    final resolved = _resolvedThumbUrl(payment);
+    if (resolved.isEmpty) return;
+    staffPaymentShowImagePreview(
+      context,
+      imageUrl: resolved,
+      sessionId: sid.isEmpty ? null : sid,
+      title: 'Payment photo',
+      subtitle: sid.isNotEmpty ? 'Session: $sid' : null,
+    );
+  }
+
+  Widget _buildThumb(Map<String, dynamic> payment) {
+    final sid = _sessionId(payment);
+    final resolved = _resolvedThumbUrl(payment);
 
     if (resolved.isEmpty) {
       if (sid.isNotEmpty) {
@@ -205,22 +224,18 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     );
   }
 
-  Future<void> _refresh() async {
-    if (_loading) return;
+  Future<void> _loadPayments() async {
+    final list = await _api.listPayments();
+    if (!mounted) return;
     setState(() {
-      _loading = true;
-      _error = null;
+      _payments = list;
+      _sessionThumbUrlCache.clear();
     });
-    try {
-      final list = await _api.listPayments();
-      if (!mounted) return;
-      setState(() {
-        _payments = list;
-        _sessionThumbUrlCache.clear();
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      // If session expired, send back to login.
+  }
+
+  void _handlePaymentsLoadFailure(Object e) {
+    if (!mounted) return;
+    if (e is ApiException) {
       if ((e.statusCode == 401) ||
           e.message.toLowerCase().contains('expired') ||
           e.message.toLowerCase().contains('log in')) {
@@ -231,11 +246,31 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
         return;
       }
       setState(() => _error = e.message);
+      return;
+    }
+    setState(() => _error = 'Failed to load payments: $e');
+  }
+
+  Future<void> _refresh() async {
+    if (_loading) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await _loadPayments();
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = 'Failed to load payments: $e');
+      _handlePaymentsLoadFailure(e);
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _reloadPaymentsAfterDecision() async {
+    try {
+      await _loadPayments();
+    } catch (e) {
+      _handlePaymentsLoadFailure(e);
     }
   }
 
@@ -251,7 +286,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     });
     try {
       await _api.approvePayment(paymentId: id);
-      await _refresh();
+      await _reloadPaymentsAfterDecision();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
@@ -275,7 +310,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     });
     try {
       await _api.rejectPayment(paymentId: id);
-      await _refresh();
+      await _reloadPaymentsAfterDecision();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
@@ -482,6 +517,9 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
             sessionId: sid,
             amount: StaffPaymentCard.amountFromPayload(p),
             thumb: _buildThumb(p),
+            onThumbTap: _resolvedThumbUrl(p).isEmpty
+                ? null
+                : () => _openThumbPreview(p),
             loading: _loading,
             showDecisionButtons: showDecisionButtons,
             onApprove: () => _approve(p),

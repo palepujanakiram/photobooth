@@ -14,6 +14,7 @@ class StaffPaymentCard extends StatelessWidget {
     required this.sessionId,
     required this.amount,
     required this.thumb,
+    this.onThumbTap,
     required this.loading,
     required this.showDecisionButtons,
     required this.onApprove,
@@ -27,6 +28,7 @@ class StaffPaymentCard extends StatelessWidget {
   final String sessionId;
   final String amount;
   final Widget thumb;
+  final VoidCallback? onThumbTap;
   final bool loading;
   final bool showDecisionButtons;
   final VoidCallback onApprove;
@@ -44,7 +46,10 @@ class StaffPaymentCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                thumb,
+                GestureDetector(
+                  onTap: onThumbTap,
+                  child: thumb,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
