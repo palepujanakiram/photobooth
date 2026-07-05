@@ -12,6 +12,7 @@ import 'staff_payments_payload_utils.dart';
 /// Thumbnail rendering for staff payment rows (Sonar S3776 extraction).
 Widget staffPaymentThumbImage({
   required String resolved,
+  String? sessionId,
   required Widget Function() placeholder,
 }) {
   if (resolved.isEmpty) return placeholder();
@@ -31,18 +32,27 @@ Widget staffPaymentThumbImage({
 
   return StaffPaymentThumbNetworkImage(
     imageUrl: resolved,
+    sessionId: sessionId ?? _sessionIdFromResolved(resolved),
     placeholder: placeholder,
   );
+}
+
+String? _sessionIdFromResolved(String url) {
+  final uri = Uri.tryParse(url);
+  final sid = uri?.queryParameters['sessionId']?.trim();
+  return (sid == null || sid.isEmpty) ? null : sid;
 }
 
 class StaffPaymentThumbNetworkImage extends StatefulWidget {
   const StaffPaymentThumbNetworkImage({
     super.key,
     required this.imageUrl,
+    this.sessionId,
     required this.placeholder,
   });
 
   final String imageUrl;
+  final String? sessionId;
   final Widget Function() placeholder;
 
   @override
@@ -76,7 +86,10 @@ class _StaffPaymentThumbNetworkImageState
       _failed = false;
     });
 
-    final resolved = SecureImageUrl.absolutize(widget.imageUrl.trim());
+    final resolved = SecureImageUrl.withSessionId(
+      SecureImageUrl.absolutize(widget.imageUrl.trim()),
+      sessionId: widget.sessionId,
+    );
     if (resolved.isEmpty) {
       if (mounted) setState(() => _failed = true);
       return;

@@ -110,8 +110,27 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     if (sid.isEmpty) return null;
     final raw = await _api.fetchSession(sid);
     if (!mounted || raw == null) return null;
-    return StaffPaymentsPayloadUtils.resolveSessionImageUrl(
+    return _resolveSessionThumbFromRaw(sid, raw);
+  }
+
+  Future<String?> _resolveSessionThumbFromRaw(
+    String sessionId,
+    Map<String, dynamic> raw,
+  ) async {
+    final sid = sessionId.trim();
+    final fromSession = StaffPaymentsPayloadUtils.resolveSessionImageUrl(
       raw,
+      sessionId: sid,
+    );
+    if (fromSession != null) return fromSession;
+
+    final userImage = StaffPaymentsPayloadUtils.userImageFieldFromSession(raw);
+    if (userImage.isNotEmpty) return userImage;
+
+    final runsRaw = await _api.fetchSessionRuns(sid);
+    if (!mounted || runsRaw == null) return null;
+    return StaffPaymentsPayloadUtils.resolveImageUrlFromRunsPayload(
+      runsRaw,
       sessionId: sid,
     );
   }
@@ -138,25 +157,22 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
       }
 
       final raw = await _api.fetchSession(sid);
-      if (!mounted || raw == null) return;
+      if (!mounted) return;
+      if (raw == null) {
+        setState(() => _sessionThumbUrlCache[sid] = '');
+        return;
+      }
 
-      final imageUrl = StaffPaymentsPayloadUtils.resolveSessionImageUrl(
-        raw,
-        sessionId: sid,
-      );
-      if (imageUrl != null) {
+      final imageUrl = await _resolveSessionThumbFromRaw(sid, raw);
+      if (imageUrl != null && imageUrl.isNotEmpty) {
         setState(() => _sessionThumbUrlCache[sid] = imageUrl);
         return;
       }
 
-      final userImage =
-          StaffPaymentsPayloadUtils.userImageFieldFromSession(raw);
-      if (userImage.isNotEmpty) {
-        // Store as a sentinel; renderer will decode.
-        setState(() => _sessionThumbUrlCache[sid] = userImage);
-      }
+      setState(() => _sessionThumbUrlCache[sid] = '');
     } catch (_) {
       // Best-effort preview; payment list remains usable without a thumb.
+      if (mounted) setState(() => _sessionThumbUrlCache[sid] = '');
     } finally {
       _sessionThumbLoadInFlight.remove(sid);
     }
@@ -184,6 +200,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
 
     return staffPaymentThumbImage(
       resolved: resolved,
+      sessionId: sid.isEmpty ? null : sid,
       placeholder: staffPaymentThumbPlaceholder,
     );
   }
@@ -197,7 +214,10 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     try {
       final list = await _api.listPayments();
       if (!mounted) return;
-      setState(() => _payments = list);
+      setState(() {
+        _payments = list;
+        _sessionThumbUrlCache.clear();
+      });
     } on ApiException catch (e) {
       if (!mounted) return;
       // If session expired, send back to login.

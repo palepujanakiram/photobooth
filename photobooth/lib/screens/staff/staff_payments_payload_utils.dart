@@ -170,9 +170,18 @@ abstract final class StaffPaymentsPayloadUtils {
     Map<String, dynamic> raw, {
     required String sessionId,
   }) {
-    final latest = pickString(raw, const ['latestImageUrl', 'latest_image_url']);
-    if (latest.isNotEmpty) {
-      return normalizeImageUrl(latest, sessionId: sessionId);
+    for (final key in const [
+      'latestImageUrl',
+      'latest_image_url',
+      'outputImageUrl',
+      'output_image_url',
+      'userImagePreviewUrl',
+      'user_image_preview_url',
+    ]) {
+      final direct = pickString(raw, [key]);
+      if (direct.isNotEmpty) {
+        return normalizeImageUrl(direct, sessionId: sessionId);
+      }
     }
 
     final generated =
@@ -189,6 +198,31 @@ abstract final class StaffPaymentsPayloadUtils {
     final any = deepFindFirstUrl(raw);
     if (any != null) {
       return normalizeImageUrl(any, sessionId: sessionId);
+    }
+    return null;
+  }
+
+  /// Last output image from `GET /api/sessions/:id/runs` (staff auth).
+  static String? resolveImageUrlFromRunsPayload(
+    Map<String, dynamic> raw, {
+    required String sessionId,
+  }) {
+    final runs = raw['runs'];
+    if (runs is! List || runs.isEmpty) return null;
+
+    for (var i = runs.length - 1; i >= 0; i--) {
+      final run = runs[i];
+      if (run is! Map) continue;
+      final m = Map<String, dynamic>.from(run);
+      final output = pickString(m, const [
+        'outputImageUrl',
+        'output_image_url',
+        'imageUrl',
+        'image_url',
+      ]);
+      if (output.isNotEmpty) {
+        return normalizeImageUrl(output, sessionId: sessionId);
+      }
     }
     return null;
   }

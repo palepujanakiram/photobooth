@@ -125,7 +125,19 @@ void main() {
     );
   });
 
-  test('resolveSessionImageUrl prefers generatedImages then deep search', () {
+  test('resolveSessionImageUrl prefers latestImageUrl then generatedImages', () {
+    expect(
+      StaffPaymentsPayloadUtils.resolveSessionImageUrl(
+        {
+          'latestImageUrl': '/api/img/latest.jpg',
+          'generatedImages': [
+            {'imageUrl': '/api/img/from-list.jpg'},
+          ],
+        },
+        sessionId: 'sess-3',
+      ),
+      contains('latest.jpg'),
+    );
     expect(
       StaffPaymentsPayloadUtils.resolveSessionImageUrl(
         {
@@ -148,6 +160,28 @@ void main() {
       StaffPaymentsPayloadUtils.resolveSessionImageUrl(
         {},
         sessionId: 'sess-3',
+      ),
+      isNull,
+    );
+  });
+
+  test('resolveImageUrlFromRunsPayload reads latest run outputImageUrl', () {
+    expect(
+      StaffPaymentsPayloadUtils.resolveImageUrlFromRunsPayload(
+        {
+          'runs': [
+            {'outputImageUrl': '/api/img/generated/old.jpg'},
+            {'outputImageUrl': '/api/img/generated/new.jpg'},
+          ],
+        },
+        sessionId: 'sess-7',
+      ),
+      contains('new.jpg'),
+    );
+    expect(
+      StaffPaymentsPayloadUtils.resolveImageUrlFromRunsPayload(
+        {'runs': []},
+        sessionId: 'sess-7',
       ),
       isNull,
     );

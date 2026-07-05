@@ -14,6 +14,7 @@ import 'alice_inspector.dart';
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
 import 'api_service_legacy_media.dart';
 import 'client_identification.dart';
+import 'staff_api_session_helpers.dart';
 import 'staff_session_manager.dart';
 
 class StaffApiService {
@@ -189,8 +190,55 @@ class StaffApiService {
     }
   }
 
-  /// GET `/api/sessions/:id` with staff auth (privileged read for thumbnails/print).
+  /// Staff-authenticated session details (payment thumbnails / print).
+  ///
+  /// Tries `/api/staff/sessions/:id` then `/api/sessions/:id` with [X-Staff-Token].
   Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
+    final sid = sessionId.trim();
+    if (sid.isEmpty) return null;
+
+    final token = await _sessionManager.getToken();
+    if (token == null || token.isEmpty) {
+      throw ApiException('Staff session expired. Please log in again.');
+    }
+
+    const prefixes = ['/api/staff/sessions/', '/api/sessions/'];
+    for (final prefix in prefixes) {
+      try {
+        final r = await _dio.get<dynamic>(
+          '$prefix$sid',
+          options: Options(
+            headers: {AppStrings.staffTokenHeader: token},
+            validateStatus: (c) => c != null && c >= 200 && c < 500,
+            responseType: ResponseType.json,
+          ),
+        );
+        if (r.statusCode != 200) continue;
+
+        final parsed = StaffApiSessionHelpers.parseSessionResponse(
+          r.data,
+          expectedSessionId: sid,
+        );
+        if (parsed != null) return parsed;
+
+        if (kDebugMode) {
+          AppLogger.debug(
+            'Staff fetchSession ignored non-session response for $sid ($prefix)',
+          );
+        }
+      } on DioException catch (e) {
+        if (kDebugMode) {
+          AppLogger.debug(
+            'Staff fetchSession $prefix$sid failed: ${e.message}',
+          );
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Transformation runs for a session (`GET /api/sessions/:id/runs`, staff auth).
+  Future<Map<String, dynamic>?> fetchSessionRuns(String sessionId) async {
     final sid = sessionId.trim();
     if (sid.isEmpty) return null;
 
@@ -201,7 +249,7 @@ class StaffApiService {
 
     try {
       final r = await _dio.get<dynamic>(
-        '/api/sessions/$sid',
+        '/api/sessions/$sid/runs',
         options: Options(
           headers: {AppStrings.staffTokenHeader: token},
           validateStatus: (c) => c != null && c >= 200 && c < 500,
@@ -209,21 +257,13 @@ class StaffApiService {
         ),
       );
       if (r.statusCode != 200) return null;
-
       final raw = _asJsonMap(r.data);
-      if (!_isSessionPayload(raw, expectedId: sid)) {
-        if (kDebugMode) {
-          AppLogger.debug(
-            'Staff fetchSession ignored non-session response for $sid',
-          );
-        }
-        return null;
-      }
+      if (raw['error'] != null) return null;
       return raw;
     } on DioException catch (e) {
       if (kDebugMode) {
         AppLogger.debug(
-          'Staff fetchSession /api/sessions/$sid failed: ${e.message}',
+          'Staff fetchSessionRuns /api/sessions/$sid/runs failed: ${e.message}',
         );
       }
       return null;
@@ -336,14 +376,6 @@ class StaffApiService {
         e.response?.statusCode,
       );
     }
-  }
-
-  static bool _isSessionPayload(
-    Map<String, dynamic> raw, {
-    required String expectedId,
-  }) {
-    final id = raw['id']?.toString().trim();
-    return id != null && id.isNotEmpty && id == expectedId;
   }
 
   static Map<String, dynamic> _asJsonMap(dynamic data) {
