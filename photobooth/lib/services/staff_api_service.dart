@@ -189,9 +189,7 @@ class StaffApiService {
     }
   }
 
-  /// Staff-authenticated session details (for payment thumbnails / print).
-  ///
-  /// Tries `/api/staff/sessions/:id` then `/api/sessions/:id` with [X-Staff-Token].
+  /// GET `/api/sessions/:id` with staff auth (privileged read for thumbnails/print).
   Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
     final sid = sessionId.trim();
     if (sid.isEmpty) return null;
@@ -201,27 +199,35 @@ class StaffApiService {
       throw ApiException('Staff session expired. Please log in again.');
     }
 
-    const prefixes = ['/api/staff/sessions/', '/api/sessions/'];
-    for (final prefix in prefixes) {
-      try {
-        final r = await _dio.get<dynamic>(
-          '$prefix$sid',
-          options: Options(
-            headers: {AppStrings.staffTokenHeader: token},
-            validateStatus: (c) => c != null && c >= 200 && c < 500,
-            responseType: ResponseType.json,
-          ),
-        );
-        if (r.statusCode == 200) {
-          return _asJsonMap(r.data);
-        }
-      } on DioException catch (e) {
+    try {
+      final r = await _dio.get<dynamic>(
+        '/api/sessions/$sid',
+        options: Options(
+          headers: {AppStrings.staffTokenHeader: token},
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+          responseType: ResponseType.json,
+        ),
+      );
+      if (r.statusCode != 200) return null;
+
+      final raw = _asJsonMap(r.data);
+      if (!_isSessionPayload(raw, expectedId: sid)) {
         if (kDebugMode) {
-          AppLogger.debug('Staff fetchSession $prefix$sid failed: ${e.message}');
+          AppLogger.debug(
+            'Staff fetchSession ignored non-session response for $sid',
+          );
         }
+        return null;
       }
+      return raw;
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        AppLogger.debug(
+          'Staff fetchSession /api/sessions/$sid failed: ${e.message}',
+        );
+      }
+      return null;
     }
-    return null;
   }
 
   /// Download a protected `/api/img/*` URL using staff auth (for print flow).
@@ -330,6 +336,14 @@ class StaffApiService {
         e.response?.statusCode,
       );
     }
+  }
+
+  static bool _isSessionPayload(
+    Map<String, dynamic> raw, {
+    required String expectedId,
+  }) {
+    final id = raw['id']?.toString().trim();
+    return id != null && id.isNotEmpty && id == expectedId;
   }
 
   static Map<String, dynamic> _asJsonMap(dynamic data) {
