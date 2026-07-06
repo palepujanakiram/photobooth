@@ -12,6 +12,9 @@ environment:
   sdk: ^3.7.0
   flutter: ">=3.29.2"
 
+workspace:
+  - example
+
 dependencies:
   flutter:
     sdk: flutter
