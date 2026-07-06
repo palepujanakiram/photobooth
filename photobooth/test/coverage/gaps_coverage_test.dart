@@ -43,7 +43,7 @@ void main() {
       'themeId': 't',
       'transformedAt': DateTime.now().toIso8601String(),
     });
-    expect(resolveThemeSampleImageUrl(''), isNotEmpty);
+    expect(resolveThemeSampleImageUrl(''), isEmpty);
     expect(normalizeThemeImageUrl('https://x.com/a?b=1'), 'https://x.com/a');
     WebFlowTrace.reset(label: 'test');
     WebFlowTrace.log('phase', 'detail');

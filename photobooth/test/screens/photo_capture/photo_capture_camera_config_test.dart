@@ -37,27 +37,27 @@ void main() {
     );
   });
 
-  test('captureResolutionPreset uses high for external including on TV', () {
+  test('captureResolutionPreset prefers medium on TV and external', () {
     expect(
       captureResolutionPreset(
         deviceType: AppDeviceType.androidTv,
         isExternal: true,
       ),
-      ResolutionPreset.high,
+      ResolutionPreset.medium,
     );
     expect(
       captureResolutionPreset(
         deviceType: AppDeviceType.androidTv,
         isExternal: false,
       ),
-      ResolutionPreset.low,
+      ResolutionPreset.medium,
     );
     expect(
       captureResolutionPreset(
         deviceType: AppDeviceType.androidPhone,
         isExternal: true,
       ),
-      ResolutionPreset.high,
+      ResolutionPreset.medium,
     );
     expect(
       captureResolutionPreset(

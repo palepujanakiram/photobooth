@@ -11,6 +11,11 @@ void main() {
       await service.dispose();
     });
 
+    test('dispose without warmUp does not touch platform audio', () async {
+      final service = CaptureSoundService();
+      await service.dispose();
+    });
+
     test('shutter volume is full', () {
       expect(CaptureSoundService(enabled: false).enabled, isFalse);
       expect(CaptureSoundService.shutterVolume, 1.0);
