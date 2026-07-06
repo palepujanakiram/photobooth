@@ -25,6 +25,8 @@ class CaptureSoundService {
   AudioPlayer get _playerInstance =>
       _playerOverride ?? (_player ??= AudioPlayer());
 
+  bool get _hasPlayer => _playerOverride != null || _player != null;
+
   static AudioContext _captureAudioContext() => AudioContext(
         android: const AudioContextAndroid(
           isSpeakerphoneOn: true,
@@ -61,7 +63,7 @@ class CaptureSoundService {
 
   /// Stops any in-flight shutter cue.
   Future<void> cancel() async {
-    if (!enabled) return;
+    if (!enabled || !_hasPlayer) return;
     try {
       await _playerInstance.stop();
     } catch (_) {
@@ -104,7 +106,8 @@ class CaptureSoundService {
   Future<void> dispose() async {
     await cancel();
     _prepared = false;
-    if (!enabled) return;
+    if (!enabled || !_hasPlayer) return;
     await _playerInstance.dispose();
+    _player = null;
   }
 }
