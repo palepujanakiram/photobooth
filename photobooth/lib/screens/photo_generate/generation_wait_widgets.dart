@@ -20,6 +20,7 @@ import 'generation_wait_helpers.dart';
 import 'generation_wait_story_helpers.dart';
 import 'generation_wait_phase2_widgets.dart';
 import 'generation_wait_theme_reel.dart';
+import 'generation_wait_eta_widgets.dart';
 import 'photo_generate_viewmodel.dart';
 import 'post_reveal_polishing_overlay.dart';
 
@@ -1045,11 +1046,21 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
       maxFooterWidth: 720,
       footerScrollable: true,
       maxFooterHeight: showPolish ? 228 : 196,
-      chrome: GenerationWaitStoryHeader(
-        viewModel: vm,
-        presentation: presentation,
-        compact: true,
-        hideRewardWhenPolishing: showPolish,
+      chrome: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GenerationWaitPortraitClock(
+            snapshot: resolveGenerationEta(vm),
+            compact: true,
+          ),
+          const SizedBox(height: 10),
+          GenerationWaitStoryHeader(
+            viewModel: vm,
+            presentation: presentation,
+            compact: true,
+            hideRewardWhenPolishing: showPolish,
+          ),
+        ],
       ),
       hero: LayoutBuilder(
         builder: (context, constraints) {
@@ -1127,6 +1138,8 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        GenerationWaitPortraitClock(snapshot: resolveGenerationEta(vm)),
+        const SizedBox(height: 14),
         GenerationWaitStoryHeader(
           viewModel: vm,
           presentation: presentation,
@@ -1158,6 +1171,8 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        GenerationWaitPortraitClock(snapshot: resolveGenerationEta(vm)),
+        const SizedBox(height: 14),
         GenerationWaitStoryHeader(
           viewModel: vm,
           presentation: presentation,
@@ -1195,6 +1210,7 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
         if (showLiveStatus) _buildLiveStatusCopy(presentation),
         GenerationWaitEducationalFooter(
           elapsedSeconds: vm.elapsedSeconds,
+          etaSnapshot: resolveGenerationEta(vm),
           compact: compact,
           hideFactWhenPolishing: showPolishStrip,
         ),

@@ -136,6 +136,43 @@ void main() {
     expect(() => api.fetchGenerationRun(' '), throwsA(isA<ApiException>()));
   });
 
+  test('fetchKioskGenerationTiming parses map', () async {
+    SessionManager().setSessionFromResponse({
+      'id': 'sess-1',
+      'kioskId': 'kid-1',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': [],
+      'expiresAt': DateTime.now().add(const Duration(hours: 1)).toIso8601String(),
+    });
+    adapter.onGet(
+      '/api/kiosk/generation-timing',
+      (s) => s.reply(200, {
+        'p50Seconds': 78,
+        'p90Seconds': 142,
+        'lastHourAvgSeconds': 95,
+        'todayAvgSeconds': 88,
+        'sampleCountLastHour': 12,
+        'sampleCountToday': 40,
+        'sampleCountWeek': 120,
+        'busy': false,
+      }),
+    );
+    final timing = await api.fetchKioskGenerationTiming();
+    expect(timing['p50Seconds'], 78);
+    expect(timing['busy'], isFalse);
+  });
+
+  test('fetchKioskGenerationTiming throws when kiosk context missing', () async {
+    SharedPreferences.setMockInitialValues({});
+    SessionManager().clearSession();
+    expect(
+      () => api.fetchKioskGenerationTiming(),
+      throwsA(isA<ApiException>()),
+    );
+  });
+
   test('fetchSession parses map', () async {
     adapter.onGet(
       '/api/sessions/sess-2',

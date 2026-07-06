@@ -139,9 +139,30 @@ abstract final class AppStrings {
 
   /// Shown at the start of AI generation (progress + behold wait states).
   static const generationWaitExpectation =
-      'This usually takes 30–60 seconds. Your portrait will appear step by step.';
+      'Your portrait will appear step by step. Times vary with AI load.';
 
-  static const generationWaitTimeExpectation = 'Usually takes 30–60 seconds';
+  static const generationWaitTimeExpectation = 'Usually takes 1–2 minutes';
+
+  static String generationWaitEtaRemaining(String duration) =>
+      '~$duration remaining';
+
+  static String generationWaitEtaAboutTotal(String duration) =>
+      'About $duration total';
+
+  static String generationWaitEtaTodayAvg(String duration) =>
+      'Today at this booth: ~$duration avg';
+
+  static String generationWaitEtaRecentAvg(String duration) =>
+      'Recent portraits here: ~$duration';
+
+  static const generationWaitEtaBusy =
+      'A little busier than usual — thanks for your patience';
+
+  static const generationWaitEtaLongWait =
+      'Taking a little longer than usual — your portrait is still on the way';
+
+  static const generationWaitEtaAlmostReady =
+      'Almost ready — finishing touches';
 
   static const generationWaitMasterpieceTitle = 'Creating your masterpiece';
 

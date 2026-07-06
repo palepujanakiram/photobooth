@@ -20,6 +20,7 @@ import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
 import '../../services/generation_display_preferences.dart';
 import '../../models/parallel_generation_result.dart';
+import '../../models/generation_timing_stats.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../utils/web_flow_trace.dart';
 
@@ -269,6 +270,9 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   /// Prevents polling the previous session run (stale 75% isolate UI on regen).
   bool _awaitingFreshRunId = false;
 
+  /// Rolling kiosk timing stats for wait-screen ETA (from API).
+  GenerationTimingStats? _generationTimingStats;
+
   /// Set by the progress screen after the cinematic reveal overlay completes.
   bool _beholdEntranceFromProgressReveal = false;
 
@@ -305,6 +309,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   bool get canShowAddAnotherStyleButton =>
       generatedImages.length < _maxRegenerationsAllowed && triesRemaining > 0;
   int get elapsedSeconds => _elapsedSeconds;
+  GenerationTimingStats? get generationTimingStats => _generationTimingStats;
   String? get sessionId => _sessionManager.sessionId;
   String get progressMessage => _progressMessage;
   bool get isCancelled => _isCancelled;
@@ -693,6 +698,17 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   void _stopTimer() {
     _timer?.cancel();
     _timer = null;
+  }
+
+  Future<void> _loadGenerationTimingStats() async {
+    try {
+      final raw = await _apiService.fetchKioskGenerationTiming();
+      _generationTimingStats = GenerationTimingStats.fromJson(raw);
+    } catch (e) {
+      AppLogger.debug('Generation timing stats unavailable: $e');
+      _generationTimingStats ??= GenerationTimingStats.defaults;
+    }
+    notifyListeners();
   }
 
   void _stopGenerationRunPolling() {
@@ -1084,6 +1100,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     
     _startTimer();
     _startGenerationRunPolling();
+    unawaited(_loadGenerationTimingStats());
 
     try {
       WebFlowTrace.log(
@@ -1194,6 +1211,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     
     _startTimer();
     _startGenerationRunPolling();
+    unawaited(_loadGenerationTimingStats());
 
     try {
       await syncAttemptsBudgetFromServer();

@@ -36,6 +36,7 @@ bool ignored(String path) {
     'generation_wait_story_helpers.dart',
     'generation_wait_phase2_widgets.dart',
     'generation_wait_theme_reel.dart',
+    'generation_wait_eta_widgets.dart',
     'generation_reveal_overlay.dart',
     'behold_result_ready_widgets.dart',
     'post_reveal_polishing_overlay.dart',
