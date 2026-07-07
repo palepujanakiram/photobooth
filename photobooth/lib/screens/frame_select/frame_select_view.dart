@@ -6,7 +6,8 @@ import 'package:provider/provider.dart';
 import '../photo_capture/photo_model.dart';
 import '../theme_selection/theme_model.dart';
 import '../../models/kiosk_frame_model.dart';
-import '../../utils/constants.dart';
+import '../../services/app_settings_manager.dart';
+import '../../utils/payment_workflow_helpers.dart';
 import '../../utils/route_args.dart';
 import '../../utils/secure_image_url.dart';
 import '../../views/widgets/app_snackbar.dart';
@@ -91,10 +92,17 @@ class _FrameSelectScreenState extends State<FrameSelectScreen> {
     final photo = _photo;
     final theme = _theme;
     if (photo == null || theme == null) return;
-    Navigator.pushReplacementNamed(
-      context,
-      AppConstants.kRouteGenerateProgress,
-      arguments: GenerateArgs(photo: photo, theme: theme),
+    unawaited(
+      navigateToGenerationOrPrePayment(
+        context: context,
+        photo: photo,
+        theme: theme,
+        replace: true,
+        paymentCollectionTiming: context
+            .read<AppSettingsManager>()
+            .settings
+            ?.paymentCollectionTiming,
+      ),
     );
   }
 

@@ -20,6 +20,7 @@ import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
+import '../../utils/payment_workflow_helpers.dart' as payment_workflow;
 import '../../utils/print_orientation.dart';
 import '../../utils/printer_endpoint.dart';
 import '../../utils/error_reporting_helpers.dart';
@@ -341,7 +342,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   bool get isDownloadingForShare =>
       _isDownloading && _downloadingForAction == 'share';
 
-  /// Get total price based on number of photos
+  /// Get total price based on number of photos (full cart value).
   int get totalPrice {
     if (_generatedImages.isEmpty) return 0;
     final basePrice = initialPrintPrice;
@@ -351,6 +352,19 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
             ? (_generatedImages.length - 1) * additionalPrice
             : 0);
   }
+
+  bool get collectPaymentBeforeGeneration =>
+      payment_workflow.collectPaymentBeforeGeneration(
+        _appSettingsManager?.settings?.paymentCollectionTiming,
+      );
+
+  /// Amount to charge on the Pay screen (may be less when pre-paid).
+  int get checkoutAmount => payment_workflow.resolveCheckoutAmount(
+        collectPaymentBeforeGeneration: collectPaymentBeforeGeneration,
+        imageCount: _generatedImages.length,
+        initialPrintPrice: initialPrintPrice,
+        additionalPrintPrice: additionalPrintPrice,
+      );
 
   /// Updates the printer host (hostname or IP) shown in the print options field.
   void setPrinterHost(String host) {

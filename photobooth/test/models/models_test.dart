@@ -9,6 +9,13 @@ import 'package:photobooth/screens/result/transformed_image_model.dart';
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
 
 void main() {
+  test('AppSettingsModel.fromJson parses payment collection timing', () {
+    final m = AppSettingsModel.fromJson({
+      'paymentCollectionTiming': 'before_generation',
+    });
+    expect(m.paymentCollectionTiming, 'before_generation');
+  });
+
   test('AppSettingsModel.fromJson parses dates and ints', () {
     final m = AppSettingsModel.fromJson({
       'id': 's1',
