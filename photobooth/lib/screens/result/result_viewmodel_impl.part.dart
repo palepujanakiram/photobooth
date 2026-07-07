@@ -10,6 +10,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   }) async {
     if (_r._paymentInitInProgress && !force) return;
     if (!force && _r._shouldSkipPaymentInitiate()) return;
+    if (_r.checkoutAmount <= 0) return;
     final sessionId = _r._sessionManager.sessionId;
     if (sessionId == null || sessionId.isEmpty) {
       _r._paymentInitError = 'No session for payment. Go back and try again.';
@@ -47,7 +48,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       }
       final result = await _r._apiService.initiatePayment(
         sessionId: sessionId,
-        amount: _r.totalPrice,
+        amount: _r.checkoutAmount,
         customerPhone: customerPhone,
         fcmToken: fcmToken ?? '',
       );

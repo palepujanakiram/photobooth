@@ -269,6 +269,10 @@ class AppConstants {
   static const String kRouteFrameSelect = '/frame-select';
   static const String kRouteGenerate = '/generate';
   static const String kRouteGenerateProgress = '/generate-progress';
+  /// Pre-generation UPI collection when [kPaymentCollectionBeforeGeneration] is set.
+  static const String kRoutePrePayment = '/pre-payment';
+  static const String kPaymentCollectionBeforeGeneration = 'before_generation';
+  static const String kPaymentCollectionAfterGeneration = 'after_generation';
   static const String kRouteReview = '/review';
   static const String kRouteResult = '/result';
   static const String kRouteThankYou = '/thank-you';

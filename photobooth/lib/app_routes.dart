@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import 'screens/frame_select/frame_select_view.dart';
+import 'screens/pre_payment/pre_payment_view.dart';
 import 'screens/photo_capture/photo_capture_view.dart';
 import 'screens/photo_generate/photo_generate_progress_view.dart';
 import 'screens/photo_generate/photo_generate_view.dart';
@@ -40,6 +41,7 @@ Map<String, WidgetBuilder> buildAppRoutes() {
     AppConstants.kRouteGenerate: (context) => const PhotoGenerateScreen(),
     AppConstants.kRouteGenerateProgress: (context) =>
         const PhotoGenerateProgressScreen(),
+    AppConstants.kRoutePrePayment: (context) => const PrePaymentScreen(),
     AppConstants.kRouteReview: (context) => const PhotoReviewScreen(),
     AppConstants.kRouteResult: (context) => const ResultScreen(),
     AppConstants.kRouteQrShare: (context) => const QrShareScreen(),

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../services/app_settings_manager.dart';
 import '../../utils/constants.dart';
-import '../../utils/route_args.dart';
+import '../../utils/payment_workflow_helpers.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../photo_capture/photo_model.dart';
 import 'theme_model.dart';
@@ -78,10 +80,15 @@ Future<void> _themeSelectionNavigateAfterFramesLoaded({
     if (!ok) return;
   }
   if (!context.mounted) return;
-  await Navigator.pushNamed(
-    context,
-    AppConstants.kRouteGenerateProgress,
-    arguments: GenerateArgs(photo: photo, theme: selectedTheme),
+  await navigateToGenerationOrPrePayment(
+    context: context,
+    photo: photo,
+    theme: selectedTheme,
+    replace: false,
+    paymentCollectionTiming: context
+        .read<AppSettingsManager>()
+        .settings
+        ?.paymentCollectionTiming,
   );
 }
 

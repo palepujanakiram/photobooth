@@ -104,6 +104,14 @@ class _ResultScreenState extends State<ResultScreen> {
     PaymentPushCoordinator.instance
         .registerResultScreenCallback(_onPaymentPushFromFcm);
 
+    final checkoutAmount = _viewModel!.checkoutAmount;
+    if (checkoutAmount <= 0 && _viewModel!.collectPaymentBeforeGeneration) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_triggerFreeModePrint());
+      });
+      return;
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(PaymentPushCoordinator.instance.flushPendingStoragePayment());
       _viewModel?.loadPaymentQr(customerPhone: _customerPhone);

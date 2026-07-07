@@ -158,7 +158,7 @@ class _PhotoGenerateProgressScreenState
         preferredSize: const Size.fromHeight(kKioskAppBarSubtitleHeight + 18),
         child: KioskAppBarSubtitle(
           text: headline,
-          secondary: AppStrings.generationWaitTimeExpectation,
+          secondary: resolveGenerationEta(viewModel).contextLine,
         ),
       ),
     );

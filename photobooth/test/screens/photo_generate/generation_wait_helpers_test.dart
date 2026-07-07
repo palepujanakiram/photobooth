@@ -300,4 +300,14 @@ void main() {
       expect(presentation.stageChanged, isFalse);
     });
   });
+
+  group('resolveGenerationEta', () {
+    test('uses defaults when timing stats not loaded', () {
+      final vm = PhotoGenerateViewModel();
+      vm.initialize(photo, theme);
+      final eta = resolveGenerationEta(vm);
+      expect(eta.estimatedTotalSeconds, greaterThan(0));
+      expect(eta.primaryLine, isNotEmpty);
+    });
+  });
 }

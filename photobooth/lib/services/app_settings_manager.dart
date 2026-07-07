@@ -24,6 +24,11 @@ class AppSettingsManager extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   DateTime? get lastFetchedAt => _lastFetchedAt;
 
+  /// True when account settings collect UPI before AI generation.
+  bool get collectPaymentBeforeGeneration =>
+      _settings?.paymentCollectionTiming ==
+      AppConstants.kPaymentCollectionBeforeGeneration;
+
   /// `/api/settings` → `parallelImageCount`, clamped. Drives POST vs parallel SSE in [ApiService.generateImages].
   int resolveParallelImageCount() {
     final raw = _settings?.parallelImageCount;

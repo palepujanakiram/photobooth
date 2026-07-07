@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../utils/app_strings.dart';
+import '../../services/generation_eta_estimator.dart';
 import 'generation_wait_helpers.dart';
 import 'generation_wait_story_helpers.dart';
 import 'photo_generate_viewmodel.dart';
@@ -448,11 +449,13 @@ class GenerationWaitEducationalFooter extends StatelessWidget {
   const GenerationWaitEducationalFooter({
     super.key,
     required this.elapsedSeconds,
+    this.etaSnapshot,
     this.compact = false,
     this.hideFactWhenPolishing = false,
   });
 
   final int elapsedSeconds;
+  final GenerationEtaSnapshot? etaSnapshot;
   final bool compact;
   final bool hideFactWhenPolishing;
 
@@ -533,7 +536,7 @@ class GenerationWaitEducationalFooter extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            AppStrings.generationWaitTimeExpectation,
+            etaSnapshot?.primaryLine ?? AppStrings.generationWaitTimeExpectation,
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.65),

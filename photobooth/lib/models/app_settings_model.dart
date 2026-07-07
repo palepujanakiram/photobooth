@@ -39,6 +39,8 @@ class AppSettingsModel {
   final bool? showFramingGuide;
   final bool? paymentGatewayEnabled;
   final String? paymentGatewayEnvironment;
+  /// `before_generation` | `after_generation` (default).
+  final String? paymentCollectionTiming;
   final bool? watermarkEnabled;
   final bool? exifStampEnabled;
   final bool? c2paSigningEnabled;
@@ -81,6 +83,7 @@ class AppSettingsModel {
     this.showFramingGuide,
     this.paymentGatewayEnabled,
     this.paymentGatewayEnvironment,
+    this.paymentCollectionTiming,
     this.watermarkEnabled,
     this.exifStampEnabled,
     this.c2paSigningEnabled,
@@ -134,6 +137,8 @@ class AppSettingsModel {
           JsonParseHelpers.boolOrNull(json['paymentGatewayEnabled']),
       paymentGatewayEnvironment:
           JsonParseHelpers.stringOrNull(json['paymentGatewayEnvironment']),
+      paymentCollectionTiming:
+          JsonParseHelpers.stringOrNull(json['paymentCollectionTiming']),
       watermarkEnabled: JsonParseHelpers.boolOrNull(json['watermarkEnabled']),
       exifStampEnabled: JsonParseHelpers.boolOrNull(json['exifStampEnabled']),
       c2paSigningEnabled: JsonParseHelpers.boolOrNull(json['c2paSigningEnabled']),

@@ -411,6 +411,46 @@ class ApiService {
     }
   }
 
+  /// GET `/api/kiosk/generation-timing` — rolling p50/p90 for wait-screen ETAs.
+  Future<Map<String, dynamic>> fetchKioskGenerationTiming() async {
+    try {
+      final kioskCode =
+          (await KioskManager().getKioskCode())?.trim().toUpperCase();
+      final kioskId = SessionManager().currentSession?.kioskId;
+
+      final qp = <String, dynamic>{};
+      if (kioskCode != null && kioskCode.isNotEmpty) {
+        qp['kioskCode'] = kioskCode;
+      }
+      if (kioskId != null && kioskId.isNotEmpty) {
+        qp['kioskId'] = kioskId;
+      }
+      if (qp.isEmpty) {
+        throw ApiException(
+          'Kiosk code or kiosk id is required to load generation timing.',
+        );
+      }
+
+      final r = await _dio.get<dynamic>(
+        '/api/kiosk/generation-timing',
+        queryParameters: qp,
+        options: Options(responseType: ResponseType.json),
+      );
+      final data = r.data;
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+      throw ApiException('Unexpected generation timing response');
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      throw ApiException(
+        'Failed to load generation timing: ${e.message}',
+        e.response?.statusCode,
+      );
+    }
+  }
+
   /// Accepts terms and conditions (legacy)
   Future<void> acceptTerms({required String deviceType}) async {
     try {

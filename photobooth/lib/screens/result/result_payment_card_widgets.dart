@@ -41,7 +41,9 @@ class ResultPaymentCardColumn extends StatelessWidget {
         const Text('Pay via UPI', style: kResultPaymentBoxTitleStyle),
         const SizedBox(height: 4),
         Text(
-          '₹${viewModel.totalPrice}',
+          viewModel.collectPaymentBeforeGeneration && viewModel.checkoutAmount > 0
+              ? 'Additional prints: ₹${viewModel.checkoutAmount}'
+              : '₹${viewModel.checkoutAmount}',
           style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w700,

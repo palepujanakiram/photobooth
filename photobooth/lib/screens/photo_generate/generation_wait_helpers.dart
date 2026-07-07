@@ -5,6 +5,8 @@ import 'package:flutter/material.dart' show Alignment;
 import 'photo_generate_viewmodel.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
+import '../../models/generation_timing_stats.dart';
+import '../../services/generation_eta_estimator.dart';
 
 /// Prefer the upper frame when cropping portrait captures in short cards.
 const Alignment kGenerationWaitPortraitFaceAlignment = Alignment(0, -0.22);
@@ -304,6 +306,25 @@ GenerationWaitPresentation resolveGenerationWaitPresentation(
     imageUrl: imageUrl,
     showPolishingOverlay: showPolishingOverlay,
     stageChanged: stageChanged,
+  );
+}
+
+/// Live ETA for the portrait wait clock (recomputed each tick in the wait UI).
+GenerationEtaSnapshot resolveGenerationEta(PhotoGenerateViewModel vm) {
+  final stats = vm.generationTimingStats ?? GenerationTimingStats.defaults;
+  final hasPreviews = generationWaitHasPipelinePreviews(vm);
+  return computeGenerationEta(
+    stats: stats,
+    elapsedSeconds: vm.elapsedSeconds,
+    personCount: vm.sessionPersonCount,
+    hasAiPreview: previewUrlForStage(vm, 'ai_generation') != null,
+    polishingStarted: generationWaitPolishingStarted(vm),
+    hasServerPreviews: hasPreviews,
+    pipelineProgress: generationWaitEffectiveProgress(
+      pipelineProgress: vm.liveProgress,
+      elapsedSeconds: vm.elapsedSeconds,
+      hasServerPreviews: hasPreviews,
+    ),
   );
 }
 
