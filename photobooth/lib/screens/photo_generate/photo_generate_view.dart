@@ -21,6 +21,7 @@ import '../../utils/route_args.dart';
 import '../../utils/route_visibility_mixin.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
+import '../../utils/print_orientation.dart';
 import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/generated_image_preview_screen.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
@@ -654,6 +655,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen>
     required String imageUrl,
     required double width,
     required double height,
+    required BoxFit fit,
   }) {
     final secureUrl = SecureImageUrl.withSessionId(imageUrl);
     final dpr = MediaQuery.devicePixelRatioOf(context);
@@ -684,24 +686,20 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen>
       child: ClipRect(
         child: ColoredBox(
           color: Colors.black,
-          child: FittedBox(
-            fit: BoxFit.cover,
-            alignment: Alignment.center,
-            child: CachedNetworkImage(
-              imageUrl: secureUrl,
-              fit: BoxFit.cover,
-              cacheWidth: cacheW,
-              filterQuality: FilterQuality.medium,
-              placeholder: loading,
-              errorWidget: SizedBox(
-                width: width,
-                height: height,
-                child: const Center(
-                  child: Icon(
-                    CupertinoIcons.exclamationmark_triangle,
-                    color: Colors.white,
-                    size: 32,
-                  ),
+          child: CachedNetworkImage(
+            imageUrl: secureUrl,
+            fit: fit,
+            cacheWidth: cacheW,
+            filterQuality: FilterQuality.medium,
+            placeholder: loading,
+            errorWidget: SizedBox(
+              width: width,
+              height: height,
+              child: const Center(
+                child: Icon(
+                  CupertinoIcons.exclamationmark_triangle,
+                  color: Colors.white,
+                  size: 32,
                 ),
               ),
             ),
@@ -741,6 +739,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen>
                   imageUrl: image.imageUrl,
                   width: cardWidth,
                   height: cardHeight,
+                  fit: viewModel.printOrientation == PrintOrientation.portrait
+                      ? BoxFit.contain
+                      : BoxFit.cover,
                 ),
                 if (showRemoveButton)
                   Positioned(
