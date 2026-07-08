@@ -927,6 +927,7 @@ Widget _buildBeholdReadySecondaryLinks({
 Widget _buildPrintOrientationBelowImage({
   required PhotoGenerateViewModel viewModel,
 }) {
+  final selectedOrientation = viewModel.printOrientation;
   return Column(
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -942,18 +943,21 @@ Widget _buildPrintOrientationBelowImage({
       ),
       const SizedBox(height: 8),
       CupertinoSlidingSegmentedControl<PrintOrientation>(
-        groupValue: viewModel.printOrientation,
-        backgroundColor: Colors.black.withValues(alpha: 0.35),
-        thumbColor: CupertinoColors.systemBlue,
+        groupValue: selectedOrientation,
+        backgroundColor: Colors.white.withValues(alpha: 0.12),
+        thumbColor: const Color(0xFF22D3EE),
         children: {
           for (final orientation in PrintOrientation.values)
             orientation: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               child: Text(
                 orientation.label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
+                  color: orientation == selectedOrientation
+                      ? const Color(0xFF0B1220)
+                      : Colors.white.withValues(alpha: 0.85),
                 ),
               ),
             ),
