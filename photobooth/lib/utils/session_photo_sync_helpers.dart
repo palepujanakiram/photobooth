@@ -26,13 +26,14 @@ class SessionPhotoSyncOutcome {
 }
 
 /// True when GET `/api/sessions/:id` indicates a stored guest photo.
+///
+/// Only trust [hasUserImage] / [hasCompressedImage]. The lightweight
+/// `userImageUrl` field in GET responses is often [userImagePreviewUrl] (a small
+/// thumbnail URL), not the full capture data the generate API needs.
 bool sessionResponseHasUserImage(Map<String, dynamic>? session) {
   if (session == null) return false;
   if (session['hasUserImage'] == true) return true;
-  final preview = session['userImageUrl'];
-  if (preview is String && preview.trim().isNotEmpty) return true;
-  final compressed = session['compressedImageUrl'];
-  if (compressed is String && compressed.trim().isNotEmpty) return true;
+  if (session['hasCompressedImage'] == true) return true;
   return false;
 }
 

@@ -29,22 +29,18 @@ void main() {
       );
     });
 
-    test('true when preview or compressed url present', () {
+    test('true when hasCompressedImage flag is set', () {
       expect(
-        sessionResponseHasUserImage({'userImageUrl': 'https://cdn/p.jpg'}),
-        isTrue,
-      );
-      expect(
-        sessionResponseHasUserImage({'compressedImageUrl': 'https://cdn/c.jpg'}),
+        sessionResponseHasUserImage({'hasCompressedImage': true}),
         isTrue,
       );
     });
 
-    test('false when urls are blank', () {
+    test('false when only lightweight preview url is present', () {
       expect(
         sessionResponseHasUserImage({
           'hasUserImage': false,
-          'userImageUrl': '   ',
+          'userImageUrl': 'https://cdn/preview.jpg',
         }),
         isFalse,
       );
