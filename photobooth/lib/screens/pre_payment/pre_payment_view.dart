@@ -56,7 +56,7 @@ class _PrePaymentScreenState extends State<PrePaymentScreen> {
         .registerResultScreenCallback(_onPaymentPushFromFcm);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(PaymentPushCoordinator.instance.flushPendingStoragePayment());
-      _viewModel?.loadPaymentQr();
+      _viewModel?.loadPaymentQr(photoForSessionSync: _args?.photo);
     });
   }
 

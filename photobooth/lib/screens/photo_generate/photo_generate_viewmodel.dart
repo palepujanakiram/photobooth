@@ -23,6 +23,7 @@ import '../../models/parallel_generation_result.dart';
 import '../../models/generation_timing_stats.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../utils/web_flow_trace.dart';
+import '../../utils/session_photo_sync_helpers.dart';
 
 part 'photo_generate_viewmodel_helpers.dart';
 
@@ -1118,6 +1119,25 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       }
       AppLogger.debug('🎨 Starting image generation with theme: ${_selectedTheme!.name}');
       ErrorReportingManager.log('Starting image generation');
+
+      final sessionId = _sessionManager.sessionId;
+      if (sessionId == null || sessionId.isEmpty) {
+        _errorMessage = AppStrings.sessionPhotoSyncNoSession;
+        return false;
+      }
+      _updateProgress('Syncing photo...');
+      final photoSync = await ensureSessionPhotoOnServer(
+        sessionId: sessionId,
+        photo: _originalPhoto!,
+        sessionManager: _sessionManager,
+        apiService: _apiService,
+      );
+      if (_isCancelled) return false;
+      if (!photoSync.isReady) {
+        _errorMessage =
+            photoSync.errorMessage ?? AppStrings.sessionPhotoSyncFailed;
+        return false;
+      }
       
       _updateProgress('Transforming your look...');
       WebFlowTrace.log('GENERATE', 'api_call_start');

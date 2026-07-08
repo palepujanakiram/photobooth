@@ -12,6 +12,8 @@ import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/error_reporting_helpers.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/session_photo_sync_helpers.dart';
+import '../photo_capture/photo_model.dart';
 import '../result/result_payment_poll_helpers.dart';
 
 /// Collects initial UPI payment before AI generation when configured.
@@ -92,7 +94,10 @@ class PrePaymentViewModel extends ChangeNotifier {
     return loadPaymentQr(force: true);
   }
 
-  Future<void> loadPaymentQr({bool force = false}) async {
+  Future<void> loadPaymentQr({
+    bool force = false,
+    PhotoModel? photoForSessionSync,
+  }) async {
     if (_paymentInitInProgress && !force) return;
     if (!force && _shouldSkipPaymentInitiate()) return;
     final sessionId = _sessionManager.sessionId;
@@ -122,6 +127,21 @@ class PrePaymentViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
+      if (photoForSessionSync != null) {
+        final photoSync = await ensureSessionPhotoOnServer(
+          sessionId: sessionId,
+          photo: photoForSessionSync,
+          sessionManager: _sessionManager,
+          apiService: _apiService,
+        );
+        if (_disposed || generation != _paymentInitiateGeneration) return;
+        if (!photoSync.isReady) {
+          _paymentInitError =
+              photoSync.errorMessage ?? AppStrings.sessionPhotoSyncFailed;
+          return;
+        }
+      }
+
       final fcmToken = await FcmService.getToken();
       final result = await _apiService.initiatePayment(
         sessionId: sessionId,

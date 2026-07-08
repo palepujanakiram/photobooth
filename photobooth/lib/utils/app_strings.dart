@@ -258,4 +258,12 @@ abstract final class AppStrings {
 
   static const generationProgressSubtitle =
       'Please wait while we craft your portrait';
+
+  static const sessionPhotoSyncNoSession =
+      'No active session. Please go back and accept terms again.';
+
+  static const sessionPhotoSyncVerifyFailed =
+      'Photo could not be saved on the server. Please capture again.';
+
+  static const sessionPhotoSyncFailed = 'Failed to upload photo';
 }

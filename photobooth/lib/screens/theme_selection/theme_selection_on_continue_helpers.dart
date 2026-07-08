@@ -6,6 +6,7 @@ import '../../services/app_settings_manager.dart';
 import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
+import '../../utils/session_photo_sync_helpers.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../photo_capture/photo_model.dart';
 import 'theme_model.dart';
@@ -53,6 +54,28 @@ Future<void> themeSelectionContinueWithPhoto({
       AppSnackBar.showError(
         currentContext,
         AppStrings.generationNoAttemptsRemaining,
+      );
+      return;
+    }
+
+    final sessionId = SessionManager().sessionId;
+    if (sessionId == null || sessionId.isEmpty) {
+      AppSnackBar.showError(
+        currentContext,
+        AppStrings.sessionPhotoSyncNoSession,
+      );
+      return;
+    }
+
+    final photoSync = await ensureSessionPhotoOnServer(
+      sessionId: sessionId,
+      photo: photo,
+    );
+    if (!currentContext.mounted) return;
+    if (!photoSync.isReady) {
+      AppSnackBar.showError(
+        currentContext,
+        photoSync.errorMessage ?? AppStrings.sessionPhotoSyncFailed,
       );
       return;
     }
