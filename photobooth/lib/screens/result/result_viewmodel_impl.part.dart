@@ -379,15 +379,35 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         ? 'Preparing your photos…'
         : 'Printing your photos…';
     notifyListeners();
-    if (!kIsWeb) {
-      try {
-        await silentPrintToNetwork().timeout(const Duration(minutes: 2));
-      } on TimeoutException {
-        _r._errorMessage =
-            'Printing is taking longer than expected. Please check the printer connection and try again.';
-      }
+    unawaited(startPostPaymentPrintIfNeeded());
+  }
+
+  /// Starts the first post-payment print once (native kiosk with printer enabled).
+  Future<void> startPostPaymentPrintIfNeeded() async {
+    if (_r._postPaymentPrintStarted || kIsWeb) return;
+    if (!_r.shouldShowPrintProgressCard) {
+      _r._printProgress = const PrintProgressSnapshot(
+        phase: PrintProgressPhase.skipped,
+      );
+      notifyListeners();
+      return;
     }
+    _r._postPaymentPrintStarted = true;
+    _r._printProgress = PrintProgressSnapshot(
+      phase: PrintProgressPhase.preparing,
+      currentPage: _r._generatedImages.isEmpty ? 0 : 1,
+      totalPages: _r._generatedImages.length,
+      percent: 0,
+    );
     notifyListeners();
+    try {
+      await silentPrintToNetwork().timeout(const Duration(minutes: 2));
+    } on TimeoutException {
+      _failPrintProgress(AppStrings.printFailedGeneric);
+      _r._errorMessage =
+          'Printing is taking longer than expected. Please check the printer connection and try again.';
+      notifyListeners();
+    }
   }
 
   /// FCM or poll: updates inline Pay & Collect; on approval runs [silentPrintToNetwork] once.
@@ -410,14 +430,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       // _navigateToThankYouIfEligible is a no-op.
       unawaited(ensurePostPaymentShareArtifacts());
 
-      if (!kIsWeb) {
-        try {
-          await silentPrintToNetwork().timeout(const Duration(minutes: 2));
-        } on TimeoutException {
-          _r._errorMessage =
-              'Printing is taking longer than expected. Please check the printer connection and try again.';
-        }
-      }
+      unawaited(startPostPaymentPrintIfNeeded());
       notifyListeners();
       return;
     }
@@ -962,18 +975,127 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     }
   }
 
+  void _cancelPrintProgressTicker() {
+    _r._printProgressTicker?.cancel();
+    _r._printProgressTicker = null;
+    _r._printFinishingStartedAt = null;
+  }
+
+  void _resetPrintProgressForRun({required int totalPages}) {
+    _cancelPrintProgressTicker();
+    _r._printProgress = PrintProgressSnapshot(
+      phase: PrintProgressPhase.preparing,
+      currentPage: totalPages > 0 ? 1 : 0,
+      totalPages: totalPages,
+      percent: 0,
+    );
+    notifyListeners();
+  }
+
+  void _setPrintMilestone({
+    required int pageIndex,
+    required int totalPages,
+    required PrintProgressPhase phase,
+    required int percent,
+  }) {
+    _r._printProgress = _r._printProgress.copyWith(
+      phase: phase,
+      currentPage: pageIndex + 1,
+      totalPages: totalPages,
+      percent: percent,
+      clearError: true,
+    );
+    notifyListeners();
+  }
+
+  void _failPrintProgress(String message) {
+    _cancelPrintProgressTicker();
+    _r._printProgress = _r._printProgress.copyWith(
+      phase: PrintProgressPhase.failed,
+      errorMessage: message,
+    );
+    notifyListeners();
+  }
+
+  void _completePrintProgress({required int totalPages}) {
+    _cancelPrintProgressTicker();
+    _r._printProgress = PrintProgressSnapshot(
+      phase: PrintProgressPhase.complete,
+      currentPage: totalPages,
+      totalPages: totalPages,
+      percent: allPagesCompletePercent(totalPages),
+    );
+    notifyListeners();
+  }
+
+  Future<void> _runPageFinishingPhase({
+    required int pageIndex,
+    required int totalPages,
+  }) async {
+    _r._printFinishingPageIndex = pageIndex;
+    _r._printFinishingTotalPages = totalPages;
+    _r._printFinishingStartedAt = DateTime.now();
+    _setPrintMilestone(
+      pageIndex: pageIndex,
+      totalPages: totalPages,
+      phase: PrintProgressPhase.finishing,
+      percent: finishingPercent(
+        pageIndex: pageIndex,
+        totalPages: totalPages,
+        elapsed: Duration.zero,
+      ),
+    );
+
+    _cancelPrintProgressTicker();
+    _r._printProgressTicker = Timer.periodic(
+      const Duration(milliseconds: 250),
+      (_) => _tickPrintFinishingProgress(),
+    );
+
+    final started = _r._printFinishingStartedAt!;
+    final minimum = kPrintFinishingMinimumDisplay;
+    final estimate = kPrintFinishingEstimatePerPage;
+    await Future<void>.delayed(minimum);
+    final remaining = estimate - DateTime.now().difference(started);
+    if (remaining > Duration.zero) {
+      await Future<void>.delayed(remaining);
+    }
+    _cancelPrintProgressTicker();
+  }
+
+  void _tickPrintFinishingProgress() {
+    final started = _r._printFinishingStartedAt;
+    if (started == null) return;
+    final pageIndex = _r._printFinishingPageIndex;
+    final totalPages = _r._printFinishingTotalPages;
+    final percent = finishingPercent(
+      pageIndex: pageIndex,
+      totalPages: totalPages,
+      elapsed: DateTime.now().difference(started),
+    );
+    _r._printProgress = _r._printProgress.copyWith(
+      phase: PrintProgressPhase.finishing,
+      currentPage: pageIndex + 1,
+      totalPages: totalPages,
+      percent: percent,
+    );
+    notifyListeners();
+  }
+
   /// Silent print all images to network printer
   Future<void> silentPrintToNetwork() async {
     _r.refreshPrinterFromSettings();
 
     if (_r._appSettingsManager?.settings?.printerEnabled == false) {
       _r._errorMessage = 'Printing is disabled in booth settings';
+      _failPrintProgress(_r._errorMessage!);
       notifyListeners();
       return;
     }
 
     if (_r._printerHost.isEmpty) {
       _r._errorMessage = 'Please enter a printer address';
+      _failPrintProgress(_r._errorMessage!);
       notifyListeners();
       return;
     }
@@ -990,26 +1112,56 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       } else {
         _evictStaleDownloadedFiles();
         final success = await _ensureAllFilesDownloaded('silent');
-        if (!success) return;
+        if (!success) {
+          _failPrintProgress(
+            _r._errorMessage ?? AppStrings.printFailedGeneric,
+          );
+          return;
+        }
       }
     } else if (!kIsWeb) {
       _evictStaleDownloadedFiles();
       if (_r._downloadedFilesList.length != _r._generatedImages.length) {
         final success = await _ensureAllFilesDownloaded('silent');
-        if (!success) return;
+        if (!success) {
+          _failPrintProgress(
+            _r._errorMessage ?? AppStrings.printFailedGeneric,
+          );
+          return;
+        }
       }
     }
+
+    final files = _downloadedFilesList;
+    if (files.isEmpty) {
+      _failPrintProgress('No images available to print');
+      _r._errorMessage = 'No images available to print';
+      notifyListeners();
+      return;
+    }
+
+    _resetPrintProgressForRun(totalPages: files.length);
 
     _r._isSilentPrinting = true;
     _r._errorMessage = null;
     notifyListeners();
 
     try {
-      final files = _downloadedFilesList;
-      if (files.isEmpty) {
-        throw PrintException('No images available to print');
-      }
-      for (int i = 0; i < files.length; i++) {
+      for (var i = 0; i < files.length; i++) {
+        _setPrintMilestone(
+          pageIndex: i,
+          totalPages: files.length,
+          phase: PrintProgressPhase.preparing,
+          percent: preparingPercent(i, files.length),
+        );
+
+        _setPrintMilestone(
+          pageIndex: i,
+          totalPages: files.length,
+          phase: PrintProgressPhase.sending,
+          percent: sendingPercent(i, files.length),
+        );
+
         await _r._printService.printImageToNetworkPrinter(
           files[i],
           printerHost: _r._printerHost,
@@ -1017,9 +1169,13 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           printerPath: _r.effectivePrinterPath,
           printSize: _r._printOrientation.printSize,
         );
+
+        await _runPageFinishingPhase(pageIndex: i, totalPages: files.length);
       }
+      _completePrintProgress(totalPages: files.length);
     } on PrintException catch (e, st) {
       _r._errorMessage = e.message;
+      _failPrintProgress(e.message);
       unawaited(
         reportIssue(
           'Silent network print failed',
@@ -1030,6 +1186,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       );
     } catch (e, st) {
       _r._errorMessage = AppStrings.printFailedGeneric;
+      _failPrintProgress(AppStrings.printFailedGeneric);
       unawaited(
         reportIssue(
           'Silent network print failed',

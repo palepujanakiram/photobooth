@@ -22,6 +22,7 @@ import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
 import '../../utils/payment_workflow_helpers.dart' as payment_workflow;
 import '../../utils/print_orientation.dart';
+import '../../utils/print_progress_helpers.dart';
 import '../../utils/printer_endpoint.dart';
 import '../../utils/error_reporting_helpers.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
@@ -91,6 +92,12 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   // Print/Share state
   bool _isSilentPrinting = false;
   bool _isDialogPrinting = false;
+  bool _postPaymentPrintStarted = false;
+  PrintProgressSnapshot _printProgress = const PrintProgressSnapshot();
+  Timer? _printProgressTicker;
+  DateTime? _printFinishingStartedAt;
+  int _printFinishingPageIndex = 0;
+  int _printFinishingTotalPages = 0;
   bool _isSharing = false;
   bool _isDownloading = false;
   String _downloadMessage = '';
@@ -330,6 +337,13 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   bool get isSilentPrinting => _isSilentPrinting;
   bool get isDialogPrinting => _isDialogPrinting;
   bool get isPrinting => _isSilentPrinting || _isDialogPrinting;
+  PrintProgressSnapshot get printProgress => _printProgress;
+
+  /// True when the QR share screen should show the print status card.
+  bool get shouldShowPrintProgressCard {
+    if (kIsWeb) return false;
+    return _appSettingsManager?.settings?.printerEnabled ?? true;
+  }
   bool get isSharing => _isSharing;
   bool get isDownloading => _isDownloading;
   String get downloadMessage => _downloadMessage;
@@ -416,6 +430,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
     _paymentIdPollTimer?.cancel();
     _sessionPollTimer?.cancel();
     stopWhatsappDeliveryPolling();
+    _printProgressTicker?.cancel();
     super.dispose();
   }
 }

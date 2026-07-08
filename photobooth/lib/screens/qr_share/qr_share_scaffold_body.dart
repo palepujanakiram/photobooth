@@ -7,6 +7,7 @@ import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/delete_my_photos_action.dart';
 import '../../views/widgets/theme_background.dart';
 import '../result/result_viewmodel.dart';
+import 'qr_share_print_status_widgets.dart';
 
 /// Loaded QR share screen body (Sonar S3776 extraction from [QrShareScreen]).
 class QrShareScaffoldBody extends StatelessWidget {
@@ -107,6 +108,10 @@ class QrShareScaffoldBody extends StatelessWidget {
                       ],
                       const SizedBox(height: 14),
                       _QrShareCodeBox(canShowQr: canShowQr, qrData: qrData),
+                      if (viewModel.shouldShowPrintProgressCard) ...[
+                        const SizedBox(height: 16),
+                        QrSharePrintStatusCard(progress: viewModel.printProgress),
+                      ],
                       if (longUrl.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         SelectableText(
@@ -260,8 +265,6 @@ class _QrShareActionRow extends StatelessWidget {
         context,
         viewModel.errorMessage ?? 'Print failed',
       );
-    } else {
-      AppSnackBar.showSuccess(context, 'Print job sent!');
     }
   }
 

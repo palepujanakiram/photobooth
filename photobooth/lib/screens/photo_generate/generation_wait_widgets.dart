@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter/cupertino.dart';
@@ -6,12 +7,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/customer_session_lifecycle.dart';
+import '../../services/generation_eta_estimator.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
 import '../../views/widgets/cached_network_image.dart';
-import '../../views/widgets/kiosk_vertical_screen_layout.dart';
 import '../theme_selection/theme_preview_screen.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
     if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart'
@@ -23,6 +24,847 @@ import 'generation_wait_theme_reel.dart';
 import 'generation_wait_eta_widgets.dart';
 import 'photo_generate_viewmodel.dart';
 import 'post_reveal_polishing_overlay.dart';
+
+class _GenerationWaitTopBar extends StatelessWidget {
+  const _GenerationWaitTopBar({required this.boothLabel});
+
+  final String boothLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          constraints: const BoxConstraints(maxWidth: 220, maxHeight: 44),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
+          ),
+          child: Image.asset(
+            AppConstants.kBrandLogoAsset,
+            fit: BoxFit.contain,
+          ),
+        ),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF57D999),
+                  borderRadius: BorderRadius.circular(99),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x6657D999),
+                      blurRadius: 10,
+                      spreadRadius: 0,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                boothLabel,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.65),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GenerationWaitCreateHeadline extends StatelessWidget {
+  const _GenerationWaitCreateHeadline();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'Preparing your AI look',
+      textAlign: TextAlign.center,
+      style: const TextStyle(
+        color: Colors.white,
+        fontWeight: FontWeight.w700,
+        fontSize: 22,
+        height: 1.15,
+      ),
+    );
+  }
+}
+
+class _GenerationWaitStatusLine extends StatelessWidget {
+  const _GenerationWaitStatusLine({
+    required this.vm,
+    required this.presentation,
+  });
+
+  final PhotoGenerateViewModel vm;
+  final GenerationWaitPresentation presentation;
+
+  @override
+  Widget build(BuildContext context) {
+    final commentary = generationWaitCommentaryLine(
+      vm,
+      commentaryEnabled: vm.generationCommentaryEnabledForWait,
+    );
+    final copy = (commentary ?? presentation.headline).trim();
+    final line = copy.isNotEmpty ? copy : generationWaitDynamicQuote(vm.elapsedSeconds);
+    return SizedBox(
+      height: 20,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 250),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        child: Text(
+          line,
+          key: ValueKey(line),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.68),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GenerationWaitTimerRow extends StatelessWidget {
+  const _GenerationWaitTimerRow({
+    required this.eta,
+    required this.themeName,
+  });
+
+  final GenerationEtaSnapshot eta;
+  final String themeName;
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = (eta.progressFraction * 100).round().clamp(0, 99);
+    final remaining = formatGenerationEtaDuration(eta.estimatedRemainingSeconds);
+    final aboutTotal = formatGenerationEtaDuration(eta.estimatedTotalSeconds);
+    final todayAvg = formatGenerationEtaDuration(eta.estimatedTotalSeconds);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141A2C).withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Row(
+        children: [
+          _GenerationWaitEtaRing(
+            progressFraction: eta.progressFraction,
+            remainingLabel: remaining,
+            percentLabel: '$pct%',
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _metaRow(
+                  AppStrings.generationWaitEtaAboutTotal(aboutTotal),
+                ),
+                const SizedBox(height: 6),
+                _metaRow(
+                  AppStrings.generationWaitEtaTodayAvg(todayAvg),
+                ),
+                if (themeName.trim().isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0A94D).withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(
+                        color: const Color(0xFFE0A94D).withValues(alpha: 0.30),
+                      ),
+                    ),
+                    child: Text(
+                      themeName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFFE0A94D),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metaRow(String text) {
+    return Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: Colors.white.withValues(alpha: 0.60),
+        fontSize: 11.5,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+class _GenerationWaitEtaRing extends StatelessWidget {
+  const _GenerationWaitEtaRing({
+    required this.progressFraction,
+    required this.remainingLabel,
+    required this.percentLabel,
+  });
+
+  final double progressFraction;
+  final String remainingLabel;
+  final String percentLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 84,
+      height: 84,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          ShaderMask(
+            shaderCallback: (rect) => const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF5FD3E8), Color(0xFFE0A94D)],
+            ).createShader(rect),
+            child: CircularProgressIndicator(
+              value: progressFraction.clamp(0.0, 1.0),
+              strokeWidth: 6,
+              backgroundColor: Colors.white.withValues(alpha: 0.10),
+              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+              strokeCap: StrokeCap.round,
+            ),
+          ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                remainingLabel,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  height: 1.05,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                percentLabel,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.55),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GenerationWaitSixStepRibbon extends StatelessWidget {
+  const _GenerationWaitSixStepRibbon({required this.beats});
+
+  final List<GenerationWaitRewardBeat> beats;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (var i = 0; i < beats.length; i++) ...[
+          Expanded(
+            child: _GenerationWaitStepChip(beat: beats[i], index: i + 1),
+          ),
+          if (i != beats.length - 1) const SizedBox(width: 8),
+        ],
+      ],
+    );
+  }
+}
+
+class _GenerationWaitStepChip extends StatelessWidget {
+  const _GenerationWaitStepChip({required this.beat, required this.index});
+
+  final GenerationWaitRewardBeat beat;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDone = beat.state == GenerationWaitBeatState.done;
+    final isActive = beat.state == GenerationWaitBeatState.active;
+    final bg = isDone
+        ? const Color(0xFF57D999)
+        : Colors.white.withValues(alpha: 0.06);
+    final border = isActive
+        ? const Color(0xFF5FD3E8).withValues(alpha: 0.85)
+        : Colors.white.withValues(alpha: 0.10);
+    final labelColor = isActive
+        ? Colors.white
+        : Colors.white.withValues(alpha: isDone ? 0.75 : 0.58);
+    final dotColor = isDone
+        ? const Color(0xFF08281A)
+        : isActive
+            ? const Color(0xFF5FD3E8)
+            : Colors.white.withValues(alpha: 0.25);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: isDone ? 0.0 : 0.14),
+              borderRadius: BorderRadius.circular(99),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              '$index',
+              style: TextStyle(
+                color: dotColor,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              beat.label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: labelColor,
+                fontSize: 10,
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
+                height: 1.15,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GenerationWaitComparePanels extends StatelessWidget {
+  const _GenerationWaitComparePanels({
+    required this.vm,
+    required this.presentation,
+    required this.anticipation,
+    required this.showFacePins,
+  });
+
+  final PhotoGenerateViewModel vm;
+  final GenerationWaitPresentation presentation;
+  final bool anticipation;
+  final bool showFacePins;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = vm.selectedTheme;
+    final sampleUrl = theme == null
+        ? ''
+        : ThemePreviewScreen.resolveSampleImageUrl(theme);
+    final capture = vm.originalPhoto;
+    final captureAlignment =
+        generationWaitCaptureImageAlignment(vm.sessionPersonCount);
+    final styleUrl = (presentation.imageUrl ?? '').trim().isNotEmpty
+        ? presentation.imageUrl!.trim()
+        : sampleUrl;
+    final progress = resolveGenerationEta(vm).progressFraction;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final gap = 10.0;
+        final w = constraints.maxWidth;
+        final cellW = (w - gap) / 2;
+        final cellH = math.max(220.0, cellW * 4 / 3);
+
+        return Row(
+          children: [
+            Expanded(
+              child: _GenerationWaitPanel(
+                label: 'You',
+                child: capture == null
+                    ? const ColoredBox(color: Color(0xFF0D1120))
+                    : KenBurnsCaptureImage(
+                        imageFile: capture.imageFile,
+                        width: cellW,
+                        height: cellH,
+                        alignment: captureAlignment,
+                      ),
+                overlay: showFacePins
+                    ? const _GenerationWaitRadarOverlay()
+                    : null,
+              ),
+            ),
+            SizedBox(width: gap),
+            Expanded(
+              child: _GenerationWaitPanel(
+                label: 'Style',
+                child: styleUrl.isEmpty
+                    ? const _ShimmerPlaceholder()
+                    : _GenerationWaitStyleCanvas(
+                        imageUrl: styleUrl,
+                        blurStrength: anticipation ? 20.0 : (22 * (1 - progress)).clamp(0.0, 20.0),
+                      ),
+                overlay: const _GenerationWaitStyleScanLine(),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _GenerationWaitPanel extends StatelessWidget {
+  const _GenerationWaitPanel({
+    required this.label,
+    required this.child,
+    this.overlay,
+  });
+
+  final String label;
+  final Widget child;
+  final Widget? overlay;
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 3 / 4,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D1120),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            child,
+            if (overlay != null) overlay!,
+            Positioned(
+              left: 10,
+              top: 10,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(99),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+                ),
+                child: Text(
+                  label.toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GenerationWaitRadarOverlay extends StatelessWidget {
+  const _GenerationWaitRadarOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const _GenerationWaitConicSweep(),
+        _pin('Face', top: 0.36, left: 0.18),
+        _pin('Hair', top: 0.18, left: 0.60),
+        _pin('Pose', top: 0.72, left: 0.58),
+      ],
+    );
+  }
+
+  Widget _pin(String label, {required double top, required double left}) {
+    return Positioned(
+      top: top * 100,
+      left: left * 100,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.40),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GenerationWaitConicSweep extends StatefulWidget {
+  const _GenerationWaitConicSweep();
+
+  @override
+  State<_GenerationWaitConicSweep> createState() => _GenerationWaitConicSweepState();
+}
+
+class _GenerationWaitConicSweepState extends State<_GenerationWaitConicSweep>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2800))
+      ..repeat();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, child) {
+        return Transform.rotate(
+          angle: _c.value * math.pi * 2,
+          child: child,
+        );
+      },
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: SweepGradient(
+            colors: [
+              Colors.transparent,
+              Color(0x445FD3E8),
+              Colors.transparent,
+            ],
+            stops: [0.0, 0.12, 0.24],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GenerationWaitStyleCanvas extends StatelessWidget {
+  const _GenerationWaitStyleCanvas({
+    required this.imageUrl,
+    required this.blurStrength,
+  });
+
+  final String imageUrl;
+  final double blurStrength;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = SecureImageUrl.absolutize(imageUrl);
+    return ImageFiltered(
+      imageFilter: ImageFilter.blur(
+        sigmaX: blurStrength,
+        sigmaY: blurStrength,
+      ),
+      child: CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        filterQuality: FilterQuality.medium,
+        placeholder: const _ShimmerPlaceholder(),
+        errorWidget: const _ShimmerPlaceholder(),
+      ),
+    );
+  }
+}
+
+class _GenerationWaitStyleScanLine extends StatefulWidget {
+  const _GenerationWaitStyleScanLine();
+
+  @override
+  State<_GenerationWaitStyleScanLine> createState() => _GenerationWaitStyleScanLineState();
+}
+
+class _GenerationWaitStyleScanLineState extends State<_GenerationWaitStyleScanLine>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))
+      ..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) {
+        return Align(
+          alignment: Alignment(0, -1 + _c.value * 2),
+          child: Container(
+            height: 2,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [
+                  Colors.transparent,
+                  Color(0xFFE0A94D),
+                  Colors.transparent,
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFE0A94D).withValues(alpha: 0.55),
+                  blurRadius: 12,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _GenerationWaitChecklistCard extends StatelessWidget {
+  const _GenerationWaitChecklistCard({
+    required this.title,
+    required this.items,
+    required this.doneCount,
+  });
+
+  final String title;
+  final List<String> items;
+  final int doneCount;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    final done = doneCount.clamp(0, items.length);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141A2C).withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.55),
+              fontSize: 11,
+              letterSpacing: 0.8,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (var i = 0; i < items.length; i++)
+                SizedBox(
+                  width: (MediaQuery.sizeOf(context).width - 16 * 2 - 14 * 2 - 10) / 2,
+                  child: _checkItem(items[i], done: i < done),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _checkItem(String label, {required bool done}) {
+    final tickBg = done ? const Color(0xFF57D999) : Colors.transparent;
+    final tickBorder = done
+        ? const Color(0xFF57D999)
+        : Colors.white.withValues(alpha: 0.35);
+    final textColor =
+        done ? Colors.white : Colors.white.withValues(alpha: 0.55);
+    return Row(
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: tickBg,
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(color: tickBorder, width: 1.5),
+          ),
+          alignment: Alignment.center,
+          child: done
+              ? const Icon(Icons.check, size: 12, color: Color(0xFF08281A))
+              : const SizedBox.shrink(),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: textColor,
+              fontSize: 12,
+              fontWeight: done ? FontWeight.w700 : FontWeight.w600,
+              height: 1.1,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GenerationWaitTipCard extends StatelessWidget {
+  const _GenerationWaitTipCard({required this.elapsedSeconds});
+
+  final int elapsedSeconds;
+
+  @override
+  Widget build(BuildContext context) {
+    final tip = generationWaitFactCard(elapsedSeconds);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFFE0A94D).withValues(alpha: 0.12),
+            const Color(0xFF5FD3E8).withValues(alpha: 0.08),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '\u{1F4A1}',
+            style: TextStyle(
+              fontSize: 18,
+              color: Colors.white.withValues(alpha: 0.85),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '${tip.title}: ${tip.body}',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.75),
+                fontSize: 12,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GenerationWaitDisclaimerBlock extends StatelessWidget {
+  const _GenerationWaitDisclaimerBlock();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          kGenerationWaitFactCards.first.body,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.55),
+            fontSize: 11.5,
+            height: 1.45,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '\u{1F512} Your photos are secure and private',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.50),
+            fontSize: 11.5,
+            height: 1.35,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 /// Slow zoom/pan on the capture still so the wait state feels alive.
 class KenBurnsCaptureImage extends StatefulWidget {
@@ -1035,91 +1877,69 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
     GenerationWaitPresentation presentation, {
     required bool anticipation,
   }) {
+    final eta = resolveGenerationEta(vm);
+    final beats = resolveGenerationWaitRewardChecklist(vm, presentation);
+    final activeBeat = beats.cast<GenerationWaitRewardBeat?>().firstWhere(
+          (b) => b?.state == GenerationWaitBeatState.active,
+          orElse: () => null,
+        );
     final showFaceScan = generationWaitShowFaceScanChecklist(vm, presentation);
     final faceCount = generationWaitFaceScanCompletedCount(vm.elapsedSeconds);
-    final showPolish =
-        !anticipation && presentation.showPolishingOverlay;
+    final totalFace = kGenerationWaitFaceScanLines.length;
+    final themeName = vm.selectedTheme?.name ?? '';
 
-    return KioskVerticalScreenLayout(
-      horizontalPadding: 0,
-      heroMaxWidth: 720,
-      maxFooterWidth: 720,
-      footerScrollable: true,
-      maxFooterHeight: showPolish ? 228 : 196,
-      chrome: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GenerationWaitPortraitClock(
-            snapshot: resolveGenerationEta(vm),
-            compact: true,
-          ),
-          const SizedBox(height: 10),
-          GenerationWaitStoryHeader(
-            viewModel: vm,
-            presentation: presentation,
-            compact: true,
-            hideRewardWhenPolishing: showPolish,
-          ),
-        ],
-      ),
-      hero: LayoutBuilder(
-        builder: (context, constraints) {
-          final maxW = math.min(widget.cardWidth, constraints.maxWidth);
-          final maxH = constraints.maxHeight;
-          final cellAspect =
-              generationWaitHeroCellAspectRatio(vm.sessionPersonCount);
-          final size = anticipation
-              ? computeThemeAnticipationHeroSize(
-                  maxWidth: maxW,
-                  maxHeight: maxH,
-                  cellAspect: cellAspect,
-                )
-              : computeGenerationWaitCinematicHeroSize(
-                  maxWidth: maxW,
-                  maxHeight: maxH,
-                  aspect: cellAspect,
-                );
+    final maxW = math.min(widget.cardWidth, 520.0);
 
-          Widget buildHeroImage(double width, double height) {
-            if (anticipation) {
-              return ThemeAnticipationHero(
-                viewModel: vm,
-                width: width,
-                height: height,
-              );
-            }
-            return GenerationWaitCinematicHero(
-              viewModel: vm,
-              presentation: presentation,
-              width: width,
-              height: height,
-              showPolishingStripBelow: false,
-            );
-          }
-
-          return SizedBox(
-            width: size.width,
-            height: size.height,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Stack(
-                clipBehavior: Clip.hardEdge,
-                alignment: Alignment.center,
-                children: [
-                  buildHeroImage(size.width, size.height),
-                  if (showFaceScan)
-                    GenerationWaitFaceScanOverlay(completedCount: faceCount),
-                ],
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxW),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 26),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 6),
+              _GenerationWaitTopBar(
+                boothLabel: 'Live',
               ),
-            ),
-          );
-        },
-      ),
-      footer: _buildWaitStageFooter(
-        vm,
-        presentation,
-        compact: true,
-        showPolishStrip: showPolish,
+              const SizedBox(height: 16),
+              const _GenerationWaitCreateHeadline(),
+              const SizedBox(height: 6),
+              _GenerationWaitStatusLine(
+                vm: vm,
+                presentation: presentation,
+              ),
+              const SizedBox(height: 14),
+              _GenerationWaitTimerRow(
+                eta: eta,
+                themeName: themeName,
+              ),
+              const SizedBox(height: 14),
+              _GenerationWaitSixStepRibbon(beats: beats),
+              const SizedBox(height: 14),
+              _GenerationWaitComparePanels(
+                vm: vm,
+                presentation: presentation,
+                anticipation: anticipation,
+                showFacePins: showFaceScan,
+              ),
+              const SizedBox(height: 12),
+              _GenerationWaitChecklistCard(
+                title: activeBeat?.label ?? 'Likeness',
+                items: showFaceScan ? kGenerationWaitFaceScanLines : const [],
+                doneCount: showFaceScan ? faceCount : totalFace,
+              ),
+              const SizedBox(height: 10),
+              _GenerationWaitTipCard(elapsedSeconds: vm.elapsedSeconds),
+              const SizedBox(height: 10),
+              const _GenerationWaitDisclaimerBlock(),
+              const SizedBox(height: 14),
+              GenerationWaitThemePreviewReel(
+                excludeThemeId: vm.selectedTheme?.id,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

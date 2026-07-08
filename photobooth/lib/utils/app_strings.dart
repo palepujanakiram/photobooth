@@ -266,4 +266,21 @@ abstract final class AppStrings {
       'Photo could not be saved on the server. Please capture again.';
 
   static const sessionPhotoSyncFailed = 'Failed to upload photo';
+
+  static const printProgressTitleActive = 'Printing your photo';
+
+  static const printProgressTitleComplete = 'Print complete';
+
+  static const printProgressTitleFailed = 'Print failed';
+
+  static const printProgressSubtitleActive =
+      'Please wait while your photo is sent to the printer…';
+
+  static const printProgressSubtitleComplete =
+      'Grab your photo from the tray below.';
+
+  static const printProgressSubtitleFailed =
+      'Tap Print again or ask staff for help.';
+
+  static const printProgressFooterPrinting = 'Printing…';
 }

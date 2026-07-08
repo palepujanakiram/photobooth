@@ -133,11 +133,6 @@ class _ResultScreenState extends State<ResultScreen> {
     if (!mounted || _viewModel == null) return;
     await _viewModel!.onFreeCheckoutPrint();
     if (!mounted || _viewModel == null) return;
-    if (_viewModel!.hasError) {
-      AppSnackBar.showError(context, _viewModel!.errorMessage!);
-      return;
-    }
-    AppSnackBar.showSuccess(context, AppStrings.printJobSentSuccess);
     await _navigateToThankYouIfEligible(_viewModel!);
   }
 
@@ -166,16 +161,10 @@ class _ResultScreenState extends State<ResultScreen> {
     if (viewModel.fcmPaymentPushSuccess == true) {
       _failureIdleTimer?.cancel();
       _failureSecondsLeft = 0;
-      if (viewModel.hasError && !kIsWeb) {
-        AppSnackBar.showError(context, viewModel.errorMessage!);
-        return;
-      }
-      if (!viewModel.hasError) {
+      if (!kIsWeb || !viewModel.hasError) {
         AppSnackBar.showSuccess(
           context,
-          kIsWeb
-              ? AppStrings.paymentConfirmedTitle
-              : AppStrings.printJobSentSuccess,
+          AppStrings.paymentConfirmedTitle,
         );
       }
       await _navigateToThankYouIfEligible(viewModel);
@@ -259,7 +248,6 @@ class _ResultScreenState extends State<ResultScreen> {
   Future<void> _navigateToThankYouIfEligible(ResultViewModel viewModel) async {
     if (!mounted || _didNavigateToThankYou) return;
     if (viewModel.fcmPaymentPushSuccess != true) return;
-    if (viewModel.hasError && !kIsWeb) return;
     _didNavigateToThankYou = true;
     try {
       await viewModel.ensurePostPaymentShareArtifacts();
@@ -336,9 +324,6 @@ class _ResultScreenState extends State<ResultScreen> {
       return;
     }
     if (_didNavigateToThankYou || _thankYouNavigationScheduled) return;
-    if (viewModel.isPrinting) return;
-    if (viewModel.hasError && !kIsWeb) return;
-
     _thankYouNavigationScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _thankYouNavigationScheduled = false;

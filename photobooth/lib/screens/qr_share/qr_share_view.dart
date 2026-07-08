@@ -32,6 +32,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
   /// One-shot toast guard: we show the post-receipt outcome dialog at most once
   /// per QR share screen lifecycle.
   bool _postReceiptToastShown = false;
+  bool _printKickoffScheduled = false;
 
   void _onWhatsappStatusFromFcm(WhatsAppStatusPayload payload) {
     _viewModel?.applyWhatsappStatusPush(payload);
@@ -70,6 +71,12 @@ class _QrShareScreenState extends State<QrShareScreen> {
     // mounts (it fires from onFcmPaymentPush), so check immediately too.
     _viewModel?.addListener(_maybeShowPostReceiptToast);
     _maybeShowPostReceiptToast();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_printKickoffScheduled) return;
+      _printKickoffScheduled = true;
+      unawaited(_viewModel?.startPostPaymentPrintIfNeeded());
+    });
 
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
