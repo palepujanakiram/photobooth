@@ -37,51 +37,14 @@ class _GenerationWaitKioskHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final headline = generationWaitActHeadline(vm, presentation);
-
-    return Column(
-      children: [
-        Text(
-          headline,
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-            fontSize: 17,
-            height: 1.15,
-          ),
-        ),
-        const SizedBox(height: 2),
-        _GenerationWaitStatusLine(
-          vm: vm,
-          presentation: presentation,
-        ),
-      ],
-    );
-  }
-}
-
-class _GenerationWaitStatusLine extends StatelessWidget {
-  const _GenerationWaitStatusLine({
-    required this.vm,
-    required this.presentation,
-  });
-
-  final PhotoGenerateViewModel vm;
-  final GenerationWaitPresentation presentation;
-
-  @override
-  Widget build(BuildContext context) {
-    final commentary = generationWaitCommentaryLine(
+    final line = generationWaitKioskStatusLine(
       vm,
+      presentation,
       commentaryEnabled: vm.generationCommentaryEnabledForWait,
     );
-    final copy = (commentary ?? presentation.headline).trim();
-    final line = copy.isNotEmpty ? copy : generationWaitDynamicQuote(vm.elapsedSeconds);
+
     return SizedBox(
-      height: 20,
+      height: 22,
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 250),
         switchInCurve: Curves.easeOutCubic,
@@ -90,10 +53,13 @@ class _GenerationWaitStatusLine extends StatelessWidget {
           line,
           key: ValueKey(line),
           textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.68),
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+            height: 1.2,
           ),
         ),
       ),
@@ -118,29 +84,38 @@ class _GenerationWaitEtaStrip extends StatelessWidget {
     final theme = themeName.trim();
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        SizedBox(
-          width: 48,
-          height: 48,
-          child: _GenerationWaitEtaRing(
-            progressFraction: eta.progressFraction,
-            remainingLabel: remaining,
-            percentLabel: '$pct%',
-          ),
+        _GenerationWaitEtaRing(
+          progressFraction: eta.progressFraction,
+          percentLabel: '$pct%',
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
+                remaining,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  height: 1.15,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
                 eta.primaryLine,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.88),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withValues(alpha: 0.72),
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.2,
                 ),
               ),
               if (contextLine.isNotEmpty)
@@ -149,9 +124,10 @@ class _GenerationWaitEtaStrip extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.52),
+                    color: Colors.white.withValues(alpha: 0.48),
                     fontSize: 10.5,
                     fontWeight: FontWeight.w600,
+                    height: 1.2,
                   ),
                 ),
             ],
@@ -188,19 +164,19 @@ class _GenerationWaitEtaStrip extends StatelessWidget {
 class _GenerationWaitEtaRing extends StatelessWidget {
   const _GenerationWaitEtaRing({
     required this.progressFraction,
-    required this.remainingLabel,
     required this.percentLabel,
   });
 
+  static const double _size = 58;
+
   final double progressFraction;
-  final String remainingLabel;
   final String percentLabel;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 48,
-      height: 48,
+      width: _size,
+      height: _size,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -212,33 +188,20 @@ class _GenerationWaitEtaRing extends StatelessWidget {
             ).createShader(rect),
             child: CircularProgressIndicator(
               value: progressFraction.clamp(0.0, 1.0),
-              strokeWidth: 4,
+              strokeWidth: 4.5,
               backgroundColor: Colors.white.withValues(alpha: 0.10),
               valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
               strokeCap: StrokeCap.round,
             ),
           ),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                remainingLabel,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  height: 1.05,
-                ),
-              ),
-              Text(
-                percentLabel,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.55),
-                  fontSize: 8.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+          Text(
+            percentLabel,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              height: 1,
+            ),
           ),
         ],
       ),
@@ -729,6 +692,87 @@ class _GenerationWaitChecklistCard extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _GenerationWaitFaceScanChecklist extends StatefulWidget {
+  const _GenerationWaitFaceScanChecklist({
+    required this.doneCount,
+    required this.items,
+  });
+
+  final int doneCount;
+  final List<String> items;
+
+  @override
+  State<_GenerationWaitFaceScanChecklist> createState() =>
+      _GenerationWaitFaceScanChecklistState();
+}
+
+class _GenerationWaitFaceScanChecklistState
+    extends State<_GenerationWaitFaceScanChecklist>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _fadeController;
+  late final Animation<double> _fade;
+  bool _collapsed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 450),
+    );
+    _fade = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
+    _maybeStartFade();
+  }
+
+  @override
+  void didUpdateWidget(covariant _GenerationWaitFaceScanChecklist oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _maybeStartFade();
+  }
+
+  void _maybeStartFade() {
+    if (_collapsed || _fadeController.isAnimating) return;
+    final total = widget.items.length;
+    if (total == 0) return;
+    if (widget.doneCount < total) return;
+    Future<void>.delayed(
+      const Duration(seconds: kGenerationWaitFaceScanHoldSeconds),
+      () {
+        if (!mounted || _collapsed) return;
+        _fadeController.forward().whenComplete(() {
+          if (mounted) setState(() => _collapsed = true);
+        });
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_collapsed || widget.items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return FadeTransition(
+      opacity: Tween<double>(begin: 1, end: 0).animate(_fade),
+      child: SizeTransition(
+        axisAlignment: -1,
+        sizeFactor: Tween<double>(begin: 1, end: 0).animate(_fade),
+        child: _GenerationWaitChecklistCard(
+          title: 'Likeness',
+          items: widget.items,
+          doneCount: widget.doneCount,
+        ),
+      ),
     );
   }
 }
@@ -1781,8 +1825,7 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
               ),
               if (showFaceScan) ...[
                 const SizedBox(height: 10),
-                _GenerationWaitChecklistCard(
-                  title: 'Likeness',
+                _GenerationWaitFaceScanChecklist(
                   items: kGenerationWaitFaceScanLines,
                   doneCount: faceCount,
                 ),

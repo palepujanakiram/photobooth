@@ -134,6 +134,23 @@ bool generationWaitShowFaceScanChecklist(
   return generationWaitActIndex(vm, presentation) <= 1;
 }
 
+/// One kiosk subtitle: live commentary when available, otherwise the act headline.
+String generationWaitKioskStatusLine(
+  PhotoGenerateViewModel vm,
+  GenerationWaitPresentation presentation, {
+  required bool commentaryEnabled,
+}) {
+  final commentary = generationWaitCommentaryLine(
+    vm,
+    commentaryEnabled: commentaryEnabled,
+  );
+  if (commentary != null && commentary.isNotEmpty) return commentary;
+  return generationWaitActHeadline(vm, presentation);
+}
+
+/// Seconds to keep the likeness checklist visible after every item is checked.
+const int kGenerationWaitFaceScanHoldSeconds = 2;
+
 /// Short single-line labels for the six-step ribbon on narrow kiosk screens.
 String generationWaitRewardStepShortLabel(String fullLabel) {
   return switch (fullLabel) {

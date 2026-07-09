@@ -102,4 +102,40 @@ void main() {
       );
     });
   });
+
+  group('generationWaitKioskStatusLine', () {
+    test('falls back to act headline when commentary is empty', () {
+      final vm = PhotoGenerateViewModel();
+      vm.initialize(photo, theme);
+      final presentation = resolveGenerationWaitPresentation(
+        vm,
+        commentaryEnabled: true,
+      );
+      expect(
+        generationWaitKioskStatusLine(
+          vm,
+          presentation,
+          commentaryEnabled: true,
+        ),
+        generationWaitActHeadline(vm, presentation),
+      );
+    });
+
+    test('uses commentary helper when enabled', () {
+      final vm = PhotoGenerateViewModel();
+      vm.initialize(photo, theme);
+      final presentation = resolveGenerationWaitPresentation(
+        vm,
+        commentaryEnabled: false,
+      );
+      expect(
+        generationWaitKioskStatusLine(
+          vm,
+          presentation,
+          commentaryEnabled: false,
+        ),
+        generationWaitActHeadline(vm, presentation),
+      );
+    });
+  });
 }
