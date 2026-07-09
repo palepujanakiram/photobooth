@@ -158,7 +158,7 @@ class _PhotoGenerateProgressScreenState
     }
 
     final size = MediaQuery.sizeOf(context);
-    final topInset = MediaQuery.paddingOf(context).top + kToolbarHeight + 6;
+    final topInset = MediaQuery.paddingOf(context).top + kToolbarHeight;
     final cardW = size.width;
     final cardH = math.max(360.0, size.height - topInset);
 
@@ -182,8 +182,7 @@ class _PhotoGenerateProgressScreenState
                     children: [
                       SizedBox(
                         height: MediaQuery.paddingOf(context).top +
-                            kToolbarHeight +
-                            6,
+                            kToolbarHeight,
                       ),
                       Expanded(
                         child: GenerationWaitBody(

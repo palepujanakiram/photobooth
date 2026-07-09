@@ -5,10 +5,10 @@ enum PrintOrientation {
   portrait,
   landscape;
 
-  /// Solo → portrait; couples and groups → landscape.
+  /// Solo and couples → portrait; groups of 3+ → landscape (matches server framing).
   static PrintOrientation fromPersonCount(int? personCount) {
     final count = personCount != null && personCount > 0 ? personCount : 1;
-    return count <= 1 ? PrintOrientation.portrait : PrintOrientation.landscape;
+    return count <= 2 ? PrintOrientation.portrait : PrintOrientation.landscape;
   }
 
   static PrintOrientation? tryParse(String? raw) {

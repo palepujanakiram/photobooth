@@ -1125,6 +1125,8 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         _errorMessage = AppStrings.sessionPhotoSyncNoSession;
         return false;
       }
+      await _syncPrintOrientationToServer();
+
       _updateProgress('Syncing photo...');
       final photoSync = await ensureSessionPhotoOnServer(
         sessionId: sessionId,

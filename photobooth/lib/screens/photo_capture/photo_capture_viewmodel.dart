@@ -57,14 +57,6 @@ class CaptureViewModel extends ChangeNotifier {
     ).isNotEmpty;
   }
 
-  @visibleForTesting
-  static void resetWebLivePreviewKickstartForTest() {
-    _webLivePreviewKickstartDone = false;
-  }
-
-  static bool _webLivePreviewKickstartDone = false;
-  int _webLivePreviewRecoveryGeneration = 0;
-
   /// True when POSE should prefer the enumerated CameraX path over UVC probing.
   bool get preferEnumeratedCameraPath {
     final cached = _cachedAvailableCameras;
@@ -1358,39 +1350,6 @@ class CaptureViewModel extends ChangeNotifier {
         AppLogger.error('finishCameraSetup failed', error: e, stackTrace: st);
       }),
     );
-    if (kIsWeb) {
-      _previewNonce++;
-      notifyListeners();
-      unawaited(_ensureWebLivePreviewPainted(camera));
-    }
-  }
-
-  /// Reopen once per browser session — camera_web often paints only after dispose/reopen.
-  Future<void> _ensureWebLivePreviewPainted(CameraDescription camera) async {
-    if (!kIsWeb || _disposed || _webLivePreviewKickstartDone) return;
-    final generation = ++_webLivePreviewRecoveryGeneration;
-    await delayBeforeCameraReopen();
-    if (_disposed || generation != _webLivePreviewRecoveryGeneration) return;
-    if (_capturedPhoto != null) return;
-
-    try {
-      AppLogger.debug('Web live preview warm-up: reopening camera');
-      _webLivePreviewKickstartDone = true;
-      _previewNonce++;
-      _cameraGeneration++;
-      notifyListeners();
-      await _hardResetCameraController();
-      await delayBeforeCameraReopen();
-      await initializeCamera(camera);
-      _previewNonce++;
-      notifyListeners();
-    } catch (e, st) {
-      AppLogger.error(
-        'Web live preview recovery failed',
-        error: e,
-        stackTrace: st,
-      );
-    }
   }
 
   Future<void> _handleCameraInitializationError(

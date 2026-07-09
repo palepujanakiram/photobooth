@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/photo_generate/photo_generate_view_widgets.dart';
+import 'package:photobooth/screens/photo_generate/photo_generate_behold_aspect.dart';
 import 'package:photobooth/screens/photo_generate/photo_generate_viewmodel.dart';
 import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/constants.dart';
@@ -88,6 +89,36 @@ void main() {
       expect(
         size.height,
         336 / AppConstants.kBeholdSingleResultDefaultAspectRatio,
+      );
+    });
+
+    testWidgets('landscape print shrinks to maxHeight when slot is short', (
+      tester,
+    ) async {
+      final vm = PhotoGenerateViewModel();
+      vm.setPrintOrientation(PrintOrientation.landscape);
+
+      late ({double width, double height}) size;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              size = computeBeholdSingleResultHeroCardSize(
+                context,
+                viewModel: vm,
+                maxWidth: 336,
+                maxHeight: 150,
+              );
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+
+      expect(size.height, 150);
+      expect(
+        size.width,
+        150 * AppConstants.kBeholdSingleResultDefaultAspectRatio,
       );
     });
   });

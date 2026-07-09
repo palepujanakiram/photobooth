@@ -2,43 +2,14 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../utils/app_strings.dart';
+import 'photo_generate_behold_aspect.dart';
 
 /// Purple accent used for the ready-state hero glow and primary CTA.
 const Color kBeholdReadyAccent = Color(0xFF8B5CF6);
 
 const Color kBeholdReadyAccentDeep = Color(0xFF6D28D9);
 
-/// Green pill for the final pipeline step on the result screen.
-class BeholdReadyStepBadge extends StatelessWidget {
-  const BeholdReadyStepBadge({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFF22C55E).withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFF22C55E).withValues(alpha: 0.55),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-        child: Text(
-          AppStrings.beholdReadyStepLabel,
-          style: TextStyle(
-            color: const Color(0xFF86EFAC).withValues(alpha: 0.95),
-            fontWeight: FontWeight.w700,
-            fontSize: 11,
-            letterSpacing: 0.3,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// App bar chrome on BEHOLD ready: headline under the title, step badge below.
+/// App bar chrome on BEHOLD ready: headline under the title.
 class BeholdReadyCompactAppBarChrome extends StatelessWidget {
   const BeholdReadyCompactAppBarChrome({super.key});
 
@@ -70,8 +41,6 @@ class BeholdReadyCompactAppBarChrome extends StatelessWidget {
               height: 1.25,
             ),
           ),
-          SizedBox(height: 8),
-          BeholdReadyStepBadge(),
         ],
       ),
     );
@@ -237,8 +206,6 @@ class BeholdReadyAppBarChrome extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          BeholdReadyStepBadge(),
-          SizedBox(height: 8),
           Text(
             AppStrings.beholdReadyTitle,
             textAlign: TextAlign.center,
@@ -277,8 +244,6 @@ class BeholdReadySuccessHeader extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const BeholdReadyStepBadge(),
-          const SizedBox(height: 12),
           const Text(
             AppStrings.beholdReadyTitle,
             textAlign: TextAlign.center,
@@ -415,6 +380,46 @@ class BeholdReadyContinueButton extends StatelessWidget {
     ),
     );
   }
+}
+
+/// Centers portrait art on a landscape 6×4 print-preview card with side mats.
+Widget buildBeholdLandscapePrintMatHero({
+  required double cardWidth,
+  required double cardHeight,
+  required double contentAspect,
+  required Widget Function(double photoWidth, double photoHeight) buildPhoto,
+}) {
+  final photo = beholdLandscapePrintMatPhotoSize(
+    cardWidth: cardWidth,
+    cardHeight: cardHeight,
+    contentAspect: contentAspect,
+  );
+  return ColoredBox(
+    color: Colors.black,
+    child: Center(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.white24),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black54,
+              blurRadius: 10,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(5),
+          child: SizedBox(
+            width: photo.width,
+            height: photo.height,
+            child: buildPhoto(photo.width, photo.height),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 BoxDecoration beholdReadyHeroFrameDecoration({

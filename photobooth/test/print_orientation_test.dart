@@ -14,9 +14,16 @@ void main() {
     );
   });
 
-  test('fromPersonCount couple or group is landscape', () {
+  test('fromPersonCount couple stays portrait', () {
     expect(
       PrintOrientation.fromPersonCount(2),
+      PrintOrientation.portrait,
+    );
+  });
+
+  test('fromPersonCount group of 3+ is landscape', () {
+    expect(
+      PrintOrientation.fromPersonCount(3),
       PrintOrientation.landscape,
     );
     expect(

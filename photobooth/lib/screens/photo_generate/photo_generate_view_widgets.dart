@@ -220,24 +220,6 @@ double beholdPortraitHeightCapFraction({
   return AppConstants.kCapturePreviewCardMaxHeightFractionPortrait;
 }
 
-/// Fits [aspect] inside a box without exceeding [maxWidth] or [maxHeight].
-({double width, double height}) fitBeholdHeroAspectInBox({
-  required double maxWidth,
-  required double maxHeight,
-  required double aspect,
-}) {
-  late double cardW;
-  late double cardH;
-  if (maxWidth / maxHeight > aspect) {
-    cardH = maxHeight;
-    cardW = cardH * aspect;
-  } else {
-    cardW = maxWidth;
-    cardH = cardW / aspect;
-  }
-  return (width: cardW, height: cardH);
-}
-
 /// Sizes the BEHOLD hero like CAPTURE: fill the available slot, then clamp to screen fractions.
 ({double width, double height}) computeBeholdHeroCardSize(
   BuildContext context, {
@@ -295,8 +277,11 @@ double beholdPortraitHeightCapFraction({
     maxHeight: maxHeight,
   );
   if (viewModel.printOrientation == PrintOrientation.landscape) {
-    final width = maxWidth;
-    return (width: width, height: width / aspect);
+    return fitBeholdHeroAspectInBox(
+      maxWidth: maxWidth,
+      maxHeight: maxHeight,
+      aspect: aspect,
+    );
   }
   return computeBeholdHeroCardSize(
     context,
@@ -663,9 +648,15 @@ Widget buildBeholdReadyScreenLayout({
               ),
             )
           else
-            _buildBeholdReadyHeroSlot(
-              input: input,
-              viewModel: vm,
+            Flexible(
+              fit: FlexFit.loose,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: _buildBeholdReadyHeroSlot(
+                  input: input,
+                  viewModel: vm,
+                ),
+              ),
             ),
           Center(
             child: ConstrainedBox(

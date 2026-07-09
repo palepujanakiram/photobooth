@@ -131,4 +131,4 @@ class KioskAppBarSubtitle extends StatelessWidget {
 const double kKioskAppBarSubtitleHeight = 28;
 
 /// Preferred height when app bar shows ready-state chrome (headline + badge).
-const double kKioskAppBarReadyChromeHeight = 78;
+const double kKioskAppBarReadyChromeHeight = 54;

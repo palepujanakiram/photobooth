@@ -718,6 +718,38 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen>
     bool showRemoveButton = false,
     bool spotlightReadyLayout = false,
   }) {
+    final contentAspect = beholdHeroContentAspectRatio(viewModel);
+    final useLandscapeMat = beholdUsesLandscapePrintMat(
+      printOrientation: viewModel.printOrientation,
+      contentAspect: contentAspect,
+    );
+    final imageFit = beholdSingleResultHeroImageFit(viewModel.printOrientation);
+
+    Widget buildHeroImage(double width, double height) {
+      return _buildGeneratedHeroNetworkImage(
+        context,
+        imageUrl: image.imageUrl,
+        width: width,
+        height: height,
+        fit: imageFit,
+      );
+    }
+
+    final Widget heroImage = useLandscapeMat
+        ? buildBeholdLandscapePrintMatHero(
+            cardWidth: cardWidth,
+            cardHeight: cardHeight,
+            contentAspect: contentAspect,
+            buildPhoto: buildHeroImage,
+          )
+        : Stack(
+            fit: StackFit.expand,
+            children: [
+              const ColoredBox(color: Colors.black),
+              buildHeroImage(cardWidth, cardHeight),
+            ],
+          );
+
     return SizedBox(
       width: cardWidth,
       height: cardHeight,
@@ -733,16 +765,7 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen>
             child: Stack(
               fit: StackFit.expand,
               children: [
-                const ColoredBox(color: Colors.black),
-                _buildGeneratedHeroNetworkImage(
-                  context,
-                  imageUrl: image.imageUrl,
-                  width: cardWidth,
-                  height: cardHeight,
-                  fit: beholdSingleResultHeroImageFit(
-                    viewModel.printOrientation,
-                  ),
-                ),
+                heroImage,
                 if (showRemoveButton)
                   Positioned(
                     top: 6,

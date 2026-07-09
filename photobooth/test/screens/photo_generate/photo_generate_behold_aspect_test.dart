@@ -51,6 +51,41 @@ void main() {
     );
   });
 
+  test('beholdUsesLandscapePrintMat for portrait art on landscape print', () {
+    expect(
+      beholdUsesLandscapePrintMat(
+        printOrientation: PrintOrientation.landscape,
+        contentAspect: 2 / 3,
+      ),
+      isTrue,
+    );
+    expect(
+      beholdUsesLandscapePrintMat(
+        printOrientation: PrintOrientation.portrait,
+        contentAspect: 2 / 3,
+      ),
+      isFalse,
+    );
+    expect(
+      beholdUsesLandscapePrintMat(
+        printOrientation: PrintOrientation.landscape,
+        contentAspect: 3 / 2,
+      ),
+      isFalse,
+    );
+  });
+
+  test('beholdLandscapePrintMatPhotoSize keeps portrait art inside sheet', () {
+    final photo = beholdLandscapePrintMatPhotoSize(
+      cardWidth: 360,
+      cardHeight: 240,
+      contentAspect: 2 / 3,
+    );
+    expect(photo.height, lessThanOrEqualTo(240));
+    expect(photo.width, lessThan(360));
+    expect(photo.width / photo.height, closeTo(2 / 3, 0.01));
+  });
+
   testWidgets('beholdSingleResultCardAspectRatio follows print orientation', (
     tester,
   ) async {

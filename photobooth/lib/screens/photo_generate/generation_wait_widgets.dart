@@ -22,86 +22,18 @@ import 'generation_wait_story_helpers.dart';
 import 'generation_wait_phase2_widgets.dart';
 import 'generation_wait_theme_reel.dart';
 import 'generation_wait_eta_widgets.dart';
+import 'behold_result_ready_widgets.dart';
 import 'photo_generate_viewmodel.dart';
 import 'post_reveal_polishing_overlay.dart';
-
-class _GenerationWaitTopBar extends StatelessWidget {
-  const _GenerationWaitTopBar({required this.boothLabel});
-
-  final String boothLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          constraints: const BoxConstraints(maxWidth: 180, maxHeight: 36),
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
-          ),
-          child: Image.asset(
-            AppConstants.kBrandLogoAsset,
-            fit: BoxFit.contain,
-          ),
-        ),
-        const Spacer(),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF57D999),
-                  borderRadius: BorderRadius.circular(99),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x6657D999),
-                      blurRadius: 10,
-                      spreadRadius: 0,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                boothLabel,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.65),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _GenerationWaitKioskHeader extends StatelessWidget {
   const _GenerationWaitKioskHeader({
     required this.vm,
     required this.presentation,
-    required this.eta,
-    required this.themeName,
   });
 
   final PhotoGenerateViewModel vm;
   final GenerationWaitPresentation presentation;
-  final GenerationEtaSnapshot eta;
-  final String themeName;
 
   @override
   Widget build(BuildContext context) {
@@ -109,29 +41,22 @@ class _GenerationWaitKioskHeader extends StatelessWidget {
 
     return Column(
       children: [
-        const _GenerationWaitTopBar(boothLabel: 'Live'),
-        const SizedBox(height: 10),
         Text(
           headline,
           textAlign: TextAlign.center,
-          maxLines: 2,
+          maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w700,
-            fontSize: 20,
+            fontSize: 17,
             height: 1.15,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 2),
         _GenerationWaitStatusLine(
           vm: vm,
           presentation: presentation,
-        ),
-        const SizedBox(height: 10),
-        _GenerationWaitTimerRow(
-          eta: eta,
-          themeName: themeName,
         ),
       ],
     );
@@ -176,8 +101,8 @@ class _GenerationWaitStatusLine extends StatelessWidget {
   }
 }
 
-class _GenerationWaitTimerRow extends StatelessWidget {
-  const _GenerationWaitTimerRow({
+class _GenerationWaitEtaStrip extends StatelessWidget {
+  const _GenerationWaitEtaStrip({
     required this.eta,
     required this.themeName,
   });
@@ -190,79 +115,72 @@ class _GenerationWaitTimerRow extends StatelessWidget {
     final pct = (eta.progressFraction * 100).round().clamp(0, 99);
     final remaining = formatGenerationEtaDuration(eta.estimatedRemainingSeconds);
     final contextLine = eta.contextLine.trim();
+    final theme = themeName.trim();
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF141A2C).withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-      ),
-      child: Row(
-        children: [
-          _GenerationWaitEtaRing(
+    return Row(
+      children: [
+        SizedBox(
+          width: 48,
+          height: 48,
+          child: _GenerationWaitEtaRing(
             progressFraction: eta.progressFraction,
             remainingLabel: remaining,
             percentLabel: '$pct%',
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                eta.primaryLine,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.88),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (contextLine.isNotEmpty)
                 Text(
-                  eta.primaryLine,
-                  maxLines: 2,
+                  contextLine,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.92),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    height: 1.2,
+                    color: Colors.white.withValues(alpha: 0.52),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                if (contextLine.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    contextLine,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.58),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-                if (themeName.trim().isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE0A94D).withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(99),
-                      border: Border.all(
-                        color: const Color(0xFFE0A94D).withValues(alpha: 0.30),
-                      ),
-                    ),
-                    child: Text(
-                      themeName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFFE0A94D),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+            ],
+          ),
+        ),
+        if (theme.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE0A94D).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(99),
+              border: Border.all(
+                color: const Color(0xFFE0A94D).withValues(alpha: 0.28),
+              ),
+            ),
+            child: Text(
+              theme,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFFE0A94D),
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 }
@@ -281,8 +199,8 @@ class _GenerationWaitEtaRing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 72,
-      height: 72,
+      width: 48,
+      height: 48,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -294,7 +212,7 @@ class _GenerationWaitEtaRing extends StatelessWidget {
             ).createShader(rect),
             child: CircularProgressIndicator(
               value: progressFraction.clamp(0.0, 1.0),
-              strokeWidth: 5,
+              strokeWidth: 4,
               backgroundColor: Colors.white.withValues(alpha: 0.10),
               valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
               strokeCap: StrokeCap.round,
@@ -307,17 +225,16 @@ class _GenerationWaitEtaRing extends StatelessWidget {
                 remainingLabel,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 14,
+                  fontSize: 11,
                   fontWeight: FontWeight.w800,
                   height: 1.05,
                 ),
               ),
-              const SizedBox(height: 2),
               Text(
                 percentLabel,
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.55),
-                  fontSize: 10,
+                  fontSize: 8.5,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -809,90 +726,6 @@ class _GenerationWaitChecklistCard extends StatelessWidget {
               fontWeight: done ? FontWeight.w700 : FontWeight.w600,
               height: 1.1,
             ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _GenerationWaitTipCard extends StatelessWidget {
-  const _GenerationWaitTipCard({required this.elapsedSeconds});
-
-  final int elapsedSeconds;
-
-  @override
-  Widget build(BuildContext context) {
-    final tip = generationWaitFactCard(elapsedSeconds);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFFE0A94D).withValues(alpha: 0.12),
-            const Color(0xFF5FD3E8).withValues(alpha: 0.08),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '\u{1F4A1}',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.white.withValues(alpha: 0.85),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              '${tip.title}: ${tip.body}',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.75),
-                fontSize: 12,
-                height: 1.35,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GenerationWaitDisclaimerBlock extends StatelessWidget {
-  const _GenerationWaitDisclaimerBlock();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          kGenerationWaitFactCards.first.body,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.55),
-            fontSize: 11.5,
-            height: 1.45,
-            fontStyle: FontStyle.italic,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '\u{1F512} Your photos are secure and private',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.50),
-            fontSize: 11.5,
-            height: 1.35,
-            fontWeight: FontWeight.w600,
           ),
         ),
       ],
@@ -1913,54 +1746,53 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
   }) {
     final eta = resolveGenerationEta(vm);
     final beats = resolveGenerationWaitRewardChecklist(vm, presentation);
-    final activeBeat = beats.cast<GenerationWaitRewardBeat?>().firstWhere(
-          (b) => b?.state == GenerationWaitBeatState.active,
-          orElse: () => null,
-        );
     final showFaceScan = generationWaitShowFaceScanChecklist(vm, presentation);
     final faceCount = generationWaitFaceScanCompletedCount(vm.elapsedSeconds);
-    final totalFace = kGenerationWaitFaceScanLines.length;
     final themeName = vm.selectedTheme?.name ?? '';
 
     final maxW = math.min(widget.cardWidth, 520.0);
 
-    return Center(
+    return Align(
+      alignment: Alignment.topCenter,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxW),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 26),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               _GenerationWaitKioskHeader(
                 vm: vm,
                 presentation: presentation,
-                eta: eta,
-                themeName: themeName,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               _GenerationWaitSixStepRibbon(beats: beats),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               _GenerationWaitComparePanels(
                 vm: vm,
                 presentation: presentation,
                 anticipation: anticipation,
                 showFacePins: showFaceScan,
               ),
-              const SizedBox(height: 12),
-              _GenerationWaitChecklistCard(
-                title: activeBeat?.label ?? 'Likeness',
-                items: showFaceScan ? kGenerationWaitFaceScanLines : const [],
-                doneCount: showFaceScan ? faceCount : totalFace,
+              const SizedBox(height: 10),
+              _GenerationWaitEtaStrip(
+                eta: eta,
+                themeName: themeName,
               ),
-              const SizedBox(height: 10),
-              _GenerationWaitTipCard(elapsedSeconds: vm.elapsedSeconds),
-              const SizedBox(height: 10),
-              const _GenerationWaitDisclaimerBlock(),
-              const SizedBox(height: 14),
+              if (showFaceScan) ...[
+                const SizedBox(height: 10),
+                _GenerationWaitChecklistCard(
+                  title: 'Likeness',
+                  items: kGenerationWaitFaceScanLines,
+                  doneCount: faceCount,
+                ),
+              ],
+              const SizedBox(height: 12),
               GenerationWaitThemePreviewReel(
                 excludeThemeId: vm.selectedTheme?.id,
               ),
+              const SizedBox(height: 8),
+              const Center(child: BeholdReadyPrivacyFooter(compact: true)),
             ],
           ),
         ),
