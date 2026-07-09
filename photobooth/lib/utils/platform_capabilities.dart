@@ -33,6 +33,9 @@ bool get isDesktopPlatform {
 /// Live [CameraController] preview (mobile native + Flutter web camera plugin).
 bool get supportsLiveCameraPreview => isMobileNativePlatform || kIsWeb;
 
+/// Terms idle-time camera enumeration (native permission + web getUserMedia warm-up).
+bool get supportsTermsCameraPriming => isMobileNativePlatform || kIsWeb;
+
 /// Desktop uses [ImagePicker] (camera or gallery) instead of the `camera` plugin.
 bool get usesDesktopPhotoPicker => isDesktopPlatform;
 

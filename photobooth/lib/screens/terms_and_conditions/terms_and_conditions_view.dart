@@ -10,6 +10,7 @@ import 'terms_layout_metrics.dart';
 import '../../utils/constants.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/camera_permission_helper.dart';
+import '../../utils/platform_capabilities.dart';
 import '../../utils/device_classifier.dart';
 import '../../utils/kiosk_page_route.dart';
 import '../photo_capture/photo_capture_view.dart';
@@ -54,7 +55,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   void initState() {
     super.initState();
     _viewModel = TermsAndConditionsViewModel();
-    if (!isNativeMobileCameraPlatform) {
+    if (!supportsTermsCameraPriming) {
       _cameraPrimingPhase = TermsCameraPrimingPhase.skipped;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -64,7 +65,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
 
   /// Permission, enumeration, and live-camera prewarm while the guest reads terms.
   Future<void> _primeCaptureScreenOnLaunch() async {
-    if (!isNativeMobileCameraPlatform) return;
+    if (!supportsTermsCameraPriming) return;
 
     if (mounted) {
       setState(() => _cameraPrimingPhase = TermsCameraPrimingPhase.detecting);
@@ -81,7 +82,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           CaptureViewModel.prewarmLiveCamera(deviceType: deviceType),
       hasOpenableCamera: (deviceType) =>
           CaptureViewModel.hasOpenableCaptureCamera(deviceType: deviceType),
-      isCameraPlatform: isNativeMobileCameraPlatform,
+      isCameraPlatform: supportsTermsCameraPriming,
     );
 
     if (!mounted) return;
@@ -89,7 +90,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Future<void> _retryCameraPriming() async {
-    if (!isNativeMobileCameraPlatform) return;
+    if (!supportsTermsCameraPriming) return;
     setState(() => _cameraPrimingPhase = TermsCameraPrimingPhase.detecting);
     await _primeCaptureScreenOnLaunch();
   }

@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
@@ -2143,7 +2143,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 200),
+      duration: kIsWeb ? Duration.zero : const Duration(milliseconds: 200),
       switchInCurve: Curves.easeOut,
       child: KeyedSubtree(
         key: ValueKey<String>(phase),
@@ -2451,7 +2451,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
     return CameraPreview(
       controller,
-      key: ValueKey<int>(viewModel.cameraGeneration),
+      key: ValueKey<String>(
+        '${viewModel.cameraGeneration}-${viewModel.previewNonce}',
+      ),
     );
   }
 

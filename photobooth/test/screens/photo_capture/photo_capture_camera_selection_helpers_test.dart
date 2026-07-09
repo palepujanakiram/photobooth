@@ -194,6 +194,11 @@ void main() {
       expect(CaptureViewModel.hasOpenableCaptureCamera(), isFalse);
     });
 
+    test('returns true when cached front camera exists on web', () {
+      CaptureViewModel.setCachedCamerasForTest([front]);
+      expect(CaptureViewModel.hasOpenableCaptureCamera(), isTrue);
+    });
+
     test('returns true when cached external camera exists for kiosk', () {
       CaptureViewModel.setCachedCamerasForTest([external, front]);
       expect(

@@ -46,6 +46,26 @@ class CaptureViewModel extends ChangeNotifier {
   static bool get hasEnumerationCache => _cachedAvailableCameras != null;
 
   /// True when Terms preload enumerated at least one openable camera for POSE.
+  static bool hasOpenableCaptureCamera({AppDeviceType? deviceType}) {
+    final cached = _cachedAvailableCameras;
+    if (cached == null || cached.isEmpty) return false;
+    if (kIsWeb) return true;
+    return captureCamerasForDevice(
+      cameras: cached,
+      deviceType: deviceType,
+      looksLikeExternalName: looksLikeExternalCameraName,
+    ).isNotEmpty;
+  }
+
+  @visibleForTesting
+  static void resetWebLivePreviewKickstartForTest() {
+    _webLivePreviewKickstartDone = false;
+  }
+
+  static bool _webLivePreviewKickstartDone = false;
+  int _webLivePreviewRecoveryGeneration = 0;
+
+  /// True when POSE should prefer the enumerated CameraX path over UVC probing.
   bool get preferEnumeratedCameraPath {
     final cached = _cachedAvailableCameras;
     if (cached == null || cached.isEmpty) return false;
@@ -55,6 +75,7 @@ class CaptureViewModel extends ChangeNotifier {
       looksLikeExternalName: _looksLikeExternalCameraName,
     ).isNotEmpty;
   }
+
   CameraController? _cameraController;
 
   /// Set true in [dispose]. Post-await work should bail before mutating state.
@@ -79,17 +100,6 @@ class CaptureViewModel extends ChangeNotifier {
     } on Exception {
       _cachedAvailableCameras = null;
     }
-  }
-
-  /// True when Terms preload found at least one camera that POSE can open.
-  static bool hasOpenableCaptureCamera({AppDeviceType? deviceType}) {
-    final cached = _cachedAvailableCameras;
-    if (cached == null || cached.isEmpty) return false;
-    return captureCamerasForDevice(
-      cameras: cached,
-      deviceType: deviceType,
-      looksLikeExternalName: looksLikeExternalCameraName,
-    ).isNotEmpty;
   }
 
   @visibleForTesting
@@ -1148,6 +1158,9 @@ class CaptureViewModel extends ChangeNotifier {
           try {
             ctrl!.removeListener(_onCameraControllerUpdate);
             await ctrl.dispose();
+            if (kIsWeb) {
+              await delayBeforeCameraReopen();
+            }
           } catch (e, stackTrace) {
             AppLogger.debug('   ⚠️ Warning: Error disposing camera: $e');
             ErrorReportingManager.log('⚠️ Warning: Error disposing camera controller');
@@ -1345,6 +1358,39 @@ class CaptureViewModel extends ChangeNotifier {
         AppLogger.error('finishCameraSetup failed', error: e, stackTrace: st);
       }),
     );
+    if (kIsWeb) {
+      _previewNonce++;
+      notifyListeners();
+      unawaited(_ensureWebLivePreviewPainted(camera));
+    }
+  }
+
+  /// Reopen once per browser session — camera_web often paints only after dispose/reopen.
+  Future<void> _ensureWebLivePreviewPainted(CameraDescription camera) async {
+    if (!kIsWeb || _disposed || _webLivePreviewKickstartDone) return;
+    final generation = ++_webLivePreviewRecoveryGeneration;
+    await delayBeforeCameraReopen();
+    if (_disposed || generation != _webLivePreviewRecoveryGeneration) return;
+    if (_capturedPhoto != null) return;
+
+    try {
+      AppLogger.debug('Web live preview warm-up: reopening camera');
+      _webLivePreviewKickstartDone = true;
+      _previewNonce++;
+      _cameraGeneration++;
+      notifyListeners();
+      await _hardResetCameraController();
+      await delayBeforeCameraReopen();
+      await initializeCamera(camera);
+      _previewNonce++;
+      notifyListeners();
+    } catch (e, st) {
+      AppLogger.error(
+        'Web live preview recovery failed',
+        error: e,
+        stackTrace: st,
+      );
+    }
   }
 
   Future<void> _handleCameraInitializationError(
