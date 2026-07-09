@@ -22,6 +22,18 @@ void main() {
     capturedAt: DateTime.utc(2026, 1, 2),
   );
 
+  group('generationWaitRewardStepShortLabel', () {
+    test('maps long labels to compact ribbon copy', () {
+      expect(generationWaitRewardStepShortLabel('Likeness'), 'Face');
+      expect(generationWaitRewardStepShortLabel('Lighting'), 'Light');
+      expect(generationWaitRewardStepShortLabel('Costume'), 'Look');
+      expect(generationWaitRewardStepShortLabel('Background'), 'Scene');
+      expect(generationWaitRewardStepShortLabel('Effects'), 'FX');
+      expect(generationWaitRewardStepShortLabel('Final polish'), 'Polish');
+      expect(generationWaitRewardStepShortLabel('Custom'), 'Custom');
+    });
+  });
+
   group('generationWaitActIndex', () {
     test('starts in studying act', () {
       final vm = PhotoGenerateViewModel();

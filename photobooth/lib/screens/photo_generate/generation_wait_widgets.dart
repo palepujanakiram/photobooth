@@ -35,11 +35,11 @@ class _GenerationWaitTopBar extends StatelessWidget {
     return Row(
       children: [
         Container(
-          constraints: const BoxConstraints(maxWidth: 220, maxHeight: 44),
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+          constraints: const BoxConstraints(maxWidth: 180, maxHeight: 36),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
           ),
           child: Image.asset(
@@ -49,7 +49,7 @@ class _GenerationWaitTopBar extends StatelessWidget {
         ),
         const Spacer(),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(99),
@@ -90,20 +90,50 @@ class _GenerationWaitTopBar extends StatelessWidget {
   }
 }
 
-class _GenerationWaitCreateHeadline extends StatelessWidget {
-  const _GenerationWaitCreateHeadline();
+class _GenerationWaitKioskHeader extends StatelessWidget {
+  const _GenerationWaitKioskHeader({
+    required this.vm,
+    required this.presentation,
+    required this.eta,
+    required this.themeName,
+  });
+
+  final PhotoGenerateViewModel vm;
+  final GenerationWaitPresentation presentation;
+  final GenerationEtaSnapshot eta;
+  final String themeName;
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      'Preparing your AI look',
-      textAlign: TextAlign.center,
-      style: const TextStyle(
-        color: Colors.white,
-        fontWeight: FontWeight.w700,
-        fontSize: 22,
-        height: 1.15,
-      ),
+    final headline = generationWaitActHeadline(vm, presentation);
+
+    return Column(
+      children: [
+        const _GenerationWaitTopBar(boothLabel: 'Live'),
+        const SizedBox(height: 10),
+        Text(
+          headline,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 20,
+            height: 1.15,
+          ),
+        ),
+        const SizedBox(height: 4),
+        _GenerationWaitStatusLine(
+          vm: vm,
+          presentation: presentation,
+        ),
+        const SizedBox(height: 10),
+        _GenerationWaitTimerRow(
+          eta: eta,
+          themeName: themeName,
+        ),
+      ],
     );
   }
 }
@@ -159,14 +189,13 @@ class _GenerationWaitTimerRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final pct = (eta.progressFraction * 100).round().clamp(0, 99);
     final remaining = formatGenerationEtaDuration(eta.estimatedRemainingSeconds);
-    final aboutTotal = formatGenerationEtaDuration(eta.estimatedTotalSeconds);
-    final todayAvg = formatGenerationEtaDuration(eta.estimatedTotalSeconds);
+    final contextLine = eta.contextLine.trim();
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
         color: const Color(0xFF141A2C).withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
       ),
       child: Row(
@@ -176,18 +205,35 @@ class _GenerationWaitTimerRow extends StatelessWidget {
             remainingLabel: remaining,
             percentLabel: '$pct%',
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _metaRow(
-                  AppStrings.generationWaitEtaAboutTotal(aboutTotal),
+                Text(
+                  eta.primaryLine,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.92),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                  ),
                 ),
-                const SizedBox(height: 6),
-                _metaRow(
-                  AppStrings.generationWaitEtaTodayAvg(todayAvg),
-                ),
+                if (contextLine.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    contextLine,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.58),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
                 if (themeName.trim().isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Container(
@@ -219,19 +265,6 @@ class _GenerationWaitTimerRow extends StatelessWidget {
       ),
     );
   }
-
-  Widget _metaRow(String text) {
-    return Text(
-      text,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        color: Colors.white.withValues(alpha: 0.60),
-        fontSize: 11.5,
-        fontWeight: FontWeight.w600,
-      ),
-    );
-  }
 }
 
 class _GenerationWaitEtaRing extends StatelessWidget {
@@ -248,8 +281,8 @@ class _GenerationWaitEtaRing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 84,
-      height: 84,
+      width: 72,
+      height: 72,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -261,7 +294,7 @@ class _GenerationWaitEtaRing extends StatelessWidget {
             ).createShader(rect),
             child: CircularProgressIndicator(
               value: progressFraction.clamp(0.0, 1.0),
-              strokeWidth: 6,
+              strokeWidth: 5,
               backgroundColor: Colors.white.withValues(alpha: 0.10),
               valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
               strokeCap: StrokeCap.round,
@@ -309,7 +342,7 @@ class _GenerationWaitSixStepRibbon extends StatelessWidget {
           Expanded(
             child: _GenerationWaitStepChip(beat: beats[i], index: i + 1),
           ),
-          if (i != beats.length - 1) const SizedBox(width: 8),
+          if (i != beats.length - 1) const SizedBox(width: 4),
         ],
       ],
     );
@@ -340,20 +373,21 @@ class _GenerationWaitStepChip extends StatelessWidget {
         : isActive
             ? const Color(0xFF5FD3E8)
             : Colors.white.withValues(alpha: 0.25);
+    final shortLabel = generationWaitRewardStepShortLabel(beat.label);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: border),
       ),
-      child: Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 22,
-            height: 22,
+            width: 24,
+            height: 24,
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: isDone ? 0.0 : 0.14),
               borderRadius: BorderRadius.circular(99),
@@ -369,17 +403,17 @@ class _GenerationWaitStepChip extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          Expanded(
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
             child: Text(
-              beat.label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+              shortLabel,
+              maxLines: 1,
               style: TextStyle(
                 color: labelColor,
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
-                height: 1.15,
+                height: 1.1,
               ),
             ),
           ),
@@ -1894,27 +1928,17 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxW),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 26),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 26),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(height: 6),
-              _GenerationWaitTopBar(
-                boothLabel: 'Live',
-              ),
-              const SizedBox(height: 16),
-              const _GenerationWaitCreateHeadline(),
-              const SizedBox(height: 6),
-              _GenerationWaitStatusLine(
+              _GenerationWaitKioskHeader(
                 vm: vm,
                 presentation: presentation,
-              ),
-              const SizedBox(height: 14),
-              _GenerationWaitTimerRow(
                 eta: eta,
                 themeName: themeName,
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               _GenerationWaitSixStepRibbon(beats: beats),
               const SizedBox(height: 14),
               _GenerationWaitComparePanels(

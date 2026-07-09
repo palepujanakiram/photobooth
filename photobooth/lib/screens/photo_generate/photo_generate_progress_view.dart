@@ -10,11 +10,8 @@ import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/route_args.dart';
 import '../../views/widgets/ambient_nebula_overlay.dart';
-import '../../views/widgets/kiosk_vertical_screen_layout.dart';
 import '../../views/widgets/theme_background.dart';
 import 'generation_reveal_overlay.dart';
-import 'generation_wait_helpers.dart';
-import 'generation_wait_story_helpers.dart';
 import 'generation_wait_widgets.dart';
 import 'photo_generate_viewmodel.dart';
 
@@ -132,12 +129,6 @@ class _PhotoGenerateProgressScreenState
   }
 
   PreferredSizeWidget _buildAppBar(PhotoGenerateViewModel viewModel) {
-    final presentation = resolveGenerationWaitPresentation(
-      viewModel,
-      commentaryEnabled: viewModel.generationCommentaryEnabledForWait,
-    );
-    final headline = generationWaitActHeadline(viewModel, presentation);
-
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -154,13 +145,6 @@ class _PhotoGenerateProgressScreenState
         ),
       ),
       automaticallyImplyLeading: false,
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(kKioskAppBarSubtitleHeight + 18),
-        child: KioskAppBarSubtitle(
-          text: headline,
-          secondary: resolveGenerationEta(viewModel).contextLine,
-        ),
-      ),
     );
   }
 
@@ -174,10 +158,7 @@ class _PhotoGenerateProgressScreenState
     }
 
     final size = MediaQuery.sizeOf(context);
-    final topInset = MediaQuery.paddingOf(context).top +
-        kToolbarHeight +
-        kKioskAppBarSubtitleHeight +
-        18;
+    final topInset = MediaQuery.paddingOf(context).top + kToolbarHeight + 6;
     final cardW = size.width;
     final cardH = math.max(360.0, size.height - topInset);
 
@@ -202,8 +183,7 @@ class _PhotoGenerateProgressScreenState
                       SizedBox(
                         height: MediaQuery.paddingOf(context).top +
                             kToolbarHeight +
-                            kKioskAppBarSubtitleHeight +
-                            18,
+                            6,
                       ),
                       Expanded(
                         child: GenerationWaitBody(

@@ -134,6 +134,19 @@ bool generationWaitShowFaceScanChecklist(
   return generationWaitActIndex(vm, presentation) <= 1;
 }
 
+/// Short single-line labels for the six-step ribbon on narrow kiosk screens.
+String generationWaitRewardStepShortLabel(String fullLabel) {
+  return switch (fullLabel) {
+    'Likeness' => 'Face',
+    'Lighting' => 'Light',
+    'Costume' => 'Look',
+    'Background' => 'Scene',
+    'Effects' => 'FX',
+    'Final polish' => 'Polish',
+    _ => fullLabel,
+  };
+}
+
 List<GenerationWaitRewardBeat> resolveGenerationWaitRewardChecklist(
   PhotoGenerateViewModel vm,
   GenerationWaitPresentation presentation,
