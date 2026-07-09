@@ -278,6 +278,35 @@ double beholdPortraitHeightCapFraction({
   );
 }
 
+/// Sizes the single-result BEHOLD hero for the current print orientation.
+///
+/// Portrait print cards grow to fill the available slot height. Landscape cards
+/// are sized from width so a wide 6×4 preview does not float in a tall slot.
+({double width, double height}) computeBeholdSingleResultHeroCardSize(
+  BuildContext context, {
+  required PhotoGenerateViewModel viewModel,
+  required double maxWidth,
+  required double maxHeight,
+}) {
+  final aspect = beholdSingleResultCardAspectRatio(
+    context,
+    viewModel,
+    maxWidth: maxWidth,
+    maxHeight: maxHeight,
+  );
+  if (viewModel.printOrientation == PrintOrientation.landscape) {
+    final width = maxWidth;
+    return (width: width, height: width / aspect);
+  }
+  return computeBeholdHeroCardSize(
+    context,
+    maxWidth: maxWidth,
+    maxHeight: maxHeight,
+    aspect: aspect,
+    fillAvailableSlot: true,
+  );
+}
+
 /// Builds the single-result BEHOLD hero card at explicit dimensions.
 Widget buildBeholdReadyHeroWidget({
   required BuildContext context,
@@ -626,41 +655,18 @@ Widget buildBeholdReadyScreenLayout({
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, slot) {
-                final maxW = math.min(
-                  720.0,
-                  slot.maxWidth,
-                );
-                final aspect = beholdSingleResultCardAspectRatio(
-                  context,
-                  vm,
-                  maxWidth: maxW,
-                  maxHeight: slot.maxHeight,
-                );
-                final heroSize = computeBeholdHeroCardSize(
-                  context,
-                  maxWidth: maxW,
-                  maxHeight: slot.maxHeight,
-                  aspect: aspect,
-                  fillAvailableSlot: true,
-                );
-                return Center(
-                  child: SizedBox(
-                    width: heroSize.width,
-                    height: heroSize.height,
-                    child: input.buildBeholdReadyHero(
-                      context,
-                      vm,
-                      width: heroSize.width,
-                      height: heroSize.height,
-                    ),
-                  ),
-                );
-              },
+          if (vm.printOrientation == PrintOrientation.portrait)
+            Expanded(
+              child: _buildBeholdReadyHeroSlot(
+                input: input,
+                viewModel: vm,
+              ),
+            )
+          else
+            _buildBeholdReadyHeroSlot(
+              input: input,
+              viewModel: vm,
             ),
-          ),
           Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(
@@ -698,6 +704,43 @@ Widget buildBeholdReadyScreenLayout({
         ],
       ),
     ),
+  );
+}
+
+Widget _buildBeholdReadyHeroSlot({
+  required PhotoGenerateMainContentInput input,
+  required PhotoGenerateViewModel viewModel,
+}) {
+  final isLandscapePrint =
+      viewModel.printOrientation == PrintOrientation.landscape;
+
+  return LayoutBuilder(
+    builder: (context, slot) {
+      final maxW = math.min(720.0, slot.maxWidth);
+      final maxH = slot.maxHeight.isFinite && slot.maxHeight > 0
+          ? slot.maxHeight
+          : MediaQuery.sizeOf(context).height * 0.5;
+      final heroSize = computeBeholdSingleResultHeroCardSize(
+        context,
+        viewModel: viewModel,
+        maxWidth: maxW,
+        maxHeight: maxH,
+      );
+      return Align(
+        alignment:
+            isLandscapePrint ? Alignment.topCenter : Alignment.center,
+        child: SizedBox(
+          width: heroSize.width,
+          height: heroSize.height,
+          child: input.buildBeholdReadyHero(
+            context,
+            viewModel,
+            width: heroSize.width,
+            height: heroSize.height,
+          ),
+        ),
+      );
+    },
   );
 }
 

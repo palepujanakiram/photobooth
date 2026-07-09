@@ -40,6 +40,17 @@ void main() {
     );
   });
 
+  test('beholdSingleResultHeroImageFit always contains', () {
+    expect(
+      beholdSingleResultHeroImageFit(PrintOrientation.portrait),
+      BoxFit.contain,
+    );
+    expect(
+      beholdSingleResultHeroImageFit(PrintOrientation.landscape),
+      BoxFit.contain,
+    );
+  });
+
   testWidgets('beholdSingleResultCardAspectRatio follows print orientation', (
     tester,
   ) async {

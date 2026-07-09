@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../utils/print_orientation.dart';
 import 'photo_generate_viewmodel.dart';
 
 /// Portrait phone layout (same breakpoint as capture preview).
@@ -21,3 +22,8 @@ double beholdSingleResultCardAspectRatio(
 }) {
   return viewModel.printOrientation.cardAspectRatio;
 }
+
+/// BEHOLD hero uses [BoxFit.contain] so portrait AI outputs are not cropped when
+/// the print orientation card does not match the generated image aspect.
+BoxFit beholdSingleResultHeroImageFit(PrintOrientation orientation) =>
+    BoxFit.contain;

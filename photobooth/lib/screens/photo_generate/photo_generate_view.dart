@@ -21,7 +21,7 @@ import '../../utils/route_args.dart';
 import '../../utils/route_visibility_mixin.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
-import '../../utils/print_orientation.dart';
+import 'photo_generate_behold_aspect.dart';
 import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/generated_image_preview_screen.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
@@ -739,9 +739,9 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen>
                   imageUrl: image.imageUrl,
                   width: cardWidth,
                   height: cardHeight,
-                  fit: viewModel.printOrientation == PrintOrientation.portrait
-                      ? BoxFit.contain
-                      : BoxFit.cover,
+                  fit: beholdSingleResultHeroImageFit(
+                    viewModel.printOrientation,
+                  ),
                 ),
                 if (showRemoveButton)
                   Positioned(
