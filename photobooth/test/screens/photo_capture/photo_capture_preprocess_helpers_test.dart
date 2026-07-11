@@ -1,10 +1,20 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/preprocess_image_result.dart';
 import 'package:photobooth/screens/photo_capture/photo_capture_preprocess_helpers.dart';
+import 'package:photobooth/services/api_service.dart';
+import 'package:photobooth/services/session_manager.dart';
+import 'package:photobooth/utils/print_orientation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ignore_for_file: avoid_redundant_argument_values
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    SessionManager().clearSession();
+  });
   group('resolvePersonCountAfterPreprocess', () {
     test('prefers preprocess personCount', () {
       expect(
@@ -99,6 +109,36 @@ void main() {
         ),
         isFalse,
       );
+    });
+  });
+
+  group('ensureAuthoritativePersonCount', () {
+    test('skips preprocess when session already has a group count', () async {
+      final sm = SessionManager();
+      sm.setSessionFromResponse({
+        'id': 'sess-1',
+        'termsAccepted': true,
+        'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+        'attemptsUsed': 0,
+        'generatedImages': [],
+        'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+      });
+      sm.setPersonCount(4);
+
+      var preprocessCalls = 0;
+      await ensureAuthoritativePersonCount(
+        sessionManager: sm,
+        apiService: ApiService(),
+        sessionId: 'sess-1',
+        preprocessFn: (_) async {
+          preprocessCalls++;
+          return const PreprocessImageResult(success: true, personCount: 1);
+        },
+      );
+
+      expect(preprocessCalls, 0);
+      expect(sm.personCount, 4);
+      expect(sm.printOrientation, PrintOrientation.landscape);
     });
   });
 

@@ -401,8 +401,9 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     );
     notifyListeners();
     try {
-      await silentPrintToNetwork().timeout(const Duration(minutes: 2));
+      await silentPrintToNetwork().timeout(const Duration(minutes: 5));
     } on TimeoutException {
+      if (!shouldApplyPrintFailure(_r._printProgress)) return;
       _failPrintProgress(AppStrings.printFailedGeneric);
       _r._errorMessage =
           'Printing is taking longer than expected. Please check the printer connection and try again.';
@@ -1009,6 +1010,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   }
 
   void _failPrintProgress(String message) {
+    if (!shouldApplyPrintFailure(_r._printProgress)) return;
     _cancelPrintProgressTicker();
     _r._printProgress = _r._printProgress.copyWith(
       phase: PrintProgressPhase.failed,

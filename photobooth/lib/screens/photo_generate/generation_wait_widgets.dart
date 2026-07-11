@@ -325,6 +325,11 @@ class _GenerationWaitComparePanels extends StatelessWidget {
     final capture = vm.originalPhoto;
     final captureAlignment =
         generationWaitCaptureImageAlignment(vm.sessionPersonCount);
+    final cellAspect = generationWaitKioskCompareCellAspect(
+      personCount: vm.sessionPersonCount,
+      printOrientation: vm.printOrientation,
+      decodedImageAspect: vm.beholdHeroAspectRatio,
+    );
     final styleUrl = (presentation.imageUrl ?? '').trim().isNotEmpty
         ? presentation.imageUrl!.trim()
         : sampleUrl;
@@ -335,13 +340,14 @@ class _GenerationWaitComparePanels extends StatelessWidget {
         final gap = 10.0;
         final w = constraints.maxWidth;
         final cellW = (w - gap) / 2;
-        final cellH = math.max(220.0, cellW * 4 / 3);
+        final cellH = cellW / cellAspect;
 
         return Row(
           children: [
             Expanded(
               child: _GenerationWaitPanel(
                 label: 'You',
+                aspectRatio: cellAspect,
                 child: capture == null
                     ? const ColoredBox(color: Color(0xFF0D1120))
                     : KenBurnsCaptureImage(
@@ -359,6 +365,7 @@ class _GenerationWaitComparePanels extends StatelessWidget {
             Expanded(
               child: _GenerationWaitPanel(
                 label: 'Style',
+                aspectRatio: cellAspect,
                 child: styleUrl.isEmpty
                     ? const _ShimmerPlaceholder()
                     : _GenerationWaitStyleCanvas(
@@ -378,18 +385,20 @@ class _GenerationWaitComparePanels extends StatelessWidget {
 class _GenerationWaitPanel extends StatelessWidget {
   const _GenerationWaitPanel({
     required this.label,
+    required this.aspectRatio,
     required this.child,
     this.overlay,
   });
 
   final String label;
+  final double aspectRatio;
   final Widget child;
   final Widget? overlay;
 
   @override
   Widget build(BuildContext context) {
     return AspectRatio(
-      aspectRatio: 3 / 4,
+      aspectRatio: aspectRatio,
       child: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF0D1120),

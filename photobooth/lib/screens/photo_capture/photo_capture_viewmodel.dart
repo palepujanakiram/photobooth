@@ -311,6 +311,14 @@ class CaptureViewModel extends ChangeNotifier {
   Size? get capturedImagePixelSize => _capturedImagePixelSize;
   double? get lockedCaptureCardAspectRatio => _lockedCaptureCardAspectRatio;
 
+  /// Face count from upload prep or session preprocess — drives landscape review cards for groups.
+  int? get estimatedPersonCountForCaptureReview {
+    if (_preparedClientFaceCount != null && _preparedClientFaceCount! > 0) {
+      return _preparedClientFaceCount;
+    }
+    return _sessionManager.personCount;
+  }
+
   set capturedPhoto(PhotoModel? photo) {
     _capturedPhoto = photo;
     _capturedImagePixelSize = null;
@@ -1684,7 +1692,7 @@ class CaptureViewModel extends ChangeNotifier {
       cameraId: cameraId,
     );
     _capturedImagePixelSize = null;
-    if (!kIsWeb && !skipCapturedImagePixelSizeDecode) {
+    if (!skipCapturedImagePixelSizeDecode) {
       unawaited(_refreshCapturedImagePixelSizeSoon(savedFile));
     }
     unawaited(ErrorReportingManager.setPhotoCaptureContext(
@@ -2145,9 +2153,7 @@ class CaptureViewModel extends ChangeNotifier {
         cameraId: cameraId,
       );
       _capturedImagePixelSize = null;
-      if (!kIsWeb) {
-        unawaited(_refreshCapturedImagePixelSizeSoon(normalizedFile));
-      }
+      unawaited(_refreshCapturedImagePixelSizeSoon(normalizedFile));
 
       // Track successful photo selection
       unawaited(ErrorReportingManager.setPhotoCaptureContext(
@@ -2378,6 +2384,9 @@ class CaptureViewModel extends ChangeNotifier {
         'UPLOAD_PREP',
         'face_done count=$_preparedClientFaceCount',
       );
+      if (_capturedPhoto?.id == photo.id) {
+        notifyListeners();
+      }
     }
     return base64;
   }

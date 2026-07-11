@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../utils/constants.dart';
+import '../../utils/print_orientation.dart';
 import 'photo_capture_viewmodel.dart';
 
 bool captureCardIsPhonePortrait(BuildContext context) {
@@ -26,6 +27,21 @@ double? captureCardLivePreviewAspectRatio(CaptureViewModel viewModel) {
   return null;
 }
 
+double? captureCardDecodedImageAspect(Size? pixels) {
+  if (pixels == null || pixels.height <= 0) return null;
+  return (pixels.width / pixels.height).clamp(0.35, 2.85);
+}
+
+/// Groups of 3+ print landscape — use that frame on POSE review before pixels decode.
+double? captureCardAspectRatioFromPersonCount(int? personCount) {
+  if (personCount == null || personCount <= 0) return null;
+  final orientation = PrintOrientation.fromPersonCount(personCount);
+  if (orientation == PrintOrientation.landscape) {
+    return orientation.cardAspectRatio;
+  }
+  return null;
+}
+
 double captureCardAspectRatioForCaptured({
   required BuildContext context,
   required CaptureViewModel viewModel,
@@ -36,12 +52,19 @@ double captureCardAspectRatioForCaptured({
   if (locked != null && locked > 0) {
     return locked.clamp(0.35, 2.85);
   }
-  final liveAspect = captureCardLivePreviewAspectRatio(viewModel);
+  final decodedAspect = captureCardDecodedImageAspect(
+    viewModel.capturedImagePixelSize,
+  );
+  if (decodedAspect != null) return decodedAspect;
+  final personAspect = captureCardAspectRatioFromPersonCount(
+    viewModel.estimatedPersonCountForCaptureReview,
+  );
+  if (personAspect != null) return personAspect;
+  final isGalleryStill = viewModel.capturedPhoto?.cameraId == 'gallery';
+  final liveAspect = isGalleryStill
+      ? null
+      : captureCardLivePreviewAspectRatio(viewModel);
   if (liveAspect != null) return liveAspect;
-  final pixels = viewModel.capturedImagePixelSize;
-  if (pixels != null && pixels.height > 0) {
-    return (pixels.width / pixels.height).clamp(0.35, 2.85);
-  }
   if (captureCardIsPhonePortrait(context)) {
     return captureCardViewportSlotAspect(layoutConstraints, fallbackAspect);
   }

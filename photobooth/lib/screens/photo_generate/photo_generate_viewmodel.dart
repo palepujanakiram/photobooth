@@ -8,6 +8,7 @@ import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/session_manager.dart';
 import '../photo_capture/photo_model.dart';
+import '../photo_capture/photo_capture_preprocess_helpers.dart';
 import '../theme_selection/theme_model.dart';
 import '../../utils/constants.dart';
 import '../../utils/app_strings.dart';
@@ -285,6 +286,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         _sessionManager = sessionManager ?? SessionManager(),
         _appSettingsManager = appSettingsManager {
     _printOrientation = _sessionManager.printOrientation;
+    _sessionManager.addListener(_onSessionManagerChanged);
   }
 
   // Getters
@@ -579,7 +581,14 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   void _applyDefaultPrintOrientationFromSession() {
     if (_printOrientationTouched) return;
-    _printOrientation = _sessionManager.printOrientation;
+    final next = PrintOrientation.fromPersonCount(_sessionManager.personCount);
+    if (_printOrientation == next) return;
+    _printOrientation = next;
+    notifyListeners();
+  }
+
+  void _onSessionManagerChanged() {
+    _applyDefaultPrintOrientationFromSession();
   }
 
   /// Customer override for print layout (updates preview frame + session).
@@ -601,7 +610,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         framingMetadata: <String, dynamic>{
           'orientation': _printOrientation.apiValue,
           'personCount': _sessionManager.personCount,
-          'mode': 'customer',
+          'mode': _printOrientationTouched ? 'customer' : 'auto',
         },
       );
     } catch (e) {
@@ -1066,6 +1075,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       _bumpSessionAttemptsUsedLocally();
     }
     _clearHeroStamp();
+    _applyDefaultPrintOrientationFromSession();
     unawaited(refreshBeholdHeroAspectRatio());
     onSuccessLog?.call();
     return true;
@@ -1125,6 +1135,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         _errorMessage = AppStrings.sessionPhotoSyncNoSession;
         return false;
       }
+      await ensureAuthoritativePersonCount(
+        sessionManager: _sessionManager,
+        apiService: _apiService,
+        sessionId: sessionId,
+      );
+      _applyDefaultPrintOrientationFromSession();
       await _syncPrintOrientationToServer();
 
       _updateProgress('Syncing photo...');
@@ -1444,6 +1460,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _sessionManager.removeListener(_onSessionManagerChanged);
     cancelOperation();
     _stopTimer();
     _stopGenerationRunPolling();

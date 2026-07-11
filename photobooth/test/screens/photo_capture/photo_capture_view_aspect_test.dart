@@ -52,4 +52,50 @@ void main() {
       ),
     );
   });
+
+  test('captureCardDecodedImageAspect returns landscape for wide photos', () {
+    expect(
+      captureCardDecodedImageAspect(const Size(1920, 1080)),
+      closeTo(1920 / 1080, 0.001),
+    );
+    expect(captureCardDecodedImageAspect(null), isNull);
+  });
+
+  test('captureCardAspectRatioFromPersonCount landscape for groups', () {
+    expect(
+      captureCardAspectRatioFromPersonCount(4),
+      AppConstants.kBeholdSingleResultDefaultAspectRatio,
+    );
+    expect(captureCardAspectRatioFromPersonCount(2), isNull);
+    expect(captureCardAspectRatioFromPersonCount(null), isNull);
+  });
+
+  testWidgets('captureCardAspectRatioForCaptured uses decoded image aspect', (
+    WidgetTester tester,
+  ) async {
+    final viewModel = CaptureViewModel();
+    addTearDown(viewModel.dispose);
+    viewModel.lockCaptureCardAspectRatio(0.75);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(size: Size(390, 844)),
+          child: Builder(
+            builder: (context) {
+              const constraints = BoxConstraints(maxWidth: 360, maxHeight: 480);
+              final withLocked = captureCardAspectRatioForCaptured(
+                context: context,
+                viewModel: viewModel,
+                fallbackAspect: 0.75,
+                layoutConstraints: constraints,
+              );
+              expect(withLocked, closeTo(0.75, 0.001));
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      ),
+    );
+  });
 }

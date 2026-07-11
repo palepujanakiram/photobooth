@@ -130,6 +130,38 @@ void main() {
     });
   });
 
+  group('shouldApplyPrintFailure', () {
+    test('allows failure before HTTP POST completes', () {
+      expect(
+        shouldApplyPrintFailure(
+          const PrintProgressSnapshot(phase: PrintProgressPhase.preparing),
+        ),
+        isTrue,
+      );
+      expect(
+        shouldApplyPrintFailure(
+          const PrintProgressSnapshot(phase: PrintProgressPhase.sending),
+        ),
+        isTrue,
+      );
+    });
+
+    test('blocks failure after POST accepted or run complete', () {
+      expect(
+        shouldApplyPrintFailure(
+          const PrintProgressSnapshot(phase: PrintProgressPhase.finishing),
+        ),
+        isFalse,
+      );
+      expect(
+        shouldApplyPrintFailure(
+          const PrintProgressSnapshot(phase: PrintProgressPhase.complete),
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('labels', () {
     test('footer and page labels follow phase', () {
       const active = PrintProgressSnapshot(

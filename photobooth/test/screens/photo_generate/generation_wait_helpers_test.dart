@@ -6,6 +6,7 @@ import 'package:photobooth/screens/photo_generate/photo_generate_viewmodel.dart'
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
 import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/constants.dart';
+import 'package:photobooth/utils/print_orientation.dart';
 
 void main() {
   const theme = ThemeModel(
@@ -245,6 +246,50 @@ void main() {
       expect(
         generationWaitHeroCellAspectRatio(3),
         AppConstants.kBeholdSingleResultDefaultAspectRatio,
+      );
+    });
+  });
+
+  group('generationWaitKioskCompareCellAspect', () {
+    test('landscape when person count is a group', () {
+      expect(
+        generationWaitKioskCompareCellAspect(
+          personCount: 4,
+          printOrientation: PrintOrientation.portrait,
+        ),
+        AppConstants.kBeholdSingleResultDefaultAspectRatio,
+      );
+    });
+
+    test('landscape when print orientation is landscape', () {
+      expect(
+        generationWaitKioskCompareCellAspect(
+          personCount: 1,
+          printOrientation: PrintOrientation.landscape,
+        ),
+        AppConstants.kBeholdSingleResultDefaultAspectRatio,
+      );
+    });
+
+    test('uses decoded wide still before default portrait', () {
+      expect(
+        generationWaitKioskCompareCellAspect(
+          personCount: 1,
+          printOrientation: PrintOrientation.portrait,
+          decodedImageAspect: 1.78,
+        ),
+        closeTo(1.78, 0.001),
+      );
+    });
+
+    test('portrait for solo when still is tall', () {
+      expect(
+        generationWaitKioskCompareCellAspect(
+          personCount: 1,
+          printOrientation: PrintOrientation.portrait,
+          decodedImageAspect: 0.75,
+        ),
+        AppConstants.kThemeSelectedCardAspectRatio,
       );
     });
   });

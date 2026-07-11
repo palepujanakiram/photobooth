@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/services/session_manager.dart';
+import 'package:photobooth/utils/print_orientation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -44,6 +45,21 @@ void main() {
     final sm = SessionManager();
     await sm.restore();
     expect(sm.currentSession?.sessionId, 'sess-persist');
+  });
+
+  test('setPersonCount syncs landscape print orientation for groups', () {
+    final sm = SessionManager();
+    sm.setSessionFromResponse({
+      'id': 'sess-pc',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': [],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+    });
+    sm.setPersonCount(4);
+    expect(sm.personCount, 4);
+    expect(sm.printOrientation, PrintOrientation.landscape);
   });
 
   test('endCustomerSession clears persisted session', () async {

@@ -124,6 +124,16 @@ int finishingPercent({
 /// Final percent when every page has finished.
 int allPagesCompletePercent(int totalPages) => 100;
 
+/// Whether the UI may transition to [PrintProgressPhase.failed].
+///
+/// Once the LAN HTTP POST succeeds we enter [PrintProgressPhase.finishing] and
+/// the printer may already be outputting — do not downgrade to failed afterward.
+bool shouldApplyPrintFailure(PrintProgressSnapshot progress) {
+  if (progress.isComplete) return false;
+  if (progress.phase == PrintProgressPhase.finishing) return false;
+  return true;
+}
+
 /// Footer label on the right side of the progress card.
 String printProgressFooterRightLabel(PrintProgressSnapshot snapshot) {
   if (snapshot.isFailed) return 'Failed';

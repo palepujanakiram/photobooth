@@ -279,7 +279,11 @@ class SessionManager extends ChangeNotifier {
   void setPersonCount(int count) {
     final s = _currentSession;
     if (s == null || count < 1) return;
-    _currentSession = s.copyWith(personCount: count);
+    final orientation = PrintOrientation.fromPersonCount(count);
+    _currentSession = s.copyWith(
+      personCount: count,
+      printOrientation: orientation.apiValue,
+    );
     unawaited(_persistCurrentSession());
     notifyListeners();
   }

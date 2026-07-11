@@ -5,6 +5,7 @@ import 'package:flutter/material.dart' show Alignment;
 import 'photo_generate_viewmodel.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
+import '../../utils/print_orientation.dart';
 import '../../models/generation_timing_stats.dart';
 import '../../services/generation_eta_estimator.dart';
 
@@ -31,6 +32,24 @@ Alignment generationWaitCaptureImageAlignment(int? personCount) {
   return generationWaitUsesLandscapeCards(personCount)
       ? kGenerationWaitGroupCaptureAlignment
       : kGenerationWaitPortraitFaceAlignment;
+}
+
+/// YOU | STYLE kiosk cells: person count, print orientation, or wide still.
+double generationWaitKioskCompareCellAspect({
+  required int? personCount,
+  required PrintOrientation printOrientation,
+  double? decodedImageAspect,
+}) {
+  if (generationWaitUsesLandscapeCards(personCount) ||
+      printOrientation == PrintOrientation.landscape) {
+    return AppConstants.kBeholdSingleResultDefaultAspectRatio;
+  }
+  if (decodedImageAspect != null &&
+      decodedImageAspect > 1.0 &&
+      decodedImageAspect.isFinite) {
+    return decodedImageAspect.clamp(0.35, 2.85);
+  }
+  return AppConstants.kThemeSelectedCardAspectRatio;
 }
 
 /// Vertical space for the You/Style labels above anticipation cells.
