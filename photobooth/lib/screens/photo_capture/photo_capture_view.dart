@@ -104,6 +104,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       isUploading: viewModel.isUploading,
       isCountingDown: viewModel.isCountingDown,
       appInForeground: _appInForeground,
+      isWaitingForPhoneUpload: viewModel.isWaitingForPhoneUpload,
     );
   }
 

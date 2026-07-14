@@ -10,9 +10,11 @@ void main() {
         isUploading: false,
         isCountingDown: false,
         appInForeground: true,
+        isWaitingForPhoneUpload: true,
       );
       expect(input.isCapturing, isFalse);
       expect(input.appInForeground, isTrue);
+      expect(input.isWaitingForPhoneUpload, isTrue);
     });
   });
 
@@ -92,6 +94,22 @@ void main() {
             isUploading: false,
             isCountingDown: true,
             appInForeground: true,
+          ),
+        ),
+        isFalse,
+      );
+    });
+
+    test('stops while waiting for phone QR upload', () {
+      expect(
+        captureScreenIdleTimerShouldRun(
+          const CaptureScreenIdleInput(
+            isNavigatingAway: false,
+            isCapturing: false,
+            isUploading: false,
+            isCountingDown: false,
+            appInForeground: true,
+            isWaitingForPhoneUpload: true,
           ),
         ),
         isFalse,

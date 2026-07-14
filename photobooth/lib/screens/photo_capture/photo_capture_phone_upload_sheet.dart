@@ -37,7 +37,7 @@ Future<void> showPhoneUploadQrSheet({
   }
 }
 
-class _PhoneUploadQrSheetBody extends StatelessWidget {
+class _PhoneUploadQrSheetBody extends StatefulWidget {
   const _PhoneUploadQrSheetBody({
     required this.viewModel,
     required this.link,
@@ -47,18 +47,49 @@ class _PhoneUploadQrSheetBody extends StatelessWidget {
   final PhoneUploadLinkInfo link;
 
   @override
+  State<_PhoneUploadQrSheetBody> createState() =>
+      _PhoneUploadQrSheetBodyState();
+}
+
+class _PhoneUploadQrSheetBodyState extends State<_PhoneUploadQrSheetBody> {
+  /// Guards against multiple [Navigator.pop]s when the ViewModel notifies
+  /// more than once after a successful upload (would otherwise pop Capture
+  /// and reveal the slideshow under the stack).
+  bool _autoCloseScheduled = false;
+
+  CaptureViewModel get _viewModel => widget.viewModel;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewModel.addListener(_onViewModelChanged);
+  }
+
+  @override
+  void dispose() {
+    _viewModel.removeListener(_onViewModelChanged);
+    super.dispose();
+  }
+
+  void _onViewModelChanged() {
+    if (_autoCloseScheduled) return;
+    if (_viewModel.capturedPhoto?.cameraId != 'phone_qr') return;
+    _autoCloseScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final navigator = Navigator.of(context);
+      if (navigator.canPop()) {
+        navigator.pop();
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: viewModel,
+      listenable: _viewModel,
       builder: (context, _) {
-        final received = viewModel.capturedPhoto?.cameraId == 'phone_qr';
-        if (received) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
-            }
-          });
-        }
+        final received = _viewModel.capturedPhoto?.cameraId == 'phone_qr';
         final bottom = MediaQuery.paddingOf(context).bottom;
         return Padding(
           padding: EdgeInsets.fromLTRB(24, 16, 24, 20 + bottom),
@@ -101,13 +132,13 @@ class _PhoneUploadQrSheetBody extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: QrImageView(
-                  data: link.url,
+                  data: widget.link.url,
                   size: 220,
                   backgroundColor: Colors.white,
                 ),
               ),
               const SizedBox(height: 16),
-              if (viewModel.isWaitingForPhoneUpload)
+              if (_viewModel.isWaitingForPhoneUpload)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
