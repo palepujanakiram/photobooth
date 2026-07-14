@@ -72,6 +72,15 @@ const Set<String> kPipelineFunnelMetadataOnlyStages = {
   'c2pa_sign',
 };
 
+/// Stages whose previews are still unbranded while watermark/EXIF run on the server.
+const Set<String> kPipelineUnbrandedOutputPreviewStages = {
+  'ai_generation',
+  'scene_lighting',
+  'face_relight',
+  'frame_composite',
+  'upscaling',
+};
+
 /// Client-only leading slot: booth capture (shown before server `preprocessing`).
 const String kPipelineDeviceCaptureStageKey = 'device_capture';
 
@@ -385,6 +394,11 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     required String? lastShownUrl,
   }) {
     if (rawNonEmpty == null) return null;
+    // When branding is on, do not surface unbranded AI / polish thumbs in the funnel.
+    if (shouldHoldUnbrandedAiReveal &&
+        kPipelineUnbrandedOutputPreviewStages.contains(stageKey)) {
+      return null;
+    }
     final noDedupe = stageKey == 'frame_composite' ||
         stageKey == kPipelineFunnelStorageStage;
     if (noDedupe || lastShownUrl == null || rawNonEmpty != lastShownUrl) {
@@ -470,6 +484,38 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         .toList(growable: false);
     return List<ProgressivePipelineStage>.unmodifiable(out);
   }
+
+  /// True when admin enabled visible watermark and/or EXIF branding on outputs.
+  /// Live wait must not full-reveal unbranded [ai_generation] previews in that case.
+  bool get outputBrandingEnabled {
+    final s = _appSettingsManager?.settings;
+    return s?.watermarkEnabled == true || s?.exifStampEnabled == true;
+  }
+
+  /// Branded final bytes URL (watermark/EXIF applied server-side before upload).
+  String? get brandedOutputImageUrl {
+    if (_generatedImages.isNotEmpty) {
+      final url = _generatedImages.first.imageUrl.trim();
+      if (url.isNotEmpty) return url;
+    }
+    for (final slot in _liveSlots) {
+      if (slot.failed) continue;
+      final url = slot.imageUrl?.trim();
+      if (url != null && url.isNotEmpty) return url;
+    }
+    for (final s in _generationRunStepPreviews) {
+      if (canonicalPipelineStageKey(s.stage) != kPipelineFunnelStorageStage) {
+        continue;
+      }
+      final url = s.previewUrl?.trim();
+      if (url != null && url.isNotEmpty) return url;
+    }
+    return null;
+  }
+
+  /// Hold large / funnel AI pixels until [brandedOutputImageUrl] is available.
+  bool get shouldHoldUnbrandedAiReveal =>
+      outputBrandingEnabled && brandedOutputImageUrl == null;
 
   /// Kiosk/tablet: show backend commentary during wait unless web + setting off.
   bool get generationCommentaryEnabledForWait {

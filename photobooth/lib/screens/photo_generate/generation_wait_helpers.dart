@@ -254,30 +254,78 @@ bool generationWaitPolishingStarted(PhotoGenerateViewModel vm) {
   return polishingStartedFromGenerationRunSteps(vm.generationRunStepPreviews);
 }
 
-GenerationWaitPresentation resolveGenerationWaitPresentation(
-  PhotoGenerateViewModel vm, {
-  GenerationWaitPresentation? previous,
-  required bool commentaryEnabled,
-}) {
-  final preprocessUrl = previewUrlForStage(vm, 'preprocessing');
-  final bgUrl = previewUrlForStage(vm, 'background_removal');
-  final aiUrl = previewUrlForStage(vm, 'ai_generation');
-  final polishing = generationWaitPolishingStarted(vm);
+/// Final branded output URL (watermark/EXIF already applied server-side before upload).
+String? brandedGenerationOutputUrl(PhotoGenerateViewModel vm) =>
+    vm.brandedOutputImageUrl;
 
-  var index = generationWaitPseudoStoryboardIndex(vm.elapsedSeconds);
+/// When branding is on, do not full-size reveal the unbranded [ai_generation] preview.
+bool generationWaitShouldHoldUnbrandedAiReveal({
+  required bool outputBrandingEnabled,
+  required String? brandedOutputUrl,
+}) {
+  return outputBrandingEnabled && brandedOutputUrl == null;
+}
+
+/// Inputs for [buildGenerationWaitPresentation] (keeps param count low for Sonar S107).
+class GenerationWaitPresentationInput {
+  const GenerationWaitPresentationInput({
+    required this.elapsedSeconds,
+    required this.preprocessUrl,
+    required this.bgUrl,
+    required this.aiUrl,
+    required this.brandedUrl,
+    required this.polishing,
+    required this.holdUnbrandedAi,
+    required this.progress,
+    required this.commentary,
+    this.previous,
+  });
+
+  final int elapsedSeconds;
+  final String? preprocessUrl;
+  final String? bgUrl;
+  final String? aiUrl;
+  final String? brandedUrl;
+  final bool polishing;
+  final bool holdUnbrandedAi;
+  final String progress;
+  final String? commentary;
+  final GenerationWaitPresentation? previous;
+}
+
+/// Pure builder for wait-hero presentation (testable without a ViewModel).
+GenerationWaitPresentation buildGenerationWaitPresentation(
+  GenerationWaitPresentationInput input,
+) {
+  var index = generationWaitPseudoStoryboardIndex(input.elapsedSeconds);
   var stageTitle = '1 · CAPTURE';
   var headline = AppStrings.generationWaitHeadlineStarting;
   var description = AppStrings.generationWaitExpectation;
   String? imageUrl;
   var showPolishingOverlay = false;
 
-  final progress = vm.progressMessage.trim();
-  final commentary = generationWaitCommentaryLine(
-    vm,
-    commentaryEnabled: commentaryEnabled,
-  );
+  final brandedUrl = input.brandedUrl;
+  final aiUrl = input.aiUrl;
+  final bgUrl = input.bgUrl;
+  final preprocessUrl = input.preprocessUrl;
+  final polishing = input.polishing;
 
-  if (aiUrl != null && polishing) {
+  if (brandedUrl != null) {
+    index = 3;
+    stageTitle = '4 · FINISH';
+    headline = AppStrings.generationWaitLiveRevealHeadline;
+    description = AppStrings.generationWaitLiveRevealDesc;
+    imageUrl = brandedUrl;
+    showPolishingOverlay = polishing;
+  } else if (aiUrl != null && input.holdUnbrandedAi) {
+    // Branding still running — keep prior stage pixels (or empty), never unbranded AI.
+    index = 3;
+    stageTitle = '4 · FINISH';
+    headline = AppStrings.generationWaitHeadlineFinishing;
+    description = AppStrings.generationWaitDescFinishing;
+    imageUrl = bgUrl ?? preprocessUrl;
+    showPolishingOverlay = true;
+  } else if (aiUrl != null && polishing) {
     index = 3;
     stageTitle = '4 · FINISH';
     headline = AppStrings.generationWaitLiveRevealHeadline;
@@ -305,15 +353,16 @@ GenerationWaitPresentation resolveGenerationWaitPresentation(
     imageUrl = preprocessUrl;
   }
 
-  if (progress.isNotEmpty) {
-    headline = progress;
+  if (input.progress.isNotEmpty) {
+    headline = input.progress;
   }
-  if (commentary != null && commentary.isNotEmpty) {
-    description = commentary;
-  } else if (imageUrl == null && progress.isEmpty) {
-    description = generationWaitRotatingCopy(vm.elapsedSeconds);
+  if (input.commentary != null && input.commentary!.isNotEmpty) {
+    description = input.commentary!;
+  } else if (imageUrl == null && input.progress.isEmpty) {
+    description = generationWaitRotatingCopy(input.elapsedSeconds);
   }
 
+  final previous = input.previous;
   final stageChanged =
       previous != null && previous.storyboardIndex < index;
 
@@ -325,6 +374,36 @@ GenerationWaitPresentation resolveGenerationWaitPresentation(
     imageUrl: imageUrl,
     showPolishingOverlay: showPolishingOverlay,
     stageChanged: stageChanged,
+  );
+}
+
+GenerationWaitPresentation resolveGenerationWaitPresentation(
+  PhotoGenerateViewModel vm, {
+  GenerationWaitPresentation? previous,
+  required bool commentaryEnabled,
+  bool? outputBrandingEnabled,
+}) {
+  final brandedUrl = vm.brandedOutputImageUrl;
+  final brandingOn = outputBrandingEnabled ?? vm.outputBrandingEnabled;
+  return buildGenerationWaitPresentation(
+    GenerationWaitPresentationInput(
+      elapsedSeconds: vm.elapsedSeconds,
+      preprocessUrl: previewUrlForStage(vm, 'preprocessing'),
+      bgUrl: previewUrlForStage(vm, 'background_removal'),
+      aiUrl: previewUrlForStage(vm, 'ai_generation'),
+      brandedUrl: brandedUrl,
+      polishing: generationWaitPolishingStarted(vm),
+      holdUnbrandedAi: generationWaitShouldHoldUnbrandedAiReveal(
+        outputBrandingEnabled: brandingOn,
+        brandedOutputUrl: brandedUrl,
+      ),
+      progress: vm.progressMessage.trim(),
+      commentary: generationWaitCommentaryLine(
+        vm,
+        commentaryEnabled: commentaryEnabled,
+      ),
+      previous: previous,
+    ),
   );
 }
 

@@ -9,6 +9,7 @@ import '../../views/widgets/kiosk_vertical_screen_layout.dart';
 import 'photo_generate_view_widgets.dart';
 import 'behold_result_ready_widgets.dart';
 import 'generation_wait_widgets.dart';
+import 'generation_wait_helpers.dart';
 import 'photo_generate_viewmodel.dart';
 import 'post_reveal_polishing_overlay.dart';
 import '../../utils/app_strings.dart';
@@ -1334,44 +1335,20 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen>
     required double width,
     required double height,
   }) {
-    // Use the same hero frame as the final image card; swap the "content" inside.
-    final preprocessUrl = _previewForStage(vm, 'preprocessing');
-    final bgUrl = _previewForStage(vm, 'background_removal');
-    final aiUrl = _previewForStage(vm, 'ai_generation');
-
-    int index = 0;
-    String stageTitle = '2 · CAPTURE';
-    String headline = 'Got it';
-    String description = 'Frozen frame, framing applied';
-    String? imageUrl;
-    Widget? bottomAccessory;
-
-    if (aiUrl != null) {
-      index = 3;
-      stageTitle = '4 · REVEAL';
-      headline = 'Rendering';
-      description = 'AI is applying your style';
-      imageUrl = aiUrl;
-      bottomAccessory =
-          PostRevealPolishingOverlay(steps: vm.generationRunStepPreviews);
-    } else if (bgUrl != null) {
-      index = 2;
-      stageTitle = '3 · ISOLATE';
-      headline = 'Background removed';
-      description = 'Subject isolated, ready to render';
-      imageUrl = bgUrl;
-    } else if (preprocessUrl != null) {
-      index = 1;
-      stageTitle = '2 · CAPTURE';
-      headline = 'Got it';
-      description = 'Frozen frame, framing applied';
-      imageUrl = preprocessUrl;
-    } else {
-      index = 0;
-      stageTitle = '1 · DETECT';
-      headline = 'Face detected';
-      description = 'Analyzing your portrait';
-    }
+    // Same reveal rules as the progress wait screen: never full-size unbranded AI
+    // when watermark/EXIF branding is enabled — wait for the stamped final URL.
+    final presentation = resolveGenerationWaitPresentation(
+      vm,
+      commentaryEnabled: vm.generationCommentaryEnabledForWait,
+    );
+    final index = presentation.storyboardIndex.clamp(0, 3);
+    final stageTitle = presentation.stageTitle;
+    final headline = presentation.headline;
+    final description = presentation.description;
+    final imageUrl = presentation.imageUrl;
+    final Widget? bottomAccessory = presentation.showPolishingOverlay
+        ? PostRevealPolishingOverlay(steps: vm.generationRunStepPreviews)
+        : null;
 
     // Important UX: keep the photo canvas clean (no UI overlays).
     // All progress/status UI lives around the canvas, not on top of it.
@@ -1561,17 +1538,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen>
       );
     }
     return loading;
-  }
-
-  String? _previewForStage(PhotoGenerateViewModel vm, String stageKey) {
-    final want = stageKey.trim().toLowerCase();
-    for (final s in vm.generationRunStepPreviews) {
-      final key = canonicalPipelineStageKey(s.stage);
-      if (key == want && (s.previewUrl ?? '').trim().isNotEmpty) {
-        return s.previewUrl!.trim();
-      }
-    }
-    return null;
   }
 
   Widget _storyboardTopBars({required int activeIndex}) {

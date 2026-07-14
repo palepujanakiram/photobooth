@@ -346,6 +346,103 @@ void main() {
     });
   });
 
+  group('generationWaitShouldHoldUnbrandedAiReveal', () {
+    test('holds until branded url exists when branding enabled', () {
+      expect(
+        generationWaitShouldHoldUnbrandedAiReveal(
+          outputBrandingEnabled: true,
+          brandedOutputUrl: null,
+        ),
+        isTrue,
+      );
+      expect(
+        generationWaitShouldHoldUnbrandedAiReveal(
+          outputBrandingEnabled: true,
+          brandedOutputUrl: 'https://example.com/branded.jpg',
+        ),
+        isFalse,
+      );
+      expect(
+        generationWaitShouldHoldUnbrandedAiReveal(
+          outputBrandingEnabled: false,
+          brandedOutputUrl: null,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('buildGenerationWaitPresentation', () {
+    test('holds unbranded AI and keeps prior stage pixels', () {
+      final presentation = buildGenerationWaitPresentation(
+        const GenerationWaitPresentationInput(
+          elapsedSeconds: 12,
+          preprocessUrl: 'https://example.com/pre.jpg',
+          bgUrl: 'https://example.com/bg.jpg',
+          aiUrl: 'https://example.com/ai.jpg',
+          brandedUrl: null,
+          polishing: true,
+          holdUnbrandedAi: true,
+          progress: '',
+          commentary: null,
+        ),
+      );
+      expect(presentation.imageUrl, 'https://example.com/bg.jpg');
+      expect(presentation.showPolishingOverlay, isTrue);
+      expect(presentation.headline, AppStrings.generationWaitHeadlineFinishing);
+      expect(
+        presentation.description,
+        AppStrings.generationWaitDescFinishing,
+      );
+      expect(presentation.storyboardIndex, 3);
+    });
+
+    test('reveals branded final when available', () {
+      final presentation = buildGenerationWaitPresentation(
+        const GenerationWaitPresentationInput(
+          elapsedSeconds: 20,
+          preprocessUrl: null,
+          bgUrl: null,
+          aiUrl: 'https://example.com/ai.jpg',
+          brandedUrl: 'https://example.com/branded.jpg',
+          polishing: true,
+          holdUnbrandedAi: false,
+          progress: '',
+          commentary: null,
+        ),
+      );
+      expect(presentation.imageUrl, 'https://example.com/branded.jpg');
+      expect(presentation.showPolishingOverlay, isTrue);
+    });
+
+    test('still early-reveals AI when branding hold is off', () {
+      final presentation = buildGenerationWaitPresentation(
+        const GenerationWaitPresentationInput(
+          elapsedSeconds: 10,
+          preprocessUrl: null,
+          bgUrl: null,
+          aiUrl: 'https://example.com/ai.jpg',
+          brandedUrl: null,
+          polishing: false,
+          holdUnbrandedAi: false,
+          progress: '',
+          commentary: null,
+        ),
+      );
+      expect(presentation.imageUrl, 'https://example.com/ai.jpg');
+      expect(presentation.storyboardIndex, 2);
+      expect(presentation.showPolishingOverlay, isTrue);
+    });
+  });
+
+  group('brandedGenerationOutputUrl', () {
+    test('returns null when no generated or live slot urls exist', () {
+      final vm = PhotoGenerateViewModel();
+      vm.initialize(photo, theme);
+      expect(brandedGenerationOutputUrl(vm), isNull);
+    });
+  });
+
   group('resolveGenerationEta', () {
     test('uses defaults when timing stats not loaded', () {
       final vm = PhotoGenerateViewModel();

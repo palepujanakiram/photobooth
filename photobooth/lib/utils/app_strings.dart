@@ -200,7 +200,7 @@ abstract final class AppStrings {
   static const generationWaitHeadlineFinishing = 'Finishing touches';
 
   static const generationWaitDescFinishing =
-      'Preparing your print-ready portrait';
+      'Branding and securing your portrait';
 
   static const generationWaitThemeIntoPrefix = 'Turning you into';
 
