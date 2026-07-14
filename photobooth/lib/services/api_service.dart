@@ -468,10 +468,13 @@ class ApiService {
     }
   }
 
-  /// Fetches app settings from API.
+  /// Fetches app settings from API (scoped to bound kiosk when available).
   Future<AppSettingsModel> getAppSettings() async {
     try {
-      return await _apiClient.getAppSettings();
+      final kioskCode = await KioskManager().getKioskCode();
+      return await _apiClient.getAppSettings(
+        kiosk: (kioskCode != null && kioskCode.isNotEmpty) ? kioskCode : null,
+      );
     } on DioException catch (e) {
       _throwMappedApiException(e);
     } catch (e) {

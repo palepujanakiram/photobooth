@@ -24,9 +24,11 @@ abstract class ApiClient {
   @GET('/api/themes')
   Future<List<ThemeModel>> getThemes();
 
-  /// Fetches app-level settings
+  /// Fetches app-level settings (pass [kiosk] to apply per-kiosk price overrides).
   @GET('/api/settings')
-  Future<AppSettingsModel> getAppSettings();
+  Future<AppSettingsModel> getAppSettings({
+    @Query('kiosk') String? kiosk,
+  });
 
   /// Transforms an image using AI with the selected theme
   /// Note: This method is only used on mobile platforms.

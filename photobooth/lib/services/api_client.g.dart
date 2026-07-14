@@ -49,9 +49,13 @@ class _ApiClient implements ApiClient {
   }
 
   @override
-  Future<AppSettingsModel> getAppSettings() async {
+  Future<AppSettingsModel> getAppSettings({String? kiosk}) async {
     final _extra = <String, dynamic>{};
     final queryParameters = <String, dynamic>{};
+    final trimmed = kiosk?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) {
+      queryParameters['kiosk'] = trimmed.toUpperCase();
+    }
     final _headers = <String, dynamic>{};
     const Map<String, dynamic>? _data = null;
     final _options = _setStreamType<AppSettingsModel>(

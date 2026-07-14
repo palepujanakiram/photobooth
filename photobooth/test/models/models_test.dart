@@ -48,6 +48,21 @@ void main() {
     expect(KioskInfoModel.fromJson({'id': '', 'code': 'x'}).isValid, isFalse);
   });
 
+  test('KioskInfoModel parses price overrides', () {
+    final m = KioskInfoModel.fromJson({
+      'id': 'k1',
+      'code': 'ABC',
+      'initialPrice': 150,
+      'additionalPrintPrice': '60',
+      'regenerationPrice': 80,
+      'paymentEnabled': true,
+    });
+    expect(m.initialPrice, 150);
+    expect(m.additionalPrintPrice, 60);
+    expect(m.regenerationPrice, 80);
+    expect(m.paymentEnabled, isTrue);
+  });
+
   test('KioskFrameModel.fromJson', () {
     const f = KioskFrameModel(
       id: 'f1',
