@@ -42,7 +42,64 @@ int previewAutoQuarterTurnsForSensor({
       : (previewSize.width, previewSize.height);
 }
 
-/// Full-bleed rotated camera preview (built-in CameraX or UVC texture).
+/// Same aspect rule as Flutter's [CameraPreview]: invert sensor ratio in portrait UI.
+double cameraPreviewDisplayAspectRatio({
+  required double controllerAspectRatio,
+  required bool isLandscapeUi,
+}) {
+  if (controllerAspectRatio <= 0) return 1.0;
+  return isLandscapeUi
+      ? controllerAspectRatio
+      : 1 / controllerAspectRatio;
+}
+
+/// Full-bleed cover for [CameraPreview] (or any child that already owns aspect).
+///
+/// Do **not** wrap [CameraPreview] in another sensor-[AspectRatio] — that fights
+/// CameraPreview's portrait invert and squashes the texture on phones.
+Widget buildCoverCameraPreview({
+  required Widget cameraPreview,
+  required double displayAspectRatio,
+}) {
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      final parentW = constraints.maxWidth;
+      final parentH = constraints.maxHeight;
+      if (parentW <= 0 || parentH <= 0 || displayAspectRatio <= 0) {
+        return cameraPreview;
+      }
+
+      late final double childW;
+      late final double childH;
+      if (parentW / parentH > displayAspectRatio) {
+        childW = parentW;
+        childH = childW / displayAspectRatio;
+      } else {
+        childH = parentH;
+        childW = childH * displayAspectRatio;
+      }
+
+      return ClipRect(
+        child: OverflowBox(
+          minWidth: childW,
+          maxWidth: childW,
+          minHeight: childH,
+          maxHeight: childH,
+          alignment: Alignment.center,
+          child: SizedBox(
+            width: childW,
+            height: childH,
+            child: cameraPreview,
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// Full-bleed rotated camera preview for raw textures (UVC / manual rotation).
+///
+/// Prefer [buildCoverCameraPreview] when the child is Flutter's [CameraPreview].
 Widget buildRotatedCoverPreview({
   required Widget preview,
   required int effectiveQuarterTurns,

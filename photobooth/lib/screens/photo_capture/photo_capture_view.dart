@@ -2425,16 +2425,33 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     final preview = _buildPlatformPreview(context, viewModel, controller);
+    if (!controller.value.isInitialized) {
+      return preview;
+    }
+
     final effectiveQuarterTurns =
         (viewModel.previewAutoQuarterTurns +
                 (viewModel.previewRotationDegrees ~/ 90) % 4) %
             4;
-    final baseAspectRatio = controller.value.aspectRatio;
+
+    // CameraPreview already inverts aspect for portrait and applies Android
+    // RotatedBox. Wrapping it in sensor (landscape) AspectRatio squashes phones.
+    if (effectiveQuarterTurns == 0) {
+      final isLandscapeUi =
+          MediaQuery.orientationOf(context) == Orientation.landscape;
+      return buildCoverCameraPreview(
+        cameraPreview: preview,
+        displayAspectRatio: cameraPreviewDisplayAspectRatio(
+          controllerAspectRatio: controller.value.aspectRatio,
+          isLandscapeUi: isLandscapeUi,
+        ),
+      );
+    }
 
     return buildRotatedCoverPreview(
       preview: preview,
       effectiveQuarterTurns: effectiveQuarterTurns,
-      baseAspectRatio: baseAspectRatio,
+      baseAspectRatio: controller.value.aspectRatio,
       frameSize: controller.value.previewSize,
     );
   }

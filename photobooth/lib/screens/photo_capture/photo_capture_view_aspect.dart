@@ -82,10 +82,11 @@ double captureCardAspectRatioForLivePreview({
     return (uvcPreviewDisplaySize.width / uvcPreviewDisplaySize.height)
         .clamp(0.35, 2.85);
   }
-  final previewSize = viewModel.cameraController?.value.previewSize;
   final liveAspect = captureCardLivePreviewAspectRatio(viewModel);
   if (liveAspect != null) {
-    if (captureCardIsPhonePortrait(context) && previewSize == null) {
+    // On phones, sensor buffers are often landscape while CameraPreview shows
+    // portrait. Size the card to the available viewport instead of the buffer.
+    if (captureCardIsPhonePortrait(context)) {
       return captureCardViewportSlotAspect(layoutConstraints, fallbackAspect);
     }
     return liveAspect;

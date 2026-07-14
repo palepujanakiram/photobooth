@@ -53,6 +53,38 @@ void main() {
     );
   });
 
+  testWidgets(
+    'phone portrait live preview uses viewport even when sensor is landscape',
+    (WidgetTester tester) async {
+      final viewModel = CaptureViewModel();
+      addTearDown(viewModel.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(size: Size(390, 844)),
+            child: Builder(
+              builder: (context) {
+                const constraints =
+                    BoxConstraints(maxWidth: 360, maxHeight: 520);
+                // Without a live controller, liveAspect is null → viewport path.
+                final aspect = captureCardAspectRatioForLivePreview(
+                  context: context,
+                  viewModel: viewModel,
+                  fallbackAspect: 0.75,
+                  layoutConstraints: constraints,
+                );
+                expect(aspect, closeTo(360 / 520, 0.01));
+                expect(aspect, lessThan(1.0));
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
   test('captureCardDecodedImageAspect returns landscape for wide photos', () {
     expect(
       captureCardDecodedImageAspect(const Size(1920, 1080)),

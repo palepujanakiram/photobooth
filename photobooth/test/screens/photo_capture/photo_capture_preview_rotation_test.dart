@@ -102,6 +102,59 @@ void main() {
     expect(h, 720);
   });
 
+  test('cameraPreviewDisplayAspectRatio inverts for portrait UI', () {
+    expect(
+      cameraPreviewDisplayAspectRatio(
+        controllerAspectRatio: 16 / 9,
+        isLandscapeUi: false,
+      ),
+      closeTo(9 / 16, 0.0001),
+    );
+    expect(
+      cameraPreviewDisplayAspectRatio(
+        controllerAspectRatio: 16 / 9,
+        isLandscapeUi: true,
+      ),
+      closeTo(16 / 9, 0.0001),
+    );
+    expect(
+      cameraPreviewDisplayAspectRatio(
+        controllerAspectRatio: 0,
+        isLandscapeUi: false,
+      ),
+      1.0,
+    );
+  });
+
+  testWidgets('buildCoverCameraPreview sizes child to cover parent',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 390,
+            height: 520,
+            child: buildCoverCameraPreview(
+              cameraPreview: const ColoredBox(color: Colors.red),
+              displayAspectRatio: 9 / 16,
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.byType(ClipRect), findsOneWidget);
+    expect(find.byType(OverflowBox), findsOneWidget);
+    final sized = tester.widget<SizedBox>(
+      find.descendant(
+        of: find.byType(OverflowBox),
+        matching: find.byType(SizedBox),
+      ),
+    );
+    // Parent 390×520 is wider than 9:16 → cover by matching width.
+    expect(sized.width, closeTo(390, 0.1));
+    expect(sized.height, closeTo(390 / (9 / 16), 0.5));
+  });
+
   testWidgets('buildRotatedCoverPreview no rotation wraps in ClipRect',
       (tester) async {
     await tester.pumpWidget(
