@@ -93,6 +93,52 @@ class ApiService {
     }
   }
 
+  /// POST `/api/kiosk/upload-links` — mint a short-lived phone-upload QR link.
+  Future<Map<String, dynamic>> createKioskUploadLink({
+    required String kioskCode,
+    required String sessionId,
+    int? ttlMinutes,
+  }) async {
+    final code = kioskCode.trim().toUpperCase();
+    final sid = sessionId.trim();
+    if (code.isEmpty) {
+      throw ApiException('kioskCode is required');
+    }
+    if (sid.isEmpty) {
+      throw ApiException('sessionId is required');
+    }
+
+    try {
+      final body = <String, dynamic>{
+        'kioskCode': code,
+        'sessionId': sid,
+        if (ttlMinutes != null) 'ttlMinutes': ttlMinutes,
+      };
+
+      final r = await _dio.post<dynamic>(
+        '/api/kiosk/upload-links',
+        data: body,
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+      throwIfHttpErrorResponse(
+        r,
+        operationLabel: 'Failed to create upload link',
+      );
+      return parseJsonMapBody(
+        r.data,
+        unexpectedMessage: 'Unexpected upload link response from API',
+      );
+    } on DioException catch (e) {
+      throwApiExceptionAfterWebCors(
+        e,
+        messagePrefix: 'Failed to create upload link',
+      );
+    }
+  }
+
   /// POST `/api/sessions/:id/fcm-token` — bind device token to session for silent pushes.
   Future<void> registerSessionFcmToken({
     required String sessionId,

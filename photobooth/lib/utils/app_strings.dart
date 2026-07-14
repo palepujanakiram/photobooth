@@ -283,4 +283,27 @@ abstract final class AppStrings {
       'Tap Print again or ask staff for help.';
 
   static const printProgressFooterPrinting = 'Printing…';
+
+  static const phoneUploadButtonLabel = 'Phone QR';
+
+  static const phoneUploadSheetTitle = 'Upload from your phone';
+
+  static const phoneUploadSheetSubtitle =
+      'Scan this QR code, choose a photo on your phone, then look back at the booth.';
+
+  static const phoneUploadWaiting = 'Waiting for phone upload…';
+
+  static const phoneUploadReceived = 'Photo received from phone';
+
+  static const phoneUploadCancelled = 'Phone upload cancelled';
+
+  static const phoneUploadFailed = 'Could not start phone upload';
+
+  static const phoneUploadMintFailed =
+      'Could not create upload QR. Check network and try again.';
+
+  static const phoneUploadTimeout =
+      'Timed out waiting for phone upload. Try again or use Gallery.';
+
+  static const galleryButtonLabel = 'Gallery';
 }

@@ -23,6 +23,7 @@ import 'photo_capture_view_aspect.dart';
 import 'photo_capture_view_handlers.dart';
 import 'photo_capture_exit_handlers.dart';
 import 'photo_capture_gallery_handlers.dart';
+import 'photo_capture_phone_upload_sheet.dart';
 import 'photo_capture_idle_policy.dart';
 import 'photo_capture_view_layout.dart';
 import 'photo_capture_view_scaffold.dart';
@@ -2094,6 +2095,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           showGallery: allowGallery,
           onTakePhoto: () => viewModel.capturePhotoFromDesktopPicker(),
           onPickGallery: () => viewModel.selectFromGallery(),
+          onPhoneUpload: allowGallery
+              ? () {
+                  unawaited(
+                    showPhoneUploadQrSheet(
+                      context: context,
+                      viewModel: viewModel,
+                    ),
+                  );
+                }
+              : null,
         );
       }
       return Padding(
@@ -2712,12 +2723,37 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             ElevatedButton.icon(
               style: captureScreenButtonStyle(secondary: true),
               onPressed:
-                  (viewModel.isCapturing || viewModel.isSelectingFromGallery)
+                  (viewModel.isCapturing ||
+                          viewModel.isSelectingFromGallery ||
+                          viewModel.isWaitingForPhoneUpload)
                       ? null
                       : () async => _handleSelectFromGallery(viewModel),
               icon: const Icon(CupertinoIcons.photo, size: 20),
               label: Text(
-                viewModel.isSelectingFromGallery ? 'Selecting…' : 'Gallery',
+                viewModel.isSelectingFromGallery
+                    ? 'Selecting…'
+                    : AppStrings.galleryButtonLabel,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              style: captureScreenButtonStyle(secondary: true),
+              onPressed:
+                  (viewModel.isCapturing ||
+                          viewModel.isSelectingFromGallery ||
+                          viewModel.isWaitingForPhoneUpload)
+                      ? null
+                      : () async {
+                          await showPhoneUploadQrSheet(
+                            context: context,
+                            viewModel: viewModel,
+                          );
+                        },
+              icon: const Icon(CupertinoIcons.qrcode, size: 20),
+              label: Text(
+                viewModel.isWaitingForPhoneUpload
+                    ? AppStrings.phoneUploadWaiting
+                    : AppStrings.phoneUploadButtonLabel,
               ),
             ),
             const SizedBox(height: 12),

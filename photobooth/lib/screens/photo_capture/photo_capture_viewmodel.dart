@@ -12,6 +12,8 @@ import 'package:uuid/uuid.dart';
 import 'photo_model.dart';
 import '../../services/api_service.dart';
 import '../../services/face_count_service.dart';
+import '../../services/kiosk_manager.dart';
+import '../../services/phone_upload_helpers.dart';
 import '../../services/session_manager.dart';
 import '../../utils/constants.dart';
 import '../../utils/device_classifier.dart';
@@ -39,6 +41,7 @@ import 'photo_capture_viewmodel_helpers.dart';
 class CaptureViewModel extends ChangeNotifier {
   final ApiService _apiService;
   final SessionManager _sessionManager;
+  final KioskManager _kioskManager;
   final Uuid _uuid = const Uuid();
   static List<CameraDescription>? _cachedAvailableCameras;
 
@@ -235,6 +238,11 @@ class CaptureViewModel extends ChangeNotifier {
   bool _isInitializing = false;
   bool _isCapturing = false;
   bool _isSelectingFromGallery = false;
+  bool _isWaitingForPhoneUpload = false;
+  bool _phoneUploadSyncedToSession = false;
+  PhoneUploadLinkInfo? _activePhoneUploadLink;
+  Timer? _phoneUploadPollTimer;
+  DateTime? _phoneUploadPollDeadline;
   bool _isUploading = false;
   String? _errorMessage;
 
@@ -299,9 +307,11 @@ class CaptureViewModel extends ChangeNotifier {
   CaptureViewModel({
     ApiService? apiService,
     SessionManager? sessionManager,
+    KioskManager? kioskManager,
     CaptureSoundService? captureSoundService,
   })  : _apiService = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager(),
+        _kioskManager = kioskManager ?? KioskManager(),
         _captureSoundService = captureSoundService ?? CaptureSoundService();
 
   final CaptureSoundService _captureSoundService;
@@ -334,6 +344,8 @@ class CaptureViewModel extends ChangeNotifier {
   bool get isInitializing => _isInitializing;
   bool get isCapturing => _isCapturing;
   bool get isSelectingFromGallery => _isSelectingFromGallery;
+  bool get isWaitingForPhoneUpload => _isWaitingForPhoneUpload;
+  PhoneUploadLinkInfo? get activePhoneUploadLink => _activePhoneUploadLink;
   bool get isUploading => _isUploading;
   int get uploadElapsedSeconds => _uploadElapsedSeconds;
   String? get uploadStatusMessage => _uploadStatusMessage;
@@ -2199,6 +2211,104 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  /// Mints a phone-upload QR link and starts polling until the guest uploads.
+  Future<PhoneUploadLinkInfo?> beginPhoneUploadQrFlow() async {
+    cancelPhoneUploadWait();
+    _errorMessage = null;
+    notifyListeners();
+
+    final sessionId = _sessionManager.sessionId?.trim();
+    if (sessionId == null || sessionId.isEmpty) {
+      _errorMessage = AppStrings.sessionPhotoSyncNoSession;
+      notifyListeners();
+      return null;
+    }
+    final kioskCode = (await _kioskManager.getKioskCode())?.trim().toUpperCase();
+    if (kioskCode == null || kioskCode.isEmpty) {
+      _errorMessage = AppStrings.phoneUploadMintFailed;
+      notifyListeners();
+      return null;
+    }
+
+    try {
+      final raw = await _apiService.createKioskUploadLink(
+        kioskCode: kioskCode,
+        sessionId: sessionId,
+        ttlMinutes: 15,
+      );
+      final link = PhoneUploadLinkInfo.tryParse(raw);
+      if (link == null) {
+        _errorMessage = AppStrings.phoneUploadMintFailed;
+        notifyListeners();
+        return null;
+      }
+      _activePhoneUploadLink = link;
+      _isWaitingForPhoneUpload = true;
+      _phoneUploadPollDeadline = DateTime.now().add(kPhoneUploadPollTimeout);
+      notifyListeners();
+      _phoneUploadPollTimer?.cancel();
+      _phoneUploadPollTimer = Timer.periodic(kPhoneUploadPollInterval, (_) {
+        unawaited(_pollPhoneUploadOnce());
+      });
+      unawaited(_pollPhoneUploadOnce());
+      return link;
+    } catch (e, st) {
+      AppLogger.error('beginPhoneUploadQrFlow failed', error: e, stackTrace: st);
+      _errorMessage = AppStrings.phoneUploadMintFailed;
+      _isWaitingForPhoneUpload = false;
+      _activePhoneUploadLink = null;
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// Stops waiting for a phone upload (sheet dismissed / retake).
+  void cancelPhoneUploadWait() {
+    _phoneUploadPollTimer?.cancel();
+    _phoneUploadPollTimer = null;
+    _phoneUploadPollDeadline = null;
+    final wasWaiting = _isWaitingForPhoneUpload;
+    _isWaitingForPhoneUpload = false;
+    _activePhoneUploadLink = null;
+    if (wasWaiting) notifyListeners();
+  }
+
+  Future<void> _pollPhoneUploadOnce() async {
+    if (!_isWaitingForPhoneUpload) return;
+    final deadline = _phoneUploadPollDeadline;
+    if (deadline != null && DateTime.now().isAfter(deadline)) {
+      cancelPhoneUploadWait();
+      _errorMessage = AppStrings.phoneUploadTimeout;
+      notifyListeners();
+      return;
+    }
+    final sessionId = _sessionManager.sessionId?.trim();
+    if (sessionId == null || sessionId.isEmpty) return;
+    try {
+      final session = await _apiService.fetchSession(sessionId);
+      if (!phoneUploadSessionReady(session)) return;
+      final previewUrl = phoneUploadPreviewUrlFromSession(session);
+      if (previewUrl == null || previewUrl.isEmpty) {
+        // Image flagged present but no preview yet — keep polling briefly.
+        return;
+      }
+      final file = await downloadPhoneUploadPreviewToXFile(previewUrl);
+      final normalized =
+          await ImageHelper.normalizeAndSaveCapturedPhoto(file);
+      _phoneUploadSyncedToSession = true;
+      await _assignCapturedPhotoModel(
+        normalized,
+        cameraIdOverride: 'phone_qr',
+        skipUploadPrep: true,
+      );
+      cancelPhoneUploadWait();
+      unawaited(playCaptureShutterSound());
+      AppLogger.debug('Phone upload applied to capture preview');
+    } catch (e, st) {
+      AppLogger.debug('Phone upload poll tick failed: $e\n$st');
+    }
+  }
+
   /// Re-opens the live camera preview after [clearCapturedPhoto] (Retake / back).
   ///
   /// Stream-only and external/Android TV paths often leave the preview texture
@@ -2256,6 +2366,8 @@ class CaptureViewModel extends ChangeNotifier {
 
     _isCapturing = false;
     _isSelectingFromGallery = false;
+    cancelPhoneUploadWait();
+    _phoneUploadSyncedToSession = false;
 
     _capturedPhoto = null;
     _capturedImagePixelSize = null;
@@ -2535,6 +2647,26 @@ class CaptureViewModel extends ChangeNotifier {
       return false;
     }
 
+    // Phone QR already wrote userImageUrl server-side — skip re-PATCH.
+    if (_phoneUploadSyncedToSession &&
+        _capturedPhoto!.cameraId == 'phone_qr') {
+      if (!uploadAlreadyStarted) {
+        beginContinueUpload();
+      } else if (!_isUploading) {
+        beginContinueUpload();
+      }
+      _uploadStatusMessage = 'Photo ready';
+      notifyListeners();
+      await _resolvePersonCountAfterUpload(
+        sessionId: sessionId,
+        clientFaceCount: _preparedClientFaceCount ?? 0,
+      );
+      _isUploading = false;
+      _uploadStatusMessage = null;
+      notifyListeners();
+      return true;
+    }
+
     final kioskToken = _sessionManager.kioskAuthToken;
     if (kioskToken == null || kioskToken.isEmpty) {
       _errorMessage =
@@ -2763,6 +2895,7 @@ class CaptureViewModel extends ChangeNotifier {
     _disposed = true;
     _countdownGeneration++;
     _countdownValue = null;
+    cancelPhoneUploadWait();
     _stopUploadTimer();
     _releaseUploadPayloadMemory();
     unawaited(_captureSoundService.dispose());
@@ -2770,4 +2903,3 @@ class CaptureViewModel extends ChangeNotifier {
     super.dispose();
   }
 }
-

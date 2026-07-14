@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../utils/app_strings.dart';
 import 'photo_capture_viewmodel.dart';
 
 /// Capture UI when the `camera` plugin is unavailable (Windows desktop).
@@ -11,12 +12,14 @@ class PhotoCaptureDesktopBody extends StatelessWidget {
     required this.onTakePhoto,
     required this.onPickGallery,
     required this.showGallery,
+    this.onPhoneUpload,
   });
 
   final CaptureViewModel viewModel;
   final VoidCallback onTakePhoto;
   final VoidCallback onPickGallery;
   final bool showGallery;
+  final VoidCallback? onPhoneUpload;
 
   @override
   Widget build(BuildContext context) {
@@ -24,6 +27,10 @@ class PhotoCaptureDesktopBody extends StatelessWidget {
     if (photo != null) {
       return const SizedBox.shrink();
     }
+
+    final busy = viewModel.isCapturing ||
+        viewModel.isSelectingFromGallery ||
+        viewModel.isWaitingForPhoneUpload;
 
     return Center(
       child: Padding(
@@ -48,7 +55,7 @@ class PhotoCaptureDesktopBody extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              'Use your webcam or pick a photo to continue.',
+              'Use your webcam, gallery, or phone QR to continue.',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.75),
                 fontSize: 15,
@@ -60,11 +67,11 @@ class PhotoCaptureDesktopBody extends StatelessWidget {
             SizedBox(
               width: 280,
               child: CupertinoButton.filled(
-                onPressed: viewModel.isCapturing || viewModel.isSelectingFromGallery
-                    ? null
-                    : onTakePhoto,
+                onPressed: busy ? null : onTakePhoto,
                 child: viewModel.isCapturing
-                    ? const CupertinoActivityIndicator(color: CupertinoColors.white)
+                    ? const CupertinoActivityIndicator(
+                        color: CupertinoColors.white,
+                      )
                     : const Text('Take Photo'),
               ),
             ),
@@ -73,14 +80,24 @@ class PhotoCaptureDesktopBody extends StatelessWidget {
               SizedBox(
                 width: 280,
                 child: CupertinoButton(
-                  onPressed: viewModel.isCapturing || viewModel.isSelectingFromGallery
-                      ? null
-                      : onPickGallery,
+                  onPressed: busy ? null : onPickGallery,
                   child: viewModel.isSelectingFromGallery
                       ? const CupertinoActivityIndicator()
-                      : const Text('Choose from Gallery'),
+                      : const Text(AppStrings.galleryButtonLabel),
                 ),
               ),
+              if (onPhoneUpload != null) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: 280,
+                  child: CupertinoButton(
+                    onPressed: busy ? null : onPhoneUpload,
+                    child: viewModel.isWaitingForPhoneUpload
+                        ? const CupertinoActivityIndicator()
+                        : const Text(AppStrings.phoneUploadButtonLabel),
+                  ),
+                ),
+              ],
             ],
           ],
         ),
