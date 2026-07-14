@@ -150,6 +150,13 @@ void main() {
     expect(body['framingMetadata'], {'k': 'v'});
   });
 
+  test('buildSessionPatchBody clearGuestPhoto nulls selfie fields', () {
+    final body = buildSessionPatchBody(clearGuestPhoto: true);
+    expect(body['userImageUrl'], isNull);
+    expect(body['userImagePreviewUrl'], isNull);
+    expect(body['compressedImageUrl'], isNull);
+  });
+
   test('decodeSessionPatchResponseText parses JSON', () async {
     final map = await decodeSessionPatchResponseText(
       '{"sessionId":"s","selectedThemeId":"t"}',

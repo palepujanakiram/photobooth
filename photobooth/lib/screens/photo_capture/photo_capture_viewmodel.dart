@@ -2353,8 +2353,27 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Clears the captured photo and any error messages
   void clearCapturedPhoto() {
+    final shouldClearServerGuestPhoto = _beginClearCapturedPhotoLocally();
+    if (shouldClearServerGuestPhoto) {
+      unawaited(_clearSessionGuestPhotoQuietly());
+    }
+  }
+
+  /// Like [clearCapturedPhoto] but awaits session selfie wipe (phone QR Retake).
+  Future<void> clearCapturedPhotoAwaitingSession() async {
+    final shouldClearServerGuestPhoto = _beginClearCapturedPhotoLocally();
+    if (shouldClearServerGuestPhoto) {
+      await _clearSessionGuestPhotoQuietly();
+    }
+  }
+
+  /// Returns true when the session guest selfie should be wiped after local clear.
+  bool _beginClearCapturedPhotoLocally() {
     // Treat "Retake" as a hard reset of any in-flight UI state so the user can
     // always return to live preview, even if an upload/countdown was running.
+    final shouldClearServerGuestPhoto = _phoneUploadSyncedToSession ||
+        _capturedPhoto?.cameraId == 'phone_qr';
+
     _countdownGeneration++;
     unawaited(_captureSoundService.cancel());
     _countdownValue = null;
@@ -2377,6 +2396,19 @@ class CaptureViewModel extends ChangeNotifier {
     _resetUploadPreparation();
     _previewNonce++;
     notifyListeners();
+    return shouldClearServerGuestPhoto;
+  }
+
+  /// Drops server-side selfie after Retake so phone QR poll cannot re-apply it.
+  Future<void> _clearSessionGuestPhotoQuietly() async {
+    final sessionId = _sessionManager.sessionId?.trim();
+    if (sessionId == null || sessionId.isEmpty) return;
+    try {
+      await _apiService.clearSessionGuestPhoto(sessionId: sessionId);
+      AppLogger.debug('Session guest photo cleared after Retake');
+    } catch (e, st) {
+      AppLogger.debug('clearSessionGuestPhoto failed: $e\n$st');
+    }
   }
 
   void _resetUploadPreparation() {

@@ -94,8 +94,15 @@ Map<String, dynamic> buildSessionPatchBody({
   String? selectedFrameId,
   int? personCount,
   Map<String, dynamic>? framingMetadata,
+  /// When true, clears guest selfie fields (Retake after phone QR upload).
+  bool clearGuestPhoto = false,
 }) {
   final body = <String, dynamic>{};
+  if (clearGuestPhoto) {
+    body['userImageUrl'] = null;
+    body['userImagePreviewUrl'] = null;
+    body['compressedImageUrl'] = null;
+  }
   if (userImageUrl != null) body['userImageUrl'] = userImageUrl;
   if (selectedThemeId != null) body['selectedThemeId'] = selectedThemeId;
   if (includeSelectedFrameId) body['selectedFrameId'] = selectedFrameId;

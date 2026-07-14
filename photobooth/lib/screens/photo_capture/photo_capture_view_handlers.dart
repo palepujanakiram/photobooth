@@ -25,21 +25,24 @@ ButtonStyle captureScreenButtonStyle({bool secondary = false}) {
   );
 }
 
-/// Retake: on web replaces the route; elsewhere clears the captured still.
+/// Retake: clear the still and return to live preview.
+///
+/// Always clears local capture state first. On web we used to only
+/// [pushReplacementNamed] without clearing — when Flutter reused the same
+/// route State, the phone/gallery still stayed on screen.
 Future<void> handleCapturedPhotoRetake({
   required BuildContext context,
   required CaptureViewModel viewModel,
   required bool Function() isMounted,
 }) async {
+  await viewModel.clearCapturedPhotoAwaitingSession();
   if (kIsWeb) {
     await viewModel.disposeCamera();
     if (!isMounted() || !context.mounted) return;
     await Navigator.of(context).pushReplacementNamed(
       AppConstants.kRouteCapture,
     );
-    return;
   }
-  viewModel.clearCapturedPhoto();
 }
 
 /// Continue: upload, navigate to theme selection; release cameras in parallel.

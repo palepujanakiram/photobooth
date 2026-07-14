@@ -656,6 +656,39 @@ class ApiService {
     }
   }
 
+  /// Clears guest selfie fields on the session (Retake after phone QR / gallery sync).
+  Future<Map<String, dynamic>> clearSessionGuestPhoto({
+    required String sessionId,
+  }) async {
+    try {
+      final body = buildSessionPatchBody(clearGuestPhoto: true);
+      final httpResponse = await _dio.patch<String>(
+        '/api/sessions/$sessionId',
+        data: body,
+        options: Options(
+          contentType: Headers.jsonContentType,
+          responseType: ResponseType.plain,
+          sendTimeout: AppConstants.kSessionUploadTimeout,
+          receiveTimeout: AppConstants.kSessionUploadTimeout,
+        ),
+      );
+      return decodeSessionPatchResponseText(httpResponse.data ?? '');
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError) {
+        throw ApiException(AppConstants.kErrorNetwork);
+      }
+      _throwMappedApiException(e);
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('${AppConstants.kErrorUnknown}: $e');
+    }
+  }
+
   /// Deletes the session and associated data on the server
   /// DELETE /api/sessions/{sessionId}
   Future<void> deleteSession(String sessionId) async {
