@@ -4,10 +4,12 @@ import 'dart:math' show min;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart' show Colors, Scaffold;
+import 'package:provider/provider.dart';
 
 import 'bootstrap_route_args.dart';
 import 'kiosk_qr_scan_screen.dart';
 import '../../services/api_service.dart';
+import '../../services/app_settings_manager.dart';
 import '../../services/client_identification.dart';
 import '../../services/customer_session_lifecycle.dart';
 import '../../services/kiosk_manager.dart';
@@ -77,6 +79,17 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     }
   }
 
+  /// Reload `/api/settings?kiosk=` so guest prices match this kiosk, not the
+  /// account defaults cached at app start (before a code was bound).
+  Future<void> _refreshSettingsForBoundKiosk() async {
+    if (!mounted) return;
+    try {
+      await context.read<AppSettingsManager>().fetchSettings(forceRefresh: true);
+    } catch (_) {
+      // Non-fatal — next screen may retry; UI falls back to defaults.
+    }
+  }
+
   Future<void> _bootstrap() async {
     await _ensureMinSplashElapsed();
     if (!mounted) return;
@@ -103,6 +116,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
         await endPhotoboothCustomerSessionLogged(
           'splash: web kiosk code from URL',
         );
+        await _refreshSettingsForBoundKiosk();
       }
     }
 
@@ -140,6 +154,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     }
     await _kiosk.setKioskCode(code);
     await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
+    await _refreshSettingsForBoundKiosk();
     final urls = await _loadThemeBackgroundUrls();
     if (!mounted) return;
     setState(() => _busy = false);
@@ -183,6 +198,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     await _kiosk.setKioskCode(code);
     await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
     await endPhotoboothCustomerSessionLogged('splash: kiosk code submitted');
+    await _refreshSettingsForBoundKiosk();
     final urls = await _loadThemeBackgroundUrls();
     if (!mounted) return;
     setState(() => _busy = false);
