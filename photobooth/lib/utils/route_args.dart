@@ -1,3 +1,4 @@
+import '../models/customer_contact_capture.dart';
 import '../screens/photo_capture/photo_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../screens/photo_generate/photo_generate_viewmodel.dart';
@@ -64,17 +65,19 @@ class ResultArgs {
   final List<GeneratedImage> generatedImages;
   final PhotoModel? originalPhoto;
   final PrintOrientation printOrientation;
-  final String? customerName;
-  final String? customerPhone;
-  final bool customerWhatsappOptIn;
+  final CustomerContactCapture contact;
+
+  String? get customerName =>
+      contact.customerName.isEmpty ? null : contact.customerName;
+  String? get customerPhone =>
+      contact.customerPhone.isEmpty ? null : contact.customerPhone;
+  bool get customerWhatsappOptIn => contact.whatsappOptIn;
 
   const ResultArgs({
     required this.generatedImages,
     this.originalPhoto,
     this.printOrientation = PrintOrientation.portrait,
-    this.customerName,
-    this.customerPhone,
-    this.customerWhatsappOptIn = false,
+    this.contact = CustomerContactCapture.empty,
   });
 
   static ResultArgs? tryParse(Object? args) {
@@ -91,9 +94,7 @@ class ResultArgs {
               args['printOrientation']?.toString(),
             ) ??
             PrintOrientation.portrait,
-        customerName: args['customerName']?.toString(),
-        customerPhone: args['customerPhone']?.toString(),
-        customerWhatsappOptIn: args['customerWhatsappOptIn'] == true,
+        contact: CustomerContactCapture.tryParseRouteMap(args),
       );
     }
     return null;

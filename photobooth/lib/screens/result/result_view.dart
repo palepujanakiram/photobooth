@@ -34,9 +34,7 @@ class _ResultScreenState extends State<ResultScreen> {
   ResultViewModel? _viewModel;
   bool _isInitialized = false;
   bool _didNavigateToThankYou = false;
-  String? _customerName;
   String? _customerPhone;
-  bool _customerWhatsappOptIn = false;
   bool? _paymentsEnabledOverride;
   Timer? _failureIdleTimer;
   int _failureSecondsLeft = 0;
@@ -68,9 +66,7 @@ class _ResultScreenState extends State<ResultScreen> {
 
     final generatedImages = parsed.generatedImages;
     final originalPhoto = parsed.originalPhoto;
-    _customerName = parsed.customerName;
     _customerPhone = parsed.customerPhone;
-    _customerWhatsappOptIn = parsed.customerWhatsappOptIn;
 
     if (generatedImages.isEmpty) return;
 
@@ -79,9 +75,7 @@ class _ResultScreenState extends State<ResultScreen> {
       originalPhoto: originalPhoto,
       printOrientation: parsed.printOrientation,
       appSettingsManager: context.read<AppSettingsManager>(),
-      customerName: _customerName,
-      customerPhone: _customerPhone,
-      customerWhatsappOptIn: _customerWhatsappOptIn,
+      contact: parsed.contact,
     );
     _viewModel!.refreshPrinterFromSettings();
     _isInitialized = true;

@@ -19,6 +19,7 @@ bool ignored(String path) {
     'app_splash_screen_body.dart',
     '_print_helpers.dart',
     '_payment_card_widgets.dart',
+    'result_payment_coupon_row.dart',
     '_carousel_page.dart',
     '_loaded_body.dart',
     '_continue_helpers.dart',

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'result_payment_coupon_row.dart';
 import 'result_payment_status.dart';
 import 'result_viewmodel.dart';
 
@@ -41,15 +42,33 @@ class ResultPaymentCardColumn extends StatelessWidget {
         const Text('Pay via UPI', style: kResultPaymentBoxTitleStyle),
         const SizedBox(height: 4),
         Text(
-          viewModel.collectPaymentBeforeGeneration && viewModel.checkoutAmount > 0
-              ? 'Additional prints: ₹${viewModel.checkoutAmount}'
-              : '₹${viewModel.checkoutAmount}',
+          viewModel.collectPaymentBeforeGeneration && viewModel.chargeAmount > 0
+              ? 'Additional prints: ₹${viewModel.chargeAmount}'
+              : '₹${viewModel.chargeAmount}',
           style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w700,
             height: 1.2,
             color: Colors.white,
           ),
+        ),
+        if (viewModel.appliedDiscount != null &&
+            viewModel.appliedDiscount!.subtotal != viewModel.chargeAmount)
+          Text(
+            'Was ₹${viewModel.appliedDiscount!.subtotal}',
+            style: TextStyle(
+              fontSize: 13,
+              decoration: TextDecoration.lineThrough,
+              color: Colors.white.withValues(alpha: 0.65),
+            ),
+          ),
+        const SizedBox(height: 6),
+        ResultPaymentCouponRow(
+          appliedDiscount: viewModel.appliedDiscount,
+          couponError: viewModel.couponError,
+          busy: viewModel.couponBusy || viewModel.paymentInitInProgress,
+          onApply: viewModel.applyCoupon,
+          onUnapply: viewModel.unapplyCoupon,
         ),
         const SizedBox(height: 6),
         Expanded(

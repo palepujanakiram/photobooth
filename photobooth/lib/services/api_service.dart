@@ -175,7 +175,12 @@ class ApiService {
     required String sessionId,
     String? customerName,
     String? customerPhone,
+    String? customerEmail,
+    String? customerUpiVpa,
     bool? whatsappOptIn,
+    bool? marketingEmailOptIn,
+    bool? marketingSmsOptIn,
+    bool? marketingWhatsappOptIn,
     String? transactionRef,
     String? fcmToken,
   }) async {
@@ -189,7 +194,16 @@ class ApiService {
         'customerName': customerName.trim(),
       if (customerPhone != null && customerPhone.trim().isNotEmpty)
         'customerPhone': customerPhone.trim(),
+      if (customerEmail != null && customerEmail.trim().isNotEmpty)
+        'customerEmail': customerEmail.trim(),
+      if (customerUpiVpa != null && customerUpiVpa.trim().isNotEmpty)
+        'customerUpiVpa': customerUpiVpa.trim(),
       if (whatsappOptIn != null) 'whatsappOptIn': whatsappOptIn,
+      if (marketingEmailOptIn != null)
+        'marketingEmailOptIn': marketingEmailOptIn,
+      if (marketingSmsOptIn != null) 'marketingSmsOptIn': marketingSmsOptIn,
+      if (marketingWhatsappOptIn != null)
+        'marketingWhatsappOptIn': marketingWhatsappOptIn,
       if (transactionRef != null && transactionRef.trim().isNotEmpty)
         'transactionRef': transactionRef.trim(),
       if (fcmToken != null && fcmToken.trim().isNotEmpty) 'fcmToken': fcmToken.trim(),
@@ -785,6 +799,104 @@ class ApiService {
         rethrow;
       }
       throw ApiException('${AppConstants.kErrorUnknown}: $e');
+    }
+  }
+
+  /// POST `/api/sessions/:id/discount/apply` — apply one coupon to the bill.
+  Future<Map<String, dynamic>> applySessionDiscount({
+    required String sessionId,
+    required String code,
+    required int subtotal,
+  }) async {
+    final sid = sessionId.trim();
+    final c = code.trim();
+    if (sid.isEmpty) {
+      throw ApiException('sessionId is required');
+    }
+    if (c.isEmpty) {
+      throw ApiException('code is required');
+    }
+    if (subtotal <= 0) {
+      throw ApiException('subtotal is required to apply a discount');
+    }
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/sessions/$sid/discount/apply',
+        data: <String, dynamic>{'code': c, 'subtotal': subtotal},
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (status) => status != null && status >= 200 && status < 500,
+        ),
+      );
+      throwIfHttpErrorResponse(r, operationLabel: 'Apply discount failed');
+      return parseJsonMapBody(
+        r.data,
+        unexpectedMessage: 'Unexpected discount apply response from API',
+      );
+    } on DioException catch (e) {
+      throwApiExceptionAfterWebCors(
+        e,
+        messagePrefix: 'Failed to apply discount',
+      );
+    }
+  }
+
+  /// POST `/api/sessions/:id/discount/unapply` — clear applied coupon.
+  Future<Map<String, dynamic>> unapplySessionDiscount({
+    required String sessionId,
+  }) async {
+    final sid = sessionId.trim();
+    if (sid.isEmpty) {
+      throw ApiException('sessionId is required');
+    }
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/sessions/$sid/discount/unapply',
+        data: const <String, dynamic>{},
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (status) => status != null && status >= 200 && status < 500,
+        ),
+      );
+      throwIfHttpErrorResponse(r, operationLabel: 'Clear discount failed');
+      return parseJsonMapBody(
+        r.data,
+        unexpectedMessage: 'Unexpected discount unapply response from API',
+      );
+    } on DioException catch (e) {
+      throwApiExceptionAfterWebCors(
+        e,
+        messagePrefix: 'Failed to clear discount',
+      );
+    }
+  }
+
+  /// GET `/api/sessions/:id/discount` — current applied coupon state.
+  Future<Map<String, dynamic>> fetchSessionDiscount({
+    required String sessionId,
+  }) async {
+    final sid = sessionId.trim();
+    if (sid.isEmpty) {
+      throw ApiException('sessionId is required');
+    }
+    try {
+      final r = await _dio.get<dynamic>(
+        '/api/sessions/$sid/discount',
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (status) => status != null && status >= 200 && status < 500,
+        ),
+      );
+      throwIfHttpErrorResponse(r, operationLabel: 'Fetch discount failed');
+      return parseJsonMapBody(
+        r.data,
+        unexpectedMessage: 'Unexpected discount response from API',
+      );
+    } on DioException catch (e) {
+      throwApiExceptionAfterWebCors(
+        e,
+        messagePrefix: 'Failed to fetch discount',
+      );
     }
   }
 
