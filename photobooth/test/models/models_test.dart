@@ -40,6 +40,17 @@ void main() {
     expect(m.thermalSafeMode, isTrue);
   });
 
+  test('AppSettingsModel.fromJson parses receipt printer fields', () {
+    final m = AppSettingsModel.fromJson({
+      'receiptPrinterEnabled': true,
+      'receiptPrinterHost': '192.168.2.43',
+      'receiptPrinterPort': 9100,
+    });
+    expect(m.receiptPrinterEnabled, isTrue);
+    expect(m.receiptPrinterHost, '192.168.2.43');
+    expect(m.receiptPrinterPort, 9100);
+  });
+
   test('KioskInfoModel.isValid requires id and code', () {
     expect(
       KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'}).isValid,

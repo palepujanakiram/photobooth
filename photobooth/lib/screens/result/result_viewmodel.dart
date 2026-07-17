@@ -13,7 +13,9 @@ import '../../services/file_helper.dart';
 import '../../services/print_service.dart';
 import '../../services/print_file.dart';
 import '../../services/print_service_helpers.dart';
+import '../../services/receipt_printer_service.dart';
 import '../../services/session_manager.dart';
+import '../../models/session_print_receipt_result.dart';
 import '../../services/share_service.dart';
 import '../../services/kiosk_manager.dart';
 import '../../utils/app_strings.dart';
@@ -80,6 +82,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   final SessionManager _sessionManager;
   final AppSettingsManager? _appSettingsManager;
   final KioskManager _kioskManager;
+  final ReceiptPrinterService _receiptPrinterService;
 
   final String? _customerName;
   final String? _customerPhone;
@@ -92,7 +95,9 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   // Print/Share state
   bool _isSilentPrinting = false;
   bool _isDialogPrinting = false;
+  bool _isPrintingReceipt = false;
   bool _postPaymentPrintStarted = false;
+  bool _postPaymentReceiptPrintStarted = false;
   PrintProgressSnapshot _printProgress = const PrintProgressSnapshot();
   Timer? _printProgressTicker;
   DateTime? _printFinishingStartedAt;
@@ -278,6 +283,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
     SessionManager? sessionManager,
     AppSettingsManager? appSettingsManager,
     KioskManager? kioskManager,
+    ReceiptPrinterService? receiptPrinterService,
     String? customerName,
     String? customerPhone,
     bool customerWhatsappOptIn = false,
@@ -290,6 +296,8 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
         _sessionManager = sessionManager ?? SessionManager(),
         _appSettingsManager = appSettingsManager,
         _kioskManager = kioskManager ?? KioskManager(),
+        _receiptPrinterService =
+            receiptPrinterService ?? ReceiptPrinterService(),
         _customerName = customerName,
         _customerPhone = customerPhone,
         _customerWhatsappOptIn = customerWhatsappOptIn,
@@ -336,8 +344,18 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
 
   bool get isSilentPrinting => _isSilentPrinting;
   bool get isDialogPrinting => _isDialogPrinting;
-  bool get isPrinting => _isSilentPrinting || _isDialogPrinting;
+  bool get isPrintingReceipt => _isPrintingReceipt;
+  bool get isPrinting =>
+      _isSilentPrinting || _isDialogPrinting || _isPrintingReceipt;
   PrintProgressSnapshot get printProgress => _printProgress;
+
+  /// True when admin enabled a LAN thermal receipt printer.
+  bool get isReceiptPrinterConfigured {
+    final settings = _appSettingsManager?.settings;
+    if (settings?.receiptPrinterEnabled != true) return false;
+    final host = settings?.receiptPrinterHost?.trim() ?? '';
+    return host.isNotEmpty;
+  }
 
   /// True when the QR share screen should show the print status card.
   bool get shouldShowPrintProgressCard {

@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../utils/app_strings.dart';
 import '../../utils/route_args.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/delete_my_photos_action.dart';
@@ -216,7 +217,9 @@ class _QrShareActionRow extends StatelessWidget {
                     ? null
                     : () => _onPrintAgain(context, viewModel),
                 child: Text(
-                  viewModel.isPrinting ? 'Printing…' : 'Print again',
+                  viewModel.isSilentPrinting || viewModel.isDialogPrinting
+                      ? 'Printing…'
+                      : 'Print again',
                 ),
               ),
             ),
@@ -241,6 +244,30 @@ class _QrShareActionRow extends StatelessWidget {
             ),
           ],
         ),
+        if (viewModel.isReceiptPrinterConfigured) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+                minimumSize: const Size.fromHeight(52),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              onPressed: viewModel.isPrintingReceipt
+                  ? null
+                  : () => _onPrintReceipt(context, viewModel),
+              child: Text(
+                viewModel.isPrintingReceipt
+                    ? AppStrings.printingReceiptButton
+                    : AppStrings.printReceiptButton,
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         Text(
           'Resetting in ${secondsLeft}s',
@@ -252,6 +279,24 @@ class _QrShareActionRow extends StatelessWidget {
         const DeleteMyPhotosButton(compact: true),
       ],
     );
+  }
+
+  Future<void> _onPrintReceipt(
+    BuildContext context,
+    ResultViewModel viewModel,
+  ) async {
+    final ok = await viewModel.printReceiptToNetwork(showErrors: true);
+    if (!context.mounted) return;
+    if (ok) {
+      AppSnackBar.showSuccess(context, AppStrings.receiptPrintSuccess);
+      return;
+    }
+    if (viewModel.hasError) {
+      AppSnackBar.showError(
+        context,
+        viewModel.errorMessage ?? AppStrings.receiptPrintFailedGeneric,
+      );
+    }
   }
 
   Future<void> _onPrintAgain(

@@ -783,6 +783,11 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       if (receipt != null) {
         _r._receiptResponseReceived = true;
         _ingestReceiptShareFields(receipt);
+        if (_r.isReceiptPrinterConfigured &&
+            !_r._postPaymentReceiptPrintStarted) {
+          _r._postPaymentReceiptPrintStarted = true;
+          unawaited(printReceiptToNetwork(showErrors: false));
+        }
       }
     } catch (e, st) {
       unawaited(
@@ -1082,6 +1087,95 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       percent: percent,
     );
     notifyListeners();
+  }
+
+  /// Fetch ESC/POS from API and deliver to the LAN thermal receipt printer.
+  ///
+  /// When [showErrors] is false (auto post-payment), failures are logged only.
+  Future<bool> printReceiptToNetwork({bool showErrors = true}) async {
+    if (_r._isPrintingReceipt) return false;
+
+    if (kIsWeb) {
+      if (showErrors) {
+        _r._errorMessage = AppStrings.receiptPrintUnsupportedOnWeb;
+        notifyListeners();
+      }
+      return false;
+    }
+
+    if (!_r.isReceiptPrinterConfigured) {
+      if (showErrors) {
+        _r._errorMessage = AppStrings.receiptPrintNotConfigured;
+        notifyListeners();
+      }
+      return false;
+    }
+
+    final sessionId = _r._sessionManager.sessionId?.trim() ?? '';
+    if (sessionId.isEmpty) {
+      if (showErrors) {
+        _r._errorMessage = AppStrings.receiptPrintFailedGeneric;
+        notifyListeners();
+      }
+      return false;
+    }
+
+    _r._isPrintingReceipt = true;
+    if (showErrors) {
+      _r._errorMessage = null;
+    }
+    notifyListeners();
+
+    try {
+      final raw = await _r._apiService.postSessionPrintReceipt(
+        sessionId: sessionId,
+      );
+      if (_r._disposed) return false;
+
+      final result = SessionPrintReceiptResult.fromJson(raw);
+      if (!result.success || !result.printerConfigured) {
+        final msg =
+            result.error ??
+            result.message ??
+            AppStrings.receiptPrintNotConfigured;
+        if (showErrors) {
+          _r._errorMessage = msg;
+        } else {
+          AppLogger.warning('Receipt print skipped: $msg');
+        }
+        return false;
+      }
+
+      if (result.deliveredByServer) {
+        AppLogger.debug('Receipt delivered by server; skipping LAN TCP');
+        return true;
+      }
+
+      if (!result.needsLanDelivery) {
+        if (showErrors) {
+          _r._errorMessage = AppStrings.receiptPrintEmptyPayload;
+        }
+        return false;
+      }
+
+      await _r._receiptPrinterService.sendEscPosBase64(
+        host: result.host!.trim(),
+        port: result.port,
+        payloadBase64: result.payloadBase64!,
+      );
+      return true;
+    } catch (e, st) {
+      AppLogger.error('printReceiptToNetwork failed: $e', error: e, stackTrace: st);
+      if (showErrors) {
+        _r._errorMessage = e is ApiException
+            ? e.userFacingMessage
+            : AppStrings.receiptPrintFailedGeneric;
+      }
+      return false;
+    } finally {
+      _r._isPrintingReceipt = false;
+      if (!_r._disposed) notifyListeners();
+    }
   }
 
   /// Silent print all images to network printer

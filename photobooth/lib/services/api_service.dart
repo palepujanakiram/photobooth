@@ -218,6 +218,40 @@ class ApiService {
     }
   }
 
+  /// POST `/api/sessions/:id/print-receipt` — ESC/POS payload for LAN thermal printer.
+  ///
+  /// Requires an existing receipt for the session (create via [postSessionReceipt] first).
+  /// Auth: automatic `X-Kiosk-Session-Token` on the shared Dio client.
+  Future<Map<String, dynamic>> postSessionPrintReceipt({
+    required String sessionId,
+  }) async {
+    final sid = sessionId.trim();
+    if (sid.isEmpty) {
+      throw ApiException('sessionId is required');
+    }
+
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/sessions/$sid/print-receipt',
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+      final data = r.data;
+      throwIfHttpErrorResponse(r, operationLabel: 'Receipt print request failed');
+      return parseJsonMapBody(
+        data,
+        unexpectedMessage: 'Unexpected receipt print response from API',
+      );
+    } on DioException catch (e) {
+      throwApiExceptionAfterWebCors(
+        e,
+        messagePrefix: 'Failed to print receipt',
+      );
+    }
+  }
+
   /// GET `/api/payments/status/{paymentId}?sessionId=…` — `{ "status": "PENDING" | "APPROVED" | "FAILED" }`.
   ///
   /// [sessionId] is required by the server (query param); omit only in legacy tests.

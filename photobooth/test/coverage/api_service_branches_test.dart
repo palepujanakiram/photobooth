@@ -64,6 +64,13 @@ void main() {
     expect(receipt['ok'], true);
   });
 
+  test('postSessionPrintReceipt validates sessionId', () async {
+    expect(
+      () => api.postSessionPrintReceipt(sessionId: ''),
+      throwsA(isA<ApiException>()),
+    );
+  });
+
   test('fetchPaymentStatus returns null for empty id', () async {
     expect(await api.fetchPaymentStatus(''), isNull);
   });

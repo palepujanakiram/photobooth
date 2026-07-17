@@ -93,6 +93,22 @@ void main() {
     expect(receipt['ok'], true);
   });
 
+  test('postSessionPrintReceipt returns print payload map', () async {
+    final adapter = dio.httpClientAdapter as DioAdapter;
+    adapter.onPost(
+      RegExp(r'/api/sessions/.*/print-receipt'),
+      (s) => s.reply(200, {
+        'success': true,
+        'printerConfigured': true,
+        'payloadBase64': 'YQ==',
+        'printer': {'host': '192.168.2.43', 'port': 9100},
+      }),
+    );
+    final printed = await api.postSessionPrintReceipt(sessionId: 'sess-1');
+    expect(printed['success'], true);
+    expect(printed['payloadBase64'], 'YQ==');
+  });
+
   test('fetchPaymentStatus returns map on success', () async {
     dio.httpClientAdapter = DioAdapter(dio: dio)
       ..onGet(

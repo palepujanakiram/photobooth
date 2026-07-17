@@ -32,6 +32,9 @@ class AppSettingsModel {
   final String? printerHost;
   final int? printerPort;
   final String? printerPath;
+  final bool? receiptPrinterEnabled;
+  final String? receiptPrinterHost;
+  final int? receiptPrinterPort;
   final bool? wcmPlusEnabled;
   final String? wcmPlusPath;
   final int? parallelImageCount;
@@ -76,6 +79,9 @@ class AppSettingsModel {
     this.printerHost,
     this.printerPort,
     this.printerPath,
+    this.receiptPrinterEnabled,
+    this.receiptPrinterHost,
+    this.receiptPrinterPort,
     this.wcmPlusEnabled,
     this.wcmPlusPath,
     this.parallelImageCount,
@@ -128,6 +134,12 @@ class AppSettingsModel {
       printerHost: JsonParseHelpers.stringOrNull(json['printerHost']),
       printerPort: JsonParseHelpers.intOrNull(json['printerPort']),
       printerPath: JsonParseHelpers.stringOrNull(json['printerPath']),
+      receiptPrinterEnabled:
+          JsonParseHelpers.boolOrNull(json['receiptPrinterEnabled']),
+      receiptPrinterHost:
+          JsonParseHelpers.stringOrNull(json['receiptPrinterHost']),
+      receiptPrinterPort:
+          JsonParseHelpers.intOrNull(json['receiptPrinterPort']),
       wcmPlusEnabled: JsonParseHelpers.boolOrNull(json['wcmPlusEnabled']),
       wcmPlusPath: JsonParseHelpers.stringOrNull(json['wcmPlusPath']),
       parallelImageCount: JsonParseHelpers.intOrNull(json['parallelImageCount']),

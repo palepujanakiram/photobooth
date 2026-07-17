@@ -11,6 +11,30 @@ abstract final class AppStrings {
   static const printFailedGeneric =
       'Failed to print. Please check the printer and try again.';
 
+  /// Receipt / ESC/POS thermal print success.
+  static const receiptPrintSuccess = 'Receipt sent to printer';
+
+  /// Receipt printer not configured in admin settings.
+  static const receiptPrintNotConfigured =
+      'Receipt printer is not configured. Ask staff to set it in Admin → Settings.';
+
+  /// Generic receipt print failure for guests.
+  static const receiptPrintFailedGeneric =
+      'Failed to print receipt. Check the receipt printer and try again.';
+
+  /// Empty ESC/POS payload from API.
+  static const receiptPrintEmptyPayload = 'Receipt print payload is empty';
+
+  /// Web kiosk cannot open raw TCP to LAN printers.
+  static const receiptPrintUnsupportedOnWeb =
+      'Receipt printing requires the Android/iOS kiosk app on the same Wi‑Fi as the printer.';
+
+  /// Button label on QR share screen.
+  static const printReceiptButton = 'Print receipt';
+
+  /// Button busy label.
+  static const printingReceiptButton = 'Printing receipt…';
+
   /// Browser / Dio message when a web request cannot reach the API (CORS, offline).
   static const failedToFetch = 'Failed to fetch';
 
