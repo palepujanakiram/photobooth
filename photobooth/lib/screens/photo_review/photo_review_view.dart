@@ -305,9 +305,7 @@ class _PhotoReviewScreenState extends State<PhotoReviewScreen> {
         arguments: {
           'generatedImages': <GeneratedImage>[generated],
           'originalPhoto': photo,
-          'customerName': contact.customerName,
-          'customerPhone': contact.customerPhone,
-          'customerWhatsappOptIn': contact.whatsappOptIn,
+          ...contact.toRouteArgsMap(),
         },
       );
       return;

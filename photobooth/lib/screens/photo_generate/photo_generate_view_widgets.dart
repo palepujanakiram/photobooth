@@ -1199,17 +1199,18 @@ Future<void> _onPhotoGenerateContinuePressed({
 
   viewModel.trimMemoryWhenRouteInactive();
 
+  final args = <String, dynamic>{
+    'generatedImages': selectedImages,
+    'originalPhoto': viewModel.originalPhoto,
+    'printOrientation': viewModel.printOrientation.apiValue,
+  };
+  if (contact != null) {
+    args.addAll(contact.toRouteArgsMap());
+  }
   await Navigator.pushNamed(
     context,
     AppConstants.kRouteResult,
-    arguments: {
-      'generatedImages': selectedImages,
-      'originalPhoto': viewModel.originalPhoto,
-      'printOrientation': viewModel.printOrientation.apiValue,
-      'customerName': contact?.customerName ?? '',
-      'customerPhone': contact?.customerPhone ?? '',
-      'customerWhatsappOptIn': contact?.whatsappOptIn ?? false,
-    },
+    arguments: args,
   );
 }
 

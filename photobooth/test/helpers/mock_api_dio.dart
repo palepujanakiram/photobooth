@@ -141,6 +141,52 @@ import 'package:photobooth/utils/constants.dart';
           return;
         }
 
+        if (options.method == 'POST' && path.contains('/discount/apply')) {
+          handler.resolve(
+            Response(
+              requestOptions: options,
+              statusCode: 200,
+              data: {
+                'success': true,
+                'coupon': {'code': 'FEST20'},
+                'discountAmount': 20,
+                'finalAmount': 80,
+                'subtotal': 100,
+              },
+            ),
+          );
+          return;
+        }
+
+        if (options.method == 'POST' &&
+            (path.contains('/discount/unapply') ||
+                path.contains('/discount/reset'))) {
+          handler.resolve(
+            Response(
+              requestOptions: options,
+              statusCode: 200,
+              data: {
+                'success': true,
+                'discountAmount': 0,
+                'finalAmount': 100,
+                'subtotal': 100,
+              },
+            ),
+          );
+          return;
+        }
+
+        if (options.method == 'GET' && path.contains('/discount')) {
+          handler.resolve(
+            Response(
+              requestOptions: options,
+              statusCode: 200,
+              data: {'applied': false, 'discountAmount': 0},
+            ),
+          );
+          return;
+        }
+
         handler.next(options);
       },
     ),

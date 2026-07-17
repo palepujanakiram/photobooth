@@ -12,6 +12,7 @@ import '../../views/widgets/centered_max_width.dart';
 import '../../views/widgets/kiosk_payment_qr_display.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
+import '../result/result_payment_coupon_row.dart';
 import 'pre_payment_viewmodel.dart';
 
 class PrePaymentScreen extends StatefulWidget {
@@ -204,12 +205,20 @@ class _PrePaymentCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '₹${viewModel.initialAmount}',
+            '₹${viewModel.chargeAmount}',
             style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w700,
               color: Colors.white,
             ),
+          ),
+          const SizedBox(height: 8),
+          ResultPaymentCouponRow(
+            appliedDiscount: viewModel.appliedDiscount,
+            couponError: viewModel.couponError,
+            busy: viewModel.couponBusy || viewModel.paymentInitInProgress,
+            onApply: viewModel.applyCoupon,
+            onUnapply: viewModel.unapplyCoupon,
           ),
           const SizedBox(height: 6),
           Expanded(

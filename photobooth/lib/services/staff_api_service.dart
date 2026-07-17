@@ -297,10 +297,20 @@ class StaffApiService {
     );
   }
 
-  Future<void> approvePayment({required String paymentId}) async {
+  Future<void> approvePayment({
+    required String paymentId,
+    required String paymentMode,
+  }) async {
+    final mode = paymentMode.trim();
+    if (mode.isEmpty) {
+      throw ApiException('paymentMode is required');
+    }
     await _postWithToken(
       '/api/staff/payment/approve',
-      data: {'paymentId': paymentId},
+      data: {
+        'paymentId': paymentId,
+        'paymentMode': mode,
+      },
       defaultError: 'Failed to approve payment',
     );
   }
