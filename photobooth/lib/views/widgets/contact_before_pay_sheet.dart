@@ -36,7 +36,20 @@ Future<ContactBeforePayResult?> showContactBeforePaySheet(
     isScrollControlled: true,
     showDragHandle: true,
     useSafeArea: true,
-    builder: (ctx) => const _ContactBeforePaySheetBody(),
+    // Opaque white sheet keeps web text sharp (avoids soft compositing
+    // over a tinted / translucent Material surface).
+    backgroundColor: Colors.white,
+    elevation: 6,
+    builder: (ctx) => Theme(
+      data: Theme.of(ctx).copyWith(
+        bottomSheetTheme: const BottomSheetThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          modalBackgroundColor: Colors.white,
+        ),
+      ),
+      child: const _ContactBeforePaySheetBody(),
+    ),
   );
 }
 
@@ -61,6 +74,42 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
   static final RegExp _e164 = RegExp(r'^\+\d{10,15}$');
 
   static const String _defaultDialCode = '+91';
+
+  static const Color _titleColor = Color(0xFF111827);
+  static const Color _bodyColor = Color(0xFF374151);
+  static const Color _mutedColor = Color(0xFF4B5563);
+
+  static const TextStyle _titleStyle = TextStyle(
+    fontSize: 20,
+    fontWeight: FontWeight.w700,
+    height: 1.25,
+    letterSpacing: 0,
+    color: _titleColor,
+  );
+
+  static const TextStyle _bodyStyle = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w400,
+    height: 1.4,
+    letterSpacing: 0,
+    color: _bodyColor,
+  );
+
+  static const TextStyle _checkboxTitleStyle = TextStyle(
+    fontSize: 15,
+    fontWeight: FontWeight.w600,
+    height: 1.3,
+    letterSpacing: 0,
+    color: _titleColor,
+  );
+
+  static const TextStyle _checkboxSubtitleStyle = TextStyle(
+    fontSize: 13,
+    fontWeight: FontWeight.w400,
+    height: 1.35,
+    letterSpacing: 0,
+    color: _mutedColor,
+  );
 
   /// Strips spaces, dashes, parentheses, and dots. Keeps a leading '+'.
   /// If user enters a local number without country code, defaults to [_defaultDialCode].
@@ -171,23 +220,51 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
     );
   }
 
+  InputDecoration _fieldDecoration({
+    required String label,
+    String? hint,
+    String? errorText,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      errorText: errorText,
+      filled: true,
+      fillColor: Colors.white,
+      border: const OutlineInputBorder(),
+      // Solid label color — alpha labels look soft on Flutter web.
+      labelStyle: const TextStyle(
+        fontWeight: FontWeight.w500,
+        color: _mutedColor,
+      ),
+      floatingLabelStyle: const TextStyle(
+        fontWeight: FontWeight.w600,
+        color: _titleColor,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     final viewInsets = mq.viewInsets;
+    // Whole-pixel padding avoids sub-pixel compositing blur on Flutter web.
     final bottomPad =
-        16 + viewInsets.bottom + mq.padding.bottom;
+        (16 + viewInsets.bottom + mq.padding.bottom).roundToDouble();
     final isLandscape = mq.orientation == Orientation.landscape;
+    final hasPhone = _phoneCtrl.text.trim().isNotEmpty;
 
     final nameField = TextField(
       controller: _nameCtrl,
       focusNode: _nameFocus,
       textInputAction: TextInputAction.next,
-      onSubmitted: (_) => _phoneFocus.requestFocus(),
-      decoration: const InputDecoration(
-        labelText: 'Name (optional)',
-        border: OutlineInputBorder(),
+      style: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+        color: _titleColor,
       ),
+      onSubmitted: (_) => _phoneFocus.requestFocus(),
+      decoration: _fieldDecoration(label: 'Name (optional)'),
     );
 
     final phoneField = TextField(
@@ -195,6 +272,11 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
       focusNode: _phoneFocus,
       keyboardType: TextInputType.phone,
       textInputAction: TextInputAction.done,
+      style: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+        color: _titleColor,
+      ),
       onSubmitted: (_) => FocusScope.of(context).unfocus(),
       onChanged: (_) {
         setState(() {
@@ -207,21 +289,20 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
           }
         });
       },
-      decoration: InputDecoration(
-        labelText: 'WhatsApp mobile (optional)',
-        hintText: '98xxxxxx00',
-        border: const OutlineInputBorder(),
+      decoration: _fieldDecoration(
+        label: 'WhatsApp mobile (optional)',
+        hint: '98xxxxxx00',
         errorText: _phoneError,
       ),
     );
 
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
+    // Prefer Padding over AnimatedPadding: animated transforms leave
+    // fractional offsets that soft-blur text on web after the keyboard closes.
+    return Padding(
       padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 8,
+        left: 20,
+        right: 20,
+        top: 4,
         bottom: bottomPad,
       ),
       child: SingleChildScrollView(
@@ -232,30 +313,23 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
             GestureDetector(
               onTap: () => FocusScope.of(context).unfocus(),
               behavior: HitTestBehavior.opaque,
-              child: Column(
+              child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Get receipt on WhatsApp (optional)',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
                   Text(
-                    'Add your mobile number to receive your receipt and digital copy on WhatsApp. '
-                    'You can still scan the QR code for a digital copy either way.',
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.35,
-                      color: Colors.black.withValues(alpha: 0.72),
-                    ),
+                    'Get receipt on WhatsApp',
+                    style: _titleStyle,
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Optional — add your name and mobile to get the receipt and '
+                    'digital copy after payment. You can still scan the QR either way.',
+                    style: _bodyStyle,
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             if (isLandscape) ...[
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -270,26 +344,24 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
               const SizedBox(height: 12),
               phoneField,
             ],
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               value: _waOptIn,
-              onChanged: _phoneCtrl.text.trim().isEmpty
-                  ? null
-                  : (v) => setState(() => _waOptIn = v ?? false),
+              onChanged: hasPhone
+                  ? (v) => setState(() => _waOptIn = v ?? false)
+                  : null,
               controlAffinity: ListTileControlAffinity.leading,
               title: const Text(
-                'Send receipt + digital copy on WhatsApp',
+                'Send on WhatsApp',
+                style: _checkboxTitleStyle,
               ),
-              subtitle: _phoneCtrl.text.trim().isEmpty
-                  ? const Text(
-                      'Enter a mobile number to enable WhatsApp delivery.',
-                      style: TextStyle(fontSize: 12),
-                    )
-                  : const Text(
-                      'We will only message you if payment is approved.',
-                      style: TextStyle(fontSize: 12),
-                    ),
+              subtitle: Text(
+                hasPhone
+                    ? 'Only after payment is approved.'
+                    : 'Enter a mobile number to enable.',
+                style: _checkboxSubtitleStyle,
+              ),
             ),
             const SizedBox(height: 8),
             Row(
