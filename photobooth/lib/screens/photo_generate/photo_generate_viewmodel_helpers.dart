@@ -32,6 +32,32 @@ Future<double?> aspectRatioFromXFile(XFile? file) async {
   }
 }
 
+/// Decodes width ÷ height of a (usually network) image without rendering it.
+///
+/// Used on the BEHOLD ready screen so the hero card matches the AI output's
+/// real orientation (groups come back landscape) instead of a person-count guess.
+Future<double?> aspectRatioFromImageProvider(ImageProvider provider) async {
+  final completer = Completer<double?>();
+  final stream = provider.resolve(const ImageConfiguration());
+  ImageStreamListener? listener;
+  void finish(double? value) {
+    if (!completer.isCompleted) completer.complete(value);
+    final l = listener;
+    if (l != null) stream.removeListener(l);
+  }
+
+  listener = ImageStreamListener(
+    (info, _) {
+      final w = info.image.width.toDouble();
+      final h = info.image.height.toDouble();
+      finish(h <= 0 ? null : (w / h).clamp(0.35, 2.85).toDouble());
+    },
+    onError: (e, st) => finish(null),
+  );
+  stream.addListener(listener);
+  return completer.future;
+}
+
 DateTime? parseGenerationRunStepStartedAt(dynamic v) {
   if (v is String && v.trim().isNotEmpty) {
     return DateTime.tryParse(v.trim());

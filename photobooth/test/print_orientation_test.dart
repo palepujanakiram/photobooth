@@ -32,6 +32,27 @@ void main() {
     );
   });
 
+  test('fromContentAspect: landscape image is landscape, portrait is portrait',
+      () {
+    expect(
+      PrintOrientation.fromContentAspect(3 / 2),
+      PrintOrientation.landscape,
+    );
+    expect(
+      PrintOrientation.fromContentAspect(1.33),
+      PrintOrientation.landscape,
+    );
+    expect(
+      PrintOrientation.fromContentAspect(2 / 3),
+      PrintOrientation.portrait,
+    );
+    // Square falls back to portrait (safer print default).
+    expect(
+      PrintOrientation.fromContentAspect(1.0),
+      PrintOrientation.portrait,
+    );
+  });
+
   test('cardAspectRatio and printSize', () {
     expect(
       PrintOrientation.portrait.cardAspectRatio,
