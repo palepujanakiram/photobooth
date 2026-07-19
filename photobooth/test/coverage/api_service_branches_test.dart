@@ -386,7 +386,6 @@ void main() {
       customerName: 'Ada',
       customerPhone: '+9198',
       customerEmail: 'a@b.co',
-      customerUpiVpa: 'ada@upi',
       whatsappOptIn: true,
       marketingEmailOptIn: true,
       marketingSmsOptIn: false,
@@ -394,7 +393,6 @@ void main() {
       fcmToken: 'fcm',
     );
     expect(seen?['customerEmail'], 'a@b.co');
-    expect(seen?['customerUpiVpa'], 'ada@upi');
     expect(seen?['marketingEmailOptIn'], true);
     expect(seen?['marketingSmsOptIn'], false);
     expect(seen?['marketingWhatsappOptIn'], true);

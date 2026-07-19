@@ -55,7 +55,6 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
   late final TextEditingController _nameCtrl;
   late final TextEditingController _phoneCtrl;
   late final TextEditingController _emailCtrl;
-  late final TextEditingController _upiCtrl;
   late final FocusNode _nameFocus;
   late final FocusNode _phoneFocus;
   bool _waOptIn = false;
@@ -106,7 +105,6 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
     _nameCtrl = TextEditingController();
     _phoneCtrl = TextEditingController();
     _emailCtrl = TextEditingController();
-    _upiCtrl = TextEditingController();
     _nameFocus = FocusNode();
     _phoneFocus = FocusNode();
   }
@@ -116,7 +114,6 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _emailCtrl.dispose();
-    _upiCtrl.dispose();
     _nameFocus.dispose();
     _phoneFocus.dispose();
     super.dispose();
@@ -130,7 +127,6 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
     final name = _nameCtrl.text.replaceAll(_kNameSanitizer, '').trim();
     final p = ContactPhoneHelpers.normalizePhone(_phoneCtrl.text);
     final email = _emailCtrl.text.trim();
-    final upi = _upiCtrl.text.trim();
 
     if (p.isEmpty) {
       Navigator.pop(
@@ -140,7 +136,6 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
           customerPhone: '',
           whatsappOptIn: false,
           customerEmail: email,
-          customerUpiVpa: upi,
           marketingEmailOptIn: _marketingEmail,
           marketingSmsOptIn: _marketingSms,
           marketingWhatsappOptIn: _marketingWhatsapp,
@@ -166,7 +161,6 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
         customerPhone: p,
         whatsappOptIn: _waOptIn,
         customerEmail: email,
-        customerUpiVpa: upi,
         marketingEmailOptIn: _marketingEmail,
         marketingSmsOptIn: _marketingSms,
         marketingWhatsappOptIn: _marketingWhatsapp,
@@ -269,13 +263,6 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
       controller: _emailCtrl,
       label: AppStrings.optionalEmailLabel,
       keyboardType: TextInputType.emailAddress,
-      textInputAction: TextInputAction.next,
-    );
-
-    final upiField = _textField(
-      controller: _upiCtrl,
-      label: AppStrings.optionalUpiLabel,
-      hint: 'name@upi',
       textInputAction: TextInputAction.done,
       onSubmitted: (_) => FocusScope.of(context).unfocus(),
     );
@@ -322,22 +309,13 @@ class _ContactBeforePaySheetBodyState extends State<_ContactBeforePaySheetBody> 
                 ],
               ),
               const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: emailField),
-                  const SizedBox(width: 12),
-                  Expanded(child: upiField),
-                ],
-              ),
+              emailField,
             ] else ...[
               nameField,
               const SizedBox(height: 12),
               phoneField,
               const SizedBox(height: 12),
               emailField,
-              const SizedBox(height: 12),
-              upiField,
             ],
             const SizedBox(height: 8),
             CheckboxListTile(
