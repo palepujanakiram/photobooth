@@ -13,15 +13,23 @@ bool beholdCardIsPhonePortrait(BuildContext context) {
 
 /// Width/height for the BEHOLD single-result hero card.
 ///
-/// Driven by [PhotoGenerateViewModel.printOrientation], which defaults from
-/// session person count (solo → portrait, group → landscape) and can be toggled
-/// on the BEHOLD screen for print.
+/// When the orientation was auto-derived from the generated image
+/// ([PhotoGenerateViewModel.beholdCardHugsGeneratedImage]) the card hugs the
+/// real image aspect so it fills edge-to-edge with no letterbox. Otherwise it
+/// follows [PhotoGenerateViewModel.printOrientation] (person-count default or a
+/// customer toggle) for an accurate print preview.
 double beholdSingleResultCardAspectRatio(
   BuildContext context,
   PhotoGenerateViewModel viewModel, {
   required double maxWidth,
   required double maxHeight,
 }) {
+  if (viewModel.beholdCardHugsGeneratedImage) {
+    final aspect = viewModel.beholdHeroAspectRatio;
+    if (aspect != null && aspect.isFinite && aspect > 0) {
+      return aspect;
+    }
+  }
   return viewModel.printOrientation.cardAspectRatio;
 }
 

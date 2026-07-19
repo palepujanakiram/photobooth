@@ -127,4 +127,51 @@ void main() {
       ),
     );
   });
+
+  testWidgets(
+    'card hugs generated image aspect when auto-derived (no letterbox)',
+    (tester) async {
+      final vm = PhotoGenerateViewModel();
+      // Simulate the post-generation auto-orient having measured a landscape
+      // group image, with no manual print-orientation override.
+      vm.debugSetBeholdAutoOrient(aspect: 3 / 2);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              final aspect = beholdSingleResultCardAspectRatio(
+                context,
+                vm,
+                maxWidth: 360,
+                maxHeight: 420,
+              );
+              expect(aspect, closeTo(3 / 2, 0.0001));
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+
+      // Once the customer toggles orientation, the card follows the print
+      // orientation again (accurate print preview), not the raw image aspect.
+      vm.setPrintOrientation(PrintOrientation.portrait);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              final aspect = beholdSingleResultCardAspectRatio(
+                context,
+                vm,
+                maxWidth: 360,
+                maxHeight: 420,
+              );
+              expect(aspect, AppConstants.kThemeSelectedCardAspectRatio);
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+    },
+  );
 }
