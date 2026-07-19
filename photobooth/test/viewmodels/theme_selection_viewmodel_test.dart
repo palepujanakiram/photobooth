@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photobooth/screens/theme_selection/theme_model.dart';
 import 'package:photobooth/screens/theme_selection/theme_selection_viewmodel.dart';
 import 'package:photobooth/services/session_manager.dart';
 import 'package:photobooth/services/theme_manager.dart';
@@ -82,6 +83,106 @@ void main() {
     vm.selectTheme(vm.themes.first);
     final ok = await vm.updateSessionWithTheme();
     expect(ok, isFalse);
+    vm.dispose();
+  });
+
+  ThemeModel personTheme(
+    String id, {
+    bool? solo,
+    bool? couple,
+    bool? largeGroup,
+  }) =>
+      sampleTheme(id).copyWith((p) {
+        p.applicableSolo = solo;
+        p.applicableCouple = couple;
+        p.applicableLargeGroup = largeGroup;
+      });
+
+  void bindSession(String id) {
+    SessionManager().setSessionFromResponse({
+      'id': id,
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': <dynamic>[],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+    });
+  }
+
+  test('re-filters themes when person count changes for bound session',
+      () async {
+    final tm = ThemeManager.forTesting(ThemesFakeApi([
+      personTheme('solo', solo: true, couple: false, largeGroup: false),
+      personTheme('group', solo: false, couple: false, largeGroup: true),
+    ]));
+    await tm.fetchThemes();
+    bindSession('sess-refilter');
+
+    final vm = ThemeViewModel(themeManager: tm, apiService: FakeApiService());
+    await vm.loadThemes();
+
+    // Default count = 1 (solo) → only the solo theme is applicable.
+    expect(vm.filteredThemes.map((t) => t.id), ['solo']);
+    expect(vm.selectedTheme?.id, 'solo');
+
+    var notified = 0;
+    vm.addListener(() => notified++);
+
+    // Authoritative count arrives (group of 3) → list re-filters + notifies.
+    SessionManager().setPersonCount(3);
+    expect(vm.filteredThemes.map((t) => t.id), ['group']);
+    expect(vm.selectedTheme?.id, 'group');
+    expect(notified, greaterThan(0));
+
+    // Idempotent: same count does not change selection.
+    vm.bindToCurrentSession();
+    expect(vm.selectedTheme?.id, 'group');
+    vm.dispose();
+  });
+
+  test('re-filter keeps current selection and drops stale armed theme',
+      () async {
+    final tm = ThemeManager.forTesting(ThemesFakeApi([
+      personTheme('any', solo: true, couple: true, largeGroup: true),
+      personTheme('soloOnly', solo: true, couple: false, largeGroup: false),
+    ]));
+    await tm.fetchThemes();
+    bindSession('sess-keep');
+
+    final vm = ThemeViewModel(themeManager: tm, apiService: FakeApiService());
+    await vm.loadThemes();
+
+    vm.setCarouselIndex(1);
+    expect(vm.selectedTheme?.id, 'soloOnly');
+    vm.armTheme(vm.filteredThemes[1]);
+    expect(vm.armedTheme?.id, 'soloOnly');
+
+    // Bump to a group: 'soloOnly' drops out, 'any' remains and is reselected.
+    SessionManager().setPersonCount(3);
+    expect(vm.filteredThemes.map((t) => t.id), ['any']);
+    expect(vm.selectedTheme?.id, 'any');
+    expect(vm.hasArmedTheme, isFalse);
+    vm.dispose();
+  });
+
+  test('re-filter falls back to All category and clears when none applicable',
+      () async {
+    final tm = ThemeManager.forTesting(ThemesFakeApi([
+      personTheme('solo', solo: true, couple: false, largeGroup: false)
+          .copyWith((p) => p.categoryId = 'royal'),
+    ]));
+    await tm.fetchThemes();
+    bindSession('sess-empty');
+
+    final vm = ThemeViewModel(themeManager: tm, apiService: FakeApiService());
+    await vm.loadThemes();
+    vm.selectCategory('royal');
+    expect(vm.filteredThemes.map((t) => t.id), ['solo']);
+
+    // Group count: no theme applies at all → selection cleared, category resets.
+    SessionManager().setPersonCount(3);
+    expect(vm.filteredThemes, isEmpty);
+    expect(vm.selectedTheme, isNull);
     vm.dispose();
   });
 
