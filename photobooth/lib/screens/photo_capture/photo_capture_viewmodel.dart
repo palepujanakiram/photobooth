@@ -2303,6 +2303,11 @@ class CaptureViewModel extends ChangeNotifier {
       );
       cancelPhoneUploadWait();
       unawaited(playCaptureShutterSound());
+      // Phone/QR uploads bypass the camera upload-prep path (skipUploadPrep),
+      // so client-side face detection never runs and the person count would
+      // default to 1 (portrait). Detect it here so print orientation matches
+      // group photos and the server gets a client-count hint for consensus.
+      unawaited(_seedPhoneUploadPersonCount(normalized));
       AppLogger.debug('Phone upload applied to capture preview');
     } catch (e, st) {
       AppLogger.debug('Phone upload poll tick failed: $e\n$st');
@@ -2595,6 +2600,29 @@ class CaptureViewModel extends ChangeNotifier {
         _capturedImagePixelSize = null;
         notifyListeners();
       }
+    }
+  }
+
+  /// Detects faces on an applied phone/QR upload so the person count reflects
+  /// group photos (drives print orientation) without waiting on server preprocess.
+  ///
+  /// The phone-upload apply path uses `skipUploadPrep`, so this is the only place
+  /// client-side detection runs for that source. Best-effort: on web / failure it
+  /// leaves the count untouched and server preprocess remains the fallback.
+  Future<void> _seedPhoneUploadPersonCount(XFile file) async {
+    try {
+      final count = await detectFaceCountFromXFile(file);
+      if (count <= 0) return;
+      if (_capturedPhoto?.cameraId != 'phone_qr') return;
+      _preparedClientFaceCount = count;
+      final existing = _sessionManager.personCount;
+      if (existing == null || existing <= 0) {
+        _sessionManager.setPersonCount(count);
+      }
+      WebFlowTrace.log('PREPROCESS', 'phone_upload_face_count=$count');
+      notifyListeners();
+    } catch (e) {
+      AppLogger.debug('Phone upload face detection failed: $e');
     }
   }
 
