@@ -8,7 +8,6 @@ void main() {
       customerPhone: '+919876543210',
       whatsappOptIn: true,
       customerEmail: 'a@b.co',
-      customerUpiVpa: 'ada@upi',
       marketingEmailOptIn: true,
       marketingSmsOptIn: true,
       marketingWhatsappOptIn: false,
@@ -19,7 +18,6 @@ void main() {
     expect(parsed.customerPhone, '+919876543210');
     expect(parsed.whatsappOptIn, isTrue);
     expect(parsed.customerEmail, 'a@b.co');
-    expect(parsed.customerUpiVpa, 'ada@upi');
     expect(parsed.marketingEmailOptIn, isTrue);
     expect(parsed.marketingSmsOptIn, isTrue);
     expect(parsed.marketingWhatsappOptIn, isFalse);

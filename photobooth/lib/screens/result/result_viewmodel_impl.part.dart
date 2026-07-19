@@ -885,7 +885,6 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           customerName: _r.customerName,
           customerPhone: _r.customerPhone,
           customerEmail: _r.customerEmail,
-          customerUpiVpa: _r.customerUpiVpa,
           whatsappOptIn: _r.effectiveWhatsappOptIn,
           marketingEmailOptIn: _r.marketingEmailOptIn,
           marketingSmsOptIn: _r.marketingSmsOptIn,

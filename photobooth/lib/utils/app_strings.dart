@@ -86,7 +86,6 @@ abstract final class AppStrings {
   static const marketingEmailLabel = 'Email newsletters & offers';
 
   static const optionalEmailLabel = 'Email (optional)';
-  static const optionalUpiLabel = 'UPI ID (optional)';
 
 
   /// Inline image URL prefix (data URLs, staff QR thumbnails).

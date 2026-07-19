@@ -5,7 +5,6 @@ class CustomerContactCapture {
     this.customerPhone = '',
     this.whatsappOptIn = false,
     this.customerEmail = '',
-    this.customerUpiVpa = '',
     this.marketingEmailOptIn = false,
     this.marketingSmsOptIn = false,
     this.marketingWhatsappOptIn = false,
@@ -19,7 +18,6 @@ class CustomerContactCapture {
   final bool whatsappOptIn;
 
   final String customerEmail;
-  final String customerUpiVpa;
 
   final bool marketingEmailOptIn;
   final bool marketingSmsOptIn;
@@ -34,7 +32,6 @@ class CustomerContactCapture {
     String? customerPhone,
     bool? whatsappOptIn,
     String? customerEmail,
-    String? customerUpiVpa,
     bool? marketingEmailOptIn,
     bool? marketingSmsOptIn,
     bool? marketingWhatsappOptIn,
@@ -45,7 +42,6 @@ class CustomerContactCapture {
       customerPhone: customerPhone ?? this.customerPhone,
       whatsappOptIn: whatsappOptIn ?? this.whatsappOptIn,
       customerEmail: customerEmail ?? this.customerEmail,
-      customerUpiVpa: customerUpiVpa ?? this.customerUpiVpa,
       marketingEmailOptIn: marketingEmailOptIn ?? this.marketingEmailOptIn,
       marketingSmsOptIn: marketingSmsOptIn ?? this.marketingSmsOptIn,
       marketingWhatsappOptIn:
@@ -60,7 +56,6 @@ class CustomerContactCapture {
         'customerPhone': customerPhone,
         'customerWhatsappOptIn': whatsappOptIn,
         'customerEmail': customerEmail,
-        'customerUpiVpa': customerUpiVpa,
         'marketingEmailOptIn': marketingEmailOptIn,
         'marketingSmsOptIn': marketingSmsOptIn,
         'marketingWhatsappOptIn': marketingWhatsappOptIn,
@@ -72,7 +67,6 @@ class CustomerContactCapture {
       customerPhone: args['customerPhone']?.toString() ?? '',
       whatsappOptIn: args['customerWhatsappOptIn'] == true,
       customerEmail: args['customerEmail']?.toString() ?? '',
-      customerUpiVpa: args['customerUpiVpa']?.toString() ?? '',
       marketingEmailOptIn: args['marketingEmailOptIn'] == true,
       marketingSmsOptIn: args['marketingSmsOptIn'] == true,
       marketingWhatsappOptIn: args['marketingWhatsappOptIn'] == true,

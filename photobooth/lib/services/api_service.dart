@@ -176,7 +176,6 @@ class ApiService {
     String? customerName,
     String? customerPhone,
     String? customerEmail,
-    String? customerUpiVpa,
     bool? whatsappOptIn,
     bool? marketingEmailOptIn,
     bool? marketingSmsOptIn,
@@ -196,8 +195,6 @@ class ApiService {
         'customerPhone': customerPhone.trim(),
       if (customerEmail != null && customerEmail.trim().isNotEmpty)
         'customerEmail': customerEmail.trim(),
-      if (customerUpiVpa != null && customerUpiVpa.trim().isNotEmpty)
-        'customerUpiVpa': customerUpiVpa.trim(),
       if (whatsappOptIn != null) 'whatsappOptIn': whatsappOptIn,
       if (marketingEmailOptIn != null)
         'marketingEmailOptIn': marketingEmailOptIn,

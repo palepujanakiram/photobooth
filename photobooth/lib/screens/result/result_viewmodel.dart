@@ -227,8 +227,6 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   bool get customerWhatsappOptIn => _contact.whatsappOptIn;
   String? get customerEmail =>
       _contact.customerEmail.isEmpty ? null : _contact.customerEmail;
-  String? get customerUpiVpa =>
-      _contact.customerUpiVpa.isEmpty ? null : _contact.customerUpiVpa;
   bool get marketingEmailOptIn => _contact.marketingEmailOptIn;
   bool get marketingSmsOptIn => _contact.marketingSmsOptIn;
   bool get marketingWhatsappOptIn => _contact.marketingWhatsappOptIn;

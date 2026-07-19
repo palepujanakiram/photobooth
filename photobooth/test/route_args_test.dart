@@ -114,7 +114,6 @@ void main() {
         'customerPhone': '+1000',
         'customerWhatsappOptIn': true,
         'customerEmail': 'a@b.co',
-        'customerUpiVpa': 'ada@upi',
         'marketingEmailOptIn': true,
         'marketingSmsOptIn': true,
         'marketingWhatsappOptIn': false,
@@ -125,7 +124,6 @@ void main() {
       expect(parsed.customerName, 'Ada');
       expect(parsed.customerWhatsappOptIn, isTrue);
       expect(parsed.contact.customerEmail, 'a@b.co');
-      expect(parsed.contact.customerUpiVpa, 'ada@upi');
       expect(parsed.contact.marketingEmailOptIn, isTrue);
       expect(parsed.contact.marketingSmsOptIn, isTrue);
       expect(parsed.contact.marketingWhatsappOptIn, isFalse);
