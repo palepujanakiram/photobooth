@@ -33,6 +33,7 @@ class ThemeViewModel extends ChangeNotifier {
   VoidCallback? _themeManagerListener;
   VoidCallback? _sessionListener;
   String? _boundSessionId;
+  int? _lastPersonCount;
   int _selectionResetToken = 0;
 
   /// Bumped when picker state is cleared for a new customer session (sync carousel UI).
@@ -302,6 +303,7 @@ class ThemeViewModel extends ChangeNotifier {
     _carouselIndex = 0;
     _selectedCategoryId = 'All';
     _selectionResetToken++;
+    _lastPersonCount = _sessionManager.personCount;
     _applyDefaultThemeSelection();
     notifyListeners();
   }
@@ -321,6 +323,7 @@ class ThemeViewModel extends ChangeNotifier {
     if (session == null) {
       if (_boundSessionId != null || _armedTheme != null) {
         _boundSessionId = null;
+        _lastPersonCount = null;
         resetForNewCustomer();
       }
       return;
@@ -337,6 +340,49 @@ class ThemeViewModel extends ChangeNotifier {
     }
 
     _boundSessionId = sessionId;
+    _refilterIfPersonCountChanged();
+  }
+
+  /// Re-applies the person-count theme filter when the authoritative count is
+  /// refined for the already-bound session (e.g. the server preprocess returns
+  /// the real count after the picker is open; on web the count only arrives
+  /// asynchronously). Keeps the current pick when still applicable.
+  void _refilterIfPersonCountChanged() {
+    final count = _sessionManager.personCount;
+    if (count == _lastPersonCount) return;
+    _lastPersonCount = count;
+
+    // A category tab may become empty for the new count; fall back to "All".
+    if (filteredThemes.isEmpty &&
+        _selectedCategoryId != 'All' &&
+        _themesForPersonCount.isNotEmpty) {
+      _selectedCategoryId = 'All';
+    }
+
+    final list = filteredThemes;
+    if (list.isEmpty) {
+      _carouselIndex = 0;
+      _selectedTheme = null;
+      notifyListeners();
+      return;
+    }
+
+    final selectedIdx = _selectedTheme == null
+        ? -1
+        : list.indexWhere((t) => t.id == _selectedTheme!.id);
+    if (selectedIdx >= 0) {
+      _carouselIndex = selectedIdx;
+    } else {
+      _carouselIndex = 0;
+      _selectedTheme = list[0];
+    }
+
+    // Drop an armed theme that is no longer applicable for the new count.
+    if (_armedTheme != null &&
+        !list.any((t) => t.id == _armedTheme!.id)) {
+      _armedTheme = null;
+    }
+    notifyListeners();
   }
 
   /// Idempotent sync when the theme picker screen opens (covers missed notifications).

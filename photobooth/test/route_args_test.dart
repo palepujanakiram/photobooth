@@ -113,12 +113,20 @@ void main() {
         'customerName': 'Ada',
         'customerPhone': '+1000',
         'customerWhatsappOptIn': true,
+        'customerEmail': 'a@b.co',
+        'marketingEmailOptIn': true,
+        'marketingSmsOptIn': true,
+        'marketingWhatsappOptIn': false,
       });
       expect(parsed, isNotNull);
       expect(parsed!.generatedImages.length, 1);
       expect(parsed.generatedImages.first.id, 'g1');
       expect(parsed.customerName, 'Ada');
       expect(parsed.customerWhatsappOptIn, isTrue);
+      expect(parsed.contact.customerEmail, 'a@b.co');
+      expect(parsed.contact.marketingEmailOptIn, isTrue);
+      expect(parsed.contact.marketingSmsOptIn, isTrue);
+      expect(parsed.contact.marketingWhatsappOptIn, isFalse);
     });
 
     test('returns null when generatedImages empty', () {

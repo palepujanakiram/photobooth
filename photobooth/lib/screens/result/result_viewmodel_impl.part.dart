@@ -48,7 +48,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       }
       final result = await _r._apiService.initiatePayment(
         sessionId: sessionId,
-        amount: _r.checkoutAmount,
+        amount: _r.chargeAmount,
         customerPhone: customerPhone,
         fcmToken: fcmToken ?? '',
       );
@@ -117,6 +117,68 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       _r._paymentInitError = null;
     }
   }
+
+  Future<void> applyCoupon(String code) async {
+    final sessionId = _r._sessionManager.sessionId;
+    if (sessionId == null || sessionId.isEmpty) {
+      _r._couponError = 'No session for coupon';
+      notifyListeners();
+      return;
+    }
+    final trimmed = code.trim();
+    if (trimmed.isEmpty) {
+      _r._couponError = 'Enter a coupon code';
+      notifyListeners();
+      return;
+    }
+    final subtotal = _r.checkoutAmount;
+    if (subtotal <= 0) {
+      _r._couponError = 'Nothing to discount';
+      notifyListeners();
+      return;
+    }
+    _r._couponBusy = true;
+    _r._couponError = null;
+    notifyListeners();
+    try {
+      final raw = await _r._apiService.applySessionDiscount(
+        sessionId: sessionId,
+        code: trimmed,
+        subtotal: subtotal,
+      );
+      _r._appliedDiscount = SessionDiscount.fromApplyResponse(raw);
+      _r._couponError = null;
+      await loadPaymentQr(force: true);
+    } on ApiException catch (e) {
+      _r._couponError = e.message;
+    } catch (e) {
+      _r._couponError = 'Could not apply coupon: $e';
+    } finally {
+      _r._couponBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> unapplyCoupon() async {
+    final sessionId = _r._sessionManager.sessionId;
+    if (sessionId == null || sessionId.isEmpty) return;
+    _r._couponBusy = true;
+    _r._couponError = null;
+    notifyListeners();
+    try {
+      await _r._apiService.unapplySessionDiscount(sessionId: sessionId);
+      _r._appliedDiscount = null;
+      await loadPaymentQr(force: true);
+    } on ApiException catch (e) {
+      _r._couponError = e.message;
+    } catch (e) {
+      _r._couponError = 'Could not remove coupon: $e';
+    } finally {
+      _r._couponBusy = false;
+      notifyListeners();
+    }
+  }
+
 
   void _applyQrFieldsFromPollMap(Map<String, dynamic> raw) {
     if (_r.hasPaymentQrPayload) return;
@@ -820,9 +882,13 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       try {
         return await _r._apiService.postSessionReceipt(
           sessionId: sessionId,
-          customerName: _r._customerName,
-          customerPhone: _r._customerPhone,
+          customerName: _r.customerName,
+          customerPhone: _r.customerPhone,
+          customerEmail: _r.customerEmail,
           whatsappOptIn: _r.effectiveWhatsappOptIn,
+          marketingEmailOptIn: _r.marketingEmailOptIn,
+          marketingSmsOptIn: _r.marketingSmsOptIn,
+          marketingWhatsappOptIn: _r.marketingWhatsappOptIn,
           transactionRef: _r._activePaymentId,
           fcmToken: fcmToken,
         );
@@ -867,7 +933,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         'sessionId': sessionId,
         'transactionRef': _r._activePaymentId,
         'whatsappOptIn': _r.effectiveWhatsappOptIn,
-        'hasCustomerPhone': (_r._customerPhone?.trim().isNotEmpty ?? false),
+        'hasCustomerPhone': (_r.customerPhone?.trim().isNotEmpty ?? false),
         'hasFcmToken': (fcmToken?.isNotEmpty ?? false),
         'lastStatusCode': lastStatus,
         'maxAttempts': maxAttempts,

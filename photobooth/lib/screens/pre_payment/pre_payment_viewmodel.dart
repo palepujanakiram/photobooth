@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../models/payment_initiate_result.dart';
+import '../../models/session_discount.dart';
 import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/fcm_service.dart';
@@ -50,6 +51,9 @@ class PrePaymentViewModel extends ChangeNotifier {
   String? _fcmPaymentStatusDetail;
   bool? _fcmPaymentPushSuccess;
   bool _disposed = false;
+  SessionDiscount? _appliedDiscount;
+  String? _couponError;
+  bool _couponBusy = false;
 
   VoidCallback? onApproved;
 
@@ -71,6 +75,16 @@ class PrePaymentViewModel extends ChangeNotifier {
   int get initialAmount =>
       _appSettingsManager.settings?.initialPrice ??
       AppConstants.kDefaultInitialPrintPrice;
+
+  SessionDiscount? get appliedDiscount => _appliedDiscount;
+  String? get couponError => _couponError;
+  bool get couponBusy => _couponBusy;
+
+  int get chargeAmount {
+    final d = _appliedDiscount;
+    if (d == null) return initialAmount;
+    return d.chargeAmount;
+  }
 
   bool get isDeadPollingFallbackVisible {
     if (_paymentOutcomeHandled) return false;
@@ -155,7 +169,7 @@ class PrePaymentViewModel extends ChangeNotifier {
       final fcmToken = await FcmService.getToken();
       final result = await _apiService.initiatePayment(
         sessionId: sessionId,
-        amount: initialAmount,
+        amount: chargeAmount,
         type: 'INITIAL',
         fcmToken: fcmToken ?? '',
       );
@@ -439,6 +453,68 @@ class PrePaymentViewModel extends ChangeNotifier {
     _fcmPaymentStatusDetail =
         payload.body ?? AppStrings.paymentFailedRetryBody;
     notifyListeners();
+  }
+
+
+  Future<void> applyCoupon(String code) async {
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null || sessionId.isEmpty) {
+      _couponError = 'No session for coupon';
+      notifyListeners();
+      return;
+    }
+    final trimmed = code.trim();
+    if (trimmed.isEmpty) {
+      _couponError = 'Enter a coupon code';
+      notifyListeners();
+      return;
+    }
+    final subtotal = initialAmount;
+    if (subtotal <= 0) {
+      _couponError = 'Nothing to discount';
+      notifyListeners();
+      return;
+    }
+    _couponBusy = true;
+    _couponError = null;
+    notifyListeners();
+    try {
+      final raw = await _apiService.applySessionDiscount(
+        sessionId: sessionId,
+        code: trimmed,
+        subtotal: subtotal,
+      );
+      _appliedDiscount = SessionDiscount.fromApplyResponse(raw);
+      _couponError = null;
+      await loadPaymentQr(force: true);
+    } on ApiException catch (e) {
+      _couponError = e.message;
+    } catch (e) {
+      _couponError = 'Could not apply coupon: $e';
+    } finally {
+      _couponBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> unapplyCoupon() async {
+    final sessionId = _sessionManager.sessionId;
+    if (sessionId == null || sessionId.isEmpty) return;
+    _couponBusy = true;
+    _couponError = null;
+    notifyListeners();
+    try {
+      await _apiService.unapplySessionDiscount(sessionId: sessionId);
+      _appliedDiscount = null;
+      await loadPaymentQr(force: true);
+    } on ApiException catch (e) {
+      _couponError = e.message;
+    } catch (e) {
+      _couponError = 'Could not remove coupon: $e';
+    } finally {
+      _couponBusy = false;
+      notifyListeners();
+    }
   }
 
   @override

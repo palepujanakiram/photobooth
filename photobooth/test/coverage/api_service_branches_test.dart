@@ -354,4 +354,84 @@ void main() {
     expect(m.imageUrl, contains('/api/img/x.jpg'));
     expect(calls, 2);
   });
+
+  test('postSessionReceipt sends marketing and optional contact fields', () async {
+    Map<String, dynamic>? seen;
+    final custom = Dio(
+      BaseOptions(
+        baseUrl: AppConstants.kBaseUrl,
+        validateStatus: (_) => true,
+      ),
+    );
+    final customAdapter = DioAdapter(dio: custom);
+    custom.httpClientAdapter = customAdapter;
+    custom.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          if (options.data is Map) {
+            seen = Map<String, dynamic>.from(options.data as Map);
+          }
+          handler.next(options);
+        },
+      ),
+    );
+    customAdapter.onPost(
+      RegExp(r'/api/sessions/.*/receipt'),
+      (s) => s.reply(200, {'ok': true}),
+      data: Matchers.any,
+    );
+    final receiptApi = ApiService(dio: custom, aiDio: custom);
+    await receiptApi.postSessionReceipt(
+      sessionId: 'sess-1',
+      customerName: 'Ada',
+      customerPhone: '+9198',
+      customerEmail: 'a@b.co',
+      whatsappOptIn: true,
+      marketingEmailOptIn: true,
+      marketingSmsOptIn: false,
+      marketingWhatsappOptIn: true,
+      fcmToken: 'fcm',
+    );
+    expect(seen?['customerEmail'], 'a@b.co');
+    expect(seen?['marketingEmailOptIn'], true);
+    expect(seen?['marketingSmsOptIn'], false);
+    expect(seen?['marketingWhatsappOptIn'], true);
+  });
+
+  test('applySessionDiscount validates and posts body', () async {
+    expect(
+      () => api.applySessionDiscount(sessionId: '', code: 'X', subtotal: 10),
+      throwsA(isA<ApiException>()),
+    );
+    expect(
+      () => api.applySessionDiscount(sessionId: 's', code: '', subtotal: 10),
+      throwsA(isA<ApiException>()),
+    );
+    expect(
+      () => api.applySessionDiscount(sessionId: 's', code: 'X', subtotal: 0),
+      throwsA(isA<ApiException>()),
+    );
+    final r = await api.applySessionDiscount(
+      sessionId: 'sess-1',
+      code: 'FEST20',
+      subtotal: 100,
+    );
+    expect(r['finalAmount'], 80);
+  });
+
+  test('unapplySessionDiscount and fetchSessionDiscount', () async {
+    expect(
+      () => api.unapplySessionDiscount(sessionId: ''),
+      throwsA(isA<ApiException>()),
+    );
+    expect(
+      () => api.fetchSessionDiscount(sessionId: ''),
+      throwsA(isA<ApiException>()),
+    );
+    final u = await api.unapplySessionDiscount(sessionId: 'sess-1');
+    expect(u['success'], true);
+    final g = await api.fetchSessionDiscount(sessionId: 'sess-1');
+    expect(g['applied'], false);
+  });
+
 }

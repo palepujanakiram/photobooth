@@ -4,6 +4,12 @@ import 'dart:ui' show ImmutableBuffer, instantiateImageCodecFromBuffer;
 
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart'
+    show
+        ImageConfiguration,
+        ImageProvider,
+        ImageStreamListener,
+        NetworkImage;
 import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/session_manager.dart';
@@ -237,6 +243,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   double? _beholdHeroAspectRatio;
   PrintOrientation _printOrientation = PrintOrientation.portrait;
   bool _printOrientationTouched = false;
+  bool _orientationFromGeneratedImage = false;
   bool _isGenerating = false;
   bool _isLoadingMore = false;
   String? _errorMessage;
@@ -311,6 +318,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
 
   /// Print layout for preview + physical print (solo default portrait).
   PrintOrientation get printOrientation => _printOrientation;
+
+  /// True when orientation was auto-derived from the generated image and the
+  /// customer has not manually chosen a print orientation. In this case the
+  /// BEHOLD hero card hugs the real image aspect so it fills edge-to-edge.
+  bool get beholdCardHugsGeneratedImage =>
+      _orientationFromGeneratedImage && !_printOrientationTouched;
 
   int? get sessionPersonCount => _sessionManager.personCount;
   ThemeModel? get selectedTheme => _selectedTheme;
@@ -631,11 +644,42 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   }
 
   void _applyDefaultPrintOrientationFromSession() {
-    if (_printOrientationTouched) return;
+    if (_printOrientationTouched || _orientationFromGeneratedImage) return;
     final next = PrintOrientation.fromPersonCount(_sessionManager.personCount);
     if (_printOrientation == next) return;
     _printOrientation = next;
     notifyListeners();
+  }
+
+  /// Aligns BEHOLD hero aspect + default print orientation to the AI output.
+  ///
+  /// The generated image is the source of truth for framing, so a group photo
+  /// that comes back landscape is shown in a landscape card (no letterbox),
+  /// even when the person-count guess defaulted to portrait. Skipped once the
+  /// customer manually picks an orientation.
+  Future<void> _syncBeholdAspectFromGeneratedHero() async {
+    final hero = _generatedImages.isNotEmpty ? _generatedImages.first : null;
+    if (hero == null) return;
+    final url = SecureImageUrl.withSessionId(hero.imageUrl);
+    if (url.isEmpty) return;
+    final aspect = await aspectRatioFromImageProvider(NetworkImage(url));
+    if (aspect == null) return;
+
+    var changed = false;
+    if (aspect != _beholdHeroAspectRatio) {
+      _beholdHeroAspectRatio = aspect;
+      changed = true;
+    }
+    if (!_printOrientationTouched) {
+      _orientationFromGeneratedImage = true;
+      final next = PrintOrientation.fromContentAspect(aspect);
+      if (_printOrientation != next) {
+        _printOrientation = next;
+        _sessionManager.setPrintOrientation(next);
+        changed = true;
+      }
+    }
+    if (changed) notifyListeners();
   }
 
   void _onSessionManagerChanged() {
@@ -724,10 +768,26 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   }
 
   /// Decode capture still aspect so BEHOLD matches photo orientation.
+  ///
+  /// Once the generated image has been measured, that (authoritative) aspect
+  /// wins, so this source-photo fallback stops overwriting it.
   Future<void> refreshBeholdHeroAspectRatio() async {
+    if (_orientationFromGeneratedImage) return;
     final aspect = await aspectRatioFromXFile(_originalPhoto?.imageFile);
     if (aspect == null || aspect == _beholdHeroAspectRatio) return;
     _beholdHeroAspectRatio = aspect;
+    notifyListeners();
+  }
+
+  /// Test hook mirroring [_syncBeholdAspectFromGeneratedHero] without a network
+  /// decode: pretends the generated image was measured at [aspect].
+  @visibleForTesting
+  void debugSetBeholdAutoOrient({required double aspect}) {
+    _beholdHeroAspectRatio = aspect;
+    _orientationFromGeneratedImage = true;
+    if (!_printOrientationTouched) {
+      _printOrientation = PrintOrientation.fromContentAspect(aspect);
+    }
     notifyListeners();
   }
 
@@ -1127,7 +1187,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     }
     _clearHeroStamp();
     _applyDefaultPrintOrientationFromSession();
-    unawaited(refreshBeholdHeroAspectRatio());
+    unawaited(_syncBeholdAspectFromGeneratedHero());
     onSuccessLog?.call();
     return true;
   }

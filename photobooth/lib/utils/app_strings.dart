@@ -62,6 +62,32 @@ abstract final class AppStrings {
   /// Staff API authentication header.
   static const staffTokenHeader = 'X-Staff-Token';
 
+  /// INR symbol for guest/staff UI amounts (PDF may still say Rs).
+  static const currencyRupee = '₹';
+
+  /// Staff payment mode dropdown hint.
+  static const paymentModeLabel = 'Payment mode';
+
+  /// Coupon field label on Pay & Collect.
+  static const couponCodeLabel = 'Coupon code';
+
+  /// Apply coupon button.
+  static const applyCoupon = 'Apply';
+
+  /// Remove applied coupon.
+  static const removeCoupon = 'Remove';
+
+  /// Marketing consent section blurb (DPDP).
+  static const marketingConsentBlurb =
+      "Optional — marketing under India's DPDP Act. You can opt out anytime.";
+
+  static const marketingWhatsappLabel = 'WhatsApp offers & new themes';
+  static const marketingSmsLabel = 'SMS offers & announcements';
+  static const marketingEmailLabel = 'Email newsletters & offers';
+
+  static const optionalEmailLabel = 'Email (optional)';
+
+
   /// Inline image URL prefix (data URLs, staff QR thumbnails).
   static const dataImagePrefix = 'data:image';
 

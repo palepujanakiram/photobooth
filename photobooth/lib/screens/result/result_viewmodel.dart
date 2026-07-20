@@ -31,7 +31,9 @@ import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/fcm_service.dart';
 import '../../services/payment_push_coordinator.dart';
 import '../../services/whatsapp_push_coordinator.dart';
+import '../../models/customer_contact_capture.dart';
 import '../../models/kiosk_share_link_model.dart';
+import '../../models/session_discount.dart';
 import '../../models/payment_initiate_result.dart';
 import 'kiosk_receipt_share_fallback.dart';
 import 'result_payment_poll_helpers.dart';
@@ -84,9 +86,10 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   final KioskManager _kioskManager;
   final ReceiptPrinterService _receiptPrinterService;
 
-  final String? _customerName;
-  final String? _customerPhone;
-  final bool _customerWhatsappOptIn;
+  final CustomerContactCapture _contact;
+  SessionDiscount? _appliedDiscount;
+  String? _couponError;
+  bool _couponBusy = false;
 
   final bool _isProcessing = false;
   String? _errorMessage;
@@ -217,14 +220,25 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   bool get hasFcmPaymentStatus =>
       _fcmPaymentStatusDetail != null && _fcmPaymentStatusDetail!.isNotEmpty;
 
-  String? get customerName => _customerName;
-  String? get customerPhone => _customerPhone;
-  bool get customerWhatsappOptIn => _customerWhatsappOptIn;
+  String? get customerName =>
+      _contact.customerName.isEmpty ? null : _contact.customerName;
+  String? get customerPhone =>
+      _contact.customerPhone.isEmpty ? null : _contact.customerPhone;
+  bool get customerWhatsappOptIn => _contact.whatsappOptIn;
+  String? get customerEmail =>
+      _contact.customerEmail.isEmpty ? null : _contact.customerEmail;
+  bool get marketingEmailOptIn => _contact.marketingEmailOptIn;
+  bool get marketingSmsOptIn => _contact.marketingSmsOptIn;
+  bool get marketingWhatsappOptIn => _contact.marketingWhatsappOptIn;
+
+  SessionDiscount? get appliedDiscount => _appliedDiscount;
+  String? get couponError => _couponError;
+  bool get couponBusy => _couponBusy;
 
   /// WhatsApp queue is only meaningful when a phone exists and the user opted in.
   bool get effectiveWhatsappOptIn {
-    final p = _customerPhone?.trim() ?? '';
-    return p.isNotEmpty && _customerWhatsappOptIn;
+    final p = _contact.customerPhone.trim();
+    return p.isNotEmpty && _contact.whatsappOptIn;
   }
 
   String? get receiptShareUrl => _receiptShareUrl;
@@ -284,6 +298,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
     AppSettingsManager? appSettingsManager,
     KioskManager? kioskManager,
     ReceiptPrinterService? receiptPrinterService,
+    CustomerContactCapture? contact,
     String? customerName,
     String? customerPhone,
     bool customerWhatsappOptIn = false,
@@ -298,9 +313,12 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
         _kioskManager = kioskManager ?? KioskManager(),
         _receiptPrinterService =
             receiptPrinterService ?? ReceiptPrinterService(),
-        _customerName = customerName,
-        _customerPhone = customerPhone,
-        _customerWhatsappOptIn = customerWhatsappOptIn,
+        _contact = contact ??
+            CustomerContactCapture(
+              customerName: customerName ?? '',
+              customerPhone: customerPhone ?? '',
+              whatsappOptIn: customerWhatsappOptIn,
+            ),
         _printerHost = _defaultPrinterHost(appSettingsManager);
 
   List<GeneratedImage> get generatedImages => _generatedImages;
@@ -390,13 +408,20 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
         _appSettingsManager?.settings?.paymentCollectionTiming,
       );
 
-  /// Amount to charge on the Pay screen (may be less when pre-paid).
+  /// Cart subtotal before coupon (may be less when pre-paid).
   int get checkoutAmount => payment_workflow.resolveCheckoutAmount(
         collectPaymentBeforeGeneration: collectPaymentBeforeGeneration,
         imageCount: _generatedImages.length,
         initialPrintPrice: initialPrintPrice,
         additionalPrintPrice: additionalPrintPrice,
       );
+
+  /// Amount charged on initiate — uses applied coupon [SessionDiscount.finalAmount].
+  int get chargeAmount {
+    final d = _appliedDiscount;
+    if (d == null) return checkoutAmount;
+    return d.chargeAmount;
+  }
 
   /// Updates the printer host (hostname or IP) shown in the print options field.
   void setPrinterHost(String host) {

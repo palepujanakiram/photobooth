@@ -11,6 +11,17 @@ enum PrintOrientation {
     return count <= 2 ? PrintOrientation.portrait : PrintOrientation.landscape;
   }
 
+  /// Orientation implied by a decoded image's width ÷ height.
+  ///
+  /// The AI output is the source of truth for framing (groups come back
+  /// landscape, solo/couples portrait), so the BEHOLD card can match the real
+  /// image instead of a person-count guess that may be stale or wrong.
+  static PrintOrientation fromContentAspect(double aspect) {
+    return aspect > 1.0
+        ? PrintOrientation.landscape
+        : PrintOrientation.portrait;
+  }
+
   static PrintOrientation? tryParse(String? raw) {
     if (raw == null) return null;
     switch (raw.trim().toLowerCase()) {

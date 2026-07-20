@@ -1,3 +1,5 @@
+import 'payment_mode.dart';
+
 /// Response from POST /api/payment/initiate
 class PaymentInitiateResult {
   PaymentInitiateResult({
@@ -6,6 +8,7 @@ class PaymentInitiateResult {
     this.qrImageUrl,
     this.upiLink,
     required this.status,
+    this.paymentMode,
   });
 
   final String id;
@@ -16,6 +19,8 @@ class PaymentInitiateResult {
   /// `upi://pay?pa=...` when Razorpay UPI Intent is enabled (often null today).
   final String? upiLink;
   final String status;
+  /// Settlement mode when already set by server (`UPI` / `CASH` / `COMPLIMENTARY`).
+  final PaymentMode? paymentMode;
 
   /// Non-empty string from [v], or null.
   static String? _coerceString(dynamic v) {
@@ -103,6 +108,9 @@ class PaymentInitiateResult {
         'upiIntent',
       ]),
       status: _pick(m, const ['status', 'payment_status']) ?? 'PENDING',
+      paymentMode: PaymentMode.tryParse(
+        _pick(m, const ['paymentMode', 'payment_mode']),
+      ),
     );
   }
 }

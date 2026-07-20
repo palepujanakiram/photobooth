@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/payment.dart';
+import '../../models/payment_mode.dart';
 import '../../services/staff_api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/print_service.dart';
@@ -31,6 +33,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
 
   final Map<String, String> _sessionThumbUrlCache = {};
   final Set<String> _sessionThumbLoadInFlight = {};
+  final Map<String, PaymentMode> _modeByPaymentId = {};
 
   @override
   void initState() {
@@ -274,18 +277,37 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     }
   }
 
+  PaymentMode _selectedModeFor(Map<String, dynamic> p) {
+    final id = _paymentId(p);
+    final existing = _modeByPaymentId[id];
+    if (existing != null) return existing;
+    final payment = Payment.fromJson(p);
+    return payment.paymentMode ??
+        PaymentMode.defaultForAmount(payment.amount);
+  }
+
+  void _setModeFor(Map<String, dynamic> p, PaymentMode mode) {
+    final id = _paymentId(p);
+    if (id.isEmpty) return;
+    setState(() => _modeByPaymentId[id] = mode);
+  }
+
   Future<void> _approve(Map<String, dynamic> p) async {
     final id = _paymentId(p);
     if (id.isEmpty) {
       setState(() => _error = 'Missing paymentId in response');
       return;
     }
+    final mode = _selectedModeFor(p);
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      await _api.approvePayment(paymentId: id);
+      await _api.approvePayment(
+        paymentId: id,
+        paymentMode: mode.apiValue,
+      );
       await _reloadPaymentsAfterDecision();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -510,21 +532,29 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
         itemBuilder: (context, i) {
           final p = list[i];
           final sid = _sessionId(p);
+          final payment = Payment.fromJson(p);
           return StaffPaymentCard(
             appColors: appColors,
-            paymentId: _paymentId(p),
-            status: _paymentStatus(p),
-            sessionId: sid,
-            amount: StaffPaymentCard.amountFromPayload(p),
-            thumb: _buildThumb(p),
-            onThumbTap: _resolvedThumbUrl(p).isEmpty
-                ? null
-                : () => _openThumbPreview(p),
-            loading: _loading,
-            showDecisionButtons: showDecisionButtons,
-            onApprove: () => _approve(p),
-            onReject: () => _reject(p),
-            onPrint: () => _printForSession(p),
+            data: StaffPaymentCardData(
+              paymentId: _paymentId(p),
+              status: _paymentStatus(p),
+              sessionId: sid,
+              amount: StaffPaymentCard.amountFromPayload(p),
+              recordedPaymentMode: payment.paymentMode,
+            ),
+            actions: StaffPaymentCardActions(
+              thumb: _buildThumb(p),
+              onThumbTap: _resolvedThumbUrl(p).isEmpty
+                  ? null
+                  : () => _openThumbPreview(p),
+              loading: _loading,
+              showDecisionButtons: showDecisionButtons,
+              selectedMode: _selectedModeFor(p),
+              onModeChanged: (m) => _setModeFor(p, m),
+              onApprove: () => _approve(p),
+              onReject: () => _reject(p),
+              onPrint: () => _printForSession(p),
+            ),
           );
         },
       ),
