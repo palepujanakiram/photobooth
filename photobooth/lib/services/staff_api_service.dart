@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:uuid/uuid.dart';
 
+import '../models/staff_dashboard_models.dart';
 import '../utils/app_strings.dart';
 import '../utils/constants.dart';
 import '../utils/exceptions.dart';
@@ -147,15 +148,20 @@ class StaffApiService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> listPayments() async {
+  Future<List<Map<String, dynamic>>> listPayments({String? date}) async {
     final token = await _sessionManager.getToken();
     if (token == null || token.isEmpty) {
       throw ApiException('Staff session expired. Please log in again.');
     }
 
+    final day = date?.trim() ?? '';
+    final path = day.isEmpty
+        ? '/api/staff/payments'
+        : '/api/staff/payments?date=${Uri.encodeQueryComponent(day)}';
+
     try {
       final r = await _dio.get<dynamic>(
-        '/api/staff/payments',
+        path,
         options: Options(
           headers: {AppStrings.staffTokenHeader: token},
           validateStatus: (c) => c != null && c >= 200 && c < 500,
@@ -185,6 +191,115 @@ class StaffApiService {
     } on DioException catch (e) {
       throw ApiException(
         e.message ?? 'Network error while fetching payments',
+        e.response?.statusCode,
+      );
+    }
+  }
+
+  /// Live shift / register status (`GET /api/staff/session`).
+  Future<StaffOpsSession> fetchStaffOpsSession() async {
+    final data = await _getJsonMap(
+      '/api/staff/session',
+      defaultError: 'Failed to load staff session',
+    );
+    return StaffOpsSession.fromJson(data);
+  }
+
+  /// Day KPIs (`GET /api/staff/day-summary?date=`).
+  Future<StaffDaySummary> fetchDaySummary({required String date}) async {
+    final day = date.trim();
+    final path = day.isEmpty
+        ? '/api/staff/day-summary'
+        : '/api/staff/day-summary?date=${Uri.encodeQueryComponent(day)}';
+    final data = await _getJsonMap(
+      path,
+      defaultError: 'Failed to load day summary',
+    );
+    return StaffDaySummary.fromJson(data);
+  }
+
+  /// Lifetime-ish performance (`GET /api/staff/:id/stats`).
+  Future<StaffPerformanceStats?> fetchStaffStats(String staffId) async {
+    final id = staffId.trim();
+    if (id.isEmpty) return null;
+    try {
+      final data = await _getJsonMap(
+        '/api/staff/$id/stats',
+        defaultError: 'Failed to load staff stats',
+      );
+      return StaffPerformanceStats.fromJson(data);
+    } on ApiException {
+      return null;
+    }
+  }
+
+  Future<void> checkIn() async {
+    await _postWithToken(
+      '/api/staff/check-in',
+      data: const {'method': 'manual'},
+      defaultError: 'Failed to check in',
+    );
+  }
+
+  Future<void> checkOut() async {
+    await _postWithToken(
+      '/api/staff/check-out',
+      data: const {'method': 'manual'},
+      defaultError: 'Failed to check out',
+    );
+  }
+
+  Future<void> openRegister({required int openingFloat}) async {
+    await _postWithToken(
+      '/api/staff/register/open',
+      data: {'openingFloat': openingFloat},
+      defaultError: 'Failed to open register',
+    );
+  }
+
+  Future<void> closeRegister({
+    required int closingFloat,
+    required int actualAmount,
+    String closingNotes = '',
+  }) async {
+    await _postWithToken(
+      '/api/staff/register/close',
+      data: {
+        'closingFloat': closingFloat,
+        'actualAmount': actualAmount,
+        'closingNotes': closingNotes,
+      },
+      defaultError: 'Failed to close register',
+    );
+  }
+
+  Future<Map<String, dynamic>> _getJsonMap(
+    String path, {
+    required String defaultError,
+  }) async {
+    final token = await _sessionManager.getToken();
+    if (token == null || token.isEmpty) {
+      throw ApiException('Staff session expired. Please log in again.');
+    }
+    try {
+      final r = await _dio.get<dynamic>(
+        path,
+        options: Options(
+          headers: {AppStrings.staffTokenHeader: token},
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+          responseType: ResponseType.json,
+        ),
+      );
+      if (r.statusCode != null && r.statusCode! >= 200 && r.statusCode! < 300) {
+        return _asJsonMap(r.data);
+      }
+      throw ApiException(
+        _extractErrorMessage(r.data) ?? defaultError,
+        r.statusCode,
+      );
+    } on DioException catch (e) {
+      throw ApiException(
+        e.message ?? defaultError,
         e.response?.statusCode,
       );
     }

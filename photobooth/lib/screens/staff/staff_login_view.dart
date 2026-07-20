@@ -35,14 +35,14 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     final t = await _session.getToken();
     if (!mounted) return;
     if (t != null && t.isNotEmpty) {
-      Navigator.of(context).pushReplacementNamed(AppConstants.kRouteStaffPayments);
+      Navigator.of(context).pushReplacementNamed(AppConstants.kRouteStaffDashboard);
     }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Best-effort: if token exists, go straight to payments.
+    // Best-effort: if token exists, go straight to dashboard.
     // (Runs once per push; safe because pushReplacement removes this screen.)
     if (!_busy && _error == null) {
       _tryAutoContinue();
@@ -68,7 +68,7 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
         accountName: accountName,
       );
       if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed(AppConstants.kRouteStaffPayments);
+      Navigator.of(context).pushReplacementNamed(AppConstants.kRouteStaffDashboard);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);

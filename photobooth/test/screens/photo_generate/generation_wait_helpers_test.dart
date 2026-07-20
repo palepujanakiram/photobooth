@@ -1,4 +1,5 @@
 import 'package:camera/camera.dart';
+import 'package:flutter/material.dart' show Size;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/photo_capture/photo_model.dart';
 import 'package:photobooth/screens/photo_generate/generation_wait_helpers.dart';
@@ -450,6 +451,36 @@ void main() {
       final eta = resolveGenerationEta(vm);
       expect(eta.estimatedTotalSeconds, greaterThan(0));
       expect(eta.primaryLine, isNotEmpty);
+    });
+  });
+
+  group('generationWaitIsLargePortraitKiosk', () {
+    test('true for tall portrait kiosk-class size', () {
+      expect(
+        generationWaitIsLargePortraitKiosk(const Size(800, 1280)),
+        isTrue,
+      );
+    });
+
+    test('false for landscape', () {
+      expect(
+        generationWaitIsLargePortraitKiosk(const Size(1280, 800)),
+        isFalse,
+      );
+    });
+
+    test('false for tall phone (narrow shortest side)', () {
+      expect(
+        generationWaitIsLargePortraitKiosk(const Size(390, 1200)),
+        isFalse,
+      );
+    });
+
+    test('false when height is below threshold', () {
+      expect(
+        generationWaitIsLargePortraitKiosk(const Size(800, 1000)),
+        isFalse,
+      );
     });
   });
 }

@@ -18,7 +18,21 @@ import 'staff_payments_print_helpers.dart';
 import '../../views/widgets/app_colors.dart';
 
 class StaffPaymentsScreen extends StatefulWidget {
-  const StaffPaymentsScreen({super.key});
+  const StaffPaymentsScreen({
+    super.key,
+    this.embedded = false,
+    this.date,
+    this.onAuthExpired,
+  });
+
+  /// When true, omit Scaffold/AppBar (used inside staff dashboard tab).
+  final bool embedded;
+
+  /// Optional `YYYY-MM-DD` filter (pending always included by API).
+  final String? date;
+
+  /// Called instead of navigating when embedded and auth expires.
+  final VoidCallback? onAuthExpired;
 
   @override
   State<StaffPaymentsScreen> createState() => _StaffPaymentsScreenState();
@@ -42,6 +56,14 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
   void initState() {
     super.initState();
     _refresh();
+  }
+
+  @override
+  void didUpdateWidget(covariant StaffPaymentsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.date != widget.date) {
+      _refresh();
+    }
   }
 
   static String _paymentId(Map<String, dynamic> p) =>
@@ -231,7 +253,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
   }
 
   Future<void> _loadPayments() async {
-    final list = await _api.listPayments();
+    final list = await _api.listPayments(date: widget.date);
     if (!mounted) return;
     setState(() {
       _payments = list;
@@ -245,6 +267,10 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
       if ((e.statusCode == 401) ||
           e.message.toLowerCase().contains('expired') ||
           e.message.toLowerCase().contains('log in')) {
+        if (widget.onAuthExpired != null) {
+          widget.onAuthExpired!();
+          return;
+        }
         Navigator.of(context).pushNamedAndRemoveUntil(
           AppConstants.kRouteStaffLogin,
           (r) => false,
@@ -440,6 +466,100 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
         _payments.where((p) => _paymentStatus(p) == 'PENDING').toList();
     final history =
         _payments.where((p) => _paymentStatus(p) != 'PENDING').toList();
+    final content = Stack(
+      children: [
+        DefaultTabController(
+          length: 2,
+          child: Column(
+            children: [
+              Material(
+                color: Colors.transparent,
+                child: TabBar(
+                  tabs: [
+                    Tab(text: 'Pending (${pending.length})'),
+                    Tab(text: 'History (${history.length})'),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _buildPaymentsList(
+                      appColors,
+                      pending,
+                      showDecisionButtons: true,
+                    ),
+                    _buildPaymentsList(
+                      appColors,
+                      history,
+                      showDecisionButtons: false,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_error != null)
+          Align(
+            alignment: Alignment.topCenter,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Material(
+                color: Colors.red.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.red),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => setState(() => _error = null),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (_loading)
+          Positioned.fill(
+            child: ColoredBox(
+              color: Colors.black.withValues(alpha: 0.05),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 12),
+                    if (_progressMessage.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Text(
+                          _progressMessage,
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+
+    if (widget.embedded) {
+      return ColoredBox(color: appColors.backgroundColor, child: content);
+    }
+
     return Scaffold(
       backgroundColor: appColors.backgroundColor,
       appBar: AppBar(
@@ -457,89 +577,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: Stack(
-          children: [
-            DefaultTabController(
-              length: 2,
-              child: Column(
-                children: [
-                  Material(
-                    color: Colors.transparent,
-                    child: TabBar(
-                      tabs: [
-                        Tab(text: 'Pending (${pending.length})'),
-                        Tab(text: 'History (${history.length})'),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: TabBarView(
-                      children: [
-                        _buildPaymentsList(appColors, pending, showDecisionButtons: true),
-                        _buildPaymentsList(appColors, history, showDecisionButtons: false),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (_error != null)
-              Align(
-                alignment: Alignment.topCenter,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Material(
-                    color: Colors.red.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.error_outline, color: Colors.red),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              _error!,
-                              style: const TextStyle(color: Colors.red),
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => setState(() => _error = null),
-                            icon: const Icon(Icons.close),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            if (_loading)
-              Positioned.fill(
-                child: ColoredBox(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const CircularProgressIndicator(),
-                        const SizedBox(height: 12),
-                        if (_progressMessage.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            child: Text(
-                              _progressMessage,
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
+      body: SafeArea(child: content),
     );
   }
 

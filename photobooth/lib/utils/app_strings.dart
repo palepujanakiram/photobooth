@@ -233,6 +233,12 @@ abstract final class AppStrings {
   static const generationWaitThemeReelTitle =
       'More worlds to explore next time';
 
+  static String generationWaitActiveStepLine(String stepLabel) =>
+      'Step: $stepLabel';
+
+  static String generationWaitFaceScanMapped(int done, int total) =>
+      '$done/$total mapped';
+
   static const generationWaitHeadlineStarting = 'Starting your transformation';
 
   static const generationWaitHeadlineCaptured = 'Captured';
@@ -356,4 +362,69 @@ abstract final class AppStrings {
       'Timed out waiting for phone upload. Try again or use Gallery.';
 
   static const galleryButtonLabel = 'Gallery';
+
+  static const cancel = 'Cancel';
+
+  static const staffDashboardTitle = 'Staff dashboard';
+  static const staffTabOverview = 'Overview';
+  static const staffTabPayments = 'Payments';
+  static const staffRefreshTooltip = 'Refresh';
+  static const staffLogoutTooltip = 'Logout';
+  static const staffOnShift = 'On Shift';
+  static const staffOffShift = 'Off Shift';
+  static const staffDayDetailsLabel = 'Day details';
+  static const staffTodayButton = 'Today';
+  static String staffShowingDay(String label) => 'Showing $label';
+  static const staffKpiSessions = 'Sessions';
+  static const staffKpiSessionsHint = 'Booth sessions that day';
+  static const staffKpiPrints = 'Prints';
+  static const staffKpiPrintsHint = 'Print jobs that day';
+  static const staffKpiPayments = 'Payments';
+  static const staffKpiPaymentsHint = 'Approved payments';
+  static const staffKpiRevenue = 'Revenue';
+  static const staffKpiRevenueHint = 'Approved total';
+  static const staffModeUpi = 'UPI';
+  static const staffModeCash = 'Cash';
+  static const staffModeComplimentary = 'Complimentary';
+  static String staffPaymentCount(int count) =>
+      '$count payment${count == 1 ? '' : 's'}';
+  static const staffStatusLabel = 'Status';
+  static const staffCheckedIn = 'Checked In';
+  static String staffElapsedLine(String elapsed) => '$elapsed elapsed';
+  static const staffRegisterLabel = 'Register';
+  static const staffRegisterOpen = 'Open';
+  static const staffRegisterClosed = 'Closed';
+  static String staffRegisterSince(String time) => 'Since $time';
+  static const staffAttendanceTitle = 'Attendance';
+  static const staffAttendanceSubtitle = 'Check in or out of your shift';
+  static const staffCheckIn = 'Check In';
+  static const staffCheckOut = 'Check Out';
+  static const staffCheckingIn = 'Checking in…';
+  static const staffCheckingOut = 'Checking out…';
+  static const staffCloseRegisterBeforeCheckout =
+      'Close the register before checking out';
+  static const staffCashRegisterTitle = 'Cash register';
+  static const staffCashRegisterSubtitle =
+      'Open with float; close with actual cash count';
+  static const staffOpenRegister = 'Open register';
+  static const staffCloseRegister = 'Close register';
+  static const staffCheckInBeforeRegister =
+      'Check in before opening the register';
+  static const staffOpenRegisterTitle = 'Open cash register';
+  static const staffCloseRegisterTitle = 'Close cash register';
+  static const staffOpeningFloatLabel = 'Opening float (₹)';
+  static const staffClosingFloatLabel = 'Closing float (₹)';
+  static const staffActualAmountLabel = 'Actual amount (₹)';
+  static const staffClosingNotesLabel = 'Notes (optional)';
+  static const staffOpenRegisterConfirm = 'Open';
+  static const staffCloseRegisterConfirm = 'Close';
+  static String staffRegisterExpectedLine(String amount) =>
+      'Expected: $amount';
+  static String staffRegisterReceiptsLine(int n) => 'Receipts: $n';
+  static String staffRegisterPrintsLine(int n) => 'Prints: $n';
+  static const staffPerformanceTitle = 'Your performance';
+  static const staffPerfReceipts = 'Receipts';
+  static const staffPerfPrints = 'Prints';
+  static const staffPerfRevenue = 'Revenue';
+  static const staffPerfHours = 'Hours';
 }

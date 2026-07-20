@@ -284,6 +284,7 @@ class AppConstants {
 
   // Staff routes
   static const String kRouteStaffLogin = '/staff/login';
+  static const String kRouteStaffDashboard = '/staff/dashboard';
   static const String kRouteStaffPayments = '/staff/payments';
 
   // Error Messages

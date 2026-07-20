@@ -138,4 +138,65 @@ void main() {
       );
     });
   });
+
+  group('generationWaitActiveRewardStepLabel', () {
+    test('returns short label for the active beat', () {
+      const beats = [
+        GenerationWaitRewardBeat(
+          label: 'Likeness',
+          state: GenerationWaitBeatState.done,
+        ),
+        GenerationWaitRewardBeat(
+          label: 'Lighting',
+          state: GenerationWaitBeatState.active,
+        ),
+        GenerationWaitRewardBeat(
+          label: 'Costume',
+          state: GenerationWaitBeatState.pending,
+        ),
+      ];
+      expect(generationWaitActiveRewardStepLabel(beats), 'Light');
+    });
+
+    test('falls back to last done when none active', () {
+      const beats = [
+        GenerationWaitRewardBeat(
+          label: 'Likeness',
+          state: GenerationWaitBeatState.done,
+        ),
+        GenerationWaitRewardBeat(
+          label: 'Lighting',
+          state: GenerationWaitBeatState.done,
+        ),
+      ];
+      expect(generationWaitActiveRewardStepLabel(beats), 'Light');
+    });
+
+    test('returns empty for empty beats', () {
+      expect(generationWaitActiveRewardStepLabel(const []), '');
+    });
+  });
+
+  group('generationWaitFaceScanSummary', () {
+    test('formats mapped progress', () {
+      expect(
+        generationWaitFaceScanSummary(doneCount: 5, totalCount: 6),
+        '5/6 mapped',
+      );
+    });
+
+    test('returns empty when total is zero', () {
+      expect(
+        generationWaitFaceScanSummary(doneCount: 1, totalCount: 0),
+        '',
+      );
+    });
+
+    test('clamps done to total', () {
+      expect(
+        generationWaitFaceScanSummary(doneCount: 9, totalCount: 6),
+        '6/6 mapped',
+      );
+    });
+  });
 }
