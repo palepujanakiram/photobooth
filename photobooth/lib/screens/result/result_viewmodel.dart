@@ -109,6 +109,8 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   bool _isSharing = false;
   bool _isDownloading = false;
   String _downloadMessage = '';
+  Future<void>? _silentPrintInflight;
+  Future<bool>? _downloadInflight;
 
   // Track which action initiated the download
   String _downloadingForAction = ''; // 'silent', 'dialog', 'share'

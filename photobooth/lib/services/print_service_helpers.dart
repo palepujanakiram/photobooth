@@ -101,6 +101,19 @@ Dio createPrinterApiDio(String baseUrl) {
   return dio;
 }
 
+/// True when Dio reports an error but the LAN printer likely already accepted
+/// the JPEG (common on DNP/WCM: slow HTTP response, connection reset after
+/// accept, or no CORS body). Treat as success so kiosk UI matches physical output.
+bool lanPrintResponseUncertainButJobLikelySent(DioException e) {
+  if (e.type == DioExceptionType.receiveTimeout) return true;
+  if (e.type != DioExceptionType.connectionError) return false;
+  final msg = '${e.message ?? ''} ${e.error ?? ''}'.toLowerCase();
+  return msg.contains('connection reset') ||
+      msg.contains('connection closed') ||
+      msg.contains('broken pipe') ||
+      msg.contains('software caused connection abort');
+}
+
 Future<void> postNetworkPrintMultipart({
   required Dio dio,
   required String apiPath,
@@ -119,11 +132,21 @@ Future<void> postNetworkPrintMultipart({
     'DeviceId': deviceId,
   });
   AppLogger.debug('🖨️ Sending print request to ${dio.options.baseUrl}$apiPath');
-  await dio.post(
-    apiPath,
-    data: formData,
-    options: Options(contentType: 'multipart/form-data'),
-  );
+  try {
+    await dio.post(
+      apiPath,
+      data: formData,
+      options: Options(contentType: 'multipart/form-data'),
+    );
+  } on DioException catch (e) {
+    if (lanPrintResponseUncertainButJobLikelySent(e)) {
+      AppLogger.warning(
+        'LAN printer HTTP response inconclusive (multipart); assuming job accepted: $e',
+      );
+      return;
+    }
+    rethrow;
+  }
   AppLogger.debug('✅ Print request sent successfully');
 }
 
@@ -137,14 +160,24 @@ Future<void> postRawJpegNetworkPrint({
     '🖨️ Sending raw JPEG print to ${dio.options.baseUrl}$apiPath '
     '(${imageBytes.length} bytes)',
   );
-  await dio.post<void>(
-    apiPath,
-    data: imageBytes,
-    options: Options(
-      contentType: 'image/jpeg',
-      responseType: ResponseType.plain,
-    ),
-  );
+  try {
+    await dio.post<void>(
+      apiPath,
+      data: imageBytes,
+      options: Options(
+        contentType: 'image/jpeg',
+        responseType: ResponseType.plain,
+      ),
+    );
+  } on DioException catch (e) {
+    if (lanPrintResponseUncertainButJobLikelySent(e)) {
+      AppLogger.warning(
+        'LAN printer HTTP response inconclusive (raw JPEG); assuming job accepted: $e',
+      );
+      return;
+    }
+    rethrow;
+  }
   AppLogger.debug('✅ Raw JPEG print request sent successfully');
 }
 
