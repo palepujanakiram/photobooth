@@ -976,9 +976,36 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     }
   }
 
-  /// Download all images to temp files for print/share
+  /// Download all images to temp files for print/share.
+  ///
+  /// Concurrent callers share one in-flight download instead of failing fast
+  /// (which could mark post-payment print as failed while the first run still
+  /// succeeds on the LAN printer).
   Future<bool> _ensureAllFilesDownloaded(String forAction) async {
-    if (_r._isDownloading) return false;
+    final inflight = _r._downloadInflight;
+    if (inflight != null) return inflight;
+
+    final fut = _runEnsureAllFilesDownloaded(forAction);
+    _r._downloadInflight = fut;
+    try {
+      return await fut;
+    } finally {
+      if (_r._downloadInflight == fut) {
+        _r._downloadInflight = null;
+      }
+    }
+  }
+
+  Future<bool> _runEnsureAllFilesDownloaded(String forAction) async {
+    if (_r._isDownloading) {
+      // Another download is active outside our inflight guard — wait briefly.
+      for (var i = 0; i < 120 && _r._isDownloading; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
+      if (_r._downloadedFilesList.length == _r._generatedImages.length) {
+        return true;
+      }
+    }
 
     _r._isDownloading = true;
     _r._downloadingForAction = forAction;
@@ -1244,8 +1271,27 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     }
   }
 
-  /// Silent print all images to network printer
+  /// Silent print all images to network printer.
+  ///
+  /// Re-entrant: concurrent callers await the same in-flight job so a retry or
+  /// QR-share kickoff cannot race the post-payment auto-print and flip UI to
+  /// "failed" while the printer is already outputting.
   Future<void> silentPrintToNetwork() async {
+    final inflight = _r._silentPrintInflight;
+    if (inflight != null) return inflight;
+
+    final fut = _runSilentPrintToNetwork();
+    _r._silentPrintInflight = fut;
+    try {
+      await fut;
+    } finally {
+      if (_r._silentPrintInflight == fut) {
+        _r._silentPrintInflight = null;
+      }
+    }
+  }
+
+  Future<void> _runSilentPrintToNetwork() async {
     _r.refreshPrinterFromSettings();
 
     if (_r._appSettingsManager?.settings?.printerEnabled == false) {

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/services/print_service_helpers.dart';
 import 'package:photobooth/services/session_manager.dart';
@@ -5,6 +6,58 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('lanPrintResponseUncertainButJobLikelySent', () {
+    test('receiveTimeout means job likely accepted', () {
+      expect(
+        lanPrintResponseUncertainButJobLikelySent(
+          DioException(
+            requestOptions: RequestOptions(path: '/api/PrintImage'),
+            type: DioExceptionType.receiveTimeout,
+          ),
+        ),
+        isTrue,
+      );
+    });
+
+    test('connection reset after accept means job likely accepted', () {
+      expect(
+        lanPrintResponseUncertainButJobLikelySent(
+          DioException(
+            requestOptions: RequestOptions(path: '/api/PrintImage'),
+            type: DioExceptionType.connectionError,
+            message: 'Connection reset by peer',
+          ),
+        ),
+        isTrue,
+      );
+    });
+
+    test('connection refused is a real failure', () {
+      expect(
+        lanPrintResponseUncertainButJobLikelySent(
+          DioException(
+            requestOptions: RequestOptions(path: '/api/PrintImage'),
+            type: DioExceptionType.connectionError,
+            message: 'Connection refused',
+          ),
+        ),
+        isFalse,
+      );
+    });
+
+    test('connection timeout before send is a real failure', () {
+      expect(
+        lanPrintResponseUncertainButJobLikelySent(
+          DioException(
+            requestOptions: RequestOptions(path: '/api/PrintImage'),
+            type: DioExceptionType.connectionTimeout,
+          ),
+        ),
+        isFalse,
+      );
+    });
+  });
 
   group('resolveRemoteImageUrlForPrint', () {
     setUp(() {
