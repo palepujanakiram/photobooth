@@ -1,3 +1,4 @@
+import '../../utils/app_strings.dart';
 import 'generation_wait_helpers.dart';
 import 'photo_generate_viewmodel.dart';
 
@@ -162,6 +163,34 @@ String generationWaitRewardStepShortLabel(String fullLabel) {
     'Final polish' => 'Polish',
     _ => fullLabel,
   };
+}
+
+/// Active (or last done) short step label for the compact large-portrait header.
+String generationWaitActiveRewardStepLabel(
+  List<GenerationWaitRewardBeat> beats,
+) {
+  for (final beat in beats) {
+    if (beat.state == GenerationWaitBeatState.active) {
+      return generationWaitRewardStepShortLabel(beat.label);
+    }
+  }
+  for (var i = beats.length - 1; i >= 0; i--) {
+    if (beats[i].state == GenerationWaitBeatState.done) {
+      return generationWaitRewardStepShortLabel(beats[i].label);
+    }
+  }
+  if (beats.isEmpty) return '';
+  return generationWaitRewardStepShortLabel(beats.first.label);
+}
+
+/// Compact likeness progress copy for large-portrait CREATE ("5/6 mapped").
+String generationWaitFaceScanSummary({
+  required int doneCount,
+  required int totalCount,
+}) {
+  if (totalCount <= 0) return '';
+  final done = doneCount.clamp(0, totalCount);
+  return AppStrings.generationWaitFaceScanMapped(done, totalCount);
 }
 
 List<GenerationWaitRewardBeat> resolveGenerationWaitRewardChecklist(

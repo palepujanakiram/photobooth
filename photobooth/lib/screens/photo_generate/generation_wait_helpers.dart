@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart' show Alignment;
+import 'package:flutter/material.dart' show Alignment, Size;
 
 import 'photo_generate_viewmodel.dart';
 import '../../utils/app_strings.dart';
@@ -57,6 +57,24 @@ const double kGenerationWaitAnticipationLabelOverhead = 22;
 
 /// Gap between the two anticipation cells.
 const double kGenerationWaitAnticipationCellGap = 10;
+
+/// Min shortest side (logical px) for the 21" portrait CREATE layout.
+const double kGenerationWaitLargePortraitMinShortestSide = 700;
+
+/// Min height (logical px) for the 21" portrait CREATE layout.
+const double kGenerationWaitLargePortraitMinHeight = 1100;
+
+/// True for tall portrait kiosks (e.g. 21") — not phones.
+///
+/// Phones can exceed ~900px height; require a tablet/kiosk-class shortest side.
+bool generationWaitIsLargePortraitKiosk(Size size) {
+  if (size.height < size.width) return false;
+  return size.shortestSide >= kGenerationWaitLargePortraitMinShortestSide &&
+      size.height >= kGenerationWaitLargePortraitMinHeight;
+}
+
+/// Content max width for the 21" portrait CREATE stage (wider than phone kiosk).
+const double kGenerationWaitLargePortraitMaxContentWidth = 720;
 
 /// Scripted status lines when the server has not sent an update yet.
 const List<String> kGenerationWaitRotatingCopy = [

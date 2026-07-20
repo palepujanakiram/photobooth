@@ -11,6 +11,7 @@ import 'screens/qr_share/qr_share_view.dart';
 import 'screens/result/result_view.dart';
 import 'screens/splash/app_splash_screen.dart';
 import 'screens/splash/bootstrap_route_args.dart';
+import 'screens/staff/staff_dashboard_view.dart';
 import 'screens/staff/staff_login_view.dart';
 import 'screens/staff/staff_payments_view.dart';
 import 'screens/terms_and_conditions/terms_and_conditions_view.dart';
@@ -47,6 +48,7 @@ Map<String, WidgetBuilder> buildAppRoutes() {
     AppConstants.kRouteQrShare: (context) => const QrShareScreen(),
     AppConstants.kRouteThankYou: (context) => const ThankYouScreen(),
     AppConstants.kRouteStaffLogin: (context) => const StaffLoginScreen(),
+    AppConstants.kRouteStaffDashboard: (context) => const StaffDashboardScreen(),
     AppConstants.kRouteStaffPayments: (context) => const StaffPaymentsScreen(),
     AppConstants.kRouteWebView: (context) => WebViewScreen.fromRouteSettings(
           ModalRoute.of(context)?.settings,
