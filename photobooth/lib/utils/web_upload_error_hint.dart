@@ -1,13 +1,27 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 
 import 'app_config.dart';
 import 'exceptions.dart';
 
 /// Extra guidance appended to capture-screen upload errors on Flutter web.
 String webUploadErrorHint({ApiException? apiError}) {
-  if (!kIsWeb) return '';
+  return webUploadErrorHintImpl(
+    isWeb: kIsWeb,
+    baseUrl: AppConfig.baseUrl,
+    apiError: apiError,
+  );
+}
 
-  final host = Uri.tryParse(AppConfig.baseUrl)?.host.toLowerCase() ?? '';
+/// Platform-aware body for [webUploadErrorHint] (unit-testable on the VM).
+@visibleForTesting
+String webUploadErrorHintImpl({
+  required bool isWeb,
+  required String baseUrl,
+  ApiException? apiError,
+}) {
+  if (!isWeb) return '';
+
+  final host = Uri.tryParse(baseUrl)?.host.toLowerCase() ?? '';
   final isLocalDev =
       host == 'localhost' || host == '127.0.0.1' || host.endsWith('.localhost');
 

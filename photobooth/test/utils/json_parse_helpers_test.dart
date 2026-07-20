@@ -6,6 +6,15 @@ void main() {
     expect(JsonParseHelpers.stringValue(null), '');
     expect(JsonParseHelpers.stringValue(42), '42');
     expect(JsonParseHelpers.stringValue('x'), 'x');
+    expect(JsonParseHelpers.stringValue(null, fallback: 'fb'), 'fb');
+  });
+
+  test('stringOrNull and boolOrNull', () {
+    expect(JsonParseHelpers.stringOrNull(null), isNull);
+    expect(JsonParseHelpers.stringOrNull('x'), 'x');
+    expect(JsonParseHelpers.stringOrNull(9), '9');
+    expect(JsonParseHelpers.boolOrNull(true), isTrue);
+    expect(JsonParseHelpers.boolOrNull('true'), isNull);
   });
 
   test('intOrNull accepts num', () {
@@ -21,5 +30,7 @@ void main() {
     );
     expect(JsonParseHelpers.dateTimeOrNull('not-a-date'), isNull);
     expect(JsonParseHelpers.dateTimeOrNull(null), isNull);
+    expect(JsonParseHelpers.dateTimeOrNull('   '), isNull);
+    expect(JsonParseHelpers.dateTimeOrNull(42), isNull);
   });
 }

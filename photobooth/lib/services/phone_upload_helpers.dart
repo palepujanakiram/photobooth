@@ -3,8 +3,6 @@ import 'dart:typed_data';
 
 import 'package:cross_file/cross_file.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-
 import '../utils/secure_image_url.dart';
 import '../utils/session_photo_sync_helpers.dart';
 import 'protected_image_loader.dart';
@@ -44,10 +42,11 @@ Future<XFile> downloadPhoneUploadPreviewToXFile(
   String imageUrl, {
   Dio? dio,
 }) async {
-  final url = SecureImageUrl.absolutize(imageUrl.trim());
-  if (url.isEmpty) {
+  final trimmed = imageUrl.trim();
+  if (trimmed.isEmpty) {
     throw StateError('Missing preview URL after phone upload');
   }
+  final url = SecureImageUrl.absolutize(trimmed);
 
   List<int> bytes;
   if (ProtectedImageLoader.isProtectedUrl(url)) {
@@ -69,9 +68,6 @@ Future<XFile> downloadPhoneUploadPreviewToXFile(
 
   final data = Uint8List.fromList(bytes);
   final name = 'phone_upload_${DateTime.now().millisecondsSinceEpoch}.jpg';
-  if (kIsWeb) {
-    return XFile.fromData(data, mimeType: 'image/jpeg', name: name);
-  }
   return XFile.fromData(data, mimeType: 'image/jpeg', name: name);
 }
 

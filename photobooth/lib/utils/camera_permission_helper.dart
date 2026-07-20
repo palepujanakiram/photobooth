@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+    show defaultTargetPlatform, kIsWeb, TargetPlatform, visibleForTesting;
 
 import 'package:permission_handler/permission_handler.dart';
 
@@ -12,13 +12,30 @@ bool get isNativeMobileCameraPlatform {
 
 /// Returns true when camera access is granted (requests when [requestIfNeeded]).
 Future<bool> ensureCameraPermission({bool requestIfNeeded = true}) async {
-  if (!isNativeMobileCameraPlatform) return true;
+  return ensureCameraPermissionForPlatform(
+    isNativeMobile: isNativeMobileCameraPlatform,
+    requestIfNeeded: requestIfNeeded,
+  );
+}
 
-  final status = await Permission.camera.status;
+/// Platform-aware camera permission gate (unit-testable on the VM).
+@visibleForTesting
+Future<bool> ensureCameraPermissionForPlatform({
+  required bool isNativeMobile,
+  bool requestIfNeeded = true,
+  Future<PermissionStatus> Function()? readStatus,
+  Future<PermissionStatus> Function()? requestPermission,
+}) async {
+  if (!isNativeMobile) return true;
+
+  final status =
+      readStatus != null ? await readStatus() : await Permission.camera.status;
   if (status.isGranted) return true;
   if (!requestIfNeeded) return false;
 
-  final result = await Permission.camera.request();
+  final result = requestPermission != null
+      ? await requestPermission()
+      : await Permission.camera.request();
   return result.isGranted;
 }
 

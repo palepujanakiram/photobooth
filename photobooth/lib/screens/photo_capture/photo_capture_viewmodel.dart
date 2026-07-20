@@ -345,6 +345,30 @@ class CaptureViewModel extends ChangeNotifier {
   bool get isCapturing => _isCapturing;
   bool get isSelectingFromGallery => _isSelectingFromGallery;
   bool get isWaitingForPhoneUpload => _isWaitingForPhoneUpload;
+
+  /// Sets capture UI flags for widget/unit tests (desktop body, phone QR sheet).
+  @visibleForTesting
+  void setCaptureUiStateForTest({
+    bool? isCapturing,
+    bool? isSelectingFromGallery,
+    bool? isWaitingForPhoneUpload,
+    String? errorMessage,
+    bool clearError = false,
+  }) {
+    if (isCapturing != null) _isCapturing = isCapturing;
+    if (isSelectingFromGallery != null) {
+      _isSelectingFromGallery = isSelectingFromGallery;
+    }
+    if (isWaitingForPhoneUpload != null) {
+      _isWaitingForPhoneUpload = isWaitingForPhoneUpload;
+    }
+    if (clearError) {
+      _errorMessage = null;
+    } else if (errorMessage != null) {
+      _errorMessage = errorMessage;
+    }
+    notifyListeners();
+  }
   PhoneUploadLinkInfo? get activePhoneUploadLink => _activePhoneUploadLink;
   bool get isUploading => _isUploading;
   int get uploadElapsedSeconds => _uploadElapsedSeconds;

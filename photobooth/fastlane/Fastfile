@@ -15,7 +15,7 @@ def in_photobooth_root(&block)
 end
 
 # --- Android distribution config (edit these values) ---
-FIREBASE_TOKEN = 'your_firebase_ci_token_here' # firebase login:ci
+FIREBASE_TOKEN = ENV.fetch('FIREBASE_TOKEN', nil) # export from `firebase login:ci`
 FIREBASE_ANDROID_APP_ID = '1:76160113818:android:196bb713e591f09c0bd323'
 FIREBASE_ANDROID_GROUPS = 'testers'
 PLAY_STORE_JSON_KEY_PATH = File.expand_path('credentials/play-store-service-account.json', __dir__)
@@ -99,7 +99,7 @@ end
 def assert_firebase_token!
   return unless PhotoboothFastfile.firebase_token_missing?(FIREBASE_TOKEN)
 
-  UI.user_error!('Set FIREBASE_TOKEN in fastlane/Fastfile (from `firebase login:ci`).')
+  UI.user_error!('Set FIREBASE_TOKEN env var (from `firebase login:ci`) before running Firebase distribution.')
 end
 
 def assert_firebase_android_app_id!
@@ -164,6 +164,8 @@ def build_android_aab
   in_photobooth_root { sh('./scripts/flutter_with_version.sh build appbundle --release') }
   path = PhotoboothFastfile.android_aab_path
   UI.user_error!("AAB not found at #{path}") unless File.exist?(path)
+  # Google Play requires 16 KB ELF alignment on 64-bit native libs (Android 15+).
+  in_photobooth_root { sh("./scripts/verify_16kb_alignment.sh #{path}") }
 end
 
 def build_ios_ipa

@@ -3,28 +3,19 @@ PODS:
   - bugsnag_flutter (0.0.1):
     - Bugsnag (= 6.33.1)
     - Flutter
-  - device_info_plus (0.0.1):
-    - Flutter
   - face_count (0.0.1):
     - Flutter
   - Flutter (1.0.0)
-  - flutter_secure_storage (6.0.0):
-    - Flutter
   - flutter_zxing (0.0.1):
-    - Flutter
-  - permission_handler_apple (9.3.0):
     - Flutter
   - printing (1.0.0):
     - Flutter
 
 DEPENDENCIES:
   - bugsnag_flutter (from `.symlinks/plugins/bugsnag_flutter/ios`)
-  - device_info_plus (from `.symlinks/plugins/device_info_plus/ios`)
   - face_count (from `.symlinks/plugins/face_count/ios`)
   - Flutter (from `Flutter`)
-  - flutter_secure_storage (from `.symlinks/plugins/flutter_secure_storage/ios`)
   - flutter_zxing (from `.symlinks/plugins/flutter_zxing/ios`)
-  - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
   - printing (from `.symlinks/plugins/printing/ios`)
 
 SPEC REPOS:
@@ -34,30 +25,21 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   bugsnag_flutter:
     :path: ".symlinks/plugins/bugsnag_flutter/ios"
-  device_info_plus:
-    :path: ".symlinks/plugins/device_info_plus/ios"
   face_count:
     :path: ".symlinks/plugins/face_count/ios"
   Flutter:
     :path: Flutter
-  flutter_secure_storage:
-    :path: ".symlinks/plugins/flutter_secure_storage/ios"
   flutter_zxing:
     :path: ".symlinks/plugins/flutter_zxing/ios"
-  permission_handler_apple:
-    :path: ".symlinks/plugins/permission_handler_apple/ios"
   printing:
     :path: ".symlinks/plugins/printing/ios"
 
 SPEC CHECKSUMS:
   Bugsnag: d18997d2f7d437879752a9f938d1e7fe54df0a6a
   bugsnag_flutter: 837a55adf6451ca88fb085aff6c3285ca70ccba0
-  device_info_plus: 71ffc6ab7634ade6267c7a93088ed7e4f74e5896
   face_count: 26281dd120bc956e237458cfa371b7f6eb885a98
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_secure_storage: 1ed9476fba7e7a782b22888f956cce43e2c62f13
   flutter_zxing: e8bcc43bd3056c70c271b732ed94e7a16fd62f93
-  permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
   printing: 54ff03f28fe9ba3aa93358afb80a8595a071dd07
 
 PODFILE CHECKSUM: 7669aec6e273c110095f4ec42302ea3815b87204

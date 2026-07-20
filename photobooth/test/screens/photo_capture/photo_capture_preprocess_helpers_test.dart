@@ -3,6 +3,7 @@ import 'package:photobooth/models/preprocess_image_result.dart';
 import 'package:photobooth/screens/photo_capture/photo_capture_preprocess_helpers.dart';
 import 'package:photobooth/services/api_service.dart';
 import 'package:photobooth/services/session_manager.dart';
+import '../../fakes/fake_api_service.dart';
 import 'package:photobooth/utils/print_orientation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -140,6 +141,41 @@ void main() {
       expect(sm.personCount, 4);
       expect(sm.printOrientation, PrintOrientation.landscape);
     });
+
+    test('updates person count when preprocess succeeds', () async {
+      final sm = SessionManager();
+      sm.setSessionFromResponse(_sessionJson('sess-pre'));
+      await ensureAuthoritativePersonCount(
+        sessionManager: sm,
+        apiService: ApiService(),
+        sessionId: 'sess-pre',
+        preprocessFn: (_) async =>
+            const PreprocessImageResult(success: true, personCount: 2),
+      );
+      expect(sm.personCount, 2);
+    });
+
+    test('ignores generic preprocess failures', () async {
+      final sm = SessionManager();
+      sm.setSessionFromResponse(_sessionJson('sess-catch'));
+      await ensureAuthoritativePersonCount(
+        sessionManager: sm,
+        apiService: ApiService(),
+        sessionId: 'sess-catch',
+        preprocessFn: (_) async => throw StateError('preprocess boom'),
+      );
+    });
+
+    test('uses api preprocess when override omitted', () async {
+      final sm = SessionManager();
+      sm.setSessionFromResponse(_sessionJson('sess-api-pre'));
+      await ensureAuthoritativePersonCount(
+        sessionManager: sm,
+        apiService: FakeApiService(),
+        sessionId: 'sess-api-pre',
+      );
+      expect(sm.personCount, 2);
+    });
   });
 
   group('PreprocessImageResult.fromJson', () {
@@ -181,4 +217,15 @@ void main() {
       expect(r.framing, isNull);
     });
   });
+}
+
+Map<String, dynamic> _sessionJson(String sessionId) {
+  return {
+    'id': sessionId,
+    'termsAccepted': true,
+    'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+    'attemptsUsed': 0,
+    'generatedImages': <dynamic>[],
+    'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+  };
 }

@@ -15,6 +15,8 @@ android {
 
     defaultConfig {
         minSdk = 21
+        // Consumer rules from the vendored org.uvccamera:lib rebuild.
+        consumerProguardFiles("libs/uvccamera-lib-proguard.txt")
     }
 
     compileOptions {
@@ -25,8 +27,10 @@ android {
 
 dependencies {
     implementation("androidx.annotation:annotation:1.9.1")
-    // Native lib version is pinned independently of the forked plugin semver.
-    implementation("org.uvccamera:lib:0.0.13")
+    // Maven 0.0.13 ships 4 KB-aligned .so files. Native libs live in src/main/jniLibs
+    // and Java classes in libs/uvccamera-lib-classes.jar — rebuilt with NDK r28 for
+    // Google Play 16 KB page-size support. Rebuild: ./scripts/rebuild_uvccamera_16kb.sh
+    implementation(files("libs/uvccamera-lib-classes.jar"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.0.0")
 }

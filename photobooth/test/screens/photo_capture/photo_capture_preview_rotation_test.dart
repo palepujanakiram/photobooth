@@ -155,6 +155,33 @@ void main() {
     expect(sized.height, closeTo(390 / (9 / 16), 0.5));
   });
 
+  testWidgets('buildCoverCameraPreview covers tall parent via height branch', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 200,
+            height: 500,
+            child: buildCoverCameraPreview(
+              cameraPreview: const ColoredBox(color: Colors.green),
+              displayAspectRatio: 1.5,
+            ),
+          ),
+        ),
+      ),
+    );
+    final sized = tester.widget<SizedBox>(
+      find.descendant(
+        of: find.byType(OverflowBox),
+        matching: find.byType(SizedBox),
+      ),
+    );
+    expect(sized.height, closeTo(500, 0.1));
+    expect(sized.width, closeTo(500 * 1.5, 0.5));
+  });
+
   testWidgets('buildRotatedCoverPreview no rotation wraps in ClipRect',
       (tester) async {
     await tester.pumpWidget(

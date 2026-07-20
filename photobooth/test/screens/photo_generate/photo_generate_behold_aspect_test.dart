@@ -6,24 +6,9 @@ import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/print_orientation.dart';
 
 void main() {
-  testWidgets('beholdCardIsPhonePortrait true on phone portrait', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) {
-            // Default test surface: 800×600, landscape-ish but shortestSide=600 boundary.
-            // Force a clearly phone-portrait surface via MediaQuery.
-            final result = beholdCardIsPhonePortrait(context);
-            // Default MediaQuery in tests is landscape 800×600, shortestSide=600 ≥ 600 → false.
-            expect(result, isFalse);
-            return const SizedBox.shrink();
-          },
-        ),
-      ),
-    );
-  });
-
-  testWidgets('beholdCardIsPhonePortrait true when portrait and narrow', (tester) async {
+  testWidgets('beholdCardIsPhonePortrait true when portrait and narrow', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MediaQuery(
         data: const MediaQueryData(size: Size(360, 640)),
@@ -38,6 +23,26 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('beholdHeroContentAspectRatio uses decoded aspect when set', () {
+    final vm = PhotoGenerateViewModel()..setBeholdHeroAspectRatioForTest(1.5);
+    expect(beholdHeroContentAspectRatio(vm), 1.5);
+  });
+
+  test('beholdHeroContentAspectRatio defaults to 2:3', () {
+    final vm = PhotoGenerateViewModel();
+    expect(beholdHeroContentAspectRatio(vm), closeTo(2 / 3, 0.0001));
+  });
+
+  test('fitBeholdHeroAspectInBox width-limited branch', () {
+    final size = fitBeholdHeroAspectInBox(
+      maxWidth: 100,
+      maxHeight: 200,
+      aspect: 2,
+    );
+    expect(size.width, 100);
+    expect(size.height, 50);
   });
 
   test('beholdSingleResultHeroImageFit always contains', () {

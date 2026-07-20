@@ -3,8 +3,19 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('CaptureScreenIdleInput', () {
-    test('stores constructor fields', () {
+    test('stores constructor fields including defaults', () {
       final input = CaptureScreenIdleInput(
+        isNavigatingAway: false,
+        isCapturing: false,
+        isUploading: false,
+        isCountingDown: false,
+        appInForeground: true,
+      );
+      expect(input.isCapturing, isFalse);
+      expect(input.appInForeground, isTrue);
+      expect(input.isWaitingForPhoneUpload, isFalse);
+
+      const inputWithWait = CaptureScreenIdleInput(
         isNavigatingAway: false,
         isCapturing: false,
         isUploading: false,
@@ -12,9 +23,7 @@ void main() {
         appInForeground: true,
         isWaitingForPhoneUpload: true,
       );
-      expect(input.isCapturing, isFalse);
-      expect(input.appInForeground, isTrue);
-      expect(input.isWaitingForPhoneUpload, isTrue);
+      expect(inputWithWait.isWaitingForPhoneUpload, isTrue);
     });
   });
 

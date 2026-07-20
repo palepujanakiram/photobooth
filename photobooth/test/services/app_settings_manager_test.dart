@@ -7,16 +7,14 @@ import 'package:photobooth/utils/exceptions.dart';
 import '../fakes/fake_api_service.dart';
 
 class _SettingsApi extends FakeApiService {
-  _SettingsApi(this.model, {this.onFetch});
+  _SettingsApi(this.model);
 
   AppSettingsModel model;
   int fetchCount = 0;
-  void Function()? onFetch;
 
   @override
   Future<AppSettingsModel> getAppSettings() async {
     fetchCount++;
-    onFetch?.call();
     return model;
   }
 }

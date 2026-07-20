@@ -4,10 +4,9 @@ import 'package:flutter/material.dart';
 class KioskFadePageRoute<T> extends PageRouteBuilder<T> {
   KioskFadePageRoute({
     required Widget page,
-    RouteSettings? settings,
+    super.settings,
     Duration duration = const Duration(milliseconds: 120),
   }) : super(
-          settings: settings,
           pageBuilder: (context, animation, secondaryAnimation) => page,
           transitionDuration: duration,
           reverseTransitionDuration: duration,

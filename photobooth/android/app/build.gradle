@@ -1,9 +1,11 @@
 plugins {
     id "com.android.application"
+    // AGP 9 built-in Kotlin for this module (replaces org.jetbrains.kotlin.android).
+    // Global android.builtInKotlin stays false for still-legacy transitive plugins.
+    id "com.android.built-in-kotlin"
     // START: FlutterFire Configuration
     id 'com.google.gms.google-services'
     // END: FlutterFire Configuration
-    id "org.jetbrains.kotlin.android"
     id "dev.flutter.flutter-gradle-plugin"
 }
 
@@ -39,6 +41,7 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace "com.srisarani.fotozenai"
     compileSdk 36
+    // NDK r28+ links 16 KB-aligned ELF by default (Google Play 16 KB page-size requirement).
     ndkVersion flutter.ndkVersion
 
     compileOptions {
@@ -60,7 +63,6 @@ android {
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
-        setProperty("archivesBaseName", appName)
     }
 
     signingConfigs {
@@ -82,11 +84,24 @@ android {
         }
     }
 
+    // Keep .so files uncompressed so AGP 8.5.1+ can ZIP-align them on 16 KB boundaries.
+    // (useLegacyPackaging=true would compress them and break mmap on 16 KB devices.)
+    packaging {
+        jniLibs {
+            useLegacyPackaging false
+        }
+    }
+
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
             output.outputFileName = "${appName}-${variant.buildType.name}.apk"
         }
     }
+}
+
+// AGP 9 removed archivesBaseName from defaultConfig; set via the base plugin instead.
+base {
+    archivesName = appName
 }
 
 kotlin {

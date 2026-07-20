@@ -2,6 +2,9 @@
 
 ## 0.0.13+1 (photobooth fork)
 
+* (fix) Vendor a 16 KB-aligned rebuild of `org.uvccamera:lib:0.0.13` (NDK r28 +
+  `max-page-size=16384`) as `jniLibs` + `libs/uvccamera-lib-classes.jar` so Play
+  Console accepts arm64 native libs. Rebuild with `./scripts/rebuild_uvccamera_16kb.sh`.
 * (fix) Avoid calling `UVCCamera.close()` before `destroy()` — `destroy()` already invokes
   `close()`, and the duplicate `nativeRelease()` caused fdsan SIGABRT on Android 11+ kiosks.
 * (fix) Release only the Flutter `SurfaceProducer` on close (not the derived `Surface`).

@@ -32,9 +32,21 @@ Future<void> showPhoneUploadQrSheet({
     },
   );
 
+  handlePhoneUploadSheetClosed(viewModel);
+}
+
+/// Cancels the phone-upload wait when the sheet closes without a QR capture.
+@visibleForTesting
+void handlePhoneUploadSheetClosed(CaptureViewModel viewModel) {
   if (viewModel.capturedPhoto?.cameraId != 'phone_qr') {
     viewModel.cancelPhoneUploadWait();
   }
+}
+
+/// Pops the phone-upload bottom sheet (unit-testable).
+@visibleForTesting
+void cancelPhoneUploadSheet(BuildContext context) {
+  Navigator.of(context).pop();
 }
 
 class _PhoneUploadQrSheetBody extends StatefulWidget {
@@ -105,9 +117,9 @@ class _PhoneUploadQrSheetBodyState extends State<_PhoneUploadQrSheetBody> {
                 ),
               ),
               const SizedBox(height: 16),
-              Text(
+              const Text(
                 AppStrings.phoneUploadSheetTitle,
-                style: const TextStyle(
+                style: TextStyle(
                   color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
@@ -115,9 +127,9 @@ class _PhoneUploadQrSheetBodyState extends State<_PhoneUploadQrSheetBody> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              Text(
+              const Text(
                 AppStrings.phoneUploadSheetSubtitle,
-                style: const TextStyle(
+                style: TextStyle(
                   color: Colors.white70,
                   fontSize: 14,
                   height: 1.35,
@@ -139,10 +151,10 @@ class _PhoneUploadQrSheetBodyState extends State<_PhoneUploadQrSheetBody> {
               ),
               const SizedBox(height: 16),
               if (_viewModel.isWaitingForPhoneUpload)
-                Row(
+                const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const SizedBox(
+                    SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -150,27 +162,27 @@ class _PhoneUploadQrSheetBodyState extends State<_PhoneUploadQrSheetBody> {
                         color: Colors.white70,
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    SizedBox(width: 10),
                     Text(
                       AppStrings.phoneUploadWaiting,
-                      style: const TextStyle(color: Colors.white70),
+                      style: TextStyle(color: Colors.white70),
                     ),
                   ],
                 ),
               if (received)
-                Text(
+                const Text(
                   AppStrings.phoneUploadReceived,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Colors.lightGreenAccent,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               const SizedBox(height: 16),
               TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: Text(
+                onPressed: () => cancelPhoneUploadSheet(context),
+                child: const Text(
                   AppStrings.phoneUploadCancelled,
-                  style: const TextStyle(color: Colors.white70),
+                  style: TextStyle(color: Colors.white70),
                 ),
               ),
             ],

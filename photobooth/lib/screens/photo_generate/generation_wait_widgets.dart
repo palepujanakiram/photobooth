@@ -337,7 +337,7 @@ class _GenerationWaitComparePanels extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final gap = 10.0;
+        const gap = 10.0;
         final w = constraints.maxWidth;
         final cellW = (w - gap) / 2;
         final cellH = cellW / cellAspect;
@@ -348,6 +348,9 @@ class _GenerationWaitComparePanels extends StatelessWidget {
               child: _GenerationWaitPanel(
                 label: 'You',
                 aspectRatio: cellAspect,
+                overlay: showFacePins
+                    ? const _GenerationWaitRadarOverlay()
+                    : null,
                 child: capture == null
                     ? const ColoredBox(color: Color(0xFF0D1120))
                     : KenBurnsCaptureImage(
@@ -356,23 +359,20 @@ class _GenerationWaitComparePanels extends StatelessWidget {
                         height: cellH,
                         alignment: captureAlignment,
                       ),
-                overlay: showFacePins
-                    ? const _GenerationWaitRadarOverlay()
-                    : null,
               ),
             ),
-            SizedBox(width: gap),
+            const SizedBox(width: gap),
             Expanded(
               child: _GenerationWaitPanel(
                 label: 'Style',
                 aspectRatio: cellAspect,
+                overlay: const _GenerationWaitStyleScanLine(),
                 child: styleUrl.isEmpty
                     ? const _ShimmerPlaceholder()
                     : _GenerationWaitStyleCanvas(
                         imageUrl: styleUrl,
                         blurStrength: anticipation ? 20.0 : (22 * (1 - progress)).clamp(0.0, 20.0),
                       ),
-                overlay: const _GenerationWaitStyleScanLine(),
               ),
             ),
           ],
@@ -774,7 +774,7 @@ class _GenerationWaitFaceScanChecklistState
     return FadeTransition(
       opacity: Tween<double>(begin: 1, end: 0).animate(_fade),
       child: SizeTransition(
-        axisAlignment: -1,
+        alignment: Alignment.topCenter,
         sizeFactor: Tween<double>(begin: 1, end: 0).animate(_fade),
         child: _GenerationWaitChecklistCard(
           title: 'Likeness',

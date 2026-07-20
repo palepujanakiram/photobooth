@@ -14,6 +14,9 @@ class UvcSessionCoordinator {
 
   static const Duration _teardownWaitCap = Duration(seconds: 3);
 
+  @visibleForTesting
+  static UvcSessionCoordinator debugInstance() => UvcSessionCoordinator._();
+
   /// True after any UVC feed was opened or torn down this process lifetime.
   static bool get hadPriorSession => _hadUvcSession;
 

@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../utils/app_strings.dart';
 import '../utils/exceptions.dart';
 import '../utils/logger.dart';
@@ -13,6 +15,10 @@ class ReceiptPrinterService {
   });
 
   final Duration connectTimeout;
+
+  @visibleForTesting
+  Future<Socket> Function(String host, int port, Duration timeout)?
+      connectOverride;
 
   /// Decode [payloadBase64] and write to [host]:[port].
   Future<void> sendEscPosBase64({
@@ -36,11 +42,13 @@ class ReceiptPrinterService {
 
     Socket? socket;
     try {
-      socket = await Socket.connect(
-        host,
-        port,
-        timeout: connectTimeout,
-      );
+      socket = connectOverride != null
+          ? await connectOverride!(host, port, connectTimeout)
+          : await Socket.connect(
+              host,
+              port,
+              timeout: connectTimeout,
+            );
       socket.add(bytes);
       await socket.flush();
       AppLogger.debug(
