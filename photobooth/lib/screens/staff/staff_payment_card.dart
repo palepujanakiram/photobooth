@@ -35,6 +35,7 @@ class StaffPaymentCardActions {
     required this.onApprove,
     required this.onReject,
     required this.onPrint,
+    this.onPrintReceipt,
   });
 
   final Widget thumb;
@@ -46,6 +47,9 @@ class StaffPaymentCardActions {
   final VoidCallback onApprove;
   final VoidCallback onReject;
   final VoidCallback onPrint;
+
+  /// When non-null, shows a "Print receipt" button (receipt printer configured).
+  final VoidCallback? onPrintReceipt;
 }
 
 /// Single payment row card (Sonar S3776 extraction from staff payments list).
@@ -188,6 +192,14 @@ class StaffPaymentCard extends StatelessWidget {
                   icon: const Icon(Icons.print),
                   label: const Text('Print'),
                 ),
+                if (actions.onPrintReceipt != null)
+                  OutlinedButton.icon(
+                    onPressed: (loading || sessionId.isEmpty)
+                        ? null
+                        : actions.onPrintReceipt,
+                    icon: const Icon(Icons.receipt_long),
+                    label: const Text(AppStrings.printReceiptButton),
+                  ),
               ],
             ),
           ],

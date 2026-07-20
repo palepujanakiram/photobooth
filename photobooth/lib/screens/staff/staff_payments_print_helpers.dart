@@ -1,8 +1,12 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../models/app_settings_model.dart';
+import '../../models/session_print_receipt_result.dart';
 import '../../services/staff_api_service.dart';
 import '../../services/print_service.dart';
+import '../../services/receipt_printer_service.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/printer_endpoint.dart';
 
@@ -12,6 +16,13 @@ typedef StaffPaymentsPrintStateSink = void Function({
   String? error,
   String? progressMessage,
 });
+
+/// True when admin enabled a LAN thermal receipt printer with a host.
+bool staffPaymentsIsReceiptPrinterConfigured(AppSettingsModel? settings) {
+  if (settings?.receiptPrinterEnabled != true) return false;
+  final host = settings?.receiptPrinterHost?.trim() ?? '';
+  return host.isNotEmpty;
+}
 
 /// Validates session, confirms print, and resolves image URL (Sonar S3776).
 Future<String?> staffPaymentsPreparePrintSession({
@@ -64,6 +75,32 @@ Future<bool> staffPaymentsConfirmPrintDialog(
   return ok;
 }
 
+/// Confirms thermal receipt print; returns false if cancelled or unmounted.
+Future<bool> staffPaymentsConfirmReceiptPrintDialog(
+  BuildContext context,
+  String sessionId,
+) async {
+  final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text(AppStrings.printReceiptButton),
+          content: Text('Print receipt for session:\n$sessionId'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text(AppStrings.printReceiptButton),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+  return ok;
+}
+
 /// Download image and send to network printer (Sonar S3776 extraction).
 Future<void> staffPaymentsRunPrintJob({
   required StaffApiService staffApi,
@@ -106,4 +143,81 @@ Future<void> staffPaymentsRunPrintJob({
   } finally {
     if (isMounted()) onState(loading: false);
   }
+}
+
+/// Fetch ESC/POS from API and deliver to the LAN thermal receipt printer.
+Future<void> staffPaymentsRunReceiptPrintJob({
+  required StaffApiService staffApi,
+  required ReceiptPrinterService receiptPrinter,
+  required AppSettingsModel? settings,
+  required String sessionId,
+  required bool Function() isMounted,
+  required StaffPaymentsPrintStateSink onState,
+  required VoidCallback? onSuccess,
+}) async {
+  if (sessionId.trim().isEmpty) {
+    onState(error: 'Missing sessionId in payment payload');
+    return;
+  }
+  if (kIsWeb) {
+    onState(error: AppStrings.receiptPrintUnsupportedOnWeb);
+    return;
+  }
+  if (!staffPaymentsIsReceiptPrinterConfigured(settings)) {
+    onState(error: AppStrings.receiptPrintNotConfigured);
+    return;
+  }
+
+  onState(
+    loading: true,
+    error: null,
+    progressMessage: AppStrings.printingReceiptButton,
+  );
+  try {
+    final raw = await staffApi.postSessionPrintReceipt(sessionId: sessionId);
+    if (!isMounted()) return;
+
+    final result = SessionPrintReceiptResult.fromJson(raw);
+    final deliverError = staffPaymentsReceiptDeliverError(result);
+    if (deliverError != null) {
+      onState(error: deliverError);
+      return;
+    }
+
+    if (result.deliveredByServer) {
+      onSuccess?.call();
+      return;
+    }
+
+    onState(progressMessage: 'Sending to receipt printer...');
+    await receiptPrinter.sendEscPosBase64(
+      host: result.host!.trim(),
+      port: result.port,
+      payloadBase64: result.payloadBase64!,
+    );
+    if (!isMounted()) return;
+    onSuccess?.call();
+  } on ApiException catch (e) {
+    if (!isMounted()) return;
+    onState(error: e.message);
+  } catch (e) {
+    if (!isMounted()) return;
+    onState(error: '${AppStrings.receiptPrintFailedGeneric} ($e)');
+  } finally {
+    if (isMounted()) onState(loading: false);
+  }
+}
+
+/// Maps a print-receipt API result to a staff-facing error, or null if OK to send.
+String? staffPaymentsReceiptDeliverError(SessionPrintReceiptResult result) {
+  if (!result.success || !result.printerConfigured) {
+    return result.error ??
+        result.message ??
+        AppStrings.receiptPrintNotConfigured;
+  }
+  if (result.deliveredByServer) return null;
+  if (!result.needsLanDelivery) {
+    return AppStrings.receiptPrintEmptyPayload;
+  }
+  return null;
 }

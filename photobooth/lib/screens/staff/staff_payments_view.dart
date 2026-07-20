@@ -6,6 +6,8 @@ import '../../models/payment_mode.dart';
 import '../../services/staff_api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/print_service.dart';
+import '../../services/receipt_printer_service.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import 'staff_payment_card.dart';
@@ -25,6 +27,7 @@ class StaffPaymentsScreen extends StatefulWidget {
 class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
   final _api = StaffApiService();
   final _printService = PrintService();
+  final _receiptPrinter = ReceiptPrinterService();
 
   bool _loading = false;
   String? _error;
@@ -365,6 +368,27 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     );
   }
 
+  Future<void> _printReceiptForSession(Map<String, dynamic> p) async {
+    final sessionId = _sessionId(p);
+    if (sessionId.isEmpty) {
+      setState(() => _error = 'Missing sessionId in payment payload');
+      return;
+    }
+
+    final ok = await staffPaymentsConfirmReceiptPrintDialog(context, sessionId);
+    if (!mounted || !ok) return;
+
+    await staffPaymentsRunReceiptPrintJob(
+      staffApi: _api,
+      receiptPrinter: _receiptPrinter,
+      settings: context.read<AppSettingsManager>().settings,
+      sessionId: sessionId,
+      isMounted: () => mounted,
+      onState: _applyPrintJobState,
+      onSuccess: _showReceiptPrintSentSnackBar,
+    );
+  }
+
   void _applyPrintJobState({
     bool? loading,
     String? error,
@@ -382,6 +406,13 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Print job sent')),
+    );
+  }
+
+  void _showReceiptPrintSentSnackBar() {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text(AppStrings.receiptPrintSuccess)),
     );
   }
 
@@ -533,6 +564,9 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
           final p = list[i];
           final sid = _sessionId(p);
           final payment = Payment.fromJson(p);
+          final settings = context.read<AppSettingsManager>().settings;
+          final showReceiptPrint =
+              staffPaymentsIsReceiptPrinterConfigured(settings);
           return StaffPaymentCard(
             appColors: appColors,
             data: StaffPaymentCardData(
@@ -554,6 +588,9 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
               onApprove: () => _approve(p),
               onReject: () => _reject(p),
               onPrint: () => _printForSession(p),
+              onPrintReceipt: showReceiptPrint
+                  ? () => _printReceiptForSession(p)
+                  : null,
             ),
           );
         },
