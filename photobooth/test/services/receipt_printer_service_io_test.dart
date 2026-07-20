@@ -85,4 +85,36 @@ void main() {
       throwsA(isA<ApiException>()),
     );
   });
+
+  test('sendEscPosBytes maps generic failures to ApiException', () async {
+    final service = ReceiptPrinterService();
+    service.connectOverride = (_, __, ___) async {
+      throw StateError('printer offline');
+    };
+    await expectLater(
+      service.sendEscPosBytes(
+        host: '127.0.0.1',
+        port: 9100,
+        bytes: Uint8List.fromList([0x1B]),
+      ),
+      throwsA(isA<ApiException>()),
+    );
+  });
+
+  test('sendEscPosBytes rethrows ApiException from connect override', () async {
+    final service = ReceiptPrinterService();
+    service.connectOverride = (_, __, ___) async {
+      throw ApiException('bad host');
+    };
+    await expectLater(
+      service.sendEscPosBytes(
+        host: '127.0.0.1',
+        port: 9100,
+        bytes: Uint8List.fromList([0x1B]),
+      ),
+      throwsA(
+        isA<ApiException>().having((e) => e.message, 'message', 'bad host'),
+      ),
+    );
+  });
 }

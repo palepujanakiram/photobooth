@@ -43,6 +43,12 @@ void handlePhoneUploadSheetClosed(CaptureViewModel viewModel) {
   }
 }
 
+/// Pops the phone-upload bottom sheet (unit-testable).
+@visibleForTesting
+void cancelPhoneUploadSheet(BuildContext context) {
+  Navigator.of(context).pop();
+}
+
 class _PhoneUploadQrSheetBody extends StatefulWidget {
   const _PhoneUploadQrSheetBody({
     required this.viewModel,
@@ -173,7 +179,7 @@ class _PhoneUploadQrSheetBodyState extends State<_PhoneUploadQrSheetBody> {
                 ),
               const SizedBox(height: 16),
               TextButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () => cancelPhoneUploadSheet(context),
                 child: const Text(
                   AppStrings.phoneUploadCancelled,
                   style: TextStyle(color: Colors.white70),

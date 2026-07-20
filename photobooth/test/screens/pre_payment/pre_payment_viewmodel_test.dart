@@ -14,6 +14,7 @@ import 'package:photobooth/services/payment_push_coordinator.dart';
 import 'package:photobooth/services/session_manager.dart';
 import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/constants.dart';
+import 'package:photobooth/utils/exceptions.dart';
 import '../../fakes/fake_api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -353,6 +354,440 @@ void main() {
       vm.notifyListeners();
       expect(vm.paymentInitInProgress, isFalse);
     });
+
+    test('uses default ApiService and SessionManager when omitted', () {
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+      );
+      expect(vm.initialAmount, greaterThan(0));
+    });
+
+    test('loadPaymentQr exposes payment link fields from initiate result', () async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-fields'));
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(
+          initiatePaymentResult: PaymentInitiateResult(
+            id: 'pay-fields',
+            status: 'PENDING',
+            paymentLink: 'https://pay.example/link',
+            qrImageUrl: 'https://pay.example/qr.png',
+            upiLink: 'upi://pay',
+          ),
+        ),
+        sessionManager: SessionManager(),
+      );
+
+      await vm.loadPaymentQr();
+      expect(vm.paymentLink, 'https://pay.example/link');
+      expect(vm.qrImageUrl, 'https://pay.example/qr.png');
+      expect(vm.upiLink, 'upi://pay');
+    });
+
+    test('chargeAmount reflects applied discount', () async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-discount'));
+      final api = FakeApiService();
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: api,
+        sessionManager: SessionManager(),
+      );
+
+      await vm.applyCoupon('SAVE50');
+      expect(vm.appliedDiscount, isNotNull);
+      expect(vm.couponError, isNull);
+      expect(vm.couponBusy, isFalse);
+      expect(vm.chargeAmount, lessThan(vm.initialAmount));
+      expect(api.applySessionDiscountCalls, 1);
+    });
+
+    test('applyCoupon validates session and code input', () async {
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(),
+      );
+
+      await vm.applyCoupon('SAVE50');
+      expect(vm.couponError, 'No session for coupon');
+
+      SessionManager().setSessionFromResponse(_sessionJson('sess-coupon-empty'));
+      await vm.applyCoupon('   ');
+      expect(vm.couponError, 'Enter a coupon code');
+
+      SessionManager().setSessionFromResponse(_sessionJson('sess-coupon'));
+      final zeroVm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(
+          settings: AppSettingsModel(
+            parallelImageCount: 1,
+            initialPrice: 0,
+          ),
+        ),
+        apiService: FakeApiService(),
+        sessionManager: SessionManager(),
+      );
+      await zeroVm.applyCoupon('SAVE');
+      expect(zeroVm.couponError, 'Nothing to discount');
+    });
+
+    test('applyCoupon maps ApiException and generic failures', () async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-coupon-api'));
+      final apiVm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(
+          applySessionDiscountApiException: ApiException('invalid coupon'),
+        ),
+        sessionManager: SessionManager(),
+      );
+      await apiVm.applyCoupon('BAD');
+      expect(apiVm.couponError, 'invalid coupon');
+
+      SessionManager().setSessionFromResponse(_sessionJson('sess-coupon-boom'));
+      final boomVm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(applySessionDiscountThrows: true),
+        sessionManager: SessionManager(),
+      );
+      await boomVm.applyCoupon('BOOM');
+      expect(boomVm.couponError, contains('Could not apply coupon'));
+    });
+
+    test('unapplyCoupon clears discount and reloads payment QR', () async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-unapply'));
+      final api = FakeApiService();
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: api,
+        sessionManager: SessionManager(),
+      );
+
+      await vm.applyCoupon('SAVE50');
+      await vm.unapplyCoupon();
+
+      expect(vm.appliedDiscount, isNull);
+      expect(api.unapplySessionDiscountCalls, 1);
+      expect(api.initiatePaymentCalls, greaterThanOrEqualTo(2));
+    });
+
+    test('unapplyCoupon maps ApiException and generic failures', () async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-unapply-api'));
+      final apiVm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(
+          unapplySessionDiscountApiException: ApiException('cannot remove'),
+        ),
+        sessionManager: SessionManager(),
+      );
+      await apiVm.unapplyCoupon();
+      expect(apiVm.couponError, 'cannot remove');
+
+      SessionManager().setSessionFromResponse(_sessionJson('sess-unapply-boom'));
+      final boomVm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(unapplySessionDiscountThrows: true),
+        sessionManager: SessionManager(),
+      );
+      await boomVm.unapplyCoupon();
+      expect(boomVm.couponError, contains('Could not remove coupon'));
+    });
+
+    test('unapplyCoupon no-ops without session', () async {
+      final api = FakeApiService();
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: api,
+      );
+      await vm.unapplyCoupon();
+      expect(api.unapplySessionDiscountCalls, 0);
+    });
+
+    test('session poll handles repeated null responses', () async {
+      fakeAsync((async) {
+        SessionManager().setSessionFromResponse(_sessionJson('sess-null'));
+        final vm = PrePaymentViewModel(
+          appSettingsManager: _SeededAppSettingsManager(),
+          apiService: _AlwaysNullSessionApi(),
+          sessionManager: SessionManager(),
+        );
+
+        vm.loadPaymentQr();
+        async.elapse(Duration.zero);
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 30));
+        async.flushMicrotasks();
+
+        expect(vm.isDeadPollingFallbackVisible, isTrue);
+      });
+    });
+
+    test('session poll stops after max ticks', () async {
+      fakeAsync((async) {
+        SessionManager().setSessionFromResponse(_sessionJson('sess-max'));
+        final api = FakeApiService(
+          fetchSessionResult: const {'paymentStatus': 'PENDING'},
+        );
+        final vm = PrePaymentViewModel(
+          appSettingsManager: _SeededAppSettingsManager(),
+          apiService: api,
+          sessionManager: SessionManager(),
+        );
+
+        vm.loadPaymentQr();
+        async.elapse(Duration.zero);
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 3 * 181));
+        async.flushMicrotasks();
+
+        expect(vm.fcmPaymentPushSuccess, isNull);
+      });
+    });
+
+    test('session poll failed verdict when payment poll stays pending', () async {
+      fakeAsync((async) {
+        SessionManager().setSessionFromResponse(_sessionJson('sess-session-fail'));
+        final vm = PrePaymentViewModel(
+          appSettingsManager: _SeededAppSettingsManager(),
+          apiService: FakeApiService(
+            fetchPaymentStatusResult: const {'status': 'PENDING'},
+            fetchSessionResult: const {'paymentStatus': 'FAILED'},
+          ),
+          sessionManager: SessionManager(),
+        );
+
+        vm.loadPaymentQr();
+        async.elapse(Duration.zero);
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 3));
+        async.flushMicrotasks();
+
+        expect(vm.fcmPaymentPushSuccess, isFalse);
+      });
+    });
+
+    test('payment poll stops when active payment id missing', () async {
+      fakeAsync((async) {
+        SessionManager().setSessionFromResponse(_sessionJson('sess-no-pay-id'));
+        final vm = PrePaymentViewModel(
+          appSettingsManager: _SeededAppSettingsManager(),
+          apiService: FakeApiService(
+            initiatePaymentResult: PaymentInitiateResult(
+              id: ' ',
+              status: 'PENDING',
+              qrImageUrl: 'https://rzp.io/i/testqr',
+            ),
+          ),
+          sessionManager: SessionManager(),
+        );
+
+        vm.loadPaymentQr();
+        async.elapse(Duration.zero);
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 3));
+        async.flushMicrotasks();
+
+        expect(vm.fcmPaymentPushSuccess, isNull);
+      });
+    });
+
+    test('payment poll stops after max ticks while pending', () async {
+      fakeAsync((async) {
+        SessionManager().setSessionFromResponse(_sessionJson('sess-pay-max'));
+        final vm = PrePaymentViewModel(
+          appSettingsManager: _SeededAppSettingsManager(),
+          apiService: FakeApiService(
+            fetchPaymentStatusResult: const {'status': 'PENDING'},
+          ),
+          sessionManager: SessionManager(),
+        );
+
+        vm.loadPaymentQr();
+        async.elapse(Duration.zero);
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 3 * 91));
+        async.flushMicrotasks();
+
+        expect(vm.fcmPaymentPushSuccess, isNull);
+      });
+    });
+
+    test('payment poll handles repeated null responses', () async {
+      fakeAsync((async) {
+        SessionManager().setSessionFromResponse(_sessionJson('sess-pay-null'));
+        final vm = PrePaymentViewModel(
+          appSettingsManager: _SeededAppSettingsManager(),
+          apiService: _AlwaysNullPaymentStatusApi(),
+          sessionManager: SessionManager(),
+        );
+
+        vm.loadPaymentQr();
+        async.elapse(Duration.zero);
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 30));
+        async.flushMicrotasks();
+
+        expect(vm.isDeadPollingFallbackVisible, isTrue);
+      });
+    });
+
+    test('dispose during polling cancels timers without notifying', () async {
+      fakeAsync((async) {
+        SessionManager().setSessionFromResponse(_sessionJson('sess-dispose-poll'));
+        final vm = PrePaymentViewModel(
+          appSettingsManager: _SeededAppSettingsManager(),
+          apiService: FakeApiService(
+            fetchPaymentStatusResult: const {'status': 'PENDING'},
+            fetchSessionResult: const {'paymentStatus': 'PENDING'},
+          ),
+          sessionManager: SessionManager(),
+        );
+
+        vm.loadPaymentQr();
+        async.elapse(Duration.zero);
+        async.flushMicrotasks();
+        vm.dispose();
+        async.elapse(const Duration(seconds: 6));
+        async.flushMicrotasks();
+        expect(vm.fcmPaymentPushSuccess, isNull);
+      });
+    });
+
+    test('runSessionPollTickForTest exits when outcome already handled', () async {
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(),
+      );
+      await vm.onFcmPaymentPush(
+        PaymentPushPayload(
+          type: PaymentPushCoordinator.typeApproved,
+          paymentId: 'p1',
+        ),
+      );
+      final timer = Timer(const Duration(days: 1), () {});
+      addTearDown(timer.cancel);
+      await vm.runSessionPollTickForTest(timer, 'sess-handled');
+      expect(timer.isActive, isFalse);
+    });
+
+    test('runSessionPollTickForTest cancels when disposed after fetch', () async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-dispose-fetch'));
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(
+          fetchSessionResult: const {'paymentStatus': 'PENDING'},
+        ),
+        sessionManager: SessionManager(),
+      );
+      final timer = Timer(const Duration(days: 1), () {});
+      addTearDown(timer.cancel);
+      vm.dispose();
+      await vm.runSessionPollTickForTest(timer, 'sess-dispose-fetch');
+      expect(timer.isActive, isFalse);
+    });
+
+    test('runPaymentPollTickForTest exits when outcome already handled', () async {
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(),
+      );
+      await vm.onFcmPaymentPush(
+        PaymentPushPayload(
+          type: PaymentPushCoordinator.typeApproved,
+          paymentId: 'p1',
+        ),
+      );
+      final timer = Timer(const Duration(days: 1), () {});
+      addTearDown(timer.cancel);
+      await vm.runPaymentPollTickForTest(timer);
+      expect(timer.isActive, isFalse);
+    });
+
+    test('runPaymentPollTickForTest cancels when payment id missing', () async {
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(),
+      );
+      final timer = Timer(const Duration(days: 1), () {});
+      addTearDown(timer.cancel);
+      await vm.runPaymentPollTickForTest(timer);
+      expect(timer.isActive, isFalse);
+    });
+
+    test('runPaymentPollTickForTest cancels when disposed after fetch', () async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-pay-dispose'));
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(
+          initiatePaymentResult: PaymentInitiateResult(
+            id: 'pay-dispose',
+            status: 'PENDING',
+            qrImageUrl: 'https://rzp.io/i/testqr',
+          ),
+          fetchPaymentStatusResult: const {'status': 'PENDING'},
+        ),
+        sessionManager: SessionManager(),
+      );
+      await vm.loadPaymentQr();
+      final timer = Timer(const Duration(days: 1), () {});
+      addTearDown(timer.cancel);
+      vm.dispose();
+      await vm.runPaymentPollTickForTest(timer);
+      expect(timer.isActive, isFalse);
+    });
+
+    test('runSessionPollTickForTest cancels after max ticks', () async {
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(),
+      );
+      vm.setSessionPollTicksForTest(180);
+      final timer = Timer(const Duration(days: 1), () {});
+      addTearDown(timer.cancel);
+      await vm.runSessionPollTickForTest(timer, 'sess-max-tick');
+      expect(timer.isActive, isFalse);
+    });
+
+    test('runPaymentPollTickForTest keeps polling on pending status', () async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-pay-pending'));
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(
+          initiatePaymentResult: PaymentInitiateResult(
+            id: 'pay-pending',
+            status: 'PENDING',
+            qrImageUrl: 'https://rzp.io/i/testqr',
+          ),
+          fetchPaymentStatusResult: const {'status': 'PENDING'},
+        ),
+        sessionManager: SessionManager(),
+      );
+      await vm.loadPaymentQr();
+      final timer = Timer(const Duration(days: 1), () {});
+      addTearDown(timer.cancel);
+      await vm.runPaymentPollTickForTest(timer);
+      expect(timer.isActive, isTrue);
+      expect(vm.fcmPaymentPushSuccess, isNull);
+    });
+
+    test('runPaymentPollTickForTest keeps polling on unknown status', () async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-pay-unknown'));
+      final vm = PrePaymentViewModel(
+        appSettingsManager: _SeededAppSettingsManager(),
+        apiService: FakeApiService(
+          initiatePaymentResult: PaymentInitiateResult(
+            id: 'pay-unknown',
+            status: 'PENDING',
+            qrImageUrl: 'https://rzp.io/i/testqr',
+          ),
+          fetchPaymentStatusResult: const {},
+        ),
+        sessionManager: SessionManager(),
+      );
+      await vm.loadPaymentQr();
+      final timer = Timer(const Duration(days: 1), () {});
+      addTearDown(timer.cancel);
+      await vm.runPaymentPollTickForTest(timer);
+      expect(timer.isActive, isTrue);
+      expect(vm.fcmPaymentPushSuccess, isNull);
+    });
   });
 }
 
@@ -411,6 +846,31 @@ class _ThrowingInitiateApi extends FakeApiService {
     required String fcmToken,
   }) async {
     throw StateError('boom');
+  }
+}
+
+class _AlwaysNullSessionApi extends FakeApiService {
+  @override
+  Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
+    fetchSessionCalls++;
+    return null;
+  }
+}
+
+class _AlwaysNullPaymentStatusApi extends FakeApiService {
+  @override
+  Future<Map<String, dynamic>?> fetchPaymentStatus(
+    String paymentId, {
+    String? sessionId,
+  }) async {
+    fetchPaymentStatusCalls++;
+    return null;
+  }
+
+  @override
+  Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
+    fetchSessionCalls++;
+    return null;
   }
 }
 

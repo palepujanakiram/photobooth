@@ -43,6 +43,38 @@ void main() {
     expect(find.text('Guest photo'), findsOneWidget);
   });
 
+  testWidgets('StaffPaymentImagePreviewScreen close button pops route', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const StaffPaymentImagePreviewScreen(
+                      imageUrl: 'not-valid-image',
+                      title: 'Payment',
+                    ),
+                  ),
+                );
+              },
+              child: const Text('open'),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.byType(StaffPaymentImagePreviewScreen), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.byType(StaffPaymentImagePreviewScreen), findsNothing);
+  });
+
   test('staffPaymentLoadImageBytes decodes data URLs', () async {
     final bytes = await staffPaymentLoadImageBytes(
       imageUrl: 'data:image/png;base64,YWJj',

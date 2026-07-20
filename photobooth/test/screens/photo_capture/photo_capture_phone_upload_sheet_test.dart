@@ -85,11 +85,86 @@ void main() {
     expect(find.text(AppStrings.phoneUploadSheetTitle), findsNothing);
   });
 
+  testWidgets('showPhoneUploadQrSheet cancel button closes sheet', (tester) async {
+    final vm = _PhoneUploadTestViewModel(
+      link: const PhoneUploadLinkInfo(
+        token: 'abc',
+        url: 'https://example.com/u/abc',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return Scaffold(
+              body: ElevatedButton(
+                onPressed: () async {
+                  await showPhoneUploadQrSheet(
+                    context: context,
+                    viewModel: vm,
+                  );
+                },
+                child: const Text('open'),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    expect(find.text(AppStrings.phoneUploadSheetTitle), findsOneWidget);
+
+    final cancelButton = tester.widget<TextButton>(find.byType(TextButton));
+    cancelButton.onPressed?.call();
+    await tester.pump();
+    expect(find.text(AppStrings.phoneUploadSheetTitle), findsNothing);
+    expect(vm.isWaitingForPhoneUpload, isFalse);
+  });
+
   test('handlePhoneUploadSheetClosed cancels wait without phone capture', () {
     final vm = CaptureViewModel();
     vm.setCaptureUiStateForTest(isWaitingForPhoneUpload: true);
     handlePhoneUploadSheetClosed(vm);
     expect(vm.isWaitingForPhoneUpload, isFalse);
+  });
+
+  testWidgets('cancelPhoneUploadSheet pops the current route', (tester) async {
+    final navigatorKey = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigatorKey,
+        home: Builder(
+          builder: (context) {
+            return ElevatedButton(
+              onPressed: () {
+                navigatorKey.currentState!.push(
+                  MaterialPageRoute<void>(
+                    builder: (routeContext) => Scaffold(
+                      body: TextButton(
+                        onPressed: () => cancelPhoneUploadSheet(routeContext),
+                        child: const Text('cancel'),
+                      ),
+                    ),
+                  ),
+                );
+              },
+              child: const Text('open'),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.text('cancel'), findsOneWidget);
+
+    await tester.tap(find.text('cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('cancel'), findsNothing);
   });
 }
 

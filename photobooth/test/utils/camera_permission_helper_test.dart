@@ -1,9 +1,19 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:photobooth/utils/camera_permission_helper.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  const channel = MethodChannel('flutter.baseflow.com/permissions/methods');
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
+  });
+
   test('isNativeMobileCameraPlatform reflects test platform', () {
     expect(isNativeMobileCameraPlatform, isA<bool>());
   });
@@ -32,6 +42,12 @@ void main() {
       ),
       isTrue,
     );
+  });
+
+  test('ensureCameraPermission returns true off mobile platforms', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    expect(await ensureCameraPermission(), isTrue);
   });
 
   test('ensureCameraPermissionForPlatform returns true when already granted',
@@ -72,9 +88,40 @@ void main() {
     expect(requested, isTrue);
   });
 
-  test('primeCameraPermissionOnTermsLaunch completes off mobile', () async {
-    if (!isNativeMobileCameraPlatform) {
-      await expectLater(primeCameraPermissionOnTermsLaunch(), completes);
-    }
+  test('ensureCameraPermission requests via permission_handler on mobile',
+      () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'checkPermissionStatus':
+          return 0;
+        case 'requestPermissions':
+          return {1: 1};
+      }
+      return null;
+    });
+
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    expect(await ensureCameraPermission(), isTrue);
+  });
+
+  test('primeCameraPermissionOnTermsLaunch completes on mobile', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'checkPermissionStatus':
+          return 1;
+        case 'requestPermissions':
+          return {1: 1};
+      }
+      return null;
+    });
+
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    await expectLater(primeCameraPermissionOnTermsLaunch(), completes);
   });
 }

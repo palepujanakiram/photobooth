@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/services/uvc_device_event_hub.dart';
 import 'package:uvccamera/uvccamera.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   tearDown(UvcDeviceEventHub.instance.resetForTest);
 
   test('fans out device events to multiple listeners', () async {
@@ -62,5 +66,28 @@ void main() {
 
     expect(events, 0);
     await upstream.close();
+  });
+
+  test('does not attach upstream on non-Android platforms', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    var events = 0;
+    final sub = UvcDeviceEventHub.instance.listen((_) => events++);
+    await Future<void>.delayed(Duration.zero);
+    expect(events, 0);
+    await sub.cancel();
+  });
+
+  test('attaches Android device event stream without test upstream', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() {
+      debugDefaultTargetPlatformOverride = null;
+      UvcDeviceEventHub.instance.resetForTest();
+    });
+
+    final sub = UvcDeviceEventHub.instance.listen((_) {});
+    await Future<void>.delayed(Duration.zero);
+    await sub.cancel();
   });
 }

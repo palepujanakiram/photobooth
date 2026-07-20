@@ -20,6 +20,11 @@ class FakeApiService extends ApiService {
     this.fetchPaymentStatusResult,
     this.fetchSessionResult,
     this.initiatePaymentThrows = false,
+    this.applySessionDiscountResult,
+    this.applySessionDiscountThrows = false,
+    this.unapplySessionDiscountThrows = false,
+    this.applySessionDiscountApiException,
+    this.unapplySessionDiscountApiException,
   }) : super(
           dio: Dio(
             BaseOptions(
@@ -38,12 +43,19 @@ class FakeApiService extends ApiService {
   final Map<String, dynamic>? fetchPaymentStatusResult;
   final Map<String, dynamic>? fetchSessionResult;
   final bool initiatePaymentThrows;
+  final Map<String, dynamic>? applySessionDiscountResult;
+  final bool applySessionDiscountThrows;
+  final bool unapplySessionDiscountThrows;
+  final ApiException? applySessionDiscountApiException;
+  final ApiException? unapplySessionDiscountApiException;
 
   int validateKioskCodeCalls = 0;
   int getKioskFramesCalls = 0;
   int initiatePaymentCalls = 0;
   int fetchPaymentStatusCalls = 0;
   int fetchSessionCalls = 0;
+  int applySessionDiscountCalls = 0;
+  int unapplySessionDiscountCalls = 0;
 
   @override
   Future<bool> validateKioskCode(String kioskCode) async {
@@ -116,6 +128,43 @@ class FakeApiService extends ApiService {
   Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
     fetchSessionCalls++;
     return fetchSessionResult ?? sessionResponse;
+  }
+
+  @override
+  Future<Map<String, dynamic>> applySessionDiscount({
+    required String sessionId,
+    required String code,
+    required int subtotal,
+  }) async {
+    applySessionDiscountCalls++;
+    if (applySessionDiscountThrows) {
+      throw StateError('apply failed');
+    }
+    if (applySessionDiscountApiException != null) {
+      throw applySessionDiscountApiException!;
+    }
+    return applySessionDiscountResult ??
+        {
+          'code': code,
+          'discountAmount': 50,
+          'finalAmount': subtotal - 50,
+          'subtotal': subtotal,
+          'coupon': {'code': code},
+        };
+  }
+
+  @override
+  Future<Map<String, dynamic>> unapplySessionDiscount({
+    required String sessionId,
+  }) async {
+    unapplySessionDiscountCalls++;
+    if (unapplySessionDiscountThrows) {
+      throw StateError('unapply failed');
+    }
+    if (unapplySessionDiscountApiException != null) {
+      throw unapplySessionDiscountApiException!;
+    }
+    return {'applied': false};
   }
 
   @override
