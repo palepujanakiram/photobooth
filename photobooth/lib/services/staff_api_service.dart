@@ -354,6 +354,47 @@ class StaffApiService {
     );
   }
 
+  /// POST `/api/sessions/:id/print-receipt` with staff auth (ESC/POS payload).
+  ///
+  /// Requires an existing receipt for the session. Server accepts staff via
+  /// [AppStrings.staffTokenHeader] (same ownership guard as kiosk token).
+  Future<Map<String, dynamic>> postSessionPrintReceipt({
+    required String sessionId,
+  }) async {
+    final sid = sessionId.trim();
+    if (sid.isEmpty) {
+      throw ApiException('sessionId is required');
+    }
+
+    final token = await _sessionManager.getToken();
+    if (token == null || token.isEmpty) {
+      throw ApiException('Staff session expired. Please log in again.');
+    }
+
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/sessions/$sid/print-receipt',
+        options: Options(
+          headers: {AppStrings.staffTokenHeader: token},
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+      if (r.statusCode != null && r.statusCode! >= 200 && r.statusCode! < 300) {
+        return _asJsonMap(r.data);
+      }
+      throw ApiException(
+        _extractErrorMessage(r.data) ?? 'Failed to print receipt',
+        r.statusCode,
+      );
+    } on DioException catch (e) {
+      throw ApiException(
+        e.message ?? 'Failed to print receipt',
+        e.response?.statusCode,
+      );
+    }
+  }
+
   Future<void> _postWithToken(
     String path, {
     required Map<String, dynamic> data,

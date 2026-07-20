@@ -69,4 +69,41 @@ void main() {
     expect(lastApproveBody?['paymentId'], 'pay-1');
     expect(lastApproveBody?['paymentMode'], 'CASH');
   });
+
+  test('postSessionPrintReceipt validates sessionId and returns body', () async {
+    expect(
+      () => api.postSessionPrintReceipt(sessionId: '  '),
+      throwsA(isA<ApiException>()),
+    );
+    adapter.onPost(
+      '/api/sessions/sess-1/print-receipt',
+      (s) => s.reply(200, {
+        'success': true,
+        'printerConfigured': true,
+        'deliveredByServer': true,
+      }),
+    );
+    final raw = await api.postSessionPrintReceipt(sessionId: 'sess-1');
+    expect(raw['success'], isTrue);
+    expect(raw['deliveredByServer'], isTrue);
+  });
+
+  test('postSessionPrintReceipt maps HTTP error body', () async {
+    adapter.onPost(
+      '/api/sessions/sess-missing/print-receipt',
+      (s) => s.reply(404, {
+        'error': 'No receipt for session — create one via POST first',
+      }),
+    );
+    expect(
+      () => api.postSessionPrintReceipt(sessionId: 'sess-missing'),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.message,
+          'message',
+          contains('No receipt for session'),
+        ),
+      ),
+    );
+  });
 }
