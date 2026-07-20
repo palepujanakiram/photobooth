@@ -17,7 +17,7 @@ void main() {
     final subB = UvcDeviceEventHub.instance.stream.listen((_) => b++);
 
     upstream.add(
-      UvcCameraDeviceEvent(
+      const UvcCameraDeviceEvent(
         type: UvcCameraDeviceEventType.attached,
         device: UvcCameraDevice(
           name: 'cam',
@@ -47,7 +47,7 @@ void main() {
     await sub.cancel();
 
     upstream.add(
-      UvcCameraDeviceEvent(
+      const UvcCameraDeviceEvent(
         type: UvcCameraDeviceEventType.connected,
         device: UvcCameraDevice(
           name: 'cam',

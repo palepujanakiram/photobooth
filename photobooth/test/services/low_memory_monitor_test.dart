@@ -18,7 +18,7 @@ void main() {
   });
 
   test('non-const snapshot constructor', () {
-    final snapshot = DeviceMemorySnapshot(processRssBytes: 1024);
+    const snapshot = DeviceMemorySnapshot(processRssBytes: 1024);
     expect(snapshot.processRssBytes, 1024);
   });
 

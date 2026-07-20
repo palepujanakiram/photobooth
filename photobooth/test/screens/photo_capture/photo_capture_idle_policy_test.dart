@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('CaptureScreenIdleInput', () {
     test('stores constructor fields', () {
-      final input = CaptureScreenIdleInput(
+      const input = CaptureScreenIdleInput(
         isNavigatingAway: false,
         isCapturing: false,
         isUploading: false,

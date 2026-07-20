@@ -1029,27 +1029,28 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     try {
       await viewModel.selectFromGallery();
     } finally {
-      if (!mounted) return;
-      final accepted = viewModel.capturedPhoto != null;
-      await finalizeGallerySelection(
-        isUsingUvc: _isUsingUvc,
-        photoAccepted: accepted,
-        closeUvc: _closeUvcController,
-        disposeBuiltInCamera: _captureViewModel.disposeCamera,
-        setUvcPhase: (phase) => _uvcPhase = phase,
-        cancelUvcReconnect: () => _uvcReconnectTimer?.cancel(),
-        bumpPreviewGeneration: () => _uvcPreviewGeneration++,
-      );
-      if (!accepted) {
-        await resumeCapturePreviewAfterGallery(
+      if (mounted) {
+        final accepted = viewModel.capturedPhoto != null;
+        await finalizeGallerySelection(
           isUsingUvc: _isUsingUvc,
-          hasCapturedPhoto: viewModel.capturedPhoto != null,
+          photoAccepted: accepted,
+          closeUvc: _closeUvcController,
+          disposeBuiltInCamera: _captureViewModel.disposeCamera,
           setUvcPhase: (phase) => _uvcPhase = phase,
-          resumeUvcLiveFeed: (reason) => _resumeUvcLiveFeed(reason: reason),
-          resumeBuiltInPreview: _captureViewModel.resumeLivePreviewAfterRetake,
+          cancelUvcReconnect: () => _uvcReconnectTimer?.cancel(),
+          bumpPreviewGeneration: () => _uvcPreviewGeneration++,
         );
+        if (!accepted) {
+          await resumeCapturePreviewAfterGallery(
+            isUsingUvc: _isUsingUvc,
+            hasCapturedPhoto: viewModel.capturedPhoto != null,
+            setUvcPhase: (phase) => _uvcPhase = phase,
+            resumeUvcLiveFeed: (reason) => _resumeUvcLiveFeed(reason: reason),
+            resumeBuiltInPreview: _captureViewModel.resumeLivePreviewAfterRetake,
+          );
+        }
+        setState(() {});
       }
-      if (mounted) setState(() {});
     }
   }
 
@@ -2122,7 +2123,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final Widget body;
     final String phase;
     if (_isCapturePreviewStarting(viewModel)) {
-      final startingMessage = AppStrings.captureStartingPreview;
+      const startingMessage = AppStrings.captureStartingPreview;
       phase = 'starting-$startingMessage';
       body = _buildStartingCameraState(message: startingMessage);
     } else if (viewModel.availableCameras.isEmpty &&

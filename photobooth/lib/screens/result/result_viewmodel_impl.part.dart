@@ -1060,8 +1060,8 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     );
 
     final started = _r._printFinishingStartedAt!;
-    final minimum = kPrintFinishingMinimumDisplay;
-    final estimate = kPrintFinishingEstimatePerPage;
+    const minimum = kPrintFinishingMinimumDisplay;
+    const estimate = kPrintFinishingEstimatePerPage;
     await Future<void>.delayed(minimum);
     final remaining = estimate - DateTime.now().difference(started);
     if (remaining > Duration.zero) {
