@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 /// Application Configuration
 ///
 /// This file contains configurable API base URL and related endpoints.
@@ -35,10 +37,15 @@ class AppConfig {
     defaultValue: '',
   );
 
-  static Map<String, String> get authorizationBearerHeader {
-    final token = apiBearerToken.trim();
-    if (token.isEmpty) return const {};
-    return {'Authorization': 'Bearer $token'};
+  static Map<String, String> get authorizationBearerHeader =>
+      bearerHeaderForToken(apiBearerToken);
+
+  /// Builds the API bearer header for [token] (empty map when blank).
+  @visibleForTesting
+  static Map<String, String> bearerHeaderForToken(String token) {
+    final trimmed = token.trim();
+    if (trimmed.isEmpty) return const {};
+    return {'Authorization': 'Bearer $trimmed'};
   }
 
   /// Bugsnag API key for release/profile mobile builds (see [main.dart]).

@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http_mock_adapter/http_mock_adapter.dart';
 import 'package:photobooth/services/phone_upload_helpers.dart';
 
 void main() {
@@ -46,6 +50,43 @@ void main() {
         'https://cdn/thumb.jpg',
       );
       expect(phoneUploadPreviewUrlFromSession({}), isNull);
+    });
+  });
+
+  group('downloadPhoneUploadPreviewToXFile', () {
+    test('downloads public http bytes via dio', () async {
+      final dio = Dio();
+      final adapter = DioAdapter(dio: dio);
+      dio.httpClientAdapter = adapter;
+      adapter.onGet(
+        'https://cdn.example.com/preview.jpg',
+        (server) => server.reply(200, Uint8List.fromList([1, 2, 3])),
+      );
+
+      final file = await downloadPhoneUploadPreviewToXFile(
+        'https://cdn.example.com/preview.jpg',
+        dio: dio,
+      );
+      final bytes = await file.readAsBytes();
+      expect(bytes, [1, 2, 3]);
+    });
+
+    test('throws when download returns empty bytes', () async {
+      final dio = Dio();
+      final adapter = DioAdapter(dio: dio);
+      dio.httpClientAdapter = adapter;
+      adapter.onGet(
+        'https://cdn.example.com/empty.jpg',
+        (server) => server.reply(200, Uint8List(0)),
+      );
+
+      await expectLater(
+        downloadPhoneUploadPreviewToXFile(
+          'https://cdn.example.com/empty.jpg',
+          dio: dio,
+        ),
+        throwsStateError,
+      );
     });
   });
 }

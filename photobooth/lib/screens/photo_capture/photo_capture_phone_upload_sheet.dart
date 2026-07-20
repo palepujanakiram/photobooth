@@ -32,6 +32,12 @@ Future<void> showPhoneUploadQrSheet({
     },
   );
 
+  handlePhoneUploadSheetClosed(viewModel);
+}
+
+/// Cancels the phone-upload wait when the sheet closes without a QR capture.
+@visibleForTesting
+void handlePhoneUploadSheetClosed(CaptureViewModel viewModel) {
   if (viewModel.capturedPhoto?.cameraId != 'phone_qr') {
     viewModel.cancelPhoneUploadWait();
   }

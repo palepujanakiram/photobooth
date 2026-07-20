@@ -37,6 +37,9 @@ bool sessionResponseHasUserImage(Map<String, dynamic>? session) {
   return false;
 }
 
+@visibleForTesting
+bool forceWebMaterializeForSessionPhotoSyncTest = false;
+
 /// Ensures [photo] is PATCHed to the session when the server has no image yet.
 ///
 /// Generation and payment endpoints read `session.userImageUrl` from the DB;
@@ -88,7 +91,7 @@ Future<SessionPhotoSyncOutcome> ensureSessionPhotoOnServer({
     WebFlowTrace.log('SESSION_PHOTO', 'sync_upload_start sessionId=${sid.length <= 8 ? sid : '${sid.substring(0, 8)}…'}');
 
     var imageFile = photo.imageFile;
-    if (kIsWeb) {
+    if (kIsWeb || forceWebMaterializeForSessionPhotoSyncTest) {
       imageFile = await _materializeWebXFile(imageFile);
     }
 
@@ -113,6 +116,10 @@ Future<SessionPhotoSyncOutcome> ensureSessionPhotoOnServer({
     );
   }
 }
+
+@visibleForTesting
+Future<XFile> materializeWebXFileForSessionSync(XFile file) =>
+    _materializeWebXFile(file);
 
 Future<XFile> _materializeWebXFile(XFile file) async {
   final bytes = await file.readAsBytes();

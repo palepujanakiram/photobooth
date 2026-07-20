@@ -304,6 +304,11 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   /// Width/height of the capture or generated hero (for BEHOLD card sizing).
   double? get beholdHeroAspectRatio => _beholdHeroAspectRatio;
 
+  @visibleForTesting
+  void setBeholdHeroAspectRatioForTest(double? aspect) {
+    _beholdHeroAspectRatio = aspect;
+  }
+
   /// Print layout for preview + physical print (solo default portrait).
   PrintOrientation get printOrientation => _printOrientation;
 

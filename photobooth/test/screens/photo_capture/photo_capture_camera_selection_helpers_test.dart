@@ -143,6 +143,48 @@ void main() {
       ),
       front,
     );
+    expect(
+      () => pickPreferredCaptureCamera(
+        cameras: const [],
+        deviceType: AppDeviceType.androidPhone,
+        looksLikeExternalName: (_) => false,
+      ),
+      throwsStateError,
+    );
+  });
+
+  test('captureCamerasForDevice keeps built-in only on phones', () {
+    expect(
+      captureCamerasForDevice(
+        cameras: [front, external],
+        deviceType: AppDeviceType.androidPhone,
+        looksLikeExternalName: (_) => false,
+      ),
+      [front],
+    );
+    expect(
+      captureCamerasForDevice(
+        cameras: [front, external],
+        deviceType: AppDeviceType.iosPhone,
+        looksLikeExternalName: (_) => false,
+      ),
+      [front],
+    );
+  });
+
+  test('orderCaptureCamerasExternalFirst uses name heuristic', () {
+    const hdmi = CameraDescription(
+      name: 'HDMI Capture Card',
+      lensDirection: CameraLensDirection.back,
+      sensorOrientation: 0,
+    );
+    expect(
+      orderCaptureCamerasExternalFirst(
+        cameras: [front, hdmi],
+        looksLikeExternalName: (name) => name.contains('HDMI'),
+      ),
+      [hdmi, front],
+    );
   });
 
   test('kioskHasCachedExternalCamera true for TV with cached external', () {

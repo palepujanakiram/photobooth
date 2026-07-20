@@ -79,6 +79,16 @@ class PrePaymentViewModel extends ChangeNotifier {
         _sessionConsecutiveFailureTicks >= 10;
   }
 
+  @visibleForTesting
+  void setPollingFailureStreaksForTest({
+    required int paymentFailures,
+    required int sessionFailures,
+  }) {
+    _paymentIdConsecutiveFailureTicks = paymentFailures;
+    _sessionConsecutiveFailureTicks = sessionFailures;
+    notifyListeners();
+  }
+
   void stopPaymentPolling() {
     _paymentIdPollTimer?.cancel();
     _paymentIdPollTimer = null;

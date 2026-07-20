@@ -30,4 +30,25 @@ void main() {
     await waitFuture;
     expect(settled, isTrue);
   });
+
+  test('hadPriorSession true after markSessionStarted', () {
+    expect(UvcSessionCoordinator.hadPriorSession, isFalse);
+    UvcSessionCoordinator.markSessionStarted();
+    expect(UvcSessionCoordinator.hadPriorSession, isTrue);
+  });
+
+  test('waitBeforeOpen continues when teardown times out', () async {
+    UvcSessionCoordinator.markSessionStarted();
+    UvcSessionCoordinator.trackTeardown(
+      Future<void>.delayed(const Duration(seconds: 10)),
+    );
+
+    final sw = Stopwatch()..start();
+    await UvcSessionCoordinator.waitBeforeOpen();
+    expect(sw.elapsed, lessThan(const Duration(seconds: 5)));
+  });
+
+  test('debugInstance exposes private constructor for coverage', () {
+    expect(UvcSessionCoordinator.debugInstance(), isNotNull);
+  });
 }
