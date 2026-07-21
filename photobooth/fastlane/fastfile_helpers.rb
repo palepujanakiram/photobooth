@@ -27,7 +27,7 @@ module PhotoboothFastfile
   end
 
   def read_pubspec_version_string(pubspec_path)
-    version_line = File.readlines(pubspec_path).find { |line| line.strip.start_with?('version:') }
+    version_line = File.readlines(pubspec_path, encoding: 'UTF-8').find { |line| line.strip.start_with?('version:') }
     return nil unless version_line
 
     version_match = version_line.match(/version:\s*(.+)/)

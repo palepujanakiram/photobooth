@@ -8,7 +8,7 @@ publish_to: 'none'
 # Cursor/VS Code: Run Task → "flutter build apk (release)" (runs prebuild: sync version first).
 # CLI: ./scripts/flutter_with_version.sh build web   (plain `flutter build web` does not sync)
 #      dart run tool/sync_build_version.dart
-version: 2026.7.21+70
+version: 2026.7.21+52
 environment:
   sdk: '>=3.0.0 <4.0.0'
 
@@ -92,10 +92,10 @@ dev_dependencies:
 dependency_overrides:
   camera_android_camerax:
     path: packages/camera_android_camerax
-  # 2.4.24+ requires Dart 3.12 / Flutter 3.44 (language version too high for 3.41).
-  shared_preferences_android: 2.4.23
-  # 4.12.1+ requires Dart 3.12; webview_flutter 4.14.1 still allows ^4.10.0.
-  webview_flutter_android: 4.12.0
+  # 2.4.24+ drops kotlin-android (built-in Kotlin); requires Flutter 3.44 / Dart 3.12.
+  shared_preferences_android: 2.4.27
+  # 4.13.0+ drops kotlin-android; webview_flutter 4.14.1 still allows ^4.12.0.
+  webview_flutter_android: 4.13.0
   # 9.4.8+ ships Package.swift — linked via SPM (Info.plist auto-detects permissions).
   permission_handler_apple: 9.4.10
 
