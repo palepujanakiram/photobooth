@@ -8,6 +8,10 @@
 
 require_relative 'fastfile_helpers'
 
+# Ensure UTF-8 locale for Ruby string handling and all subprocesses (flutter, pod).
+ENV['LANG'] ||= 'en_US.UTF-8'
+ENV['LC_ALL'] ||= 'en_US.UTF-8'
+
 opt_out_usage
 
 def in_photobooth_root(&block)
