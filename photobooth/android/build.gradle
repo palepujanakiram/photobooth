@@ -19,6 +19,18 @@ allprojects {
     }
 }
 
+// Local / transitive Android library modules still use the kotlin {} DSL and
+// .kt sources while android.builtInKotlin=false. Apply legacy KGP so evaluation
+// succeeds (AGP 9.3 upgrade had dropped these applies).
+subprojects {
+    plugins.withId('com.android.library') {
+        if (!plugins.hasPlugin('org.jetbrains.kotlin.android') &&
+                !plugins.hasPlugin('com.android.built-in-kotlin')) {
+            plugins.apply('org.jetbrains.kotlin.android')
+        }
+    }
+}
+
 subprojects {
     afterEvaluate { project ->
         if (project.hasProperty('android')) {
