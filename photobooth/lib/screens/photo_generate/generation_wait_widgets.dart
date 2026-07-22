@@ -30,14 +30,10 @@ class _GenerationWaitKioskHeader extends StatelessWidget {
   const _GenerationWaitKioskHeader({
     required this.vm,
     required this.presentation,
-    this.large = false,
-    this.stepLabel = '',
   });
 
   final PhotoGenerateViewModel vm;
   final GenerationWaitPresentation presentation;
-  final bool large;
-  final String stepLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -46,45 +42,25 @@ class _GenerationWaitKioskHeader extends StatelessWidget {
       presentation,
       commentaryEnabled: vm.generationCommentaryEnabledForWait,
     );
-    final statusStyle = TextStyle(
+    const statusStyle = TextStyle(
       color: Colors.white,
       fontWeight: FontWeight.w700,
-      fontSize: large ? 22 : 16,
+      fontSize: 16,
       height: 1.2,
     );
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 250),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          child: Text(
-            line,
-            key: ValueKey(line),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: statusStyle,
-          ),
-        ),
-        if (large && stepLabel.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            AppStrings.generationWaitActiveStepLine(stepLabel),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.62),
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
-              height: 1.2,
-            ),
-          ),
-        ],
-      ],
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 250),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: Text(
+        line,
+        key: ValueKey(line),
+        textAlign: TextAlign.center,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: statusStyle,
+      ),
     );
   }
 }
@@ -93,12 +69,10 @@ class _GenerationWaitEtaStrip extends StatelessWidget {
   const _GenerationWaitEtaStrip({
     required this.eta,
     required this.themeName,
-    this.large = false,
   });
 
   final GenerationEtaSnapshot eta;
   final String themeName;
-  final bool large;
 
   @override
   Widget build(BuildContext context) {
@@ -106,9 +80,6 @@ class _GenerationWaitEtaStrip extends StatelessWidget {
     final remaining = formatGenerationEtaDuration(eta.estimatedRemainingSeconds);
     final contextLine = eta.contextLine.trim();
     final theme = themeName.trim();
-    final primarySize = large ? 20.0 : 14.0;
-    final secondarySize = large ? 14.0 : 11.5;
-    final tertiarySize = large ? 12.5 : 10.5;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -116,9 +87,8 @@ class _GenerationWaitEtaStrip extends StatelessWidget {
         _GenerationWaitEtaRing(
           progressFraction: eta.progressFraction,
           percentLabel: '$pct%',
-          large: large,
         ),
-        SizedBox(width: large ? 16 : 12),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -127,9 +97,9 @@ class _GenerationWaitEtaStrip extends StatelessWidget {
                 remaining,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
+                style: const TextStyle(
                   color: Colors.white,
-                  fontSize: primarySize,
+                  fontSize: 14,
                   fontWeight: FontWeight.w800,
                   height: 1.15,
                 ),
@@ -141,7 +111,7 @@ class _GenerationWaitEtaStrip extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.72),
-                  fontSize: secondarySize,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.w600,
                   height: 1.2,
                 ),
@@ -153,7 +123,7 @@ class _GenerationWaitEtaStrip extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.48),
-                    fontSize: tertiarySize,
+                    fontSize: 10.5,
                     fontWeight: FontWeight.w600,
                     height: 1.2,
                   ),
@@ -161,7 +131,7 @@ class _GenerationWaitEtaStrip extends StatelessWidget {
             ],
           ),
         ),
-        if (!large && theme.isNotEmpty) ...[
+        if (theme.isNotEmpty) ...[
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -193,18 +163,16 @@ class _GenerationWaitEtaRing extends StatelessWidget {
   const _GenerationWaitEtaRing({
     required this.progressFraction,
     required this.percentLabel,
-    this.large = false,
   });
 
   final double progressFraction;
   final String percentLabel;
-  final bool large;
 
   @override
   Widget build(BuildContext context) {
-    final size = large ? 72.0 : 58.0;
-    final stroke = large ? 5.5 : 4.5;
-    final labelSize = large ? 16.0 : 13.0;
+    const size = 58.0;
+    const stroke = 4.5;
+    const labelSize = 13.0;
     return SizedBox(
       width: size,
       height: size,
@@ -227,7 +195,7 @@ class _GenerationWaitEtaRing extends StatelessWidget {
           ),
           Text(
             percentLabel,
-            style: TextStyle(
+            style: const TextStyle(
               color: Colors.white,
               fontSize: labelSize,
               fontWeight: FontWeight.w800,
@@ -256,47 +224,6 @@ class _GenerationWaitSixStepRibbon extends StatelessWidget {
           if (i != beats.length - 1) const SizedBox(width: 4),
         ],
       ],
-    );
-  }
-}
-
-/// Minimal dot rail for large-portrait CREATE (replaces the 6-step icon highway).
-class _GenerationWaitCompactStepDots extends StatelessWidget {
-  const _GenerationWaitCompactStepDots({required this.beats});
-
-  final List<GenerationWaitRewardBeat> beats;
-
-  @override
-  Widget build(BuildContext context) {
-    if (beats.isEmpty) return const SizedBox.shrink();
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        for (var i = 0; i < beats.length; i++) ...[
-          _stepDot(beats[i]),
-          if (i != beats.length - 1) const SizedBox(width: 10),
-        ],
-      ],
-    );
-  }
-
-  Widget _stepDot(GenerationWaitRewardBeat beat) {
-    final isDone = beat.state == GenerationWaitBeatState.done;
-    final isActive = beat.state == GenerationWaitBeatState.active;
-    final color = isDone
-        ? const Color(0xFF57D999)
-        : isActive
-            ? const Color(0xFF5FD3E8)
-            : Colors.white.withValues(alpha: 0.22);
-    final size = isActive ? 10.0 : 7.0;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(99),
-      ),
     );
   }
 }
@@ -381,16 +308,12 @@ class _GenerationWaitComparePanels extends StatelessWidget {
     required this.presentation,
     required this.anticipation,
     required this.showFacePins,
-    this.maxHeight,
   });
 
   final PhotoGenerateViewModel vm;
   final GenerationWaitPresentation presentation;
   final bool anticipation;
   final bool showFacePins;
-
-  /// When set, sizes the pair to fit height first (large-portrait hero slot).
-  final double? maxHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -425,22 +348,8 @@ class _GenerationWaitComparePanels extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         const gap = kGenerationWaitAnticipationCellGap;
-        final maxW = constraints.maxWidth;
-        final cappedH = maxHeight;
-        late final double cellW;
-        late final double cellH;
-        if (cappedH != null && cappedH > 0) {
-          final pair = computeThemeAnticipationHeroSize(
-            maxWidth: maxW,
-            maxHeight: cappedH + kGenerationWaitAnticipationLabelOverhead,
-            cellAspect: cellAspect,
-          );
-          cellW = (pair.width - gap) / 2;
-          cellH = pair.height - kGenerationWaitAnticipationLabelOverhead;
-        } else {
-          cellW = (maxW - gap) / 2;
-          cellH = cellW / cellAspect;
-        }
+        final cellW = (constraints.maxWidth - gap) / 2;
+        final cellH = cellW / cellAspect;
 
         final youImage = youChild ??
             KenBurnsCaptureImage(
@@ -461,20 +370,6 @@ class _GenerationWaitComparePanels extends StatelessWidget {
           overlay: const _GenerationWaitStyleScanLine(),
           child: styleChild,
         );
-
-        if (cappedH != null) {
-          return Align(
-            alignment: Alignment.center,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(width: cellW, child: youPanel),
-                const SizedBox(width: gap),
-                SizedBox(width: cellW, child: stylePanel),
-              ],
-            ),
-          );
-        }
 
         return Row(
           children: [
@@ -807,37 +702,6 @@ class _GenerationWaitChecklistCard extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Compact likeness summary for large-portrait CREATE ("5/6 mapped").
-class _GenerationWaitFaceScanCompact extends StatelessWidget {
-  const _GenerationWaitFaceScanCompact({
-    required this.doneCount,
-    required this.items,
-  });
-
-  final int doneCount;
-  final List<String> items;
-
-  @override
-  Widget build(BuildContext context) {
-    if (items.isEmpty) return const SizedBox.shrink();
-    final done = doneCount.clamp(0, items.length);
-    final summary = generationWaitFaceScanSummary(
-      doneCount: done,
-      totalCount: items.length,
-    );
-    return Text(
-      summary,
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        color: Colors.white.withValues(alpha: 0.55),
-        fontSize: 14,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.4,
-      ),
     );
   }
 }
@@ -1942,20 +1806,6 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
     final largePortrait = generationWaitIsLargePortraitKiosk(
       Size(widget.cardWidth, widget.cardHeight),
     );
-
-    if (largePortrait) {
-      return _buildLargePortraitKioskWaitStage(
-        vm: vm,
-        presentation: presentation,
-        anticipation: anticipation,
-        eta: eta,
-        beats: beats,
-        showFaceScan: showFaceScan,
-        faceCount: faceCount,
-        themeName: themeName,
-      );
-    }
-
     final maxW = math.min(widget.cardWidth, 520.0);
 
     return Align(
@@ -1995,84 +1845,7 @@ class _GenerationWaitBodyState extends State<GenerationWaitBody> {
               const SizedBox(height: 12),
               GenerationWaitThemePreviewReel(
                 excludeThemeId: vm.selectedTheme?.id,
-              ),
-              const SizedBox(height: 8),
-              const Center(child: BeholdReadyPrivacyFooter(compact: true)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Hero-first CREATE layout for tall portrait kiosks (e.g. 21").
-  Widget _buildLargePortraitKioskWaitStage({
-    required PhotoGenerateViewModel vm,
-    required GenerationWaitPresentation presentation,
-    required bool anticipation,
-    required GenerationEtaSnapshot eta,
-    required List<GenerationWaitRewardBeat> beats,
-    required bool showFaceScan,
-    required int faceCount,
-    required String themeName,
-  }) {
-    final maxW = math.min(
-      widget.cardWidth,
-      kGenerationWaitLargePortraitMaxContentWidth,
-    );
-    final stepLabel = generationWaitActiveRewardStepLabel(beats);
-
-    return Align(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: maxW,
-          maxHeight: widget.cardHeight,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-          child: Column(
-            children: [
-              _GenerationWaitKioskHeader(
-                vm: vm,
-                presentation: presentation,
-                large: true,
-                stepLabel: stepLabel,
-              ),
-              const SizedBox(height: 10),
-              _GenerationWaitCompactStepDots(beats: beats),
-              const SizedBox(height: 14),
-              Expanded(
-                flex: 55,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    return _GenerationWaitComparePanels(
-                      vm: vm,
-                      presentation: presentation,
-                      anticipation: anticipation,
-                      showFacePins: showFaceScan,
-                      maxHeight: constraints.maxHeight,
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 14),
-              _GenerationWaitEtaStrip(
-                eta: eta,
-                themeName: themeName,
-                large: true,
-              ),
-              if (showFaceScan) ...[
-                const SizedBox(height: 12),
-                _GenerationWaitFaceScanCompact(
-                  items: kGenerationWaitFaceScanLines,
-                  doneCount: faceCount,
-                ),
-              ],
-              const SizedBox(height: 14),
-              GenerationWaitThemePreviewReel(
-                excludeThemeId: vm.selectedTheme?.id,
-                compact: true,
+                emphasized: largePortrait,
               ),
               const SizedBox(height: 8),
               const Center(child: BeholdReadyPrivacyFooter(compact: true)),

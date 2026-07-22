@@ -40,6 +40,10 @@ class AppConstants {
   static const int kDefaultInitialPrintPrice = 100;
   static const int kDefaultAdditionalPrintPrice = 50;
 
+  /// Default / max physical print copies per selected image on Pay & Collect.
+  static const int kDefaultPrintCopies = 1;
+  static const int kMaxPrintCopies = 5;
+
   /// Fallback when `/api/settings` omits `maxRegenerations` (total generation slots on Generate screen).
   static const int kDefaultMaxRegenerations = 3;
 

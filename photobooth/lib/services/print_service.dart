@@ -114,11 +114,16 @@ class PrintService {
     int printerPort = 80,
     String? printerPath,
     String printSize = AppConstants.kPrintSizePortrait4x6,
+    int quantity = AppConstants.kDefaultPrintCopies,
   }) async {
     final host = printerHost.trim();
     final baseUri = _printerHttpBaseUri(host, printerPort);
     final baseUrl = baseUri.origin;
     final apiPath = resolvePrinterApiPath(printerPath);
+    final copies = quantity.clamp(
+      AppConstants.kDefaultPrintCopies,
+      AppConstants.kMaxPrintCopies,
+    );
 
     try {
       AppLogger.debug('🖨️ Starting network print to $baseUrl$apiPath...');
@@ -131,6 +136,7 @@ class PrintService {
         'printer_path': apiPath,
         'printer_base_url': baseUrl,
         'image_path': imageFile.path,
+        'print_quantity': copies.toString(),
       });
 
       List<int> imageBytes;
@@ -165,6 +171,7 @@ class PrintService {
         imageBytes: imageBytes,
         printSize: printSize,
         deviceId: deviceId,
+        quantity: copies,
       );
       ErrorReportingManager.log('✅ Network print completed successfully');
     } on DioException catch (e, stackTrace) {

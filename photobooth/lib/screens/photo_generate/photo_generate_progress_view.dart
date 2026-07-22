@@ -12,7 +12,6 @@ import '../../utils/route_args.dart';
 import '../../views/widgets/ambient_nebula_overlay.dart';
 import '../../views/widgets/theme_background.dart';
 import 'generation_reveal_overlay.dart';
-import 'generation_wait_helpers.dart';
 import 'generation_wait_widgets.dart';
 import 'photo_generate_viewmodel.dart';
 
@@ -130,8 +129,6 @@ class _PhotoGenerateProgressScreenState
   }
 
   PreferredSizeWidget _buildAppBar(PhotoGenerateViewModel viewModel) {
-    final size = MediaQuery.sizeOf(context);
-    final largePortrait = generationWaitIsLargePortraitKiosk(size);
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -139,12 +136,12 @@ class _PhotoGenerateProgressScreenState
       surfaceTintColor: Colors.transparent,
       forceMaterialTransparency: true,
       centerTitle: true,
-      title: Text(
+      title: const Text(
         AppStrings.generationProgressTitle,
         style: TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.w600,
-          fontSize: largePortrait ? 28 : 22,
+          fontSize: 22,
         ),
       ),
       automaticallyImplyLeading: false,

@@ -13,13 +13,13 @@ class GenerationWaitThemePreviewReel extends StatefulWidget {
   const GenerationWaitThemePreviewReel({
     super.key,
     this.excludeThemeId,
-    this.compact = false,
+    this.emphasized = false,
   });
 
   final String? excludeThemeId;
 
-  /// Smaller thumbs + quieter title for the 21" portrait footer.
-  final bool compact;
+  /// Larger thumbs for tall portrait kiosks (e.g. 21").
+  final bool emphasized;
 
   @override
   State<GenerationWaitThemePreviewReel> createState() =>
@@ -71,11 +71,12 @@ class _GenerationWaitThemePreviewReelState
     final themes = _themes();
     if (themes.isEmpty) return const SizedBox.shrink();
 
-    final compact = widget.compact;
-    final stripHeight = compact ? 56.0 : 76.0;
-    final thumbWidth = compact ? 48.0 : 64.0;
-    final titleSize = compact ? 10.0 : 11.0;
-    final titleGap = compact ? 6.0 : 8.0;
+    final emphasized = widget.emphasized;
+    final stripHeight = emphasized ? 128.0 : 76.0;
+    final thumbWidth = emphasized ? 108.0 : 64.0;
+    final titleSize = emphasized ? 13.0 : 11.0;
+    final titleGap = emphasized ? 10.0 : 8.0;
+    final gap = emphasized ? 10.0 : 8.0;
 
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 720),
@@ -86,7 +87,7 @@ class _GenerationWaitThemePreviewReelState
             AppStrings.generationWaitThemeReelTitle,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: compact ? 0.42 : 0.55),
+              color: Colors.white.withValues(alpha: 0.55),
               fontSize: titleSize,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.3,
@@ -100,7 +101,7 @@ class _GenerationWaitThemePreviewReelState
               scrollDirection: Axis.horizontal,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: themes.length,
-              separatorBuilder: (_, __) => SizedBox(width: compact ? 6 : 8),
+              separatorBuilder: (_, __) => SizedBox(width: gap),
               itemBuilder: (context, index) {
                 final theme = themes[index];
                 final url = ThemePreviewScreen.resolveSampleImageUrl(theme);
@@ -108,7 +109,7 @@ class _GenerationWaitThemePreviewReelState
                   themeName: theme.name,
                   imageUrl: url,
                   thumbWidth: thumbWidth,
-                  compact: compact,
+                  emphasized: emphasized,
                 );
               },
             ),
@@ -124,18 +125,18 @@ class _ReelCard extends StatelessWidget {
     required this.themeName,
     required this.imageUrl,
     required this.thumbWidth,
-    this.compact = false,
+    this.emphasized = false,
   });
 
   final String themeName;
   final String imageUrl;
   final double thumbWidth;
-  final bool compact;
+  final bool emphasized;
 
   @override
   Widget build(BuildContext context) {
-    final nameSize = compact ? 8.0 : 9.0;
-    final radius = compact ? 8.0 : 10.0;
+    final nameSize = emphasized ? 11.0 : 9.0;
+    final radius = emphasized ? 12.0 : 10.0;
     return SizedBox(
       width: thumbWidth,
       child: Column(
@@ -163,14 +164,14 @@ class _ReelCard extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(height: compact ? 2 : 4),
+          const SizedBox(height: 4),
           Text(
             themeName,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: compact ? 0.5 : 0.65),
+              color: Colors.white.withValues(alpha: 0.65),
               fontSize: nameSize,
               fontWeight: FontWeight.w600,
             ),

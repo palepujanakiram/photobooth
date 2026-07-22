@@ -233,12 +233,6 @@ abstract final class AppStrings {
   static const generationWaitThemeReelTitle =
       'More worlds to explore next time';
 
-  static String generationWaitActiveStepLine(String stepLabel) =>
-      'Step: $stepLabel';
-
-  static String generationWaitFaceScanMapped(int done, int total) =>
-      '$done/$total mapped';
-
   static const generationWaitHeadlineStarting = 'Starting your transformation';
 
   static const generationWaitHeadlineCaptured = 'Captured';
@@ -427,4 +421,10 @@ abstract final class AppStrings {
   static const staffPerfPrints = 'Prints';
   static const staffPerfRevenue = 'Revenue';
   static const staffPerfHours = 'Hours';
+
+  static const resultPrintCopiesLabel = 'Print copies';
+  static String resultPrintCopiesEach(int copies) =>
+      copies == 1 ? '1 copy each' : '$copies copies each';
+  static String resultPrintSheetsLine(int sheets) =>
+      sheets == 1 ? '1 print total' : '$sheets prints total';
 }

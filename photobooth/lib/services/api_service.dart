@@ -182,6 +182,7 @@ class ApiService {
     bool? marketingWhatsappOptIn,
     String? transactionRef,
     String? fcmToken,
+    int? printQuantity,
   }) async {
     final sid = sessionId.trim();
     if (sid.isEmpty) {
@@ -204,6 +205,8 @@ class ApiService {
       if (transactionRef != null && transactionRef.trim().isNotEmpty)
         'transactionRef': transactionRef.trim(),
       if (fcmToken != null && fcmToken.trim().isNotEmpty) 'fcmToken': fcmToken.trim(),
+      if (printQuantity != null && printQuantity >= 1)
+        'printQuantity': printQuantity,
     };
 
     try {

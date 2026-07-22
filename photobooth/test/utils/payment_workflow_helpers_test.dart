@@ -32,6 +32,20 @@ void main() {
     });
   });
 
+  group('resolvePrintSheetCount', () {
+    test('multiplies images by copies and clamps', () {
+      expect(
+        resolvePrintSheetCount(imageCount: 2, copiesPerImage: 3),
+        6,
+      );
+      expect(
+        resolvePrintSheetCount(imageCount: 1, copiesPerImage: 99),
+        AppConstants.kMaxPrintCopies,
+      );
+      expect(resolvePrintSheetCount(imageCount: 0, copiesPerImage: 3), 0);
+    });
+  });
+
   group('resolveCheckoutAmount', () {
     test('after_generation charges full cart', () {
       expect(
@@ -54,6 +68,29 @@ void main() {
       );
     });
 
+    test('after_generation scales with print copies', () {
+      expect(
+        resolveCheckoutAmount(
+          collectPaymentBeforeGeneration: false,
+          imageCount: 1,
+          initialPrintPrice: 100,
+          additionalPrintPrice: 50,
+          copiesPerImage: 2,
+        ),
+        150,
+      );
+      expect(
+        resolveCheckoutAmount(
+          collectPaymentBeforeGeneration: false,
+          imageCount: 2,
+          initialPrintPrice: 100,
+          additionalPrintPrice: 50,
+          copiesPerImage: 2,
+        ),
+        250,
+      );
+    });
+
     test('before_generation skips initial when one print', () {
       expect(
         resolveCheckoutAmount(
@@ -73,6 +110,19 @@ void main() {
           imageCount: 3,
           initialPrintPrice: 100,
           additionalPrintPrice: 50,
+        ),
+        100,
+      );
+    });
+
+    test('before_generation charges extra sheets from copies', () {
+      expect(
+        resolveCheckoutAmount(
+          collectPaymentBeforeGeneration: true,
+          imageCount: 1,
+          initialPrintPrice: 100,
+          additionalPrintPrice: 50,
+          copiesPerImage: 3,
         ),
         100,
       );

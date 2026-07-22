@@ -66,15 +66,14 @@ const double kGenerationWaitLargePortraitMinHeight = 1100;
 
 /// True for tall portrait kiosks (e.g. 21") — not phones.
 ///
-/// Phones can exceed ~900px height; require a tablet/kiosk-class shortest side.
+/// Used to enlarge the bottom theme preview reel; other CREATE wait UI stays
+/// the same as phone/tablet layouts. Phones can exceed ~900px height; require a
+/// tablet/kiosk-class shortest side.
 bool generationWaitIsLargePortraitKiosk(Size size) {
   if (size.height < size.width) return false;
   return size.shortestSide >= kGenerationWaitLargePortraitMinShortestSide &&
       size.height >= kGenerationWaitLargePortraitMinHeight;
 }
-
-/// Content max width for the 21" portrait CREATE stage (wider than phone kiosk).
-const double kGenerationWaitLargePortraitMaxContentWidth = 720;
 
 /// Scripted status lines when the server has not sent an update yet.
 const List<String> kGenerationWaitRotatingCopy = [

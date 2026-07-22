@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'result_payment_copies_row.dart';
 import 'result_payment_coupon_row.dart';
 import 'result_payment_status.dart';
 import 'result_viewmodel.dart';
@@ -62,6 +63,8 @@ class ResultPaymentCardColumn extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.65),
             ),
           ),
+        const SizedBox(height: 8),
+        ResultPaymentCopiesRow(viewModel: viewModel),
         const SizedBox(height: 6),
         ResultPaymentCouponRow(
           appliedDiscount: viewModel.appliedDiscount,

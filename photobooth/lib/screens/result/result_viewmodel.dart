@@ -91,6 +91,9 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   String? _couponError;
   bool _couponBusy = false;
 
+  /// Physical copies of each selected image (1–[AppConstants.kMaxPrintCopies]).
+  int _printCopies = AppConstants.kDefaultPrintCopies;
+
   final bool _isProcessing = false;
   String? _errorMessage;
   String _printerHost;
@@ -394,15 +397,14 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   bool get isDownloadingForShare =>
       _isDownloading && _downloadingForAction == 'share';
 
-  /// Get total price based on number of photos (full cart value).
+  /// Get total price based on number of photos × copies (full cart value).
   int get totalPrice {
     if (_generatedImages.isEmpty) return 0;
+    final sheets = printSheetCount;
     final basePrice = initialPrintPrice;
     final additionalPrice = additionalPrintPrice;
     return basePrice +
-        (_generatedImages.length > 1
-            ? (_generatedImages.length - 1) * additionalPrice
-            : 0);
+        (sheets > 1 ? (sheets - 1) * additionalPrice : 0);
   }
 
   bool get collectPaymentBeforeGeneration =>
@@ -410,12 +412,26 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
         _appSettingsManager?.settings?.paymentCollectionTiming,
       );
 
+  /// Copies of each selected photo to print (default 1).
+  int get printCopies => _printCopies;
+
+  /// Total physical sheets = selected images × [printCopies].
+  int get printSheetCount => payment_workflow.resolvePrintSheetCount(
+        imageCount: _generatedImages.length,
+        copiesPerImage: _printCopies,
+      );
+
+  /// True while the guest can still change copy count (before payment settles).
+  bool get canChangePrintCopies =>
+      !_paymentOutcomeHandled && _fcmPaymentPushSuccess != true;
+
   /// Cart subtotal before coupon (may be less when pre-paid).
   int get checkoutAmount => payment_workflow.resolveCheckoutAmount(
         collectPaymentBeforeGeneration: collectPaymentBeforeGeneration,
         imageCount: _generatedImages.length,
         initialPrintPrice: initialPrintPrice,
         additionalPrintPrice: additionalPrintPrice,
+        copiesPerImage: _printCopies,
       );
 
   /// Amount charged on initiate — uses applied coupon [SessionDiscount.finalAmount].
@@ -429,6 +445,32 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   void setPrinterHost(String host) {
     _printerHost = host.trim();
     notifyListeners();
+  }
+
+  /// Sets physical copies per selected image and refreshes UPI QR for the new total.
+  Future<void> setPrintCopies(int copies) async {
+    if (!canChangePrintCopies) return;
+    final next = copies.clamp(
+      AppConstants.kDefaultPrintCopies,
+      AppConstants.kMaxPrintCopies,
+    );
+    if (next == _printCopies) return;
+    _printCopies = next;
+    if (_appliedDiscount != null) {
+      _appliedDiscount = null;
+      _couponError = null;
+    }
+    notifyListeners();
+    if (checkoutAmount <= 0) {
+      _paymentLink = null;
+      _qrImageUrl = null;
+      _upiLink = null;
+      _activePaymentId = null;
+      stopPaymentPolling();
+      notifyListeners();
+      return;
+    }
+    await loadPaymentQr(force: true);
   }
 
   /// Clear error message
