@@ -120,14 +120,19 @@ Future<void> postNetworkPrintMultipart({
   required List<int> imageBytes,
   String printSize = AppConstants.kPrintSizePortrait4x6,
   required String deviceId,
+  int quantity = AppConstants.kDefaultPrintCopies,
 }) async {
+  final copies = quantity.clamp(
+    AppConstants.kDefaultPrintCopies,
+    AppConstants.kMaxPrintCopies,
+  );
   final formData = FormData.fromMap({
     'imageFile': MultipartFile.fromBytes(
       imageBytes,
       filename: 'image.jpg',
     ),
     'printSize': printSize,
-    'quantity': 1,
+    'quantity': copies,
     'imageEdited': false,
     'DeviceId': deviceId,
   });

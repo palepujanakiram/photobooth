@@ -26,12 +26,13 @@ Future<void> _postMultipartNoCors({
   required List<int> imageBytes,
   required String printSize,
   required String deviceId,
+  int quantity = 1,
 }) async {
   final blob = html.Blob([Uint8List.fromList(imageBytes)], 'image/jpeg');
   final form = html.FormData();
   form.appendBlob('imageFile', blob, 'image.jpg');
   form.append('printSize', printSize);
-  form.append('quantity', '1');
+  form.append('quantity', '$quantity');
   form.append('imageEdited', 'false');
   form.append('DeviceId', deviceId);
 
@@ -65,12 +66,14 @@ Future<void> postLanPrinterMultipart({
   required List<int> imageBytes,
   required String printSize,
   required String deviceId,
+  int quantity = 1,
 }) async {
   final printerUrl = _lanPrinterUrl(baseUrl, apiPath);
   final multipart = usesDnpMultipartPrintApi(apiPath);
+  final copies = quantity < 1 ? 1 : quantity;
   AppLogger.debug(
     '🖨️ Sending web no-cors ${multipart ? "multipart" : "raw JPEG"} '
-    'print request to $printerUrl',
+    'print request to $printerUrl (qty=$copies)',
   );
 
   if (_isHttpsPagePostingToHttpPrinter(printerUrl)) {
@@ -88,12 +91,15 @@ Future<void> postLanPrinterMultipart({
         imageBytes: imageBytes,
         printSize: printSize,
         deviceId: deviceId,
+        quantity: copies,
       );
     } else {
-      await _postRawJpegNoCors(
-        printerUrl: printerUrl,
-        imageBytes: imageBytes,
-      );
+      for (var i = 0; i < copies; i++) {
+        await _postRawJpegNoCors(
+          printerUrl: printerUrl,
+          imageBytes: imageBytes,
+        );
+      }
     }
     AppLogger.debug('✅ Web no-cors print request sent to $printerUrl');
   } catch (e, st) {

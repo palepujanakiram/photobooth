@@ -891,6 +891,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           marketingWhatsappOptIn: _r.marketingWhatsappOptIn,
           transactionRef: _r._activePaymentId,
           fcmToken: fcmToken,
+          printQuantity: _r.printSheetCount,
         );
       } on ApiException catch (e, st) {
         lastError = e;
@@ -1376,6 +1377,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           printerPort: _r.effectivePrinterPort,
           printerPath: _r.effectivePrinterPath,
           printSize: _r._printOrientation.printSize,
+          quantity: _r._printCopies,
         );
 
         await _runPageFinishingPhase(pageIndex: i, totalPages: files.length);
