@@ -86,13 +86,15 @@ Future<void> postLanPrinterMultipart({
 
   try {
     if (multipart) {
-      await _postMultipartNoCors(
-        printerUrl: printerUrl,
-        imageBytes: imageBytes,
-        printSize: printSize,
-        deviceId: deviceId,
-        quantity: copies,
-      );
+      for (var i = 0; i < copies; i++) {
+        await _postMultipartNoCors(
+          printerUrl: printerUrl,
+          imageBytes: imageBytes,
+          printSize: printSize,
+          deviceId: deviceId,
+          quantity: 1,
+        );
+      }
     } else {
       for (var i = 0; i < copies; i++) {
         await _postRawJpegNoCors(

@@ -456,11 +456,13 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
     );
     if (next == _printCopies) return;
     _printCopies = next;
-    if (_appliedDiscount != null) {
-      _appliedDiscount = null;
-      _couponError = null;
-    }
     notifyListeners();
+    // Server-side coupon subtotal must be cleared or initiatePayment will keep
+    // charging the old discounted amount.
+    if (_appliedDiscount != null) {
+      await unapplyCoupon();
+      return;
+    }
     if (checkoutAmount <= 0) {
       _paymentLink = null;
       _qrImageUrl = null;
