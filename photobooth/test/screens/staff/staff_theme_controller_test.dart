@@ -80,12 +80,12 @@ void main() {
     );
 
     expect(ctrl.isDark, isTrue);
-    expect(find.byTooltip(AppStrings.staffThemeSwitchToLight), findsOneWidget);
+    expect(find.text(AppStrings.staffThemeLightLabel), findsOneWidget);
 
     await tester.tap(find.byType(StaffThemeToggleButton));
     await tester.pumpAndSettle();
 
     expect(ctrl.isDark, isFalse);
-    expect(find.byTooltip(AppStrings.staffThemeSwitchToDark), findsOneWidget);
+    expect(find.text(AppStrings.staffThemeDarkLabel), findsOneWidget);
   });
 }

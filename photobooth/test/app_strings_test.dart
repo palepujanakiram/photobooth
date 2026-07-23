@@ -12,6 +12,8 @@ void main() {
     expect(AppStrings.apiLogSeparator, isNotEmpty);
     expect(AppStrings.staffThemeSwitchToLight, isNotEmpty);
     expect(AppStrings.staffThemeSwitchToDark, isNotEmpty);
+    expect(AppStrings.staffThemeLightLabel, isNotEmpty);
+    expect(AppStrings.staffThemeDarkLabel, isNotEmpty);
   });
 
   test('interpolated string methods return expected values', () {

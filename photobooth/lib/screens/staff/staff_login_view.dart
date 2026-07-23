@@ -124,6 +124,11 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        const Align(
+                          alignment: Alignment.centerRight,
+                          child: StaffThemeToggleButton(),
+                        ),
+                        const SizedBox(height: 8),
                         Text(
                           'Enter employee code',
                           style: TextStyle(

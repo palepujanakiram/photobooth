@@ -371,6 +371,8 @@ abstract final class AppStrings {
   static const staffLogoutTooltip = 'Logout';
   static const staffThemeSwitchToLight = 'Switch to light mode';
   static const staffThemeSwitchToDark = 'Switch to dark mode';
+  static const staffThemeLightLabel = 'Light';
+  static const staffThemeDarkLabel = 'Dark';
   static const staffOnShift = 'On Shift';
   static const staffOffShift = 'Off Shift';
   static const staffDayDetailsLabel = 'Day details';

@@ -42,19 +42,36 @@ class StaffThemeShell extends StatelessWidget {
   }
 }
 
-/// Sun/moon control for staff AppBars.
+/// Compact AppBar control — icon + Light/Dark label so it stays visible on web.
 class StaffThemeToggleButton extends StatelessWidget {
   const StaffThemeToggleButton({super.key});
 
   @override
   Widget build(BuildContext context) {
     final ctrl = context.watch<StaffThemeController>();
-    return IconButton(
-      tooltip: ctrl.isDark
-          ? AppStrings.staffThemeSwitchToLight
-          : AppStrings.staffThemeSwitchToDark,
-      onPressed: () => ctrl.toggle(),
-      icon: Icon(ctrl.isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
+    final scheme = Theme.of(context).colorScheme;
+    final goingLight = ctrl.isDark;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      child: TextButton.icon(
+        style: TextButton.styleFrom(
+          foregroundColor: scheme.onSurface,
+          backgroundColor: scheme.onSurface.withValues(alpha: 0.08),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          minimumSize: const Size(0, 36),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        onPressed: () => ctrl.toggle(),
+        icon: Icon(
+          goingLight ? Icons.wb_sunny_outlined : Icons.nightlight_round,
+          size: 18,
+        ),
+        label: Text(
+          goingLight
+              ? AppStrings.staffThemeLightLabel
+              : AppStrings.staffThemeDarkLabel,
+        ),
+      ),
     );
   }
 }
