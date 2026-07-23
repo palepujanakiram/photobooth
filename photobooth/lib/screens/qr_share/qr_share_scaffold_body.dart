@@ -3,19 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../utils/app_strings.dart';
-import '../../utils/route_args.dart';
-import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/delete_my_photos_action.dart';
 import '../../views/widgets/theme_background.dart';
-import '../result/result_viewmodel.dart';
-import 'qr_share_print_status_widgets.dart';
 
 /// Loaded QR share screen body (Sonar S3776 extraction from [QrShareScreen]).
 class QrShareScaffoldBody extends StatelessWidget {
   const QrShareScaffoldBody({
     super.key,
-    required this.viewModel,
-    required this.parsed,
     required this.qrData,
     required this.longUrl,
     required this.expiry,
@@ -25,8 +19,6 @@ class QrShareScaffoldBody extends StatelessWidget {
     required this.onExit,
   });
 
-  final ResultViewModel viewModel;
-  final QrShareArgs parsed;
   final String qrData;
   final String longUrl;
   final String expiry;
@@ -109,10 +101,6 @@ class QrShareScaffoldBody extends StatelessWidget {
                       ],
                       const SizedBox(height: 14),
                       _QrShareCodeBox(canShowQr: canShowQr, qrData: qrData),
-                      if (viewModel.shouldShowPrintProgressCard) ...[
-                        const SizedBox(height: 16),
-                        QrSharePrintStatusCard(progress: viewModel.printProgress),
-                      ],
                       if (longUrl.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         SelectableText(
@@ -126,9 +114,9 @@ class QrShareScaffoldBody extends StatelessWidget {
                         ),
                       ],
                       const SizedBox(height: 18),
-                      _QrShareActionRow(
-                        viewModel: viewModel,
+                      _QrShareFooter(
                         secondsLeft: secondsLeft,
+                        onStartAgain: onExit,
                       ),
                     ],
                   ),
@@ -188,89 +176,40 @@ class _QrShareCodeBox extends StatelessWidget {
   }
 }
 
-class _QrShareActionRow extends StatelessWidget {
-  const _QrShareActionRow({
-    required this.viewModel,
+/// Start-again CTA + idle countdown (print/share actions removed — no reliable
+/// printer acknowledgement, and guests should leave via QR / Start again).
+class _QrShareFooter extends StatelessWidget {
+  const _QrShareFooter({
     required this.secondsLeft,
+    required this.onStartAgain,
   });
 
-  final ResultViewModel viewModel;
   final int secondsLeft;
+  final VoidCallback onStartAgain;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueGrey.shade800,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                onPressed: viewModel.isPrinting
-                    ? null
-                    : () => _onPrintAgain(context, viewModel),
-                child: Text(
-                  viewModel.isSilentPrinting || viewModel.isDialogPrinting
-                      ? 'Printing…'
-                      : 'Print again',
-                ),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white.withValues(alpha: 0.16),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              minimumSize: const Size.fromHeight(52),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                onPressed: viewModel.isSharing
-                    ? null
-                    : () => _onShareKiosk(context, viewModel),
-                child: Text(
-                  viewModel.isSharing ? 'Sharing…' : 'Share (kiosk)',
-                ),
-              ),
-            ),
-          ],
-        ),
-        if (viewModel.isReceiptPrinterConfigured) ...[
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
-                minimumSize: const Size.fromHeight(52),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              onPressed: viewModel.isPrintingReceipt
-                  ? null
-                  : () => _onPrintReceipt(context, viewModel),
-              child: Text(
-                viewModel.isPrintingReceipt
-                    ? AppStrings.printingReceiptButton
-                    : AppStrings.printReceiptButton,
-              ),
-            ),
+            onPressed: onStartAgain,
+            child: const Text(AppStrings.qrShareStartAgain),
           ),
-        ],
+        ),
         const SizedBox(height: 12),
         Text(
-          'Resetting in ${secondsLeft}s',
+          AppStrings.qrShareResettingIn(secondsLeft),
           style: TextStyle(
             fontSize: 12,
             color: Colors.white.withValues(alpha: 0.8),
@@ -279,51 +218,5 @@ class _QrShareActionRow extends StatelessWidget {
         const DeleteMyPhotosButton(compact: true),
       ],
     );
-  }
-
-  Future<void> _onPrintReceipt(
-    BuildContext context,
-    ResultViewModel viewModel,
-  ) async {
-    final ok = await viewModel.printReceiptToNetwork(showErrors: true);
-    if (!context.mounted) return;
-    if (ok) {
-      AppSnackBar.showSuccess(context, AppStrings.receiptPrintSuccess);
-      return;
-    }
-    if (viewModel.hasError) {
-      AppSnackBar.showError(
-        context,
-        viewModel.errorMessage ?? AppStrings.receiptPrintFailedGeneric,
-      );
-    }
-  }
-
-  Future<void> _onPrintAgain(
-    BuildContext context,
-    ResultViewModel viewModel,
-  ) async {
-    await viewModel.silentPrintToNetwork();
-    if (!context.mounted) return;
-    if (viewModel.hasError) {
-      AppSnackBar.showError(
-        context,
-        viewModel.errorMessage ?? 'Print failed',
-      );
-    }
-  }
-
-  Future<void> _onShareKiosk(
-    BuildContext context,
-    ResultViewModel viewModel,
-  ) async {
-    await viewModel.shareImages();
-    if (!context.mounted) return;
-    if (viewModel.hasError) {
-      AppSnackBar.showError(
-        context,
-        viewModel.errorMessage ?? 'Share failed',
-      );
-    }
   }
 }

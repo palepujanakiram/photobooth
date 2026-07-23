@@ -380,7 +380,10 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
     return host.isNotEmpty;
   }
 
-  /// True when the QR share screen should show the print status card.
+  /// True when post-payment silent LAN print should run (native + printer on).
+  ///
+  /// Print status is not shown on SCAN & SHARE — LAN printers rarely return a
+  /// reliable job acknowledgement, so failure UI was misleading.
   bool get shouldShowPrintProgressCard {
     if (kIsWeb) return false;
     return _appSettingsManager?.settings?.printerEnabled ?? true;

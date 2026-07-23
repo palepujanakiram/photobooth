@@ -264,6 +264,11 @@ abstract final class AppStrings {
 
   static const generationWaitStartOver = 'Start over';
 
+  static const qrShareStartAgain = 'Start again';
+
+  static String qrShareResettingIn(int seconds) =>
+      'Starting fresh in ${seconds}s';
+
   static const generationWaitLiveRevealHeadline = 'Your portrait is taking shape';
 
   static const generationWaitLiveRevealDesc =

@@ -26,7 +26,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
   bool _ownsViewModel = false;
   bool _initialized = false;
   Timer? _timer;
-  int _secondsLeft = 60;
+  int _secondsLeft = AppConstants.kQrShareIdleSeconds;
   bool _exiting = false;
 
   /// One-shot toast guard: we show the post-receipt outcome dialog at most once
@@ -206,8 +206,6 @@ class _QrShareScreenState extends State<QrShareScreen> {
             waRequested: waRequested,
           );
           return QrShareScaffoldBody(
-            viewModel: viewModel,
-            parsed: parsed,
             qrData: qrData,
             longUrl: longUrl,
             expiry: expiry,

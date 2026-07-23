@@ -297,6 +297,9 @@ class AppConstants {
       'Failed to initialize camera';
   static const String kErrorPhotoCapture = 'Failed to capture photo';
   static const String kErrorApiCall = 'Failed to process request';
+  /// Idle countdown on SCAN & SHARE before auto-start of a fresh session.
+  static const int kQrShareIdleSeconds = 60;
+
   static const String kErrorNetwork = 'Network error occurred';
   static const String kErrorUnknown = 'An unexpected error occurred';
 }
