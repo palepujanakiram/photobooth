@@ -5,8 +5,8 @@ import 'package:photobooth/screens/staff/staff_dashboard_viewmodel.dart';
 import 'package:photobooth/utils/exceptions.dart';
 
 class _FakeGateway implements StaffDashboardGateway {
-  StaffOpsSession session = StaffOpsSession(
-    staff: const StaffOpsMember(id: 's1', name: 'Ada', staffCode: 'EMP1'),
+  StaffOpsSession session = const StaffOpsSession(
+    staff: StaffOpsMember(id: 's1', name: 'Ada', staffCode: 'EMP1'),
     isCheckedIn: false,
     hasOpenRegister: false,
   );

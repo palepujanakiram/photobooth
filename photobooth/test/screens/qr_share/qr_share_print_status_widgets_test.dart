@@ -26,10 +26,10 @@ void main() {
 
   testWidgets('QrSharePrintStatusCard shows active progress', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(
+      const MaterialApp(
         home: Scaffold(
           body: QrSharePrintStatusCard(
-            progress: const PrintProgressSnapshot(
+            progress: PrintProgressSnapshot(
               phase: PrintProgressPhase.sending,
               percent: 42,
               currentPage: 1,
@@ -47,10 +47,10 @@ void main() {
 
   testWidgets('QrSharePrintStatusCard shows complete state', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(
+      const MaterialApp(
         home: Scaffold(
           body: QrSharePrintStatusCard(
-            progress: const PrintProgressSnapshot(
+            progress: PrintProgressSnapshot(
               phase: PrintProgressPhase.complete,
               percent: 100,
               currentPage: 2,
@@ -69,10 +69,10 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
+      const MaterialApp(
         home: Scaffold(
           body: QrSharePrintStatusCard(
-            progress: const PrintProgressSnapshot(
+            progress: PrintProgressSnapshot(
               phase: PrintProgressPhase.failed,
               percent: 10,
               errorMessage: 'Paper jam',

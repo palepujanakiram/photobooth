@@ -44,10 +44,6 @@ void main() {
       fakeAsync((async) {
         SessionManager().setSessionFromResponse(_sessionJson('sess-pay'));
         final api = FakeApiService();
-        final settings = AppSettingsManager(
-          apiService: api,
-          resolveKioskCode: () async => null,
-        );
         // Seed settings through a lightweight subclass workaround:
         final vm = PrePaymentViewModel(
           appSettingsManager: _SeededAppSettingsManager(
@@ -871,31 +867,6 @@ class _AlwaysNullPaymentStatusApi extends FakeApiService {
   Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
     fetchSessionCalls++;
     return null;
-  }
-}
-
-class _PhotoSyncApi extends FakeApiService {
-  var _fetchCount = 0;
-
-  @override
-  Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
-    fetchSessionCalls++;
-    _fetchCount++;
-    if (_fetchCount == 1) return {};
-    return {'hasUserImage': true};
-  }
-
-  @override
-  Future<Map<String, dynamic>> updateSession({
-    required String sessionId,
-    String? userImageUrl,
-    String? selectedThemeId,
-    bool includeSelectedFrameId = false,
-    String? selectedFrameId,
-    int? personCount,
-    Map<String, dynamic>? framingMetadata,
-  }) async {
-    return _sessionJson(sessionId);
   }
 }
 

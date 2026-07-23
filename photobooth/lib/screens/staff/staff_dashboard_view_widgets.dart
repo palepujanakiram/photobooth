@@ -359,9 +359,9 @@ class StaffAttendanceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          const Text(
             AppStrings.staffAttendanceTitle,
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w800,
               fontSize: 16,
@@ -395,9 +395,9 @@ class StaffAttendanceCard extends StatelessWidget {
             ),
           if (checkedIn && hasRegister) ...[
             const SizedBox(height: 8),
-            Text(
+            const Text(
               AppStrings.staffCloseRegisterBeforeCheckout,
-              style: const TextStyle(color: Color(0xFFE0A94D), fontSize: 12),
+              style: TextStyle(color: Color(0xFFE0A94D), fontSize: 12),
             ),
           ],
         ],
@@ -428,9 +428,9 @@ class StaffRegisterCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          const Text(
             AppStrings.staffCashRegisterTitle,
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w800,
               fontSize: 16,

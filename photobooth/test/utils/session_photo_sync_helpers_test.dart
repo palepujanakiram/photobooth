@@ -128,11 +128,10 @@ void main() {
       addTearDown(() => forceWebMaterializeForSessionPhotoSyncTest = false);
 
       var fetchCount = 0;
-      final api = FakeApiService();
       final outcome = await ensureSessionPhotoOnServer(
         sessionId: 'sess-default-patch',
         photo: _testPhoto(),
-        apiService: _FetchThenReadyApi(api, () => fetchCount++),
+        apiService: _FetchThenReadyApi(() => fetchCount++),
         encodeForUploadFn: (_) async => 'data:image/jpeg;base64,abc',
       );
       expect(outcome.uploaded, isTrue);
@@ -209,9 +208,8 @@ Map<String, dynamic> _sessionJson(String sessionId) {
 }
 
 class _FetchThenReadyApi extends FakeApiService {
-  _FetchThenReadyApi(this._inner, this._onFetch);
+  _FetchThenReadyApi(this._onFetch);
 
-  final FakeApiService _inner;
   final void Function() _onFetch;
   var _fetchCount = 0;
 
