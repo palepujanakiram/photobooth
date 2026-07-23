@@ -113,7 +113,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen>
     await _vm.logout();
     if (!mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil(
-      AppConstants.kRouteStaffLogin,
+      AppConstants.kRouteSplash,
       (r) => false,
     );
   }

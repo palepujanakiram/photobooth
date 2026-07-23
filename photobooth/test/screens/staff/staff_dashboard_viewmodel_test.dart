@@ -219,7 +219,12 @@ void main() {
   group('StaffOpsSession.fromJson', () {
     test('parses shift and register', () {
       final s = StaffOpsSession.fromJson({
-        'staff': {'id': '1', 'name': 'Ada', 'staffCode': 'EMP1'},
+        'staff': {
+          'id': '1',
+          'name': 'Ada',
+          'staffCode': 'EMP1',
+          'kioskId': 'kiosk-1',
+        },
         'isCheckedIn': true,
         'hasOpenRegister': true,
         'activeAttendance': {
@@ -235,6 +240,7 @@ void main() {
         },
       });
       expect(s.staff.name, 'Ada');
+      expect(s.staff.hasKiosk, isTrue);
       expect(s.isCheckedIn, isTrue);
       expect(s.openRegister?.expectedAmount, 400);
     });

@@ -86,17 +86,26 @@ class StaffOpsMember {
     required this.id,
     required this.name,
     required this.staffCode,
+    this.kioskId,
   });
 
   final String id;
   final String name;
   final String staffCode;
+  final String? kioskId;
+
+  bool get hasKiosk {
+    final id = (kioskId ?? '').trim();
+    return id.isNotEmpty;
+  }
 
   factory StaffOpsMember.fromJson(Map<String, dynamic> raw) {
+    final kiosk = (raw['kioskId'] ?? raw['kiosk_id'] ?? '').toString().trim();
     return StaffOpsMember(
       id: (raw['id'] ?? '').toString(),
       name: (raw['name'] ?? '').toString(),
       staffCode: (raw['staffCode'] ?? raw['staff_code'] ?? '').toString(),
+      kioskId: kiosk.isEmpty ? null : kiosk,
     );
   }
 }

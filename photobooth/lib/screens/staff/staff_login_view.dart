@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/staff_api_service.dart';
 import '../../services/staff_session_manager.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../views/widgets/app_colors.dart';
@@ -112,6 +113,20 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
               title: const Text('Staff login'),
               backgroundColor: Colors.transparent,
               elevation: 0,
+              leading: IconButton(
+                tooltip: AppStrings.staffBackToStartTooltip,
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () {
+                  if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                    return;
+                  }
+                  Navigator.of(context).pushNamedAndRemoveUntil(
+                    AppConstants.kRouteSplash,
+                    (r) => false,
+                  );
+                },
+              ),
               actions: const [StaffThemeToggleButton()],
             ),
             body: SafeArea(

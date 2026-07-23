@@ -14,6 +14,8 @@ void main() {
     expect(AppStrings.staffThemeSwitchToDark, isNotEmpty);
     expect(AppStrings.staffThemeLightLabel, isNotEmpty);
     expect(AppStrings.staffThemeDarkLabel, isNotEmpty);
+    expect(AppStrings.staffBackToStartTooltip, isNotEmpty);
+    expect(AppStrings.staffNoKioskForRegister, isNotEmpty);
   });
 
   test('interpolated string methods return expected values', () {

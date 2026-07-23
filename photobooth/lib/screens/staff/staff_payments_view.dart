@@ -458,7 +458,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     }
     if (!mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil(
-      AppConstants.kRouteStaffLogin,
+      AppConstants.kRouteSplash,
       (r) => false,
     );
   }

@@ -373,6 +373,7 @@ abstract final class AppStrings {
   static const staffThemeSwitchToDark = 'Switch to dark mode';
   static const staffThemeLightLabel = 'Light';
   static const staffThemeDarkLabel = 'Dark';
+  static const staffBackToStartTooltip = 'Back to start';
   static const staffOnShift = 'On Shift';
   static const staffOffShift = 'Off Shift';
   static const staffDayDetailsLabel = 'Day details';
@@ -411,6 +412,8 @@ abstract final class AppStrings {
       'Open with float; close with actual cash count';
   static const staffOpenRegister = 'Open register';
   static const staffCloseRegister = 'Close register';
+  static const staffNoKioskForRegister =
+      'This staff member is not assigned to a kiosk. Assign a kiosk in admin before opening the register.';
   static const staffCheckInBeforeRegister =
       'Check in before opening the register';
   static const staffOpenRegisterTitle = 'Open cash register';

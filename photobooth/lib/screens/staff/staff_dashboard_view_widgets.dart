@@ -425,6 +425,8 @@ class StaffRegisterCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final checkedIn = session?.isCheckedIn == true;
     final open = session?.hasOpenRegister == true;
+    final hasKiosk = session?.staff.hasKiosk == true;
+    final canOpen = checkedIn && hasKiosk && !busy;
     return _StaffCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -445,7 +447,7 @@ class StaffRegisterCard extends StatelessWidget {
           const SizedBox(height: 12),
           if (!open)
             FilledButton.icon(
-              onPressed: busy || !checkedIn ? null : onOpen,
+              onPressed: canOpen ? onOpen : null,
               icon: const Icon(Icons.point_of_sale),
               label: const Text(AppStrings.staffOpenRegister),
             )
@@ -461,6 +463,15 @@ class StaffRegisterCard extends StatelessWidget {
               AppStrings.staffCheckInBeforeRegister,
               style: TextStyle(
                 color: StaffThemeColors.muted(context),
+                fontSize: 12,
+              ),
+            ),
+          ] else if (!hasKiosk && !open) ...[
+            const SizedBox(height: 8),
+            const Text(
+              AppStrings.staffNoKioskForRegister,
+              style: TextStyle(
+                color: StaffThemeColors.warning,
                 fontSize: 12,
               ),
             ),
