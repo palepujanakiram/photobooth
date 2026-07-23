@@ -3,10 +3,12 @@ import 'package:provider/provider.dart';
 
 import '../../models/staff_dashboard_models.dart';
 import '../../services/staff_api_service.dart';
+import '../../services/staff_session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../views/widgets/app_colors.dart';
+import 'staff_auth_helpers.dart';
 import 'staff_dashboard_helpers.dart';
 import 'staff_dashboard_view_widgets.dart';
 import 'staff_dashboard_viewmodel.dart';
@@ -81,9 +83,10 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen>
       await _vm.loadAll();
     } on ApiException catch (e) {
       if (!mounted) return;
-      if (e.statusCode == 401 ||
-          e.message.toLowerCase().contains('expired') ||
-          e.message.toLowerCase().contains('log in')) {
+      if (StaffAuthHelpers.isAuthFailure(e)) {
+        // Drop stale X-Staff-Token so login does not bounce straight back here.
+        await StaffSessionManager().clear();
+        if (!mounted) return;
         Navigator.of(context).pushNamedAndRemoveUntil(
           AppConstants.kRouteStaffLogin,
           (r) => false,

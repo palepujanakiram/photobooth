@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -6,6 +8,7 @@ import '../../services/staff_session_manager.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../views/widgets/app_colors.dart';
+import 'staff_auth_helpers.dart';
 
 class StaffLoginScreen extends StatefulWidget {
   const StaffLoginScreen({super.key});
@@ -22,6 +25,7 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
   final _session = StaffSessionManager();
 
   bool _busy = false;
+  bool _autoContinueStarted = false;
   String? _error;
 
   @override
@@ -31,22 +35,37 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     super.dispose();
   }
 
+  /// Only skip the login form when a stored token still validates with the API.
+  /// A stale token previously bounced users back to the dashboard ("Unauthorized").
   Future<void> _tryAutoContinue() async {
     final t = await _session.getToken();
     if (!mounted) return;
-    if (t != null && t.isNotEmpty) {
-      Navigator.of(context).pushReplacementNamed(AppConstants.kRouteStaffDashboard);
+    if (t == null || t.isEmpty) return;
+
+    setState(() => _busy = true);
+    try {
+      await _api.fetchStaffOpsSession();
+      if (!mounted) return;
+      Navigator.of(context)
+          .pushReplacementNamed(AppConstants.kRouteStaffDashboard);
+    } on ApiException catch (e) {
+      if (StaffAuthHelpers.isAuthFailure(e)) {
+        await _session.clear();
+      }
+      // Stay on login so the user can sign in again.
+    } catch (_) {
+      // Network blip — leave the form visible.
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Best-effort: if token exists, go straight to dashboard.
-    // (Runs once per push; safe because pushReplacement removes this screen.)
-    if (!_busy && _error == null) {
-      _tryAutoContinue();
-    }
+    if (_autoContinueStarted || _busy || _error != null) return;
+    _autoContinueStarted = true;
+    unawaited(_tryAutoContinue());
   }
 
   Future<void> _login() async {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,9 +9,11 @@ import '../../services/staff_api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/print_service.dart';
 import '../../services/receipt_printer_service.dart';
+import '../../services/staff_session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
+import 'staff_auth_helpers.dart';
 import 'staff_payment_card.dart';
 import 'staff_payments_payload_utils.dart';
 import 'staff_payments_thumb_helpers.dart';
@@ -264,9 +268,8 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
   void _handlePaymentsLoadFailure(Object e) {
     if (!mounted) return;
     if (e is ApiException) {
-      if ((e.statusCode == 401) ||
-          e.message.toLowerCase().contains('expired') ||
-          e.message.toLowerCase().contains('log in')) {
+      if (StaffAuthHelpers.isAuthFailure(e)) {
+        unawaited(StaffSessionManager().clear());
         if (widget.onAuthExpired != null) {
           widget.onAuthExpired!();
           return;
