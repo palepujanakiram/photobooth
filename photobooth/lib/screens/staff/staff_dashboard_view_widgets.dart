@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/staff_dashboard_models.dart';
 import '../../utils/app_strings.dart';
 import 'staff_dashboard_helpers.dart';
+import 'staff_theme_colors.dart';
 
 class StaffShiftBadge extends StatelessWidget {
   const StaffShiftBadge({super.key, required this.onShift});
@@ -15,19 +16,19 @@ class StaffShiftBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: onShift
-            ? const Color(0xFF57D999).withValues(alpha: 0.2)
-            : Colors.white.withValues(alpha: 0.08),
+            ? StaffThemeColors.success.withValues(alpha: 0.2)
+            : StaffThemeColors.chipIdleBg(context),
         borderRadius: BorderRadius.circular(99),
         border: Border.all(
           color: onShift
-              ? const Color(0xFF57D999).withValues(alpha: 0.6)
-              : Colors.white24,
+              ? StaffThemeColors.success.withValues(alpha: 0.6)
+              : StaffThemeColors.chipIdleBorder(context),
         ),
       ),
       child: Text(
         onShift ? AppStrings.staffOnShift : AppStrings.staffOffShift,
         style: TextStyle(
-          color: onShift ? const Color(0xFF57D999) : Colors.white70,
+          color: onShift ? StaffThemeColors.success : StaffThemeColors.muted(context),
           fontSize: 12,
           fontWeight: FontWeight.w700,
         ),
@@ -96,7 +97,7 @@ class StaffDayPickerCard extends StatelessWidget {
           Text(
             AppStrings.staffDayDetailsLabel,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.7),
+              color: StaffThemeColors.muted(context),
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -151,7 +152,7 @@ class StaffDayPickerCard extends StatelessWidget {
               if ((timezone ?? '').trim().isNotEmpty) timezone!.trim(),
             ].where((e) => e.isNotEmpty).join(' · '),
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.5),
+              color: StaffThemeColors.mutedSoft(context),
               fontSize: 12,
             ),
           ),
@@ -264,7 +265,7 @@ class StaffShiftRegisterStatusRow extends StatelessWidget {
               children: [
                 Text(
                   AppStrings.staffStatusLabel,
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.55)),
+                  style: TextStyle(color: StaffThemeColors.muted(context)),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -273,8 +274,8 @@ class StaffShiftRegisterStatusRow extends StatelessWidget {
                       : AppStrings.staffOffShift,
                   style: TextStyle(
                     color: checkedIn
-                        ? const Color(0xFF57D999)
-                        : Colors.white70,
+                        ? StaffThemeColors.success
+                        : StaffThemeColors.muted(context),
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
@@ -286,7 +287,7 @@ class StaffShiftRegisterStatusRow extends StatelessWidget {
                       StaffDashboardHelpers.formatElapsed(elapsed),
                     ),
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.55),
+                      color: StaffThemeColors.muted(context),
                       fontSize: 12,
                     ),
                   ),
@@ -303,7 +304,7 @@ class StaffShiftRegisterStatusRow extends StatelessWidget {
               children: [
                 Text(
                   AppStrings.staffRegisterLabel,
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.55)),
+                  style: TextStyle(color: StaffThemeColors.muted(context)),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -311,7 +312,7 @@ class StaffShiftRegisterStatusRow extends StatelessWidget {
                       ? AppStrings.staffRegisterOpen
                       : AppStrings.staffRegisterClosed,
                   style: TextStyle(
-                    color: open ? const Color(0xFF5FD3E8) : Colors.white70,
+                    color: open ? StaffThemeColors.info : StaffThemeColors.muted(context),
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
@@ -323,7 +324,7 @@ class StaffShiftRegisterStatusRow extends StatelessWidget {
                       TimeOfDay.fromDateTime(openedAt.toLocal()).format(context),
                     ),
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.55),
+                      color: StaffThemeColors.muted(context),
                       fontSize: 12,
                     ),
                   ),
@@ -359,10 +360,10 @@ class StaffAttendanceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             AppStrings.staffAttendanceTitle,
             style: TextStyle(
-              color: Colors.white,
+              color: StaffThemeColors.title(context),
               fontWeight: FontWeight.w800,
               fontSize: 16,
             ),
@@ -370,7 +371,7 @@ class StaffAttendanceCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             AppStrings.staffAttendanceSubtitle,
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.55)),
+            style: TextStyle(color: StaffThemeColors.muted(context)),
           ),
           const SizedBox(height: 12),
           if (!checkedIn)
@@ -397,7 +398,7 @@ class StaffAttendanceCard extends StatelessWidget {
             const SizedBox(height: 8),
             const Text(
               AppStrings.staffCloseRegisterBeforeCheckout,
-              style: TextStyle(color: Color(0xFFE0A94D), fontSize: 12),
+              style: TextStyle(color: StaffThemeColors.warning, fontSize: 12),
             ),
           ],
         ],
@@ -428,10 +429,10 @@ class StaffRegisterCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             AppStrings.staffCashRegisterTitle,
             style: TextStyle(
-              color: Colors.white,
+              color: StaffThemeColors.title(context),
               fontWeight: FontWeight.w800,
               fontSize: 16,
             ),
@@ -439,7 +440,7 @@ class StaffRegisterCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             AppStrings.staffCashRegisterSubtitle,
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.55)),
+            style: TextStyle(color: StaffThemeColors.muted(context)),
           ),
           const SizedBox(height: 12),
           if (!open)
@@ -459,7 +460,7 @@ class StaffRegisterCard extends StatelessWidget {
             Text(
               AppStrings.staffCheckInBeforeRegister,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.55),
+                color: StaffThemeColors.muted(context),
                 fontSize: 12,
               ),
             ),
@@ -481,10 +482,10 @@ class StaffPerformanceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             AppStrings.staffPerformanceTitle,
             style: TextStyle(
-              color: Colors.white,
+              color: StaffThemeColors.title(context),
               fontWeight: FontWeight.w800,
               fontSize: 16,
             ),
@@ -529,9 +530,9 @@ class _StaffCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF141A2C).withValues(alpha: 0.88),
+        color: StaffThemeColors.card(context),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        border: Border.all(color: StaffThemeColors.cardBorder(context)),
       ),
       child: child,
     );
@@ -558,7 +559,7 @@ class _KpiTile extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.55),
+              color: StaffThemeColors.muted(context),
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -566,8 +567,8 @@ class _KpiTile extends StatelessWidget {
           const Spacer(),
           Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: StaffThemeColors.title(context),
               fontSize: 22,
               fontWeight: FontWeight.w800,
             ),
@@ -576,7 +577,7 @@ class _KpiTile extends StatelessWidget {
           Text(
             hint,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.4),
+              color: StaffThemeColors.mutedSoft(context),
               fontSize: 11,
             ),
           ),
@@ -605,13 +606,13 @@ class _ModeTile extends StatelessWidget {
         children: [
           Text(
             label,
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.55)),
+            style: TextStyle(color: StaffThemeColors.muted(context)),
           ),
           const SizedBox(height: 6),
           Text(
             StaffDashboardHelpers.formatInr(amount),
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: StaffThemeColors.title(context),
               fontSize: 16,
               fontWeight: FontWeight.w800,
             ),
@@ -619,7 +620,7 @@ class _ModeTile extends StatelessWidget {
           Text(
             AppStrings.staffPaymentCount(count),
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.5),
+              color: StaffThemeColors.mutedSoft(context),
               fontSize: 11,
             ),
           ),
@@ -643,14 +644,14 @@ class _PerfChip extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.5),
+            color: StaffThemeColors.mutedSoft(context),
             fontSize: 11,
           ),
         ),
         Text(
           value,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: StaffThemeColors.title(context),
             fontWeight: FontWeight.w800,
             fontSize: 15,
           ),

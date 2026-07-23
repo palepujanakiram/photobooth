@@ -15,6 +15,7 @@ import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import 'staff_auth_helpers.dart';
 import 'staff_payment_card.dart';
+import 'staff_theme_shell.dart';
 import 'staff_payments_payload_utils.dart';
 import 'staff_payments_thumb_helpers.dart';
 import 'staff_payments_preview_helpers.dart';
@@ -563,24 +564,32 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
       return ColoredBox(color: appColors.backgroundColor, child: content);
     }
 
-    return Scaffold(
-      backgroundColor: appColors.backgroundColor,
-      appBar: AppBar(
-        title: const Text('Staff payments'),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: _loading ? null : _refresh,
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: 'Logout',
-            onPressed: _loading ? null : _logout,
-            icon: const Icon(Icons.logout),
-          ),
-        ],
+    return StaffThemeShell(
+      child: Builder(
+        builder: (context) {
+          final themed = AppColors.of(context);
+          return Scaffold(
+            backgroundColor: themed.backgroundColor,
+            appBar: AppBar(
+              title: const Text('Staff payments'),
+              actions: [
+                const StaffThemeToggleButton(),
+                IconButton(
+                  tooltip: 'Refresh',
+                  onPressed: _loading ? null : _refresh,
+                  icon: const Icon(Icons.refresh),
+                ),
+                IconButton(
+                  tooltip: 'Logout',
+                  onPressed: _loading ? null : _logout,
+                  icon: const Icon(Icons.logout),
+                ),
+              ],
+            ),
+            body: SafeArea(child: content),
+          );
+        },
       ),
-      body: SafeArea(child: content),
     );
   }
 

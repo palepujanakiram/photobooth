@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'package:bugsnag_flutter/bugsnag_flutter.dart';
 import 'package:flutter_alice/alice.dart';
 import 'package:overlay_support/overlay_support.dart';
+import 'screens/staff/staff_theme_controller.dart';
 import 'screens/theme_selection/theme_selection_viewmodel.dart';
 import 'app_routes.dart';
 import 'main_error_handlers.dart';
@@ -121,6 +122,7 @@ class PhotoBoothApp extends StatefulWidget {
 class _PhotoBoothAppState extends State<PhotoBoothApp>
     with WidgetsBindingObserver {
   final AppSettingsManager _appSettingsManager = AppSettingsManager();
+  final StaffThemeController _staffThemeController = StaffThemeController();
   final AppRouteTracker _routeTracker = AppRouteTracker();
 
   /// Foreground FCM subscription (payment + any future topics).
@@ -134,6 +136,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
     WidgetsBinding.instance.addObserver(this);
     PaymentPushCoordinator.instance.attachNavigator(widget.navigatorKey);
     _appSettingsManager.fetchSettings(forceRefresh: true);
+    unawaited(_staffThemeController.load());
     if (supportsFirebaseMessaging) {
       unawaited(_setupPaymentFcmListeners());
     }
@@ -324,6 +327,9 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
         ChangeNotifierProvider(create: (_) => ThemeViewModel()),
         ChangeNotifierProvider<AppSettingsManager>.value(
           value: _appSettingsManager,
+        ),
+        ChangeNotifierProvider<StaffThemeController>.value(
+          value: _staffThemeController,
         ),
         Provider<Alice?>.value(value: AliceInspector.instance),
       ],

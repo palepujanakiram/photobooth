@@ -9,6 +9,7 @@ import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../views/widgets/app_colors.dart';
 import 'staff_auth_helpers.dart';
+import 'staff_theme_shell.dart';
 
 class StaffLoginScreen extends StatefulWidget {
   const StaffLoginScreen({super.key});
@@ -101,96 +102,109 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final appColors = AppColors.of(context);
-    return Scaffold(
-      backgroundColor: appColors.backgroundColor,
-      appBar: AppBar(
-        title: const Text('Staff login'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Enter employee code',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: appColors.textColor,
+    return StaffThemeShell(
+      child: Builder(
+        builder: (context) {
+          final appColors = AppColors.of(context);
+          return Scaffold(
+            backgroundColor: appColors.backgroundColor,
+            appBar: AppBar(
+              title: const Text('Staff login'),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              actions: const [StaffThemeToggleButton()],
+            ),
+            body: SafeArea(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Enter employee code',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: appColors.textColor,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        CupertinoTextField(
+                          controller: _codeController,
+                          placeholder: 'Staff code (e.g. EMPMJPM5WEC)',
+                          enabled: !_busy,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          textCapitalization: TextCapitalization.characters,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 14,
+                          ),
+                          onChanged: (v) {
+                            if (_error != null) {
+                              setState(() => _error = null);
+                            }
+                            final up = v.toUpperCase();
+                            if (up != v) {
+                              _codeController.value =
+                                  _codeController.value.copyWith(
+                                text: up,
+                                selection:
+                                    TextSelection.collapsed(offset: up.length),
+                                composing: TextRange.empty,
+                              );
+                            }
+                          },
+                          onSubmitted: (_) => _login(),
+                        ),
+                        const SizedBox(height: 12),
+                        CupertinoTextField(
+                          controller: _accountController,
+                          placeholder: 'Account name (e.g. mumbai-central)',
+                          enabled: !_busy,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          textCapitalization: TextCapitalization.none,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 14,
+                          ),
+                          onChanged: (_) {
+                            if (_error != null) {
+                              setState(() => _error = null);
+                            }
+                          },
+                          onSubmitted: (_) => _login(),
+                        ),
+                        if (_error != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            _error!,
+                            style: const TextStyle(color: Colors.red),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: _busy ? null : _login,
+                            child: Text(_busy ? 'Signing in…' : 'Sign in'),
+                          ),
+                        ),
+                      ],
                     ),
-                    textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 16),
-                  CupertinoTextField(
-                    controller: _codeController,
-                    placeholder: 'Staff code (e.g. EMPMJPM5WEC)',
-                    enabled: !_busy,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    textCapitalization: TextCapitalization.characters,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 14,
-                    ),
-                    onChanged: (v) {
-                      if (_error != null) setState(() => _error = null);
-                      final up = v.toUpperCase();
-                      if (up != v) {
-                        _codeController.value = _codeController.value.copyWith(
-                          text: up,
-                          selection: TextSelection.collapsed(offset: up.length),
-                          composing: TextRange.empty,
-                        );
-                      }
-                    },
-                    onSubmitted: (_) => _login(),
-                  ),
-                  const SizedBox(height: 12),
-                  CupertinoTextField(
-                    controller: _accountController,
-                    placeholder: 'Account name (e.g. mumbai-central)',
-                    enabled: !_busy,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    textCapitalization: TextCapitalization.none,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 14,
-                    ),
-                    onChanged: (_) {
-                      if (_error != null) setState(() => _error = null);
-                    },
-                    onSubmitted: (_) => _login(),
-                  ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      _error!,
-                      style: const TextStyle(color: Colors.red),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: _busy ? null : _login,
-                      child: Text(_busy ? 'Signing in…' : 'Sign in'),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }

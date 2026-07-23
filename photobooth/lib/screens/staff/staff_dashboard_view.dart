@@ -13,6 +13,8 @@ import 'staff_dashboard_helpers.dart';
 import 'staff_dashboard_view_widgets.dart';
 import 'staff_dashboard_viewmodel.dart';
 import 'staff_payments_view.dart';
+import 'staff_theme_colors.dart';
+import 'staff_theme_shell.dart';
 
 class _StaffApiGateway implements StaffDashboardGateway {
   _StaffApiGateway([StaffApiService? api]) : _api = api ?? StaffApiService();
@@ -118,73 +120,83 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen>
 
   @override
   Widget build(BuildContext context) {
-    final appColors = AppColors.of(context);
-    return ChangeNotifierProvider.value(
-      value: _vm,
-      child: Consumer<StaffDashboardViewModel>(
-        builder: (context, vm, _) {
-          final session = vm.session;
-          return Scaffold(
-            backgroundColor: appColors.backgroundColor,
-            appBar: AppBar(
-              title: Text(
-                session?.staff.name.isNotEmpty == true
-                    ? session!.staff.name
-                    : AppStrings.staffDashboardTitle,
-              ),
-              actions: [
-                if (session != null)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: Center(
-                      child: StaffShiftBadge(onShift: session.isCheckedIn),
+    return StaffThemeShell(
+      child: Builder(
+        builder: (context) {
+          final appColors = AppColors.of(context);
+          return ChangeNotifierProvider.value(
+            value: _vm,
+            child: Consumer<StaffDashboardViewModel>(
+              builder: (context, vm, _) {
+                final session = vm.session;
+                return Scaffold(
+                  backgroundColor: appColors.backgroundColor,
+                  appBar: AppBar(
+                    title: Text(
+                      session?.staff.name.isNotEmpty == true
+                          ? session!.staff.name
+                          : AppStrings.staffDashboardTitle,
                     ),
-                  ),
-                IconButton(
-                  tooltip: AppStrings.staffRefreshTooltip,
-                  onPressed: vm.loading || vm.actionBusy
-                      ? null
-                      : () => vm.refreshQuiet(),
-                  icon: const Icon(Icons.refresh),
-                ),
-                IconButton(
-                  tooltip: AppStrings.staffLogoutTooltip,
-                  onPressed: vm.loading || vm.actionBusy ? null : _logout,
-                  icon: const Icon(Icons.logout),
-                ),
-              ],
-              bottom: TabBar(
-                controller: _tabs,
-                tabs: const [
-                  Tab(text: AppStrings.staffTabOverview),
-                  Tab(text: AppStrings.staffTabPayments),
-                ],
-              ),
-            ),
-            body: SafeArea(
-              child: _booting && session == null
-                  ? const Center(child: CircularProgressIndicator())
-                  : TabBarView(
+                    actions: [
+                      if (session != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Center(
+                            child:
+                                StaffShiftBadge(onShift: session.isCheckedIn),
+                          ),
+                        ),
+                      const StaffThemeToggleButton(),
+                      IconButton(
+                        tooltip: AppStrings.staffRefreshTooltip,
+                        onPressed: vm.loading || vm.actionBusy
+                            ? null
+                            : () => vm.refreshQuiet(),
+                        icon: const Icon(Icons.refresh),
+                      ),
+                      IconButton(
+                        tooltip: AppStrings.staffLogoutTooltip,
+                        onPressed:
+                            vm.loading || vm.actionBusy ? null : _logout,
+                        icon: const Icon(Icons.logout),
+                      ),
+                    ],
+                    bottom: TabBar(
                       controller: _tabs,
-                      children: [
-                        StaffDashboardOverviewTab(
-                          onOpenRegister: () =>
-                              _showOpenRegisterDialog(context, vm),
-                          onCloseRegister: () =>
-                              _showCloseRegisterDialog(context, vm),
-                        ),
-                        StaffPaymentsScreen(
-                          embedded: true,
-                          date: vm.selectedDate,
-                          onAuthExpired: () {
-                            Navigator.of(context).pushNamedAndRemoveUntil(
-                              AppConstants.kRouteStaffLogin,
-                              (r) => false,
-                            );
-                          },
-                        ),
+                      tabs: const [
+                        Tab(text: AppStrings.staffTabOverview),
+                        Tab(text: AppStrings.staffTabPayments),
                       ],
                     ),
+                  ),
+                  body: SafeArea(
+                    child: _booting && session == null
+                        ? const Center(child: CircularProgressIndicator())
+                        : TabBarView(
+                            controller: _tabs,
+                            children: [
+                              StaffDashboardOverviewTab(
+                                onOpenRegister: () =>
+                                    _showOpenRegisterDialog(context, vm),
+                                onCloseRegister: () =>
+                                    _showCloseRegisterDialog(context, vm),
+                              ),
+                              StaffPaymentsScreen(
+                                embedded: true,
+                                date: vm.selectedDate,
+                                onAuthExpired: () {
+                                  Navigator.of(context)
+                                      .pushNamedAndRemoveUntil(
+                                    AppConstants.kRouteStaffLogin,
+                                    (r) => false,
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                  ),
+                );
+              },
             ),
           );
         },
@@ -369,7 +381,7 @@ class StaffDashboardOverviewTab extends StatelessWidget {
                   session.staff.staffCode,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.45),
+                    color: StaffThemeColors.mutedSoft(context),
                     fontSize: 12,
                   ),
                 ),

@@ -10,6 +10,8 @@ void main() {
     expect(AppStrings.cameraLabelExternal, isNotEmpty);
     expect(AppStrings.cameraLabelBuiltIn, isNotEmpty);
     expect(AppStrings.apiLogSeparator, isNotEmpty);
+    expect(AppStrings.staffThemeSwitchToLight, isNotEmpty);
+    expect(AppStrings.staffThemeSwitchToDark, isNotEmpty);
   });
 
   test('interpolated string methods return expected values', () {
