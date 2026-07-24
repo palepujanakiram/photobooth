@@ -181,7 +181,7 @@ class _PhoneUploadQrSheetBodyState extends State<_PhoneUploadQrSheetBody> {
               TextButton(
                 onPressed: () => cancelPhoneUploadSheet(context),
                 child: const Text(
-                  AppStrings.phoneUploadCancelled,
+                  AppStrings.cancel,
                   style: TextStyle(color: Colors.white70),
                 ),
               ),

@@ -2361,8 +2361,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                               viewModel.capturedPhoto!.imageFile,
                               cardW,
                               cardH,
-                              // Match live preview: full-bleed cover (no black “stencil”), smooth shutter transition.
-                              fit: BoxFit.cover,
+                              // Match live preview: full frame visible (no cover crop).
+                              fit: BoxFit.contain,
                               sharpDisplay: true,
                             )
                           : KeyedSubtree(

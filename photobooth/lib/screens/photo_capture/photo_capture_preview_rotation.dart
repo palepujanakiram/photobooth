@@ -53,7 +53,10 @@ double cameraPreviewDisplayAspectRatio({
       : 1 / controllerAspectRatio;
 }
 
-/// Full-bleed cover for [CameraPreview] (or any child that already owns aspect).
+/// Fits [cameraPreview] inside the parent without cropping (letterbox as needed).
+///
+/// Use this so POSE live feed matches the full captured frame. Prefer over
+/// cover-cropping, which cuts heads when the card aspect ≠ the stream.
 ///
 /// Do **not** wrap [CameraPreview] in another sensor-[AspectRatio] — that fights
 /// CameraPreview's portrait invert and squashes the texture on phones.
@@ -72,20 +75,18 @@ Widget buildCoverCameraPreview({
       late final double childW;
       late final double childH;
       if (parentW / parentH > displayAspectRatio) {
-        childW = parentW;
-        childH = childW / displayAspectRatio;
-      } else {
+        // Parent wider than stream → letterbox left/right.
         childH = parentH;
         childW = childH * displayAspectRatio;
+      } else {
+        // Parent taller / narrower → letterbox top/bottom.
+        childW = parentW;
+        childH = childW / displayAspectRatio;
       }
 
-      return ClipRect(
-        child: OverflowBox(
-          minWidth: childW,
-          maxWidth: childW,
-          minHeight: childH,
-          maxHeight: childH,
-          alignment: Alignment.center,
+      return ColoredBox(
+        color: Colors.black,
+        child: Center(
           child: SizedBox(
             width: childW,
             height: childH,
@@ -97,8 +98,9 @@ Widget buildCoverCameraPreview({
   );
 }
 
-/// Full-bleed rotated camera preview for raw textures (UVC / manual rotation).
+/// Fitted rotated camera preview for raw textures (UVC / manual rotation).
 ///
+/// Shows the full frame ([BoxFit.contain]) so live preview matches capture FOV.
 /// Prefer [buildCoverCameraPreview] when the child is Flutter's [CameraPreview].
 Widget buildRotatedCoverPreview({
   required Widget preview,
@@ -122,10 +124,11 @@ Widget buildRotatedCoverPreview({
     displayAspectRatio: displayAspectRatio,
   );
 
-  return ClipRect(
+  return ColoredBox(
+    color: Colors.black,
     child: SizedBox.expand(
       child: FittedBox(
-        fit: BoxFit.cover,
+        fit: BoxFit.contain,
         alignment: Alignment.center,
         child: SizedBox(
           width: width,

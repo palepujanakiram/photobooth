@@ -350,8 +350,6 @@ abstract final class AppStrings {
 
   static const phoneUploadReceived = 'Photo received from phone';
 
-  static const phoneUploadCancelled = 'Phone upload cancelled';
-
   static const phoneUploadFailed = 'Could not start phone upload';
 
   static const phoneUploadMintFailed =

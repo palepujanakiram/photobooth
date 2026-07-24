@@ -126,7 +126,7 @@ void main() {
     );
   });
 
-  testWidgets('buildCoverCameraPreview sizes child to cover parent',
+  testWidgets('buildCoverCameraPreview sizes child to contain in wide parent',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -142,20 +142,19 @@ void main() {
         ),
       ),
     );
-    expect(find.byType(ClipRect), findsOneWidget);
-    expect(find.byType(OverflowBox), findsOneWidget);
+    expect(find.byType(ColoredBox), findsWidgets);
     final sized = tester.widget<SizedBox>(
       find.descendant(
-        of: find.byType(OverflowBox),
+        of: find.byType(Center),
         matching: find.byType(SizedBox),
-      ),
+      ).first,
     );
-    // Parent 390×520 is wider than 9:16 → cover by matching width.
-    expect(sized.width, closeTo(390, 0.1));
-    expect(sized.height, closeTo(390 / (9 / 16), 0.5));
+    // Parent 390×520 is wider than 9:16 → contain by matching height.
+    expect(sized.height, closeTo(520, 0.1));
+    expect(sized.width, closeTo(520 * (9 / 16), 0.5));
   });
 
-  testWidgets('buildCoverCameraPreview covers tall parent via height branch', (
+  testWidgets('buildCoverCameraPreview contains tall parent via width branch', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -174,15 +173,15 @@ void main() {
     );
     final sized = tester.widget<SizedBox>(
       find.descendant(
-        of: find.byType(OverflowBox),
+        of: find.byType(Center),
         matching: find.byType(SizedBox),
-      ),
+      ).first,
     );
-    expect(sized.height, closeTo(500, 0.1));
-    expect(sized.width, closeTo(500 * 1.5, 0.5));
+    expect(sized.width, closeTo(200, 0.1));
+    expect(sized.height, closeTo(200 / 1.5, 0.5));
   });
 
-  testWidgets('buildRotatedCoverPreview no rotation wraps in ClipRect',
+  testWidgets('buildRotatedCoverPreview no rotation uses contain FittedBox',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -195,7 +194,8 @@ void main() {
         ),
       ),
     );
-    expect(find.byType(ClipRect), findsOneWidget);
+    expect(find.byType(FittedBox), findsOneWidget);
+    expect(tester.widget<FittedBox>(find.byType(FittedBox)).fit, BoxFit.contain);
     expect(find.byType(RotatedBox), findsNothing);
   });
 
@@ -214,6 +214,6 @@ void main() {
       ),
     );
     expect(find.byType(RotatedBox), findsOneWidget);
-    expect(find.byType(ClipRect), findsOneWidget);
+    expect(find.byType(FittedBox), findsOneWidget);
   });
 }

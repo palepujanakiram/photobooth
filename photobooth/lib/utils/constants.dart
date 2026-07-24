@@ -114,11 +114,13 @@ class AppConstants {
   /// Capture / preview card: max height as fraction of screen height (landscape kiosks — avoid a full-height tower).
   static const double kCapturePreviewCardMaxHeightFractionLandscape = 0.50;
 
-  static const double kCapturePreviewCardMaxHeightFractionPortrait = 0.58;
+  /// Portrait tablets/kiosks: taller slot so landscape HDMI/camera frames are not
+  /// squeezed into a short strip (heads cropped when the feed used cover-fit).
+  static const double kCapturePreviewCardMaxHeightFractionPortrait = 0.72;
 
   /// Phone portrait: allow more vertical space for the capture card than [kCapturePreviewCardMaxHeightFractionPortrait]
   /// (theme/kiosk value) so preview matches the usable viewport instead of a short strip.
-  static const double kCapturePreviewCardMaxHeightFractionPhonePortrait = 0.78;
+  static const double kCapturePreviewCardMaxHeightFractionPhonePortrait = 0.82;
 
   /// BEHOLD single-result hero when output aspect is unknown (typical AI / kiosk output).
   static const double kBeholdSingleResultDefaultAspectRatio = 3 / 2;

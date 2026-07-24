@@ -116,6 +116,7 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pump();
     expect(find.text(AppStrings.phoneUploadSheetTitle), findsOneWidget);
+    expect(find.text(AppStrings.cancel), findsOneWidget);
 
     final cancelButton = tester.widget<TextButton>(find.byType(TextButton));
     cancelButton.onPressed?.call();
