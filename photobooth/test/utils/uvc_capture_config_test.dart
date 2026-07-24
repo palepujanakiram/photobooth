@@ -6,10 +6,16 @@ import 'package:photobooth/utils/uvc_capture_config.dart';
 import 'package:uvccamera/uvccamera.dart';
 
 void main() {
-  test('UvcCaptureConfig uses stability-first profile defaults', () {
-    expect(UvcCaptureConfig.resolutionPreset, UvcCameraResolutionPreset.medium);
-    expect(UvcCaptureConfig.normalizeMaxDimension, 1024);
-    expect(UvcCaptureConfig.normalizeJpegQuality, 75);
+  tearDown(() {
+    AppRuntimeConfig.instance.applyFromSettings(AppSettingsModel());
+  });
+
+  test('UvcCaptureConfig uses quality-first profile defaults', () {
+    expect(UvcCaptureConfig.resolutionPreset, UvcCameraResolutionPreset.high);
+    expect(UvcCaptureConfig.normalizeMaxDimension, 1920);
+    expect(UvcCaptureConfig.normalizeJpegQuality, 85);
+    expect(UvcCaptureConfig.effectiveNormalizeMaxDimension, 1920);
+    expect(UvcCaptureConfig.effectiveNormalizeJpegQuality, 85);
     expect(UvcCaptureConfig.postDisposeDelay, const Duration(milliseconds: 750));
     expect(UvcCaptureConfig.quickOpenTimeout, const Duration(milliseconds: 1500));
     expect(UvcCaptureConfig.reopenFeedDelay, const Duration(milliseconds: 1200));
@@ -47,6 +53,18 @@ void main() {
       AppSettingsModel(thermalSafeMode: true),
     );
     expect(UvcCaptureConfig.thermalReliefEnabled, isTrue);
+    expect(
+      UvcCaptureConfig.effectiveNormalizeMaxDimension,
+      UvcCaptureConfig.thermalNormalizeMaxDimension,
+    );
+    expect(
+      UvcCaptureConfig.effectiveNormalizeJpegQuality,
+      UvcCaptureConfig.thermalNormalizeJpegQuality,
+    );
+    expect(
+      UvcCaptureConfig.resolutionPresetFor(AppDeviceType.androidTablet),
+      UvcCaptureConfig.thermalResolutionPreset,
+    );
 
     AppRuntimeConfig.instance.applyFromSettings(
       AppSettingsModel(showGenerationCommentary: true),

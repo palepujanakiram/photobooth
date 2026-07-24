@@ -10,23 +10,34 @@ import 'constants.dart';
 /// Built-in cameras use 1920 px / quality 85 from `image_helper.dart`.
 /// UVC is capped separately because the plugin saves full preview frames at JPEG quality 100.
 ///
+/// DSLR HDMI → capture card → UVC: live preview and the still are the **same**
+/// stream (next NV21 frame). Soft live feed vs sharper Retake review is usually:
+/// (1) upscaled 720p Texture vs decoded JPEG with [sharpDisplay], and/or
+/// (2) Dart normalize downscale. Prefer **clean HDMI** on the body so AF/OSD
+/// brackets are not burned into the feed.
+///
 /// **Profiles** (adjust here after kiosk testing):
 /// | Profile     | preset | maxDimension | jpegQuality | uploadPrepDelay |
 /// |-------------|--------|--------------|-------------|-----------------|
 /// | Performance | min    | 1280         | 80          | 450 ms          |
 /// | Balanced    | low    | 1536         | 85          | 300 ms          |
-/// | Quality     | medium | 1920         | 85          | 48 ms           |
-/// | **Active**  | medium | 1024         | 75          | 450 ms          |
+/// | Thermal     | medium | 1024         | 75          | 450 ms          |
+/// | **Active**  | high   | 1920         | 85          | 450 ms          |
 ///
-/// **Active profile:** 720p preview (not 1080p), 1024px still normalize.
+/// **Active profile:** ~1080p preview/still, normalize aligned with built-in.
+/// Thermal / low-memory kiosks fall back to the Thermal row via [thermalReliefEnabled].
 class UvcCaptureConfig {
   UvcCaptureConfig._(); // coverage:ignore-line
 
-  /// Native UVC preview / still stream target (~1280×720 via plugin `medium` preset).
+  /// Native UVC preview / still stream target (~1920×1080 via plugin `high` preset).
   ///
   /// The `uvccamera` plugin does not expose FPS; the driver picks frame rate for the
-  /// negotiated format (often 30 fps at 720p MJPEG on capture cards).
+  /// negotiated format (often 30 fps MJPEG on capture cards).
   static const UvcCameraResolutionPreset resolutionPreset =
+      UvcCameraResolutionPreset.high;
+
+  /// Lower stream when thermal relief is on (~1280×720).
+  static const UvcCameraResolutionPreset thermalResolutionPreset =
       UvcCameraResolutionPreset.medium;
 
   /// TV boxes negotiate more reliably at 640×480 (`low`).
@@ -34,14 +45,30 @@ class UvcCaptureConfig {
     if (deviceType == AppDeviceType.androidTv) {
       return UvcCameraResolutionPreset.low;
     }
+    if (thermalReliefEnabled) return thermalResolutionPreset;
     return resolutionPreset;
   }
 
-  /// Max long edge after Dart-side normalize.
-  static const int normalizeMaxDimension = 1024;
+  /// Max long edge after Dart-side normalize (matches built-in default).
+  static const int normalizeMaxDimension = 1920;
 
-  /// JPEG quality after normalize.
-  static const int normalizeJpegQuality = 75;
+  /// Cap used when [thermalReliefEnabled] to limit encode RAM / heat.
+  static const int thermalNormalizeMaxDimension = 1024;
+
+  /// Effective long-edge cap for [ImageHelper.normalizeAndSaveCapturedPhoto].
+  static int get effectiveNormalizeMaxDimension => thermalReliefEnabled
+      ? thermalNormalizeMaxDimension
+      : normalizeMaxDimension;
+
+  /// JPEG quality after normalize (matches built-in default).
+  static const int normalizeJpegQuality = 85;
+
+  static const int thermalNormalizeJpegQuality = 75;
+
+  /// Effective JPEG quality for UVC still normalize.
+  static int get effectiveNormalizeJpegQuality => thermalReliefEnabled
+      ? thermalNormalizeJpegQuality
+      : normalizeJpegQuality;
 
   /// Max wait for [UvcCameraController.initialize] on POSE entry (retries / reopen).
   static const Duration openTimeout = Duration(seconds: 3);

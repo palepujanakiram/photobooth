@@ -1002,8 +1002,10 @@ class CaptureViewModel extends ChangeNotifier {
           rawFile,
           flipHorizontal: false,
           fixBgrChannelOrder: isUvc,
-          maxDimension: isUvc ? UvcCaptureConfig.normalizeMaxDimension : null,
-          jpegQuality: isUvc ? UvcCaptureConfig.normalizeJpegQuality : null,
+          maxDimension:
+              isUvc ? UvcCaptureConfig.effectiveNormalizeMaxDimension : null,
+          jpegQuality:
+              isUvc ? UvcCaptureConfig.effectiveNormalizeJpegQuality : null,
         );
         if (isUvc) {
           await ImageHelper.tryDeleteLocalFile(rawFile.path);

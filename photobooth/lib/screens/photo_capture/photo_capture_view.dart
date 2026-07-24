@@ -493,6 +493,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }
       final raster = await rasterCaptureRepaintBoundary(
         boundaryKey: _uvcPreviewBoundaryKey,
+        maxLongEdge: UvcCaptureConfig.effectiveNormalizeMaxDimension,
       );
       if (raster != null) {
         AppLogger.debug('UVC still from raster fallback (source=$source)');
