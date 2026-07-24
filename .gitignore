@@ -73,6 +73,7 @@ fastlane/test_output
 *.pptx
 *.docx
 *.html
+!photobooth/assets/legal/*.html
 .~lock.*#
 fotOzen_*.png
 fotozen_*.png

@@ -2,22 +2,30 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' show RouteSettings, Scaffold;
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../utils/platform_capabilities.dart';
 import '../../views/widgets/app_colors.dart';
 
-/// Loads [url] in a [WebViewWidget] with loading and error states.
+/// Loads [url] (or bundled [flutterAssetPath]) in a [WebViewWidget].
 ///
 /// JavaScript and unrestricted navigation are intentional: callers pass only
 /// operator-configured HTTPS URLs (terms, help, kiosk content) from [AppConfig],
 /// not arbitrary user input. Mark Sonar security hotspots **Safe** after review.
 ///
+/// Prefer [flutterAssetPath] for legal pages on kiosks — Android TV WebViews
+/// often cannot reach public hosts (`net::ERR_ADDRESS_UNREACHABLE`) even when
+/// the tablet on the same venue network can.
+///
 /// Set [useScaffold] for edge-to-edge web content with a close control only (no
 /// app bar). Used for the webview named route and by [WebViewUrlSheet].
 class WebViewScreen extends StatefulWidget {
   final String url;
+
+  /// When set, load this Flutter asset (HTML) instead of [url].
+  final String? flutterAssetPath;
 
   /// When true, full-screen [Scaffold] with a close button overlay (no top bar).
   final bool useScaffold;
@@ -25,21 +33,29 @@ class WebViewScreen extends StatefulWidget {
   const WebViewScreen({
     super.key,
     required this.url,
+    this.flutterAssetPath,
     this.useScaffold = false,
   });
 
   /// Builds from [RouteSettings.arguments]: a [String] URL, or a [Map] with
-  /// `url` ([String]).
+  /// `url` ([String]) and optional `flutterAssetPath` ([String]).
   factory WebViewScreen.fromRouteSettings(RouteSettings? settings) {
     final args = settings?.arguments;
     String url = '';
+    String? assetPath;
     if (args is String) {
       url = args;
     } else if (args is Map) {
       final u = args['url'];
       if (u is String) url = u;
+      final a = args['flutterAssetPath'];
+      if (a is String) assetPath = a;
     }
-    return WebViewScreen(url: url, useScaffold: true);
+    return WebViewScreen(
+      url: url,
+      flutterAssetPath: assetPath,
+      useScaffold: true,
+    );
   }
 
   @override
@@ -51,6 +67,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
   bool _isLoading = true;
   String? _errorMessage;
 
+  bool get _hasAsset =>
+      (widget.flutterAssetPath ?? '').trim().isNotEmpty;
+
   @override
   void initState() {
     super.initState();
@@ -60,7 +79,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
       });
       return;
     }
-    _initializeWebView();
+    unawaited(_initializeWebView());
   }
 
   Future<void> _openExternallyAndPop() async {
@@ -76,7 +95,18 @@ class _WebViewScreenState extends State<WebViewScreen> {
     if (mounted) Navigator.of(context).maybePop();
   }
 
-  void _initializeWebView() {
+  Future<void> _loadDocument(WebViewController controller) async {
+    final asset = widget.flutterAssetPath?.trim() ?? '';
+    if (asset.isNotEmpty) {
+      // loadHtmlString works on Android TV / tablet / web; avoids network DNS.
+      final html = await rootBundle.loadString(asset);
+      await controller.loadHtmlString(html);
+      return;
+    }
+    await controller.loadRequest(Uri.parse(widget.url));
+  }
+
+  Future<void> _initializeWebView() async {
     try {
       final controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -98,6 +128,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
               }
             },
             onWebResourceError: (WebResourceError error) {
+              // Bundled HTML should not hit the network; ignore spurious
+              // subresource errors when the main document already loaded.
+              if (_hasAsset) return;
               if (mounted) {
                 setState(() {
                   _isLoading = false;
@@ -108,16 +141,44 @@ class _WebViewScreenState extends State<WebViewScreen> {
           ),
         );
 
-      controller.loadRequest(Uri.parse(widget.url));
+      if (mounted) {
+        setState(() {
+          _controller = controller;
+          _isLoading = true;
+          _errorMessage = null;
+        });
+      }
 
-      setState(() {
-        _controller = controller;
-      });
+      await _loadDocument(controller);
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
           _errorMessage = 'Failed to initialize WebView: $e';
+        });
+      }
+    }
+  }
+
+  Future<void> _retryLoad() async {
+    final controller = _controller;
+    if (controller == null) {
+      await _initializeWebView();
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
+    try {
+      await _loadDocument(controller);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to load page: $e';
         });
       }
     }
@@ -177,7 +238,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
       );
     }
 
-    if (widget.url.isEmpty) {
+    if (!_hasAsset && widget.url.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -219,11 +280,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
               CupertinoButton(
                 color: CupertinoColors.systemBlue,
                 onPressed: () {
-                  setState(() {
-                    _errorMessage = null;
-                    _isLoading = true;
-                  });
-                  _controller?.reload();
+                  unawaited(_retryLoad());
                 },
                 child: const Text('Retry'),
               ),
@@ -326,8 +383,13 @@ class _WebViewSheetTopChromeState extends State<_WebViewSheetTopChrome> {
 /// [WebViewScreen] with [WebViewScreen.useScaffold]) plus swipe-down on the top strip.
 class WebViewUrlSheet extends StatelessWidget {
   final String url;
+  final String? flutterAssetPath;
 
-  const WebViewUrlSheet({super.key, required this.url});
+  const WebViewUrlSheet({
+    super.key,
+    required this.url,
+    this.flutterAssetPath,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -340,7 +402,11 @@ class WebViewUrlSheet extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            WebViewScreen(url: url, useScaffold: true),
+            WebViewScreen(
+              url: url,
+              flutterAssetPath: flutterAssetPath,
+              useScaffold: true,
+            ),
             Positioned(
               top: 0,
               left: 0,
@@ -360,9 +426,13 @@ class WebViewUrlSheet extends StatelessWidget {
 void showWebViewUrlSheet(
   BuildContext context, {
   required String url,
+  String? flutterAssetPath,
 }) {
   showCupertinoModalPopup<void>(
     context: context,
-    builder: (context) => WebViewUrlSheet(url: url),
+    builder: (context) => WebViewUrlSheet(
+      url: url,
+      flutterAssetPath: flutterAssetPath,
+    ),
   );
 }

@@ -143,6 +143,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     showWebViewUrlSheet(
       context,
       url: AppConstants.kTermsAndConditionsUrl,
+      flutterAssetPath: AppConstants.kTermsAndConditionsAssetPath,
     );
   }
 

@@ -253,14 +253,20 @@ class AppConstants {
     return kDebugMode;
   }
 
-  /// Terms & Conditions page (WebView via [WebViewScreen]). Defaults to
-  /// [AppConfig.baseUrl]/terms.
+  /// Terms & Conditions page (WebView via [WebViewScreen]).
+  ///
+  /// Remote URL defaults to [AppConfig.baseUrl]/terms. Kiosks (especially
+  /// Android TV) should prefer [kTermsAndConditionsAssetPath] so the sheet
+  /// does not depend on WAN DNS / reachability.
   ///
   /// **Performance:** If that URL serves the same heavy SPA shell (large JS bundle,
   /// Google Fonts CSS, etc.) as the main site, the WebView will feel slow until all
   /// assets load. For a fast legal page, host a **static** HTML document (or a
   /// minimal route) and point this constant at that URL instead.
   static const String kTermsAndConditionsUrl = '${AppConfig.baseUrl}/terms';
+
+  /// Bundled static Terms HTML for offline / Android TV WebView loads.
+  static const String kTermsAndConditionsAssetPath = 'assets/legal/terms.html';
 
   // Routes
   static const String kRouteSlideshow = '/';

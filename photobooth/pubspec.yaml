@@ -110,6 +110,7 @@ flutter:
     - assets/slideshow/
     - assets/sounds/
     - assets/sounds/camera_shutter.wav
+    - assets/legal/terms.html
 
 flutter_launcher_icons:
   android: true
