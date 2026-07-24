@@ -15,5 +15,7 @@ void main() {
     expect(html, contains('Terms'));
     expect(html, contains('FotoZen'));
     expect(html, contains('Privacy Protection'));
+    expect(html, contains('background: #ffffff'));
+    expect(html, isNot(contains('prefers-color-scheme: dark')));
   });
 }
