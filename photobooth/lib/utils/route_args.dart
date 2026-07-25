@@ -199,7 +199,7 @@ class ResultArgs {
   final PhotoModel? originalPhoto;
   final PrintOrientation printOrientation;
 
-  /// FotoFlashback only — WCM cut size (e.g. `s2x6`). Null keeps AI orientation size.
+  /// FotoFlashback only — WCM cut size (e.g. `s6x2x2` for `6x2*2`). Null keeps AI size.
   final String? printSize;
   final CustomerContactCapture contact;
 

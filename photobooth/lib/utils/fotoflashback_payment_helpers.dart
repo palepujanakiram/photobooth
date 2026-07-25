@@ -86,7 +86,7 @@ Future<void> navigateToFlashbackResult({
     arguments: ResultArgs(
       generatedImages: [image],
       printOrientation: PrintOrientation.portrait,
-      // WCM "2 2x6" cut — not s4x6 (that prints one uncut 4×6 sheet).
+      // WCM "6x2*2" cut — not s4x6 (uncut) or s2x6 (single strip size).
       printSize: (size != null && size.isNotEmpty)
           ? size
           : AppConstants.kPrintSizeStripDual2x6,
