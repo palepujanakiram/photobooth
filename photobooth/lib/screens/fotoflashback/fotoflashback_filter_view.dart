@@ -285,8 +285,9 @@ class _LookPickerBody extends StatelessWidget {
         final panelH = constraints.maxHeight;
         if (panelH <= 0) return const SizedBox.shrink();
 
-        final stripH = panelH;
-        final stripW = stripH * FotoFlashbackStripPreview.aspectRatio;
+        // Dual 4×6 sheet (1200×1800) — same proportions as print + staff.
+        final sheetH = panelH;
+        final sheetW = sheetH * FotoFlashbackStripPreview.sheetAspectRatio;
 
         return SizedBox(
           height: panelH,
@@ -306,8 +307,8 @@ class _LookPickerBody extends StatelessWidget {
                 onScribbleStart: onScribbleStart,
                 onScribbleUpdate: onScribbleUpdate,
                 onScribbleEnd: onScribbleEnd,
-                width: stripW,
-                height: stripH,
+                width: sheetW,
+                height: sheetH,
               ),
               const SizedBox(width: 20),
               Expanded(

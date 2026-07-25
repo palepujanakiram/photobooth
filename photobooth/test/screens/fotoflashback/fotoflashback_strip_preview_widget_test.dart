@@ -17,7 +17,7 @@ void main() {
       'AAD/2gAIAQEAAQUCf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8Bf//EABQR'
       'AQAAAAAAAAAAAAAAAAAAAAD/2gAIAQIBAT8Bf//Z';
 
-  testWidgets('FotoFlashbackStripPreview renders a single 4-shot strip', (
+  testWidgets('FotoFlashbackStripPreview renders dual 4-shot strips', (
     tester,
   ) async {
     final url = 'data:image/jpeg;base64,$jpegB64';
@@ -31,7 +31,8 @@ void main() {
         ),
       ),
     );
-    expect(find.byType(Image), findsNWidgets(4));
+    // Dual sheet: 4 cells × 2 strips.
+    expect(find.byType(Image), findsNWidgets(8));
     expect(base64Decode(jpegB64), isNotEmpty);
   });
 
@@ -81,8 +82,9 @@ void main() {
         ),
       ),
     );
-    expect(find.text('♥'), findsOneWidget);
-    await tester.drag(find.text('♥'), const Offset(12, 8));
+    // Mirrored dual strip shows each glyph twice; drag the first interactive one.
+    expect(find.text('♥'), findsNWidgets(2));
+    await tester.drag(find.text('♥').first, const Offset(12, 8));
     expect(movedId, 'h1');
   });
 
@@ -111,13 +113,13 @@ void main() {
         ),
       ),
     );
-    expect(find.text('♥'), findsNWidgets(4));
+    // Dual strip mirrors placements → 8 hearts; tops must still be distinct.
+    expect(find.text('♥'), findsNWidgets(8));
     final tops = tester
         .widgetList<Positioned>(find.byType(Positioned))
         .map((p) => p.top)
         .whereType<double>()
         .toList();
-    // Four sticker Positioned widgets should not share one top (the Stack bug).
     expect(tops.toSet().length, greaterThanOrEqualTo(4));
   });
 }

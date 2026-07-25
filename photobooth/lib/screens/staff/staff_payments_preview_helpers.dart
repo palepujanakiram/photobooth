@@ -218,14 +218,19 @@ class _StaffPaymentImagePreviewScreenState
         ),
       );
     }
+    // Lock to print sheet aspect (1200×1800) so staff view matches look + DNP.
     return InteractiveViewer(
       minScale: 0.85,
       maxScale: 4,
       child: Center(
-        child: Image.memory(
-          bytes,
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
+        child: AspectRatio(
+          aspectRatio: 1200 / 1800,
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.contain,
+            alignment: Alignment.center,
+            filterQuality: FilterQuality.high,
+          ),
         ),
       ),
     );

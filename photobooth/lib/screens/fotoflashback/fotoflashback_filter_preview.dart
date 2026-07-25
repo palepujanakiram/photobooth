@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/strip_models.dart';
 
-/// Single 2×6 strip preview with live look + frame + sticker + scribble overlays.
+/// Dual 4×6 sheet preview (two identical 2×6 strips) matching print + staff.
 class FotoFlashbackStripPreview extends StatelessWidget {
   const FotoFlashbackStripPreview({
     super.key,
@@ -21,8 +21,8 @@ class FotoFlashbackStripPreview extends StatelessWidget {
     this.onScribbleStart,
     this.onScribbleUpdate,
     this.onScribbleEnd,
-    this.width = defaultStripWidth,
-    this.height = defaultStripHeight,
+    this.width = defaultSheetWidth,
+    this.height = defaultSheetHeight,
   });
 
   final List<String> imageDataUrls;
@@ -39,24 +39,114 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   final void Function(double x, double y)? onScribbleStart;
   final void Function(double x, double y)? onScribbleUpdate;
   final VoidCallback? onScribbleEnd;
+
+  /// Full dual-sheet size (matches zenai 1200×1800 print).
   final double width;
   final double height;
 
-  /// 2×6 strip proportions (width : height ≈ 1 : 3).
-  static const double defaultStripWidth = 132;
-  static const double defaultStripHeight = 396;
-  static const double aspectRatio = defaultStripWidth / defaultStripHeight;
+  /// Print sheet 1200×1800 (4"×6" dual strip).
+  static const double defaultSheetWidth = 264;
+  static const double defaultSheetHeight = 396;
+  static const double sheetAspectRatio =
+      defaultSheetWidth / defaultSheetHeight;
+
+  /// One 2×6 strip (half sheet width).
+  static const double stripAspectRatio = 0.5 * sheetAspectRatio;
+
+  /// Back-compat alias used by layout code.
+  static const double aspectRatio = sheetAspectRatio;
+  static const double defaultStripWidth = defaultSheetWidth;
+  static const double defaultStripHeight = defaultSheetHeight;
 
   /// Matches zenai `STRIP_PRINT.border / stripWidth` (4 / 600).
   static const double printBorderRatio = 4 / 600;
 
   @override
   Widget build(BuildContext context) {
+    final stripW = width / 2;
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Row(
+        children: [
+          _FotoFlashbackSingleStrip(
+            imageDataUrls: imageDataUrls,
+            filterId: filterId,
+            frameId: frameId,
+            stickerId: stickerId,
+            placements: placements,
+            scribbles: scribbles,
+            drawMode: drawMode,
+            interactive: true,
+            onMovePlacement: onMovePlacement,
+            onRemovePlacement: onRemovePlacement,
+            onScribbleStart: onScribbleStart,
+            onScribbleUpdate: onScribbleUpdate,
+            onScribbleEnd: onScribbleEnd,
+            width: stripW,
+            height: height,
+          ),
+          // Mirror copy — same pixels/overlays as print's right strip.
+          IgnorePointer(
+            child: _FotoFlashbackSingleStrip(
+              imageDataUrls: imageDataUrls,
+              filterId: filterId,
+              frameId: frameId,
+              stickerId: stickerId,
+              placements: placements,
+              scribbles: scribbles,
+              drawMode: false,
+              interactive: false,
+              width: stripW,
+              height: height,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FotoFlashbackSingleStrip extends StatelessWidget {
+  const _FotoFlashbackSingleStrip({
+    required this.imageDataUrls,
+    required this.filterId,
+    required this.frameId,
+    required this.stickerId,
+    required this.placements,
+    required this.scribbles,
+    required this.drawMode,
+    required this.interactive,
+    required this.width,
+    required this.height,
+    this.onMovePlacement,
+    this.onRemovePlacement,
+    this.onScribbleStart,
+    this.onScribbleUpdate,
+    this.onScribbleEnd,
+  });
+
+  final List<String> imageDataUrls;
+  final String filterId;
+  final String frameId;
+  final String stickerId;
+  final List<StripStickerPlacement> placements;
+  final List<StripScribbleStroke> scribbles;
+  final bool drawMode;
+  final bool interactive;
+  final double width;
+  final double height;
+  final void Function(String id, double x, double y)? onMovePlacement;
+  final void Function(String id)? onRemovePlacement;
+  final void Function(double x, double y)? onScribbleStart;
+  final void Function(double x, double y)? onScribbleUpdate;
+  final VoidCallback? onScribbleEnd;
+
+  @override
+  Widget build(BuildContext context) {
     final images =
         imageDataUrls.take(kStripShotCount).map(_bytesFromDataUrl).toList();
-    // Same outer margin as print — not the old ~6% pad (that made preview
-    // cells taller / less zoomed than the 592×448 print cells).
-    final pad = width * printBorderRatio;
+    final pad = width * FotoFlashbackStripPreview.printBorderRatio;
     final frameColor = stripPreviewFrameColor(frameId);
     final accent = stripPreviewFrameAccent(frameId);
     final showBrandBar = frameId != 'classic';
@@ -66,18 +156,10 @@ class FotoFlashbackStripPreview extends StatelessWidget {
       height: height,
       decoration: BoxDecoration(
         color: frameColor,
-        borderRadius: BorderRadius.circular(4),
-        border: accent == null ? null : Border.all(color: accent, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        border: accent == null ? null : Border.all(color: accent, width: 1),
       ),
       child: Stack(
-        clipBehavior: Clip.none,
+        clipBehavior: Clip.hardEdge,
         children: [
           Padding(
             padding: EdgeInsets.all(pad),
@@ -94,6 +176,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
                               width: double.infinity,
                               height: double.infinity,
                               gaplessPlayback: true,
+                              filterQuality: FilterQuality.medium,
                             )
                           : const ColoredBox(color: Colors.black12),
                     ),
@@ -104,15 +187,14 @@ class FotoFlashbackStripPreview extends StatelessWidget {
           if (placements.isEmpty)
             ..._stickerOverlays(stickerId, width, height)
           else
-            // Positioned must stay a direct Stack child (IgnorePointer wraps inside).
             for (final p in placements)
               _PlacementSticker(
                 placement: p,
                 stripWidth: width,
                 stripHeight: height,
-                absorbPointers: drawMode,
-                onMove: onMovePlacement,
-                onRemove: onRemovePlacement,
+                absorbPointers: !interactive || drawMode,
+                onMove: interactive ? onMovePlacement : null,
+                onRemove: interactive ? onRemovePlacement : null,
               ),
           if (scribbles.isNotEmpty)
             Positioned.fill(
@@ -126,7 +208,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
                 ),
               ),
             ),
-          if (drawMode)
+          if (drawMode && interactive)
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
