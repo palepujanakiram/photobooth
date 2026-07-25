@@ -85,4 +85,39 @@ void main() {
     await tester.drag(find.text('♥'), const Offset(12, 8));
     expect(movedId, 'h1');
   });
+
+  testWidgets('placements keep distinct Positioned tops per photo cell', (
+    tester,
+  ) async {
+    final url = 'data:image/jpeg;base64,$jpegB64';
+    const placements = [
+      StripStickerPlacement(id: 'a', type: 'hearts', x: 0.8, y: 0.125),
+      StripStickerPlacement(id: 'b', type: 'hearts', x: 0.2, y: 0.375),
+      StripStickerPlacement(id: 'c', type: 'hearts', x: 0.8, y: 0.625),
+      StripStickerPlacement(id: 'd', type: 'hearts', x: 0.2, y: 0.875),
+    ];
+    const h = 400.0;
+    const w = h * FotoFlashbackStripPreview.aspectRatio;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FotoFlashbackStripPreview(
+            imageDataUrls: List.filled(4, url),
+            filterId: 'clean',
+            placements: placements,
+            width: w,
+            height: h,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('♥'), findsNWidgets(4));
+    final tops = tester
+        .widgetList<Positioned>(find.byType(Positioned))
+        .map((p) => p.top)
+        .whereType<double>()
+        .toList();
+    // Four sticker Positioned widgets should not share one top (the Stack bug).
+    expect(tops.toSet().length, greaterThanOrEqualTo(4));
+  });
 }

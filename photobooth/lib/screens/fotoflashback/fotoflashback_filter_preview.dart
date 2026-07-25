@@ -104,16 +104,15 @@ class FotoFlashbackStripPreview extends StatelessWidget {
           if (placements.isEmpty)
             ..._stickerOverlays(stickerId, width, height)
           else
+            // Positioned must stay a direct Stack child (IgnorePointer wraps inside).
             for (final p in placements)
-              IgnorePointer(
-                ignoring: drawMode,
-                child: _PlacementSticker(
-                  placement: p,
-                  stripWidth: width,
-                  stripHeight: height,
-                  onMove: onMovePlacement,
-                  onRemove: onRemovePlacement,
-                ),
+              _PlacementSticker(
+                placement: p,
+                stripWidth: width,
+                stripHeight: height,
+                absorbPointers: drawMode,
+                onMove: onMovePlacement,
+                onRemove: onRemovePlacement,
               ),
           if (scribbles.isNotEmpty)
             Positioned.fill(
@@ -236,6 +235,7 @@ class _PlacementSticker extends StatelessWidget {
     required this.placement,
     required this.stripWidth,
     required this.stripHeight,
+    this.absorbPointers = false,
     this.onMove,
     this.onRemove,
   });
@@ -243,6 +243,7 @@ class _PlacementSticker extends StatelessWidget {
   final StripStickerPlacement placement;
   final double stripWidth;
   final double stripHeight;
+  final bool absorbPointers;
   final void Function(String id, double x, double y)? onMove;
   final void Function(String id)? onRemove;
 
@@ -256,19 +257,22 @@ class _PlacementSticker extends StatelessWidget {
     return Positioned(
       left: left,
       top: top,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onPanUpdate: onMove == null
-            ? null
-            : (details) {
-                final nx = ((placement.x * stripWidth) + details.delta.dx) /
-                    stripWidth;
-                final ny = ((placement.y * stripHeight) + details.delta.dy) /
-                    stripHeight;
-                onMove!(placement.id, nx, ny);
-              },
-        onDoubleTap: onRemove == null ? null : () => onRemove!(placement.id),
-        child: child,
+      child: IgnorePointer(
+        ignoring: absorbPointers,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanUpdate: onMove == null
+              ? null
+              : (details) {
+                  final nx = ((placement.x * stripWidth) + details.delta.dx) /
+                      stripWidth;
+                  final ny = ((placement.y * stripHeight) + details.delta.dy) /
+                      stripHeight;
+                  onMove!(placement.id, nx, ny);
+                },
+          onDoubleTap: onRemove == null ? null : () => onRemove!(placement.id),
+          child: child,
+        ),
       ),
     );
   }
