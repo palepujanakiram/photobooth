@@ -5,14 +5,18 @@ import 'package:provider/provider.dart';
 
 import '../../services/app_settings_manager.dart';
 import '../../services/payment_push_coordinator.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
+import '../../utils/fotoflashback_payment_helpers.dart';
 import '../../utils/payment_workflow_helpers.dart';
 import '../../utils/route_args.dart';
+import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/centered_max_width.dart';
 import '../../views/widgets/kiosk_payment_qr_display.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
 import '../result/result_payment_coupon_row.dart';
+import '../theme_selection/theme_model.dart';
 import 'pre_payment_viewmodel.dart';
 
 class PrePaymentScreen extends StatefulWidget {
@@ -24,22 +28,28 @@ class PrePaymentScreen extends StatefulWidget {
 
 class _PrePaymentScreenState extends State<PrePaymentScreen> {
   PrePaymentViewModel? _viewModel;
-  GenerateArgs? _args;
+  GenerateArgs? _generateArgs;
+  FlashbackPrePayArgs? _flashbackArgs;
   bool _refreshingPolling = false;
+  bool _composingFlashback = false;
+
+  ThemeModel? get _theme =>
+      _generateArgs?.theme ?? _flashbackArgs?.theme;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_viewModel != null) return;
-    final parsed = GenerateArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
-    if (parsed == null) {
+    final raw = ModalRoute.of(context)?.settings.arguments;
+    _generateArgs = GenerateArgs.tryParse(raw);
+    _flashbackArgs = FlashbackPrePayArgs.tryParse(raw);
+    if (_generateArgs == null && _flashbackArgs == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         Navigator.of(context).maybePop();
       });
       return;
     }
-    _args = parsed;
     _viewModel = PrePaymentViewModel(
       appSettingsManager: context.read<AppSettingsManager>(),
     )..onApproved = _onPaymentApproved;
@@ -57,7 +67,7 @@ class _PrePaymentScreenState extends State<PrePaymentScreen> {
         .registerResultScreenCallback(_onPaymentPushFromFcm);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(PaymentPushCoordinator.instance.flushPendingStoragePayment());
-      _viewModel?.loadPaymentQr(photoForSessionSync: _args?.photo);
+      _viewModel?.loadPaymentQr(photoForSessionSync: _generateArgs?.photo);
     });
   }
 
@@ -66,13 +76,36 @@ class _PrePaymentScreenState extends State<PrePaymentScreen> {
   }
 
   void _onPaymentApproved() {
-    final args = _args;
-    if (!mounted || args == null) return;
+    if (!mounted) return;
+    final flashback = _flashbackArgs;
+    if (flashback != null) {
+      unawaited(_finishFlashback(flashback));
+      return;
+    }
+    final args = _generateArgs;
+    if (args == null) return;
     Navigator.pushReplacementNamed(
       context,
       AppConstants.kRouteGenerateProgress,
       arguments: args,
     );
+  }
+
+  Future<void> _finishFlashback(FlashbackPrePayArgs args) async {
+    if (_composingFlashback) return;
+    setState(() => _composingFlashback = true);
+    try {
+      final error = await composeFlashbackAfterPrePay(
+        context: context,
+        args: args,
+      );
+      if (!mounted) return;
+      if (error != null) {
+        AppSnackBar.showError(context, error);
+      }
+    } finally {
+      if (mounted) setState(() => _composingFlashback = false);
+    }
   }
 
   Future<void> _refreshPolling() async {
@@ -95,9 +128,27 @@ class _PrePaymentScreenState extends State<PrePaymentScreen> {
   @override
   Widget build(BuildContext context) {
     final vm = _viewModel;
-    final theme = _args?.theme;
+    final theme = _theme;
     if (vm == null || theme == null) {
       return const Scaffold(body: SizedBox.shrink());
+    }
+    if (_composingFlashback) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Colors.amber),
+              const SizedBox(height: 16),
+              Text(
+                AppStrings.flashbackComposing,
+                style: TextStyle(color: Colors.amber.shade100),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return ChangeNotifierProvider<PrePaymentViewModel>.value(

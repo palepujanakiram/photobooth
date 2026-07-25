@@ -2345,7 +2345,10 @@ class CaptureViewModel extends ChangeNotifier {
   /// Stream-only and external/Android TV paths often leave the preview texture
   /// stale after capture; a controlled re-init avoids "Camera not ready" on the
   /// next shot.
-  Future<void> resumeLivePreviewAfterRetake() async {
+  ///
+  /// [forceReinit] remounts the controller even when it still looks initialized
+  /// (needed after FotoFlashback shots when the stream is dead but not errored).
+  Future<void> resumeLivePreviewAfterRetake({bool forceReinit = false}) async {
     if (_capturedPhoto != null || _isCapturing) return;
 
     final camera = _currentCamera;
@@ -2355,7 +2358,8 @@ class CaptureViewModel extends ChangeNotifier {
     }
 
     final ctrl = _cameraController;
-    final needsReinit = ctrl == null ||
+    final needsReinit = forceReinit ||
+        ctrl == null ||
         !ctrl.value.isInitialized ||
         ctrl.value.hasError ||
         _shouldUseStreamOnlyCapture();

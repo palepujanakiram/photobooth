@@ -218,4 +218,71 @@ void main() {
       );
     });
   });
+
+  group('CaptureRouteArgs.tryParse', () {
+    test('parses returnPhotoOnly and subtitleHint', () {
+      final typed = const CaptureRouteArgs(
+        returnPhotoOnly: true,
+        subtitleHint: 'Shot 1 of 4',
+      );
+      expect(CaptureRouteArgs.tryParse(typed), same(typed));
+      final parsed = CaptureRouteArgs.tryParse({
+        'returnPhotoOnly': true,
+        'subtitleHint': 'Shot 2 of 4',
+      });
+      expect(parsed!.returnPhotoOnly, isTrue);
+      expect(parsed.subtitleHint, 'Shot 2 of 4');
+      expect(CaptureRouteArgs.tryParse(null), isNull);
+    });
+
+    test('parses flashback multi-shot fields', () {
+      final parsed = CaptureRouteArgs.tryParse({
+        'returnPhotoOnly': true,
+        'multiShotTotal': 4,
+        'flashbackTheme': theme,
+        'acceptedStripShots': [photo],
+      });
+      expect(parsed!.isFlashbackMultiShot, isTrue);
+      expect(parsed.multiShotTotal, 4);
+      expect(parsed.flashbackTheme?.id, 't1');
+      expect(parsed.acceptedStripShots, hasLength(1));
+      expect(parsed.acceptedStripShots.first.id, 'p1');
+    });
+  });
+
+  group('FlashbackCaptureArgs.tryParse', () {
+    test('parses theme', () {
+      final typed = FlashbackCaptureArgs(theme: theme);
+      expect(FlashbackCaptureArgs.tryParse(typed), same(typed));
+      expect(
+        FlashbackCaptureArgs.tryParse({'theme': theme})!.theme.id,
+        't1',
+      );
+      expect(FlashbackCaptureArgs.tryParse({'theme': 'x'}), isNull);
+    });
+  });
+
+  group('FlashbackFilterArgs.tryParse', () {
+    test('parses theme and image urls', () {
+      final typed = FlashbackFilterArgs(
+        theme: theme,
+        imageDataUrls: const ['a', 'b', 'c', 'd'],
+      );
+      expect(FlashbackFilterArgs.tryParse(typed), same(typed));
+      final parsed = FlashbackFilterArgs.tryParse({
+        'theme': theme,
+        'imageDataUrls': ['u1', '', 'u2'],
+      });
+      expect(parsed!.imageDataUrls, ['u1', 'u2']);
+      final viaImages = FlashbackFilterArgs.tryParse({
+        'theme': theme,
+        'images': ['x'],
+      });
+      expect(viaImages!.imageDataUrls, ['x']);
+      expect(
+        FlashbackFilterArgs.tryParse({'theme': theme, 'images': 'bad'}),
+        isNull,
+      );
+    });
+  });
 }

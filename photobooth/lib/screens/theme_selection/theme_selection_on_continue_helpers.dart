@@ -6,6 +6,7 @@ import '../../services/app_settings_manager.dart';
 import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
+import '../../utils/fotoflashback_navigation.dart';
 import '../../utils/session_photo_sync_helpers.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../photo_capture/photo_model.dart';
@@ -48,6 +49,15 @@ Future<void> themeSelectionContinueWithPhoto({
   final appSettings = currentContext.read<AppSettingsManager>();
   setGenerating(true);
   try {
+    if (selectedTheme.isPhotoStrip) {
+      await _continueFotoFlashback(
+        context: currentContext,
+        viewModel: viewModel,
+        selectedTheme: selectedTheme,
+      );
+      return;
+    }
+
     final tries = await refreshThemeSelectionTriesRemaining(appSettings);
     if (!currentContext.mounted) return;
     if (tries <= 0) {
@@ -110,14 +120,51 @@ Future<void> themeSelectionContinueWithPhoto({
 /// Continue without capture: open camera and store result (Sonar S3776).
 Future<void> themeSelectionContinueToCapture({
   required BuildContext context,
+  required ThemeViewModel viewModel,
+  required ThemeModel selectedTheme,
   required void Function(PhotoModel photo) setPhotoFromCapture,
 }) async {
   final currentContext = context;
+  if (selectedTheme.isPhotoStrip) {
+    await _continueFotoFlashback(
+      context: currentContext,
+      viewModel: viewModel,
+      selectedTheme: selectedTheme,
+    );
+    return;
+  }
+
   final result = await Navigator.pushNamed(
     currentContext,
     AppConstants.kRouteCapture,
   );
   if (!currentContext.mounted) return;
-  if (result == null || result is! PhotoModel) return;
-  setPhotoFromCapture(result);
+  if (result is PhotoModel) {
+    setPhotoFromCapture(result);
+  }
+}
+
+Future<void> _continueFotoFlashback({
+  required BuildContext context,
+  required ThemeViewModel viewModel,
+  required ThemeModel selectedTheme,
+}) async {
+  final sessionId = SessionManager().sessionId;
+  if (sessionId == null || sessionId.isEmpty) {
+    AppSnackBar.showError(context, AppStrings.sessionPhotoSyncNoSession);
+    return;
+  }
+  final success = await viewModel.updateSessionWithTheme();
+  if (!context.mounted) return;
+  if (!success) {
+    AppSnackBar.showError(
+      context,
+      viewModel.errorMessage ?? 'Failed to update session with theme',
+    );
+    return;
+  }
+  await navigateToFotoFlashbackCapture(
+    context: context,
+    theme: selectedTheme,
+  );
 }

@@ -86,5 +86,19 @@ void main() {
       final solo = _theme(id: 's', isActive: true, solo: true, large: false);
       expect(ThemeFilter.showTheme(solo, null), isTrue);
     });
+
+    test('hides photo_strip themes from AI theme picker', () {
+      final strip = ThemeModel(
+        id: 'ff',
+        categoryId: 'c',
+        name: 'FotoFlashback',
+        description: 'd',
+        promptText: 'p',
+        isActive: true,
+        applicableSolo: true,
+        tier: 'photo_strip',
+      );
+      expect(ThemeFilter.showTheme(strip, 1), isFalse);
+    });
   });
 }

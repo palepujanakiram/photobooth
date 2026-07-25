@@ -275,8 +275,14 @@ class AppConstants {
   /// Branded splash: kiosk check, optional theme preload, then terms.
   static const String kRouteSplash = '/splash';
   static const String kRouteTerms = '/terms';
+  /// After terms: AI transform vs FotoFlashback.
+  static const String kRouteExperienceChoice = '/experience-choice';
   static const String kRouteHome = '/theme-selection';
   static const String kRouteCapture = '/capture';
+  /// FotoFlashback: 4-shot booth capture (no AI).
+  static const String kRouteFlashbackCapture = '/flashback-capture';
+  /// FotoFlashback: pick look + compose dual 2×6 strip.
+  static const String kRouteFlashbackFilter = '/flashback-filter';
   /// Kiosk: choose occasion frame (or none) after theme, before generation.
   static const String kRouteFrameSelect = '/frame-select';
   static const String kRouteGenerate = '/generate';

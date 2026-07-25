@@ -13,7 +13,7 @@ import '../../utils/camera_permission_helper.dart';
 import '../../utils/platform_capabilities.dart';
 import '../../utils/device_classifier.dart';
 import '../../utils/kiosk_page_route.dart';
-import '../photo_capture/photo_capture_view.dart';
+import '../experience_choice/experience_choice_view.dart';
 import '../photo_capture/photo_capture_viewmodel.dart';
 import '../splash/bootstrap_route_args.dart';
 import '../webview/webview_screen.dart';
@@ -118,17 +118,13 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         await _viewModel.acceptTermsAndCreateSession(_viewModel.kioskCode);
 
     if (success && mounted) {
+      // Keep camera prewarm alive for AI path after experience choice.
       _navigatingToCapture = true;
       await pushReplacementKioskFade<void, void>(
         context,
-        PhotoCaptureScreen(
-          key: ValueKey<Object?>(_capturePrefillPhoto),
-        ),
-        settings: RouteSettings(
-          name: AppConstants.kRouteCapture,
-          arguments: _capturePrefillPhoto == null
-              ? null
-              : <String, Object?>{'photo': _capturePrefillPhoto},
+        ExperienceChoiceScreen(capturePrefillPhoto: _capturePrefillPhoto),
+        settings: const RouteSettings(
+          name: AppConstants.kRouteExperienceChoice,
         ),
       );
     } else if (mounted && _viewModel.hasError) {

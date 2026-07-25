@@ -1,7 +1,10 @@
 // Named-route table for MaterialApp (extracted from main for Sonar complexity).
 import 'package:flutter/material.dart';
 
+import 'screens/experience_choice/experience_choice_view.dart';
 import 'screens/frame_select/frame_select_view.dart';
+import 'screens/fotoflashback/fotoflashback_capture_view.dart';
+import 'screens/fotoflashback/fotoflashback_filter_view.dart';
 import 'screens/pre_payment/pre_payment_view.dart';
 import 'screens/photo_capture/photo_capture_view.dart';
 import 'screens/photo_generate/photo_generate_progress_view.dart';
@@ -36,8 +39,14 @@ Map<String, WidgetBuilder> buildAppRoutes() {
       final bg = (urls != null && urls.isNotEmpty) ? urls : null;
       return TermsAndConditionsScreen(backgroundImageUrls: bg);
     },
+    AppConstants.kRouteExperienceChoice: (context) =>
+        const ExperienceChoiceScreen(),
     AppConstants.kRouteHome: (context) => const ThemeSelectionScreen(),
     AppConstants.kRouteCapture: (context) => const PhotoCaptureScreen(),
+    AppConstants.kRouteFlashbackCapture: (context) =>
+        const FotoFlashbackCaptureScreen(),
+    AppConstants.kRouteFlashbackFilter: (context) =>
+        const FotoFlashbackFilterScreen(),
     AppConstants.kRouteFrameSelect: (context) => const FrameSelectScreen(),
     AppConstants.kRouteGenerate: (context) => const PhotoGenerateScreen(),
     AppConstants.kRouteGenerateProgress: (context) =>

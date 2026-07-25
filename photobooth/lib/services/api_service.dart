@@ -11,6 +11,7 @@ import '../models/kiosk_info_model.dart';
 import '../models/payment_initiate_result.dart';
 import '../models/preprocess_image_result.dart';
 import '../models/parallel_generation_result.dart';
+import '../models/strip_models.dart';
 import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/exceptions.dart';
@@ -500,6 +501,92 @@ class ApiService {
       _handleWebNetworkError(e);
       throw ApiException(
         'Failed to load frames: ${e.message}',
+        e.response?.statusCode,
+      );
+    }
+  }
+
+  /// GET `/api/strip/filters` — FotoFlashback look catalog + print hints.
+  Future<StripFiltersCatalog> fetchStripFilters() async {
+    try {
+      final r = await _dio.get<dynamic>(
+        '/api/strip/filters',
+        options: Options(responseType: ResponseType.json),
+      );
+      final data = r.data;
+      if (data is Map<String, dynamic>) {
+        return StripFiltersCatalog.fromJson(data);
+      }
+      if (data is Map) {
+        return StripFiltersCatalog.fromJson(Map<String, dynamic>.from(data));
+      }
+      throw ApiException('Unexpected strip filters response');
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      throw ApiException(
+        'Failed to load strip filters: ${e.message}',
+        e.response?.statusCode,
+      );
+    }
+  }
+
+  /// POST `/api/sessions/:id/strip/compose` — dual 2×6 strip on one 4×6 sheet.
+  Future<StripComposeResult> composeStrip({
+    required String sessionId,
+    required List<String> images,
+    String filter = kDefaultStripFilterId,
+  }) async {
+    if (images.length != kStripShotCount) {
+      throw ApiException(
+        'FotoFlashback requires exactly $kStripShotCount photos.',
+      );
+    }
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/sessions/$sessionId/strip/compose',
+        data: {
+          'images': images,
+          'filter': filter,
+        },
+        options: Options(responseType: ResponseType.json),
+      );
+      final data = r.data;
+      Map<String, dynamic>? map;
+      if (data is Map<String, dynamic>) {
+        map = data;
+      } else if (data is Map) {
+        map = Map<String, dynamic>.from(data);
+      }
+      if (map == null) {
+        throw ApiException('Unexpected strip compose response');
+      }
+      if (map['success'] == false) {
+        throw ApiException(
+          map['error']?.toString() ?? 'Strip compose failed',
+          r.statusCode,
+        );
+      }
+      final result = StripComposeResult.fromJson(map);
+      if (result.imageUrl.trim().isEmpty) {
+        throw ApiException('Strip compose returned no image URL');
+      }
+      final session = map['session'];
+      if (session is Map<String, dynamic>) {
+        SessionManager().setSessionFromResponse(session);
+      } else if (session is Map) {
+        SessionManager().setSessionFromResponse(
+          Map<String, dynamic>.from(session),
+        );
+      }
+      return result;
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      throw ApiException(
+        'Failed to compose strip: ${e.message}',
         e.response?.statusCode,
       );
     }

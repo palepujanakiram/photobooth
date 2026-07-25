@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../services/app_settings_manager.dart';
 import '../../utils/constants.dart';
+import '../../utils/fotoflashback_navigation.dart';
 import '../../utils/payment_workflow_helpers.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../photo_capture/photo_model.dart';
@@ -16,6 +17,13 @@ Future<void> themeSelectionNavigateAfterSessionUpdate({
   required PhotoModel photo,
   required ThemeModel selectedTheme,
 }) async {
+  if (selectedTheme.isPhotoStrip) {
+    await navigateToFotoFlashbackCapture(
+      context: context,
+      theme: selectedTheme,
+    );
+    return;
+  }
   try {
     await _themeSelectionNavigateAfterFramesLoaded(
       context: context,

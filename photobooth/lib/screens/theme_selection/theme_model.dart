@@ -22,6 +22,8 @@ class ThemeModel {
   final bool? applicableLargeGroup;
   final String? backgroundColor; // Hex color for text background (e.g., "#FF0000" or "FF0000")
   final String? textColor; // Hex color for text (e.g., "#FFFFFF" or "FFFFFF")
+  /// Backend theme tier (e.g. `photo_strip` for FotoFlashback — no AI).
+  final String? tier;
 
   const ThemeModel({
     required this.id,
@@ -40,10 +42,17 @@ class ThemeModel {
     this.applicableLargeGroup,
     this.backgroundColor,
     this.textColor,
+    this.tier,
   });
 
   /// Getter for backward compatibility with code that uses .prompt
   String get prompt => promptText;
+
+  /// FotoFlashback Korean-booth path: 4 shots → look → compose (skip Gemini).
+  bool get isPhotoStrip {
+    final t = tier?.trim().toLowerCase() ?? '';
+    return t == 'photo_strip';
+  }
 
   /// Returns a copy with fields updated via [update] (Sonar S107).
   ThemeModel copyWith(void Function(ThemeModelCopyPatch patch) update) {
@@ -72,6 +81,7 @@ class ThemeModel {
         'applicableLargeGroup': applicableLargeGroup,
       'backgroundColor': backgroundColor,
       'textColor': textColor,
+      if (tier != null) 'tier': tier,
     };
   }
 
@@ -107,6 +117,7 @@ class ThemeModel {
           JsonParseHelpers.boolOrNull(json['applicableLargeGroup']),
       backgroundColor: JsonParseHelpers.stringOrNull(json['backgroundColor']),
       textColor: JsonParseHelpers.stringOrNull(json['textColor']),
+      tier: JsonParseHelpers.stringOrNull(json['tier']),
     );
   }
 
@@ -138,7 +149,8 @@ class ThemeModelCopyPatch {
         applicableSmallGroup = base.applicableSmallGroup,
         applicableLargeGroup = base.applicableLargeGroup,
         backgroundColor = base.backgroundColor,
-        textColor = base.textColor;
+        textColor = base.textColor,
+        tier = base.tier;
 
   String id;
   String categoryId;
@@ -156,6 +168,7 @@ class ThemeModelCopyPatch {
   bool? applicableLargeGroup;
   String? backgroundColor;
   String? textColor;
+  String? tier;
 
   ThemeModel build() {
     return ThemeModel(
@@ -175,6 +188,7 @@ class ThemeModelCopyPatch {
       applicableLargeGroup: applicableLargeGroup,
       backgroundColor: backgroundColor,
       textColor: textColor,
+      tier: tier,
     );
   }
 }

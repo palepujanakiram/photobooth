@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:photobooth/models/app_settings_model.dart';
 import 'package:photobooth/models/payment_initiate_result.dart';
 import 'package:photobooth/models/preprocess_image_result.dart';
+import 'package:photobooth/models/strip_models.dart';
 import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/models/kiosk_frame_model.dart';
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
@@ -173,5 +174,26 @@ class FakeApiService extends ApiService {
     int? clientFaceCount,
   }) async {
     return const PreprocessImageResult(success: true, personCount: 2);
+  }
+
+  @override
+  Future<StripFiltersCatalog> fetchStripFilters() async {
+    return const StripFiltersCatalog(
+      brand: 'FotoFlashback',
+      shotCount: kStripShotCount,
+      filters: [],
+    );
+  }
+
+  @override
+  Future<StripComposeResult> composeStrip({
+    required String sessionId,
+    required List<String> images,
+    String filter = kDefaultStripFilterId,
+  }) async {
+    return StripComposeResult(
+      imageUrl: 'https://example.com/strip.jpg',
+      filter: filter,
+    );
   }
 }

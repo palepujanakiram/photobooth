@@ -1,4 +1,5 @@
 import '../models/customer_contact_capture.dart';
+import '../models/strip_models.dart';
 import '../screens/photo_capture/photo_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../screens/photo_generate/photo_generate_viewmodel.dart';
@@ -25,6 +26,138 @@ class ThemeSelectionArgs {
         photo: photo,
         addOneMoreStyle: args['addOneMoreStyle'] == true,
         usedThemeIds: parseStringIdList(args['usedThemeIds']),
+      );
+    }
+    return null;
+  }
+}
+
+/// Optional args for [AppConstants.kRouteCapture].
+class CaptureRouteArgs {
+  /// When true, Continue pops with [PhotoModel] (no session upload / theme nav).
+  final bool returnPhotoOnly;
+
+  /// Optional POSE subtitle override (e.g. "Shot 2 of 4").
+  final String? subtitleHint;
+
+  /// When set (e.g. 4), collect this many shots on the same POSE screen.
+  final int? multiShotTotal;
+
+  /// FotoFlashback theme — after [multiShotTotal] shots, open the look picker.
+  final ThemeModel? flashbackTheme;
+
+  /// Already-accepted FotoFlashback stills (restored after web camera remount).
+  final List<PhotoModel> acceptedStripShots;
+
+  const CaptureRouteArgs({
+    this.returnPhotoOnly = false,
+    this.subtitleHint,
+    this.multiShotTotal,
+    this.flashbackTheme,
+    this.acceptedStripShots = const [],
+  });
+
+  bool get isFlashbackMultiShot =>
+      returnPhotoOnly &&
+      multiShotTotal != null &&
+      multiShotTotal! > 1 &&
+      flashbackTheme != null;
+
+  static CaptureRouteArgs? tryParse(Object? args) {
+    if (args is CaptureRouteArgs) return args;
+    if (args is Map) {
+      final totalRaw = args['multiShotTotal'];
+      final total = totalRaw is int
+          ? totalRaw
+          : int.tryParse(totalRaw?.toString() ?? '');
+      final rawShots = args['acceptedStripShots'];
+      final shots = <PhotoModel>[];
+      if (rawShots is List) {
+        for (final item in rawShots) {
+          if (item is PhotoModel) shots.add(item);
+        }
+      }
+      return CaptureRouteArgs(
+        returnPhotoOnly: args['returnPhotoOnly'] == true,
+        subtitleHint: args['subtitleHint']?.toString(),
+        multiShotTotal: total,
+        flashbackTheme:
+            args['flashbackTheme'] is ThemeModel
+                ? args['flashbackTheme'] as ThemeModel
+                : null,
+        acceptedStripShots: shots,
+      );
+    }
+    return null;
+  }
+}
+
+/// Args for FotoFlashback 4-shot capture.
+class FlashbackCaptureArgs {
+  final ThemeModel theme;
+
+  const FlashbackCaptureArgs({required this.theme});
+
+  static FlashbackCaptureArgs? tryParse(Object? args) {
+    if (args is FlashbackCaptureArgs) return args;
+    if (args is Map && args['theme'] is ThemeModel) {
+      return FlashbackCaptureArgs(theme: args['theme'] as ThemeModel);
+    }
+    return null;
+  }
+}
+
+/// Args for FotoFlashback filter + compose.
+class FlashbackFilterArgs {
+  final ThemeModel theme;
+  final List<String> imageDataUrls;
+
+  const FlashbackFilterArgs({
+    required this.theme,
+    required this.imageDataUrls,
+  });
+
+  static FlashbackFilterArgs? tryParse(Object? args) {
+    if (args is FlashbackFilterArgs) return args;
+    if (args is Map && args['theme'] is ThemeModel) {
+      final raw = args['imageDataUrls'] ?? args['images'];
+      if (raw is! List) return null;
+      final urls = raw.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+      return FlashbackFilterArgs(
+        theme: args['theme'] as ThemeModel,
+        imageDataUrls: urls,
+      );
+    }
+    return null;
+  }
+}
+
+/// Pre-payment before strip compose (same timing setting as AI generation).
+class FlashbackPrePayArgs {
+  final ThemeModel theme;
+  final List<String> imageDataUrls;
+  final String filterId;
+
+  const FlashbackPrePayArgs({
+    required this.theme,
+    required this.imageDataUrls,
+    required this.filterId,
+  });
+
+  static FlashbackPrePayArgs? tryParse(Object? args) {
+    if (args is FlashbackPrePayArgs) return args;
+    if (args is Map &&
+        args['theme'] is ThemeModel &&
+        args['filterId'] is String) {
+      final raw = args['imageDataUrls'] ?? args['images'];
+      if (raw is! List) return null;
+      final urls =
+          raw.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+      if (urls.length != kStripShotCount) return null;
+      return FlashbackPrePayArgs(
+        theme: args['theme'] as ThemeModel,
+        imageDataUrls: urls,
+        filterId: args['filterId'] as String,
       );
     }
     return null;

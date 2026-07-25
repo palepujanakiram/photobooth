@@ -265,6 +265,8 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
 
     await themeSelectionContinueToCapture(
       context: context,
+      viewModel: viewModel,
+      selectedTheme: selectedTheme,
       setPhotoFromCapture: (photo) {
         if (mounted) setState(() => _photoFromCapture = photo);
       },

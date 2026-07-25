@@ -9,6 +9,7 @@ import '../../utils/route_args.dart';
 import '../../utils/web_flow_trace.dart';
 import '../../utils/logger.dart';
 import '../../views/widgets/app_snackbar.dart';
+import 'photo_model.dart';
 import 'photo_capture_viewmodel.dart';
 
 /// Shared style for Capture Photo screen buttons (matches Generate Photo Continue).
@@ -30,36 +31,41 @@ ButtonStyle captureScreenButtonStyle({bool secondary = false}) {
 /// Always clears local capture state first. On web we used to only
 /// [pushReplacementNamed] without clearing — when Flutter reused the same
 /// route State, the phone/gallery still stayed on screen.
+///
+/// Pass [routeArguments] so web replace keeps [CaptureRouteArgs] (e.g.
+/// FotoFlashback multi-shot). Set [skipWebRouteReplace] when the caller must
+/// keep the current State (strip progress lives on the screen State).
 Future<void> handleCapturedPhotoRetake({
   required BuildContext context,
   required CaptureViewModel viewModel,
   required bool Function() isMounted,
+  Object? routeArguments,
+  bool skipWebRouteReplace = false,
 }) async {
   await viewModel.clearCapturedPhotoAwaitingSession();
-  if (kIsWeb) {
+  if (kIsWeb && !skipWebRouteReplace) {
     await viewModel.disposeCamera();
     if (!isMounted() || !context.mounted) return;
     await Navigator.of(context).pushReplacementNamed(
       AppConstants.kRouteCapture,
+      arguments: routeArguments,
     );
   }
 }
 
 /// Continue: upload, navigate to theme selection; release cameras in parallel.
+///
+/// When [returnPhotoOnly] is true (FotoFlashback multi-shot), skip session
+/// upload and pop with the [PhotoModel] for the caller to collect.
 Future<void> handleCapturedPhotoContinue({
   required BuildContext context,
   required CaptureViewModel viewModel,
   required bool Function() isMounted,
   Future<void> Function()? releaseCaptureHardware,
+  bool returnPhotoOnly = false,
 }) async {
   if (!viewModel.canContinueUpload || viewModel.isUploading) return;
   final currentContext = context;
-  if (!isMounted() || !currentContext.mounted) return;
-
-  // Paint "Processing…" before any await — native UVC teardown can block the
-  // platform thread long enough to look like a freeze while still on "Preparing…".
-  viewModel.beginContinueUpload();
-  await Future<void>.delayed(Duration.zero);
   if (!isMounted() || !currentContext.mounted) return;
 
   final releaseFuture = releaseCaptureHardware != null
@@ -75,6 +81,22 @@ Future<void> handleCapturedPhotoContinue({
       );
     }),
   );
+
+  if (returnPhotoOnly) {
+    await _finishReturnPhotoOnly(
+      context: currentContext,
+      viewModel: viewModel,
+      isMounted: isMounted,
+      releaseFuture: releaseFuture,
+    );
+    return;
+  }
+
+  // Paint "Processing…" before any await — native UVC teardown can block the
+  // platform thread long enough to look like a freeze while still on "Preparing…".
+  viewModel.beginContinueUpload();
+  await Future<void>.delayed(Duration.zero);
+  if (!isMounted() || !currentContext.mounted) return;
 
   final success = await viewModel.uploadPhotoToSession(uploadAlreadyStarted: true);
   if (!isMounted() || !currentContext.mounted) return;
@@ -107,4 +129,27 @@ Future<void> handleCapturedPhotoContinue({
     arguments: ThemeSelectionArgs(photo: photo),
   );
   WebFlowTrace.log('NAV', 'pushReplacementNamed done');
+}
+
+Future<void> _finishReturnPhotoOnly({
+  required BuildContext context,
+  required CaptureViewModel viewModel,
+  required bool Function() isMounted,
+  required Future<void> releaseFuture,
+}) async {
+  final photo = viewModel.capturedPhoto;
+  if (photo == null) return;
+  try {
+    await releaseFuture.timeout(const Duration(seconds: 4));
+  } on TimeoutException {
+    AppLogger.error('releaseCaptureHardware timed out (returnPhotoOnly)');
+  } catch (e, st) {
+    AppLogger.error(
+      'releaseCaptureHardware failed (returnPhotoOnly)',
+      error: e,
+      stackTrace: st,
+    );
+  }
+  if (!isMounted() || !context.mounted) return;
+  Navigator.of(context).pop<PhotoModel>(photo);
 }

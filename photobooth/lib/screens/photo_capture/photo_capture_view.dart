@@ -30,13 +30,17 @@ import 'photo_capture_view_scaffold.dart';
 import 'photo_capture_viewmodel.dart';
 import 'photo_model.dart';
 import 'photo_image_from_xfile_io.dart' if (dart.library.html) 'photo_image_from_xfile_web.dart' as photo_image;
+import '../../models/strip_models.dart';
 import '../../utils/app_device_type.dart';
 import '../../utils/app_runtime_config.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/device_classifier.dart';
+import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
+import '../../utils/route_args.dart';
 import '../../utils/uvc_capture_config.dart';
+import '../theme_selection/theme_model.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/uvc_device_event_hub.dart';
@@ -190,15 +194,101 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
+  bool _returnPhotoOnly = false;
+  String? _subtitleHint;
+  int? _multiShotTotal;
+  ThemeModel? _flashbackTheme;
+  final List<PhotoModel> _stripShots = <PhotoModel>[];
+  bool _stripFinishing = false;
+
+  bool get _isFlashbackMultiShot =>
+      _returnPhotoOnly &&
+      _multiShotTotal != null &&
+      _multiShotTotal! > 1 &&
+      _flashbackTheme != null;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_prefillApplied) return;
     _prefillApplied = true;
     final args = ModalRoute.of(context)?.settings.arguments;
+    final captureArgs = CaptureRouteArgs.tryParse(args);
+    if (captureArgs != null) {
+      _returnPhotoOnly = captureArgs.returnPhotoOnly;
+      _subtitleHint = captureArgs.subtitleHint;
+      _multiShotTotal = captureArgs.multiShotTotal;
+      _flashbackTheme = captureArgs.flashbackTheme;
+      if (captureArgs.acceptedStripShots.isNotEmpty) {
+        _stripShots
+          ..clear()
+          ..addAll(captureArgs.acceptedStripShots);
+      }
+      if (_isFlashbackMultiShot) {
+        _syncFlashbackSubtitle();
+      }
+    }
     if (args is Map && args['photo'] is PhotoModel) {
       final photo = args['photo'] as PhotoModel;
       _captureViewModel.capturedPhoto = photo;
+    }
+  }
+
+  void _syncFlashbackSubtitle() {
+    final total = _multiShotTotal;
+    if (total == null) return;
+    final next = (_stripShots.length + 1).clamp(1, total);
+    _subtitleHint = AppStrings.flashbackShotProgress(next, total);
+  }
+
+  Future<void> _acceptFlashbackShot(CaptureViewModel viewModel) async {
+    final photo = viewModel.capturedPhoto;
+    final total = _multiShotTotal;
+    final theme = _flashbackTheme;
+    if (photo == null || total == null || theme == null || _stripFinishing) {
+      return;
+    }
+    setState(() {
+      _stripShots.add(photo);
+      _syncFlashbackSubtitle();
+    });
+    if (_stripShots.length >= total) {
+      await _finishFlashbackStrip(theme);
+      return;
+    }
+    await _handleRetake(context);
+  }
+
+  Future<void> _finishFlashbackStrip(ThemeModel theme) async {
+    if (_stripFinishing) return;
+    setState(() => _stripFinishing = true);
+    _navigatingAwayFromCapture = true;
+    _stopPoseIdleTimer();
+    try {
+      final dataUrls = <String>[];
+      for (final shot in _stripShots) {
+        dataUrls.add(await ImageHelper.encodeImageToBase64(shot.imageFile));
+      }
+      if (!mounted) return;
+      if (dataUrls.length != kStripShotCount) {
+        setState(() => _stripFinishing = false);
+        return;
+      }
+      unawaited(_releaseCaptureHardware());
+      await Navigator.of(context).pushReplacementNamed(
+        AppConstants.kRouteFlashbackFilter,
+        arguments: FlashbackFilterArgs(
+          theme: theme,
+          imageDataUrls: dataUrls,
+        ),
+      );
+    } catch (e, st) {
+      AppLogger.error(
+        'FotoFlashback strip finish failed',
+        error: e,
+        stackTrace: st,
+      );
+      if (mounted) setState(() => _stripFinishing = false);
     }
   }
 
@@ -1055,24 +1145,66 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
   }
 
+  CaptureRouteArgs _flashbackRouteArgs() {
+    _syncFlashbackSubtitle();
+    return CaptureRouteArgs(
+      returnPhotoOnly: true,
+      subtitleHint: _subtitleHint,
+      multiShotTotal: _multiShotTotal,
+      flashbackTheme: _flashbackTheme,
+      acceptedStripShots: List<PhotoModel>.from(_stripShots),
+    );
+  }
+
+  CaptureRouteArgs? get _currentCaptureRouteArgs {
+    if (_isFlashbackMultiShot) return _flashbackRouteArgs();
+    if (!_returnPhotoOnly &&
+        (_subtitleHint == null || _subtitleHint!.isEmpty)) {
+      return null;
+    }
+    return CaptureRouteArgs(
+      returnPhotoOnly: _returnPhotoOnly,
+      subtitleHint: _subtitleHint,
+    );
+  }
+
   Future<void> _handleRetake(BuildContext context) async {
+    final flashback = _isFlashbackMultiShot;
+    // Web: remount capture route so getUserMedia restarts (same State leaves a
+    // black / dead stream after takePicture). Strip progress is carried in args.
+    // Native/UVC: stay on this State and force a controller re-init.
     await handleCapturedPhotoRetake(
       context: context,
       viewModel: _captureViewModel,
       isMounted: () => mounted,
+      routeArguments: _currentCaptureRouteArgs,
+      skipWebRouteReplace: flashback && !kIsWeb,
     );
     if (!mounted) return;
     if (_uvcDevice != null) {
       await _restoreUvcLiveFeedAfterRetake();
-    } else {
-      await _captureViewModel.resumeLivePreviewAfterRetake();
+      return;
     }
+    if (flashback) {
+      await _captureViewModel.disposeCamera();
+      if (!mounted) return;
+      await _captureViewModel.resumeLivePreviewAfterRetake(forceReinit: true);
+      return;
+    }
+    await _captureViewModel.resumeLivePreviewAfterRetake();
   }
 
   Future<void> _handleCaptureBack(BuildContext context) async {
     _notePoseUserActivity();
     if (_captureViewModel.capturedPhoto != null) {
       await _handleRetake(context);
+      return;
+    }
+    if (_isFlashbackMultiShot && _stripShots.isNotEmpty) {
+      setState(() {
+        _stripShots.removeLast();
+        _syncFlashbackSubtitle();
+      });
       return;
     }
     await _exitCaptureToTerms(
@@ -2180,6 +2312,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                 onPointerDown: (_) => _notePoseUserActivity(),
                 child: PhotoCaptureScaffold(
                   viewModel: viewModel,
+                  subtitleHint: _subtitleHint,
+                  stripShotTotal:
+                      _isFlashbackMultiShot ? _multiShotTotal : null,
+                  stripShotFiles: _stripShots
+                      .map((p) => p.imageFile)
+                      .toList(growable: false),
+                  stripPendingFile: _isFlashbackMultiShot
+                      ? viewModel.capturedPhoto?.imageFile
+                      : null,
                   onBack: () => unawaited(_handleCaptureBack(context)),
                   onSelectCamera: () =>
                       _showCameraSelectionDialog(context, viewModel),
@@ -2631,6 +2772,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   /// Retake and Continue buttons in a Row (post-capture).
   Widget _buildCapturedPhotoControlsRow(BuildContext context, CaptureViewModel viewModel) {
+    final multi = _isFlashbackMultiShot;
+    final total = _multiShotTotal ?? kStripShotCount;
+    final isLastStripShot = multi && (_stripShots.length + 1) >= total;
+    final continueLabel = !multi
+        ? (viewModel.isPreparingUploadPayload ? 'Preparing…' : 'Continue')
+        : (isLastStripShot
+            ? AppStrings.flashbackContinueLooks
+            : AppStrings.flashbackNextShot);
     return SizedBox(
       width: double.infinity,
       child: Column(
@@ -2638,14 +2787,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         children: [
           ElevatedButton(
             style: captureScreenButtonStyle(secondary: true),
-            onPressed: () => unawaited(_handleRetake(context)),
+            onPressed: _stripFinishing
+                ? null
+                : () => unawaited(_handleRetake(context)),
             child: const Text('Retake'),
           ),
           const SizedBox(height: 12),
           ElevatedButton(
             style: captureScreenButtonStyle(),
-            onPressed: viewModel.canContinueUpload
-                ? () async {
+            onPressed: (!viewModel.canContinueUpload || _stripFinishing)
+                ? null
+                : () async {
+                    if (multi) {
+                      await _acceptFlashbackShot(viewModel);
+                      return;
+                    }
                     _navigatingAwayFromCapture = true;
                     _stopPoseIdleTimer();
                     await handleCapturedPhotoContinue(
@@ -2653,16 +2809,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                       viewModel: viewModel,
                       isMounted: () => mounted,
                       releaseCaptureHardware: _releaseCaptureHardware,
+                      returnPhotoOnly: _returnPhotoOnly,
                     );
-                  }
-                : null,
-            child: viewModel.isUploading
-                ? const Text('Processing…')
-                : Text(
-                    viewModel.isPreparingUploadPayload
-                        ? 'Preparing…'
-                        : 'Continue',
-                  ),
+                  },
+            child: (viewModel.isUploading || _stripFinishing)
+                ? Text(
+                    _stripFinishing
+                        ? AppStrings.flashbackComposing
+                        : 'Processing…',
+                  )
+                : Text(continueLabel),
           ),
         ],
       ),
@@ -2713,9 +2869,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   /// Gallery and Capture buttons in a Row (pre-capture).
   Widget _buildGalleryCaptureButtonsRow(BuildContext context, CaptureViewModel viewModel) {
-    final isPhotoUploadAllowed = context.select<AppSettingsManager, bool>(
-      (settingsManager) => settingsManager.settings?.photoUploadAllowed == true,
-    );
+    final isPhotoUploadAllowed = !_isFlashbackMultiShot &&
+        context.select<AppSettingsManager, bool>(
+          (settingsManager) =>
+              settingsManager.settings?.photoUploadAllowed == true,
+        );
 
     return SizedBox(
       width: double.infinity,

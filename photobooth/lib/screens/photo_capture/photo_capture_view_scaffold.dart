@@ -1,3 +1,4 @@
+import 'package:camera/camera.dart';
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
+import 'photo_capture_strip_thumbs.dart';
 import 'photo_capture_viewmodel.dart';
 
 /// App bar + themed body stack for the capture screen (Sonar S3776 extraction).
@@ -17,6 +19,10 @@ class PhotoCaptureScaffold extends StatelessWidget {
     required this.onSelectCamera,
     required this.onOpenRotation,
     required this.onReloadCameras,
+    this.subtitleHint,
+    this.stripShotFiles = const [],
+    this.stripShotTotal,
+    this.stripPendingFile,
   });
 
   final CaptureViewModel viewModel;
@@ -26,8 +32,28 @@ class PhotoCaptureScaffold extends StatelessWidget {
   final VoidCallback onOpenRotation;
   final VoidCallback onReloadCameras;
 
+  /// Optional POSE subtitle override (e.g. FotoFlashback "Shot 2 of 4").
+  final String? subtitleHint;
+
+  /// Accepted FotoFlashback stills (shown in the top thumbnail strip).
+  final List<XFile> stripShotFiles;
+
+  /// Total slots for FotoFlashback (e.g. 4). Null hides the strip.
+  final int? stripShotTotal;
+
+  /// Current review still before it is accepted into [stripShotFiles].
+  final XFile? stripPendingFile;
+
   bool get _cameraActionsDisabled =>
       viewModel.isLoadingCameras || viewModel.isInitializing;
+
+  bool get _showStrip =>
+      stripShotTotal != null &&
+      stripShotTotal! > 1 &&
+      (stripShotFiles.isNotEmpty || stripPendingFile != null);
+
+  // Subtitle + stamp thumbs (64px) matching 2×6 print cell AR.
+  double get _appBarExtraHeight => _showStrip ? 22 + 78 : 22;
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +70,10 @@ class PhotoCaptureScaffold extends StatelessWidget {
             bottom: false,
             child: Padding(
               padding: EdgeInsets.only(
-                top: MediaQuery.paddingOf(context).top + kToolbarHeight + 22 + 6,
+                top: MediaQuery.paddingOf(context).top +
+                    kToolbarHeight +
+                    _appBarExtraHeight +
+                    6,
               ),
               child: body,
             ),
@@ -64,6 +93,10 @@ class PhotoCaptureScaffold extends StatelessWidget {
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
+    final hint = subtitleHint?.trim() ?? '';
+    final subtitle = hint.isNotEmpty
+        ? hint
+        : 'Step in front of the camera and strike your best look';
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -83,19 +116,30 @@ class PhotoCaptureScaffold extends StatelessWidget {
           fontSize: 22,
         ),
       ),
-      bottom: const PreferredSize(
-        preferredSize: Size.fromHeight(22),
-        child: Padding(
-          padding: EdgeInsets.only(bottom: 6),
-          child: Text(
-            'Step in front of the camera and strike your best look',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
+      bottom: PreferredSize(
+        preferredSize: Size.fromHeight(_appBarExtraHeight),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                subtitle,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
-            textAlign: TextAlign.center,
-          ),
+            if (_showStrip)
+              PhotoCaptureStripThumbs(
+                shotFiles: stripShotFiles,
+                total: stripShotTotal!,
+                pendingFile: stripPendingFile,
+              ),
+          ],
         ),
       ),
       leading: IconButton(

@@ -362,6 +362,40 @@ abstract final class AppStrings {
 
   static const cancel = 'Cancel';
 
+  static const experienceChoiceTitle = 'How do you want to play?';
+  static const experienceChoiceSubtitle =
+      'Pick one experience for this session.';
+  static const experienceAiTitle = 'AI Transform';
+  static const experienceAiSubtitle =
+      'One photo, styled with AI themes.';
+  static const experienceFotoFlashTitle = 'FotoFlashback';
+  static const experienceFotoFlashSubtitle =
+      'Four poses, classic photo-strip looks — no AI.';
+  static const experienceFotoFlashUnavailable =
+      'FotoFlashback isn’t available on this booth yet.';
+  static const experienceFotoFlashStartFailed =
+      'Couldn’t start FotoFlashback. Please try again.';
+  static const experienceBackToTerms = 'Back to terms';
+
+  static const flashbackBrand = 'FotoFlashback';
+  static const flashbackCaptureTitle = 'FotoFlashback';
+  static const flashbackCaptureSubtitle =
+      'Strike a pose — we need 4 shots for your strip.';
+  static String flashbackShotProgress(int current, int total) =>
+      'Shot $current of $total';
+  static const flashbackTakeShot = 'Take shot';
+  static const flashbackNextShot = 'Next shot';
+  static const flashbackRetakeLast = 'Retake last';
+  static const flashbackContinueLooks = 'Pick a look';
+  static const flashbackFilterTitle = 'Pick your look';
+  static const flashbackFilterSubtitle =
+      'Tap a look — your strip updates live';
+  static const flashbackComposeCta = 'Continue';
+  static const flashbackComposePayCta = 'Continue to pay';
+  static const flashbackComposing = 'Building your strip…';
+  static const flashbackComposeFailed = 'Couldn’t build strip. Please try again.';
+  static const flashbackNeedFourShots = 'Take all 4 shots to continue.';
+
   static const staffDashboardTitle = 'Staff dashboard';
   static const staffTabOverview = 'Overview';
   static const staffTabPayments = 'Payments';

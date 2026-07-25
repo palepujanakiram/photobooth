@@ -10,6 +10,8 @@ class ThemeFilter {
   /// Whether [theme] should appear for [personCount] (from preprocess).
   static bool showTheme(ThemeModel theme, int? personCount) {
     if (theme.isActive != true) return false;
+    // FotoFlashback is chosen right after terms — hide from AI theme picker.
+    if (theme.isPhotoStrip) return false;
 
     final count = effectivePersonCount(personCount);
     if (count == 1) {

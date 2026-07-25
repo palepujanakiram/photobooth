@@ -434,4 +434,148 @@ void main() {
     expect(g['applied'], false);
   });
 
+  test('fetchStripFilters parses catalog', () async {
+    adapter.onGet(
+      '/api/strip/filters',
+      (server) => server.reply(200, {
+        'brand': 'FotoFlashback',
+        'shotCount': 4,
+        'filters': [
+          {
+            'id': 'classic_warm',
+            'name': 'Classic Warm',
+            'description': 'Warm',
+            'cssFilter': 'none',
+          },
+        ],
+        'print': {'size': 's4x6', 'copiesOnSheet': 2},
+      }),
+    );
+    final catalog = await api.fetchStripFilters();
+    expect(catalog.filters.single.id, 'classic_warm');
+    expect(catalog.printSize, 's4x6');
+  });
+
+  test('fetchStripFilters rejects unexpected payload', () async {
+    adapter.onGet(
+      '/api/strip/filters',
+      (server) => server.reply(200, ['not-a-map']),
+    );
+    expect(api.fetchStripFilters(), throwsA(isA<ApiException>()));
+  });
+
+  test('composeStrip validates shot count and returns print url', () async {
+    expect(
+      () => api.composeStrip(sessionId: 's', images: const ['a']),
+      throwsA(isA<ApiException>()),
+    );
+    final images = List.filled(4, 'data:image/jpeg;base64,abc');
+    adapter.onPost(
+      '/api/sessions/sess-1/strip/compose',
+      (server) => server.reply(200, {
+        'imageUrl': 'https://example.com/strip.jpg',
+        'stripCompositeUrl': 'https://example.com/composite.jpg',
+        'filter': 'mono',
+        'printSize': 's4x6',
+        'copiesOnSheet': 2,
+        'session': {
+          'id': 'sess-1',
+          'termsAccepted': true,
+          'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+          'attemptsUsed': 0,
+          'generatedImages': <dynamic>[],
+          'expiresAt': DateTime.utc(2026, 12, 31).toIso8601String(),
+        },
+      }),
+      data: Matchers.any,
+    );
+    final result = await api.composeStrip(
+      sessionId: 'sess-1',
+      images: images,
+      filter: 'mono',
+    );
+    expect(result.printImageUrl, 'https://example.com/composite.jpg');
+    expect(result.printSize, 's4x6');
+    expect(SessionManager().sessionId, 'sess-1');
+  });
+
+  test('composeStrip surfaces API failure and empty image', () async {
+    final images = List.filled(4, 'data:image/jpeg;base64,abc');
+    adapter.onPost(
+      '/api/sessions/sess-fail/strip/compose',
+      (server) => server.reply(200, {
+        'success': false,
+        'error': 'compose rejected',
+      }),
+      data: Matchers.any,
+    );
+    await expectLater(
+      api.composeStrip(sessionId: 'sess-fail', images: images),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.message,
+          'message',
+          contains('compose rejected'),
+        ),
+      ),
+    );
+
+    adapter.onPost(
+      '/api/sessions/sess-empty/strip/compose',
+      (server) => server.reply(200, {
+        'filter': 'clean',
+      }),
+      data: Matchers.any,
+    );
+    await expectLater(
+      api.composeStrip(sessionId: 'sess-empty', images: images),
+      throwsA(isA<ApiException>()),
+    );
+
+    adapter.onPost(
+      '/api/sessions/sess-bad/strip/compose',
+      (server) => server.reply(200, ['not-a-map']),
+      data: Matchers.any,
+    );
+    await expectLater(
+      api.composeStrip(sessionId: 'sess-bad', images: images),
+      throwsA(isA<ApiException>()),
+    );
+  });
+
+  test('strip APIs wrap DioException', () async {
+    final bad = Dio(BaseOptions(baseUrl: dio.options.baseUrl));
+    bad.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (o, h) => h.reject(
+          DioException(requestOptions: o, message: 'net down'),
+        ),
+      ),
+    );
+    final badApi = ApiService(dio: bad);
+    await expectLater(
+      badApi.fetchStripFilters(),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.message,
+          'message',
+          contains('strip filters'),
+        ),
+      ),
+    );
+    await expectLater(
+      badApi.composeStrip(
+        sessionId: 's',
+        images: List.filled(4, 'data:image/jpeg;base64,abc'),
+      ),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.message,
+          'message',
+          contains('compose strip'),
+        ),
+      ),
+    );
+  });
+
 }
