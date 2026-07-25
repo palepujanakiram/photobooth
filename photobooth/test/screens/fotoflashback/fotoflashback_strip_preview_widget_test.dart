@@ -70,10 +70,10 @@ void main() {
                 y: 0.3,
               ),
               StripStickerPlacement(
-                id: 'd1',
-                type: 'date',
+                id: 'c1',
+                type: 'confetti',
                 x: 0.5,
-                y: 0.85,
+                y: 0.7,
               ),
             ],
             onMovePlacement: (id, x, y) => movedId = id,

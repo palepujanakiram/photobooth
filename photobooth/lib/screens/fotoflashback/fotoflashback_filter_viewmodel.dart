@@ -31,6 +31,11 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   String _selectedFrameId = kDefaultStripFrameId;
   String _selectedStickerId = kDefaultStripStickerId;
   final List<StripStickerPlacement> _placements = [];
+  final List<StripScribbleStroke> _scribbles = [];
+  List<StripScribblePoint>? _activeScribblePoints;
+  bool _drawMode = false;
+  String _penColor = kStripScribblePenColors.first;
+  final double _penWidth = 0.02;
   bool _loading = false;
   bool _preparingPreview = false;
   bool _previewCleaned = false;
@@ -53,6 +58,27 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   List<StripStickerPlacement> get stickerPlacements =>
       List<StripStickerPlacement>.unmodifiable(_placements);
+
+  List<StripScribbleStroke> get scribbles {
+    final active = _activeScribblePoints;
+    if (active == null || active.isEmpty) {
+      return List<StripScribbleStroke>.unmodifiable(_scribbles);
+    }
+    return List<StripScribbleStroke>.unmodifiable([
+      ..._scribbles,
+      StripScribbleStroke(
+        color: _penColor,
+        width: _penWidth,
+        points: List<StripScribblePoint>.from(active),
+      ),
+    ]);
+  }
+
+  bool get drawMode => _drawMode;
+  String get penColor => _penColor;
+  double get penWidth => _penWidth;
+  bool get canUndoScribble =>
+      _scribbles.isNotEmpty || (_activeScribblePoints?.isNotEmpty ?? false);
 
   bool get isLoading => _loading;
   bool get isPreparingPreview => _preparingPreview;
@@ -162,7 +188,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Tap a sticker chip: `none` clears; placeable types add another instance.
+  /// Tap a sticker chip: `none` clears; placeable types add one per photo cell.
   void selectSticker(String stickerId) {
     if (stickerId == kDefaultStripStickerId || stickerId == 'none') {
       clearStickers();
@@ -171,21 +197,27 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     addSticker(stickerId);
   }
 
+  /// Places one sticker on each of the 4 strip cells (drag afterward to adjust).
   void addSticker(String type) {
     if (!kPlaceableStripStickerIds.contains(type)) return;
-    if (_placements.length >= kMaxStripStickerPlacements) return;
 
-    final sameTypeCount = _placements.where((p) => p.type == type).length;
-    final spawn = _spawnPoint(type, sameTypeCount);
-    _placementSeq += 1;
-    _placements.add(
-      StripStickerPlacement(
-        id: 'sticker_$_placementSeq',
-        type: type,
-        x: spawn.$1,
-        y: spawn.$2,
-      ),
-    );
+    final room = kMaxStripStickerPlacements - _placements.length;
+    if (room <= 0) return;
+
+    final toAdd = room < kStripShotCount ? room : kStripShotCount;
+    final wave = _placements.where((p) => p.type == type).length ~/ kStripShotCount;
+    for (var cell = 0; cell < toAdd; cell++) {
+      final spawn = _spawnPointForCell(type, cell, wave);
+      _placementSeq += 1;
+      _placements.add(
+        StripStickerPlacement(
+          id: 'sticker_$_placementSeq',
+          type: type,
+          x: spawn.$1,
+          y: spawn.$2,
+        ),
+      );
+    }
     _selectedStickerId = type;
     notifyListeners();
   }
@@ -219,6 +251,79 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setDrawMode(bool enabled) {
+    if (_drawMode == enabled) return;
+    if (!enabled) {
+      _commitActiveScribble();
+    }
+    _drawMode = enabled;
+    notifyListeners();
+  }
+
+  void setPenColor(String color) {
+    final normalized = color.toUpperCase();
+    if (!kStripScribblePenColors.contains(normalized)) return;
+    if (_penColor == normalized) return;
+    _penColor = normalized;
+    notifyListeners();
+  }
+
+  void beginScribble(double x, double y) {
+    if (!_drawMode || _scribbles.length >= kMaxStripScribbleStrokes) return;
+    _activeScribblePoints = [
+      StripScribblePoint(x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)),
+    ];
+    notifyListeners();
+  }
+
+  void extendScribble(double x, double y) {
+    final active = _activeScribblePoints;
+    if (active == null || active.length >= kMaxStripScribblePoints) return;
+    final nx = x.clamp(0.0, 1.0);
+    final ny = y.clamp(0.0, 1.0);
+    final last = active.last;
+    if ((last.x - nx).abs() < 0.004 && (last.y - ny).abs() < 0.004) return;
+    active.add(StripScribblePoint(nx, ny));
+    notifyListeners();
+  }
+
+  void endScribble() {
+    _commitActiveScribble();
+    notifyListeners();
+  }
+
+  void undoScribble() {
+    if (_activeScribblePoints != null) {
+      _activeScribblePoints = null;
+      notifyListeners();
+      return;
+    }
+    if (_scribbles.isEmpty) return;
+    _scribbles.removeLast();
+    notifyListeners();
+  }
+
+  void clearScribbles() {
+    if (_scribbles.isEmpty && _activeScribblePoints == null) return;
+    _scribbles.clear();
+    _activeScribblePoints = null;
+    notifyListeners();
+  }
+
+  void _commitActiveScribble() {
+    final active = _activeScribblePoints;
+    _activeScribblePoints = null;
+    if (active == null || active.length < 2) return;
+    if (_scribbles.length >= kMaxStripScribbleStrokes) return;
+    _scribbles.add(
+      StripScribbleStroke(
+        color: _penColor,
+        width: _penWidth,
+        points: List<StripScribblePoint>.from(active),
+      ),
+    );
+  }
+
   /// Composes the strip and returns a selected [GeneratedImage] for Result.
   Future<GeneratedImage?> compose() async {
     if (!canCompose) {
@@ -239,6 +344,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     try {
       // Finish background polish if still running so print matches preview.
       await preparePreview();
+      _commitActiveScribble();
 
       final result = await _api.composeStrip(
         sessionId: sessionId,
@@ -247,6 +353,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         frame: _selectedFrameId,
         sticker: kDefaultStripStickerId,
         stickerPlacements: _placements,
+        scribbles: _scribbles,
         // Skip second Gemini pass when preview already cleaned.
         cleanOverlays: !_previewCleaned,
       );
@@ -269,25 +376,25 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     }
   }
 
-  (double, double) _spawnPoint(String type, int sameTypeCount) {
-    final offset = sameTypeCount * 0.05;
-    switch (type) {
-      case 'sparkles':
-        return (
-          (0.22 + offset).clamp(0.08, 0.9),
-          (0.12 + offset * 0.8).clamp(0.08, 0.9),
-        );
-      case 'date':
-        return (
-          (0.5 + (sameTypeCount.isEven ? offset : -offset)).clamp(0.2, 0.8),
-          (0.88 - offset * 0.5).clamp(0.15, 0.92),
-        );
-      case 'hearts':
-      default:
-        return (
-          (0.7 - offset).clamp(0.08, 0.9),
-          (0.14 + offset).clamp(0.08, 0.9),
-        );
-    }
+  /// Normalized center inside photo cell [cell] (0–3). [wave] offsets later taps.
+  (double, double) _spawnPointForCell(String type, int cell, int wave) {
+    final cellCenterY = (cell + 0.5) / kStripShotCount;
+    final waveNudge = (wave % 3) * 0.04;
+    final preferLeft = switch (type) {
+      'sparkles' || 'confetti' || 'flowers' || 'petals' => cell.isEven,
+      'stars' || 'bows' || 'butterflies' => !cell.isEven,
+      _ => !cell.isEven, // hearts
+    };
+    final baseX = preferLeft ? 0.2 : 0.78;
+    final x = baseX + (preferLeft ? waveNudge : -waveNudge);
+    final yNudge = switch (type) {
+      'sparkles' => -0.06,
+      'confetti' || 'petals' => -0.02,
+      'stars' || 'flowers' => 0.02,
+      'bows' || 'butterflies' => 0.05,
+      _ => 0.04,
+    };
+    final y = cellCenterY + yNudge - waveNudge * 0.5;
+    return (x.clamp(0.08, 0.92), y.clamp(0.06, 0.94));
   }
 }

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/strip_models.dart';
 
-/// Single 2×6 strip preview with live look + frame + sticker overlays.
+/// Single 2×6 strip preview with live look + frame + sticker + scribble overlays.
 class FotoFlashbackStripPreview extends StatelessWidget {
   const FotoFlashbackStripPreview({
     super.key,
@@ -14,8 +14,13 @@ class FotoFlashbackStripPreview extends StatelessWidget {
     this.frameId = kDefaultStripFrameId,
     this.stickerId = kDefaultStripStickerId,
     this.placements = const [],
+    this.scribbles = const [],
+    this.drawMode = false,
     this.onMovePlacement,
     this.onRemovePlacement,
+    this.onScribbleStart,
+    this.onScribbleUpdate,
+    this.onScribbleEnd,
     this.width = defaultStripWidth,
     this.height = defaultStripHeight,
   });
@@ -27,8 +32,13 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   /// Legacy pack id (used only when [placements] is empty).
   final String stickerId;
   final List<StripStickerPlacement> placements;
+  final List<StripScribbleStroke> scribbles;
+  final bool drawMode;
   final void Function(String id, double x, double y)? onMovePlacement;
   final void Function(String id)? onRemovePlacement;
+  final void Function(double x, double y)? onScribbleStart;
+  final void Function(double x, double y)? onScribbleUpdate;
+  final VoidCallback? onScribbleEnd;
   final double width;
   final double height;
 
@@ -95,13 +105,50 @@ class FotoFlashbackStripPreview extends StatelessWidget {
             ..._stickerOverlays(stickerId, width, height)
           else
             for (final p in placements)
-              _PlacementSticker(
-                placement: p,
-                stripWidth: width,
-                stripHeight: height,
-                onMove: onMovePlacement,
-                onRemove: onRemovePlacement,
+              IgnorePointer(
+                ignoring: drawMode,
+                child: _PlacementSticker(
+                  placement: p,
+                  stripWidth: width,
+                  stripHeight: height,
+                  onMove: onMovePlacement,
+                  onRemove: onRemovePlacement,
+                ),
               ),
+          if (scribbles.isNotEmpty)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _ScribblePainter(
+                    strokes: scribbles,
+                    stripWidth: width,
+                    stripHeight: height,
+                  ),
+                ),
+              ),
+            ),
+          if (drawMode)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanStart: (details) {
+                  if (onScribbleStart == null) return;
+                  onScribbleStart!(
+                    (details.localPosition.dx / width).clamp(0.0, 1.0),
+                    (details.localPosition.dy / height).clamp(0.0, 1.0),
+                  );
+                },
+                onPanUpdate: (details) {
+                  if (onScribbleUpdate == null) return;
+                  onScribbleUpdate!(
+                    (details.localPosition.dx / width).clamp(0.0, 1.0),
+                    (details.localPosition.dy / height).clamp(0.0, 1.0),
+                  );
+                },
+                onPanEnd: (_) => onScribbleEnd?.call(),
+                onPanCancel: onScribbleEnd,
+              ),
+            ),
           if (showBrandBar)
             Positioned(
               left: 0,
@@ -132,6 +179,56 @@ class FotoFlashbackStripPreview extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ScribblePainter extends CustomPainter {
+  _ScribblePainter({
+    required this.strokes,
+    required this.stripWidth,
+    required this.stripHeight,
+  });
+
+  final List<StripScribbleStroke> strokes;
+  final double stripWidth;
+  final double stripHeight;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final stroke in strokes) {
+      if (stroke.points.length < 2) continue;
+      final paint = Paint()
+        ..color = _colorFromHex(stroke.color)
+        ..strokeWidth = (stroke.width * stripWidth).clamp(1.5, 14.0)
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+      final path = Path()
+        ..moveTo(
+          stroke.points.first.x * stripWidth,
+          stroke.points.first.y * stripHeight,
+        );
+      for (var i = 1; i < stroke.points.length; i++) {
+        path.lineTo(
+          stroke.points[i].x * stripWidth,
+          stroke.points[i].y * stripHeight,
+        );
+      }
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScribblePainter oldDelegate) {
+    return oldDelegate.strokes != strokes ||
+        oldDelegate.stripWidth != stripWidth ||
+        oldDelegate.stripHeight != stripHeight;
+  }
+}
+
+Color _colorFromHex(String hex) {
+  final cleaned = hex.replaceFirst('#', '');
+  if (cleaned.length != 6) return Colors.white;
+  return Color(int.parse('FF$cleaned', radix: 16));
 }
 
 class _PlacementSticker extends StatelessWidget {
@@ -178,7 +275,10 @@ class _PlacementSticker extends StatelessWidget {
 }
 
 double _glyphSize(StripStickerPlacement p, double stripWidth) {
-  final base = p.type == 'date' ? stripWidth * 0.2 : stripWidth * 0.16;
+  final base = switch (p.type) {
+    'confetti' || 'butterflies' || 'petals' => stripWidth * 0.2,
+    _ => stripWidth * 0.16,
+  };
   return (base * p.scale).clamp(14.0, 56.0);
 }
 
@@ -196,14 +296,104 @@ Widget _glyph(StripStickerPlacement p, double size) {
           ],
         ),
       );
-    case 'date':
+    case 'confetti':
+      return SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              left: size * 0.05,
+              top: size * 0.15,
+              child: Transform.rotate(
+                angle: -0.35,
+                child: Container(
+                  width: size * 0.35,
+                  height: size * 0.2,
+                  color: const Color(0xFFFF6B8A),
+                ),
+              ),
+            ),
+            Positioned(
+              right: size * 0.05,
+              top: size * 0.05,
+              child: Transform.rotate(
+                angle: 0.4,
+                child: Container(
+                  width: size * 0.3,
+                  height: size * 0.18,
+                  color: const Color(0xFFFFD166),
+                ),
+              ),
+            ),
+            Positioned(
+              left: size * 0.2,
+              bottom: size * 0.1,
+              child: Container(
+                width: size * 0.22,
+                height: size * 0.22,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF6EC6FF),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+            Positioned(
+              right: size * 0.12,
+              bottom: size * 0.2,
+              child: Transform.rotate(
+                angle: -0.5,
+                child: Container(
+                  width: size * 0.28,
+                  height: size * 0.18,
+                  color: const Color(0xFFB388FF),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    case 'stars':
       return Text(
-        _previewDateStamp(),
+        '★',
         style: TextStyle(
-          color: const Color(0xFF6B5B4F).withValues(alpha: 0.95),
-          fontSize: (size * 0.55).clamp(8.0, 14.0),
-          fontFamily: 'monospace',
-          fontWeight: FontWeight.w700,
+          color: const Color(0xFFFFD54A).withValues(alpha: 0.95),
+          fontSize: size,
+          height: 1,
+        ),
+      );
+    case 'bows':
+      return Text(
+        '✿',
+        style: TextStyle(
+          color: const Color(0xFFFF8FB8).withValues(alpha: 0.95),
+          fontSize: size,
+          height: 1,
+        ),
+      );
+    case 'flowers':
+      return Text(
+        '❀',
+        style: TextStyle(
+          color: const Color(0xFFFF6B9D).withValues(alpha: 0.95),
+          fontSize: size,
+          height: 1,
+        ),
+      );
+    case 'butterflies':
+      return Text(
+        '🦋',
+        style: TextStyle(
+          fontSize: size * 0.9,
+          height: 1,
+        ),
+      );
+    case 'petals':
+      return Text(
+        '💮',
+        style: TextStyle(
+          fontSize: size * 0.85,
           height: 1,
         ),
       );
@@ -269,23 +459,61 @@ List<Widget> _stickerOverlays(String stickerId, double width, double height) {
         _stickerText('✧', width * 0.18, height * 0.85, width * 0.1,
             const Color(0xFFFFF7D6)),
       ];
-    case 'date':
+    case 'confetti':
       return [
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: height * 0.035,
-          child: Text(
-            _previewDateStamp(),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: const Color(0xFF6B5B4F).withValues(alpha: 0.9),
-              fontSize: (width * 0.08).clamp(8.0, 11.0),
-              fontFamily: 'monospace',
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
+        _stickerText('✦', width * 0.15, height * 0.08, width * 0.1,
+            const Color(0xFFFF6B8A)),
+        _stickerText('●', width * 0.75, height * 0.35, width * 0.08,
+            const Color(0xFFFFD166)),
+        _stickerText('■', width * 0.2, height * 0.6, width * 0.08,
+            const Color(0xFF6EC6FF)),
+        _stickerText('●', width * 0.78, height * 0.82, width * 0.07,
+            const Color(0xFFB388FF)),
+      ];
+    case 'stars':
+      return [
+        _stickerText('★', width * 0.12, height * 0.08, width * 0.14,
+            const Color(0xFFFFD54A)),
+        _stickerText('★', width * 0.72, height * 0.4, width * 0.12,
+            const Color(0xFFFFD54A)),
+        _stickerText('★', width * 0.18, height * 0.78, width * 0.11,
+            const Color(0xFFFFD54A)),
+      ];
+    case 'bows':
+      return [
+        _stickerText('✿', width * 0.7, height * 0.08, width * 0.14,
+            const Color(0xFFFF8FB8)),
+        _stickerText('✿', width * 0.1, height * 0.42, width * 0.12,
+            const Color(0xFFFF8FB8)),
+        _stickerText('✿', width * 0.72, height * 0.75, width * 0.13,
+            const Color(0xFFFF8FB8)),
+      ];
+    case 'flowers':
+      return [
+        _stickerText('❀', width * 0.14, height * 0.08, width * 0.14,
+            const Color(0xFFFF6B9D)),
+        _stickerText('❀', width * 0.72, height * 0.38, width * 0.12,
+            const Color(0xFFFF6B9D)),
+        _stickerText('❀', width * 0.16, height * 0.72, width * 0.13,
+            const Color(0xFFFF6B9D)),
+      ];
+    case 'butterflies':
+      return [
+        _stickerText('🦋', width * 0.16, height * 0.1, width * 0.14,
+            const Color(0xFFC9A0FF)),
+        _stickerText('🦋', width * 0.7, height * 0.42, width * 0.12,
+            const Color(0xFFFF9EC8)),
+        _stickerText('🦋', width * 0.18, height * 0.76, width * 0.13,
+            const Color(0xFFA78BFA)),
+      ];
+    case 'petals':
+      return [
+        _stickerText('💮', width * 0.14, height * 0.12, width * 0.13,
+            const Color(0xFFFFB3C6)),
+        _stickerText('💮', width * 0.72, height * 0.4, width * 0.12,
+            const Color(0xFFFF8FAB)),
+        _stickerText('💮', width * 0.18, height * 0.74, width * 0.12,
+            const Color(0xFFFFC2D1)),
       ];
     case 'none':
     default:
@@ -312,25 +540,6 @@ Widget _stickerText(
       ),
     ),
   );
-}
-
-String _previewDateStamp() {
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-  final now = DateTime.now();
-  return '${months[now.month - 1]} ${now.day}, ${now.year}';
 }
 
 /// Approximate zenai Sharp grades for live Flutter preview.

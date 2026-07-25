@@ -37,18 +37,75 @@ const List<String> kStripStickerIds = [
   'none',
   'hearts',
   'sparkles',
-  'date',
+  'confetti',
+  'stars',
+  'bows',
+  'flowers',
+  'butterflies',
+  'petals',
 ];
 
 /// Sticker types that can be placed (and dragged) on the strip.
 const List<String> kPlaceableStripStickerIds = [
   'hearts',
   'sparkles',
-  'date',
+  'confetti',
+  'stars',
+  'bows',
+  'flowers',
+  'butterflies',
+  'petals',
 ];
 
 /// Soft cap so guests don't cover the whole strip.
 const int kMaxStripStickerPlacements = 16;
+
+/// Soft cap for freehand personalization strokes.
+const int kMaxStripScribbleStrokes = 48;
+
+/// Max points kept per stroke (extra points are skipped while drawing).
+const int kMaxStripScribblePoints = 120;
+
+/// Booth scribble pen colors (hex #RRGGBB).
+const List<String> kStripScribblePenColors = [
+  '#FFFFFF',
+  '#111111',
+  '#FF4D6D',
+  '#FFB703',
+  '#4CC9F0',
+];
+
+/// One freehand stroke in normalized strip space (0–1).
+class StripScribbleStroke {
+  const StripScribbleStroke({
+    required this.color,
+    required this.width,
+    required this.points,
+  });
+
+  /// Hex color `#RRGGBB`.
+  final String color;
+
+  /// Stroke width as a fraction of strip width (e.g. 0.02).
+  final double width;
+
+  final List<StripScribblePoint> points;
+
+  Map<String, dynamic> toJson() => {
+        'color': color,
+        'width': width,
+        'points': points.map((p) => p.toJson()).toList(),
+      };
+}
+
+class StripScribblePoint {
+  const StripScribblePoint(this.x, this.y);
+
+  final double x;
+  final double y;
+
+  Map<String, dynamic> toJson() => {'x': x, 'y': y};
+}
 
 /// One sticker instance on the strip (normalized coords, origin top-left).
 class StripStickerPlacement {

@@ -8,6 +8,26 @@ void main() {
     expect(kStripCellAspectRatio, greaterThan(1)); // wider than tall
   });
 
+  test('StripScribbleStroke serializes for compose API', () {
+    const stroke = StripScribbleStroke(
+      color: '#FFFFFF',
+      width: 0.02,
+      points: [
+        StripScribblePoint(0.1, 0.2),
+        StripScribblePoint(0.3, 0.4),
+      ],
+    );
+    expect(stroke.toJson(), {
+      'color': '#FFFFFF',
+      'width': 0.02,
+      'points': [
+        {'x': 0.1, 'y': 0.2},
+        {'x': 0.3, 'y': 0.4},
+      ],
+    });
+    expect(kStripScribblePenColors, contains('#FF4D6D'));
+  });
+
   test('StripStickerPlacement serializes for compose API', () {
     const p = StripStickerPlacement(
       id: 's1',
@@ -24,7 +44,20 @@ void main() {
     });
     expect(p.copyWith(x: 0.1).x, 0.1);
     expect(p.copyWith(y: 0.2, scale: 2).scale, 2);
-    expect(kPlaceableStripStickerIds, containsAll(['hearts', 'sparkles', 'date']));
+    expect(
+      kPlaceableStripStickerIds,
+      containsAll([
+        'hearts',
+        'sparkles',
+        'confetti',
+        'stars',
+        'bows',
+        'flowers',
+        'butterflies',
+        'petals',
+      ]),
+    );
+    expect(kPlaceableStripStickerIds, isNot(contains('date')));
   });
 
   test('StripFiltersCatalog.fromJson parses catalog and print hints', () {

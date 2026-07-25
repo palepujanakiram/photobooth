@@ -389,9 +389,14 @@ abstract final class AppStrings {
   static const flashbackContinueLooks = 'Pick a look';
   static const flashbackFilterTitle = 'Pick your look';
   static const flashbackFilterSubtitle =
-      'Tap a look or frame. Tap stickers to add — drag to move, double-tap to remove';
+      'Pick a look & frame. Add stickers, or Scribble to write on your strip';
   static const flashbackFrameLabel = 'Frame';
   static const flashbackStickerLabel = 'Stickers';
+  static const flashbackScribbleLabel = 'Scribble';
+  static const flashbackScribbleOn = 'Drawing on';
+  static const flashbackScribbleOff = 'Draw';
+  static const flashbackScribbleUndo = 'Undo';
+  static const flashbackScribbleClear = 'Clear';
   static const flashbackComposeCta = 'Continue';
   static const flashbackComposePayCta = 'Continue to pay';
   static const flashbackComposing = 'Building your strip…';

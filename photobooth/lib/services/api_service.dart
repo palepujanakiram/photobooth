@@ -596,6 +596,7 @@ class ApiService {
     String frame = kDefaultStripFrameId,
     String sticker = kDefaultStripStickerId,
     List<StripStickerPlacement> stickerPlacements = const [],
+    List<StripScribbleStroke> scribbles = const [],
     bool cleanOverlays = true,
   }) async {
     if (images.length != kStripShotCount) {
@@ -614,6 +615,9 @@ class ApiService {
       if (stickerPlacements.isNotEmpty) {
         body['stickerPlacements'] =
             stickerPlacements.map((p) => p.toJson()).toList();
+      }
+      if (scribbles.isNotEmpty) {
+        body['scribbles'] = scribbles.map((s) => s.toJson()).toList();
       }
       final r = await _dio.post<dynamic>(
         '/api/sessions/$sessionId/strip/compose',

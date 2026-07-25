@@ -161,11 +161,16 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           frameId: viewModel.selectedFrameId,
                           stickerId: viewModel.selectedStickerId,
                           placements: viewModel.stickerPlacements,
+                          scribbles: viewModel.scribbles,
+                          drawMode: viewModel.drawMode,
                           filters: viewModel.filters,
                           isLoading: viewModel.isLoading,
                           onSelectFilter: viewModel.selectFilter,
                           onMovePlacement: viewModel.moveSticker,
                           onRemovePlacement: viewModel.removeSticker,
+                          onScribbleStart: viewModel.beginScribble,
+                          onScribbleUpdate: viewModel.extendScribble,
+                          onScribbleEnd: viewModel.endScribble,
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -184,7 +189,23 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                             .map((s) => (id: s.id, name: s.name))
                             .toList(),
                         selectedId: viewModel.selectedStickerId,
-                        onSelect: viewModel.selectSticker,
+                        onSelect: (id) {
+                          if (viewModel.drawMode) {
+                            viewModel.setDrawMode(false);
+                          }
+                          viewModel.selectSticker(id);
+                        },
+                      ),
+                      const SizedBox(height: 6),
+                      _ScribbleToolbar(
+                        drawMode: viewModel.drawMode,
+                        penColor: viewModel.penColor,
+                        canUndo: viewModel.canUndoScribble,
+                        onToggleDraw: () =>
+                            viewModel.setDrawMode(!viewModel.drawMode),
+                        onSelectColor: viewModel.setPenColor,
+                        onUndo: viewModel.undoScribble,
+                        onClear: viewModel.clearScribbles,
                       ),
                       const SizedBox(height: 12),
                       ElevatedButton(
@@ -229,11 +250,16 @@ class _LookPickerBody extends StatelessWidget {
     required this.frameId,
     required this.stickerId,
     required this.placements,
+    required this.scribbles,
+    required this.drawMode,
     required this.filters,
     required this.isLoading,
     required this.onSelectFilter,
     required this.onMovePlacement,
     required this.onRemovePlacement,
+    required this.onScribbleStart,
+    required this.onScribbleUpdate,
+    required this.onScribbleEnd,
   });
 
   final List<String> imageDataUrls;
@@ -241,11 +267,16 @@ class _LookPickerBody extends StatelessWidget {
   final String frameId;
   final String stickerId;
   final List<StripStickerPlacement> placements;
+  final List<StripScribbleStroke> scribbles;
+  final bool drawMode;
   final List<StripFilter> filters;
   final bool isLoading;
   final ValueChanged<String> onSelectFilter;
   final void Function(String id, double x, double y) onMovePlacement;
   final ValueChanged<String> onRemovePlacement;
+  final void Function(double x, double y) onScribbleStart;
+  final void Function(double x, double y) onScribbleUpdate;
+  final VoidCallback onScribbleEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -268,8 +299,13 @@ class _LookPickerBody extends StatelessWidget {
                 frameId: frameId,
                 stickerId: stickerId,
                 placements: placements,
+                scribbles: scribbles,
+                drawMode: drawMode,
                 onMovePlacement: onMovePlacement,
                 onRemovePlacement: onRemovePlacement,
+                onScribbleStart: onScribbleStart,
+                onScribbleUpdate: onScribbleUpdate,
+                onScribbleEnd: onScribbleEnd,
                 width: stripW,
                 height: stripH,
               ),
@@ -455,4 +491,126 @@ class _ChipPickerRow extends StatelessWidget {
       ],
     );
   }
+}
+
+class _ScribbleToolbar extends StatelessWidget {
+  const _ScribbleToolbar({
+    required this.drawMode,
+    required this.penColor,
+    required this.canUndo,
+    required this.onToggleDraw,
+    required this.onSelectColor,
+    required this.onUndo,
+    required this.onClear,
+  });
+
+  final bool drawMode;
+  final String penColor;
+  final bool canUndo;
+  final VoidCallback onToggleDraw;
+  final ValueChanged<String> onSelectColor;
+  final VoidCallback onUndo;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 72,
+          child: Text(
+            AppStrings.flashbackScribbleLabel,
+            style: TextStyle(
+              color: Colors.amber.shade100.withValues(alpha: 0.85),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                ChoiceChip(
+                  label: Text(
+                    drawMode
+                        ? AppStrings.flashbackScribbleOn
+                        : AppStrings.flashbackScribbleOff,
+                  ),
+                  selected: drawMode,
+                  onSelected: (_) => onToggleDraw(),
+                  selectedColor: Colors.amber.shade700,
+                  labelStyle: TextStyle(
+                    color: drawMode ? Colors.black : Colors.white70,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                  backgroundColor: Colors.white10,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                const SizedBox(width: 8),
+                for (final color in kStripScribblePenColors) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: InkWell(
+                      onTap: () {
+                        if (!drawMode) onToggleDraw();
+                        onSelectColor(color);
+                      },
+                      customBorder: const CircleBorder(),
+                      child: Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: _hexColor(color),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: penColor == color
+                                ? Colors.amber.shade300
+                                : Colors.white38,
+                            width: penColor == color ? 2.2 : 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                TextButton(
+                  onPressed: canUndo ? onUndo : null,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.amber.shade100,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: const Text(
+                    AppStrings.flashbackScribbleUndo,
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+                TextButton(
+                  onPressed: canUndo ? onClear : null,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.amber.shade100,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: const Text(
+                    AppStrings.flashbackScribbleClear,
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+Color _hexColor(String hex) {
+  final cleaned = hex.replaceFirst('#', '');
+  return Color(int.parse('FF$cleaned', radix: 16));
 }

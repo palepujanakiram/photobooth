@@ -104,10 +104,14 @@ void main() {
     expect(vm.selectedStickerId, kDefaultStripStickerId);
     vm.selectFrame('ticket');
     vm.selectSticker('hearts');
-    vm.selectSticker('hearts');
     expect(vm.selectedFrameId, 'ticket');
     expect(vm.selectedStickerId, 'hearts');
-    expect(vm.stickerPlacements, hasLength(2));
+    // One heart per photo cell.
+    expect(vm.stickerPlacements, hasLength(kStripShotCount));
+    expect(
+      vm.stickerPlacements.map((p) => p.y).toSet(),
+      hasLength(kStripShotCount),
+    );
     vm.moveSticker(vm.stickerPlacements.first.id, 0.4, 0.5);
     expect(vm.stickerPlacements.first.x, 0.4);
     expect(vm.stickerPlacements.first.y, 0.5);
@@ -131,7 +135,33 @@ void main() {
     expect(api.lastCleanOverlays, isFalse);
     expect(api.lastFrame, 'ticket');
     expect(api.lastSticker, kDefaultStripStickerId);
-    expect(api.lastPlacements, hasLength(2));
+    expect(api.lastPlacements, hasLength(kStripShotCount));
+  });
+
+  test('FotoFlashbackFilterViewModel scribble draw/undo/clear', () {
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: _StripFakeApi(),
+    );
+    vm.setDrawMode(true);
+    expect(vm.drawMode, isTrue);
+    vm.setPenColor('#FF4D6D');
+    expect(vm.penColor, '#FF4D6D');
+    vm.beginScribble(0.2, 0.2);
+    vm.extendScribble(0.3, 0.25);
+    vm.extendScribble(0.4, 0.3);
+    vm.endScribble();
+    expect(vm.scribbles, hasLength(1));
+    expect(vm.scribbles.first.points, hasLength(3));
+    vm.undoScribble();
+    expect(vm.scribbles, isEmpty);
+    vm.beginScribble(0.1, 0.1);
+    vm.extendScribble(0.2, 0.2);
+    vm.endScribble();
+    vm.clearScribbles();
+    expect(vm.scribbles, isEmpty);
+    expect(vm.canUndoScribble, isFalse);
   });
 
   test('FotoFlashbackFilterViewModel sticker add/move/clear', () {
@@ -143,11 +173,16 @@ void main() {
     expect(vm.canCompose, isTrue);
     expect(vm.isPreparingPreview, isFalse);
     vm.addSticker('sparkles');
-    vm.addSticker('date');
-    expect(vm.stickerPlacements, hasLength(2));
+    expect(vm.stickerPlacements, hasLength(kStripShotCount));
+    vm.addSticker('confetti');
+    expect(vm.stickerPlacements, hasLength(kStripShotCount * 2));
+    expect(
+      vm.stickerPlacements.where((p) => p.type == 'confetti'),
+      hasLength(kStripShotCount),
+    );
     final id = vm.stickerPlacements.first.id;
     vm.removeSticker(id);
-    expect(vm.stickerPlacements, hasLength(1));
+    expect(vm.stickerPlacements, hasLength(kStripShotCount * 2 - 1));
     vm.clearStickers();
     expect(vm.stickerPlacements, isEmpty);
     expect(vm.selectedStickerId, kDefaultStripStickerId);
@@ -352,6 +387,7 @@ class _StripFakeApi extends FakeApiService {
     String frame = kDefaultStripFrameId,
     String sticker = kDefaultStripStickerId,
     List<StripStickerPlacement> stickerPlacements = const [],
+    List<StripScribbleStroke> scribbles = const [],
     bool cleanOverlays = true,
   }) async {
     composeCalls++;
@@ -359,6 +395,7 @@ class _StripFakeApi extends FakeApiService {
     lastFrame = frame;
     lastSticker = sticker;
     lastPlacements = List<StripStickerPlacement>.from(stickerPlacements);
+    lastScribbles = List<StripScribbleStroke>.from(scribbles);
     if (failCompose) {
       throw ApiException('compose down');
     }
@@ -376,6 +413,7 @@ class _StripFakeApi extends FakeApiService {
   String? lastFrame;
   String? lastSticker;
   List<StripStickerPlacement>? lastPlacements;
+  List<StripScribbleStroke>? lastScribbles;
 
   bool? lastCleanOverlays;
 }

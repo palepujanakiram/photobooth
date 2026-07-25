@@ -201,6 +201,7 @@ class FakeApiService extends ApiService {
     String frame = kDefaultStripFrameId,
     String sticker = kDefaultStripStickerId,
     List<StripStickerPlacement> stickerPlacements = const [],
+    List<StripScribbleStroke> scribbles = const [],
     bool cleanOverlays = true,
   }) async {
     return StripComposeResult(
