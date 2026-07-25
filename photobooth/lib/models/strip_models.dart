@@ -156,7 +156,7 @@ class StripStickerPlacement {
 ///
 /// Matches zenai `stripCompositor` cellGeometry at 300 DPI:
 /// strip 600×1800, border 4, gutter 0 → cell 592×448 (landscape).
-/// Shots are fitted with contain + blurred fill (not hard cover-crop).
+/// Shots are cover-cropped edge-to-edge (no blur/letterbox fill).
 const double kStripCellAspectRatio = 592 / 448;
 
 /// One look from `GET /api/strip/filters`.

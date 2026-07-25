@@ -31,8 +31,7 @@ void main() {
         ),
       ),
     );
-    // Each cell uses cover (blur fill) + contain (full frame) → 8 Images.
-    expect(find.byType(Image), findsNWidgets(8));
+    expect(find.byType(Image), findsNWidgets(4));
     expect(base64Decode(jpegB64), isNotEmpty);
   });
 

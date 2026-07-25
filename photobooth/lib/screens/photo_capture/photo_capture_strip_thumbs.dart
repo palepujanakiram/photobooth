@@ -7,7 +7,7 @@ import 'photo_image_from_xfile_io.dart'
 
 /// Top strip of accepted FotoFlashback shots on the POSE screen.
 ///
-/// Stamp-sized thumbs use [kStripCellAspectRatio] (same cell shape as 2×6 print).
+/// Stamp-sized thumbs use [kStripCellAspectRatio] (same cover crop as 2×6 print).
 class PhotoCaptureStripThumbs extends StatelessWidget {
   const PhotoCaptureStripThumbs({
     super.key,
@@ -103,8 +103,7 @@ class _StripThumbSlot extends StatelessWidget {
                   file!,
                   width,
                   height,
-                  // Match print/preview: show full frame in the landscape cell.
-                  fit: BoxFit.contain,
+                  fit: BoxFit.cover,
                 )
               : ColoredBox(
                   color: Colors.white10,

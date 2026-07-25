@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -89,7 +88,13 @@ class FotoFlashbackStripPreview extends StatelessWidget {
                   for (var i = 0; i < kStripShotCount; i++)
                     Expanded(
                       child: images.length > i
-                          ? _StripCellImage(bytes: images[i])
+                          ? Image.memory(
+                              images[i],
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              gaplessPlayback: true,
+                            )
                           : const ColoredBox(color: Colors.black12),
                     ),
                 ],
@@ -171,40 +176,6 @@ class FotoFlashbackStripPreview extends StatelessWidget {
             ),
         ],
       ),
-    );
-  }
-}
-
-/// Matches zenai `prepareCell`: full frame (`contain`) over a blurred cover fill.
-class _StripCellImage extends StatelessWidget {
-  const _StripCellImage({required this.bytes});
-
-  final Uint8List bytes;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        ImageFiltered(
-          imageFilter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Image.memory(
-            bytes,
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: double.infinity,
-            gaplessPlayback: true,
-          ),
-        ),
-        ColoredBox(color: Colors.black.withValues(alpha: 0.18)),
-        Image.memory(
-          bytes,
-          fit: BoxFit.contain,
-          width: double.infinity,
-          height: double.infinity,
-          gaplessPlayback: true,
-        ),
-      ],
     );
   }
 }
