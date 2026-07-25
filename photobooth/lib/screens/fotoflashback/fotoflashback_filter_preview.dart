@@ -5,7 +5,11 @@ import 'package:flutter/material.dart';
 
 import '../../models/strip_models.dart';
 
-/// Dual 4×6 sheet preview (two identical 2×6 strips) matching print + staff.
+/// Single 2×6 strip preview (one cut of the dual print sheet).
+///
+/// Print still hands off two identical strips on a 4×6 sheet; the look UI shows
+/// one strip so guests edit the piece they keep. Credential bar matches zenai
+/// per-strip watermark (stacked "AI GENERATED" / "FotoZen AI").
 class FotoFlashbackStripPreview extends StatelessWidget {
   const FotoFlashbackStripPreview({
     super.key,
@@ -21,8 +25,8 @@ class FotoFlashbackStripPreview extends StatelessWidget {
     this.onScribbleStart,
     this.onScribbleUpdate,
     this.onScribbleEnd,
-    this.width = defaultSheetWidth,
-    this.height = defaultSheetHeight,
+    this.width = defaultStripWidth,
+    this.height = defaultStripHeight,
   });
 
   final List<String> imageDataUrls;
@@ -40,75 +44,60 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   final void Function(double x, double y)? onScribbleUpdate;
   final VoidCallback? onScribbleEnd;
 
-  /// Full dual-sheet size (matches zenai 1200×1800 print).
+  /// Single strip size (matches zenai 600×1800 / 2"×6").
   final double width;
   final double height;
 
-  /// Print sheet 1200×1800 (4"×6" dual strip).
+  /// Print sheet 1200×1800 (4"×6" dual strip) — staff / compose reference.
   static const double defaultSheetWidth = 264;
   static const double defaultSheetHeight = 396;
   static const double sheetAspectRatio =
       defaultSheetWidth / defaultSheetHeight;
 
   /// One 2×6 strip (half sheet width).
-  static const double stripAspectRatio = 0.5 * sheetAspectRatio;
-
-  /// Back-compat alias used by layout code.
-  static const double aspectRatio = sheetAspectRatio;
-  static const double defaultStripWidth = defaultSheetWidth;
+  static const double defaultStripWidth = defaultSheetWidth / 2;
   static const double defaultStripHeight = defaultSheetHeight;
+  static const double stripAspectRatio =
+      defaultStripWidth / defaultStripHeight;
+
+  /// Layout uses the single-strip aspect guests edit.
+  static const double aspectRatio = stripAspectRatio;
 
   /// Matches zenai `STRIP_PRINT.border / stripWidth` (4 / 600).
   static const double printBorderRatio = 4 / 600;
 
+  /// Stacked credential copy burned onto each cut strip at print time.
+  static const String credentialLine1 = 'AI GENERATED';
+  static const String credentialLine2 = 'FotoZen AI';
+
   @override
   Widget build(BuildContext context) {
-    final stripW = width / 2;
-    // Matches zenai compact strip watermark (~width/90 font, ~1.75× bar).
-    final credentialBarH = (width / 90 * 1.75).clamp(14.0, 22.0);
+    // Matches zenai compact per-strip watermark (stacked lines on ~600px strip).
+    final fontSize = (width / 42).clamp(7.0, 11.0);
+    final credentialBarH = (fontSize * 2.6).clamp(18.0, 28.0);
     return SizedBox(
       width: width,
       height: height,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Row(
-            children: [
-              _FotoFlashbackSingleStrip(
-                imageDataUrls: imageDataUrls,
-                filterId: filterId,
-                frameId: frameId,
-                stickerId: stickerId,
-                placements: placements,
-                scribbles: scribbles,
-                drawMode: drawMode,
-                interactive: true,
-                onMovePlacement: onMovePlacement,
-                onRemovePlacement: onRemovePlacement,
-                onScribbleStart: onScribbleStart,
-                onScribbleUpdate: onScribbleUpdate,
-                onScribbleEnd: onScribbleEnd,
-                width: stripW,
-                height: height,
-              ),
-              // Mirror copy — same pixels/overlays as print's right strip.
-              IgnorePointer(
-                child: _FotoFlashbackSingleStrip(
-                  imageDataUrls: imageDataUrls,
-                  filterId: filterId,
-                  frameId: frameId,
-                  stickerId: stickerId,
-                  placements: placements,
-                  scribbles: scribbles,
-                  drawMode: false,
-                  interactive: false,
-                  width: stripW,
-                  height: height,
-                ),
-              ),
-            ],
+          _FotoFlashbackSingleStrip(
+            imageDataUrls: imageDataUrls,
+            filterId: filterId,
+            frameId: frameId,
+            stickerId: stickerId,
+            placements: placements,
+            scribbles: scribbles,
+            drawMode: drawMode,
+            interactive: true,
+            onMovePlacement: onMovePlacement,
+            onRemovePlacement: onRemovePlacement,
+            onScribbleStart: onScribbleStart,
+            onScribbleUpdate: onScribbleUpdate,
+            onScribbleEnd: onScribbleEnd,
+            width: width,
+            height: height,
           ),
-          // Compact FotoZen credential bar (same copy as print watermark).
           Positioned(
             left: 0,
             right: 0,
@@ -118,15 +107,36 @@ class FotoFlashbackStripPreview extends StatelessWidget {
                 height: credentialBarH,
                 alignment: Alignment.center,
                 color: Colors.black.withValues(alpha: 0.42),
-                child: Text(
-                  'AI GENERATED  |  FotoZen AI',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: (width / 90).clamp(8.0, 12.0),
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 1.1,
-                    height: 1,
-                  ),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      credentialLine1,
+                      maxLines: 1,
+                      overflow: TextOverflow.clip,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: fontSize,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.4,
+                        height: 1.05,
+                      ),
+                    ),
+                    Text(
+                      credentialLine2,
+                      maxLines: 1,
+                      overflow: TextOverflow.clip,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: fontSize,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.4,
+                        height: 1.05,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

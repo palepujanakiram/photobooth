@@ -33,4 +33,14 @@ void main() {
     expect(stripPreviewFrameAccent('classic'), isNull);
     expect(stripPreviewFrameAccent('ticket'), isNotNull);
   });
+
+  test('preview defaults to a single 2×6 strip aspect', () {
+    expect(FotoFlashbackStripPreview.stripAspectRatio, closeTo(1 / 3, 0.001));
+    expect(FotoFlashbackStripPreview.aspectRatio,
+        FotoFlashbackStripPreview.stripAspectRatio);
+    expect(FotoFlashbackStripPreview.defaultStripWidth,
+        FotoFlashbackStripPreview.defaultSheetWidth / 2);
+    expect(FotoFlashbackStripPreview.credentialLine1, 'AI GENERATED');
+    expect(FotoFlashbackStripPreview.credentialLine2, 'FotoZen AI');
+  });
 }
