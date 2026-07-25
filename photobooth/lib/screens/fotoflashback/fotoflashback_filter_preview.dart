@@ -179,7 +179,6 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
     final pad = width * FotoFlashbackStripPreview.printBorderRatio;
     final frameColor = stripPreviewFrameColor(frameId);
     final accent = stripPreviewFrameAccent(frameId);
-    final showBrandBar = frameId != 'classic';
 
     return Container(
       width: width,
@@ -258,32 +257,6 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
                 },
                 onPanEnd: (_) => onScribbleEnd?.call(),
                 onPanCancel: onScribbleEnd,
-              ),
-            ),
-          if (showBrandBar)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: IgnorePointer(
-                child: Container(
-                  height: (height * 0.07).clamp(18.0, 28.0),
-                  alignment: Alignment.center,
-                  color: frameId == 'blush'
-                      ? Colors.white.withValues(alpha: 0.35)
-                      : Colors.black.withValues(alpha: 0.35),
-                  child: Text(
-                    'FOTOFLASHBACK',
-                    style: TextStyle(
-                      color: frameId == 'blush'
-                          ? const Color(0xFF7A3D48)
-                          : const Color(0xFFD8D0C8),
-                      fontSize: (width * 0.07).clamp(7.0, 10.0),
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ),
               ),
             ),
         ],
