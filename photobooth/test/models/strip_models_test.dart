@@ -4,7 +4,7 @@ import 'package:photobooth/utils/constants.dart';
 
 void main() {
   test('kStripCellAspectRatio matches 2×6 print cell geometry', () {
-    expect(kStripCellAspectRatio, closeTo(564 / 432, 0.0001));
+    expect(kStripCellAspectRatio, closeTo(592 / 448, 0.0001));
     expect(kStripCellAspectRatio, greaterThan(1)); // wider than tall
   });
 

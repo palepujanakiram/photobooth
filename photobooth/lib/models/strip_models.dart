@@ -23,8 +23,8 @@ const List<String> kStripFilterIds = [
 /// Per-frame print cell aspect (width ÷ height) for a 2×6 strip.
 ///
 /// Matches zenai `stripCompositor` cellGeometry at 300 DPI:
-/// strip 600×1800, border 18, gutter 12 → cell 564×432.
-const double kStripCellAspectRatio = 564 / 432;
+/// strip 600×1800, border 4, gutter 0 → cell 592×448.
+const double kStripCellAspectRatio = 592 / 448;
 
 /// One look from `GET /api/strip/filters`.
 class StripFilter {
