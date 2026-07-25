@@ -593,6 +593,9 @@ class ApiService {
     required String sessionId,
     required List<String> images,
     String filter = kDefaultStripFilterId,
+    String frame = kDefaultStripFrameId,
+    String sticker = kDefaultStripStickerId,
+    List<StripStickerPlacement> stickerPlacements = const [],
     bool cleanOverlays = true,
   }) async {
     if (images.length != kStripShotCount) {
@@ -601,13 +604,20 @@ class ApiService {
       );
     }
     try {
+      final body = <String, dynamic>{
+        'images': images,
+        'filter': filter,
+        'frame': frame,
+        'sticker': sticker,
+        'cleanOverlays': cleanOverlays,
+      };
+      if (stickerPlacements.isNotEmpty) {
+        body['stickerPlacements'] =
+            stickerPlacements.map((p) => p.toJson()).toList();
+      }
       final r = await _dio.post<dynamic>(
         '/api/sessions/$sessionId/strip/compose',
-        data: {
-          'images': images,
-          'filter': filter,
-          'cleanOverlays': cleanOverlays,
-        },
+        data: body,
         options: Options(responseType: ResponseType.json),
       );
       final data = r.data;

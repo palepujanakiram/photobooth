@@ -8,6 +8,25 @@ void main() {
     expect(kStripCellAspectRatio, greaterThan(1)); // wider than tall
   });
 
+  test('StripStickerPlacement serializes for compose API', () {
+    const p = StripStickerPlacement(
+      id: 's1',
+      type: 'hearts',
+      x: 0.4,
+      y: 0.6,
+      scale: 1.25,
+    );
+    expect(p.toJson(), {
+      'type': 'hearts',
+      'x': 0.4,
+      'y': 0.6,
+      'scale': 1.25,
+    });
+    expect(p.copyWith(x: 0.1).x, 0.1);
+    expect(p.copyWith(y: 0.2, scale: 2).scale, 2);
+    expect(kPlaceableStripStickerIds, containsAll(['hearts', 'sparkles', 'date']));
+  });
+
   test('StripFiltersCatalog.fromJson parses catalog and print hints', () {
     final catalog = StripFiltersCatalog.fromJson({
       'brand': 'FotoFlashback',
@@ -26,6 +45,12 @@ void main() {
           'cssFilter': 'grayscale(1)',
         },
       ],
+      'frames': [
+        {'id': 'ticket', 'name': 'Ticket', 'description': 'Dark'},
+      ],
+      'stickers': [
+        {'id': 'hearts', 'name': 'Hearts', 'description': 'Hearts'},
+      ],
       'print': {
         'size': 's4x6',
         'copiesOnSheet': 2,
@@ -37,6 +62,8 @@ void main() {
     expect(catalog.shotCount, 4);
     expect(catalog.filters, hasLength(2));
     expect(catalog.filters.first.id, 'classic_warm');
+    expect(catalog.frames.single.id, 'ticket');
+    expect(catalog.stickers.single.id, 'hearts');
     expect(catalog.printSize, 's4x6');
     expect(catalog.copiesOnSheet, 2);
     expect(catalog.printNote, 'Two strips');
@@ -74,6 +101,8 @@ void main() {
       'imageUrl': 'https://example.com/a.jpg',
       'stripCompositeUrl': 'https://example.com/b.jpg',
       'filter': 'candy_pop',
+      'frame': 'blush',
+      'sticker': 'sparkles',
       'width': 1200,
       'height': 1800,
       'copiesOnSheet': 2,
@@ -81,6 +110,8 @@ void main() {
     });
     expect(result.printImageUrl, 'https://example.com/b.jpg');
     expect(result.filter, 'candy_pop');
+    expect(result.frame, 'blush');
+    expect(result.sticker, 'sparkles');
     expect(result.width, 1200);
     expect(result.height, 1800);
   });

@@ -389,11 +389,13 @@ abstract final class AppStrings {
   static const flashbackContinueLooks = 'Pick a look';
   static const flashbackFilterTitle = 'Pick your look';
   static const flashbackFilterSubtitle =
-      'Tap a look — your strip updates live';
+      'Tap a look or frame. Tap stickers to add — drag to move, double-tap to remove';
+  static const flashbackFrameLabel = 'Frame';
+  static const flashbackStickerLabel = 'Stickers';
   static const flashbackComposeCta = 'Continue';
   static const flashbackComposePayCta = 'Continue to pay';
   static const flashbackComposing = 'Building your strip…';
-  static const flashbackPreparingPreview = 'Polishing your strip…';
+  static const flashbackPreparingPreview = 'Polishing photos…';
   static const flashbackComposeFailed = 'Couldn’t build strip. Please try again.';
   static const flashbackNeedFourShots = 'Take all 4 shots to continue.';
 

@@ -24,4 +24,13 @@ void main() {
       expect(id, isNot('clean'));
     }
   });
+
+  test('stripPreviewFrameColor covers catalog frames', () {
+    expect(stripPreviewFrameColor('classic'), Colors.white);
+    expect(stripPreviewFrameColor('ticket'), const Color(0xFF1C1816));
+    expect(stripPreviewFrameColor('blush'), const Color(0xFFFFE4E8));
+    expect(stripPreviewFrameColor('noir'), const Color(0xFF202022));
+    expect(stripPreviewFrameAccent('classic'), isNull);
+    expect(stripPreviewFrameAccent('ticket'), isNotNull);
+  });
 }

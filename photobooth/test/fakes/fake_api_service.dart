@@ -198,11 +198,16 @@ class FakeApiService extends ApiService {
     required String sessionId,
     required List<String> images,
     String filter = kDefaultStripFilterId,
+    String frame = kDefaultStripFrameId,
+    String sticker = kDefaultStripStickerId,
+    List<StripStickerPlacement> stickerPlacements = const [],
     bool cleanOverlays = true,
   }) async {
     return StripComposeResult(
       imageUrl: 'https://example.com/strip.jpg',
       filter: filter,
+      frame: frame,
+      sticker: sticker,
     );
   }
 }

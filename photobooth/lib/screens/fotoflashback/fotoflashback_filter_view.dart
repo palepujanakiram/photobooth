@@ -127,35 +127,64 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           fontSize: 13,
                         ),
                       ),
+                      if (viewModel.isPreparingPreview) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.amber.shade300,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              AppStrings.flashbackPreparingPreview,
+                              style: TextStyle(
+                                color: Colors.amber.shade100
+                                    .withValues(alpha: 0.85),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       Expanded(
-                        child: viewModel.isPreparingPreview
-                            ? Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const CircularProgressIndicator(
-                                      color: Colors.amber,
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      AppStrings.flashbackPreparingPreview,
-                                      style: TextStyle(
-                                        color: Colors.amber.shade100,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : _LookPickerBody(
-                                imageDataUrls: viewModel.imageDataUrls,
-                                filterId: viewModel.selectedFilterId,
-                                filters: viewModel.filters,
-                                isLoading: viewModel.isLoading,
-                                onSelectFilter: viewModel.selectFilter,
-                              ),
+                        child: _LookPickerBody(
+                          imageDataUrls: viewModel.imageDataUrls,
+                          filterId: viewModel.selectedFilterId,
+                          frameId: viewModel.selectedFrameId,
+                          stickerId: viewModel.selectedStickerId,
+                          placements: viewModel.stickerPlacements,
+                          filters: viewModel.filters,
+                          isLoading: viewModel.isLoading,
+                          onSelectFilter: viewModel.selectFilter,
+                          onMovePlacement: viewModel.moveSticker,
+                          onRemovePlacement: viewModel.removeSticker,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _ChipPickerRow(
+                        label: AppStrings.flashbackFrameLabel,
+                        options: viewModel.frames
+                            .map((f) => (id: f.id, name: f.name))
+                            .toList(),
+                        selectedId: viewModel.selectedFrameId,
+                        onSelect: viewModel.selectFrame,
+                      ),
+                      const SizedBox(height: 6),
+                      _ChipPickerRow(
+                        label: AppStrings.flashbackStickerLabel,
+                        options: viewModel.stickers
+                            .map((s) => (id: s.id, name: s.name))
+                            .toList(),
+                        selectedId: viewModel.selectedStickerId,
+                        onSelect: viewModel.selectSticker,
                       ),
                       const SizedBox(height: 12),
                       ElevatedButton(
@@ -173,9 +202,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                         child: Text(
                           (viewModel.isComposing || _busy)
                               ? AppStrings.flashbackComposing
-                              : viewModel.isPreparingPreview
-                                  ? AppStrings.flashbackPreparingPreview
-                                  : cta,
+                              : cta,
                           style: const TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.bold,
@@ -199,16 +226,26 @@ class _LookPickerBody extends StatelessWidget {
   const _LookPickerBody({
     required this.imageDataUrls,
     required this.filterId,
+    required this.frameId,
+    required this.stickerId,
+    required this.placements,
     required this.filters,
     required this.isLoading,
     required this.onSelectFilter,
+    required this.onMovePlacement,
+    required this.onRemovePlacement,
   });
 
   final List<String> imageDataUrls;
   final String filterId;
+  final String frameId;
+  final String stickerId;
+  final List<StripStickerPlacement> placements;
   final List<StripFilter> filters;
   final bool isLoading;
   final ValueChanged<String> onSelectFilter;
+  final void Function(String id, double x, double y) onMovePlacement;
+  final ValueChanged<String> onRemovePlacement;
 
   @override
   Widget build(BuildContext context) {
@@ -228,6 +265,11 @@ class _LookPickerBody extends StatelessWidget {
               FotoFlashbackStripPreview(
                 imageDataUrls: imageDataUrls,
                 filterId: filterId,
+                frameId: frameId,
+                stickerId: stickerId,
+                placements: placements,
+                onMovePlacement: onMovePlacement,
+                onRemovePlacement: onRemovePlacement,
                 width: stripW,
                 height: stripH,
               ),
@@ -342,6 +384,75 @@ class _FilterTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ChipPickerRow extends StatelessWidget {
+  const _ChipPickerRow({
+    required this.label,
+    required this.options,
+    required this.selectedId,
+    required this.onSelect,
+  });
+
+  final String label;
+  final List<({String id, String name})> options;
+  final String selectedId;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    if (options.isEmpty) return const SizedBox.shrink();
+    return Row(
+      children: [
+        SizedBox(
+          width: 72,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Colors.amber.shade100.withValues(alpha: 0.85),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final opt in options) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(opt.name),
+                      selected: opt.id == selectedId,
+                      onSelected: (_) => onSelect(opt.id),
+                      selectedColor: Colors.amber.shade700,
+                      labelStyle: TextStyle(
+                        color: opt.id == selectedId
+                            ? Colors.black
+                            : Colors.white70,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                      backgroundColor: Colors.white10,
+                      side: BorderSide(
+                        color: opt.id == selectedId
+                            ? Colors.amber.shade400
+                            : Colors.white24,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -97,13 +97,28 @@ void main() {
     expect(vm.selectedFilter, isNull);
     await vm.loadFilters();
     expect(vm.filters, hasLength(2));
+    expect(vm.frames, hasLength(2));
+    expect(vm.stickers, hasLength(2));
     expect(vm.selectedFilter?.id, kDefaultStripFilterId);
+    expect(vm.selectedFrameId, kDefaultStripFrameId);
+    expect(vm.selectedStickerId, kDefaultStripStickerId);
+    vm.selectFrame('ticket');
+    vm.selectSticker('hearts');
+    vm.selectSticker('hearts');
+    expect(vm.selectedFrameId, 'ticket');
+    expect(vm.selectedStickerId, 'hearts');
+    expect(vm.stickerPlacements, hasLength(2));
+    vm.moveSticker(vm.stickerPlacements.first.id, 0.4, 0.5);
+    expect(vm.stickerPlacements.first.x, 0.4);
+    expect(vm.stickerPlacements.first.y, 0.5);
     vm.selectFilter('mono');
     expect(vm.selectedFilterId, 'mono');
     expect(vm.selectedFilter?.id, 'mono');
     vm.selectFilter('mono');
     expect(vm.selectedFilterId, 'mono');
 
+    // Polish runs in background; join the in-flight prepare.
+    await vm.preparePreview();
     expect(vm.previewCleaned, isTrue);
     expect(vm.imageDataUrls.every((u) => u.endsWith('_clean')), isTrue);
 
@@ -114,6 +129,30 @@ void main() {
     expect(vm.composeResult, isNotNull);
     expect(api.composeCalls, 1);
     expect(api.lastCleanOverlays, isFalse);
+    expect(api.lastFrame, 'ticket');
+    expect(api.lastSticker, kDefaultStripStickerId);
+    expect(api.lastPlacements, hasLength(2));
+  });
+
+  test('FotoFlashbackFilterViewModel sticker add/move/clear', () {
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: _StripFakeApi(),
+    );
+    expect(vm.canCompose, isTrue);
+    expect(vm.isPreparingPreview, isFalse);
+    vm.addSticker('sparkles');
+    vm.addSticker('date');
+    expect(vm.stickerPlacements, hasLength(2));
+    final id = vm.stickerPlacements.first.id;
+    vm.removeSticker(id);
+    expect(vm.stickerPlacements, hasLength(1));
+    vm.clearStickers();
+    expect(vm.stickerPlacements, isEmpty);
+    expect(vm.selectedStickerId, kDefaultStripStickerId);
+    vm.selectSticker('none');
+    expect(vm.stickerPlacements, isEmpty);
   });
 
   test('FotoFlashbackFilterViewModel surfaces compose errors', () async {
@@ -189,6 +228,16 @@ void main() {
     expect(resetDefault.catalog, isNotNull);
     expect(resetDefault.isLoading, isFalse);
     expect(resetDefault.isComposing, isFalse);
+
+    final altChrome = _StripFakeApi(altChromeOnly: true);
+    final resetChrome = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: altChrome,
+    );
+    await resetChrome.loadFilters();
+    expect(resetChrome.selectedFrameId, 'ticket');
+    expect(resetChrome.selectedStickerId, kDefaultStripStickerId);
   });
 }
 
@@ -208,6 +257,7 @@ class _StripFakeApi extends FakeApiService {
     this.throwGenericLoad = false,
     this.throwGenericCompose = false,
     this.monoOnly = false,
+    this.altChromeOnly = false,
   });
 
   final bool failCompose;
@@ -215,12 +265,33 @@ class _StripFakeApi extends FakeApiService {
   final bool throwGenericLoad;
   final bool throwGenericCompose;
   final bool monoOnly;
+  final bool altChromeOnly;
   int composeCalls = 0;
 
   @override
   Future<StripFiltersCatalog> fetchStripFilters() async {
     if (failLoad) throw ApiException('filters down');
     if (throwGenericLoad) throw Exception('load boom');
+    if (altChromeOnly) {
+      return StripFiltersCatalog.fromJson({
+        'brand': 'FotoFlashback',
+        'shotCount': 4,
+        'filters': [
+          {
+            'id': 'classic_warm',
+            'name': 'Classic Warm',
+            'description': 'Warm',
+            'cssFilter': 'none',
+          },
+        ],
+        'frames': [
+          {'id': 'ticket', 'name': 'Ticket', 'description': 'Dark'},
+        ],
+        'stickers': [
+          {'id': 'hearts', 'name': 'Hearts', 'description': 'Hearts'},
+        ],
+      });
+    }
     if (monoOnly) {
       return StripFiltersCatalog.fromJson({
         'brand': 'FotoFlashback',
@@ -252,6 +323,14 @@ class _StripFakeApi extends FakeApiService {
           'cssFilter': 'grayscale(1)',
         },
       ],
+      'frames': [
+        {'id': 'classic', 'name': 'Classic', 'description': 'White'},
+        {'id': 'ticket', 'name': 'Ticket', 'description': 'Dark'},
+      ],
+      'stickers': [
+        {'id': 'none', 'name': 'None', 'description': 'Off'},
+        {'id': 'hearts', 'name': 'Hearts', 'description': 'Hearts'},
+      ],
     });
   }
 
@@ -270,10 +349,16 @@ class _StripFakeApi extends FakeApiService {
     required String sessionId,
     required List<String> images,
     String filter = kDefaultStripFilterId,
+    String frame = kDefaultStripFrameId,
+    String sticker = kDefaultStripStickerId,
+    List<StripStickerPlacement> stickerPlacements = const [],
     bool cleanOverlays = true,
   }) async {
     composeCalls++;
     lastCleanOverlays = cleanOverlays;
+    lastFrame = frame;
+    lastSticker = sticker;
+    lastPlacements = List<StripStickerPlacement>.from(stickerPlacements);
     if (failCompose) {
       throw ApiException('compose down');
     }
@@ -283,8 +368,14 @@ class _StripFakeApi extends FakeApiService {
     return StripComposeResult(
       imageUrl: 'https://example.com/strip.jpg',
       filter: filter,
+      frame: frame,
+      sticker: sticker,
     );
   }
+
+  String? lastFrame;
+  String? lastSticker;
+  List<StripStickerPlacement>? lastPlacements;
 
   bool? lastCleanOverlays;
 }
