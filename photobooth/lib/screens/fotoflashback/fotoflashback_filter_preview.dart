@@ -64,41 +64,71 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final stripW = width / 2;
+    // Matches zenai compact strip watermark (~width/90 font, ~1.75× bar).
+    final credentialBarH = (width / 90 * 1.75).clamp(14.0, 22.0);
     return SizedBox(
       width: width,
       height: height,
-      child: Row(
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          _FotoFlashbackSingleStrip(
-            imageDataUrls: imageDataUrls,
-            filterId: filterId,
-            frameId: frameId,
-            stickerId: stickerId,
-            placements: placements,
-            scribbles: scribbles,
-            drawMode: drawMode,
-            interactive: true,
-            onMovePlacement: onMovePlacement,
-            onRemovePlacement: onRemovePlacement,
-            onScribbleStart: onScribbleStart,
-            onScribbleUpdate: onScribbleUpdate,
-            onScribbleEnd: onScribbleEnd,
-            width: stripW,
-            height: height,
+          Row(
+            children: [
+              _FotoFlashbackSingleStrip(
+                imageDataUrls: imageDataUrls,
+                filterId: filterId,
+                frameId: frameId,
+                stickerId: stickerId,
+                placements: placements,
+                scribbles: scribbles,
+                drawMode: drawMode,
+                interactive: true,
+                onMovePlacement: onMovePlacement,
+                onRemovePlacement: onRemovePlacement,
+                onScribbleStart: onScribbleStart,
+                onScribbleUpdate: onScribbleUpdate,
+                onScribbleEnd: onScribbleEnd,
+                width: stripW,
+                height: height,
+              ),
+              // Mirror copy — same pixels/overlays as print's right strip.
+              IgnorePointer(
+                child: _FotoFlashbackSingleStrip(
+                  imageDataUrls: imageDataUrls,
+                  filterId: filterId,
+                  frameId: frameId,
+                  stickerId: stickerId,
+                  placements: placements,
+                  scribbles: scribbles,
+                  drawMode: false,
+                  interactive: false,
+                  width: stripW,
+                  height: height,
+                ),
+              ),
+            ],
           ),
-          // Mirror copy — same pixels/overlays as print's right strip.
-          IgnorePointer(
-            child: _FotoFlashbackSingleStrip(
-              imageDataUrls: imageDataUrls,
-              filterId: filterId,
-              frameId: frameId,
-              stickerId: stickerId,
-              placements: placements,
-              scribbles: scribbles,
-              drawMode: false,
-              interactive: false,
-              width: stripW,
-              height: height,
+          // Compact FotoZen credential bar (same copy as print watermark).
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: IgnorePointer(
+              child: Container(
+                height: credentialBarH,
+                alignment: Alignment.center,
+                color: Colors.black.withValues(alpha: 0.42),
+                child: Text(
+                  'AI GENERATED  |  FotoZen AI',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: (width / 90).clamp(8.0, 12.0),
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 1.1,
+                    height: 1,
+                  ),
+                ),
+              ),
             ),
           ),
         ],
