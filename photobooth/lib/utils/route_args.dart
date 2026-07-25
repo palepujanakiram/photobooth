@@ -198,6 +198,9 @@ class ResultArgs {
   final List<GeneratedImage> generatedImages;
   final PhotoModel? originalPhoto;
   final PrintOrientation printOrientation;
+
+  /// FotoFlashback only — WCM cut size (e.g. `s2x6`). Null keeps AI orientation size.
+  final String? printSize;
   final CustomerContactCapture contact;
 
   String? get customerName =>
@@ -210,6 +213,7 @@ class ResultArgs {
     required this.generatedImages,
     this.originalPhoto,
     this.printOrientation = PrintOrientation.portrait,
+    this.printSize,
     this.contact = CustomerContactCapture.empty,
   });
 
@@ -220,6 +224,7 @@ class ResultArgs {
       if (generatedImages == null) return null;
       final originalPhoto = parseOptionalPhotoModel(args['originalPhoto']);
       if (args['originalPhoto'] != null && originalPhoto == null) return null;
+      final rawPrintSize = args['printSize']?.toString().trim();
       return ResultArgs(
         generatedImages: generatedImages,
         originalPhoto: originalPhoto,
@@ -227,6 +232,9 @@ class ResultArgs {
               args['printOrientation']?.toString(),
             ) ??
             PrintOrientation.portrait,
+        printSize: (rawPrintSize != null && rawPrintSize.isNotEmpty)
+            ? rawPrintSize
+            : null,
         contact: CustomerContactCapture.tryParseRouteMap(args),
       );
     }

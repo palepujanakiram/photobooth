@@ -1376,7 +1376,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           printerHost: _r._printerHost,
           printerPort: _r.effectivePrinterPort,
           printerPath: _r.effectivePrinterPath,
-          printSize: _r._printOrientation.printSize,
+          printSize: _r.effectivePrintSize,
           quantity: _r._printCopies,
         );
 

@@ -65,7 +65,7 @@ void main() {
 
     final empty = StripFiltersCatalog.fromJson(const {});
     expect(empty.filters, isEmpty);
-    expect(empty.printSize, AppConstants.kPrintSizePortrait4x6);
+    expect(empty.printSize, AppConstants.kPrintSizeStripDual2x6);
     expect(empty.copiesOnSheet, 2);
   });
 

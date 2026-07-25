@@ -36,7 +36,11 @@ Future<String?> continueAfterFlashbackLook({
   if (image == null) {
     return viewModel.errorMessage ?? AppStrings.flashbackComposeFailed;
   }
-  await navigateToFlashbackResult(context: context, image: image);
+  await navigateToFlashbackResult(
+    context: context,
+    image: image,
+    printSize: viewModel.composeResult?.printSize,
+  );
   return null;
 }
 
@@ -57,15 +61,21 @@ Future<String?> composeFlashbackAfterPrePay({
   if (image == null) {
     return vm.errorMessage ?? AppStrings.flashbackComposeFailed;
   }
-  await navigateToFlashbackResult(context: context, image: image);
+  await navigateToFlashbackResult(
+    context: context,
+    image: image,
+    printSize: vm.composeResult?.printSize,
+  );
   return null;
 }
 
 Future<void> navigateToFlashbackResult({
   required BuildContext context,
   required GeneratedImage image,
+  String? printSize,
 }) async {
   if (!context.mounted) return;
+  final size = printSize?.trim();
   await Navigator.of(context).pushNamedAndRemoveUntil(
     AppConstants.kRouteResult,
     (route) =>
@@ -75,8 +85,11 @@ Future<void> navigateToFlashbackResult({
         route.isFirst,
     arguments: ResultArgs(
       generatedImages: [image],
-      // Same WCM size as AI portrait (s4x6); image is dual 2×6 on one sheet.
       printOrientation: PrintOrientation.portrait,
+      // WCM "2 2x6" cut — not s4x6 (that prints one uncut 4×6 sheet).
+      printSize: (size != null && size.isNotEmpty)
+          ? size
+          : AppConstants.kPrintSizeStripDual2x6,
     ),
   );
 }

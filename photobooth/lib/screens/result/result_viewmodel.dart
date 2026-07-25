@@ -78,6 +78,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   final List<GeneratedImage> _generatedImages;
   final PhotoModel? _originalPhoto;
   final PrintOrientation _printOrientation;
+  final String? _printSizeOverride;
   final PrintService _printService;
   final ShareService _shareService;
   final ApiService _apiService;
@@ -296,6 +297,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
     required List<GeneratedImage> generatedImages,
     PhotoModel? originalPhoto,
     PrintOrientation printOrientation = PrintOrientation.portrait,
+    String? printSize,
     PrintService? printService,
     ShareService? shareService,
     ApiService? apiService,
@@ -310,6 +312,8 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   })  : _generatedImages = generatedImages,
         _originalPhoto = originalPhoto,
         _printOrientation = printOrientation,
+        _printSizeOverride =
+            (printSize?.trim().isNotEmpty ?? false) ? printSize!.trim() : null,
         _printService = printService ?? PrintService(),
         _shareService = shareService ?? ShareService(),
         _apiService = apiService ?? ApiService(),
@@ -329,6 +333,10 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   List<GeneratedImage> get generatedImages => _generatedImages;
   PhotoModel? get originalPhoto => _originalPhoto;
   PrintOrientation get printOrientation => _printOrientation;
+
+  /// AI: orientation size. FotoFlashback: `s2x6` so WCM engages the 2″ cutter.
+  String get effectivePrintSize =>
+      _printSizeOverride ?? _printOrientation.printSize;
   bool get isProcessing => _isProcessing;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;

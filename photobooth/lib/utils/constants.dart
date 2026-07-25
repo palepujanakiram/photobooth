@@ -129,6 +129,11 @@ class AppConstants {
   static const String kPrintSizePortrait4x6 = 's4x6';
   static const String kPrintSizeLandscape6x4 = 's6x4';
 
+  /// FotoFlashback dual strip: WCM "2 2x6" / 2″ cut (two strips from one sheet).
+  /// Image is still the dual 1200×1800 composite; this token engages the cutter.
+  /// AI themes must keep using [kPrintSizePortrait4x6] / [kPrintSizeLandscape6x4].
+  static const String kPrintSizeStripDual2x6 = 's2x6';
+
   /// BEHOLD single-result hero: width cap on landscape / desktop (wider than capture kiosk).
   static const double kBeholdResultCardMaxWidthFractionLandscape = 0.52;
 

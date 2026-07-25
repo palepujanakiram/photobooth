@@ -59,7 +59,7 @@ class StripFiltersCatalog {
     required this.brand,
     required this.shotCount,
     required this.filters,
-    this.printSize = AppConstants.kPrintSizePortrait4x6,
+    this.printSize = AppConstants.kPrintSizeStripDual2x6,
     this.copiesOnSheet = 2,
     this.printNote,
   });
@@ -99,7 +99,7 @@ class StripFiltersCatalog {
       filters: filters,
       printSize: JsonParseHelpers.stringValue(
         printMap?['size'],
-        fallback: AppConstants.kPrintSizePortrait4x6,
+        fallback: AppConstants.kPrintSizeStripDual2x6,
       ),
       copiesOnSheet: JsonParseHelpers.intOrNull(printMap?['copiesOnSheet']) ?? 2,
       printNote: JsonParseHelpers.stringOrNull(printMap?['note']),
@@ -116,7 +116,7 @@ class StripComposeResult {
     this.width,
     this.height,
     this.copiesOnSheet = 2,
-    this.printSize = AppConstants.kPrintSizePortrait4x6,
+    this.printSize = AppConstants.kPrintSizeStripDual2x6,
   });
 
   final String imageUrl;
@@ -153,7 +153,7 @@ class StripComposeResult {
       copiesOnSheet: JsonParseHelpers.intOrNull(json['copiesOnSheet']) ?? 2,
       printSize: JsonParseHelpers.stringValue(
         json['printSize'],
-        fallback: AppConstants.kPrintSizePortrait4x6,
+        fallback: AppConstants.kPrintSizeStripDual2x6,
       ),
     );
   }
