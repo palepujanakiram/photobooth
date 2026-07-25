@@ -186,10 +186,19 @@ class FakeApiService extends ApiService {
   }
 
   @override
+  Future<List<String>> cleanStripOverlays({
+    required String sessionId,
+    required List<String> images,
+  }) async {
+    return List<String>.from(images);
+  }
+
+  @override
   Future<StripComposeResult> composeStrip({
     required String sessionId,
     required List<String> images,
     String filter = kDefaultStripFilterId,
+    bool cleanOverlays = true,
   }) async {
     return StripComposeResult(
       imageUrl: 'https://example.com/strip.jpg',

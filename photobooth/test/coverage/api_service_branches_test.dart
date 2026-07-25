@@ -464,6 +464,29 @@ void main() {
     expect(api.fetchStripFilters(), throwsA(isA<ApiException>()));
   });
 
+  test('cleanStripOverlays returns cleaned images', () async {
+    expect(
+      () => api.cleanStripOverlays(sessionId: 's', images: const ['a']),
+      throwsA(isA<ApiException>()),
+    );
+    final images = List.filled(4, 'data:image/jpeg;base64,abc');
+    adapter.onPost(
+      '/api/sessions/sess-1/strip/clean-overlays',
+      (server) => server.reply(200, {
+        'success': true,
+        'images': images.map((e) => '${e}_clean').toList(),
+        'overlayCleanup': {'detectedCount': 1, 'cleanedCount': 1},
+      }),
+      data: Matchers.any,
+    );
+    final cleaned = await api.cleanStripOverlays(
+      sessionId: 'sess-1',
+      images: images,
+    );
+    expect(cleaned, hasLength(4));
+    expect(cleaned.first.endsWith('_clean'), isTrue);
+  });
+
   test('composeStrip validates shot count and returns print url', () async {
     expect(
       () => api.composeStrip(sessionId: 's', images: const ['a']),

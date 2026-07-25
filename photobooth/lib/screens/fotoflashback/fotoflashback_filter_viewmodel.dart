@@ -8,39 +8,46 @@ import '../../utils/exceptions.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
 
-/// Loads strip looks and composes the dual 2×6 print sheet.
+/// Loads strip looks, cleans viewfinder overlays for preview, then composes.
 class FotoFlashbackFilterViewModel extends ChangeNotifier {
   FotoFlashbackFilterViewModel({
     required this.theme,
     required List<String> imageDataUrls,
     ApiService? apiService,
     SessionManager? sessionManager,
-  })  : _imageDataUrls = List<String>.unmodifiable(imageDataUrls),
+  })  : _imageDataUrls = List<String>.from(imageDataUrls),
         _api = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager();
 
   final ThemeModel theme;
-  final List<String> _imageDataUrls;
+  List<String> _imageDataUrls;
   final ApiService _api;
   final SessionManager _sessionManager;
 
   StripFiltersCatalog? _catalog;
   String _selectedFilterId = kDefaultStripFilterId;
   bool _loading = false;
+  bool _preparingPreview = false;
+  bool _previewCleaned = false;
   bool _composing = false;
   String? _errorMessage;
   StripComposeResult? _composeResult;
 
-  List<String> get imageDataUrls => _imageDataUrls;
+  List<String> get imageDataUrls => List<String>.unmodifiable(_imageDataUrls);
   StripFiltersCatalog? get catalog => _catalog;
   List<StripFilter> get filters => _catalog?.filters ?? const [];
   String get selectedFilterId => _selectedFilterId;
   bool get isLoading => _loading;
+  bool get isPreparingPreview => _preparingPreview;
+  bool get previewCleaned => _previewCleaned;
   bool get isComposing => _composing;
   String? get errorMessage => _errorMessage;
   StripComposeResult? get composeResult => _composeResult;
   bool get canCompose =>
-      _imageDataUrls.length == kStripShotCount && !_composing && !_loading;
+      _imageDataUrls.length == kStripShotCount &&
+      !_composing &&
+      !_loading &&
+      !_preparingPreview;
 
   StripFilter? get selectedFilter {
     for (final f in filters) {
@@ -54,6 +61,18 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
     try {
+      await Future.wait([
+        _loadCatalog(),
+        preparePreview(),
+      ]);
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _loadCatalog() async {
+    try {
       _catalog = await _api.fetchStripFilters();
       if (filters.isNotEmpty &&
           !filters.any((f) => f.id == _selectedFilterId)) {
@@ -63,8 +82,31 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _errorMessage = e.message;
     } catch (e) {
       _errorMessage = e.toString();
+    }
+  }
+
+  /// Gemini viewfinder cleanup so the look/pay preview matches print.
+  /// Fail-open: keeps originals if cleanup fails.
+  Future<void> preparePreview() async {
+    if (_previewCleaned || _imageDataUrls.length != kStripShotCount) return;
+    final sessionId = _sessionManager.sessionId?.trim() ?? '';
+    if (sessionId.isEmpty) return;
+
+    _preparingPreview = true;
+    notifyListeners();
+    try {
+      final cleaned = await _api.cleanStripOverlays(
+        sessionId: sessionId,
+        images: _imageDataUrls,
+      );
+      if (cleaned.length == kStripShotCount) {
+        _imageDataUrls = List<String>.from(cleaned);
+        _previewCleaned = true;
+      }
+    } catch (_) {
+      // Preview still usable with originals; compose will clean again.
     } finally {
-      _loading = false;
+      _preparingPreview = false;
       notifyListeners();
     }
   }
@@ -97,6 +139,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         sessionId: sessionId,
         images: _imageDataUrls,
         filter: _selectedFilterId,
+        // Skip second Gemini pass when preview already cleaned.
+        cleanOverlays: !_previewCleaned,
       );
       _composeResult = result;
       return GeneratedImage(

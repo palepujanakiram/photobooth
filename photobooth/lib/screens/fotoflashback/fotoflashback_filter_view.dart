@@ -129,13 +129,33 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                       ),
                       const SizedBox(height: 12),
                       Expanded(
-                        child: _LookPickerBody(
-                          imageDataUrls: viewModel.imageDataUrls,
-                          filterId: viewModel.selectedFilterId,
-                          filters: viewModel.filters,
-                          isLoading: viewModel.isLoading,
-                          onSelectFilter: viewModel.selectFilter,
-                        ),
+                        child: viewModel.isPreparingPreview
+                            ? Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const CircularProgressIndicator(
+                                      color: Colors.amber,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      AppStrings.flashbackPreparingPreview,
+                                      style: TextStyle(
+                                        color: Colors.amber.shade100,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : _LookPickerBody(
+                                imageDataUrls: viewModel.imageDataUrls,
+                                filterId: viewModel.selectedFilterId,
+                                filters: viewModel.filters,
+                                isLoading: viewModel.isLoading,
+                                onSelectFilter: viewModel.selectFilter,
+                              ),
                       ),
                       const SizedBox(height: 12),
                       ElevatedButton(
@@ -153,7 +173,9 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                         child: Text(
                           (viewModel.isComposing || _busy)
                               ? AppStrings.flashbackComposing
-                              : cta,
+                              : viewModel.isPreparingPreview
+                                  ? AppStrings.flashbackPreparingPreview
+                                  : cta,
                           style: const TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.bold,

@@ -393,6 +393,7 @@ abstract final class AppStrings {
   static const flashbackComposeCta = 'Continue';
   static const flashbackComposePayCta = 'Continue to pay';
   static const flashbackComposing = 'Building your strip…';
+  static const flashbackPreparingPreview = 'Polishing your strip…';
   static const flashbackComposeFailed = 'Couldn’t build strip. Please try again.';
   static const flashbackNeedFourShots = 'Take all 4 shots to continue.';
 

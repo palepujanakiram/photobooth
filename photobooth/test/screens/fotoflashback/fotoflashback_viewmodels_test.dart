@@ -104,12 +104,16 @@ void main() {
     vm.selectFilter('mono');
     expect(vm.selectedFilterId, 'mono');
 
+    expect(vm.previewCleaned, isTrue);
+    expect(vm.imageDataUrls.every((u) => u.endsWith('_clean')), isTrue);
+
     final image = await vm.compose();
     expect(image, isNotNull);
     expect(image!.imageUrl, 'https://example.com/strip.jpg');
     expect(image.isSelected, isTrue);
     expect(vm.composeResult, isNotNull);
     expect(api.composeCalls, 1);
+    expect(api.lastCleanOverlays, isFalse);
   });
 
   test('FotoFlashbackFilterViewModel surfaces compose errors', () async {
@@ -252,12 +256,24 @@ class _StripFakeApi extends FakeApiService {
   }
 
   @override
+  Future<List<String>> cleanStripOverlays({
+    required String sessionId,
+    required List<String> images,
+  }) async {
+    return images
+        .map((e) => e.endsWith('_clean') ? e : '${e}_clean')
+        .toList();
+  }
+
+  @override
   Future<StripComposeResult> composeStrip({
     required String sessionId,
     required List<String> images,
     String filter = kDefaultStripFilterId,
+    bool cleanOverlays = true,
   }) async {
     composeCalls++;
+    lastCleanOverlays = cleanOverlays;
     if (failCompose) {
       throw ApiException('compose down');
     }
@@ -269,4 +285,6 @@ class _StripFakeApi extends FakeApiService {
       filter: filter,
     );
   }
+
+  bool? lastCleanOverlays;
 }
