@@ -254,6 +254,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
       resolved: resolved,
       sessionId: sid.isEmpty ? null : sid,
       placeholder: staffPaymentThumbPlaceholder,
+      unavailable: staffPaymentThumbUnavailable,
     );
   }
 

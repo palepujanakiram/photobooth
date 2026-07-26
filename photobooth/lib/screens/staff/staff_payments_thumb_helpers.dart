@@ -14,11 +14,13 @@ Widget staffPaymentThumbImage({
   required String resolved,
   String? sessionId,
   required Widget Function() placeholder,
+  Widget Function()? unavailable,
 }) {
   if (resolved.isEmpty) return placeholder();
+  final onUnavailable = unavailable ?? staffPaymentThumbUnavailable;
 
   if (resolved.startsWith(AppStrings.dataImagePrefix)) {
-    return _staffPaymentDataUrlThumb(resolved, placeholder);
+    return _staffPaymentDataUrlThumb(resolved, onUnavailable);
   }
 
   final looksLikeBase64 = !resolved.startsWith('http') &&
@@ -26,14 +28,15 @@ Widget staffPaymentThumbImage({
       resolved.length > 100 &&
       resolved.length < 200000;
   if (looksLikeBase64) {
-    final fromB64 = _staffPaymentBase64Thumb(resolved, placeholder);
+    final fromB64 = _staffPaymentBase64Thumb(resolved, onUnavailable);
     if (fromB64 != null) return fromB64;
   }
 
   return StaffPaymentThumbNetworkImage(
     imageUrl: resolved,
     sessionId: sessionId ?? _sessionIdFromResolved(resolved),
-    placeholder: placeholder,
+    loadingPlaceholder: placeholder,
+    unavailable: onUnavailable,
   );
 }
 
@@ -43,17 +46,26 @@ String? _sessionIdFromResolved(String url) {
   return (sid == null || sid.isEmpty) ? null : sid;
 }
 
+bool _looksLikeSvg(Uint8List bytes) {
+  final head = String.fromCharCodes(
+    bytes.take(bytes.length < 64 ? bytes.length : 64),
+  ).trimLeft().toLowerCase();
+  return head.startsWith('<svg') || head.startsWith('<?xml');
+}
+
 class StaffPaymentThumbNetworkImage extends StatefulWidget {
   const StaffPaymentThumbNetworkImage({
     super.key,
     required this.imageUrl,
     this.sessionId,
-    required this.placeholder,
+    required this.loadingPlaceholder,
+    required this.unavailable,
   });
 
   final String imageUrl;
   final String? sessionId;
-  final Widget Function() placeholder;
+  final Widget Function() loadingPlaceholder;
+  final Widget Function() unavailable;
 
   @override
   State<StaffPaymentThumbNetworkImage> createState() =>
@@ -101,6 +113,11 @@ class _StaffPaymentThumbNetworkImageState
           ? await loader.fetchBytesWithStaffAuth(resolved)
           : await loader.fetchBytes(resolved);
       if (!mounted) return;
+      // Staff /api/img 404s return an SVG "Archived" placeholder — show tile, not decode.
+      if (bytes.isEmpty || _looksLikeSvg(bytes)) {
+        setState(() => _failed = true);
+        return;
+      }
       setState(() => _bytes = bytes);
     } catch (_) {
       if (!mounted) return;
@@ -110,7 +127,7 @@ class _StaffPaymentThumbNetworkImageState
 
   @override
   Widget build(BuildContext context) {
-    if (_failed) return widget.placeholder();
+    if (_failed) return widget.unavailable();
     final bytes = _bytes;
     if (bytes == null) {
       return ClipRRect(
@@ -118,7 +135,7 @@ class _StaffPaymentThumbNetworkImageState
         child: SizedBox(
           width: 54,
           height: 54,
-          child: widget.placeholder(),
+          child: widget.loadingPlaceholder(),
         ),
       );
     }
@@ -129,7 +146,7 @@ class _StaffPaymentThumbNetworkImageState
         width: 54,
         height: 54,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => widget.placeholder(),
+        errorBuilder: (_, __, ___) => widget.unavailable(),
       ),
     );
   }
@@ -178,6 +195,7 @@ Widget? _staffPaymentBase64Thumb(
   }
 }
 
+/// No photo URL yet (payment before capture/compose).
 Widget staffPaymentThumbPlaceholder() {
   return Container(
     width: 54,
@@ -189,6 +207,39 @@ Widget staffPaymentThumbPlaceholder() {
     ),
     alignment: Alignment.center,
     child: const Icon(Icons.image, size: 22, color: Colors.black45),
+  );
+}
+
+/// URL exists but storage returned 404 / object cleaned up overnight.
+Widget staffPaymentThumbUnavailable() {
+  return Container(
+    width: 54,
+    height: 54,
+    decoration: BoxDecoration(
+      color: const Color(0xFFFFFBEB),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(
+        color: const Color(0xFFF59E0B),
+        style: BorderStyle.solid,
+      ),
+    ),
+    alignment: Alignment.center,
+    child: const Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.broken_image_outlined, size: 18, color: Color(0xFFB45309)),
+        SizedBox(height: 2),
+        Text(
+          'Archived',
+          style: TextStyle(
+            fontSize: 8,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF92400E),
+            height: 1,
+          ),
+        ),
+      ],
+    ),
   );
 }
 
