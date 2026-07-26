@@ -22,6 +22,8 @@ import '../../views/widgets/delete_my_photos_action.dart';
 import '../../services/payment_push_coordinator.dart';
 import '../../services/kiosk_manager.dart';
 import '../../utils/route_args.dart';
+import '../transformation_details/transformation_details_view.dart';
+import '../../services/session_manager.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -35,6 +37,7 @@ class _ResultScreenState extends State<ResultScreen> {
   bool _isInitialized = false;
   bool _didNavigateToThankYou = false;
   String? _customerPhone;
+  String? _transformationRunId;
   bool? _paymentsEnabledOverride;
   Timer? _failureIdleTimer;
   int _failureSecondsLeft = 0;
@@ -67,6 +70,10 @@ class _ResultScreenState extends State<ResultScreen> {
     final generatedImages = parsed.generatedImages;
     final originalPhoto = parsed.originalPhoto;
     _customerPhone = parsed.customerPhone;
+    _transformationRunId = parsed.transformationRunId?.trim();
+    if (_transformationRunId != null && _transformationRunId!.isEmpty) {
+      _transformationRunId = null;
+    }
 
     if (generatedImages.isEmpty) return;
 
@@ -398,6 +405,10 @@ class _ResultScreenState extends State<ResultScreen> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             _buildTitleSection(appColors),
+                            if (_transformationRunId != null) ...[
+                              const SizedBox(height: 4),
+                              _buildTransformationDetailsLink(),
+                            ],
                             const SizedBox(height: 8),
                             if (paymentsEnabled)
                               Expanded(
@@ -564,6 +575,39 @@ class _ResultScreenState extends State<ResultScreen> {
           height: 1.35,
         ),
         textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  Widget _buildTransformationDetailsLink() {
+    final runId = _transformationRunId;
+    if (runId == null || runId.isEmpty) return const SizedBox.shrink();
+    return Center(
+      child: TextButton.icon(
+        onPressed: () {
+          Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => TransformationDetailsScreen(
+                runId: runId,
+                fallbackSessionId: SessionManager().sessionId,
+              ),
+            ),
+          );
+        },
+        icon: Icon(
+          Icons.photo_library_outlined,
+          size: 16,
+          color: Colors.amber.shade200,
+        ),
+        label: Text(
+          AppStrings.beholdTransformationDetailsLink,
+          style: TextStyle(
+            color: Colors.amber.shade200,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }

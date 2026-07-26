@@ -501,6 +501,7 @@ void main() {
         'filter': 'mono',
         'printSize': 's6x2x2',
         'copiesOnSheet': 2,
+        'runId': 'run-compose-1',
         'session': {
           'id': 'sess-1',
           'termsAccepted': true,
@@ -519,6 +520,7 @@ void main() {
     );
     expect(result.printImageUrl, 'https://example.com/composite.jpg');
     expect(result.printSize, 's6x2x2');
+    expect(result.runId, 'run-compose-1');
     expect(SessionManager().sessionId, 'sess-1');
   });
 

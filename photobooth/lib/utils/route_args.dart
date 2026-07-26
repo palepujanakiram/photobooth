@@ -201,6 +201,9 @@ class ResultArgs {
 
   /// FotoFlashback only — WCM cut size (e.g. `s6x2x2` for `6x2*2`). Null keeps AI size.
   final String? printSize;
+
+  /// Transformation run for View details (FotoFlashback compose / AI generate).
+  final String? transformationRunId;
   final CustomerContactCapture contact;
 
   String? get customerName =>
@@ -214,6 +217,7 @@ class ResultArgs {
     this.originalPhoto,
     this.printOrientation = PrintOrientation.portrait,
     this.printSize,
+    this.transformationRunId,
     this.contact = CustomerContactCapture.empty,
   });
 
@@ -225,6 +229,8 @@ class ResultArgs {
       final originalPhoto = parseOptionalPhotoModel(args['originalPhoto']);
       if (args['originalPhoto'] != null && originalPhoto == null) return null;
       final rawPrintSize = args['printSize']?.toString().trim();
+      final rawRunId = args['transformationRunId']?.toString().trim() ??
+          args['runId']?.toString().trim();
       return ResultArgs(
         generatedImages: generatedImages,
         originalPhoto: originalPhoto,
@@ -235,6 +241,8 @@ class ResultArgs {
         printSize: (rawPrintSize != null && rawPrintSize.isNotEmpty)
             ? rawPrintSize
             : null,
+        transformationRunId:
+            (rawRunId != null && rawRunId.isNotEmpty) ? rawRunId : null,
         contact: CustomerContactCapture.tryParseRouteMap(args),
       );
     }

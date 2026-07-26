@@ -5,8 +5,11 @@ import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../../services/protected_image_loader.dart';
+import '../../services/staff_api_service.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/secure_image_url.dart';
+import '../../utils/transformation_run_id.dart';
+import '../transformation_details/transformation_details_view.dart';
 
 /// Opens a full-screen pinch/zoom preview for a staff payment thumbnail.
 void staffPaymentShowImagePreview(
@@ -15,6 +18,7 @@ void staffPaymentShowImagePreview(
   String? sessionId,
   String? title,
   String? subtitle,
+  String? transformationRunId,
 }) {
   final url = imageUrl.trim();
   if (url.isEmpty) return;
@@ -26,6 +30,7 @@ void staffPaymentShowImagePreview(
         sessionId: sessionId,
         title: title,
         subtitle: subtitle,
+        transformationRunId: transformationRunId,
       ),
     ),
   );
@@ -82,12 +87,14 @@ class StaffPaymentImagePreviewScreen extends StatefulWidget {
     this.sessionId,
     this.title,
     this.subtitle,
+    this.transformationRunId,
   });
 
   final String imageUrl;
   final String? sessionId;
   final String? title;
   final String? subtitle;
+  final String? transformationRunId;
 
   @override
   State<StaffPaymentImagePreviewScreen> createState() =>
@@ -98,29 +105,66 @@ class _StaffPaymentImagePreviewScreenState
     extends State<StaffPaymentImagePreviewScreen> {
   Uint8List? _bytes;
   bool _failed = false;
+  String? _runId;
 
   @override
   void initState() {
     super.initState();
+    final seeded = widget.transformationRunId?.trim();
+    _runId = (seeded != null && seeded.isNotEmpty) ? seeded : null;
     _load();
   }
 
   Future<void> _load() async {
-    final bytes = await staffPaymentLoadImageBytes(
+    final bytesFuture = staffPaymentLoadImageBytes(
       imageUrl: widget.imageUrl,
       sessionId: widget.sessionId,
     );
+    final runFuture = _resolveRunId();
+    final bytes = await bytesFuture;
+    final runId = await runFuture;
     if (!mounted) return;
     setState(() {
       _bytes = bytes;
       _failed = bytes == null;
+      if (runId != null && runId.isNotEmpty) _runId = runId;
     });
+  }
+
+  Future<String?> _resolveRunId() async {
+    if (_runId != null && _runId!.isNotEmpty) return _runId;
+    final sid = widget.sessionId?.trim() ?? '';
+    if (sid.isEmpty) return null;
+    try {
+      final api = StaffApiService();
+      final session = await api.fetchSession(sid);
+      final fromSession = transformationRunIdFromSessionMap(session);
+      if (fromSession != null) return fromSession;
+      final runs = await api.fetchSessionRuns(sid);
+      return latestTransformationRunIdFromRunsResponse(runs);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _openTransformationDetails() {
+    final runId = _runId?.trim();
+    if (runId == null || runId.isEmpty) return;
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => TransformationDetailsScreen(
+          runId: runId,
+          fallbackSessionId: widget.sessionId,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final hasCaption = (widget.title?.isNotEmpty ?? false) ||
         (widget.subtitle?.isNotEmpty ?? false);
+    final hasRun = _runId != null && _runId!.isNotEmpty;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -155,7 +199,7 @@ class _StaffPaymentImagePreviewScreenState
                     if (hasCaption)
                       Expanded(
                         child: Padding(
-                          padding: const EdgeInsets.only(top: 14, right: 12),
+                          padding: const EdgeInsets.only(top: 14, right: 8),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
@@ -182,6 +226,20 @@ class _StaffPaymentImagePreviewScreenState
                                 ),
                               ],
                             ],
+                          ),
+                        ),
+                      )
+                    else
+                      const Spacer(),
+                    if (hasRun)
+                      TextButton(
+                        onPressed: _openTransformationDetails,
+                        child: Text(
+                          AppStrings.beholdTransformationDetailsLink,
+                          style: TextStyle(
+                            color: Colors.amber.shade200,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),

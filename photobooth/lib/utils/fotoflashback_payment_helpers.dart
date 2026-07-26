@@ -40,6 +40,7 @@ Future<String?> continueAfterFlashbackLook({
     context: context,
     image: image,
     printSize: viewModel.composeResult?.printSize,
+    transformationRunId: viewModel.composeResult?.runId,
   );
   return null;
 }
@@ -65,6 +66,7 @@ Future<String?> composeFlashbackAfterPrePay({
     context: context,
     image: image,
     printSize: vm.composeResult?.printSize,
+    transformationRunId: vm.composeResult?.runId,
   );
   return null;
 }
@@ -73,9 +75,11 @@ Future<void> navigateToFlashbackResult({
   required BuildContext context,
   required GeneratedImage image,
   String? printSize,
+  String? transformationRunId,
 }) async {
   if (!context.mounted) return;
   final size = printSize?.trim();
+  final runId = transformationRunId?.trim();
   await Navigator.of(context).pushNamedAndRemoveUntil(
     AppConstants.kRouteResult,
     (route) =>
@@ -90,6 +94,8 @@ Future<void> navigateToFlashbackResult({
       printSize: (size != null && size.isNotEmpty)
           ? size
           : AppConstants.kPrintSizeStripDual2x6,
+      transformationRunId:
+          (runId != null && runId.isNotEmpty) ? runId : null,
     ),
   );
 }

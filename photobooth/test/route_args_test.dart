@@ -117,6 +117,7 @@ void main() {
         'marketingEmailOptIn': true,
         'marketingSmsOptIn': true,
         'marketingWhatsappOptIn': false,
+        'transformationRunId': 'run-ff',
       });
       expect(parsed, isNotNull);
       expect(parsed!.generatedImages.length, 1);
@@ -127,6 +128,7 @@ void main() {
       expect(parsed.contact.marketingEmailOptIn, isTrue);
       expect(parsed.contact.marketingSmsOptIn, isTrue);
       expect(parsed.contact.marketingWhatsappOptIn, isFalse);
+      expect(parsed.transformationRunId, 'run-ff');
     });
 
     test('returns null when generatedImages empty', () {

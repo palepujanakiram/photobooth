@@ -140,6 +140,7 @@ void main() {
       'height': 1800,
       'copiesOnSheet': 2,
       'printSize': 's4x6',
+      'runId': 'run-strip-1',
     });
     expect(result.printImageUrl, 'https://example.com/b.jpg');
     expect(result.filter, 'candy_pop');
@@ -147,6 +148,7 @@ void main() {
     expect(result.sticker, 'sparkles');
     expect(result.width, 1200);
     expect(result.height, 1800);
+    expect(result.runId, 'run-strip-1');
   });
 
   test('StripComposeResult falls back to imageUrl', () {

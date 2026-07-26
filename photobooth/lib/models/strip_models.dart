@@ -305,6 +305,7 @@ class StripComposeResult {
     this.height,
     this.copiesOnSheet = 2,
     this.printSize = AppConstants.kPrintSizeStripDual2x6,
+    this.runId,
   });
 
   final String imageUrl;
@@ -318,6 +319,9 @@ class StripComposeResult {
   final int? height;
   final int copiesOnSheet;
   final String printSize;
+
+  /// Transformation run id for forensics / View details (`GET /api/generation-runs/:id`).
+  final String? runId;
 
   /// Prefer composite URL when present (same sheet as print).
   String get printImageUrl {
@@ -353,6 +357,8 @@ class StripComposeResult {
         json['printSize'],
         fallback: AppConstants.kPrintSizeStripDual2x6,
       ),
+      runId: JsonParseHelpers.stringOrNull(json['runId']) ??
+          JsonParseHelpers.stringOrNull(json['run_id']),
     );
   }
 }
