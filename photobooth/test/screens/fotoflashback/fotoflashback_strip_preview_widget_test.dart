@@ -88,6 +88,39 @@ void main() {
     expect(movedId, 'h1');
   });
 
+  testWidgets('sparkles placements render drawn glyphs (not font ✦)', (
+    tester,
+  ) async {
+    final url = 'data:image/jpeg;base64,$jpegB64';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FotoFlashbackStripPreview(
+            imageDataUrls: List.filled(4, url),
+            filterId: 'clean',
+            placements: const [
+              StripStickerPlacement(
+                id: 's1',
+                type: 'sparkles',
+                x: 0.3,
+                y: 0.25,
+              ),
+              StripStickerPlacement(
+                id: 's2',
+                type: 'sparkles',
+                x: 0.7,
+                y: 0.75,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    // Path-based sparkles — CustomPaint per placement (✦ is missing on web).
+    expect(find.byType(CustomPaint), findsWidgets);
+    expect(find.text('✦'), findsNothing);
+  });
+
   testWidgets('placements keep distinct Positioned tops per photo cell', (
     tester,
   ) async {

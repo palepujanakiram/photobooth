@@ -462,26 +462,10 @@ class _ChipPickerRow extends StatelessWidget {
                 for (final opt in options) ...[
                   Padding(
                     padding: const EdgeInsets.only(right: 6),
-                    child: ChoiceChip(
-                      label: Text(opt.name),
+                    child: _FlashbackChip(
+                      label: opt.name,
                       selected: opt.id == selectedId,
-                      onSelected: (_) => onSelect(opt.id),
-                      selectedColor: Colors.amber.shade700,
-                      labelStyle: TextStyle(
-                        color: opt.id == selectedId
-                            ? Colors.black
-                            : Colors.white70,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                      ),
-                      backgroundColor: Colors.white10,
-                      side: BorderSide(
-                        color: opt.id == selectedId
-                            ? Colors.amber.shade400
-                            : Colors.white24,
-                      ),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      onTap: () => onSelect(opt.id),
                     ),
                   ),
                 ],
@@ -533,23 +517,12 @@ class _ScribbleToolbar extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                ChoiceChip(
-                  label: Text(
-                    drawMode
-                        ? AppStrings.flashbackScribbleOn
-                        : AppStrings.flashbackScribbleOff,
-                  ),
+                _FlashbackChip(
+                  label: drawMode
+                      ? AppStrings.flashbackScribbleOn
+                      : AppStrings.flashbackScribbleOff,
                   selected: drawMode,
-                  onSelected: (_) => onToggleDraw(),
-                  selectedColor: Colors.amber.shade700,
-                  labelStyle: TextStyle(
-                    color: drawMode ? Colors.black : Colors.white70,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                  backgroundColor: Colors.white10,
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onTap: onToggleDraw,
                 ),
                 const SizedBox(width: 8),
                 for (final color in kStripScribblePenColors) ...[
@@ -607,6 +580,60 @@ class _ScribbleToolbar extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Frame / sticker / scribble chips — opaque colors so M3 ChoiceChip theme
+/// cannot force white-on-white on this dark screen.
+class _FlashbackChip extends StatelessWidget {
+  const _FlashbackChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  static const Color _unselectedFill = Color(0xFF3A322C);
+  static const Color _unselectedBorder = Color(0x66FFFFFF);
+
+  @override
+  Widget build(BuildContext context) {
+    final fill = selected ? Colors.amber.shade700 : _unselectedFill;
+    final border =
+        selected ? Colors.amber.shade400 : _unselectedBorder;
+    final foreground = selected ? Colors.black : Colors.white;
+    return Material(
+      color: fill,
+      shape: StadiumBorder(side: BorderSide(color: border)),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (selected) ...[
+                Icon(Icons.check, size: 14, color: foreground),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: foreground,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                  height: 1.1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

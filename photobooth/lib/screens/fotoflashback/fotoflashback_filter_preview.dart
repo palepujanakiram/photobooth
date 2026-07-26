@@ -384,17 +384,8 @@ double _glyphSize(StripStickerPlacement p, double stripWidth) {
 Widget _glyph(StripStickerPlacement p, double size) {
   switch (p.type) {
     case 'sparkles':
-      return Text(
-        '✦',
-        style: TextStyle(
-          color: const Color(0xFFFFF7D6).withValues(alpha: 0.95),
-          fontSize: size,
-          height: 1,
-          shadows: const [
-            Shadow(color: Color(0x99F5D76E), blurRadius: 2),
-          ],
-        ),
-      );
+      // Drawn path — ✦ often missing on Flutter web fonts.
+      return _SparkleGlyph(size: size, color: const Color(0xFFFFD54A));
     case 'confetti':
       return SizedBox(
         width: size,
@@ -551,16 +542,16 @@ List<Widget> _stickerOverlays(String stickerId, double width, double height) {
       ];
     case 'sparkles':
       return [
-        _stickerText('✦', width * 0.08, height * 0.04, width * 0.14,
-            const Color(0xFFFFF7D6)),
-        _stickerText('✦', width * 0.75, height * 0.4, width * 0.12,
-            const Color(0xFFFFE8A3)),
-        _stickerText('✧', width * 0.18, height * 0.85, width * 0.1,
-            const Color(0xFFFFF7D6)),
+        _stickerSparkle(width * 0.08, height * 0.04, width * 0.14,
+            const Color(0xFFFFD54A)),
+        _stickerSparkle(width * 0.75, height * 0.4, width * 0.12,
+            const Color(0xFFFFC107)),
+        _stickerSparkle(width * 0.18, height * 0.85, width * 0.1,
+            const Color(0xFFFFD54A)),
       ];
     case 'confetti':
       return [
-        _stickerText('✦', width * 0.15, height * 0.08, width * 0.1,
+        _stickerSparkle(width * 0.15, height * 0.08, width * 0.1,
             const Color(0xFFFF6B8A)),
         _stickerText('●', width * 0.75, height * 0.35, width * 0.08,
             const Color(0xFFFFD166)),
@@ -639,6 +630,83 @@ Widget _stickerText(
       ),
     ),
   );
+}
+
+Widget _stickerSparkle(double left, double top, double size, Color color) {
+  return Positioned(
+    left: left,
+    top: top,
+    child: _SparkleGlyph(size: size, color: color),
+  );
+}
+
+/// Eight-point sparkle drawn with paths (font-independent for web).
+class _SparkleGlyph extends StatelessWidget {
+  const _SparkleGlyph({
+    required this.size,
+    required this.color,
+  });
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _SparklePainter(color: color.withValues(alpha: 0.96)),
+      ),
+    );
+  }
+}
+
+class _SparklePainter extends CustomPainter {
+  const _SparklePainter({required this.color});
+
+  final Color color;
+
+  static Path _fourPoint(double cx, double cy, double r, double waist) {
+    return Path()
+      ..moveTo(cx, cy - r)
+      ..lineTo(cx + waist, cy - waist)
+      ..lineTo(cx + r, cy)
+      ..lineTo(cx + waist, cy + waist)
+      ..lineTo(cx, cy + r)
+      ..lineTo(cx - waist, cy + waist)
+      ..lineTo(cx - r, cy)
+      ..lineTo(cx - waist, cy - waist)
+      ..close();
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final r = size.shortestSide / 2;
+    final fill = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    // Long cardinal arms + shorter arms rotated 45° (classic ✦ shape).
+    canvas.drawPath(_fourPoint(cx, cy, r, r * 0.14), fill);
+    canvas.save();
+    canvas.translate(cx, cy);
+    canvas.rotate(0.785398163); // pi/4
+    canvas.translate(-cx, -cy);
+    canvas.drawPath(_fourPoint(cx, cy, r * 0.58, r * 0.1), fill);
+    canvas.restore();
+    canvas.drawCircle(
+      Offset(cx, cy),
+      r * 0.12,
+      Paint()..color = const Color(0xFFFFF59D).withValues(alpha: 0.95),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _SparklePainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
 }
 
 /// Approximate zenai Sharp grades for live Flutter preview.
