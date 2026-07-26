@@ -14,7 +14,7 @@ import '../../views/widgets/centered_max_width.dart';
 import '../photo_capture/photo_capture_view.dart';
 import 'experience_choice_viewmodel.dart';
 
-/// After terms: guest picks AI transform vs FotoFlashback strip path.
+/// After terms: guest picks FotoZen AI vs Classic 4-shot path.
 class ExperienceChoiceScreen extends StatefulWidget {
   const ExperienceChoiceScreen({super.key, this.capturePrefillPhoto});
 
@@ -113,7 +113,7 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
                     vertical: 28,
                   ),
                   child: CenteredMaxWidth(
-                    maxWidth: 560,
+                    maxWidth: 640,
                     child: Consumer<ExperienceChoiceViewModel>(
                       builder: (context, vm, _) {
                         return _ExperienceChoicePanel(
@@ -212,7 +212,7 @@ class _ExperienceChoicePanel extends StatelessWidget {
             _ExperienceOptionCard(
               title: AppStrings.experienceAiTitle,
               subtitle: AppStrings.experienceAiSubtitle,
-              icon: Icons.auto_awesome,
+              imageAsset: AppStrings.experienceAiPreviewAsset,
               accent: const Color(0xFF6B4EFF),
               onTap: onAi,
             ),
@@ -222,7 +222,7 @@ class _ExperienceChoicePanel extends StatelessWidget {
               subtitle: fotoFlashAvailable
                   ? AppStrings.experienceFotoFlashSubtitle
                   : AppStrings.experienceFotoFlashUnavailable,
-              icon: Icons.view_agenda_outlined,
+              imageAsset: AppStrings.experienceClassicPreviewAsset,
               accent: const Color(0xFFD4922A),
               enabled: fotoFlashAvailable && !startingFlashback,
               busy: startingFlashback,
@@ -250,7 +250,7 @@ class _ExperienceOptionCard extends StatelessWidget {
   const _ExperienceOptionCard({
     required this.title,
     required this.subtitle,
-    required this.icon,
+    required this.imageAsset,
     required this.accent,
     required this.onTap,
     this.enabled = true,
@@ -259,7 +259,7 @@ class _ExperienceOptionCard extends StatelessWidget {
 
   final String title;
   final String subtitle;
-  final IconData icon;
+  final String imageAsset;
   final Color accent;
   final VoidCallback onTap;
   final bool enabled;
@@ -284,7 +284,7 @@ class _ExperienceOptionCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         onTap: enabled && !busy ? onTap : null,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(18, 18, 16, 18),
+          padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
@@ -294,28 +294,35 @@ class _ExperienceOptionCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: muted ? appColors.borderColor : accent,
-                  borderRadius: BorderRadius.circular(14),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Opacity(
+                  opacity: muted ? 0.45 : 1,
+                  child: Image.asset(
+                    imageAsset,
+                    width: 92,
+                    height: 118,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 92,
+                      height: 118,
+                      color: accent.withValues(alpha: 0.35),
+                      alignment: Alignment.center,
+                      child: busy
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Icon(Icons.image_outlined, color: accent),
+                    ),
+                  ),
                 ),
-                child: busy
-                    ? const Padding(
-                        padding: EdgeInsets.all(13),
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Icon(
-                        icon,
-                        color: muted ? appColors.secondaryTextColor : Colors.white,
-                        size: 26,
-                      ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -324,7 +331,7 @@ class _ExperienceOptionCard extends StatelessWidget {
                       title,
                       style: TextStyle(
                         color: titleColor,
-                        fontSize: 19,
+                        fontSize: 20,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -335,8 +342,20 @@ class _ExperienceOptionCard extends StatelessWidget {
                         color: subtitleColor,
                         fontSize: 14,
                         height: 1.3,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (busy) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: accent,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

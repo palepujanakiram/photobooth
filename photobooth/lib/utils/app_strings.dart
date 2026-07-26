@@ -365,17 +365,22 @@ abstract final class AppStrings {
   static const experienceChoiceTitle = 'How do you want to play?';
   static const experienceChoiceSubtitle =
       'Pick one experience for this session.';
-  static const experienceAiTitle = 'AI Transform';
-  static const experienceAiSubtitle =
-      'One photo, styled with AI themes.';
-  static const experienceFotoFlashTitle = 'FotoFlashback';
+  static const experienceAiTitle = 'FotoZen';
+  static const experienceAiSubtitle = 'AI Photo Experiences';
+  static const experienceFotoFlashTitle = 'Classic';
   static const experienceFotoFlashSubtitle =
-      'Four poses, classic photo-strip looks — no AI.';
+      '4-shot as-is photos with glitter!';
   static const experienceFotoFlashUnavailable =
-      'FotoFlashback isn’t available on this booth yet.';
+      'Classic isn’t available on this booth yet.';
   static const experienceFotoFlashStartFailed =
-      'Couldn’t start FotoFlashback. Please try again.';
+      'Couldn’t start Classic. Please try again.';
   static const experienceBackToTerms = 'Back to terms';
+
+  /// Bundled preview art for the experience-choice cards.
+  static const experienceAiPreviewAsset =
+      'lib/images/experience/fotozen_ai_preview.jpg';
+  static const experienceClassicPreviewAsset =
+      'lib/images/experience/classic_4shot_preview.png';
 
   static const flashbackBrand = 'FotoFlashback';
   static const flashbackCaptureTitle = 'FotoFlashback';
