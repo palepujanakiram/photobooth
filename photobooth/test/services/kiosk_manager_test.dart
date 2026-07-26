@@ -8,7 +8,10 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await KioskManager().clearPaymentEnabledOverride();
+    await KioskManager().clearClassicPhotosEnabled();
     await KioskManager().clearKioskCode();
+    KioskManager.resetPaymentOverrideCacheForTests();
+    KioskManager.resetClassicPhotosCacheForTests();
   });
 
   test('payment override and clear flows', () async {
@@ -34,5 +37,17 @@ void main() {
     await prefs.setBool('kiosk_payment_enabled_override', false);
     KioskManager.resetPaymentOverrideCacheForTests();
     expect(await KioskManager().getPaymentEnabledOverride(), isFalse);
+  });
+
+  test('classic photos defaults true and persists', () async {
+    final km = KioskManager();
+    expect(await km.isClassicPhotosEnabled(), isTrue);
+    await km.setClassicPhotosEnabled(false);
+    expect(await km.isClassicPhotosEnabled(), isFalse);
+    KioskManager.resetClassicPhotosCacheForTests();
+    expect(await km.isClassicPhotosEnabled(), isFalse);
+    await km.clearClassicPhotosEnabled();
+    KioskManager.resetClassicPhotosCacheForTests();
+    expect(await km.isClassicPhotosEnabled(), isTrue);
   });
 }

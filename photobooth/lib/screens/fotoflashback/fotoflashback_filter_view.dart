@@ -27,7 +27,6 @@ class FotoFlashbackFilterScreen extends StatefulWidget {
 class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
   FotoFlashbackFilterViewModel? _viewModel;
   bool _busy = false;
-  bool _surpriseAutoStarted = false;
   String? _ctaLabel;
 
   @override
@@ -41,42 +40,9 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
     _viewModel = FotoFlashbackFilterViewModel(
       theme: args.theme,
       imageDataUrls: args.imageDataUrls,
-      surpriseMeAi: args.surpriseMeAi,
     );
-    if (args.surpriseMeAi) {
-      unawaited(_loadCta());
-      if (!_surpriseAutoStarted) {
-        _surpriseAutoStarted = true;
-        unawaited(_runSurpriseMe());
-      }
-    } else {
-      unawaited(_viewModel!.loadFilters());
-      unawaited(_loadCta());
-    }
-  }
-
-  Future<void> _runSurpriseMe() async {
-    final vm = _viewModel;
-    if (vm == null || _busy) return;
-    setState(() => _busy = true);
-    try {
-      final timing =
-          context.read<AppSettingsManager>().settings?.paymentCollectionTiming;
-      final error = await continueAfterFlashbackLook(
-        context: context,
-        viewModel: vm,
-        paymentCollectionTiming: timing,
-      );
-      if (!mounted) return;
-      if (error != null) {
-        AppSnackBar.showError(context, error);
-        setState(() => _busy = false);
-      }
-    } finally {
-      if (mounted && ModalRoute.of(context)?.isCurrent == true) {
-        setState(() => _busy = false);
-      }
-    }
+    unawaited(_viewModel!.loadFilters());
+    unawaited(_loadCta());
   }
 
   Future<void> _loadCta() async {
@@ -125,67 +91,6 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
     }
 
     final cta = _ctaLabel ?? AppStrings.flashbackComposeCta;
-
-    if (vm.surpriseMeAi) {
-      return ChangeNotifierProvider.value(
-        value: vm,
-        child: Scaffold(
-          backgroundColor: const Color(0xFF1A1410),
-          body: SafeArea(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(color: Colors.amber.shade300),
-                    const SizedBox(height: 24),
-                    const Text(
-                      AppStrings.experienceSurpriseMeTitle,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      AppStrings.flashbackSurpriseComposing,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.amber.shade100.withValues(alpha: 0.85),
-                        fontSize: 15,
-                        height: 1.35,
-                      ),
-                    ),
-                    if (vm.errorMessage != null) ...[
-                      const SizedBox(height: 20),
-                      Text(
-                        vm.errorMessage!,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.red.shade200,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextButton(
-                        onPressed: () => unawaited(_runSurpriseMe()),
-                        child: const Text(
-                          AppStrings.flashbackSurpriseRetry,
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
 
     return ChangeNotifierProvider.value(
       value: vm,
@@ -380,14 +285,23 @@ class _LookPickerBody extends StatelessWidget {
         final panelH = constraints.maxHeight;
         if (panelH <= 0) return const SizedBox.shrink();
 
-        // Single 2×6 strip — same proportions as one cut of the dual print.
-        final stripH = panelH;
-        final stripW = stripH * FotoFlashbackStripPreview.stripAspectRatio;
+        // Dual-strip chrome → tall 2×6; sheet layouts → wider 4×6 preview.
+        final sheet = isStripSheetLayout(frameId);
+        final aspect = sheet
+            ? FotoFlashbackStripPreview.sheetAspectRatio
+            : FotoFlashbackStripPreview.stripAspectRatio;
+        var previewH = panelH;
+        var previewW = previewH * aspect;
+        final maxW = constraints.maxWidth * 0.48;
+        if (previewW > maxW) {
+          previewW = maxW;
+          previewH = previewW / aspect;
+        }
 
         return SizedBox(
           height: panelH,
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               FotoFlashbackStripPreview(
                 imageDataUrls: imageDataUrls,
@@ -402,8 +316,8 @@ class _LookPickerBody extends StatelessWidget {
                 onScribbleStart: onScribbleStart,
                 onScribbleUpdate: onScribbleUpdate,
                 onScribbleEnd: onScribbleEnd,
-                width: stripW,
-                height: stripH,
+                width: previewW,
+                height: previewH,
               ),
               const SizedBox(width: 20),
               Expanded(

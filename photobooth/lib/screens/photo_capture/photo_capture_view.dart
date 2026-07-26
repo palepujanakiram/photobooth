@@ -198,7 +198,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   String? _subtitleHint;
   int? _multiShotTotal;
   ThemeModel? _flashbackTheme;
-  bool _surpriseMeAi = false;
   final List<PhotoModel> _stripShots = <PhotoModel>[];
   bool _stripFinishing = false;
 
@@ -220,7 +219,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _subtitleHint = captureArgs.subtitleHint;
       _multiShotTotal = captureArgs.multiShotTotal;
       _flashbackTheme = captureArgs.flashbackTheme;
-      _surpriseMeAi = captureArgs.surpriseMeAi;
       if (captureArgs.acceptedStripShots.isNotEmpty) {
         _stripShots
           ..clear()
@@ -283,7 +281,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         arguments: FlashbackFilterArgs(
           theme: theme,
           imageDataUrls: dataUrls,
-          surpriseMeAi: _surpriseMeAi,
         ),
       );
     } catch (e, st) {
@@ -1156,7 +1153,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       subtitleHint: _subtitleHint,
       multiShotTotal: _multiShotTotal,
       flashbackTheme: _flashbackTheme,
-      surpriseMeAi: _surpriseMeAi,
       acceptedStripShots: List<PhotoModel>.from(_stripShots),
     );
   }

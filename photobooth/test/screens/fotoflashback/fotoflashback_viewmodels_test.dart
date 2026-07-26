@@ -203,22 +203,6 @@ void main() {
     expect(vm.errorMessage, 'compose down');
   });
 
-  test('FotoFlashbackFilterViewModel Surprise Me uses surprise compose', () async {
-    final api = _StripFakeApi();
-    SessionManager().setSessionFromResponse(_sessionJson('sess-surprise'));
-    final vm = FotoFlashbackFilterViewModel(
-      theme: stripTheme,
-      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
-      surpriseMeAi: true,
-      apiService: api,
-    );
-    final image = await vm.compose();
-    expect(image, isNotNull);
-    expect(image!.imageUrl, 'https://example.com/surprise-strip.jpg');
-    expect(api.surpriseComposeCalls, 1);
-    expect(api.composeCalls, 0);
-  });
-
   test('FotoFlashbackFilterViewModel handles load/compose edge cases', () async {
     SessionManager().clearSession();
     final shortVm = FotoFlashbackFilterViewModel(
@@ -318,7 +302,6 @@ class _StripFakeApi extends FakeApiService {
   final bool monoOnly;
   final bool altChromeOnly;
   int composeCalls = 0;
-  int surpriseComposeCalls = 0;
 
   @override
   Future<StripFiltersCatalog> fetchStripFilters() async {
@@ -424,23 +407,6 @@ class _StripFakeApi extends FakeApiService {
       filter: filter,
       frame: frame,
       sticker: sticker,
-    );
-  }
-
-  @override
-  Future<StripComposeResult> composeSurpriseStrip({
-    required String sessionId,
-    required List<String> images,
-  }) async {
-    surpriseComposeCalls++;
-    if (failCompose) {
-      throw ApiException('compose down');
-    }
-    return const StripComposeResult(
-      imageUrl: 'https://example.com/surprise-strip.jpg',
-      filter: 'clean',
-      frame: kDefaultStripFrameId,
-      sticker: kDefaultStripStickerId,
     );
   }
 

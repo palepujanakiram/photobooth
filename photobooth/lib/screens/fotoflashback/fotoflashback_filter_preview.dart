@@ -4,12 +4,15 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../models/strip_models.dart';
+import 'fotoflashback_sheet_layout_view_widgets.dart';
+import 'fotoflashback_strip_chrome_view_widgets.dart';
 
-/// Single 2×6 strip preview (one cut of the dual print sheet).
+/// Single 2×6 strip preview (one cut of the dual print sheet), or a 4×6 sheet
+/// layout preview when [frameId] is polaroid / grid_2x2 / filmstrip / romantic.
 ///
-/// Print still hands off two identical strips on a 4×6 sheet; the look UI shows
-/// one strip so guests edit the piece they keep. Credential bar matches zenai
-/// per-strip watermark (stacked "AI GENERATED" / "FotoZen AI").
+/// Dual-strip chrome: print hands off two identical strips on a 4×6 sheet; the
+/// look UI shows one strip so guests edit the piece they keep. Sheet layouts
+/// preview the full 4×6 arrangement. Credential bar matches zenai watermark.
 class FotoFlashbackStripPreview extends StatelessWidget {
   const FotoFlashbackStripPreview({
     super.key,
@@ -66,15 +69,24 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   /// Matches zenai `STRIP_PRINT.border / stripWidth` (4 / 600).
   static const double printBorderRatio = 4 / 600;
 
-  /// Stacked credential copy burned onto each cut strip at print time.
-  static const String credentialLine1 = 'AI GENERATED';
-  static const String credentialLine2 = 'FotoZen AI';
+  /// Compact credential burned onto Classic strips (not AI — brand only).
+  static const String credentialLine = 'FOTOZEN AI';
 
   @override
   Widget build(BuildContext context) {
-    // Matches zenai compact per-strip watermark (stacked lines on ~600px strip).
+    if (isStripSheetLayout(frameId)) {
+      return FotoFlashbackSheetLayoutPreview(
+        imageDataUrls: imageDataUrls,
+        colorFilter: stripPreviewColorFilter(filterId),
+        layoutId: frameId,
+        width: width,
+        height: height,
+      );
+    }
+
+    // Matches zenai compact Classic watermark (single brand line).
     final fontSize = (width / 42).clamp(7.0, 11.0);
-    final credentialBarH = (fontSize * 2.6).clamp(18.0, 28.0);
+    final credentialBarH = (fontSize * 1.9).clamp(16.0, 24.0);
     return SizedBox(
       width: width,
       height: height,
@@ -108,35 +120,17 @@ class FotoFlashbackStripPreview extends StatelessWidget {
                 alignment: Alignment.center,
                 color: Colors.black.withValues(alpha: 0.42),
                 padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      credentialLine1,
-                      maxLines: 1,
-                      overflow: TextOverflow.clip,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: fontSize,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.4,
-                        height: 1.05,
-                      ),
-                    ),
-                    Text(
-                      credentialLine2,
-                      maxLines: 1,
-                      overflow: TextOverflow.clip,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: fontSize,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.4,
-                        height: 1.05,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  credentialLine,
+                  maxLines: 1,
+                  overflow: TextOverflow.clip,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.4,
+                    height: 1.05,
+                  ),
                 ),
               ),
             ),
@@ -186,17 +180,14 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final images =
         imageDataUrls.take(kStripShotCount).map(_bytesFromDataUrl).toList();
-    final pad = width * FotoFlashbackStripPreview.printBorderRatio;
-    final frameColor = stripPreviewFrameColor(frameId);
-    final accent = stripPreviewFrameAccent(frameId);
+    final chrome = StripChromeLook.forFrame(frameId);
+    final pad = width * chrome.borderRatio;
 
     return Container(
+      key: ValueKey<String>('strip_chrome_$frameId'),
       width: width,
       height: height,
-      decoration: BoxDecoration(
-        color: frameColor,
-        border: accent == null ? null : Border.all(color: accent, width: 1),
-      ),
+      color: chrome.fill,
       child: Stack(
         clipBehavior: Clip.hardEdge,
         children: [
@@ -222,6 +213,12 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
                 ],
               ),
             ),
+          ),
+          StripChromeOverlay(
+            look: chrome,
+            width: width,
+            height: height,
+            borderPad: pad,
           ),
           if (placements.isEmpty)
             ..._stickerOverlays(stickerId, width, height)
@@ -491,35 +488,28 @@ Widget _glyph(StripStickerPlacement p, double size) {
 }
 
 Color stripPreviewFrameColor(String frameId) {
+  if (!isStripSheetLayout(frameId)) {
+    return StripChromeLook.forFrame(frameId).fill;
+  }
   switch (frameId) {
-    case 'ticket':
-      return const Color(0xFF1C1816);
-    case 'blush':
-      return const Color(0xFFFFE4E8);
-    case 'noir':
-      return const Color(0xFF202022);
     case 'polaroid':
-      return const Color(0xFFF3EBE0);
+      return Colors.white;
     case 'grid_2x2':
       return const Color(0xFFFFFAF5);
     case 'filmstrip':
-      return const Color(0xFF0D0D0D);
+      return Colors.white;
     case 'romantic':
-      return const Color(0xFFFFF0F3);
-    case 'classic':
+      return Colors.white;
     default:
       return Colors.white;
   }
 }
 
 Color? stripPreviewFrameAccent(String frameId) {
+  if (!isStripSheetLayout(frameId)) {
+    return StripChromeLook.forFrame(frameId).accent;
+  }
   switch (frameId) {
-    case 'ticket':
-      return const Color(0xFFC4A574);
-    case 'blush':
-      return const Color(0xFFE8919A);
-    case 'noir':
-      return const Color(0xFFA0A0A8);
     case 'polaroid':
       return const Color(0xFF8A6A55);
     case 'grid_2x2':

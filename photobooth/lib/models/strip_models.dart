@@ -30,6 +30,7 @@ const List<String> kStripFrameIds = [
   'classic',
   'ticket',
   'blush',
+  'gold',
   'noir',
   'polaroid',
   'grid_2x2',

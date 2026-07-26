@@ -47,8 +47,6 @@ class AppSettingsModel {
   final bool? watermarkEnabled;
   final bool? exifStampEnabled;
   final bool? c2paSigningEnabled;
-  /// Classic Surprise Me AI teaser (`settings.photoStripConfig.enableSurpriseMeAi`).
-  final bool? enableSurpriseMeAi;
   /// Classic local OSD scrub (`settings.photoStripConfig.enableOsdScrub`).
   final bool? enableOsdScrub;
   final DateTime? createdAt;
@@ -97,7 +95,6 @@ class AppSettingsModel {
     this.watermarkEnabled,
     this.exifStampEnabled,
     this.c2paSigningEnabled,
-    this.enableSurpriseMeAi,
     this.enableOsdScrub,
     this.createdAt,
     this.updatedAt,
@@ -167,10 +164,6 @@ class AppSettingsModel {
       watermarkEnabled: JsonParseHelpers.boolOrNull(json['watermarkEnabled']),
       exifStampEnabled: JsonParseHelpers.boolOrNull(json['exifStampEnabled']),
       c2paSigningEnabled: JsonParseHelpers.boolOrNull(json['c2paSigningEnabled']),
-      enableSurpriseMeAi: JsonParseHelpers.boolOrNull(
-            stripMap?['enableSurpriseMeAi'],
-          ) ??
-          JsonParseHelpers.boolOrNull(json['enableSurpriseMeAi']),
       enableOsdScrub: JsonParseHelpers.boolOrNull(
             stripMap?['enableOsdScrub'],
           ) ??

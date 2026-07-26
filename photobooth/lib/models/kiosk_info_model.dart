@@ -8,6 +8,10 @@ class KioskInfoModel {
   /// null=inherit, true=force ON, false=force OFF
   final bool? paymentEnabled;
 
+  /// When false, kiosk skips Classic experience choice and goes straight to AI.
+  /// Defaults to true when the API omits the field.
+  final bool classicPhotosEnabled;
+
   /// Per-kiosk guest price overrides (rupees). null = inherit account settings.
   final int? initialPrice;
   final int? additionalPrintPrice;
@@ -20,6 +24,7 @@ class KioskInfoModel {
     this.location,
     this.accountId,
     this.paymentEnabled,
+    this.classicPhotosEnabled = true,
     this.initialPrice,
     this.additionalPrintPrice,
     this.regenerationPrice,
@@ -41,6 +46,10 @@ class KioskInfoModel {
       return null;
     }
 
+    final rawClassic = json['classicPhotosEnabled'];
+    // Missing/null → enabled (legacy kiosks / older API builds).
+    final classicEnabled = rawClassic != false;
+
     return KioskInfoModel(
       id: (json['id'] ?? '').toString(),
       code: (json['code'] ?? '').toString(),
@@ -48,6 +57,7 @@ class KioskInfoModel {
       location: json['location']?.toString(),
       accountId: json['accountId']?.toString(),
       paymentEnabled: payment,
+      classicPhotosEnabled: classicEnabled,
       initialPrice: parsePrice(json['initialPrice']),
       additionalPrintPrice: parsePrice(json['additionalPrintPrice']),
       regenerationPrice: parsePrice(json['regenerationPrice']),

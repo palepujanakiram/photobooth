@@ -374,16 +374,20 @@ abstract final class AppStrings {
       'Classic isn’t available on this booth yet.';
   static const experienceFotoFlashStartFailed =
       'Couldn’t start Classic. Please try again.';
-  static const experienceSurpriseMeTitle = 'Surprise Me';
-  static const experienceSurpriseMeSubtitle =
-      'Same 4 shots — AI outfit & scene, Classic strip vibes';
   static const experienceBackToTerms = 'Back to terms';
 
   /// Bundled preview art for the experience-choice cards.
-  static const experienceAiPreviewAsset =
-      'lib/images/experience/fotozen_ai_preview.jpg';
+  /// FotoZen uses a 2×2 collage of AI theme samples (people + themes).
+  static const List<String> experienceAiPreviewAssets = [
+    'lib/images/experience/fotozen_ai_preview.jpg',
+    'lib/images/experience/fotozen_ai_preview_b.jpg',
+    'lib/images/experience/fotozen_ai_preview_c.jpg',
+    'lib/images/experience/fotozen_ai_preview_d.jpg',
+  ];
   static const experienceClassicPreviewAsset =
       'lib/images/experience/classic_4shot_preview.png';
+  static const experienceAiPreviewBadge = 'AI themes';
+  static const experienceClassicPreviewBadge = '4-shot strip';
 
   static const flashbackBrand = 'FotoFlashback';
   static const flashbackCaptureTitle = 'FotoFlashback';
@@ -408,11 +412,8 @@ abstract final class AppStrings {
   static const flashbackComposeCta = 'Continue';
   static const flashbackComposePayCta = 'Continue to pay';
   static const flashbackComposing = 'Building your strip…';
-  static const flashbackSurpriseComposing =
-      'Surprising your strip — outfit & scene magic…';
   static const flashbackPreparingPreview = 'Polishing photos…';
   static const flashbackComposeFailed = 'Couldn’t build strip. Please try again.';
-  static const flashbackSurpriseRetry = 'Try again';
   static const flashbackNeedFourShots = 'Take all 4 shots to continue.';
 
   static const staffDashboardTitle = 'Staff dashboard';

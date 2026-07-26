@@ -107,6 +107,8 @@ flutter:
 
   assets:
     - lib/images/
+    # Flutter does not recurse: nested experience previews need their own entry.
+    - lib/images/experience/
     - assets/slideshow/
     - assets/sounds/
     - assets/sounds/camera_shutter.wav

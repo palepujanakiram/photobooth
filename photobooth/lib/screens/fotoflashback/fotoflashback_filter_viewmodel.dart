@@ -16,7 +16,6 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   FotoFlashbackFilterViewModel({
     required this.theme,
     required List<String> imageDataUrls,
-    this.surpriseMeAi = false,
     ApiService? apiService,
     SessionManager? sessionManager,
   })  : _imageDataUrls = List<String>.from(imageDataUrls),
@@ -24,7 +23,6 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         _sessionManager = sessionManager ?? SessionManager();
 
   final ThemeModel theme;
-  final bool surpriseMeAi;
   List<String> _imageDataUrls;
   final ApiService _api;
   final SessionManager _sessionManager;
@@ -355,26 +353,18 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       }
       _commitActiveScribble();
 
-      final StripComposeResult result;
-      if (surpriseMeAi) {
-        result = await _api.composeSurpriseStrip(
-          sessionId: sessionId,
-          images: _imageDataUrls,
-        );
-      } else {
-        result = await _api.composeStrip(
-          sessionId: sessionId,
-          images: _imageDataUrls,
-          filter: _selectedFilterId,
-          frame: _selectedFrameId,
-          sticker: kDefaultStripStickerId,
-          stickerPlacements: _placements,
-          scribbles: _scribbles,
-          // Skip cleanup when polish is disabled or preview already cleaned.
-          cleanOverlays:
-              AppConstants.kEnableStripOverlayCleanup && !_previewCleaned,
-        );
-      }
+      final result = await _api.composeStrip(
+        sessionId: sessionId,
+        images: _imageDataUrls,
+        filter: _selectedFilterId,
+        frame: _selectedFrameId,
+        sticker: kDefaultStripStickerId,
+        stickerPlacements: _placements,
+        scribbles: _scribbles,
+        // Skip cleanup when polish is disabled or preview already cleaned.
+        cleanOverlays:
+            AppConstants.kEnableStripOverlayCleanup && !_previewCleaned,
+      );
       _composeResult = result;
       return GeneratedImage(
         id: 'strip_${result.filter}_${DateTime.now().millisecondsSinceEpoch}',

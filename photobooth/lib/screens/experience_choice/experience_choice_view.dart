@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../services/app_settings_manager.dart';
+import '../../services/kiosk_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/fotoflashback_navigation.dart';
@@ -13,14 +13,22 @@ import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/animated_slideshow_background.dart';
 import '../../views/widgets/centered_max_width.dart';
 import '../photo_capture/photo_capture_view.dart';
+import 'experience_choice_view_widgets.dart';
 import 'experience_choice_viewmodel.dart';
 
 /// After terms: guest picks FotoZen AI vs Classic 4-shot path.
 class ExperienceChoiceScreen extends StatefulWidget {
-  const ExperienceChoiceScreen({super.key, this.capturePrefillPhoto});
+  const ExperienceChoiceScreen({
+    super.key,
+    this.capturePrefillPhoto,
+    this.kioskManager,
+  });
 
   /// Optional POSE prefill (rare; forwarded from terms when present).
   final Object? capturePrefillPhoto;
+
+  /// Injectable for tests; defaults to [KioskManager].
+  final KioskManager? kioskManager;
 
   @override
   State<ExperienceChoiceScreen> createState() => _ExperienceChoiceScreenState();
@@ -28,12 +36,24 @@ class ExperienceChoiceScreen extends StatefulWidget {
 
 class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
   late final ExperienceChoiceViewModel _viewModel;
+  late final KioskManager _kioskManager;
+  bool _redirectingToAi = false;
 
   @override
   void initState() {
     super.initState();
+    _kioskManager = widget.kioskManager ?? KioskManager();
     _viewModel = ExperienceChoiceViewModel();
     unawaited(_viewModel.load());
+    unawaited(_redirectIfClassicDisabled());
+  }
+
+  /// Defensive: if Classic is off, skip this screen (deep link / stale route).
+  Future<void> _redirectIfClassicDisabled() async {
+    final classicEnabled = await _kioskManager.isClassicPhotosEnabled();
+    if (!mounted || classicEnabled || _redirectingToAi) return;
+    _redirectingToAi = true;
+    await _chooseAi();
   }
 
   @override
@@ -57,7 +77,7 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
     );
   }
 
-  Future<void> _chooseFotoFlash({bool surpriseMeAi = false}) async {
+  Future<void> _chooseFotoFlash() async {
     final theme = await _viewModel.prepareFotoFlashback();
     if (!mounted) return;
     if (theme == null) {
@@ -71,7 +91,6 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
       context: context,
       theme: theme,
       replace: true,
-      surpriseMeAi: surpriseMeAi,
     );
   }
 
@@ -116,20 +135,15 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
                   ),
                   child: CenteredMaxWidth(
                     maxWidth: 640,
-                    child: Consumer2<ExperienceChoiceViewModel, AppSettingsManager>(
-                      builder: (context, vm, settingsMgr, _) {
-                        final surpriseMeEnabled =
-                            settingsMgr.settings?.enableSurpriseMeAi == true;
+                    child: Consumer<ExperienceChoiceViewModel>(
+                      builder: (context, vm, _) {
                         return _ExperienceChoicePanel(
                           appColors: appColors,
                           isLoading: vm.isLoading,
                           fotoFlashAvailable: vm.fotoFlashAvailable,
-                          surpriseMeEnabled: surpriseMeEnabled,
                           startingFlashback: vm.isStartingFlashback,
                           onAi: () => unawaited(_chooseAi()),
                           onFotoFlash: () => unawaited(_chooseFotoFlash()),
-                          onSurpriseMe: () =>
-                              unawaited(_chooseFotoFlash(surpriseMeAi: true)),
                           onBackToTerms: () {
                             Navigator.of(context).pushReplacementNamed(
                               AppConstants.kRouteTerms,
@@ -154,27 +168,22 @@ class _ExperienceChoicePanel extends StatelessWidget {
     required this.appColors,
     required this.isLoading,
     required this.fotoFlashAvailable,
-    required this.surpriseMeEnabled,
     required this.startingFlashback,
     required this.onAi,
     required this.onFotoFlash,
-    required this.onSurpriseMe,
     required this.onBackToTerms,
   });
 
   final AppColors appColors;
   final bool isLoading;
   final bool fotoFlashAvailable;
-  final bool surpriseMeEnabled;
   final bool startingFlashback;
   final VoidCallback onAi;
   final VoidCallback onFotoFlash;
-  final VoidCallback onSurpriseMe;
   final VoidCallback onBackToTerms;
 
   @override
   Widget build(BuildContext context) {
-    final showSurprise = fotoFlashAvailable && surpriseMeEnabled;
     return Container(
       padding: const EdgeInsets.fromLTRB(28, 32, 28, 20),
       decoration: BoxDecoration(
@@ -224,54 +233,26 @@ class _ExperienceChoicePanel extends StatelessWidget {
             _ExperienceOptionCard(
               title: AppStrings.experienceAiTitle,
               subtitle: AppStrings.experienceAiSubtitle,
-              imageAsset: AppStrings.experienceAiPreviewAsset,
+              preview: const ExperienceFotoZenThumb(),
               accent: const Color(0xFF6B4EFF),
               onTap: onAi,
             ),
             const SizedBox(height: 14),
-            if (showSurprise)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: _ExperienceOptionCard(
-                      title: AppStrings.experienceFotoFlashTitle,
-                      subtitle: AppStrings.experienceFotoFlashSubtitle,
-                      imageAsset: AppStrings.experienceClassicPreviewAsset,
-                      accent: const Color(0xFFD4922A),
-                      enabled: !startingFlashback,
-                      busy: startingFlashback,
-                      compact: true,
-                      onTap: onFotoFlash,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _ExperienceOptionCard(
-                      title: AppStrings.experienceSurpriseMeTitle,
-                      subtitle: AppStrings.experienceSurpriseMeSubtitle,
-                      imageAsset: AppStrings.experienceClassicPreviewAsset,
-                      accent: const Color(0xFFE85D75),
-                      enabled: !startingFlashback,
-                      busy: startingFlashback,
-                      compact: true,
-                      onTap: onSurpriseMe,
-                    ),
-                  ),
-                ],
-              )
-            else
-              _ExperienceOptionCard(
-                title: AppStrings.experienceFotoFlashTitle,
-                subtitle: fotoFlashAvailable
-                    ? AppStrings.experienceFotoFlashSubtitle
-                    : AppStrings.experienceFotoFlashUnavailable,
-                imageAsset: AppStrings.experienceClassicPreviewAsset,
+            _ExperienceOptionCard(
+              title: AppStrings.experienceFotoFlashTitle,
+              subtitle: fotoFlashAvailable
+                  ? AppStrings.experienceFotoFlashSubtitle
+                  : AppStrings.experienceFotoFlashUnavailable,
+              preview: ExperienceClassicThumb(
                 accent: const Color(0xFFD4922A),
-                enabled: fotoFlashAvailable && !startingFlashback,
+                muted: !fotoFlashAvailable,
                 busy: startingFlashback,
-                onTap: onFotoFlash,
               ),
+              accent: const Color(0xFFD4922A),
+              enabled: fotoFlashAvailable && !startingFlashback,
+              busy: startingFlashback,
+              onTap: onFotoFlash,
+            ),
           ],
           const SizedBox(height: 12),
           TextButton(
@@ -294,22 +275,20 @@ class _ExperienceOptionCard extends StatelessWidget {
   const _ExperienceOptionCard({
     required this.title,
     required this.subtitle,
-    required this.imageAsset,
+    required this.preview,
     required this.accent,
     required this.onTap,
     this.enabled = true,
     this.busy = false,
-    this.compact = false,
   });
 
   final String title;
   final String subtitle;
-  final String imageAsset;
+  final Widget preview;
   final Color accent;
   final VoidCallback onTap;
   final bool enabled;
   final bool busy;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -320,10 +299,6 @@ class _ExperienceOptionCard extends StatelessWidget {
     final subtitleColor = muted
         ? appColors.secondaryTextColor.withValues(alpha: 0.7)
         : appColors.secondaryTextColor;
-    final thumbW = compact ? 64.0 : 92.0;
-    final thumbH = compact ? 82.0 : 118.0;
-    final titleSize = compact ? 17.0 : 20.0;
-    final subtitleSize = compact ? 12.0 : 14.0;
 
     return Material(
       color: muted
@@ -334,12 +309,7 @@ class _ExperienceOptionCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         onTap: enabled && !busy ? onTap : null,
         child: Container(
-          padding: EdgeInsets.fromLTRB(
-            compact ? 10 : 12,
-            compact ? 10 : 12,
-            compact ? 10 : 14,
-            compact ? 10 : 12,
-          ),
+          padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
@@ -347,33 +317,19 @@ class _ExperienceOptionCard extends StatelessWidget {
               width: muted ? 1 : 2,
             ),
           ),
-          child: compact
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+          child: Row(
+            children: [
+              preview,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Opacity(
-                        opacity: muted ? 0.45 : 1,
-                        child: Image.asset(
-                          imageAsset,
-                          height: thumbH,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            height: thumbH,
-                            color: accent.withValues(alpha: 0.35),
-                            alignment: Alignment.center,
-                            child: Icon(Icons.auto_awesome, color: accent),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
                     Text(
                       title,
                       style: TextStyle(
                         color: titleColor,
-                        fontSize: titleSize,
+                        fontSize: 20,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -382,87 +338,32 @@ class _ExperienceOptionCard extends StatelessWidget {
                       subtitle,
                       style: TextStyle(
                         color: subtitleColor,
-                        fontSize: subtitleSize,
-                        height: 1.25,
+                        fontSize: 14,
+                        height: 1.3,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Opacity(
-                        opacity: muted ? 0.45 : 1,
-                        child: Image.asset(
-                          imageAsset,
-                          width: thumbW,
-                          height: thumbH,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            width: thumbW,
-                            height: thumbH,
-                            color: accent.withValues(alpha: 0.35),
-                            alignment: Alignment.center,
-                            child: busy
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.5,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : Icon(Icons.image_outlined, color: accent),
-                          ),
+                    if (busy) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: accent,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: TextStyle(
-                              color: titleColor,
-                              fontSize: titleSize,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            subtitle,
-                            style: TextStyle(
-                              color: subtitleColor,
-                              fontSize: subtitleSize,
-                              height: 1.3,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          if (busy) ...[
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.2,
-                                color: accent,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      size: 18,
-                      color: muted ? appColors.secondaryTextColor : accent,
-                    ),
+                    ],
                   ],
                 ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 18,
+                color: muted ? appColors.secondaryTextColor : accent,
+              ),
+            ],
+          ),
         ),
       ),
     );

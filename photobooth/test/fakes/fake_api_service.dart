@@ -212,16 +212,4 @@ class FakeApiService extends ApiService {
     );
   }
 
-  @override
-  Future<StripComposeResult> composeSurpriseStrip({
-    required String sessionId,
-    required List<String> images,
-  }) async {
-    return const StripComposeResult(
-      imageUrl: 'https://example.com/surprise-strip.jpg',
-      filter: 'clean',
-      frame: kDefaultStripFrameId,
-      sticker: kDefaultStripStickerId,
-    );
-  }
 }

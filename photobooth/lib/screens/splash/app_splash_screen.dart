@@ -154,6 +154,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     }
     await _kiosk.setKioskCode(code);
     await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
+    await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
     await _refreshSettingsForBoundKiosk();
     final urls = await _loadThemeBackgroundUrls();
     if (!mounted) return;
@@ -197,6 +198,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     }
     await _kiosk.setKioskCode(code);
     await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
+    await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
     await endPhotoboothCustomerSessionLogged('splash: kiosk code submitted');
     await _refreshSettingsForBoundKiosk();
     final urls = await _loadThemeBackgroundUrls();

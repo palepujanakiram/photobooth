@@ -27,11 +27,22 @@ void main() {
 
   test('stripPreviewFrameColor covers catalog frames', () {
     expect(stripPreviewFrameColor('classic'), Colors.white);
-    expect(stripPreviewFrameColor('ticket'), const Color(0xFF1C1816));
-    expect(stripPreviewFrameColor('blush'), const Color(0xFFFFE4E8));
-    expect(stripPreviewFrameColor('noir'), const Color(0xFF202022));
+    expect(stripPreviewFrameColor('ticket'), const Color(0xFFEAF2FF));
+    expect(stripPreviewFrameColor('blush'), const Color(0xFFFFF0F3));
+    expect(stripPreviewFrameColor('gold'), const Color(0xFFF7F0E0));
+    expect(stripPreviewFrameColor('noir'), const Color(0xFF121216));
+    expect(stripPreviewFrameAccent('gold'), isNotNull);
+    expect(stripPreviewFrameColor('polaroid'), Colors.white);
+    expect(stripPreviewFrameColor('grid_2x2'), const Color(0xFFFFFAF5));
+    expect(stripPreviewFrameColor('filmstrip'), Colors.white);
+    expect(stripPreviewFrameColor('romantic'), Colors.white);
     expect(stripPreviewFrameAccent('classic'), isNull);
     expect(stripPreviewFrameAccent('ticket'), isNotNull);
+    expect(stripPreviewFrameAccent('blush'), isNotNull);
+    expect(stripPreviewFrameAccent('noir'), isNotNull);
+    expect(stripPreviewFrameAccent('polaroid'), isNotNull);
+    expect(isStripSheetLayout('polaroid'), isTrue);
+    expect(isStripSheetLayout('classic'), isFalse);
   });
 
   test('preview defaults to a single 2×6 strip aspect', () {
@@ -40,8 +51,7 @@ void main() {
         FotoFlashbackStripPreview.stripAspectRatio);
     expect(FotoFlashbackStripPreview.defaultStripWidth,
         FotoFlashbackStripPreview.defaultSheetWidth / 2);
-    expect(FotoFlashbackStripPreview.credentialLine1, 'AI GENERATED');
-    expect(FotoFlashbackStripPreview.credentialLine2, 'FotoZen AI');
+    expect(FotoFlashbackStripPreview.credentialLine, 'FOTOZEN AI');
   });
 
   testWidgets('butterfly and petal placements use path glyphs not emoji',

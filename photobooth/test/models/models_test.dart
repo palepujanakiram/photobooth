@@ -72,6 +72,30 @@ void main() {
     expect(m.additionalPrintPrice, 60);
     expect(m.regenerationPrice, 80);
     expect(m.paymentEnabled, isTrue);
+    expect(m.classicPhotosEnabled, isTrue);
+  });
+
+  test('KioskInfoModel classicPhotosEnabled defaults and parses false', () {
+    expect(
+      KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'}).classicPhotosEnabled,
+      isTrue,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'classicPhotosEnabled': false,
+      }).classicPhotosEnabled,
+      isFalse,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'classicPhotosEnabled': true,
+      }).classicPhotosEnabled,
+      isTrue,
+    );
   });
 
   test('KioskFrameModel.fromJson', () {

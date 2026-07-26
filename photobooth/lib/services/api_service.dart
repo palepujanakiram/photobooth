@@ -595,62 +595,6 @@ class ApiService {
     }
   }
 
-  /// POST `/api/sessions/:id/strip/surprise-compose` — AI remix + dual strip.
-  Future<StripComposeResult> composeSurpriseStrip({
-    required String sessionId,
-    required List<String> images,
-  }) async {
-    if (images.length != kStripShotCount) {
-      throw ApiException(
-        'FotoFlashback requires exactly $kStripShotCount photos.',
-      );
-    }
-    try {
-      final r = await _dio.post<dynamic>(
-        '/api/sessions/$sessionId/strip/surprise-compose',
-        data: {'images': images},
-        options: Options(responseType: ResponseType.json),
-      );
-      final data = r.data;
-      Map<String, dynamic>? map;
-      if (data is Map<String, dynamic>) {
-        map = data;
-      } else if (data is Map) {
-        map = Map<String, dynamic>.from(data);
-      }
-      if (map == null) {
-        throw ApiException('Unexpected Surprise Me compose response');
-      }
-      if (map['success'] == false) {
-        throw ApiException(
-          map['error']?.toString() ?? 'Surprise Me compose failed',
-          r.statusCode,
-        );
-      }
-      final result = StripComposeResult.fromJson(map);
-      if (result.imageUrl.trim().isEmpty) {
-        throw ApiException('Surprise Me compose returned no image URL');
-      }
-      final session = map['session'];
-      if (session is Map<String, dynamic>) {
-        SessionManager().setSessionFromResponse(session);
-      } else if (session is Map) {
-        SessionManager().setSessionFromResponse(
-          Map<String, dynamic>.from(session),
-        );
-      }
-      return result;
-    } on ApiException {
-      rethrow;
-    } on DioException catch (e) {
-      _handleWebNetworkError(e);
-      throw ApiException(
-        'Failed to Surprise Me compose: ${e.message}',
-        e.response?.statusCode,
-      );
-    }
-  }
-
   /// POST `/api/sessions/:id/strip/compose` — dual 2×6 strip on one 4×6 sheet.
   Future<StripComposeResult> composeStrip({
     required String sessionId,

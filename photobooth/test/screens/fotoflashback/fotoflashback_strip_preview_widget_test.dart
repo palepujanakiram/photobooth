@@ -32,9 +32,73 @@ void main() {
       ),
     );
     expect(find.byType(Image), findsNWidgets(4));
-    expect(find.text('AI GENERATED'), findsOneWidget);
-    expect(find.text('FotoZen AI'), findsOneWidget);
+    expect(find.text('AI GENERATED'), findsNothing);
+    expect(find.text('FOTOZEN AI'), findsOneWidget);
     expect(base64Decode(jpegB64), isNotEmpty);
+  });
+
+  testWidgets('dual-strip chrome frames use distinct preview keys', (
+    tester,
+  ) async {
+    final url = 'data:image/jpeg;base64,$jpegB64';
+    for (final frame in const ['classic', 'ticket', 'blush', 'gold', 'noir']) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FotoFlashbackStripPreview(
+              imageDataUrls: List.filled(4, url),
+              filterId: 'clean',
+              frameId: frame,
+              width: 120,
+              height: 360,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.byKey(ValueKey('strip_chrome_$frame')), findsOneWidget);
+    }
+  });
+
+  testWidgets('sheet layouts render distinct 4×6 previews', (tester) async {
+    final url = 'data:image/jpeg;base64,$jpegB64';
+    const sheetW = FotoFlashbackStripPreview.defaultSheetWidth;
+    const sheetH = FotoFlashbackStripPreview.defaultSheetHeight;
+
+    Future<void> pumpLayout(String frameId) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FotoFlashbackStripPreview(
+              imageDataUrls: List.filled(4, url),
+              filterId: 'clean',
+              frameId: frameId,
+              width: sheetW,
+              height: sheetH,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    await pumpLayout('polaroid');
+    expect(find.byKey(const ValueKey('sheet_layout_polaroid')), findsOneWidget);
+    expect(find.text('FotoFlashback'), findsNothing);
+
+    await pumpLayout('grid_2x2');
+    expect(find.byKey(const ValueKey('sheet_layout_grid_2x2')), findsOneWidget);
+    expect(find.text('Together'), findsOneWidget);
+
+    await pumpLayout('filmstrip');
+    expect(find.byKey(const ValueKey('sheet_layout_filmstrip')), findsOneWidget);
+    expect(find.text('MEMORIES'), findsOneWidget);
+
+    await pumpLayout('romantic');
+    expect(find.byKey(const ValueKey('sheet_layout_romantic')), findsOneWidget);
+    expect(find.text('Love'), findsNothing);
+    expect(find.text('♥'), findsOneWidget);
+    expect(find.text('Forever starts here'), findsOneWidget);
   });
 
   testWidgets('FotoFlashbackStripPreview accepts raw base64 and placeholders', (

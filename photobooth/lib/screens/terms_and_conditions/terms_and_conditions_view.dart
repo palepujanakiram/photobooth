@@ -14,9 +14,11 @@ import '../../utils/platform_capabilities.dart';
 import '../../utils/device_classifier.dart';
 import '../../utils/kiosk_page_route.dart';
 import '../experience_choice/experience_choice_view.dart';
+import '../photo_capture/photo_capture_view.dart';
 import '../photo_capture/photo_capture_viewmodel.dart';
 import '../splash/bootstrap_route_args.dart';
 import '../webview/webview_screen.dart';
+import '../../services/kiosk_manager.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/app_colors.dart';
@@ -118,15 +120,31 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         await _viewModel.acceptTermsAndCreateSession(_viewModel.kioskCode);
 
     if (success && mounted) {
-      // Keep camera prewarm alive for AI path after experience choice.
+      // Keep camera prewarm alive for the AI capture path.
       _navigatingToCapture = true;
-      await pushReplacementKioskFade<void, void>(
-        context,
-        ExperienceChoiceScreen(capturePrefillPhoto: _capturePrefillPhoto),
-        settings: const RouteSettings(
-          name: AppConstants.kRouteExperienceChoice,
-        ),
-      );
+      final classicEnabled = await KioskManager().isClassicPhotosEnabled();
+      if (!mounted) return;
+      if (classicEnabled) {
+        await pushReplacementKioskFade<void, void>(
+          context,
+          ExperienceChoiceScreen(capturePrefillPhoto: _capturePrefillPhoto),
+          settings: const RouteSettings(
+            name: AppConstants.kRouteExperienceChoice,
+          ),
+        );
+      } else {
+        final prefill = _capturePrefillPhoto;
+        await pushReplacementKioskFade<void, void>(
+          context,
+          PhotoCaptureScreen(
+            key: ValueKey<Object?>(prefill),
+          ),
+          settings: RouteSettings(
+            name: AppConstants.kRouteCapture,
+            arguments: prefill == null ? null : <String, Object?>{'photo': prefill},
+          ),
+        );
+      }
     } else if (mounted && _viewModel.hasError) {
       AppSnackBar.showError(
         context,

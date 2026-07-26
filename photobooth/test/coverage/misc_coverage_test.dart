@@ -75,6 +75,9 @@ void main() {
     await km.setPaymentEnabledOverride(false);
     expect(await km.getPaymentEnabledOverride(), isFalse);
     await km.clearPaymentEnabledOverride();
+    await km.setClassicPhotosEnabled(false);
+    expect(await km.isClassicPhotosEnabled(), isFalse);
+    await km.clearClassicPhotosEnabled();
     await km.clearKioskCode();
     expect(await km.getKioskCode(), isNull);
   });
