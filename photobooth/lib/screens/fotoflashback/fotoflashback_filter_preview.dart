@@ -843,23 +843,22 @@ class _PetalPainter extends CustomPainter {
   bool shouldRepaint(covariant _PetalPainter oldDelegate) => false;
 }
 
-/// Approximate catalog CSS filters (same intent as zenai Sharp grades).
+/// Mild color-only grades (match zenai fidelity-first Sharp looks).
 ColorFilter stripPreviewColorFilter(String filterId) {
   switch (filterId) {
     case 'classic_warm':
-      // sepia(0.28) saturate(0.85) contrast(0.92) brightness(1.05)
+      // Soft amber wash — no heavy sepia skin remapping.
       return const ColorFilter.matrix(<double>[
-        0.718, 0.280, 0.058, 0, 11,
-        0.118, 0.852, 0.053, 0, 11,
-        0.099, 0.226, 0.637, 0, 11,
+        1.05, 0.04, 0, 0, 6,
+        0.02, 0.96, 0, 0, 3,
+        0, 0.02, 0.9, 0, 0,
         0, 0, 0, 1, 0,
       ]);
     case 'peach_glow':
-      // Soft peach — avoid heavy amber tint mismatch with print.
       return const ColorFilter.matrix(<double>[
-        1.08, 0.06, 0.02, 0, 12,
-        0.04, 1.0, 0.03, 0, 8,
-        0.02, 0.04, 0.92, 0, 4,
+        1.08, 0.05, 0.02, 0, 10,
+        0.04, 1.0, 0.02, 0, 6,
+        0.02, 0.04, 0.94, 0, 4,
         0, 0, 0, 1, 0,
       ]);
     case 'soft_film':
@@ -871,31 +870,30 @@ ColorFilter stripPreviewColorFilter(String filterId) {
       ]);
     case 'candy_pop':
       return const ColorFilter.matrix(<double>[
-        1.15, 0.05, 0, 0, 4,
-        0, 1.05, 0.05, 0, 4,
-        0.05, 0, 1.18, 0, 2,
+        1.12, 0.04, 0, 0, 2,
+        0, 1.04, 0.04, 0, 2,
+        0.04, 0, 1.14, 0, 0,
         0, 0, 0, 1, 0,
       ]);
     case 'golden_hour':
-      // sepia(0.35) saturate(1.2) brightness(1.06) contrast(1.02)
       return const ColorFilter.matrix(<double>[
-        0.82, 0.32, 0.06, 0, 8,
-        0.12, 0.90, 0.05, 0, 6,
-        0.08, 0.22, 0.68, 0, 2,
+        1.1, 0.08, 0.02, 0, 8,
+        0.05, 0.98, 0.02, 0, 4,
+        0, 0.04, 0.85, 0, 0,
         0, 0, 0, 1, 0,
       ]);
     case 'cool_mint':
       return const ColorFilter.matrix(<double>[
-        0.90, 0.04, 0.08, 0, 4,
-        0.04, 1.05, 0.08, 0, 6,
-        0.06, 0.10, 1.10, 0, 8,
+        0.92, 0.04, 0.06, 0, 2,
+        0.04, 1.04, 0.06, 0, 4,
+        0.05, 0.08, 1.08, 0, 6,
         0, 0, 0, 1, 0,
       ]);
     case 'gloss_pop':
       return const ColorFilter.matrix(<double>[
-        1.18, 0.02, 0.06, 0, -4,
-        0, 1.12, 0.06, 0, -2,
-        0.08, 0, 1.20, 0, 0,
+        1.12, 0.02, 0.04, 0, -2,
+        0, 1.08, 0.04, 0, 0,
+        0.06, 0, 1.14, 0, 0,
         0, 0, 0, 1, 0,
       ]);
     case 'mono':
