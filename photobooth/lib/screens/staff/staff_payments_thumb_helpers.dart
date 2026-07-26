@@ -46,13 +46,6 @@ String? _sessionIdFromResolved(String url) {
   return (sid == null || sid.isEmpty) ? null : sid;
 }
 
-bool _looksLikeSvg(Uint8List bytes) {
-  final head = String.fromCharCodes(
-    bytes.take(bytes.length < 64 ? bytes.length : 64),
-  ).trimLeft().toLowerCase();
-  return head.startsWith('<svg') || head.startsWith('<?xml');
-}
-
 class StaffPaymentThumbNetworkImage extends StatefulWidget {
   const StaffPaymentThumbNetworkImage({
     super.key,
@@ -113,8 +106,7 @@ class _StaffPaymentThumbNetworkImageState
           ? await loader.fetchBytesWithStaffAuth(resolved)
           : await loader.fetchBytes(resolved);
       if (!mounted) return;
-      // Staff /api/img 404s return an SVG "Archived" placeholder — show tile, not decode.
-      if (bytes.isEmpty || _looksLikeSvg(bytes)) {
+      if (bytes.isEmpty) {
         setState(() => _failed = true);
         return;
       }
@@ -210,35 +202,21 @@ Widget staffPaymentThumbPlaceholder() {
   );
 }
 
-/// URL exists but storage returned 404 / object cleaned up overnight.
+/// URL exists but image could not be loaded (network/storage error).
 Widget staffPaymentThumbUnavailable() {
   return Container(
     width: 54,
     height: 54,
     decoration: BoxDecoration(
-      color: const Color(0xFFFFFBEB),
+      color: Colors.black.withValues(alpha: 0.06),
       borderRadius: BorderRadius.circular(10),
-      border: Border.all(
-        color: const Color(0xFFF59E0B),
-        style: BorderStyle.solid,
-      ),
+      border: Border.all(color: Colors.black12),
     ),
     alignment: Alignment.center,
-    child: const Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.broken_image_outlined, size: 18, color: Color(0xFFB45309)),
-        SizedBox(height: 2),
-        Text(
-          'Archived',
-          style: TextStyle(
-            fontSize: 8,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF92400E),
-            height: 1,
-          ),
-        ),
-      ],
+    child: const Icon(
+      Icons.broken_image_outlined,
+      size: 22,
+      color: Colors.black45,
     ),
   );
 }

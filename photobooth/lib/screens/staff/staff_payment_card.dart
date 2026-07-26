@@ -14,6 +14,7 @@ class StaffPaymentCardData {
     required this.sessionId,
     required this.amount,
     this.recordedPaymentMode,
+    this.guestDataDeleted = false,
   });
 
   final String paymentId;
@@ -21,6 +22,9 @@ class StaffPaymentCardData {
   final String sessionId;
   final String amount;
   final PaymentMode? recordedPaymentMode;
+
+  /// Guest deleted their data; staff may still print until nightly cleanup.
+  final bool guestDataDeleted;
 }
 
 /// Actions + decision controls for [StaffPaymentCard].
@@ -133,6 +137,33 @@ class StaffPaymentCard extends StatelessWidget {
                           'Session: $sessionId',
                           style: TextStyle(color: appColors.textColor),
                         ),
+                      if (data.guestDataDeleted) ...[
+                        const SizedBox(height: 4),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFFBEB),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFFF59E0B),
+                              ),
+                            ),
+                            child: const Text(
+                              AppStrings.staffGuestDataDeletedBadge,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF92400E),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                       if (!showDecisionButtons &&
                           data.recordedPaymentMode != null)
                         Text(
