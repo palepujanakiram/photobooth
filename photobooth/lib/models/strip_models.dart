@@ -511,6 +511,8 @@ class StripFiltersCatalog {
     this.copiesOnSheet = 2,
     this.printNote,
     this.layout,
+    this.enableSurpriseMeAi = false,
+    this.enableOsdScrub = false,
   });
 
   final String brand;
@@ -522,6 +524,8 @@ class StripFiltersCatalog {
   final int copiesOnSheet;
   final String? printNote;
   final StripWysiwygLayout? layout;
+  final bool enableSurpriseMeAi;
+  final bool enableOsdScrub;
 
   StripWysiwygLayout get wysiwyg => layout ?? StripWysiwygLayout.defaults;
 
@@ -540,6 +544,13 @@ class StripFiltersCatalog {
     } else if (layoutRaw is Map) {
       layoutMap = Map<String, dynamic>.from(layoutRaw);
     }
+    final featuresRaw = json['features'];
+    Map<String, dynamic>? featuresMap;
+    if (featuresRaw is Map<String, dynamic>) {
+      featuresMap = featuresRaw;
+    } else if (featuresRaw is Map) {
+      featuresMap = Map<String, dynamic>.from(featuresRaw);
+    }
     return StripFiltersCatalog(
       brand: JsonParseHelpers.stringValue(
         json['brand'],
@@ -556,6 +567,44 @@ class StripFiltersCatalog {
       copiesOnSheet: JsonParseHelpers.intOrNull(printMap?['copiesOnSheet']) ?? 2,
       printNote: JsonParseHelpers.stringOrNull(printMap?['note']),
       layout: StripWysiwygLayout.fromJson(layoutMap),
+      enableSurpriseMeAi:
+          JsonParseHelpers.boolOrNull(featuresMap?['enableSurpriseMeAi']) ??
+              false,
+      enableOsdScrub:
+          JsonParseHelpers.boolOrNull(featuresMap?['enableOsdScrub']) ?? false,
+    );
+  }
+}
+
+/// Status from `GET /api/sessions/:id/surprise-me`.
+class SurpriseMeStatus {
+  const SurpriseMeStatus({
+    required this.status,
+    required this.showUpsell,
+    this.imageUrl,
+    this.qualityScore,
+    this.qualityThreshold,
+    this.themeId,
+    this.themeName,
+  });
+
+  final String status;
+  final bool showUpsell;
+  final String? imageUrl;
+  final int? qualityScore;
+  final int? qualityThreshold;
+  final String? themeId;
+  final String? themeName;
+
+  factory SurpriseMeStatus.fromJson(Map<String, dynamic> json) {
+    return SurpriseMeStatus(
+      status: JsonParseHelpers.stringValue(json['status'], fallback: 'idle'),
+      showUpsell: JsonParseHelpers.boolOrNull(json['showUpsell']) ?? false,
+      imageUrl: JsonParseHelpers.stringOrNull(json['imageUrl']),
+      qualityScore: JsonParseHelpers.intOrNull(json['qualityScore']),
+      qualityThreshold: JsonParseHelpers.intOrNull(json['qualityThreshold']),
+      themeId: JsonParseHelpers.stringOrNull(json['themeId']),
+      themeName: JsonParseHelpers.stringOrNull(json['themeName']),
     );
   }
 }

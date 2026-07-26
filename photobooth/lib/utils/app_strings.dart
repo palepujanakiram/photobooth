@@ -415,6 +415,13 @@ abstract final class AppStrings {
   static const flashbackPreparingPreview = 'Polishing photos…';
   static const flashbackComposeFailed = 'Couldn’t build strip. Please try again.';
   static const flashbackNeedFourShots = 'Take all 4 shots to continue.';
+  static const surpriseMeUpsellTitle = 'Surprise AI look';
+  static const surpriseMeUpsellSubtitle =
+      'We made a bonus AI photo from your first shot.';
+  static String surpriseMeUpsellPrice(int amount) =>
+      'Add a print for ₹$amount?';
+  static const surpriseMeUpsellYes = 'Yes, add a copy';
+  static const surpriseMeUpsellNo = 'No thanks';
 
   static const staffDashboardTitle = 'Staff dashboard';
   static const staffTabOverview = 'Overview';

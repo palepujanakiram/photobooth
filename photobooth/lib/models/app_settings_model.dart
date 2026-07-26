@@ -49,6 +49,8 @@ class AppSettingsModel {
   final bool? c2paSigningEnabled;
   /// Classic local OSD scrub (`settings.photoStripConfig.enableOsdScrub`).
   final bool? enableOsdScrub;
+  /// Classic Surprise Me AI teaser (`settings.photoStripConfig.enableSurpriseMeAi`).
+  final bool? enableSurpriseMeAi;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -96,6 +98,7 @@ class AppSettingsModel {
     this.exifStampEnabled,
     this.c2paSigningEnabled,
     this.enableOsdScrub,
+    this.enableSurpriseMeAi,
     this.createdAt,
     this.updatedAt,
   });
@@ -168,6 +171,10 @@ class AppSettingsModel {
             stripMap?['enableOsdScrub'],
           ) ??
           JsonParseHelpers.boolOrNull(json['enableOsdScrub']),
+      enableSurpriseMeAi: JsonParseHelpers.boolOrNull(
+            stripMap?['enableSurpriseMeAi'],
+          ) ??
+          JsonParseHelpers.boolOrNull(json['enableSurpriseMeAi']),
       createdAt: JsonParseHelpers.dateTimeOrNull(json['createdAt']),
       updatedAt: JsonParseHelpers.dateTimeOrNull(json['updatedAt']),
     );

@@ -181,11 +181,15 @@ class GeneratedImage {
   final ThemeModel theme;
   final bool isSelected;
 
+  /// Optional WCM cut size override for this image (e.g. strip `s6x2_2` vs AI `s4x6`).
+  final String? printSize;
+
   GeneratedImage({
     required this.id,
     required this.imageUrl,
     required this.theme,
     this.isSelected = false,
+    this.printSize,
   });
 
   GeneratedImage copyWith({
@@ -193,12 +197,14 @@ class GeneratedImage {
     String? imageUrl,
     ThemeModel? theme,
     bool? isSelected,
+    String? printSize,
   }) {
     return GeneratedImage(
       id: id ?? this.id,
       imageUrl: imageUrl ?? this.imageUrl,
       theme: theme ?? this.theme,
       isSelected: isSelected ?? this.isSelected,
+      printSize: printSize ?? this.printSize,
     );
   }
 }

@@ -39,6 +39,7 @@ import '../../utils/device_classifier.dart';
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
 import '../../utils/route_args.dart';
+import '../../utils/surprise_me_helpers.dart';
 import '../../utils/uvc_capture_config.dart';
 import '../theme_selection/theme_model.dart';
 import '../../services/app_settings_manager.dart';
@@ -253,6 +254,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _stripShots.add(photo);
       _syncFlashbackSubtitle();
     });
+    if (_stripShots.length == 1) {
+      final enableSurprise = context
+              .read<AppSettingsManager>()
+              .settings
+              ?.enableSurpriseMeAi ==
+          true;
+      unawaited(
+        maybeKickoffSurpriseMeAfterShot1(
+          encodeShotDataUrl: () =>
+              ImageHelper.encodeImageToBase64(photo.imageFile),
+          enableSurpriseMeAi: enableSurprise,
+        ),
+      );
+    }
     if (_stripShots.length >= total) {
       await _finishFlashbackStrip(theme);
       return;
