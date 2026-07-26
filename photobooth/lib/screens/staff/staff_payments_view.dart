@@ -254,6 +254,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
       resolved: resolved,
       sessionId: sid.isEmpty ? null : sid,
       placeholder: staffPaymentThumbPlaceholder,
+      unavailable: staffPaymentThumbUnavailable,
     );
   }
 
@@ -625,6 +626,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
               sessionId: sid,
               amount: StaffPaymentCard.amountFromPayload(p),
               recordedPaymentMode: payment.paymentMode,
+              guestDataDeleted: p['guestDataDeleted'] == true,
             ),
             actions: StaffPaymentCardActions(
               thumb: _buildThumb(p),

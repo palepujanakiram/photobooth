@@ -451,6 +451,8 @@ abstract final class AppStrings {
   static const staffModeComplimentary = 'Complimentary';
   static String staffPaymentCount(int count) =>
       '$count payment${count == 1 ? '' : 's'}';
+  /// Guest used Delete My Data; print photo may still be available same day.
+  static const staffGuestDataDeletedBadge = 'Guest deleted';
   static const staffStatusLabel = 'Status';
   static const staffCheckedIn = 'Checked In';
   static String staffElapsedLine(String elapsed) => '$elapsed elapsed';

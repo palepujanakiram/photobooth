@@ -14,11 +14,13 @@ Widget staffPaymentThumbImage({
   required String resolved,
   String? sessionId,
   required Widget Function() placeholder,
+  Widget Function()? unavailable,
 }) {
   if (resolved.isEmpty) return placeholder();
+  final onUnavailable = unavailable ?? staffPaymentThumbUnavailable;
 
   if (resolved.startsWith(AppStrings.dataImagePrefix)) {
-    return _staffPaymentDataUrlThumb(resolved, placeholder);
+    return _staffPaymentDataUrlThumb(resolved, onUnavailable);
   }
 
   final looksLikeBase64 = !resolved.startsWith('http') &&
@@ -26,14 +28,15 @@ Widget staffPaymentThumbImage({
       resolved.length > 100 &&
       resolved.length < 200000;
   if (looksLikeBase64) {
-    final fromB64 = _staffPaymentBase64Thumb(resolved, placeholder);
+    final fromB64 = _staffPaymentBase64Thumb(resolved, onUnavailable);
     if (fromB64 != null) return fromB64;
   }
 
   return StaffPaymentThumbNetworkImage(
     imageUrl: resolved,
     sessionId: sessionId ?? _sessionIdFromResolved(resolved),
-    placeholder: placeholder,
+    loadingPlaceholder: placeholder,
+    unavailable: onUnavailable,
   );
 }
 
@@ -48,12 +51,14 @@ class StaffPaymentThumbNetworkImage extends StatefulWidget {
     super.key,
     required this.imageUrl,
     this.sessionId,
-    required this.placeholder,
+    required this.loadingPlaceholder,
+    required this.unavailable,
   });
 
   final String imageUrl;
   final String? sessionId;
-  final Widget Function() placeholder;
+  final Widget Function() loadingPlaceholder;
+  final Widget Function() unavailable;
 
   @override
   State<StaffPaymentThumbNetworkImage> createState() =>
@@ -101,6 +106,10 @@ class _StaffPaymentThumbNetworkImageState
           ? await loader.fetchBytesWithStaffAuth(resolved)
           : await loader.fetchBytes(resolved);
       if (!mounted) return;
+      if (bytes.isEmpty) {
+        setState(() => _failed = true);
+        return;
+      }
       setState(() => _bytes = bytes);
     } catch (_) {
       if (!mounted) return;
@@ -110,7 +119,7 @@ class _StaffPaymentThumbNetworkImageState
 
   @override
   Widget build(BuildContext context) {
-    if (_failed) return widget.placeholder();
+    if (_failed) return widget.unavailable();
     final bytes = _bytes;
     if (bytes == null) {
       return ClipRRect(
@@ -118,7 +127,7 @@ class _StaffPaymentThumbNetworkImageState
         child: SizedBox(
           width: 54,
           height: 54,
-          child: widget.placeholder(),
+          child: widget.loadingPlaceholder(),
         ),
       );
     }
@@ -129,7 +138,7 @@ class _StaffPaymentThumbNetworkImageState
         width: 54,
         height: 54,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => widget.placeholder(),
+        errorBuilder: (_, __, ___) => widget.unavailable(),
       ),
     );
   }
@@ -178,6 +187,7 @@ Widget? _staffPaymentBase64Thumb(
   }
 }
 
+/// No photo URL yet (payment before capture/compose).
 Widget staffPaymentThumbPlaceholder() {
   return Container(
     width: 54,
@@ -189,6 +199,25 @@ Widget staffPaymentThumbPlaceholder() {
     ),
     alignment: Alignment.center,
     child: const Icon(Icons.image, size: 22, color: Colors.black45),
+  );
+}
+
+/// URL exists but image could not be loaded (network/storage error).
+Widget staffPaymentThumbUnavailable() {
+  return Container(
+    width: 54,
+    height: 54,
+    decoration: BoxDecoration(
+      color: Colors.black.withValues(alpha: 0.06),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: Colors.black12),
+    ),
+    alignment: Alignment.center,
+    child: const Icon(
+      Icons.broken_image_outlined,
+      size: 22,
+      color: Colors.black45,
+    ),
   );
 }
 
