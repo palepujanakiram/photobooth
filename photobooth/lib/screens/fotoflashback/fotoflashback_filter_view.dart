@@ -27,6 +27,7 @@ class FotoFlashbackFilterScreen extends StatefulWidget {
 class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
   FotoFlashbackFilterViewModel? _viewModel;
   bool _busy = false;
+  bool _surpriseAutoStarted = false;
   String? _ctaLabel;
 
   @override
@@ -40,9 +41,42 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
     _viewModel = FotoFlashbackFilterViewModel(
       theme: args.theme,
       imageDataUrls: args.imageDataUrls,
+      surpriseMeAi: args.surpriseMeAi,
     );
-    unawaited(_viewModel!.loadFilters());
-    unawaited(_loadCta());
+    if (args.surpriseMeAi) {
+      unawaited(_loadCta());
+      if (!_surpriseAutoStarted) {
+        _surpriseAutoStarted = true;
+        unawaited(_runSurpriseMe());
+      }
+    } else {
+      unawaited(_viewModel!.loadFilters());
+      unawaited(_loadCta());
+    }
+  }
+
+  Future<void> _runSurpriseMe() async {
+    final vm = _viewModel;
+    if (vm == null || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final timing =
+          context.read<AppSettingsManager>().settings?.paymentCollectionTiming;
+      final error = await continueAfterFlashbackLook(
+        context: context,
+        viewModel: vm,
+        paymentCollectionTiming: timing,
+      );
+      if (!mounted) return;
+      if (error != null) {
+        AppSnackBar.showError(context, error);
+        setState(() => _busy = false);
+      }
+    } finally {
+      if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+        setState(() => _busy = false);
+      }
+    }
   }
 
   Future<void> _loadCta() async {
@@ -91,6 +125,67 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
     }
 
     final cta = _ctaLabel ?? AppStrings.flashbackComposeCta;
+
+    if (vm.surpriseMeAi) {
+      return ChangeNotifierProvider.value(
+        value: vm,
+        child: Scaffold(
+          backgroundColor: const Color(0xFF1A1410),
+          body: SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.amber.shade300),
+                    const SizedBox(height: 24),
+                    const Text(
+                      AppStrings.experienceSurpriseMeTitle,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      AppStrings.flashbackSurpriseComposing,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.amber.shade100.withValues(alpha: 0.85),
+                        fontSize: 15,
+                        height: 1.35,
+                      ),
+                    ),
+                    if (vm.errorMessage != null) ...[
+                      const SizedBox(height: 20),
+                      Text(
+                        vm.errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.red.shade200,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () => unawaited(_runSurpriseMe()),
+                        child: const Text(
+                          AppStrings.flashbackSurpriseRetry,
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return ChangeNotifierProvider.value(
       value: vm,

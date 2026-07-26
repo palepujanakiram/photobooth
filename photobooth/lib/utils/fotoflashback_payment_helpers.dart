@@ -26,6 +26,7 @@ Future<String?> continueAfterFlashbackLook({
         theme: viewModel.theme,
         imageDataUrls: viewModel.imageDataUrls,
         filterId: viewModel.selectedFilterId,
+        surpriseMeAi: viewModel.surpriseMeAi,
       ),
     );
     return null;
@@ -55,8 +56,11 @@ Future<String?> composeFlashbackAfterPrePay({
       FotoFlashbackFilterViewModel(
         theme: args.theme,
         imageDataUrls: args.imageDataUrls,
+        surpriseMeAi: args.surpriseMeAi,
       );
-  vm.selectFilter(args.filterId);
+  if (!args.surpriseMeAi) {
+    vm.selectFilter(args.filterId);
+  }
   final image = await vm.compose();
   if (!context.mounted) return AppStrings.flashbackComposeFailed;
   if (image == null) {

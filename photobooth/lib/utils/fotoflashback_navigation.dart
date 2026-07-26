@@ -11,12 +11,14 @@ Future<void> navigateToFotoFlashbackCapture({
   required BuildContext context,
   required ThemeModel theme,
   bool replace = false,
+  bool surpriseMeAi = false,
 }) async {
   if (!context.mounted) return;
   final args = CaptureRouteArgs(
     returnPhotoOnly: true,
     multiShotTotal: kStripShotCount,
     flashbackTheme: theme,
+    surpriseMeAi: surpriseMeAi,
     subtitleHint: AppStrings.flashbackShotProgress(1, kStripShotCount),
   );
   if (replace) {

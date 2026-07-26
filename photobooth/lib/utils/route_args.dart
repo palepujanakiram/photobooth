@@ -46,6 +46,9 @@ class CaptureRouteArgs {
   /// FotoFlashback theme — after [multiShotTotal] shots, open the look picker.
   final ThemeModel? flashbackTheme;
 
+  /// Classic Surprise Me — skip look picker; AI remix then strip compose.
+  final bool surpriseMeAi;
+
   /// Already-accepted FotoFlashback stills (restored after web camera remount).
   final List<PhotoModel> acceptedStripShots;
 
@@ -54,6 +57,7 @@ class CaptureRouteArgs {
     this.subtitleHint,
     this.multiShotTotal,
     this.flashbackTheme,
+    this.surpriseMeAi = false,
     this.acceptedStripShots = const [],
   });
 
@@ -85,6 +89,7 @@ class CaptureRouteArgs {
             args['flashbackTheme'] is ThemeModel
                 ? args['flashbackTheme'] as ThemeModel
                 : null,
+        surpriseMeAi: args['surpriseMeAi'] == true,
         acceptedStripShots: shots,
       );
     }
@@ -111,10 +116,12 @@ class FlashbackCaptureArgs {
 class FlashbackFilterArgs {
   final ThemeModel theme;
   final List<String> imageDataUrls;
+  final bool surpriseMeAi;
 
   const FlashbackFilterArgs({
     required this.theme,
     required this.imageDataUrls,
+    this.surpriseMeAi = false,
   });
 
   static FlashbackFilterArgs? tryParse(Object? args) {
@@ -126,6 +133,7 @@ class FlashbackFilterArgs {
       return FlashbackFilterArgs(
         theme: args['theme'] as ThemeModel,
         imageDataUrls: urls,
+        surpriseMeAi: args['surpriseMeAi'] == true,
       );
     }
     return null;
@@ -137,11 +145,13 @@ class FlashbackPrePayArgs {
   final ThemeModel theme;
   final List<String> imageDataUrls;
   final String filterId;
+  final bool surpriseMeAi;
 
   const FlashbackPrePayArgs({
     required this.theme,
     required this.imageDataUrls,
     required this.filterId,
+    this.surpriseMeAi = false,
   });
 
   static FlashbackPrePayArgs? tryParse(Object? args) {
@@ -158,6 +168,7 @@ class FlashbackPrePayArgs {
         theme: args['theme'] as ThemeModel,
         imageDataUrls: urls,
         filterId: args['filterId'] as String,
+        surpriseMeAi: args['surpriseMeAi'] == true,
       );
     }
     return null;

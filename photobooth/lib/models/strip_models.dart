@@ -31,7 +31,22 @@ const List<String> kStripFrameIds = [
   'ticket',
   'blush',
   'noir',
+  'polaroid',
+  'grid_2x2',
+  'filmstrip',
+  'romantic',
 ];
+
+/// Single 4×6 sheet layouts (print `s4x6`) vs dual 2×6 chrome (`s6x2_2`).
+const List<String> kStripSheetLayoutIds = [
+  'polaroid',
+  'grid_2x2',
+  'filmstrip',
+  'romantic',
+];
+
+bool isStripSheetLayout(String frameId) =>
+    kStripSheetLayoutIds.contains(frameId);
 
 const List<String> kStripStickerIds = [
   'none',

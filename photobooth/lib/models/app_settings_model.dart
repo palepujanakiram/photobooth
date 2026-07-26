@@ -47,6 +47,10 @@ class AppSettingsModel {
   final bool? watermarkEnabled;
   final bool? exifStampEnabled;
   final bool? c2paSigningEnabled;
+  /// Classic Surprise Me AI teaser (`settings.photoStripConfig.enableSurpriseMeAi`).
+  final bool? enableSurpriseMeAi;
+  /// Classic local OSD scrub (`settings.photoStripConfig.enableOsdScrub`).
+  final bool? enableOsdScrub;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -93,11 +97,20 @@ class AppSettingsModel {
     this.watermarkEnabled,
     this.exifStampEnabled,
     this.c2paSigningEnabled,
+    this.enableSurpriseMeAi,
+    this.enableOsdScrub,
     this.createdAt,
     this.updatedAt,
   });
 
   factory AppSettingsModel.fromJson(Map<String, dynamic> json) {
+    final stripCfg = json['photoStripConfig'];
+    Map<String, dynamic>? stripMap;
+    if (stripCfg is Map<String, dynamic>) {
+      stripMap = stripCfg;
+    } else if (stripCfg is Map) {
+      stripMap = Map<String, dynamic>.from(stripCfg);
+    }
     return AppSettingsModel(
       id: JsonParseHelpers.stringOrNull(json['id']),
       accountId: JsonParseHelpers.stringOrNull(json['accountId']),
@@ -154,6 +167,14 @@ class AppSettingsModel {
       watermarkEnabled: JsonParseHelpers.boolOrNull(json['watermarkEnabled']),
       exifStampEnabled: JsonParseHelpers.boolOrNull(json['exifStampEnabled']),
       c2paSigningEnabled: JsonParseHelpers.boolOrNull(json['c2paSigningEnabled']),
+      enableSurpriseMeAi: JsonParseHelpers.boolOrNull(
+            stripMap?['enableSurpriseMeAi'],
+          ) ??
+          JsonParseHelpers.boolOrNull(json['enableSurpriseMeAi']),
+      enableOsdScrub: JsonParseHelpers.boolOrNull(
+            stripMap?['enableOsdScrub'],
+          ) ??
+          JsonParseHelpers.boolOrNull(json['enableOsdScrub']),
       createdAt: JsonParseHelpers.dateTimeOrNull(json['createdAt']),
       updatedAt: JsonParseHelpers.dateTimeOrNull(json['updatedAt']),
     );

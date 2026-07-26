@@ -498,6 +498,14 @@ Color stripPreviewFrameColor(String frameId) {
       return const Color(0xFFFFE4E8);
     case 'noir':
       return const Color(0xFF202022);
+    case 'polaroid':
+      return const Color(0xFFF3EBE0);
+    case 'grid_2x2':
+      return const Color(0xFFFFFAF5);
+    case 'filmstrip':
+      return const Color(0xFF0D0D0D);
+    case 'romantic':
+      return const Color(0xFFFFF0F3);
     case 'classic':
     default:
       return Colors.white;
@@ -512,6 +520,14 @@ Color? stripPreviewFrameAccent(String frameId) {
       return const Color(0xFFE8919A);
     case 'noir':
       return const Color(0xFFA0A0A8);
+    case 'polaroid':
+      return const Color(0xFF8A6A55);
+    case 'grid_2x2':
+      return const Color(0xFF2C1810);
+    case 'filmstrip':
+      return const Color(0xFFC9A227);
+    case 'romantic':
+      return const Color(0xFFE8919A);
     default:
       return null;
   }

@@ -374,6 +374,9 @@ abstract final class AppStrings {
       'Classic isn’t available on this booth yet.';
   static const experienceFotoFlashStartFailed =
       'Couldn’t start Classic. Please try again.';
+  static const experienceSurpriseMeTitle = 'Surprise Me';
+  static const experienceSurpriseMeSubtitle =
+      'Same 4 shots — AI outfit & scene, Classic strip vibes';
   static const experienceBackToTerms = 'Back to terms';
 
   /// Bundled preview art for the experience-choice cards.
@@ -405,8 +408,11 @@ abstract final class AppStrings {
   static const flashbackComposeCta = 'Continue';
   static const flashbackComposePayCta = 'Continue to pay';
   static const flashbackComposing = 'Building your strip…';
+  static const flashbackSurpriseComposing =
+      'Surprising your strip — outfit & scene magic…';
   static const flashbackPreparingPreview = 'Polishing photos…';
   static const flashbackComposeFailed = 'Couldn’t build strip. Please try again.';
+  static const flashbackSurpriseRetry = 'Try again';
   static const flashbackNeedFourShots = 'Take all 4 shots to continue.';
 
   static const staffDashboardTitle = 'Staff dashboard';
