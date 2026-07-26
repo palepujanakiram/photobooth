@@ -43,4 +43,43 @@ void main() {
     expect(FotoFlashbackStripPreview.credentialLine1, 'AI GENERATED');
     expect(FotoFlashbackStripPreview.credentialLine2, 'FotoZen AI');
   });
+
+  testWidgets('butterfly and petal placements use path glyphs not emoji',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FotoFlashbackStripPreview(
+            imageDataUrls: const [
+              'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+              'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+              'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+              'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+            ],
+            filterId: 'clean',
+            placements: const [
+              StripStickerPlacement(
+                id: 'b1',
+                type: 'butterflies',
+                x: 0.5,
+                y: 0.2,
+              ),
+              StripStickerPlacement(
+                id: 'p1',
+                type: 'petals',
+                x: 0.5,
+                y: 0.7,
+              ),
+            ],
+            width: 180,
+            height: 540,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('🦋'), findsNothing);
+    expect(find.text('💮'), findsNothing);
+    expect(find.byType(CustomPaint), findsWidgets);
+  });
 }
