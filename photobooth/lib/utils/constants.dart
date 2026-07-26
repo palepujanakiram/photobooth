@@ -131,8 +131,9 @@ class AppConstants {
 
   /// FotoFlashback dual strip: WCM RX1HS / DS size labeled `6x2*2`.
   /// Image is still the dual 1200×1800 composite; this token engages the cutter.
+  /// WCM API code is `s6x2_2` (UI label `6x2*2`) — not `s6x2x2`.
   /// AI themes must keep using [kPrintSizePortrait4x6] / [kPrintSizeLandscape6x4].
-  static const String kPrintSizeStripDual2x6 = 's6x2x2';
+  static const String kPrintSizeStripDual2x6 = 's6x2_2';
 
   /// BEHOLD single-result hero: width cap on landscape / desktop (wider than capture kiosk).
   static const double kBeholdResultCardMaxWidthFractionLandscape = 0.52;

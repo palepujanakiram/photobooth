@@ -4,6 +4,11 @@ import 'package:photobooth/utils/image_helper.dart';
 import '../helpers/tiny_jpeg.dart';
 
 void main() {
+  test('strip capture jpeg quality is higher than default stills', () {
+    expect(kStripCapturedPhotoJpegQuality, greaterThan(kCapturedPhotoJpegQuality));
+    expect(kStripCapturedPhotoJpegQuality, 95);
+  });
+
   test('formatFileSize labels B KB MB', () {
     expect(ImageHelper.formatFileSize(500), '500 B');
     expect(ImageHelper.formatFileSize(2048), '2 KB');

@@ -448,12 +448,12 @@ void main() {
             'cssFilter': 'none',
           },
         ],
-        'print': {'size': 's6x2x2', 'copiesOnSheet': 2},
+        'print': {'size': 's6x2_2', 'copiesOnSheet': 2},
       }),
     );
     final catalog = await api.fetchStripFilters();
     expect(catalog.filters.single.id, 'classic_warm');
-    expect(catalog.printSize, 's6x2x2');
+    expect(catalog.printSize, 's6x2_2');
   });
 
   test('fetchStripFilters rejects unexpected payload', () async {
@@ -499,7 +499,7 @@ void main() {
         'imageUrl': 'https://example.com/strip.jpg',
         'stripCompositeUrl': 'https://example.com/composite.jpg',
         'filter': 'mono',
-        'printSize': 's6x2x2',
+        'printSize': 's6x2_2',
         'copiesOnSheet': 2,
         'runId': 'run-compose-1',
         'session': {
@@ -519,7 +519,7 @@ void main() {
       filter: 'mono',
     );
     expect(result.printImageUrl, 'https://example.com/composite.jpg');
-    expect(result.printSize, 's6x2x2');
+    expect(result.printSize, 's6x2_2');
     expect(result.runId, 'run-compose-1');
     expect(SessionManager().sessionId, 'sess-1');
   });

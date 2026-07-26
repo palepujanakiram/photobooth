@@ -334,7 +334,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   PhotoModel? get originalPhoto => _originalPhoto;
   PrintOrientation get printOrientation => _printOrientation;
 
-  /// AI: orientation size. FotoFlashback: `s6x2x2` (WCM `6x2*2`) for the strip cut.
+  /// AI: orientation size. FotoFlashback: `s6x2_2` (WCM `6x2*2`) for the strip cut.
   String get effectivePrintSize =>
       _printSizeOverride ?? _printOrientation.printSize;
   bool get isProcessing => _isProcessing;

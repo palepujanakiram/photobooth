@@ -16,6 +16,9 @@ import 'web_flow_trace.dart';
 const int kCapturedPhotoMaxDimension = 1920;
 const int kCapturedPhotoJpegQuality = 85;
 
+/// FotoFlashback strip stills — higher JPEG quality before compose/print.
+const int kStripCapturedPhotoJpegQuality = 95;
+
 /// `PATCH /api/sessions/:id` `userImageUrl`: long edge cap and quality (API contract).
 const int kSessionPatchUserImageMaxLongEdgePx = 1536;
 const int kSessionPatchUserImageJpegQuality = 85;
@@ -203,7 +206,8 @@ class ImageHelper {
         normalized,
         width: (normalized.width * scale).round(),
         height: (normalized.height * scale).round(),
-        interpolation: img.Interpolation.linear,
+        // Cubic keeps more edge detail than linear for print-bound strip shots.
+        interpolation: img.Interpolation.cubic,
       );
     }
 

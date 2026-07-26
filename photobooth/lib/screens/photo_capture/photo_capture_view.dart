@@ -225,6 +225,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           ..addAll(captureArgs.acceptedStripShots);
       }
       if (_isFlashbackMultiShot) {
+        _captureViewModel.preferStripPrintQuality = true;
         _syncFlashbackSubtitle();
       }
     }

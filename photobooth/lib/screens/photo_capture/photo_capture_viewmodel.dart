@@ -77,6 +77,23 @@ class CaptureViewModel extends ChangeNotifier {
   bool _disposed = false;
   bool get isDisposed => _disposed;
 
+  /// FotoFlashback multi-shot: normalize stills at print-oriented JPEG quality.
+  bool preferStripPrintQuality = false;
+
+  int? _normalizeJpegQualityForCapture({required bool isUvc}) {
+    // Thermal relief still wins on UVC to limit device heat/RAM.
+    if (isUvc && UvcCaptureConfig.thermalReliefEnabled) {
+      return UvcCaptureConfig.effectiveNormalizeJpegQuality;
+    }
+    if (preferStripPrintQuality) {
+      return kStripCapturedPhotoJpegQuality;
+    }
+    if (isUvc) {
+      return UvcCaptureConfig.effectiveNormalizeJpegQuality;
+    }
+    return null;
+  }
+
   /// No-op once [_disposed] — safe for fire-and-forget camera/upload callbacks.
   @override
   void notifyListeners() {
@@ -1004,8 +1021,7 @@ class CaptureViewModel extends ChangeNotifier {
           fixBgrChannelOrder: isUvc,
           maxDimension:
               isUvc ? UvcCaptureConfig.effectiveNormalizeMaxDimension : null,
-          jpegQuality:
-              isUvc ? UvcCaptureConfig.effectiveNormalizeJpegQuality : null,
+          jpegQuality: _normalizeJpegQualityForCapture(isUvc: isUvc),
         );
         if (isUvc) {
           await ImageHelper.tryDeleteLocalFile(rawFile.path);
@@ -1824,6 +1840,7 @@ class CaptureViewModel extends ChangeNotifier {
       final savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
         imageFile,
         flipHorizontal: isFrontCamera,
+        jpegQuality: _normalizeJpegQualityForCapture(isUvc: false),
       );
       WebFlowTrace.log('CAPTURE', 'normalize_done');
       await _assignCapturedPhotoModel(savedFile);
