@@ -57,6 +57,12 @@ class FakeApiService extends ApiService {
   int fetchSessionCalls = 0;
   int applySessionDiscountCalls = 0;
   int unapplySessionDiscountCalls = 0;
+  int startSurpriseMeCalls = 0;
+  int fetchSurpriseMeStatusCalls = 0;
+  int declineSurpriseMeCalls = 0;
+  SurpriseMeStatus? surpriseMeStatus;
+  bool startSurpriseMeThrows = false;
+  bool fetchSurpriseMeStatusThrows = false;
 
   @override
   Future<bool> validateKioskCode(String kioskCode) async {
@@ -221,4 +227,29 @@ class FakeApiService extends ApiService {
     );
   }
 
+  @override
+  Future<void> startSurpriseMe({
+    required String sessionId,
+    required String imageDataUrl,
+  }) async {
+    startSurpriseMeCalls++;
+    if (startSurpriseMeThrows) {
+      throw ApiException('surprise start failed');
+    }
+  }
+
+  @override
+  Future<SurpriseMeStatus> fetchSurpriseMeStatus(String sessionId) async {
+    fetchSurpriseMeStatusCalls++;
+    if (fetchSurpriseMeStatusThrows) {
+      throw ApiException('surprise status failed');
+    }
+    return surpriseMeStatus ??
+        const SurpriseMeStatus(status: 'idle', showUpsell: false);
+  }
+
+  @override
+  Future<void> declineSurpriseMe(String sessionId) async {
+    declineSurpriseMeCalls++;
+  }
 }

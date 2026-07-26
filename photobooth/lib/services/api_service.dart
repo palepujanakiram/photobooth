@@ -655,6 +655,68 @@ class ApiService {
     }
   }
 
+  /// POST `/api/sessions/:id/surprise-me` — silent Classic shot-1 AI kickoff.
+  Future<void> startSurpriseMe({
+    required String sessionId,
+    required String imageDataUrl,
+  }) async {
+    try {
+      await _dio.post<dynamic>(
+        '/api/sessions/$sessionId/surprise-me',
+        data: {'imageDataUrl': imageDataUrl},
+        options: Options(responseType: ResponseType.json),
+      );
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      throw ApiException(
+        'Failed to start Surprise Me: ${e.message}',
+        e.response?.statusCode,
+      );
+    }
+  }
+
+  /// GET `/api/sessions/:id/surprise-me` — ready / quality gate for upsell.
+  Future<SurpriseMeStatus> fetchSurpriseMeStatus(String sessionId) async {
+    try {
+      final r = await _dio.get<dynamic>(
+        '/api/sessions/$sessionId/surprise-me',
+        options: Options(responseType: ResponseType.json),
+      );
+      final data = r.data;
+      if (data is Map<String, dynamic>) {
+        return SurpriseMeStatus.fromJson(data);
+      }
+      if (data is Map) {
+        return SurpriseMeStatus.fromJson(Map<String, dynamic>.from(data));
+      }
+      throw ApiException('Unexpected Surprise Me status response');
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      throw ApiException(
+        'Failed to load Surprise Me status: ${e.message}',
+        e.response?.statusCode,
+      );
+    }
+  }
+
+  /// POST `/api/sessions/:id/surprise-me/decline` — guest declined AI copy.
+  Future<void> declineSurpriseMe(String sessionId) async {
+    try {
+      await _dio.post<dynamic>(
+        '/api/sessions/$sessionId/surprise-me/decline',
+        options: Options(responseType: ResponseType.json),
+      );
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      throw ApiException(
+        'Failed to decline Surprise Me: ${e.message}',
+        e.response?.statusCode,
+      );
+    }
+  }
+
   /// POST `/api/sessions/:id/strip/compose` — dual 2×6 strip on one 4×6 sheet.
   Future<StripComposeResult> composeStrip({
     required String sessionId,

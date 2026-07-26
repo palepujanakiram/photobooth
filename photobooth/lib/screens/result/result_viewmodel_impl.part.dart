@@ -1371,12 +1371,17 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           percent: sendingPercent(i, files.length),
         );
 
+        final imagePrintSize = i < _r._generatedImages.length
+            ? _r._generatedImages[i].printSize?.trim()
+            : null;
         await _r._printService.printImageToNetworkPrinter(
           files[i],
           printerHost: _r._printerHost,
           printerPort: _r.effectivePrinterPort,
           printerPath: _r.effectivePrinterPath,
-          printSize: _r.effectivePrintSize,
+          printSize: (imagePrintSize != null && imagePrintSize.isNotEmpty)
+              ? imagePrintSize
+              : _r.effectivePrintSize,
           quantity: _r._printCopies,
         );
 
