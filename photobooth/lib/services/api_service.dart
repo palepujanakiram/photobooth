@@ -597,7 +597,7 @@ class ApiService {
     String sticker = kDefaultStripStickerId,
     List<StripStickerPlacement> stickerPlacements = const [],
     List<StripScribbleStroke> scribbles = const [],
-    bool cleanOverlays = true,
+    bool cleanOverlays = false,
   }) async {
     if (images.length != kStripShotCount) {
       throw ApiException(

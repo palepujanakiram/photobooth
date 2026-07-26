@@ -6,11 +6,12 @@ import '../../models/strip_models.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
 
-/// Loads strip looks, cleans viewfinder overlays for preview, then composes.
+/// Loads strip looks and composes the dual strip (overlay polish gated off for MF).
 class FotoFlashbackFilterViewModel extends ChangeNotifier {
   FotoFlashbackFilterViewModel({
     required this.theme,
@@ -108,8 +109,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     }
-    // Non-blocking: show looks immediately; swap in cleaned shots when ready.
-    unawaited(preparePreview());
+    if (AppConstants.kEnableStripOverlayCleanup) {
+      // Non-blocking: show looks immediately; swap in cleaned shots when ready.
+      unawaited(preparePreview());
+    }
   }
 
   Future<void> _loadCatalog() async {
@@ -135,9 +138,11 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     }
   }
 
-  /// Gemini viewfinder cleanup so the look/pay preview matches print.
+  /// Viewfinder/HUD cleanup so the look/pay preview matches print.
+  /// Currently disabled ([AppConstants.kEnableStripOverlayCleanup]) — DSLR on MF.
   /// Fail-open: keeps originals if cleanup fails.
   Future<void> preparePreview() async {
+    if (!AppConstants.kEnableStripOverlayCleanup) return;
     if (_previewCleaned || _imageDataUrls.length != kStripShotCount) return;
     final existing = _prepareFuture;
     if (existing != null) return existing;
@@ -342,8 +347,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
     try {
-      // Finish background polish if still running so print matches preview.
-      await preparePreview();
+      if (AppConstants.kEnableStripOverlayCleanup) {
+        // Finish background polish if still running so print matches preview.
+        await preparePreview();
+      }
       _commitActiveScribble();
 
       final result = await _api.composeStrip(
@@ -354,8 +361,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         sticker: kDefaultStripStickerId,
         stickerPlacements: _placements,
         scribbles: _scribbles,
-        // Skip second Gemini pass when preview already cleaned.
-        cleanOverlays: !_previewCleaned,
+        // Skip cleanup when polish is disabled or preview already cleaned.
+        cleanOverlays:
+            AppConstants.kEnableStripOverlayCleanup && !_previewCleaned,
       );
       _composeResult = result;
       return GeneratedImage(

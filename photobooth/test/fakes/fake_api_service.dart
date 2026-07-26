@@ -202,7 +202,7 @@ class FakeApiService extends ApiService {
     String sticker = kDefaultStripStickerId,
     List<StripStickerPlacement> stickerPlacements = const [],
     List<StripScribbleStroke> scribbles = const [],
-    bool cleanOverlays = true,
+    bool cleanOverlays = false,
   }) async {
     return StripComposeResult(
       imageUrl: 'https://example.com/strip.jpg',

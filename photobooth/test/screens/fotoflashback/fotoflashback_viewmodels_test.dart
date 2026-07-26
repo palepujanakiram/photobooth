@@ -121,10 +121,10 @@ void main() {
     vm.selectFilter('mono');
     expect(vm.selectedFilterId, 'mono');
 
-    // Polish runs in background; join the in-flight prepare.
+    // Overlay polish disabled (DSLR MF) — shots stay as-captured.
     await vm.preparePreview();
-    expect(vm.previewCleaned, isTrue);
-    expect(vm.imageDataUrls.every((u) => u.endsWith('_clean')), isTrue);
+    expect(vm.previewCleaned, isFalse);
+    expect(vm.imageDataUrls.every((u) => u.endsWith('_clean')), isFalse);
 
     final image = await vm.compose();
     expect(image, isNotNull);
@@ -388,7 +388,7 @@ class _StripFakeApi extends FakeApiService {
     String sticker = kDefaultStripStickerId,
     List<StripStickerPlacement> stickerPlacements = const [],
     List<StripScribbleStroke> scribbles = const [],
-    bool cleanOverlays = true,
+    bool cleanOverlays = false,
   }) async {
     composeCalls++;
     lastCleanOverlays = cleanOverlays;

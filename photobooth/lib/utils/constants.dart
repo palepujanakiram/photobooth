@@ -135,6 +135,9 @@ class AppConstants {
   /// AI themes must keep using [kPrintSizePortrait4x6] / [kPrintSizeLandscape6x4].
   static const String kPrintSizeStripDual2x6 = 's6x2_2';
 
+  /// When true, polish strip shots (HUD/AF inpaint + Gemini). Off while DSLR is MF.
+  static const bool kEnableStripOverlayCleanup = false;
+
   /// BEHOLD single-result hero: width cap on landscape / desktop (wider than capture kiosk).
   static const double kBeholdResultCardMaxWidthFractionLandscape = 0.52;
 
