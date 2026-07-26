@@ -13,9 +13,13 @@ bool isExternalCaptureCamera(
 }
 
 /// Resolution preset for still capture + preview (kiosk memory vs HDMI reliability).
+///
+/// Built-in cameras use [veryHigh] so MacBook / phone stills match the live
+/// feed better. FotoFlashback can request [max] via [preferPrintQuality].
 ResolutionPreset captureResolutionPreset({
   required AppDeviceType? deviceType,
   required bool isExternal,
+  bool preferPrintQuality = false,
 }) {
   if (deviceType == AppDeviceType.androidTv) {
     return ResolutionPreset.medium;
@@ -23,7 +27,10 @@ ResolutionPreset captureResolutionPreset({
   if (isExternal) {
     return ResolutionPreset.medium;
   }
-  return ResolutionPreset.high;
+  if (preferPrintQuality) {
+    return ResolutionPreset.max;
+  }
+  return ResolutionPreset.veryHigh;
 }
 
 /// Stream format: YUV on Android TV / external for single-frame fallback capture.

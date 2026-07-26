@@ -100,6 +100,25 @@ void main() {
     expect(catalog.printSize, 's4x6');
     expect(catalog.copiesOnSheet, 2);
     expect(catalog.printNote, 'Two strips');
+    expect(catalog.wysiwyg.borderRatio, closeTo(4 / 600, 0.0001));
+  });
+
+  test('StripWysiwygLayout.fromJson parses romantic slots', () {
+    final layout = StripWysiwygLayout.fromJson({
+      'strip': {'borderRatio': 4 / 600},
+      'romantic': {
+        'slots': [
+          {'left': 0.1, 'top': 0.2, 'width': 0.3, 'height': 0.4},
+          {'left': 0.1, 'top': 0.2, 'width': 0.3, 'height': 0.4},
+          {'left': 0.1, 'top': 0.2, 'width': 0.3, 'height': 0.4},
+          {'left': 0.1, 'top': 0.2, 'width': 0.3, 'height': 0.4},
+        ],
+        'caption': 'Hello',
+      },
+    });
+    expect(layout.romanticSlots, hasLength(4));
+    expect(layout.romanticSlots.first.left, 0.1);
+    expect(layout.romanticCaption, 'Hello');
   });
 
   test('StripFiltersCatalog.fromJson uses defaults and Map casts', () {

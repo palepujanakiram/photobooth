@@ -40,13 +40,33 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   bool _loading = false;
   bool _preparingPreview = false;
   bool _previewCleaned = false;
+  bool _gradingPreview = false;
   bool _composing = false;
   String? _errorMessage;
   StripComposeResult? _composeResult;
   Future<void>? _prepareFuture;
   int _placementSeq = 0;
+  int _gradeSeq = 0;
+  final Map<String, List<String>> _gradedByFilter = {};
 
+  /// Raw captures (for compose). Prefer [previewImageDataUrls] for the look UI.
   List<String> get imageDataUrls => List<String>.unmodifiable(_imageDataUrls);
+
+  /// Sharp-graded thumbs for the selected look when available (Option A).
+  List<String> get previewImageDataUrls {
+    final graded = _gradedByFilter[_selectedFilterId];
+    if (graded != null && graded.length == kStripShotCount) {
+      return List<String>.unmodifiable(graded);
+    }
+    return imageDataUrls;
+  }
+
+  bool get previewImagesAreGraded =>
+      (_gradedByFilter[_selectedFilterId]?.length ?? 0) == kStripShotCount;
+
+  StripWysiwygLayout get wysiwygLayout =>
+      _catalog?.wysiwyg ?? StripWysiwygLayout.defaults;
+
   StripFiltersCatalog? get catalog => _catalog;
   List<StripFilter> get filters => _catalog?.filters ?? const [];
   List<StripFrame> get frames => _catalog?.frames ?? const [];
@@ -82,8 +102,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _scribbles.isNotEmpty || (_activeScribblePoints?.isNotEmpty ?? false);
 
   bool get isLoading => _loading;
-  bool get isPreparingPreview => _preparingPreview;
+  bool get isPreparingPreview => _preparingPreview || _gradingPreview;
   bool get previewCleaned => _previewCleaned;
+  bool get isGradingPreview => _gradingPreview;
   bool get isComposing => _composing;
   String? get errorMessage => _errorMessage;
   StripComposeResult? get composeResult => _composeResult;
@@ -113,6 +134,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       // Non-blocking: show looks immediately; swap in cleaned shots when ready.
       unawaited(preparePreview());
     }
+    unawaited(refreshPreviewGrade());
   }
 
   Future<void> _loadCatalog() async {
@@ -172,6 +194,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       if (cleaned.length == kStripShotCount) {
         _imageDataUrls = List<String>.from(cleaned);
         _previewCleaned = true;
+        _gradedByFilter.clear();
+        unawaited(refreshPreviewGrade());
       }
     } catch (_) {
       // Preview still usable with originals; compose will clean again.
@@ -181,10 +205,44 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     }
   }
 
+  /// Sharp-grade the four shots for the current look (WYSIWYG Option A).
+  Future<void> refreshPreviewGrade() async {
+    if (_imageDataUrls.length != kStripShotCount) return;
+    final filterId = _selectedFilterId;
+    final cached = _gradedByFilter[filterId];
+    if (cached != null && cached.length == kStripShotCount) return;
+
+    final sessionId = _sessionManager.sessionId?.trim() ?? '';
+    if (sessionId.isEmpty) return;
+
+    final seq = ++_gradeSeq;
+    _gradingPreview = true;
+    notifyListeners();
+    try {
+      final graded = await _api.gradeStripPreview(
+        sessionId: sessionId,
+        images: _imageDataUrls,
+        filter: filterId,
+      );
+      if (seq != _gradeSeq) return;
+      if (graded.length == kStripShotCount) {
+        _gradedByFilter[filterId] = List<String>.from(graded);
+      }
+    } catch (_) {
+      // Fall back to ColorFilter / raw bytes until compose.
+    } finally {
+      if (seq == _gradeSeq) {
+        _gradingPreview = false;
+        notifyListeners();
+      }
+    }
+  }
+
   void selectFilter(String filterId) {
     if (filterId == _selectedFilterId) return;
     _selectedFilterId = filterId;
     notifyListeners();
+    unawaited(refreshPreviewGrade());
   }
 
   void selectFrame(String frameId) {

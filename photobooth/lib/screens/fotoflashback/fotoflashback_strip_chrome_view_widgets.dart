@@ -18,44 +18,57 @@ class StripChromeLook {
   final Color? secondaryAccent;
   final bool showNoirDoubleLine;
 
-  static StripChromeLook forFrame(String frameId) {
+  /// Print uses a 4px pad on a 600-wide strip for every chrome frame.
+  static const double printBorderRatio = 4 / 600;
+  static const double printAccentStrokeRatio = 1.75 / 600;
+  static const double printNoirAccentStrokeRatio = 2.5 / 600;
+
+  static StripChromeLook forFrame(
+    String frameId, {
+    double? borderRatio,
+    double? accentStrokeRatio,
+    double? noirAccentStrokeRatio,
+  }) {
+    final border = borderRatio ?? printBorderRatio;
+    final accent = accentStrokeRatio ?? printAccentStrokeRatio;
+    final noirAccent = noirAccentStrokeRatio ?? printNoirAccentStrokeRatio;
     switch (frameId) {
       // API id `ticket` → Sky (blue blush twin), thin elegant rim.
       case 'ticket':
-        return const StripChromeLook(
-          fill: Color(0xFFEAF2FF),
-          borderRatio: 0.028,
-          accent: Color(0xFF6B9FE8),
-          accentWidthFactor: 0.011,
+        return StripChromeLook(
+          fill: const Color(0xFFEAF2FF),
+          borderRatio: border,
+          accent: const Color(0xFF6B9FE8),
+          accentWidthFactor: accent,
         );
       case 'blush':
-        return const StripChromeLook(
-          fill: Color(0xFFFFF0F3),
-          borderRatio: 0.028,
-          accent: Color(0xFFE8919A),
-          accentWidthFactor: 0.011,
+        return StripChromeLook(
+          fill: const Color(0xFFFFF0F3),
+          borderRatio: border,
+          accent: const Color(0xFFE8919A),
+          accentWidthFactor: accent,
         );
       case 'gold':
-        return const StripChromeLook(
-          fill: Color(0xFFF7F0E0),
-          borderRatio: 0.028,
-          accent: Color(0xFFD4AF6A),
-          accentWidthFactor: 0.011,
+        return StripChromeLook(
+          fill: const Color(0xFFF7F0E0),
+          borderRatio: border,
+          accent: const Color(0xFFD4AF6A),
+          accentWidthFactor: accent,
         );
       case 'noir':
-        return const StripChromeLook(
-          fill: Color(0xFF121216),
-          borderRatio: 0.055,
-          accent: Color(0xFFC8C8D0),
-          accentWidthFactor: 0.016,
-          secondaryAccent: Color(0xFF6E6E78),
+        return StripChromeLook(
+          fill: const Color(0xFF121216),
+          borderRatio: border,
+          accent: const Color(0xFFC8C8D0),
+          accentWidthFactor: noirAccent,
+          secondaryAccent: const Color(0xFF6E6E78),
           showNoirDoubleLine: true,
         );
       case 'classic':
       default:
-        return const StripChromeLook(
+        return StripChromeLook(
           fill: Colors.white,
-          borderRatio: 4 / 600,
+          borderRatio: border,
         );
     }
   }
@@ -81,7 +94,9 @@ class StripChromeOverlay extends StatelessWidget {
     final accent = look.accent;
     if (accent == null) return const SizedBox.shrink();
 
-    final accentW = (width * look.accentWidthFactor).clamp(1.0, 2.5);
+    // Match print SVG stroke widths (1.75 / 2.5 on 600-wide strip).
+    final accentW = (width * look.accentWidthFactor).clamp(0.5, 4.0);
+    final noirInset = width * (5 / 600);
     return IgnorePointer(
       child: Padding(
         padding: EdgeInsets.all(borderPad),
@@ -91,12 +106,12 @@ class StripChromeOverlay extends StatelessWidget {
           ),
           child: look.showNoirDoubleLine && look.secondaryAccent != null
               ? Padding(
-                  padding: EdgeInsets.all(accentW + 1.2),
+                  padding: EdgeInsets.all(noirInset),
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       border: Border.all(
                         color: look.secondaryAccent!,
-                        width: (accentW * 0.65).clamp(0.8, 1.8),
+                        width: (width * (1.5 / 600)).clamp(0.5, 2.0),
                       ),
                     ),
                   ),

@@ -539,6 +539,66 @@ class ApiService {
     }
   }
 
+  /// POST `/api/sessions/:id/strip/preview-grade` — Sharp-grade thumbs for WYSIWYG.
+  Future<List<String>> gradeStripPreview({
+    required String sessionId,
+    required List<String> images,
+    String filter = kDefaultStripFilterId,
+  }) async {
+    if (images.length != kStripShotCount) {
+      throw ApiException(
+        'FotoFlashback requires exactly $kStripShotCount photos.',
+      );
+    }
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/sessions/$sessionId/strip/preview-grade',
+        data: {
+          'images': images,
+          'filter': filter,
+        },
+        options: Options(responseType: ResponseType.json),
+      );
+      final data = r.data;
+      Map<String, dynamic>? map;
+      if (data is Map<String, dynamic>) {
+        map = data;
+      } else if (data is Map) {
+        map = Map<String, dynamic>.from(data);
+      }
+      if (map == null) {
+        throw ApiException('Unexpected strip preview-grade response');
+      }
+      if (map['success'] == false) {
+        throw ApiException(
+          map['error']?.toString() ?? 'Strip preview grade failed',
+          r.statusCode,
+        );
+      }
+      final raw = map['images'];
+      if (raw is! List || raw.length != kStripShotCount) {
+        throw ApiException('Strip preview grade returned invalid images');
+      }
+      final out = <String>[];
+      for (final item in raw) {
+        final s = item?.toString() ?? '';
+        if (s.isEmpty) {
+          throw ApiException('Strip preview grade returned an empty image');
+        }
+        out.add(s);
+      }
+      return out;
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+      throw ApiException(
+        'Failed to grade strip preview: ${e.message}',
+        e.response?.statusCode,
+      );
+    }
+  }
+
   /// POST `/api/sessions/:id/strip/clean-overlays` — remove viewfinder HUD for preview.
   Future<List<String>> cleanStripOverlays({
     required String sessionId,

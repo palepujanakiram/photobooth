@@ -370,6 +370,15 @@ class _StripFakeApi extends FakeApiService {
   }
 
   @override
+  Future<List<String>> gradeStripPreview({
+    required String sessionId,
+    required List<String> images,
+    String filter = kDefaultStripFilterId,
+  }) async {
+    return images.map((e) => '${e}_graded_$filter').toList();
+  }
+
+  @override
   Future<List<String>> cleanStripOverlays({
     required String sessionId,
     required List<String> images,

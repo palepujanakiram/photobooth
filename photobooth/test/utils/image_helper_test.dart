@@ -6,7 +6,11 @@ import '../helpers/tiny_jpeg.dart';
 void main() {
   test('strip capture jpeg quality is higher than default stills', () {
     expect(kStripCapturedPhotoJpegQuality, greaterThan(kCapturedPhotoJpegQuality));
-    expect(kStripCapturedPhotoJpegQuality, 95);
+    expect(kStripCapturedPhotoJpegQuality, 97);
+    expect(
+      kStripCapturedPhotoMaxDimension,
+      greaterThan(kCapturedPhotoMaxDimension),
+    );
   });
 
   test('formatFileSize labels B KB MB', () {

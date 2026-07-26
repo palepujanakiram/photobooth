@@ -64,7 +64,15 @@ void main() {
         deviceType: AppDeviceType.androidPhone,
         isExternal: false,
       ),
-      ResolutionPreset.high,
+      ResolutionPreset.veryHigh,
+    );
+    expect(
+      captureResolutionPreset(
+        deviceType: AppDeviceType.androidPhone,
+        isExternal: false,
+        preferPrintQuality: true,
+      ),
+      ResolutionPreset.max,
     );
   });
 

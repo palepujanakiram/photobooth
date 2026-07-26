@@ -16,8 +16,9 @@ import 'web_flow_trace.dart';
 const int kCapturedPhotoMaxDimension = 1920;
 const int kCapturedPhotoJpegQuality = 85;
 
-/// FotoFlashback strip stills — higher JPEG quality before compose/print.
-const int kStripCapturedPhotoJpegQuality = 95;
+/// FotoFlashback strip stills — keep more source pixels + quality before compose.
+const int kStripCapturedPhotoMaxDimension = 3840;
+const int kStripCapturedPhotoJpegQuality = 97;
 
 /// `PATCH /api/sessions/:id` `userImageUrl`: long edge cap and quality (API contract).
 const int kSessionPatchUserImageMaxLongEdgePx = 1536;

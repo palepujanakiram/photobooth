@@ -23,6 +23,8 @@ class FotoFlashbackStripPreview extends StatelessWidget {
     this.placements = const [],
     this.scribbles = const [],
     this.drawMode = false,
+    this.imagesAreGraded = false,
+    this.layout,
     this.onMovePlacement,
     this.onRemovePlacement,
     this.onScribbleStart,
@@ -35,6 +37,12 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   final List<String> imageDataUrls;
   final String filterId;
   final String frameId;
+
+  /// When true, [imageDataUrls] are already Sharp-graded — skip ColorFilter.
+  final bool imagesAreGraded;
+
+  /// Shared print geometry from `GET /api/strip/filters` → `layout`.
+  final StripWysiwygLayout? layout;
 
   /// Legacy pack id (used only when [placements] is empty).
   final String stickerId;
@@ -74,19 +82,26 @@ class FotoFlashbackStripPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final wysiwyg = layout ?? StripWysiwygLayout.defaults;
     if (isStripSheetLayout(frameId)) {
       return FotoFlashbackSheetLayoutPreview(
         imageDataUrls: imageDataUrls,
-        colorFilter: stripPreviewColorFilter(filterId),
+        colorFilter: imagesAreGraded
+            ? null
+            : stripPreviewColorFilter(filterId),
         layoutId: frameId,
+        layout: wysiwyg,
         width: width,
         height: height,
       );
     }
 
-    // Matches zenai compact Classic watermark (single brand line).
-    final fontSize = (width / 42).clamp(7.0, 11.0);
-    final credentialBarH = (fontSize * 1.9).clamp(16.0, 24.0);
+    // Compact watermark math from zenai `watermark.ts` (one-strip column).
+    final fontSize = (width / wysiwyg.watermarkFontDivisor).clamp(
+      wysiwyg.watermarkFontMin,
+      wysiwyg.watermarkFontMax,
+    );
+    final credentialBarH = fontSize * wysiwyg.watermarkBarHeightFactor;
     return SizedBox(
       width: width,
       height: height,
@@ -98,6 +113,8 @@ class FotoFlashbackStripPreview extends StatelessWidget {
             filterId: filterId,
             frameId: frameId,
             stickerId: stickerId,
+            imagesAreGraded: imagesAreGraded,
+            layout: wysiwyg,
             placements: placements,
             scribbles: scribbles,
             drawMode: drawMode,
@@ -128,7 +145,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
                     color: Colors.white,
                     fontSize: fontSize,
                     fontWeight: FontWeight.w500,
-                    letterSpacing: 0.4,
+                    letterSpacing: 0.6,
                     height: 1.05,
                   ),
                 ),
@@ -153,6 +170,8 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
     required this.interactive,
     required this.width,
     required this.height,
+    this.imagesAreGraded = false,
+    this.layout,
     this.onMovePlacement,
     this.onRemovePlacement,
     this.onScribbleStart,
@@ -168,6 +187,8 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
   final List<StripScribbleStroke> scribbles;
   final bool drawMode;
   final bool interactive;
+  final bool imagesAreGraded;
+  final StripWysiwygLayout? layout;
   final double width;
   final double height;
   final void Function(String id, double x, double y)? onMovePlacement;
@@ -178,10 +199,33 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final wysiwyg = layout ?? StripWysiwygLayout.defaults;
     final images =
         imageDataUrls.take(kStripShotCount).map(_bytesFromDataUrl).toList();
-    final chrome = StripChromeLook.forFrame(frameId);
+    final chrome = StripChromeLook.forFrame(
+      frameId,
+      borderRatio: wysiwyg.borderRatio,
+      accentStrokeRatio: wysiwyg.accentStrokeRatio,
+      noirAccentStrokeRatio: wysiwyg.noirAccentStrokeRatio,
+    );
     final pad = width * chrome.borderRatio;
+    final photoColumn = Column(
+      children: [
+        for (var i = 0; i < kStripShotCount; i++)
+          Expanded(
+            child: images.length > i
+                ? Image.memory(
+                    images[i],
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
+                    gaplessPlayback: true,
+                    filterQuality: FilterQuality.high,
+                  )
+                : const ColoredBox(color: Colors.black12),
+          ),
+      ],
+    );
 
     return Container(
       key: ValueKey<String>('strip_chrome_$frameId'),
@@ -193,26 +237,12 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
         children: [
           Padding(
             padding: EdgeInsets.all(pad),
-            child: ColorFiltered(
-              colorFilter: stripPreviewColorFilter(filterId),
-              child: Column(
-                children: [
-                  for (var i = 0; i < kStripShotCount; i++)
-                    Expanded(
-                      child: images.length > i
-                          ? Image.memory(
-                              images[i],
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              height: double.infinity,
-                              gaplessPlayback: true,
-                              filterQuality: FilterQuality.medium,
-                            )
-                          : const ColoredBox(color: Colors.black12),
-                    ),
-                ],
-              ),
-            ),
+            child: imagesAreGraded
+                ? photoColumn
+                : ColorFiltered(
+                    colorFilter: stripPreviewColorFilter(filterId),
+                    child: photoColumn,
+                  ),
           ),
           StripChromeOverlay(
             look: chrome,
@@ -228,6 +258,7 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
                 placement: p,
                 stripWidth: width,
                 stripHeight: height,
+                layout: wysiwyg,
                 absorbPointers: !interactive || drawMode,
                 onMove: interactive ? onMovePlacement : null,
                 onRemove: interactive ? onRemovePlacement : null,
@@ -327,6 +358,7 @@ class _PlacementSticker extends StatelessWidget {
     required this.placement,
     required this.stripWidth,
     required this.stripHeight,
+    this.layout,
     this.absorbPointers = false,
     this.onMove,
     this.onRemove,
@@ -335,13 +367,18 @@ class _PlacementSticker extends StatelessWidget {
   final StripStickerPlacement placement;
   final double stripWidth;
   final double stripHeight;
+  final StripWysiwygLayout? layout;
   final bool absorbPointers;
   final void Function(String id, double x, double y)? onMove;
   final void Function(String id)? onRemove;
 
   @override
   Widget build(BuildContext context) {
-    final size = _glyphSize(placement, stripWidth);
+    final size = _glyphSize(
+      placement,
+      stripWidth,
+      layout ?? StripWysiwygLayout.defaults,
+    );
     final left = (placement.x * stripWidth) - size / 2;
     final top = (placement.y * stripHeight) - size / 2;
     final child = _glyph(placement, size);
@@ -370,12 +407,18 @@ class _PlacementSticker extends StatelessWidget {
   }
 }
 
-double _glyphSize(StripStickerPlacement p, double stripWidth) {
-  final base = switch (p.type) {
-    'confetti' || 'butterflies' || 'petals' => stripWidth * 0.2,
-    _ => stripWidth * 0.16,
+double _glyphSize(
+  StripStickerPlacement p,
+  double stripWidth,
+  StripWysiwygLayout layout,
+) {
+  final ratio = switch (p.type) {
+    'confetti' || 'butterflies' || 'petals' => layout.stickerLargeRatio,
+    _ => layout.stickerBaseRatio,
   };
-  return (base * p.scale).clamp(14.0, 56.0);
+  // Match zenai placementGlyphSize — min only, no preview max clamp.
+  final size = stripWidth * ratio * p.scale;
+  return size < layout.stickerMinPx ? layout.stickerMinPx : size;
 }
 
 Widget _glyph(StripStickerPlacement p, double size) {
@@ -764,7 +807,7 @@ class _ButterflyPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     // Match zenai wing span (~1.54×s) filling the placement box.
-    final s = size.shortestSide * 0.65;
+    final s = size.shortestSide;
     _wing(canvas, center, s, -0.35, -0.1, 0.42, 0.28, -25,
         const Color(0xFFC9A0FF));
     _wing(canvas, center, s, 0.35, -0.1, 0.42, 0.28, 25,
@@ -823,7 +866,7 @@ class _PetalPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final s = size.shortestSide * 0.65;
+    final s = size.shortestSide;
     for (var i = 0; i < 5; i++) {
       canvas.save();
       canvas.translate(center.dx, center.dy);

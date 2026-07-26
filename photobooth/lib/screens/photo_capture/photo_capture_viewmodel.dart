@@ -94,6 +94,16 @@ class CaptureViewModel extends ChangeNotifier {
     return null;
   }
 
+  int? _normalizeMaxDimensionForCapture({required bool isUvc}) {
+    if (isUvc) {
+      return UvcCaptureConfig.effectiveNormalizeMaxDimension;
+    }
+    if (preferStripPrintQuality) {
+      return kStripCapturedPhotoMaxDimension;
+    }
+    return null;
+  }
+
   /// No-op once [_disposed] — safe for fire-and-forget camera/upload callbacks.
   @override
   void notifyListeners() {
@@ -1019,8 +1029,7 @@ class CaptureViewModel extends ChangeNotifier {
           rawFile,
           flipHorizontal: false,
           fixBgrChannelOrder: isUvc,
-          maxDimension:
-              isUvc ? UvcCaptureConfig.effectiveNormalizeMaxDimension : null,
+          maxDimension: _normalizeMaxDimensionForCapture(isUvc: isUvc),
           jpegQuality: _normalizeJpegQualityForCapture(isUvc: isUvc),
         );
         if (isUvc) {
@@ -1370,6 +1379,7 @@ class CaptureViewModel extends ChangeNotifier {
     final preset = captureResolutionPreset(
       deviceType: _deviceType,
       isExternal: isExternal,
+      preferPrintQuality: preferStripPrintQuality,
     );
     final streamFormat = captureStreamFormat(
       deviceType: _deviceType,
@@ -1840,6 +1850,7 @@ class CaptureViewModel extends ChangeNotifier {
       final savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
         imageFile,
         flipHorizontal: isFrontCamera,
+        maxDimension: _normalizeMaxDimensionForCapture(isUvc: false),
         jpegQuality: _normalizeJpegQualityForCapture(isUvc: false),
       );
       WebFlowTrace.log('CAPTURE', 'normalize_done');

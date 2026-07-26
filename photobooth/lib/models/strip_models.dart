@@ -260,6 +260,245 @@ List<T> _parseNamedList<T>(
   return out;
 }
 
+/// Normalized print geometry from zenai `GET /api/strip/filters` → `layout`.
+class StripWysiwygLayout {
+  const StripWysiwygLayout({
+    required this.borderRatio,
+    required this.accentStrokeRatio,
+    required this.noirAccentStrokeRatio,
+    required this.noirInnerInsetRatio,
+    required this.watermarkFontDivisor,
+    required this.watermarkFontMin,
+    required this.watermarkFontMax,
+    required this.watermarkBarHeightFactor,
+    required this.stickerBaseRatio,
+    required this.stickerLargeRatio,
+    required this.stickerMinPx,
+    required this.romanticSlots,
+    required this.romanticHeartY,
+    required this.romanticHeartFont,
+    required this.romanticCaptionY,
+    required this.romanticCaptionFont,
+    required this.romanticCaption,
+    required this.polaroidFrameW,
+    required this.polaroidFrameH,
+    required this.polaroidSlots,
+    required this.gridHeaderH,
+    required this.gridFooterH,
+    required this.gridMargin,
+    required this.gridGap,
+    required this.gridTitle,
+    required this.gridSubtitle,
+    required this.filmRailW,
+    required this.filmMarginY,
+    required this.filmGutter,
+    required this.filmStripPadX,
+    required this.filmHoleW,
+    required this.filmHoleH,
+    required this.filmHolePitch,
+    required this.filmCellAspect,
+    required this.filmLabel,
+  });
+
+  final double borderRatio;
+  final double accentStrokeRatio;
+  final double noirAccentStrokeRatio;
+  final double noirInnerInsetRatio;
+  final double watermarkFontDivisor;
+  final double watermarkFontMin;
+  final double watermarkFontMax;
+  final double watermarkBarHeightFactor;
+  final double stickerBaseRatio;
+  final double stickerLargeRatio;
+  final double stickerMinPx;
+  final List<({double left, double top, double width, double height})>
+      romanticSlots;
+  final double romanticHeartY;
+  final double romanticHeartFont;
+  final double romanticCaptionY;
+  final double romanticCaptionFont;
+  final String romanticCaption;
+  final double polaroidFrameW;
+  final double polaroidFrameH;
+  final List<({double left, double top, double rotDeg})> polaroidSlots;
+  final double gridHeaderH;
+  final double gridFooterH;
+  final double gridMargin;
+  final double gridGap;
+  final String gridTitle;
+  final String gridSubtitle;
+  final double filmRailW;
+  final double filmMarginY;
+  final double filmGutter;
+  final double filmStripPadX;
+  final double filmHoleW;
+  final double filmHoleH;
+  final double filmHolePitch;
+  final double filmCellAspect;
+  final String filmLabel;
+
+  /// Matches zenai `STRIP_WYSIWYG_LAYOUT` when the API omits `layout`.
+  static final StripWysiwygLayout defaults = StripWysiwygLayout(
+    borderRatio: 4 / 600,
+    accentStrokeRatio: 1.75 / 600,
+    noirAccentStrokeRatio: 2.5 / 600,
+    noirInnerInsetRatio: 5 / 600,
+    watermarkFontDivisor: 48,
+    watermarkFontMin: 8,
+    watermarkFontMax: 12,
+    watermarkBarHeightFactor: 1.85,
+    stickerBaseRatio: 0.16,
+    stickerLargeRatio: 0.2,
+    stickerMinPx: 14,
+    romanticSlots: const [
+      (left: 70 / 1200, top: 110 / 1800, width: 520 / 1200, height: 640 / 1800),
+      (left: 610 / 1200, top: 160 / 1800, width: 520 / 1200, height: 640 / 1800),
+      (left: 120 / 1200, top: 780 / 1800, width: 360 / 1200, height: 440 / 1800),
+      (left: 700 / 1200, top: 860 / 1800, width: 360 / 1200, height: 440 / 1800),
+    ],
+    romanticHeartY: 78 / 1800,
+    romanticHeartFont: 64 / 1200,
+    romanticCaptionY: 1670 / 1800,
+    romanticCaptionFont: 36 / 1200,
+    romanticCaption: 'Forever starts here',
+    polaroidFrameW: 464 / 1200,
+    polaroidFrameH: 612 / 1800,
+    polaroidSlots: const [
+      (left: 70 / 1200, top: 90 / 1800, rotDeg: -4),
+      (left: 620 / 1200, top: 70 / 1800, rotDeg: 3),
+      (left: 90 / 1200, top: 920 / 1800, rotDeg: 2.5),
+      (left: 600 / 1200, top: 900 / 1800, rotDeg: -3),
+    ],
+    gridHeaderH: 160 / 1800,
+    gridFooterH: 90 / 1800,
+    gridMargin: 48 / 1200,
+    gridGap: 28 / 1200,
+    gridTitle: 'Together',
+    gridSubtitle: 'Our favorite moments',
+    filmRailW: 52 / 1200,
+    filmMarginY: 72 / 1800,
+    filmGutter: 14 / 1800,
+    filmStripPadX: 150 / 1200,
+    filmHoleW: 26 / 1200,
+    filmHoleH: 34 / 1800,
+    filmHolePitch: 58 / 1800,
+    filmCellAspect: 592 / 448,
+    filmLabel: 'MEMORIES',
+  );
+
+  factory StripWysiwygLayout.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return defaults;
+    final strip = _asMap(json['strip']);
+    final wm = _asMap(json['watermark']);
+    final stickers = _asMap(json['stickers']);
+    final romantic = _asMap(json['romantic']);
+    final polaroid = _asMap(json['polaroid']);
+    final grid = _asMap(json['grid2x2']);
+    final film = _asMap(json['filmstrip']);
+    return StripWysiwygLayout(
+      borderRatio: _d(strip?['borderRatio'], defaults.borderRatio),
+      accentStrokeRatio:
+          _d(strip?['accentStrokeRatio'], defaults.accentStrokeRatio),
+      noirAccentStrokeRatio:
+          _d(strip?['noirAccentStrokeRatio'], defaults.noirAccentStrokeRatio),
+      noirInnerInsetRatio:
+          _d(strip?['noirInnerInsetRatio'], defaults.noirInnerInsetRatio),
+      watermarkFontDivisor:
+          _d(wm?['fontDivisor'], defaults.watermarkFontDivisor),
+      watermarkFontMin: _d(wm?['fontMin'], defaults.watermarkFontMin),
+      watermarkFontMax: _d(wm?['fontMax'], defaults.watermarkFontMax),
+      watermarkBarHeightFactor:
+          _d(wm?['barHeightFactor'], defaults.watermarkBarHeightFactor),
+      stickerBaseRatio: _d(stickers?['baseRatio'], defaults.stickerBaseRatio),
+      stickerLargeRatio: _d(stickers?['largeRatio'], defaults.stickerLargeRatio),
+      stickerMinPx: _d(stickers?['minPx'], defaults.stickerMinPx),
+      romanticSlots: _parseRomanticSlots(romantic?['slots']),
+      romanticHeartY: _d(romantic?['heartY'], defaults.romanticHeartY),
+      romanticHeartFont: _d(romantic?['heartFont'], defaults.romanticHeartFont),
+      romanticCaptionY: _d(romantic?['captionY'], defaults.romanticCaptionY),
+      romanticCaptionFont:
+          _d(romantic?['captionFont'], defaults.romanticCaptionFont),
+      romanticCaption: JsonParseHelpers.stringValue(
+        romantic?['caption'],
+        fallback: defaults.romanticCaption,
+      ),
+      polaroidFrameW: _d(polaroid?['frameW'], defaults.polaroidFrameW),
+      polaroidFrameH: _d(polaroid?['frameH'], defaults.polaroidFrameH),
+      polaroidSlots: _parsePolaroidSlots(polaroid?['slots']),
+      gridHeaderH: _d(grid?['headerH'], defaults.gridHeaderH),
+      gridFooterH: _d(grid?['footerH'], defaults.gridFooterH),
+      gridMargin: _d(grid?['margin'], defaults.gridMargin),
+      gridGap: _d(grid?['gap'], defaults.gridGap),
+      gridTitle: JsonParseHelpers.stringValue(
+        grid?['title'],
+        fallback: defaults.gridTitle,
+      ),
+      gridSubtitle: JsonParseHelpers.stringValue(
+        grid?['subtitle'],
+        fallback: defaults.gridSubtitle,
+      ),
+      filmRailW: _d(film?['railW'], defaults.filmRailW),
+      filmMarginY: _d(film?['marginY'], defaults.filmMarginY),
+      filmGutter: _d(film?['gutter'], defaults.filmGutter),
+      filmStripPadX: _d(film?['stripPadX'], defaults.filmStripPadX),
+      filmHoleW: _d(film?['holeW'], defaults.filmHoleW),
+      filmHoleH: _d(film?['holeH'], defaults.filmHoleH),
+      filmHolePitch: _d(film?['holePitch'], defaults.filmHolePitch),
+      filmCellAspect: _d(film?['cellAspect'], defaults.filmCellAspect),
+      filmLabel: JsonParseHelpers.stringValue(
+        film?['label'],
+        fallback: defaults.filmLabel,
+      ),
+    );
+  }
+
+  static Map<String, dynamic>? _asMap(Object? raw) {
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
+  }
+
+  static double _d(Object? raw, double fallback) {
+    if (raw is num) return raw.toDouble();
+    return fallback;
+  }
+
+  static List<({double left, double top, double width, double height})>
+      _parseRomanticSlots(Object? raw) {
+    if (raw is! List || raw.length != 4) return defaults.romanticSlots;
+    final out =
+        <({double left, double top, double width, double height})>[];
+    for (final item in raw) {
+      final m = _asMap(item);
+      if (m == null) return defaults.romanticSlots;
+      out.add((
+        left: _d(m['left'], 0),
+        top: _d(m['top'], 0),
+        width: _d(m['width'], 0),
+        height: _d(m['height'], 0),
+      ));
+    }
+    return out;
+  }
+
+  static List<({double left, double top, double rotDeg})> _parsePolaroidSlots(
+    Object? raw,
+  ) {
+    if (raw is! List || raw.length != 4) return defaults.polaroidSlots;
+    final out = <({double left, double top, double rotDeg})>[];
+    for (final item in raw) {
+      final m = _asMap(item);
+      if (m == null) return defaults.polaroidSlots;
+      out.add((
+        left: _d(m['left'], 0),
+        top: _d(m['top'], 0),
+        rotDeg: _d(m['rotDeg'], 0),
+      ));
+    }
+    return out;
+  }
+}
+
 /// Catalog payload from `GET /api/strip/filters`.
 class StripFiltersCatalog {
   const StripFiltersCatalog({
@@ -271,6 +510,7 @@ class StripFiltersCatalog {
     this.printSize = AppConstants.kPrintSizeStripDual2x6,
     this.copiesOnSheet = 2,
     this.printNote,
+    this.layout,
   });
 
   final String brand;
@@ -281,6 +521,9 @@ class StripFiltersCatalog {
   final String printSize;
   final int copiesOnSheet;
   final String? printNote;
+  final StripWysiwygLayout? layout;
+
+  StripWysiwygLayout get wysiwyg => layout ?? StripWysiwygLayout.defaults;
 
   factory StripFiltersCatalog.fromJson(Map<String, dynamic> json) {
     final print = json['print'];
@@ -289,6 +532,13 @@ class StripFiltersCatalog {
       printMap = print;
     } else if (print is Map) {
       printMap = Map<String, dynamic>.from(print);
+    }
+    final layoutRaw = json['layout'];
+    Map<String, dynamic>? layoutMap;
+    if (layoutRaw is Map<String, dynamic>) {
+      layoutMap = layoutRaw;
+    } else if (layoutRaw is Map) {
+      layoutMap = Map<String, dynamic>.from(layoutRaw);
     }
     return StripFiltersCatalog(
       brand: JsonParseHelpers.stringValue(
@@ -305,6 +555,7 @@ class StripFiltersCatalog {
       ),
       copiesOnSheet: JsonParseHelpers.intOrNull(printMap?['copiesOnSheet']) ?? 2,
       printNote: JsonParseHelpers.stringOrNull(printMap?['note']),
+      layout: StripWysiwygLayout.fromJson(layoutMap),
     );
   }
 }
