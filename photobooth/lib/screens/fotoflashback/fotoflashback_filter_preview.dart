@@ -472,21 +472,11 @@ Widget _glyph(StripStickerPlacement p, double size) {
         ),
       );
     case 'butterflies':
-      return Text(
-        '🦋',
-        style: TextStyle(
-          fontSize: size * 0.9,
-          height: 1,
-        ),
-      );
+      // Path-drawn — emoji 🦋 does not match zenai print SVG.
+      return _ButterflyGlyph(size: size);
     case 'petals':
-      return Text(
-        '💮',
-        style: TextStyle(
-          fontSize: size * 0.85,
-          height: 1,
-        ),
-      );
+      // Path-drawn — emoji 💮 does not match zenai petalCluster SVG.
+      return _PetalGlyph(size: size);
     case 'hearts':
     default:
       return Text(
@@ -589,21 +579,15 @@ List<Widget> _stickerOverlays(String stickerId, double width, double height) {
       ];
     case 'butterflies':
       return [
-        _stickerText('🦋', width * 0.16, height * 0.1, width * 0.14,
-            const Color(0xFFC9A0FF)),
-        _stickerText('🦋', width * 0.7, height * 0.42, width * 0.12,
-            const Color(0xFFFF9EC8)),
-        _stickerText('🦋', width * 0.18, height * 0.76, width * 0.13,
-            const Color(0xFFA78BFA)),
+        _stickerButterfly(width * 0.16, height * 0.1, width * 0.14),
+        _stickerButterfly(width * 0.7, height * 0.42, width * 0.12),
+        _stickerButterfly(width * 0.18, height * 0.76, width * 0.13),
       ];
     case 'petals':
       return [
-        _stickerText('💮', width * 0.14, height * 0.12, width * 0.13,
-            const Color(0xFFFFB3C6)),
-        _stickerText('💮', width * 0.72, height * 0.4, width * 0.12,
-            const Color(0xFFFF8FAB)),
-        _stickerText('💮', width * 0.18, height * 0.74, width * 0.12,
-            const Color(0xFFFFC2D1)),
+        _stickerPetal(width * 0.14, height * 0.12, width * 0.13),
+        _stickerPetal(width * 0.72, height * 0.4, width * 0.12),
+        _stickerPetal(width * 0.18, height * 0.74, width * 0.12),
       ];
     case 'none':
     default:
@@ -637,6 +621,22 @@ Widget _stickerSparkle(double left, double top, double size, Color color) {
     left: left,
     top: top,
     child: _SparkleGlyph(size: size, color: color),
+  );
+}
+
+Widget _stickerButterfly(double left, double top, double size) {
+  return Positioned(
+    left: left,
+    top: top,
+    child: _ButterflyGlyph(size: size),
+  );
+}
+
+Widget _stickerPetal(double left, double top, double size) {
+  return Positioned(
+    left: left,
+    top: top,
+    child: _PetalGlyph(size: size),
   );
 }
 
@@ -709,56 +709,193 @@ class _SparklePainter extends CustomPainter {
   }
 }
 
-/// Approximate zenai Sharp grades for live Flutter preview.
+/// Geometric butterfly matching zenai `butterflyGlyph` (print SVG).
+class _ButterflyGlyph extends StatelessWidget {
+  const _ButterflyGlyph({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: const CustomPaint(painter: _ButterflyPainter()),
+    );
+  }
+}
+
+class _ButterflyPainter extends CustomPainter {
+  const _ButterflyPainter();
+
+  static void _wing(
+    Canvas canvas,
+    Offset center,
+    double s,
+    double ox,
+    double oy,
+    double rx,
+    double ry,
+    double degrees,
+    Color color,
+  ) {
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(degrees * 3.141592653589793 / 180);
+    canvas.translate(-center.dx, -center.dy);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(center.dx + ox * s, center.dy + oy * s),
+        width: rx * s * 2,
+        height: ry * s * 2,
+      ),
+      Paint()..color = color.withValues(alpha: 0.94),
+    );
+    canvas.restore();
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final s = size.shortestSide * 0.48;
+    _wing(canvas, center, s, -0.35, -0.1, 0.42, 0.28, -25,
+        const Color(0xFFC9A0FF));
+    _wing(canvas, center, s, 0.35, -0.1, 0.42, 0.28, 25,
+        const Color(0xFFFF9EC8));
+    _wing(canvas, center, s, -0.28, 0.25, 0.3, 0.2, -15,
+        const Color(0xFFA78BFA));
+    _wing(canvas, center, s, 0.28, 0.25, 0.3, 0.2, 15,
+        const Color(0xFFF472B6));
+    final body = Paint()..color = const Color(0xFF4A3F55).withValues(alpha: 0.94);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: center,
+        width: s * 0.16,
+        height: s * 0.84,
+      ),
+      body,
+    );
+    canvas.drawCircle(
+      Offset(center.dx, center.dy - s * 0.4),
+      s * 0.07,
+      body,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ButterflyPainter oldDelegate) => false;
+}
+
+/// Petal flower matching zenai `petalCluster` (print SVG).
+class _PetalGlyph extends StatelessWidget {
+  const _PetalGlyph({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: const CustomPaint(painter: _PetalPainter()),
+    );
+  }
+}
+
+class _PetalPainter extends CustomPainter {
+  const _PetalPainter();
+
+  static const _colors = <Color>[
+    Color(0xFFFFB3C6),
+    Color(0xFFFF8FAB),
+    Color(0xFFFFC2D1),
+    Color(0xFFFF99AC),
+    Color(0xFFFFB3C6),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final s = size.shortestSide * 0.48;
+    for (var i = 0; i < 5; i++) {
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(i * 72 * 3.141592653589793 / 180);
+      canvas.translate(-center.dx, -center.dy);
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(center.dx, center.dy - s * 0.35),
+          width: s * 0.44,
+          height: s * 0.76,
+        ),
+        Paint()..color = _colors[i].withValues(alpha: 0.92),
+      );
+      canvas.restore();
+    }
+    canvas.drawCircle(
+      center,
+      s * 0.14,
+      Paint()..color = const Color(0xFFFFE066).withValues(alpha: 0.95),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _PetalPainter oldDelegate) => false;
+}
+
+/// Approximate catalog CSS filters (same intent as zenai Sharp grades).
 ColorFilter stripPreviewColorFilter(String filterId) {
   switch (filterId) {
     case 'classic_warm':
+      // sepia(0.28) saturate(0.85) contrast(0.92) brightness(1.05)
       return const ColorFilter.matrix(<double>[
-        1.05, 0.05, 0, 0, 8,
-        0.02, 0.95, 0, 0, 4,
-        0, 0.02, 0.88, 0, 0,
+        0.718, 0.280, 0.058, 0, 11,
+        0.118, 0.852, 0.053, 0, 11,
+        0.099, 0.226, 0.637, 0, 11,
         0, 0, 0, 1, 0,
       ]);
     case 'peach_glow':
+      // Soft peach — avoid heavy amber tint mismatch with print.
       return const ColorFilter.matrix(<double>[
-        1.1, 0.08, 0.04, 0, 14,
-        0.06, 0.98, 0.04, 0, 8,
-        0.04, 0.06, 0.9, 0, 6,
+        1.08, 0.06, 0.02, 0, 12,
+        0.04, 1.0, 0.03, 0, 8,
+        0.02, 0.04, 0.92, 0, 4,
         0, 0, 0, 1, 0,
       ]);
     case 'soft_film':
       return const ColorFilter.matrix(<double>[
-        0.95, 0.05, 0, 0, 10,
-        0.05, 0.95, 0, 0, 10,
-        0, 0.05, 0.95, 0, 10,
+        0.92, 0.04, 0.02, 0, 14,
+        0.04, 0.92, 0.02, 0, 14,
+        0.02, 0.04, 0.92, 0, 14,
         0, 0, 0, 1, 0,
       ]);
     case 'candy_pop':
       return const ColorFilter.matrix(<double>[
-        1.15, 0.05, 0, 0, 0,
-        0, 1.05, 0.05, 0, 0,
-        0.05, 0, 1.2, 0, 0,
+        1.15, 0.05, 0, 0, 4,
+        0, 1.05, 0.05, 0, 4,
+        0.05, 0, 1.18, 0, 2,
         0, 0, 0, 1, 0,
       ]);
     case 'golden_hour':
+      // sepia(0.35) saturate(1.2) brightness(1.06) contrast(1.02)
       return const ColorFilter.matrix(<double>[
-        1.14, 0.1, 0.02, 0, 12,
-        0.06, 0.96, 0.02, 0, 6,
-        0, 0.04, 0.78, 0, 0,
+        0.82, 0.32, 0.06, 0, 8,
+        0.12, 0.90, 0.05, 0, 6,
+        0.08, 0.22, 0.68, 0, 2,
         0, 0, 0, 1, 0,
       ]);
     case 'cool_mint':
       return const ColorFilter.matrix(<double>[
-        0.88, 0.04, 0.06, 0, 2,
-        0.04, 1.06, 0.08, 0, 6,
-        0.06, 0.1, 1.12, 0, 8,
+        0.90, 0.04, 0.08, 0, 4,
+        0.04, 1.05, 0.08, 0, 6,
+        0.06, 0.10, 1.10, 0, 8,
         0, 0, 0, 1, 0,
       ]);
     case 'gloss_pop':
       return const ColorFilter.matrix(<double>[
-        1.2, 0.02, 0.06, 0, -6,
-        0, 1.12, 0.08, 0, -4,
-        0.08, 0, 1.24, 0, -2,
+        1.18, 0.02, 0.06, 0, -4,
+        0, 1.12, 0.06, 0, -2,
+        0.08, 0, 1.20, 0, 0,
         0, 0, 0, 1, 0,
       ]);
     case 'mono':
