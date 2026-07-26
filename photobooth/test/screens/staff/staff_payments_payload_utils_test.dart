@@ -165,6 +165,36 @@ void main() {
     );
   });
 
+  test('resolveSessionImageUrl falls back to strip then surprise then capture', () {
+    expect(
+      StaffPaymentsPayloadUtils.resolveSessionImageUrl(
+        {
+          'stripCompositeUrl': 'https://cdn.example/strip.jpg',
+          'surpriseImageUrl': 'https://cdn.example/surprise.jpg',
+        },
+        sessionId: 'sess-strip',
+      ),
+      contains('strip.jpg'),
+    );
+    expect(
+      StaffPaymentsPayloadUtils.resolveSessionImageUrl(
+        {'surpriseImageUrl': 'https://cdn.example/surprise.jpg'},
+        sessionId: 'sess-surprise',
+      ),
+      contains('surprise.jpg'),
+    );
+    expect(
+      StaffPaymentsPayloadUtils.resolveSessionImageUrl(
+        {
+          'userImageUrl': 'data:image/jpeg;base64,abc',
+          'capturedImages': ['https://cdn.example/shot1.jpg'],
+        },
+        sessionId: 'sess-cap',
+      ),
+      contains('shot1.jpg'),
+    );
+  });
+
   test('resolveImageUrlFromRunsPayload reads latest run outputImageUrl', () {
     expect(
       StaffPaymentsPayloadUtils.resolveImageUrlFromRunsPayload(

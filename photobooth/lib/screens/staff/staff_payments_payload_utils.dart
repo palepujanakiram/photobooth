@@ -69,6 +69,10 @@ abstract final class StaffPaymentsPayloadUtils {
   static const List<String> paymentThumbUrlKeys = [
     'latestImageUrl',
     'latest_image_url',
+    'stripCompositeUrl',
+    'strip_composite_url',
+    'surpriseImageUrl',
+    'surprise_image_url',
     'thumbnailUrl',
     'thumbUrl',
     'imageUrl',
@@ -173,6 +177,10 @@ abstract final class StaffPaymentsPayloadUtils {
     for (final key in const [
       'latestImageUrl',
       'latest_image_url',
+      'stripCompositeUrl',
+      'strip_composite_url',
+      'surpriseImageUrl',
+      'surprise_image_url',
       'outputImageUrl',
       'output_image_url',
       'userImagePreviewUrl',
@@ -195,6 +203,27 @@ abstract final class StaffPaymentsPayloadUtils {
         if (fromEntry != null) return fromEntry;
       }
     }
+
+    final captured =
+        raw['capturedImages'] ?? raw['captured_images'];
+    if (captured is List && captured.isNotEmpty) {
+      for (final shot in captured) {
+        if (shot is String && looksLikeUrl(shot)) {
+          return normalizeImageUrl(shot, sessionId: sessionId);
+        }
+      }
+    }
+
+    final userImage = pickString(raw, const [
+      'userImageUrl',
+      'user_image_url',
+    ]);
+    if (userImage.isNotEmpty &&
+        !userImage.startsWith(AppStrings.dataImagePrefix) &&
+        looksLikeUrl(userImage)) {
+      return normalizeImageUrl(userImage, sessionId: sessionId);
+    }
+
     final any = deepFindFirstUrl(raw);
     if (any != null) {
       return normalizeImageUrl(any, sessionId: sessionId);
