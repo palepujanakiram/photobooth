@@ -247,7 +247,17 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   void selectFrame(String frameId) {
     if (frameId == _selectedFrameId) return;
+    final wasSheet = isStripSheetLayout(_selectedFrameId);
+    final nowSheet = isStripSheetLayout(frameId);
     _selectedFrameId = frameId;
+    // Strip vs sheet use different normalized spaces — reset overlays.
+    if (wasSheet != nowSheet) {
+      _placements.clear();
+      _scribbles.clear();
+      _activeScribblePoints = null;
+      _selectedStickerId = kDefaultStripStickerId;
+      _drawMode = false;
+    }
     notifyListeners();
   }
 
@@ -444,6 +454,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   /// Normalized center inside photo cell [cell] (0–3). [wave] offsets later taps.
   (double, double) _spawnPointForCell(String type, int cell, int wave) {
+    if (isStripSheetLayout(_selectedFrameId)) {
+      return _spawnPointForSheetCell(type, cell, wave);
+    }
     final cellCenterY = (cell + 0.5) / kStripShotCount;
     final waveNudge = (wave % 3) * 0.04;
     final preferLeft = switch (type) {
@@ -462,5 +475,69 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     };
     final y = cellCenterY + yNudge - waveNudge * 0.5;
     return (x.clamp(0.08, 0.92), y.clamp(0.06, 0.94));
+  }
+
+  /// Spawn in sheet photo cells (normalized 0–1 on the 4×6).
+  (double, double) _spawnPointForSheetCell(String type, int cell, int wave) {
+    final layout = wysiwygLayout;
+    final waveNudge = (wave % 3) * 0.02;
+    final preferRight = switch (type) {
+      'sparkles' || 'confetti' || 'flowers' || 'petals' => cell.isEven,
+      _ => !cell.isEven,
+    };
+    final fx = preferRight ? 0.72 : 0.28;
+    final fy = 0.22 + (type.hashCode % 5) * 0.02;
+
+    late final double left;
+    late final double top;
+    late final double width;
+    late final double height;
+    final i = cell.clamp(0, 3);
+    if (_selectedFrameId == 'romantic') {
+      final slot = layout.romanticSlots[i];
+      left = slot.left;
+      top = slot.top;
+      width = slot.width;
+      height = slot.height;
+    } else if (_selectedFrameId == 'polaroid') {
+      final slot = layout.polaroidSlots[i];
+      left = slot.left;
+      top = slot.top;
+      width = layout.polaroidFrameW;
+      height = layout.polaroidFrameH;
+    } else if (_selectedFrameId == 'grid_2x2') {
+      final margin = layout.gridMargin;
+      final gap = layout.gridGap;
+      final headerH = layout.gridHeaderH;
+      final footerH = layout.gridFooterH;
+      final cellW = (1 - margin * 2 - gap) / 2;
+      final cellH = (1 - headerH - footerH - margin - gap) / 2;
+      final col = i % 2;
+      final row = i ~/ 2;
+      left = margin + col * (cellW + gap);
+      top = headerH + row * (cellH + gap);
+      width = cellW;
+      height = cellH;
+    } else if (_selectedFrameId == 'filmstrip') {
+      final marginY = layout.filmMarginY;
+      final gutter = layout.filmGutter;
+      final cellH = (1 - marginY * 2 - gutter * 3) / 4;
+      final stripPadX = layout.filmStripPadX;
+      final railW = layout.filmRailW;
+      final photoW = cellH * layout.filmCellAspect;
+      left = stripPadX + railW;
+      top = marginY + i * (cellH + gutter);
+      width = photoW;
+      height = cellH;
+    } else {
+      left = 0.1;
+      top = 0.1 + i * 0.2;
+      width = 0.35;
+      height = 0.2;
+    }
+
+    final x = left + width * fx + (preferRight ? waveNudge : -waveNudge);
+    final y = top + height * fy;
+    return (x.clamp(0.05, 0.95), y.clamp(0.05, 0.95));
   }
 }

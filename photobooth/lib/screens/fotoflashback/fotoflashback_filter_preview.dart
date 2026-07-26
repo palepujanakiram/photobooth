@@ -84,15 +84,73 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final wysiwyg = layout ?? StripWysiwygLayout.defaults;
     if (isStripSheetLayout(frameId)) {
-      return FotoFlashbackSheetLayoutPreview(
-        imageDataUrls: imageDataUrls,
-        colorFilter: imagesAreGraded
-            ? null
-            : stripPreviewColorFilter(filterId),
-        layoutId: frameId,
-        layout: wysiwyg,
+      // Glyph ref = half sheet width so icons match dual-strip booth size (print uses 600 on 1200).
+      final glyphRefWidth = width / 2;
+      return SizedBox(
         width: width,
         height: height,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            FotoFlashbackSheetLayoutPreview(
+              imageDataUrls: imageDataUrls,
+              colorFilter: imagesAreGraded
+                  ? null
+                  : stripPreviewColorFilter(filterId),
+              layoutId: frameId,
+              layout: wysiwyg,
+              width: width,
+              height: height,
+            ),
+            // Stickers / scribbles in sheet-normalized 0–1 space (matches print).
+            if (placements.isNotEmpty)
+              for (final p in placements)
+                _PlacementSticker(
+                  placement: p,
+                  stripWidth: width,
+                  stripHeight: height,
+                  glyphRefWidth: glyphRefWidth,
+                  layout: wysiwyg,
+                  absorbPointers: drawMode,
+                  onMove: onMovePlacement,
+                  onRemove: onRemovePlacement,
+                ),
+            if (scribbles.isNotEmpty)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _ScribblePainter(
+                      strokes: scribbles,
+                      stripWidth: width,
+                      stripHeight: height,
+                    ),
+                  ),
+                ),
+              ),
+            if (drawMode)
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onPanStart: (details) {
+                    if (onScribbleStart == null) return;
+                    onScribbleStart!(
+                      (details.localPosition.dx / width).clamp(0.0, 1.0),
+                      (details.localPosition.dy / height).clamp(0.0, 1.0),
+                    );
+                  },
+                  onPanUpdate: (details) {
+                    if (onScribbleUpdate == null) return;
+                    onScribbleUpdate!(
+                      (details.localPosition.dx / width).clamp(0.0, 1.0),
+                      (details.localPosition.dy / height).clamp(0.0, 1.0),
+                    );
+                  },
+                  onPanEnd: (_) => onScribbleEnd?.call(),
+                  onPanCancel: onScribbleEnd,
+                ),
+              ),
+          ],
+        ),
       );
     }
 
@@ -358,6 +416,7 @@ class _PlacementSticker extends StatelessWidget {
     required this.placement,
     required this.stripWidth,
     required this.stripHeight,
+    this.glyphRefWidth,
     this.layout,
     this.absorbPointers = false,
     this.onMove,
@@ -367,6 +426,8 @@ class _PlacementSticker extends StatelessWidget {
   final StripStickerPlacement placement;
   final double stripWidth;
   final double stripHeight;
+  /// When set (sheet layouts), size icons from this width instead of [stripWidth].
+  final double? glyphRefWidth;
   final StripWysiwygLayout? layout;
   final bool absorbPointers;
   final void Function(String id, double x, double y)? onMove;
@@ -376,7 +437,7 @@ class _PlacementSticker extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = _glyphSize(
       placement,
-      stripWidth,
+      glyphRefWidth ?? stripWidth,
       layout ?? StripWysiwygLayout.defaults,
     );
     final left = (placement.x * stripWidth) - size / 2;
