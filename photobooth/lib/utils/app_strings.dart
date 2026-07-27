@@ -277,7 +277,8 @@ abstract final class AppStrings {
   static const generationWaitErrorTitle = 'Generation failed';
 
   static const generationNoAttemptsRemaining =
-      'No generation attempts remaining for this session. Use “Or add one more style” on your results, or start over.';
+      'No AI generation attempts remaining for this session. '
+      'Use “Explore more AI photos” / “Add another style” on your results, or start over.';
 
   static const beholdReadyStepLabel = 'Step 3 of 3';
 
