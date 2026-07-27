@@ -27,18 +27,18 @@ void main() {
 
   test('stripPreviewFrameColor covers catalog frames', () {
     expect(stripPreviewFrameColor('classic'), Colors.white);
-    expect(stripPreviewFrameColor('ticket'), const Color(0xFFEAF2FF));
-    expect(stripPreviewFrameColor('blush'), const Color(0xFFFFF0F3));
-    expect(stripPreviewFrameColor('gold'), const Color(0xFFF7F0E0));
+    expect(stripPreviewFrameColor('doodle'), Colors.white);
+    expect(stripPreviewFrameColor('party'), Colors.white);
+    expect(stripPreviewFrameColor('cinema'), Colors.white);
     expect(stripPreviewFrameColor('noir'), const Color(0xFF121216));
-    expect(stripPreviewFrameAccent('gold'), isNotNull);
+    expect(stripPreviewFrameAccent('cinema'), isNull);
     expect(stripPreviewFrameColor('polaroid'), Colors.white);
     expect(stripPreviewFrameColor('grid_2x2'), const Color(0xFFFFFAF5));
     expect(stripPreviewFrameColor('filmstrip'), Colors.white);
     expect(stripPreviewFrameColor('romantic'), Colors.white);
     expect(stripPreviewFrameAccent('classic'), isNull);
-    expect(stripPreviewFrameAccent('ticket'), isNotNull);
-    expect(stripPreviewFrameAccent('blush'), isNotNull);
+    expect(stripPreviewFrameAccent('doodle'), isNull);
+    expect(stripPreviewFrameAccent('party'), isNull);
     expect(stripPreviewFrameAccent('noir'), isNotNull);
     expect(stripPreviewFrameAccent('polaroid'), isNotNull);
     expect(isStripSheetLayout('polaroid'), isTrue);
