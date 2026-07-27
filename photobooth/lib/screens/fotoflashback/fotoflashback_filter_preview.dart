@@ -474,7 +474,7 @@ double _glyphSize(
   StripWysiwygLayout layout,
 ) {
   final ratio = switch (p.type) {
-    'confetti' || 'butterflies' || 'petals' => layout.stickerLargeRatio,
+    'confetti' => layout.stickerLargeRatio,
     _ => layout.stickerBaseRatio,
   };
   // Match zenai placementGlyphSize — min only, no preview max clamp.
@@ -554,15 +554,6 @@ Widget _glyph(StripStickerPlacement p, double size) {
           height: 1,
         ),
       );
-    case 'bows':
-      return Text(
-        '✿',
-        style: TextStyle(
-          color: const Color(0xFFFF8FB8).withValues(alpha: 0.95),
-          fontSize: size,
-          height: 1,
-        ),
-      );
     case 'flowers':
       return Text(
         '❀',
@@ -572,12 +563,6 @@ Widget _glyph(StripStickerPlacement p, double size) {
           height: 1,
         ),
       );
-    case 'butterflies':
-      // Path-drawn — emoji 🦋 does not match zenai print SVG.
-      return _ButterflyGlyph(size: size);
-    case 'petals':
-      // Path-drawn — emoji 💮 does not match zenai petalCluster SVG.
-      return _PetalGlyph(size: size);
     case 'hearts':
     default:
       return Text(
@@ -669,15 +654,6 @@ List<Widget> _stickerOverlays(String stickerId, double width, double height) {
         _stickerText('★', width * 0.18, height * 0.78, width * 0.11,
             const Color(0xFFFFD54A)),
       ];
-    case 'bows':
-      return [
-        _stickerText('✿', width * 0.7, height * 0.08, width * 0.14,
-            const Color(0xFFFF8FB8)),
-        _stickerText('✿', width * 0.1, height * 0.42, width * 0.12,
-            const Color(0xFFFF8FB8)),
-        _stickerText('✿', width * 0.72, height * 0.75, width * 0.13,
-            const Color(0xFFFF8FB8)),
-      ];
     case 'flowers':
       return [
         _stickerText('❀', width * 0.14, height * 0.08, width * 0.14,
@@ -686,18 +662,6 @@ List<Widget> _stickerOverlays(String stickerId, double width, double height) {
             const Color(0xFFFF6B9D)),
         _stickerText('❀', width * 0.16, height * 0.72, width * 0.13,
             const Color(0xFFFF6B9D)),
-      ];
-    case 'butterflies':
-      return [
-        _stickerButterfly(width * 0.16, height * 0.1, width * 0.14),
-        _stickerButterfly(width * 0.7, height * 0.42, width * 0.12),
-        _stickerButterfly(width * 0.18, height * 0.76, width * 0.13),
-      ];
-    case 'petals':
-      return [
-        _stickerPetal(width * 0.14, height * 0.12, width * 0.13),
-        _stickerPetal(width * 0.72, height * 0.4, width * 0.12),
-        _stickerPetal(width * 0.18, height * 0.74, width * 0.12),
       ];
     case 'none':
     default:
@@ -731,22 +695,6 @@ Widget _stickerSparkle(double left, double top, double size, Color color) {
     left: left,
     top: top,
     child: _SparkleGlyph(size: size, color: color),
-  );
-}
-
-Widget _stickerButterfly(double left, double top, double size) {
-  return Positioned(
-    left: left,
-    top: top,
-    child: _ButterflyGlyph(size: size),
-  );
-}
-
-Widget _stickerPetal(double left, double top, double size) {
-  return Positioned(
-    left: left,
-    top: top,
-    child: _PetalGlyph(size: size),
   );
 }
 
@@ -817,141 +765,6 @@ class _SparklePainter extends CustomPainter {
   bool shouldRepaint(covariant _SparklePainter oldDelegate) {
     return oldDelegate.color != color;
   }
-}
-
-/// Geometric butterfly matching zenai `butterflyGlyph` (print SVG).
-class _ButterflyGlyph extends StatelessWidget {
-  const _ButterflyGlyph({required this.size});
-
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: const CustomPaint(painter: _ButterflyPainter()),
-    );
-  }
-}
-
-class _ButterflyPainter extends CustomPainter {
-  const _ButterflyPainter();
-
-  static void _wing(
-    Canvas canvas,
-    Offset center,
-    double s,
-    double ox,
-    double oy,
-    double rx,
-    double ry,
-    double degrees,
-    Color color,
-  ) {
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(degrees * 3.141592653589793 / 180);
-    canvas.translate(-center.dx, -center.dy);
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(center.dx + ox * s, center.dy + oy * s),
-        width: rx * s * 2,
-        height: ry * s * 2,
-      ),
-      Paint()..color = color.withValues(alpha: 0.94),
-    );
-    canvas.restore();
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    // Match zenai wing span (~1.54×s) filling the placement box.
-    final s = size.shortestSide;
-    _wing(canvas, center, s, -0.35, -0.1, 0.42, 0.28, -25,
-        const Color(0xFFC9A0FF));
-    _wing(canvas, center, s, 0.35, -0.1, 0.42, 0.28, 25,
-        const Color(0xFFFF9EC8));
-    _wing(canvas, center, s, -0.28, 0.25, 0.3, 0.2, -15,
-        const Color(0xFFA78BFA));
-    _wing(canvas, center, s, 0.28, 0.25, 0.3, 0.2, 15,
-        const Color(0xFFF472B6));
-    final body = Paint()..color = const Color(0xFF4A3F55).withValues(alpha: 0.94);
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: center,
-        width: s * 0.16,
-        height: s * 0.84,
-      ),
-      body,
-    );
-    canvas.drawCircle(
-      Offset(center.dx, center.dy - s * 0.4),
-      s * 0.07,
-      body,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _ButterflyPainter oldDelegate) => false;
-}
-
-/// Petal flower matching zenai `petalCluster` (print SVG).
-class _PetalGlyph extends StatelessWidget {
-  const _PetalGlyph({required this.size});
-
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: const CustomPaint(painter: _PetalPainter()),
-    );
-  }
-}
-
-class _PetalPainter extends CustomPainter {
-  const _PetalPainter();
-
-  static const _colors = <Color>[
-    Color(0xFFFFB3C6),
-    Color(0xFFFF8FAB),
-    Color(0xFFFFC2D1),
-    Color(0xFFFF99AC),
-    Color(0xFFFFB3C6),
-  ];
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final s = size.shortestSide;
-    for (var i = 0; i < 5; i++) {
-      canvas.save();
-      canvas.translate(center.dx, center.dy);
-      canvas.rotate(i * 72 * 3.141592653589793 / 180);
-      canvas.translate(-center.dx, -center.dy);
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(center.dx, center.dy - s * 0.35),
-          width: s * 0.44,
-          height: s * 0.76,
-        ),
-        Paint()..color = _colors[i].withValues(alpha: 0.92),
-      );
-      canvas.restore();
-    }
-    canvas.drawCircle(
-      center,
-      s * 0.14,
-      Paint()..color = const Color(0xFFFFE066).withValues(alpha: 0.95),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _PetalPainter oldDelegate) => false;
 }
 
 /// Approximate zenai Sharp grades for live Flutter preview.

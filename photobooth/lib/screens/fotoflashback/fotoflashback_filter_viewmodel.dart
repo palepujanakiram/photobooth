@@ -460,17 +460,16 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     final cellCenterY = (cell + 0.5) / kStripShotCount;
     final waveNudge = (wave % 3) * 0.04;
     final preferLeft = switch (type) {
-      'sparkles' || 'confetti' || 'flowers' || 'petals' => cell.isEven,
-      'stars' || 'bows' || 'butterflies' => !cell.isEven,
+      'sparkles' || 'confetti' || 'flowers' => cell.isEven,
+      'stars' => !cell.isEven,
       _ => !cell.isEven, // hearts
     };
     final baseX = preferLeft ? 0.2 : 0.78;
     final x = baseX + (preferLeft ? waveNudge : -waveNudge);
     final yNudge = switch (type) {
       'sparkles' => -0.06,
-      'confetti' || 'petals' => -0.02,
+      'confetti' => -0.02,
       'stars' || 'flowers' => 0.02,
-      'bows' || 'butterflies' => 0.05,
       _ => 0.04,
     };
     final y = cellCenterY + yNudge - waveNudge * 0.5;
@@ -482,7 +481,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     final layout = wysiwygLayout;
     final waveNudge = (wave % 3) * 0.02;
     final preferRight = switch (type) {
-      'sparkles' || 'confetti' || 'flowers' || 'petals' => cell.isEven,
+      'sparkles' || 'confetti' || 'flowers' => cell.isEven,
       _ => !cell.isEven,
     };
     final fx = preferRight ? 0.72 : 0.28;

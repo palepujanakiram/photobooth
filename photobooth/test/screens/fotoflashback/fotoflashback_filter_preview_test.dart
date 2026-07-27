@@ -53,8 +53,7 @@ void main() {
     expect(FotoFlashbackStripPreview.credentialLine, 'FOTOZEN AI');
   });
 
-  testWidgets('butterfly and petal placements use path glyphs not emoji',
-      (tester) async {
+  testWidgets('flower placements render on the strip preview', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -68,14 +67,14 @@ void main() {
             filterId: 'clean',
             placements: const [
               StripStickerPlacement(
-                id: 'b1',
-                type: 'butterflies',
+                id: 'f1',
+                type: 'flowers',
                 x: 0.5,
                 y: 0.2,
               ),
               StripStickerPlacement(
-                id: 'p1',
-                type: 'petals',
+                id: 'h1',
+                type: 'hearts',
                 x: 0.5,
                 y: 0.7,
               ),
@@ -87,8 +86,7 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(find.text('🦋'), findsNothing);
-    expect(find.text('💮'), findsNothing);
-    expect(find.byType(CustomPaint), findsWidgets);
+    expect(find.text('❀'), findsOneWidget);
+    expect(find.text('♥'), findsOneWidget);
   });
 }

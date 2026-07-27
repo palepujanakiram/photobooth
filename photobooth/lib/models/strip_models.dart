@@ -52,10 +52,7 @@ const List<String> kStripStickerIds = [
   'sparkles',
   'confetti',
   'stars',
-  'bows',
   'flowers',
-  'butterflies',
-  'petals',
 ];
 
 /// Sticker types that can be placed (and dragged) on the strip.
@@ -64,10 +61,7 @@ const List<String> kPlaceableStripStickerIds = [
   'sparkles',
   'confetti',
   'stars',
-  'bows',
   'flowers',
-  'butterflies',
-  'petals',
 ];
 
 /// Soft cap so guests don't cover the whole strip.
