@@ -10,6 +10,7 @@ import '../../utils/constants.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/route_args.dart';
 import '../../views/widgets/app_colors.dart';
+import '../../views/widgets/app_theme.dart';
 import '../../views/widgets/cached_network_image.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import 'print_selection_viewmodel.dart';
@@ -156,12 +157,12 @@ class _PrintSelectionScreenState extends State<PrintSelectionScreen> {
                             fontWeight: FontWeight.w600,
                           ),
                     ),
-                    const SizedBox(height: 12),
-                    FilledButton(
+                    // Match theme / Classic look CTAs: full-width, 56pt, 14 radius.
+                    AppContinueButton(
+                      text: AppStrings.printSelectionContinue(vm.selectedCount),
                       onPressed: vm.canContinue ? _continueToPay : null,
-                      child: Text(
-                        AppStrings.printSelectionContinue(vm.selectedCount),
-                      ),
+                      height: 56,
+                      padding: const EdgeInsets.fromLTRB(0, 12, 0, 4),
                     ),
                   ],
                 ),
