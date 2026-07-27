@@ -102,9 +102,9 @@ void main() {
     expect(vm.selectedFilter?.id, kDefaultStripFilterId);
     expect(vm.selectedFrameId, kDefaultStripFrameId);
     expect(vm.selectedStickerId, kDefaultStripStickerId);
-    vm.selectFrame('doodle');
+    vm.selectFrame('noir');
     vm.selectSticker('hearts');
-    expect(vm.selectedFrameId, 'doodle');
+    expect(vm.selectedFrameId, 'noir');
     expect(vm.selectedStickerId, 'hearts');
     // One heart per photo cell.
     expect(vm.stickerPlacements, hasLength(kStripShotCount));
@@ -133,7 +133,7 @@ void main() {
     expect(vm.composeResult, isNotNull);
     expect(api.composeCalls, 1);
     expect(api.lastCleanOverlays, isFalse);
-    expect(api.lastFrame, 'doodle');
+    expect(api.lastFrame, 'noir');
     expect(api.lastSticker, kDefaultStripStickerId);
     expect(api.lastPlacements, hasLength(kStripShotCount));
   });
@@ -271,7 +271,7 @@ void main() {
       apiService: altChrome,
     );
     await resetChrome.loadFilters();
-    expect(resetChrome.selectedFrameId, 'doodle');
+    expect(resetChrome.selectedFrameId, 'noir');
     expect(resetChrome.selectedStickerId, kDefaultStripStickerId);
   });
 }
@@ -320,7 +320,7 @@ class _StripFakeApi extends FakeApiService {
           },
         ],
         'frames': [
-          {'id': 'doodle', 'name': 'Doodle', 'description': 'Dark'},
+          {'id': 'noir', 'name': 'Noir Matte', 'description': 'Dark'},
         ],
         'stickers': [
           {'id': 'hearts', 'name': 'Hearts', 'description': 'Hearts'},
@@ -360,7 +360,7 @@ class _StripFakeApi extends FakeApiService {
       ],
       'frames': [
         {'id': 'classic', 'name': 'Classic', 'description': 'White'},
-        {'id': 'doodle', 'name': 'Doodle', 'description': 'Dark'},
+        {'id': 'noir', 'name': 'Noir Matte', 'description': 'Dark'},
       ],
       'stickers': [
         {'id': 'none', 'name': 'None', 'description': 'Off'},
