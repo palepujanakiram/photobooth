@@ -1,9 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photobooth/models/app_settings_model.dart';
 import 'package:photobooth/screens/photo_generate/photo_generate_viewmodel.dart';
 import 'package:photobooth/screens/print_selection/print_selection_viewmodel.dart';
+import 'package:photobooth/services/app_settings_manager.dart';
 import 'package:photobooth/services/print_selection_coordinator.dart';
 import 'package:photobooth/utils/constants.dart';
 
+import '../../fakes/fake_api_service.dart';
 import '../../fixtures/theme_fixtures.dart';
 
 void main() {
@@ -45,6 +48,23 @@ void main() {
     expect(vm.selectedCount, 3);
     // default 100 + 2 * 50 = 200
     expect(vm.selectedTotalPrice, 200);
+    vm.dispose();
+  });
+
+  test('print selection total uses kiosk settings prices', () {
+    final settings = _SeededAppSettingsManager(
+      AppSettingsModel(
+        parallelImageCount: 1,
+        initialPrice: 250,
+        additionalPrintPrice: 75,
+      ),
+    );
+    final vm = PrintSelectionViewModel(
+      images: [strip(), ai('a1')],
+      appSettingsManager: settings,
+    );
+    // 250 + 75 = 325
+    expect(vm.selectedTotalPrice, 325);
     vm.dispose();
   });
 
@@ -94,4 +114,20 @@ void main() {
     expect(vm.canContinue, isFalse);
     vm.dispose();
   });
+}
+
+class _SeededAppSettingsManager extends AppSettingsManager {
+  _SeededAppSettingsManager(this._seed)
+      : super(
+          apiService: FakeApiService(),
+          resolveKioskCode: () async => null,
+        );
+
+  final AppSettingsModel _seed;
+
+  @override
+  AppSettingsModel? get settings => _seed;
+
+  @override
+  bool get hasSettings => true;
 }

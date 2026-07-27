@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../services/app_settings_manager.dart';
 import '../../services/print_selection_coordinator.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
@@ -39,6 +40,9 @@ class _PrintSelectionScreenState extends State<PrintSelectionScreen> {
       stripPrintSize: args?.stripPrintSize ?? coordinator.stripPrintSize,
       transformationRunId:
           args?.transformationRunId ?? coordinator.transformationRunId,
+      // Must use the Provider instance — a bare AppSettingsManager() has no
+      // kiosk prices and falls back to ₹100 defaults.
+      appSettingsManager: context.read<AppSettingsManager>(),
     );
     if (coordinator.awaitingExploreMoreReturn && !_exploreLaunchScheduled) {
       _exploreLaunchScheduled = true;
