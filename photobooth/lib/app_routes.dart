@@ -1,6 +1,7 @@
 // Named-route table for MaterialApp (extracted from main for Sonar complexity).
 import 'package:flutter/material.dart';
 
+import 'screens/print_selection/print_selection_view.dart';
 import 'screens/experience_choice/experience_choice_view.dart';
 import 'screens/frame_select/frame_select_view.dart';
 import 'screens/fotoflashback/fotoflashback_capture_view.dart';
@@ -53,6 +54,8 @@ Map<String, WidgetBuilder> buildAppRoutes() {
         const PhotoGenerateProgressScreen(),
     AppConstants.kRoutePrePayment: (context) => const PrePaymentScreen(),
     AppConstants.kRouteReview: (context) => const PhotoReviewScreen(),
+    AppConstants.kRoutePrintSelection: (context) =>
+        const PrintSelectionScreen(),
     AppConstants.kRouteResult: (context) => const ResultScreen(),
     AppConstants.kRouteQrShare: (context) => const QrShareScreen(),
     AppConstants.kRouteThankYou: (context) => const ThankYouScreen(),

@@ -194,6 +194,40 @@ class GenerateArgs {
   }
 }
 
+/// Args for the Classic + AI print selection hub.
+class PrintSelectionArgs {
+  final List<GeneratedImage> generatedImages;
+  final String? stripPrintSize;
+  final String? transformationRunId;
+
+  const PrintSelectionArgs({
+    required this.generatedImages,
+    this.stripPrintSize,
+    this.transformationRunId,
+  });
+
+  static PrintSelectionArgs? tryParse(Object? args) {
+    if (args is PrintSelectionArgs) return args;
+    if (args is Map) {
+      final generatedImages = parseGeneratedImageList(args['generatedImages']);
+      if (generatedImages == null || generatedImages.isEmpty) return null;
+      final rawPrintSize = args['stripPrintSize']?.toString().trim() ??
+          args['printSize']?.toString().trim();
+      final rawRunId = args['transformationRunId']?.toString().trim() ??
+          args['runId']?.toString().trim();
+      return PrintSelectionArgs(
+        generatedImages: generatedImages,
+        stripPrintSize: (rawPrintSize != null && rawPrintSize.isNotEmpty)
+            ? rawPrintSize
+            : null,
+        transformationRunId:
+            (rawRunId != null && rawRunId.isNotEmpty) ? rawRunId : null,
+      );
+    }
+    return null;
+  }
+}
+
 class ResultArgs {
   final List<GeneratedImage> generatedImages;
   final PhotoModel? originalPhoto;

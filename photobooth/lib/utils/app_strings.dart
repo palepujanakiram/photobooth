@@ -421,7 +421,17 @@ abstract final class AppStrings {
   static String surpriseMeUpsellPrice(int amount) =>
       'Add a print for ₹$amount?';
   static const surpriseMeUpsellYes = 'Yes, add a copy';
+  static const surpriseMeUpsellExploreMore = 'Explore more AI photos';
   static const surpriseMeUpsellNo = 'No thanks';
+
+  static const printSelectionTitle = 'Your prints';
+  static const printSelectionSubtitle =
+      'Choose which photos to print. Your strip stays available.';
+  static const printSelectionStripLabel = 'Photo strip';
+  static const printSelectionAiLabel = 'AI photo';
+  static String printSelectionTotal(int amount) => 'Total ₹$amount';
+  static String printSelectionContinue(int count) =>
+      count <= 0 ? 'Select a photo' : 'Continue ($count)';
 
   static const staffDashboardTitle = 'Staff dashboard';
   static const staffTabOverview = 'Overview';
@@ -453,6 +463,13 @@ abstract final class AppStrings {
       '$count payment${count == 1 ? '' : 's'}';
   /// Guest used Delete My Data; print photo may still be available same day.
   static const staffGuestDataDeletedBadge = 'Guest deleted';
+  static const staffPrintPhotosTitle = 'Print photos';
+  static const staffPrintPhotoLabel = 'Photo';
+  static String staffPrintPhotoN(int n) => 'Photo $n';
+  static const staffPrintAll = 'Print all';
+  static const staffPrintSelected = 'Print selected';
+  static const staffPrintSelectHint =
+      'Select photos to print for this session.';
   static const staffStatusLabel = 'Status';
   static const staffCheckedIn = 'Checked In';
   static String staffElapsedLine(String elapsed) => '$elapsed elapsed';

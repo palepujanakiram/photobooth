@@ -82,9 +82,19 @@ GeneratedImage? surpriseImageFromStatus(SurpriseMeStatus status) {
   );
 }
 
+/// Result of the Surprise Me interstitial (accept / decline / explore more).
+class SurpriseMeOfferResult {
+  const SurpriseMeOfferResult({
+    required this.choice,
+    this.image,
+  });
+
+  final SurpriseMeUpsellChoice choice;
+  final GeneratedImage? image;
+}
+
 /// After strip compose: show upsell only if AI is already ready + above threshold.
-/// Returns the AI [GeneratedImage] when the guest accepts; otherwise null.
-Future<GeneratedImage?> maybeOfferSurpriseMeCopy({
+Future<SurpriseMeOfferResult?> maybeOfferSurpriseMeCopy({
   required BuildContext context,
   required bool enableSurpriseMeAi,
   required int additionalPrintPrice,
@@ -107,7 +117,7 @@ Future<GeneratedImage?> maybeOfferSurpriseMeCopy({
     if (surprise == null) return null;
     if (!context.mounted) return null;
 
-    final accepted = await Navigator.of(context).push<bool>(
+    final choice = await Navigator.of(context).push<SurpriseMeUpsellChoice>(
       MaterialPageRoute(
         builder: (_) => SurpriseMeUpsellScreen(
           surpriseImage: surprise,
@@ -116,7 +126,10 @@ Future<GeneratedImage?> maybeOfferSurpriseMeCopy({
       ),
     );
 
-    if (accepted == true) return surprise;
+    if (choice == SurpriseMeUpsellChoice.accept ||
+        choice == SurpriseMeUpsellChoice.exploreMore) {
+      return SurpriseMeOfferResult(choice: choice!, image: surprise);
+    }
 
     final sessionId = (sessionManager ?? SessionManager()).sessionId;
     if (sessionId != null && sessionId.isNotEmpty) {
@@ -126,7 +139,10 @@ Future<GeneratedImage?> maybeOfferSurpriseMeCopy({
         // fail-open
       }
     }
-    return null;
+    return SurpriseMeOfferResult(
+      choice: choice ?? SurpriseMeUpsellChoice.decline,
+      image: null,
+    );
   } catch (e, st) {
     AppLogger.warning(
       'Surprise Me upsell skipped (fail-open)',
