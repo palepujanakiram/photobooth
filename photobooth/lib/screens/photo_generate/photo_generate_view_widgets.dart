@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/print_orientation.dart';
+import '../../utils/route_args.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
 import '../../views/widgets/app_colors.dart';
@@ -18,6 +19,7 @@ import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/delete_my_photos_action.dart';
 import '../../views/widgets/contact_before_pay_sheet.dart';
 import '../../services/customer_session_lifecycle.dart';
+import '../../services/print_selection_coordinator.dart';
 import '../photo_capture/photo_image_from_xfile_io.dart'
     if (dart.library.html) '../photo_capture/photo_image_from_xfile_web.dart'
     as photo_image;
@@ -1116,6 +1118,35 @@ Widget _buildAddAnotherStyleStripLink({
   required bool isMounted,
   required void Function(ThemeModel theme) onAddStyleSelected,
 }) {
+  final coordinator = PrintSelectionCoordinator.instance;
+  if (coordinator.fromClassicStrip) {
+    return TextButton(
+      onPressed: (viewModel.isGenerating || viewModel.isLoadingMore)
+          ? null
+          : () async {
+              final selected = viewModel.selectedGeneratedImages;
+              if (selected.isNotEmpty) {
+                coordinator.mergeAiImages(selected);
+              }
+              coordinator.markExploreMore();
+              await Navigator.of(context).pushNamed(AppConstants.kRouteCapture);
+            },
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: const Text(
+        AppStrings.surpriseMeUpsellExploreMore,
+        style: TextStyle(
+          color: Colors.white70,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
   return TextButton(
     onPressed: (viewModel.isGenerating || viewModel.isLoadingMore)
         ? null
@@ -1185,6 +1216,27 @@ Future<void> _onPhotoGenerateContinuePressed({
 }) async {
   final selectedImages = viewModel.selectedGeneratedImages;
   if (selectedImages.isEmpty) return;
+
+  final coordinator = PrintSelectionCoordinator.instance;
+  if (coordinator.shouldReturnFromGenerate) {
+    coordinator.mergeAiImages(selectedImages);
+    viewModel.trimMemoryWhenRouteInactive();
+    if (!context.mounted) return;
+    await Navigator.of(context).pushNamedAndRemoveUntil(
+      AppConstants.kRoutePrintSelection,
+      (route) =>
+          route.settings.name == AppConstants.kRouteExperienceChoice ||
+          route.settings.name == AppConstants.kRouteTerms ||
+          route.settings.name == AppConstants.kRoutePrintSelection ||
+          route.isFirst,
+      arguments: PrintSelectionArgs(
+        generatedImages: List<GeneratedImage>.from(coordinator.images),
+        stripPrintSize: coordinator.stripPrintSize,
+        transformationRunId: coordinator.transformationRunId,
+      ),
+    );
+    return;
+  }
 
   final contact = await _photoGenerateContactBeforePay(
     context: context,

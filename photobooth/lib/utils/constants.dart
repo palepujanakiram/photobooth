@@ -301,6 +301,8 @@ class AppConstants {
   static const String kPaymentCollectionBeforeGeneration = 'before_generation';
   static const String kPaymentCollectionAfterGeneration = 'after_generation';
   static const String kRouteReview = '/review';
+  /// Classic (+ AI) hub: pick strip / AI photos before Pay & Collect.
+  static const String kRoutePrintSelection = '/print-selection';
   static const String kRouteResult = '/result';
   static const String kRouteThankYou = '/thank-you';
   /// Post-payment QR bridge + optional print/share actions (kiosk).

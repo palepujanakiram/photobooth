@@ -96,7 +96,7 @@ void main() {
           },
         ),
         routes: {
-          AppConstants.kRouteResult: (context) {
+          AppConstants.kRoutePrintSelection: (context) {
             capturedArgs = ModalRoute.of(context)?.settings.arguments;
             return const SizedBox();
           },
@@ -105,7 +105,7 @@ void main() {
     );
     await tester.tap(find.text('go'));
     await tester.pumpAndSettle();
-    final args = capturedArgs as ResultArgs;
+    final args = capturedArgs as PrintSelectionArgs;
     expect(args.generatedImages, hasLength(2));
     expect(args.generatedImages[1].id, 'ai');
     expect(

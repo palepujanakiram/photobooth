@@ -5,6 +5,9 @@ import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/cached_network_image.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 
+/// Guest choice on the Classic Surprise Me interstitial.
+enum SurpriseMeUpsellChoice { accept, decline, exploreMore }
+
 /// Classic Surprise Me interstitial: show ready AI look + ask for an extra copy.
 class SurpriseMeUpsellScreen extends StatelessWidget {
   const SurpriseMeUpsellScreen({
@@ -64,12 +67,20 @@ class SurpriseMeUpsellScreen extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
+                onPressed: () =>
+                    Navigator.of(context).pop(SurpriseMeUpsellChoice.accept),
                 child: const Text(AppStrings.surpriseMeUpsellYes),
               ),
               const SizedBox(height: 12),
+              FilledButton.tonal(
+                onPressed: () => Navigator.of(context)
+                    .pop(SurpriseMeUpsellChoice.exploreMore),
+                child: const Text(AppStrings.surpriseMeUpsellExploreMore),
+              ),
+              const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () => Navigator.of(context).pop(false),
+                onPressed: () =>
+                    Navigator.of(context).pop(SurpriseMeUpsellChoice.decline),
                 child: const Text(AppStrings.surpriseMeUpsellNo),
               ),
             ],

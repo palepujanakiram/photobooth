@@ -20,6 +20,8 @@ import 'staff_payments_payload_utils.dart';
 import 'staff_payments_thumb_helpers.dart';
 import 'staff_payments_preview_helpers.dart';
 import 'staff_payments_print_helpers.dart';
+import 'staff_payments_print_picker.dart';
+import 'staff_payments_session_images.dart';
 import '../../views/widgets/app_colors.dart';
 
 class StaffPaymentsScreen extends StatefulWidget {
@@ -379,24 +381,82 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
   }
 
   Future<void> _printForSession(Map<String, dynamic> p) async {
-    final imageUrl = await staffPaymentsPreparePrintSession(
-      context: context,
-      isMounted: () => mounted,
-      sessionId: _sessionId(p),
-      resolveImageUrl: () => _resolveImageUrlForPrint(p),
-      onError: (msg) => setState(() => _error = msg),
-    );
-    if (!mounted || imageUrl == null) return;
+    final sessionId = _sessionId(p);
+    if (sessionId.isEmpty) {
+      setState(() => _error = 'Missing sessionId in payment payload');
+      return;
+    }
 
-    await staffPaymentsRunPrintJob(
-      staffApi: _api,
-      printService: _printService,
-      settings: context.read<AppSettingsManager>().settings,
-      imageUrl: imageUrl,
-      isMounted: () => mounted,
-      onState: _applyPrintJobState,
-      onSuccess: _showPrintJobSentSnackBar,
+    final urls = await _resolveAllImageUrlsForPrint(p);
+    if (!mounted) return;
+    if (urls.isEmpty) {
+      setState(
+        () => _error = 'Cannot print: image URL not found for this session.',
+      );
+      return;
+    }
+
+    final picked = await staffPaymentsPickImagesToPrint(
+      context: context,
+      imageUrls: urls,
     );
+    if (!mounted || picked == null || picked.isEmpty) return;
+
+    final ok = await staffPaymentsConfirmPrintDialog(context, sessionId);
+    if (!mounted || !ok) return;
+
+    final settings = context.read<AppSettingsManager>().settings;
+    for (var i = 0; i < picked.length; i++) {
+      if (!mounted) return;
+      await staffPaymentsRunPrintJob(
+        staffApi: _api,
+        printService: _printService,
+        settings: settings,
+        imageUrl: picked[i],
+        isMounted: () => mounted,
+        onState: ({loading, error, progressMessage}) {
+          _applyPrintJobState(
+            loading: loading,
+            error: error,
+            progressMessage: progressMessage ??
+                'Printing ${i + 1} of ${picked.length}…',
+          );
+        },
+        onSuccess: i == picked.length - 1 ? _showPrintJobSentSnackBar : null,
+      );
+      if (_error != null && _error!.isNotEmpty) return;
+    }
+  }
+
+  Future<List<String>> _resolveAllImageUrlsForPrint(
+    Map<String, dynamic> payment,
+  ) async {
+    final sid = _sessionId(payment).trim();
+    final fromPayload = StaffPaymentsSessionImages.fromPaymentPayload(
+      payment,
+      sessionId: sid,
+    );
+    if (fromPayload.isNotEmpty) return fromPayload;
+
+    if (sid.isEmpty) {
+      final single = await _resolveImageUrlForPrint(payment);
+      return single == null || single.isEmpty ? const [] : [single];
+    }
+
+    final raw = await _api.fetchSession(sid);
+    if (!mounted || raw == null) {
+      final single = await _resolveImageUrlForPrint(payment);
+      return single == null || single.isEmpty ? const [] : [single];
+    }
+
+    final fromSession = StaffPaymentsSessionImages.fromSessionMap(
+      raw,
+      sessionId: sid,
+    );
+    if (fromSession.isNotEmpty) return fromSession;
+
+    final single = await _resolveImageUrlForPrint(payment);
+    return single == null || single.isEmpty ? const [] : [single];
   }
 
   Future<void> _printReceiptForSession(Map<String, dynamic> p) async {

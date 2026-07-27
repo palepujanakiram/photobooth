@@ -2,16 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../screens/fotoflashback/fotoflashback_filter_viewmodel.dart';
+import '../screens/fotoflashback/surprise_me_upsell_view.dart';
 import '../screens/photo_generate/photo_generate_viewmodel.dart';
 import '../services/app_settings_manager.dart';
+import '../services/print_selection_coordinator.dart';
 import 'app_strings.dart';
 import 'constants.dart';
 import 'payment_workflow_helpers.dart';
-import 'print_orientation.dart';
 import 'route_args.dart';
 import 'surprise_me_helpers.dart';
 
-/// After the guest confirms a look: pre-pay (if configured) or compose → Result.
+/// After the guest confirms a look: pre-pay (if configured) or compose → print selection.
 Future<String?> continueAfterFlashbackLook({
   required BuildContext context,
   required FotoFlashbackFilterViewModel viewModel,
@@ -44,20 +45,20 @@ Future<String?> continueAfterFlashbackLook({
     printSize: viewModel.composeResult?.printSize ??
         AppConstants.kPrintSizeStripDual2x6,
   );
-  final surprise = await _offerSurpriseIfReady(context);
+  final offer = await _offerSurpriseIfReady(context);
   if (!context.mounted) return AppStrings.flashbackComposeFailed;
 
-  await navigateToFlashbackResult(
+  await navigateToFlashbackPrintSelection(
     context: context,
     image: stripImage,
-    surpriseImage: surprise,
+    surpriseOffer: offer,
     printSize: viewModel.composeResult?.printSize,
     transformationRunId: viewModel.composeResult?.runId,
   );
   return null;
 }
 
-/// Compose after pre-payment approval, then open Result.
+/// Compose after pre-payment approval, then open print selection.
 Future<String?> composeFlashbackAfterPrePay({
   required BuildContext context,
   required FlashbackPrePayArgs args,
@@ -79,20 +80,22 @@ Future<String?> composeFlashbackAfterPrePay({
     printSize: vm.composeResult?.printSize ??
         AppConstants.kPrintSizeStripDual2x6,
   );
-  final surprise = await _offerSurpriseIfReady(context);
+  final offer = await _offerSurpriseIfReady(context);
   if (!context.mounted) return AppStrings.flashbackComposeFailed;
 
-  await navigateToFlashbackResult(
+  await navigateToFlashbackPrintSelection(
     context: context,
     image: stripImage,
-    surpriseImage: surprise,
+    surpriseOffer: offer,
     printSize: vm.composeResult?.printSize,
     transformationRunId: vm.composeResult?.runId,
   );
   return null;
 }
 
-Future<GeneratedImage?> _offerSurpriseIfReady(BuildContext context) async {
+Future<SurpriseMeOfferResult?> _offerSurpriseIfReady(
+  BuildContext context,
+) async {
   if (!context.mounted) return null;
   final settings = context.read<AppSettingsManager>().settings;
   return maybeOfferSurpriseMeCopy(
@@ -103,43 +106,85 @@ Future<GeneratedImage?> _offerSurpriseIfReady(BuildContext context) async {
   );
 }
 
-Future<void> navigateToFlashbackResult({
+/// Opens the print-selection hub with strip (+ optional Surprise Me AI).
+Future<void> navigateToFlashbackPrintSelection({
   required BuildContext context,
   required GeneratedImage image,
-  GeneratedImage? surpriseImage,
+  SurpriseMeOfferResult? surpriseOffer,
   String? printSize,
   String? transformationRunId,
 }) async {
   if (!context.mounted) return;
   final size = printSize?.trim();
   final runId = transformationRunId?.trim();
+  final strip = image.copyWith(
+    isSelected: true,
+    printSize: image.printSize ??
+        ((size != null && size.isNotEmpty)
+            ? size
+            : AppConstants.kPrintSizeStripDual2x6),
+  );
+  final offer = surpriseOffer;
+  final surpriseImage = offer?.image;
+  final includeSurprise = offer != null &&
+      surpriseImage != null &&
+      (offer.choice == SurpriseMeUpsellChoice.accept ||
+          offer.choice == SurpriseMeUpsellChoice.exploreMore);
   final images = <GeneratedImage>[
-    image.copyWith(
-      printSize: image.printSize ??
-          ((size != null && size.isNotEmpty)
-              ? size
-              : AppConstants.kPrintSizeStripDual2x6),
-    ),
-    if (surpriseImage != null) surpriseImage,
+    strip,
+    if (includeSurprise) surpriseImage.copyWith(isSelected: true),
   ];
+  final resolvedSize = (size != null && size.isNotEmpty)
+      ? size
+      : AppConstants.kPrintSizeStripDual2x6;
+  final resolvedRunId =
+      (runId != null && runId.isNotEmpty) ? runId : null;
+
+  final coordinator = PrintSelectionCoordinator.instance;
+  coordinator.seed(
+    seedImages: images,
+    stripPrintSize: resolvedSize,
+    transformationRunId: resolvedRunId,
+    fromClassicStrip: true,
+  );
+  if (surpriseOffer?.choice == SurpriseMeUpsellChoice.exploreMore) {
+    coordinator.markExploreMore();
+  }
+
   await Navigator.of(context).pushNamedAndRemoveUntil(
-    AppConstants.kRouteResult,
+    AppConstants.kRoutePrintSelection,
     (route) =>
         route.settings.name == AppConstants.kRouteExperienceChoice ||
         route.settings.name == AppConstants.kRouteTerms ||
         route.settings.name == AppConstants.kRouteHome ||
         route.isFirst,
-    arguments: ResultArgs(
+    arguments: PrintSelectionArgs(
       generatedImages: images,
-      printOrientation: PrintOrientation.portrait,
-      // WCM "6x2*2" cut (`s6x2_2`) — not s4x6 (uncut) or s2x6 (single strip).
-      // Per-image [GeneratedImage.printSize] overrides this for the AI add-on.
-      printSize: (size != null && size.isNotEmpty)
-          ? size
-          : AppConstants.kPrintSizeStripDual2x6,
-      transformationRunId:
-          (runId != null && runId.isNotEmpty) ? runId : null,
+      stripPrintSize: resolvedSize,
+      transformationRunId: resolvedRunId,
     ),
+  );
+}
+
+/// Legacy alias used by older tests / call sites.
+Future<void> navigateToFlashbackResult({
+  required BuildContext context,
+  required GeneratedImage image,
+  GeneratedImage? surpriseImage,
+  String? printSize,
+  String? transformationRunId,
+}) {
+  return navigateToFlashbackPrintSelection(
+    context: context,
+    image: image,
+    surpriseOffer: surpriseImage == null
+        ? null
+        : SurpriseMeOfferResult(
+            choice: SurpriseMeUpsellChoice.accept,
+            image: surpriseImage,
+          ),
+    printSize: printSize,
+    transformationRunId: transformationRunId,
   );
 }
 
