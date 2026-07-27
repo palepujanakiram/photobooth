@@ -16,6 +16,7 @@ import '../../services/session_manager.dart';
 import '../photo_capture/photo_model.dart';
 import '../photo_capture/photo_capture_preprocess_helpers.dart';
 import '../theme_selection/theme_model.dart';
+import '../../utils/ai_attempts_budget.dart';
 import '../../utils/constants.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/exceptions.dart';
@@ -725,10 +726,19 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     await _syncPrintOrientationToServer();
   }
 
+  String? _stripCompositeUrlHint;
+
   void _applyAttemptsBudgetFromSession() {
+    final session = _sessionManager.currentSession;
+    final used = effectiveAiAttemptsUsed(
+      attemptsUsed: session?.attemptsUsed ?? 0,
+      generatedImages: session?.generatedImages ?? const [],
+      stripCompositeUrl:
+          stripCompositeUrlFromPrintSelection() ?? _stripCompositeUrlHint,
+    );
     _triesRemaining = computeTriesRemaining(
       maxAllowed: _maxRegenerationsAllowed,
-      attemptsUsed: _sessionManager.currentSession?.attemptsUsed ?? 0,
+      attemptsUsed: used,
     );
   }
 
@@ -740,6 +750,11 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       final raw = await _apiService.fetchSession(sid);
       if (raw != null) {
         _sessionManager.setSessionFromResponse(raw);
+        final direct = raw['stripCompositeUrl']?.toString().trim() ??
+            raw['strip_composite_url']?.toString().trim();
+        if (direct != null && direct.isNotEmpty) {
+          _stripCompositeUrlHint = direct;
+        }
       }
     } catch (e) {
       AppLogger.debug('Could not refresh session attempts: $e');

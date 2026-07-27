@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/session_manager.dart';
+import '../../utils/ai_attempts_budget.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/fotoflashback_navigation.dart';
@@ -20,10 +21,16 @@ Future<int> refreshThemeSelectionTriesRemaining(
   final sm = SessionManager();
   final api = ApiService();
   final sid = sm.sessionId;
+  String? stripFromSession;
   if (sid != null) {
     try {
       final raw = await api.fetchSession(sid);
-      if (raw != null) sm.setSessionFromResponse(raw);
+      if (raw != null) {
+        sm.setSessionFromResponse(raw);
+        final direct = raw['stripCompositeUrl']?.toString().trim() ??
+            raw['strip_composite_url']?.toString().trim();
+        if (direct != null && direct.isNotEmpty) stripFromSession = direct;
+      }
     } catch (_) {}
   }
   try {
@@ -33,7 +40,13 @@ Future<int> refreshThemeSelectionTriesRemaining(
   final maxAllowed = (max != null && max > 0)
       ? max
       : AppConstants.kDefaultMaxRegenerations;
-  final used = sm.currentSession?.attemptsUsed ?? 0;
+  final session = sm.currentSession;
+  final used = effectiveAiAttemptsUsed(
+    attemptsUsed: session?.attemptsUsed ?? 0,
+    generatedImages: session?.generatedImages ?? const [],
+    stripCompositeUrl:
+        stripCompositeUrlFromPrintSelection() ?? stripFromSession,
+  );
   return (maxAllowed - used).clamp(0, maxAllowed);
 }
 
