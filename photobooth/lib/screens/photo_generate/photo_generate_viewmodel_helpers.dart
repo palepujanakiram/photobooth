@@ -152,6 +152,8 @@ List<GeneratedImage> generatedImagesFromParallelResult({
       imageUrl: SecureImageUrl.withSessionId(url),
       theme: theme,
       isSelected: true,
+      // Explicit 4×6 so mixed Classic+AI carts never inherit strip s6x2_2.
+      printSize: AppConstants.kPrintSizePortrait4x6,
     ));
   }
   return newImages;

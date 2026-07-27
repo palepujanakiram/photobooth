@@ -25,6 +25,7 @@ import '../../utils/logger.dart';
 import '../../utils/payment_workflow_helpers.dart' as payment_workflow;
 import '../../utils/print_orientation.dart';
 import '../../utils/print_progress_helpers.dart';
+import '../../utils/print_size_helpers.dart';
 import '../../utils/printer_endpoint.dart';
 import '../../utils/error_reporting_helpers.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';

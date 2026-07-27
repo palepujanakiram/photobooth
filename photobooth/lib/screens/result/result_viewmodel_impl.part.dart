@@ -441,7 +441,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         ? 'Preparing your photos…'
         : 'Printing your photos…';
     notifyListeners();
-    unawaited(startPostPaymentPrintIfNeeded());
+    await startPostPaymentPrintIfNeeded();
   }
 
   /// Starts the first post-payment print once (native kiosk with printer enabled).
@@ -470,6 +470,32 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       _r._errorMessage =
           'Printing is taking longer than expected. Please check the printer connection and try again.';
       notifyListeners();
+    }
+  }
+
+  /// Waits until post-payment LAN print has finished (or was skipped).
+  ///
+  /// Safe to call when print was already kicked off via [unawaited] — joins the
+  /// in-flight job instead of no-oping. Keeps temp downloads alive for every
+  /// page in mixed Classic+AI carts.
+  Future<void> awaitPostPaymentPrintSettled() async {
+    if (kIsWeb || !_r.shouldShowPrintProgressCard) return;
+    if (!_r._postPaymentPrintStarted) {
+      await startPostPaymentPrintIfNeeded();
+      return;
+    }
+    await _awaitSilentPrintInflight();
+  }
+
+  Future<void> _awaitSilentPrintInflight() async {
+    final job = _r._silentPrintInflight;
+    if (job == null) return;
+    try {
+      await job.timeout(const Duration(minutes: 6));
+    } on TimeoutException catch (e, st) {
+      AppLogger.debug('Timed out waiting for silent print: $e\n$st');
+    } catch (e, st) {
+      AppLogger.debug('Error while waiting for silent print: $e\n$st');
     }
   }
 
@@ -540,9 +566,13 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   /// Kiosk privacy wipe: clears local session + temp image files so the next user cannot access prior photos.
   ///
   /// This does **not** delete anything on the server (transactions/audit can remain).
+  ///
+  /// Waits for an in-flight silent print first so multi-page jobs are not aborted
+  /// mid-cart when QR share idle-exits (temp files deleted under the printer).
   Future<void> privacyWipeLocal() async {
     _r.stopPaymentPolling();
     stopWhatsappDeliveryPolling();
+    await _awaitSilentPrintInflight();
     _r._downloadedFiles.clear();
     await endPhotoboothCustomerSessionLogged('result: privacyWipeLocal');
     await FileHelper.cleanupTempImages();
@@ -1349,45 +1379,28 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       return;
     }
 
-    _resetPrintProgressForRun(totalPages: files.length);
+    _resetPrintProgressForRun(totalPages: _r._generatedImages.length);
 
     _r._isSilentPrinting = true;
     _r._errorMessage = null;
     notifyListeners();
 
     try {
-      for (var i = 0; i < files.length; i++) {
-        _setPrintMilestone(
-          pageIndex: i,
-          totalPages: files.length,
-          phase: PrintProgressPhase.preparing,
-          percent: preparingPercent(i, files.length),
-        );
-
-        _setPrintMilestone(
-          pageIndex: i,
-          totalPages: files.length,
-          phase: PrintProgressPhase.sending,
-          percent: sendingPercent(i, files.length),
-        );
-
-        final imagePrintSize = i < _r._generatedImages.length
-            ? _r._generatedImages[i].printSize?.trim()
-            : null;
-        await _r._printService.printImageToNetworkPrinter(
-          files[i],
-          printerHost: _r._printerHost,
-          printerPort: _r.effectivePrinterPort,
-          printerPath: _r.effectivePrinterPath,
-          printSize: (imagePrintSize != null && imagePrintSize.isNotEmpty)
-              ? imagePrintSize
-              : _r.effectivePrintSize,
-          quantity: _r._printCopies,
-        );
-
-        await _runPageFinishingPhase(pageIndex: i, totalPages: files.length);
+      var anyFailed = false;
+      String? lastError;
+      for (var i = 0; i < _r._generatedImages.length; i++) {
+        final pageError = await _printSilentNetworkPage(i);
+        if (pageError != null) {
+          anyFailed = true;
+          lastError = pageError;
+        }
       }
-      _completePrintProgress(totalPages: files.length);
+      if (anyFailed) {
+        _r._errorMessage = lastError ?? AppStrings.printFailedGeneric;
+        _failPrintProgress(_r._errorMessage!);
+      } else {
+        _completePrintProgress(totalPages: _r._generatedImages.length);
+      }
     } on PrintException catch (e, st) {
       _r._errorMessage = e.message;
       _failPrintProgress(e.message);
@@ -1413,6 +1426,78 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     } finally {
       _r._isSilentPrinting = false;
       notifyListeners();
+    }
+  }
+
+  /// Prints one cart page. Returns an error message on failure, else null.
+  Future<String?> _printSilentNetworkPage(int pageIndex) async {
+    final totalPages = _r._generatedImages.length;
+    final image = _r._generatedImages[pageIndex];
+    final file = _r._downloadedFiles[image.id];
+    if (file == null) {
+      return 'Missing download for print page ${pageIndex + 1}';
+    }
+
+    _setPrintMilestone(
+      pageIndex: pageIndex,
+      totalPages: totalPages,
+      phase: PrintProgressPhase.preparing,
+      percent: preparingPercent(pageIndex, totalPages),
+    );
+    _setPrintMilestone(
+      pageIndex: pageIndex,
+      totalPages: totalPages,
+      phase: PrintProgressPhase.sending,
+      percent: sendingPercent(pageIndex, totalPages),
+    );
+
+    final printSize = resolveNetworkPrintSizeForImage(
+      imagePrintSize: image.printSize,
+      orientation: _r._printOrientation,
+      sessionOverride: _r._printSizeOverride,
+    );
+    try {
+      await _r._printService.printImageToNetworkPrinter(
+        file,
+        printerHost: _r._printerHost,
+        printerPort: _r.effectivePrinterPort,
+        printerPath: _r.effectivePrinterPath,
+        printSize: printSize,
+        quantity: _r._printCopies,
+      );
+      await _runPageFinishingPhase(
+        pageIndex: pageIndex,
+        totalPages: totalPages,
+      );
+      return null;
+    } on PrintException catch (e, st) {
+      unawaited(
+        reportIssue(
+          'Silent network print page failed',
+          e,
+          st,
+          extraInfo: {
+            'source': 'result_silent_print_page',
+            'pageIndex': pageIndex,
+            'printSize': printSize,
+          },
+        ),
+      );
+      return e.message;
+    } catch (e, st) {
+      unawaited(
+        reportIssue(
+          'Silent network print page failed',
+          e,
+          st,
+          extraInfo: {
+            'source': 'result_silent_print_page',
+            'pageIndex': pageIndex,
+            'printSize': printSize,
+          },
+        ),
+      );
+      return AppStrings.printFailedGeneric;
     }
   }
 
