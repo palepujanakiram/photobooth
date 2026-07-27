@@ -41,7 +41,7 @@ void main() {
     tester,
   ) async {
     final url = 'data:image/jpeg;base64,$jpegB64';
-    for (final frame in const ['classic', 'ticket', 'blush', 'gold', 'noir']) {
+    for (final frame in const ['classic', 'doodle', 'party', 'cinema', 'noir']) {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

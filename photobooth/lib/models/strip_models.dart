@@ -28,9 +28,9 @@ const List<String> kStripFilterIds = [
 
 const List<String> kStripFrameIds = [
   'classic',
-  'ticket',
-  'blush',
-  'gold',
+  'doodle',
+  'party',
+  'cinema',
   'noir',
   'polaroid',
   'grid_2x2',

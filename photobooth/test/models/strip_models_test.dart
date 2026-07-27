@@ -79,7 +79,7 @@ void main() {
         },
       ],
       'frames': [
-        {'id': 'ticket', 'name': 'Ticket', 'description': 'Dark'},
+        {'id': 'doodle', 'name': 'Doodle', 'description': 'Dark'},
       ],
       'stickers': [
         {'id': 'hearts', 'name': 'Hearts', 'description': 'Hearts'},
@@ -95,7 +95,7 @@ void main() {
     expect(catalog.shotCount, 4);
     expect(catalog.filters, hasLength(2));
     expect(catalog.filters.first.id, 'classic_warm');
-    expect(catalog.frames.single.id, 'ticket');
+    expect(catalog.frames.single.id, 'doodle');
     expect(catalog.stickers.single.id, 'hearts');
     expect(catalog.printSize, 's4x6');
     expect(catalog.copiesOnSheet, 2);
@@ -153,7 +153,7 @@ void main() {
       'imageUrl': 'https://example.com/a.jpg',
       'stripCompositeUrl': 'https://example.com/b.jpg',
       'filter': 'candy_pop',
-      'frame': 'blush',
+      'frame': 'party',
       'sticker': 'sparkles',
       'width': 1200,
       'height': 1800,
@@ -163,7 +163,7 @@ void main() {
     });
     expect(result.printImageUrl, 'https://example.com/b.jpg');
     expect(result.filter, 'candy_pop');
-    expect(result.frame, 'blush');
+    expect(result.frame, 'party');
     expect(result.sticker, 'sparkles');
     expect(result.width, 1200);
     expect(result.height, 1800);
