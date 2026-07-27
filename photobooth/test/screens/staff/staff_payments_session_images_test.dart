@@ -51,6 +51,34 @@ void main() {
     ]);
   });
 
+  test('stripCompositeUrlFromPayment reads top-level and nested session', () {
+    expect(
+      StaffPaymentsSessionImages.stripCompositeUrlFromPayment(
+        {'stripCompositeUrl': 'https://cdn/strip.jpg'},
+        sessionId: 'sess-1',
+      ),
+      contains('strip.jpg'),
+    );
+    expect(
+      StaffPaymentsSessionImages.stripCompositeUrlFromPayment(
+        {
+          'session': {'stripCompositeUrl': 'https://cdn/nested-strip.jpg'},
+        },
+        sessionId: 'sess-1',
+      ),
+      contains('nested-strip.jpg'),
+    );
+    expect(
+      StaffPaymentsSessionImages.stripCompositeUrlFromPayment(
+        {
+          'sessionImages': ['https://cdn/ai.jpg'],
+        },
+        sessionId: 'sess-1',
+      ),
+      isNull,
+    );
+  });
+
   test('label and preview helpers', () {
     expect(StaffPaymentsSessionImages.labelForIndex(0, 1), 'Photo');
     expect(StaffPaymentsSessionImages.labelForIndex(1, 3), 'Photo 2');

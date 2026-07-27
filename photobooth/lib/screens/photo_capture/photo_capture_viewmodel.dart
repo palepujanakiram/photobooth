@@ -1629,20 +1629,25 @@ class CaptureViewModel extends ChangeNotifier {
       _captureSoundService.warmUp();
 
   /// Runs a countdown then [captureAction] (built-in CameraX or UVC).
+  ///
+  /// [countdownSeconds] defaults to [AppConstants.kCaptureCountdownSeconds]
+  /// (AI). Classic FotoFlashback passes
+  /// [AppConstants.kFlashbackCaptureCountdownSeconds].
   Future<void> captureWithCountdown(
     Future<void> Function() captureAction, {
     required bool Function() canStart,
+    int? countdownSeconds,
   }) async {
     if (!canStart() || _isCapturing || _countdownValue != null) {
       return;
     }
 
-    AppLogger.debug(
-      '📸 Starting capture countdown (${AppConstants.kCaptureCountdownSeconds}s)...',
-    );
+    final seconds = (countdownSeconds ?? AppConstants.kCaptureCountdownSeconds)
+        .clamp(1, 60);
+    AppLogger.debug('📸 Starting capture countdown (${seconds}s)...');
 
     final generation = ++_countdownGeneration;
-    _countdownValue = AppConstants.kCaptureCountdownSeconds;
+    _countdownValue = seconds;
     notifyListeners();
 
     try {
@@ -1669,12 +1674,12 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
-  /// Starts a countdown and then captures a photo
-  /// Countdown duration is configured via AppConstants.kCaptureCountdownSeconds
-  Future<void> capturePhotoWithCountdown() async {
+  /// Starts a countdown and then captures a photo.
+  Future<void> capturePhotoWithCountdown({int? countdownSeconds}) async {
     await captureWithCountdown(
       capturePhoto,
       canStart: () => isReady,
+      countdownSeconds: countdownSeconds,
     );
   }
   

@@ -80,6 +80,11 @@ class _QrShareScreenState extends State<QrShareScreen> {
 
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
+      // Don't count down (or wipe) while LAN print is still sending pages.
+      if (_viewModel?.isSilentPrinting == true ||
+          _viewModel?.printProgress.isActive == true) {
+        return;
+      }
       if (_secondsLeft <= 1) {
         t.cancel();
         unawaited(_exitToStart());

@@ -88,6 +88,37 @@ abstract final class StaffPaymentsSessionImages {
     return out;
   }
 
+  /// Strip composite URL from payment / session payload (for print-size inference).
+  static String? stripCompositeUrlFromPayment(
+    Map<String, dynamic> payment, {
+    required String sessionId,
+  }) {
+    final direct = StaffPaymentsPayloadUtils.pickString(payment, const [
+      'stripCompositeUrl',
+      'strip_composite_url',
+    ]).trim();
+    if (direct.isNotEmpty) {
+      return StaffPaymentsPayloadUtils.normalizeImageUrl(
+        direct,
+        sessionId: sessionId,
+      );
+    }
+    final embedded = payment['session'];
+    if (embedded is Map) {
+      final fromSession = StaffPaymentsPayloadUtils.pickString(
+        Map<String, dynamic>.from(embedded),
+        const ['stripCompositeUrl', 'strip_composite_url'],
+      ).trim();
+      if (fromSession.isNotEmpty) {
+        return StaffPaymentsPayloadUtils.normalizeImageUrl(
+          fromSession,
+          sessionId: sessionId,
+        );
+      }
+    }
+    return null;
+  }
+
   /// Short label for staff picker tiles.
   static String labelForIndex(int index, int total) {
     if (total <= 1) return AppStrings.staffPrintPhotoLabel;

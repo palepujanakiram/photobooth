@@ -406,6 +406,8 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     if (!mounted || !ok) return;
 
     final settings = context.read<AppSettingsManager>().settings;
+    final stripUrl = await _resolveStripCompositeUrl(p);
+    if (!mounted) return;
     for (var i = 0; i < picked.length; i++) {
       if (!mounted) return;
       await staffPaymentsRunPrintJob(
@@ -413,6 +415,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
         printService: _printService,
         settings: settings,
         imageUrl: picked[i],
+        stripCompositeUrl: stripUrl,
         isMounted: () => mounted,
         onState: ({loading, error, progressMessage}) {
           _applyPrintJobState(
@@ -426,6 +429,27 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
       );
       if (_error != null && _error!.isNotEmpty) return;
     }
+  }
+
+  Future<String?> _resolveStripCompositeUrl(Map<String, dynamic> payment) async {
+    final sid = _sessionId(payment).trim();
+    final fromPayload = StaffPaymentsSessionImages.stripCompositeUrlFromPayment(
+      payment,
+      sessionId: sid,
+    );
+    if (fromPayload != null && fromPayload.isNotEmpty) return fromPayload;
+    if (sid.isEmpty) return null;
+    final raw = await _api.fetchSession(sid);
+    if (!mounted || raw == null) return null;
+    final strip = StaffPaymentsPayloadUtils.pickString(raw, const [
+      'stripCompositeUrl',
+      'strip_composite_url',
+    ]).trim();
+    if (strip.isEmpty) return null;
+    return StaffPaymentsPayloadUtils.normalizeImageUrl(
+      strip,
+      sessionId: sid,
+    );
   }
 
   Future<List<String>> _resolveAllImageUrlsForPrint(

@@ -229,8 +229,15 @@ class AppConstants {
   /// Default preview rotation when no value is saved. One of 0, 90, 180, 270.
   static const int kCameraPreviewRotationDefault = 0;
 
-  // Camera capture countdown (in seconds)
+  // Camera capture countdown (in seconds) — AI / single-shot POSE.
   static const int kCaptureCountdownSeconds = 5;
+
+  /// FotoFlashback Classic 4-shot booth: longer pose window between snaps.
+  static const int kFlashbackCaptureCountdownSeconds = 10;
+
+  /// Brief hold on the just-taken Classic shot before auto-continuing.
+  /// Tap Retake during this window (or Retake last on the next countdown).
+  static const Duration kFlashbackShotReviewDuration = Duration(seconds: 2);
 
   /// POSE screen: return to Terms after this much user inactivity (live feed or review).
   static const Duration kCaptureScreenIdleResetDuration = Duration(minutes: 3);

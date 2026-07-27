@@ -250,6 +250,17 @@ class _ResultScreenState extends State<ResultScreen> {
   Future<void> _navigateToThankYouIfEligible(ResultViewModel viewModel) async {
     if (!mounted || _didNavigateToThankYou) return;
     if (viewModel.fcmPaymentPushSuccess != true) return;
+
+    // Finish all print pages before leaving Pay — QR idle wipe must not delete
+    // temp files mid-cart (Classic strip + Surprise Me + AI).
+    try {
+      await viewModel.awaitPostPaymentPrintSettled();
+    } catch (e, st) {
+      AppLogger.debug('Post-payment print wait failed: $e\n$st');
+    }
+    if (!mounted || _didNavigateToThankYou) return;
+    if (viewModel.fcmPaymentPushSuccess != true) return;
+
     _didNavigateToThankYou = true;
     try {
       await viewModel.ensurePostPaymentShareArtifacts();

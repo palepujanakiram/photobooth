@@ -25,6 +25,7 @@ import 'photo_capture_exit_handlers.dart';
 import 'photo_capture_gallery_handlers.dart';
 import 'photo_capture_phone_upload_sheet.dart';
 import 'photo_capture_idle_policy.dart';
+import 'photo_capture_flashback_auto_helpers.dart';
 import 'photo_capture_view_layout.dart';
 import 'photo_capture_view_scaffold.dart';
 import 'photo_capture_viewmodel.dart';
@@ -148,6 +149,107 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void _onCaptureViewModelStateChanged() {
     if (!mounted) return;
     _syncPoseIdleTimer(_captureViewModel);
+    _maybeAdvanceFlashbackAutoChain();
+  }
+
+  void _cancelFlashbackAutoTimers() {
+    _flashbackReviewTimer?.cancel();
+    _flashbackReviewTimer = null;
+  }
+
+  void _maybeAdvanceFlashbackAutoChain() {
+    if (!_isFlashbackMultiShot || !mounted) return;
+    final vm = _captureViewModel;
+    final total = _multiShotTotal ?? 0;
+    if (shouldScheduleFlashbackAutoAccept(
+      isFlashbackMultiShot: true,
+      stripFinishing: _stripFinishing,
+      navigatingAway: _navigatingAwayFromCapture,
+      hasCapturedPhoto: vm.capturedPhoto != null,
+      isCapturing: vm.isCapturing || _uvcCaptureInFlight,
+      autoAcceptAlreadyScheduled: _flashbackReviewTimer?.isActive == true,
+    )) {
+      _scheduleFlashbackAutoAccept();
+      return;
+    }
+    if (shouldAutoStartFlashbackCountdown(
+      isFlashbackMultiShot: true,
+      stripFinishing: _stripFinishing,
+      navigatingAway: _navigatingAwayFromCapture,
+      hasCapturedPhoto: vm.capturedPhoto != null,
+      isCountingDown: vm.isCountingDown || _flashbackCountdownStarting,
+      isCapturing: vm.isCapturing || _uvcCaptureInFlight,
+      acceptedShotCount: _stripShots.length,
+      multiShotTotal: total,
+      cameraReadyForCapture: _flashbackCameraReady,
+    )) {
+      unawaited(_startFlashbackAutoCountdown());
+    }
+  }
+
+  void _scheduleFlashbackAutoAccept() {
+    _flashbackReviewTimer?.cancel();
+    _flashbackReviewTimer = Timer(
+      AppConstants.kFlashbackShotReviewDuration,
+      () {
+        if (!mounted) return;
+        unawaited(_acceptFlashbackShot(_captureViewModel));
+      },
+    );
+  }
+
+  Future<void> _startFlashbackAutoCountdown() async {
+    if (_flashbackCountdownStarting || !mounted) return;
+    if (!shouldAutoStartFlashbackCountdown(
+      isFlashbackMultiShot: _isFlashbackMultiShot,
+      stripFinishing: _stripFinishing,
+      navigatingAway: _navigatingAwayFromCapture,
+      hasCapturedPhoto: _captureViewModel.capturedPhoto != null,
+      isCountingDown: _captureViewModel.isCountingDown,
+      isCapturing: _captureViewModel.isCapturing || _uvcCaptureInFlight,
+      acceptedShotCount: _stripShots.length,
+      multiShotTotal: _multiShotTotal ?? 0,
+      cameraReadyForCapture: _flashbackCameraReady,
+    )) {
+      return;
+    }
+    _flashbackCountdownStarting = true;
+    final seconds = captureCountdownSecondsForMode(isFlashbackMultiShot: true);
+    try {
+      if (_isUsingUvc) {
+        await _captureViewModel.captureWithCountdown(
+          () => _captureUvc(_captureViewModel, source: 'flashback_auto'),
+          canStart: () =>
+              mounted &&
+              _uvcReadyForCapture &&
+              !_uvcCaptureInFlight &&
+              _captureViewModel.capturedPhoto == null,
+          countdownSeconds: seconds,
+        );
+      } else {
+        await _captureViewModel.capturePhotoWithCountdown(
+          countdownSeconds: seconds,
+        );
+      }
+    } finally {
+      _flashbackCountdownStarting = false;
+      if (mounted) _maybeAdvanceFlashbackAutoChain();
+    }
+  }
+
+  Future<void> _retakeLastFlashbackShot() async {
+    _cancelFlashbackAutoTimers();
+    _captureViewModel.cancelCountdown();
+    if (_captureViewModel.capturedPhoto != null) {
+      await _handleRetake(context);
+      return;
+    }
+    if (_stripShots.isEmpty) return;
+    setState(() {
+      _stripShots.removeLast();
+      _syncFlashbackSubtitle();
+    });
+    _maybeAdvanceFlashbackAutoChain();
   }
 
   Future<void> _releaseCaptureHardware() async {
@@ -201,12 +303,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   ThemeModel? _flashbackTheme;
   final List<PhotoModel> _stripShots = <PhotoModel>[];
   bool _stripFinishing = false;
+  Timer? _flashbackReviewTimer;
+  bool _flashbackCountdownStarting = false;
 
   bool get _isFlashbackMultiShot =>
       _returnPhotoOnly &&
       _multiShotTotal != null &&
       _multiShotTotal! > 1 &&
       _flashbackTheme != null;
+
+  bool get _flashbackCameraReady => _isUsingUvc
+      ? (_uvcReadyForCapture && !_uvcCaptureInFlight)
+      : _captureViewModel.isReady;
 
   @override
   void didChangeDependencies() {
@@ -250,6 +358,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (photo == null || total == null || theme == null || _stripFinishing) {
       return;
     }
+    _cancelFlashbackAutoTimers();
     setState(() {
       _stripShots.add(photo);
       _syncFlashbackSubtitle();
@@ -410,6 +519,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       if (!mounted) return;
       setState(() {});
       _resetUvcIdleSleepTimer();
+      _maybeAdvanceFlashbackAutoChain();
     });
   }
 
@@ -628,6 +738,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _notePoseUserActivity();
       if (_captureViewModel.capturedPhoto != null) return;
       if (!UvcHardwareKeyCodes.isShutterKey(e.keyCode)) return;
+      if (_isFlashbackMultiShot) {
+        unawaited(_startFlashbackAutoCountdown());
+        return;
+      }
       if (_isUsingUvc && _uvcController?.value.isInitialized == true) {
         _triggerUvcCapture(source: 'android_key_${e.keyCode}', externalSignal: true);
         return;
@@ -665,6 +779,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
     unawaited(_captureViewModel.loadPreviewRotation());
     _syncPoseIdleTimer(_captureViewModel);
+    _maybeAdvanceFlashbackAutoChain();
   }
 
   /// Defers camera work until the route transition finishes (smoother POSE entry).
@@ -996,6 +1111,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     WidgetsBinding.instance.removeObserver(this);
     _captureViewModel.removeListener(_onCaptureViewModelStateChanged);
     _stopPoseIdleTimer();
+    _cancelFlashbackAutoTimers();
     _uvcReconnectTimer?.cancel();
     _uvcReconnectTimer = null;
     _uvcTvProbeTimer?.cancel();
@@ -1185,6 +1301,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   Future<void> _handleRetake(BuildContext context) async {
+    _cancelFlashbackAutoTimers();
     final flashback = _isFlashbackMultiShot;
     // Web: remount capture route so getUserMedia restarts (same State leaves a
     // black / dead stream after takePicture). Strip progress is carried in args.
@@ -1199,12 +1316,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!mounted) return;
     if (_uvcDevice != null) {
       await _restoreUvcLiveFeedAfterRetake();
+      if (mounted && flashback) _maybeAdvanceFlashbackAutoChain();
       return;
     }
     if (flashback) {
       await _captureViewModel.disposeCamera();
       if (!mounted) return;
       await _captureViewModel.resumeLivePreviewAfterRetake(forceReinit: true);
+      if (mounted) _maybeAdvanceFlashbackAutoChain();
       return;
     }
     await _captureViewModel.resumeLivePreviewAfterRetake();
@@ -1212,15 +1331,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   Future<void> _handleCaptureBack(BuildContext context) async {
     _notePoseUserActivity();
+    _cancelFlashbackAutoTimers();
     if (_captureViewModel.capturedPhoto != null) {
       await _handleRetake(context);
       return;
     }
     if (_isFlashbackMultiShot && _stripShots.isNotEmpty) {
+      _captureViewModel.cancelCountdown();
       setState(() {
         _stripShots.removeLast();
         _syncFlashbackSubtitle();
       });
+      _maybeAdvanceFlashbackAutoChain();
       return;
     }
     await _exitCaptureToTerms(
@@ -2735,20 +2857,27 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   /// Builds the on-screen capture countdown overlay (e.g. 5, 4, 3…).
   Widget _buildCountdownOverlay(BuildContext context, int countdownValue) {
-    final showIntro =
+    final flashback = _isFlashbackMultiShot;
+    final total = _multiShotTotal ?? kStripShotCount;
+    final shotNumber = (_stripShots.length + 1).clamp(1, total);
+    final showAiIntro = !flashback &&
         countdownValue == AppConstants.kCaptureCountdownSeconds;
+    final headline = flashback
+        ? AppStrings.flashbackShotProgress(shotNumber, total)
+        : (showAiIntro ? AppStrings.captureCountdownIntro : null);
+
     return Container(
       color: Colors.black.withValues(alpha: 0.5),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (showIntro) ...[
+            if (headline != null) ...[
               Text(
-                AppStrings.captureCountdownIntro,
+                headline,
                 style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w600,
+                  fontSize: flashback ? 28 : 22,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white.withValues(alpha: 0.95),
                 ),
                 textAlign: TextAlign.center,
@@ -2805,8 +2934,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             style: captureScreenButtonStyle(secondary: true),
             onPressed: _stripFinishing
                 ? null
-                : () => unawaited(_handleRetake(context)),
-            child: const Text('Retake'),
+                : () {
+                    _cancelFlashbackAutoTimers();
+                    unawaited(_handleRetake(context));
+                  },
+            child: Text(
+              multi ? AppStrings.flashbackRetakeLast : 'Retake',
+            ),
           ),
           const SizedBox(height: 12),
           ElevatedButton(
@@ -2815,6 +2949,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                 ? null
                 : () async {
                     if (multi) {
+                      _cancelFlashbackAutoTimers();
                       await _acceptFlashbackShot(viewModel);
                       return;
                     }
@@ -2890,6 +3025,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           (settingsManager) =>
               settingsManager.settings?.photoUploadAllowed == true,
         );
+    final flashback = _isFlashbackMultiShot;
+    final countdownSecs = captureCountdownSecondsForMode(
+      isFlashbackMultiShot: flashback,
+    );
 
     return SizedBox(
       width: double.infinity,
@@ -2935,30 +3074,52 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             ),
             const SizedBox(height: 12),
           ],
+          if (flashback && _stripShots.isNotEmpty) ...[
+            ElevatedButton(
+              style: captureScreenButtonStyle(secondary: true),
+              onPressed: (viewModel.isCapturing ||
+                      _uvcCaptureInFlight ||
+                      _stripFinishing)
+                  ? null
+                  : () => unawaited(_retakeLastFlashbackShot()),
+              child: const Text(AppStrings.flashbackRetakeLast),
+            ),
+            const SizedBox(height: 12),
+          ],
           ElevatedButton.icon(
             style: captureScreenButtonStyle(),
             onPressed: (viewModel.isCapturing ||
                     _uvcCaptureInFlight ||
                     viewModel.isSelectingFromGallery ||
                     viewModel.isCountingDown ||
+                    _flashbackCountdownStarting ||
                     (_isUsingUvc && !_uvcReadyForCapture))
                 ? null
                 : () async {
+                    if (flashback) {
+                      await _startFlashbackAutoCountdown();
+                      return;
+                    }
                     if (_isUsingUvc) {
                       await viewModel.captureWithCountdown(
                         () => _captureUvc(viewModel, source: 'ui_button'),
                         canStart: () =>
                             _uvcReadyForCapture && !_uvcCaptureInFlight,
+                        countdownSeconds: countdownSecs,
                       );
                     } else {
-                      await viewModel.capturePhotoWithCountdown();
+                      await viewModel.capturePhotoWithCountdown(
+                        countdownSeconds: countdownSecs,
+                      );
                     }
                   },
             icon: const Icon(CupertinoIcons.camera, size: 20),
             label: Text(
               (viewModel.isCapturing || _uvcCaptureInFlight)
                   ? 'Capturing…'
-                  : 'Capture',
+                  : (flashback
+                      ? AppStrings.flashbackTakeShot
+                      : 'Capture'),
             ),
           ),
         ],
