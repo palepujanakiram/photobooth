@@ -51,12 +51,12 @@ void main() {
         'sparkles',
         'confetti',
         'stars',
-        'bows',
         'flowers',
-        'butterflies',
-        'petals',
       ]),
     );
+    expect(kPlaceableStripStickerIds, isNot(contains('bows')));
+    expect(kPlaceableStripStickerIds, isNot(contains('butterflies')));
+    expect(kPlaceableStripStickerIds, isNot(contains('petals')));
     expect(kPlaceableStripStickerIds, isNot(contains('date')));
   });
 
