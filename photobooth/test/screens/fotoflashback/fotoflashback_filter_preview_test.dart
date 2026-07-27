@@ -27,20 +27,19 @@ void main() {
 
   test('stripPreviewFrameColor covers catalog frames', () {
     expect(stripPreviewFrameColor('classic'), Colors.white);
-    expect(stripPreviewFrameColor('doodle'), Colors.white);
-    expect(stripPreviewFrameColor('party'), Colors.white);
-    expect(stripPreviewFrameColor('cinema'), Colors.white);
     expect(stripPreviewFrameColor('noir'), const Color(0xFF121216));
-    expect(stripPreviewFrameAccent('cinema'), isNull);
     expect(stripPreviewFrameColor('polaroid'), Colors.white);
     expect(stripPreviewFrameColor('grid_2x2'), const Color(0xFFFFFAF5));
     expect(stripPreviewFrameColor('filmstrip'), Colors.white);
     expect(stripPreviewFrameColor('romantic'), Colors.white);
     expect(stripPreviewFrameAccent('classic'), isNull);
-    expect(stripPreviewFrameAccent('doodle'), isNull);
-    expect(stripPreviewFrameAccent('party'), isNull);
     expect(stripPreviewFrameAccent('noir'), isNotNull);
     expect(stripPreviewFrameAccent('polaroid'), isNotNull);
+    // Removed doodle frames fall back to classic white.
+    expect(stripPreviewFrameColor('doodle'), Colors.white);
+    expect(stripPreviewFrameColor('party'), Colors.white);
+    expect(stripPreviewFrameColor('cinema'), Colors.white);
+    expect(stripPreviewFrameAccent('doodle'), isNull);
     expect(isStripSheetLayout('polaroid'), isTrue);
     expect(isStripSheetLayout('classic'), isFalse);
   });
