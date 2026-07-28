@@ -373,6 +373,16 @@ class CaptureViewModel extends ChangeNotifier {
   bool get isSelectingFromGallery => _isSelectingFromGallery;
   bool get isWaitingForPhoneUpload => _isWaitingForPhoneUpload;
 
+  /// Eagerly show the starting-camera phase (Classic web remount between shots).
+  ///
+  /// Called before [loadCameras] so the first frame never flashes Gallery / Phone QR.
+  void markAwaitingCameraRemount() {
+    if (isReady || _isLoadingCameras || _isInitializing) return;
+    _isLoadingCameras = true;
+    _errorMessage = null;
+    notifyListeners();
+  }
+
   /// Sets capture UI flags for widget/unit tests (desktop body, phone QR sheet).
   @visibleForTesting
   void setCaptureUiStateForTest({

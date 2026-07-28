@@ -72,6 +72,24 @@ void main() {
       );
     });
 
+    test('stays starting while isLoadingCameras during Classic remount', () {
+      expect(
+        isCapturePreviewStarting(
+          hasCapturedPhoto: false,
+          isDesktopCaptureMode: false,
+          isLoadingCameras: true,
+          isInitializing: false,
+          isUsingUvc: false,
+          uvcInitializing: false,
+          uvcOpeningController: false,
+          uvcControllerReady: false,
+          camerasEmpty: true,
+          isReady: false,
+        ),
+        isTrue,
+      );
+    });
+
     test('stays starting while enumeration or init is in progress', () {
       expect(
         isCapturePreviewStarting(
