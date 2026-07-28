@@ -47,11 +47,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   Object? _capturePrefillPhoto;
   TermsCameraPrimingPhase _cameraPrimingPhase = TermsCameraPrimingPhase.detecting;
 
-  bool _photoUploadAllowed(BuildContext context) =>
-      context.select<AppSettingsManager, bool>(
-        (m) => m.settings?.photoUploadAllowed == true,
-      );
-
   bool _canStartExperience(bool photoUploadAllowed) =>
       !_navigatingToCapture &&
       termsCameraPrimingAllowsContinue(
@@ -182,6 +177,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     if (_capturePrefillPhoto == null && rawArgs is TermsRouteArgs) {
       _capturePrefillPhoto = rawArgs.capturePhoto;
     }
+    // Must run in this State's build — not inside Consumer (State.context is idle then).
+    final photoUploadAllowed = context.select<AppSettingsManager, bool>(
+      (m) => m.settings?.photoUploadAllowed == true,
+    );
     final appColors = AppColors.of(context);
     final mediaQuery = MediaQuery.of(context);
     final screenWidth = mediaQuery.size.width;
@@ -247,7 +246,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                             }
                             return ConstrainedBox(
                               constraints: BoxConstraints(maxWidth: cardMaxWidth),
-                              child: _buildConsentCard(viewModel, appColors, isLandscape),
+                              child: _buildConsentCard(
+                                viewModel,
+                                appColors,
+                                compact: isLandscape,
+                                photoUploadAllowed: photoUploadAllowed,
+                              ),
                             );
                           },
                         ),
@@ -279,7 +283,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
-  Widget _buildConsentCard(TermsAndConditionsViewModel viewModel, AppColors appColors, [bool compact = false]) {
+  Widget _buildConsentCard(
+    TermsAndConditionsViewModel viewModel,
+    AppColors appColors, {
+    bool compact = false,
+    required bool photoUploadAllowed,
+  }) {
     final layout = TermsLayoutMetrics(
       screenWidth: MediaQuery.sizeOf(context).width,
       isLandscape: compact,
@@ -349,7 +358,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           // Divider
           Divider(height: 1, color: appColors.dividerColor),
 
-          _buildCameraPrimingBanner(context, appColors, layout, compact: compact),
+          _buildCameraPrimingBanner(
+            appColors,
+            layout,
+            compact: compact,
+            photoUploadAllowed: photoUploadAllowed,
+          ),
 
           // Content
           Padding(
@@ -394,7 +408,11 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           // Action button
           Padding(
             padding: EdgeInsets.symmetric(horizontal: cardPadding),
-            child: _buildActionButtons(viewModel, appColors),
+            child: _buildActionButtons(
+              viewModel,
+              appColors,
+              photoUploadAllowed: photoUploadAllowed,
+            ),
           ),
           
           SizedBox(height: layout.innerSectionGap(compact: compact)),
@@ -422,12 +440,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Widget _buildCameraPrimingBanner(
-    BuildContext context,
     AppColors appColors,
     TermsLayoutMetrics layout, {
     bool compact = false,
+    required bool photoUploadAllowed,
   }) {
-    final uploadOk = _photoUploadAllowed(context);
+    final uploadOk = photoUploadAllowed;
     switch (_cameraPrimingPhase) {
       case TermsCameraPrimingPhase.skipped:
       case TermsCameraPrimingPhase.ready:
@@ -651,8 +669,11 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
-  Widget _buildActionButtons(TermsAndConditionsViewModel viewModel, AppColors appColors) {
-    final photoUploadAllowed = _photoUploadAllowed(context);
+  Widget _buildActionButtons(
+    TermsAndConditionsViewModel viewModel,
+    AppColors appColors, {
+    required bool photoUploadAllowed,
+  }) {
     final canSubmit =
         viewModel.canSubmit && _canStartExperience(photoUploadAllowed);
     final buttonLabel = _cameraPrimingPhase == TermsCameraPrimingPhase.detecting
