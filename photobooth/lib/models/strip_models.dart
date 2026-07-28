@@ -650,21 +650,60 @@ class StripComposeResult {
   /// Transformation run id for forensics / View details (`GET /api/generation-runs/:id`).
   final String? runId;
 
-  /// Prefer composite URL when present (same sheet as print).
+  /// URL to download for printing — dual-strip uses composite; 1-shot 6×4 uses [imageUrl].
   String get printImageUrl {
+    if (_usesSingleSheetPrint) {
+      return _primaryImageUrl;
+    }
     final composite = stripCompositeUrl?.trim() ?? '';
     if (composite.isNotEmpty) return composite;
-    return imageUrl;
+    return _primaryImageUrl;
   }
 
-  factory StripComposeResult.fromJson(Map<String, dynamic> json) {
-    final imageUrl = JsonParseHelpers.stringOrNull(json['imageUrl']) ??
-        JsonParseHelpers.stringOrNull(json['stripCompositeUrl']) ??
-        '';
+  bool get _usesSingleSheetPrint {
+    final size = printSize.trim().toLowerCase();
+    if (size == AppConstants.kPrintSizeLandscape6x4 ||
+        size == AppConstants.kPrintSizePortrait4x6) {
+      return true;
+    }
+    if (copiesOnSheet <= 1) return true;
+    final w = width;
+    final h = height;
+    if (w != null && h != null && w > h) return true;
+    return false;
+  }
+
+  String get _primaryImageUrl {
+    final direct = imageUrl.trim();
+    if (direct.isNotEmpty) return direct;
+    return stripCompositeUrl?.trim() ?? '';
+  }
+
+  factory StripComposeResult.fromJson(
+    Map<String, dynamic> json, {
+    int? composeImageCount,
+  }) {
+    final rawImage = JsonParseHelpers.stringOrNull(json['imageUrl']);
+    final rawComposite = JsonParseHelpers.stringOrNull(json['stripCompositeUrl']);
+    final imageUrl = composeImageCount == 1
+        ? (rawImage ?? '')
+        : (rawImage ?? rawComposite ?? '');
+    final apiPrintSize = JsonParseHelpers.stringOrNull(json['printSize']);
+    final printSize = composeImageCount != null
+        ? _resolveComposePrintSize(
+            composeImageCount: composeImageCount,
+            apiPrintSize: apiPrintSize,
+          )
+        : JsonParseHelpers.stringValue(
+            json['printSize'],
+            fallback: AppConstants.kPrintSizeStripDual2x6,
+          );
+    final copiesOnSheet = composeImageCount == 1
+        ? 1
+        : (JsonParseHelpers.intOrNull(json['copiesOnSheet']) ?? 2);
     return StripComposeResult(
       imageUrl: imageUrl,
-      stripCompositeUrl:
-          JsonParseHelpers.stringOrNull(json['stripCompositeUrl']),
+      stripCompositeUrl: rawComposite,
       filter: JsonParseHelpers.stringValue(
         json['filter'],
         fallback: kDefaultStripFilterId,
@@ -679,13 +718,22 @@ class StripComposeResult {
       ),
       width: JsonParseHelpers.intOrNull(json['width']),
       height: JsonParseHelpers.intOrNull(json['height']),
-      copiesOnSheet: JsonParseHelpers.intOrNull(json['copiesOnSheet']) ?? 2,
-      printSize: JsonParseHelpers.stringValue(
-        json['printSize'],
-        fallback: AppConstants.kPrintSizeStripDual2x6,
-      ),
+      copiesOnSheet: copiesOnSheet,
+      printSize: printSize,
       runId: JsonParseHelpers.stringOrNull(json['runId']) ??
           JsonParseHelpers.stringOrNull(json['run_id']),
     );
+  }
+
+  static String _resolveComposePrintSize({
+    required int composeImageCount,
+    String? apiPrintSize,
+  }) {
+    if (composeImageCount == 1) {
+      return AppConstants.kPrintSizeLandscape6x4;
+    }
+    final fromApi = apiPrintSize?.trim() ?? '';
+    if (fromApi.isNotEmpty) return fromApi;
+    return AppConstants.kPrintSizeStripDual2x6;
   }
 }

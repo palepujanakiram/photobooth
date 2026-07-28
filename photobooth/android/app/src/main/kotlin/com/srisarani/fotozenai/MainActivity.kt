@@ -17,7 +17,18 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         DisplayMethodChannel.register(flutterEngine, this)
         DeviceMemoryMethodChannel.register(flutterEngine, this)
+        DnpUsbMethodChannel.register(flutterEngine, this)
         hardwareKeysHandler = HardwareKeysHandler.attach(flutterEngine)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        DnpUsbMethodChannel.onResume(this)
+    }
+
+    override fun onDestroy() {
+        DnpUsbMethodChannel.onDestroy()
+        super.onDestroy()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

@@ -51,6 +51,124 @@ void main() {
     ]);
   });
 
+  test('composePrimaryImageUrlFromSession reads generatedImages s6x4 entry', () {
+    expect(
+      StaffPaymentsSessionImages.composePrimaryImageUrlFromSession(
+        {
+          'generatedImages': [
+            {
+              'imageUrl': 'https://cdn/single6x4.jpg',
+              'printSize': 's6x4',
+            },
+          ],
+        },
+        sessionId: 's1',
+      ),
+      contains('single6x4.jpg'),
+    );
+    expect(
+      StaffPaymentsSessionImages.composePrimaryImageUrlFromSession(
+        {'generatedImages': 'not-a-list'},
+        sessionId: 's1',
+      ),
+      isNull,
+    );
+  });
+
+  test('printSizeForImageUrl reads generatedImages and session print block', () {
+    expect(
+      StaffPaymentsSessionImages.printSizeForImageUrl(
+        {
+          'generatedImages': [
+            {
+              'imageUrl': 'https://cdn/single.jpg',
+              'printSize': 's6x4',
+            },
+          ],
+        },
+        imageUrl: 'https://cdn/single.jpg?sessionId=s1',
+        sessionId: 's1',
+      ),
+      's6x4',
+    );
+    expect(
+      StaffPaymentsSessionImages.printSizeForImageUrl(
+        {
+          'print': {'size': 's6x2_2'},
+          'generatedImages': [
+            {'imageUrl': 'https://cdn/strip.jpg'},
+          ],
+        },
+        imageUrl: 'https://cdn/strip.jpg',
+        sessionId: 's1',
+      ),
+      isNull,
+    );
+    expect(
+      StaffPaymentsSessionImages.printSizeForImageUrl(
+        {
+          'print': {'size': 's6x2_2'},
+        },
+        imageUrl: 'https://cdn/strip.jpg',
+        sessionId: 's1',
+      ),
+      's6x2_2',
+    );
+    expect(
+      StaffPaymentsSessionImages.printSizeForImageUrl(
+        {
+          'generatedImages': [
+            {'imageUrl': 'https://cdn/other.jpg'},
+          ],
+          'printSize': 's5x7',
+        },
+        imageUrl: 'https://cdn/unrelated.jpg',
+        sessionId: 's1',
+      ),
+      's5x7',
+    );
+  });
+
+  test('classicComposeShotCountFromSession reads capturedImages length', () {
+    expect(
+      StaffPaymentsSessionImages.classicComposeShotCountFromSession(
+        {'capturedImages': ['a']},
+      ),
+      1,
+    );
+    expect(
+      StaffPaymentsSessionImages.classicComposeShotCountFromSession(
+        {'capturedImages': List.filled(4, 'a')},
+      ),
+      4,
+    );
+    expect(
+      StaffPaymentsSessionImages.classicComposeShotCountFromSession(
+        {'shotCount': 1},
+      ),
+      1,
+    );
+    expect(
+      StaffPaymentsSessionImages.classicComposeShotCountFromSession(
+        {'shot_count': 4},
+      ),
+      4,
+    );
+  });
+
+  test('composePrimaryImageUrlFromSession prefers imageUrl field', () {
+    expect(
+      StaffPaymentsSessionImages.composePrimaryImageUrlFromSession(
+        {
+          'imageUrl': 'https://cdn/single6x4.jpg',
+          'stripCompositeUrl': 'https://cdn/strip.jpg',
+        },
+        sessionId: 's1',
+      ),
+      contains('single6x4.jpg'),
+    );
+  });
+
   test('stripCompositeUrlFromPayment reads top-level and nested session', () {
     expect(
       StaffPaymentsSessionImages.stripCompositeUrlFromPayment(

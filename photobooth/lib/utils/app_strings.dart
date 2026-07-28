@@ -571,4 +571,14 @@ abstract final class AppStrings {
       copies == 1 ? '1 copy each' : '$copies copies each';
   static String resultPrintSheetsLine(int sheets) =>
       sheets == 1 ? '1 print total' : '$sheets prints total';
+
+  static const kioskDeviceDnpPrinter = 'DNP Printer';
+  static const kioskDeviceReceiptPrinter = 'Receipt Printer';
+  static const kioskDeviceUsbCamera = 'USB Camera';
+  static const kioskDeviceConnected = 'Connected';
+  static const kioskDeviceNotConnected = 'Not connected';
+  static const kioskDeviceNotConfigured = 'Not configured';
+  static const kioskDeviceTransportUsb = 'USB';
+  static const kioskDeviceTransportWifi = 'WiFi';
+  static const kioskDeviceTransportUnknown = '—';
 }

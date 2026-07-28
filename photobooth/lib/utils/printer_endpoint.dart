@@ -1,5 +1,4 @@
 import '../models/app_settings_model.dart';
-import 'constants.dart';
 
 /// Resolved LAN printer HTTP target from `/api/settings`.
 class PrinterEndpoint {
@@ -49,9 +48,7 @@ bool usesDnpMultipartPrintApi(String apiPath) {
 
 PrinterEndpoint resolvePrinterEndpoint(AppSettingsModel? settings) {
   final hostRaw = settings?.printerHost?.trim();
-  final host = (hostRaw != null && hostRaw.isNotEmpty)
-      ? hostRaw
-      : AppConstants.kDefaultPrinterHost;
+  final host = (hostRaw != null && hostRaw.isNotEmpty) ? hostRaw : '';
   final portRaw = settings?.printerPort;
   final port = (portRaw != null && portRaw > 0 && portRaw <= 65535)
       ? portRaw

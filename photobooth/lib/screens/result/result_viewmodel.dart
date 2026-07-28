@@ -26,7 +26,6 @@ import '../../utils/payment_workflow_helpers.dart' as payment_workflow;
 import '../../utils/print_orientation.dart';
 import '../../utils/print_progress_helpers.dart';
 import '../../utils/print_size_helpers.dart';
-import '../../utils/printer_endpoint.dart';
 import '../../utils/error_reporting_helpers.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/fcm_service.dart';
@@ -98,7 +97,6 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
 
   final bool _isProcessing = false;
   String? _errorMessage;
-  String _printerHost;
 
   // Print/Share state
   bool _isSilentPrinting = false;
@@ -328,8 +326,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
               customerName: customerName ?? '',
               customerPhone: customerPhone ?? '',
               whatsappOptIn: customerWhatsappOptIn,
-            ),
-        _printerHost = _defaultPrinterHost(appSettingsManager);
+            );
 
   List<GeneratedImage> get generatedImages => _generatedImages;
   PhotoModel? get originalPhoto => _originalPhoto;
@@ -341,30 +338,8 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   bool get isProcessing => _isProcessing;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
-  String get printerHost => _printerHost;
   bool get isPaymentGatewayEnabled =>
       _appSettingsManager?.settings?.paymentGatewayEnabled ?? true;
-
-  static String _defaultPrinterHost(AppSettingsManager? manager) {
-    return resolvePrinterEndpoint(manager?.settings).host;
-  }
-
-  PrinterEndpoint get _printerEndpoint =>
-      resolvePrinterEndpoint(_appSettingsManager?.settings);
-
-  /// Sync host/port/path from latest `/api/settings` (e.g. after fetch on Pay screen).
-  void refreshPrinterFromSettings({bool notify = true}) {
-    final endpoint = _printerEndpoint;
-    final nextHost = endpoint.host;
-    if (nextHost == _printerHost) return;
-    _printerHost = nextHost;
-    if (notify) notifyListeners();
-  }
-
-  /// Port from `/api/settings` when valid; otherwise HTTP default (80).
-  int get effectivePrinterPort => _printerEndpoint.port;
-
-  String get effectivePrinterPath => _printerEndpoint.path;
 
   int get initialPrintPrice =>
       _appSettingsManager?.settings?.initialPrice ??
@@ -451,12 +426,6 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
     final d = _appliedDiscount;
     if (d == null) return checkoutAmount;
     return d.chargeAmount;
-  }
-
-  /// Updates the printer host (hostname or IP) shown in the print options field.
-  void setPrinterHost(String host) {
-    _printerHost = host.trim();
-    notifyListeners();
   }
 
   /// Sets physical copies per selected image and refreshes UPI QR for the new total.

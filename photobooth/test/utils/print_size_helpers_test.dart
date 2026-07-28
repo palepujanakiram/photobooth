@@ -79,7 +79,50 @@ void main() {
     });
   });
 
+  group('resolveClassicComposePrintSize', () {
+    test('one-shot Classic always uses landscape 6x4', () {
+      expect(
+        resolveClassicComposePrintSize(
+          imageCount: 1,
+          apiPrintSize: AppConstants.kPrintSizeStripDual2x6,
+        ),
+        AppConstants.kPrintSizeLandscape6x4,
+      );
+      expect(
+        resolveClassicComposePrintSize(imageCount: 1),
+        AppConstants.kPrintSizeLandscape6x4,
+      );
+    });
+
+    test('four-shot Classic uses API printSize when present', () {
+      expect(
+        resolveClassicComposePrintSize(
+          imageCount: 4,
+          apiPrintSize: AppConstants.kPrintSizeStripDual2x6,
+        ),
+        AppConstants.kPrintSizeStripDual2x6,
+      );
+    });
+
+    test('four-shot Classic defaults to dual strip when API omits size', () {
+      expect(
+        resolveClassicComposePrintSize(imageCount: 4),
+        AppConstants.kPrintSizeStripDual2x6,
+      );
+    });
+  });
+
   group('resolveStaffNetworkPrintSize', () {
+    test('prefers explicit strip session printSize over URL heuristics', () {
+      expect(
+        resolveStaffNetworkPrintSize(
+          imageUrl: 'https://cdn/ai.jpg',
+          sessionPrintSize: AppConstants.kPrintSizeStripDual2x6,
+        ),
+        AppConstants.kPrintSizeStripDual2x6,
+      );
+    });
+
     test('matches strip composite ignoring query params', () {
       expect(
         resolveStaffNetworkPrintSize(
@@ -87,6 +130,28 @@ void main() {
           stripCompositeUrl: 'https://cdn/strip.jpg',
         ),
         AppConstants.kPrintSizeStripDual2x6,
+      );
+    });
+
+    test('prefers explicit session printSize over strip URL match', () {
+      expect(
+        resolveStaffNetworkPrintSize(
+          imageUrl: 'https://cdn/single.jpg',
+          stripCompositeUrl: 'https://cdn/single.jpg',
+          sessionPrintSize: AppConstants.kPrintSizeLandscape6x4,
+        ),
+        AppConstants.kPrintSizeLandscape6x4,
+      );
+    });
+
+    test('single-shot Classic uses s6x4 when URL equals strip composite', () {
+      expect(
+        resolveStaffNetworkPrintSize(
+          imageUrl: 'https://cdn/single.jpg',
+          stripCompositeUrl: 'https://cdn/single.jpg',
+          classicComposeShotCount: 1,
+        ),
+        AppConstants.kPrintSizeLandscape6x4,
       );
     });
 
@@ -117,6 +182,17 @@ void main() {
           stripCompositeUrl: null,
         ),
         AppConstants.kPrintSizePortrait4x6,
+      );
+    });
+
+    test('matches Classic single 6x4 print URL', () {
+      expect(
+        resolveStaffNetworkPrintSize(
+          imageUrl: 'https://cdn/single6x4.jpg',
+          stripCompositeUrl: 'https://cdn/strip.jpg',
+          single6x4Url: 'https://cdn/single6x4.jpg',
+        ),
+        AppConstants.kPrintSizeLandscape6x4,
       );
     });
   });

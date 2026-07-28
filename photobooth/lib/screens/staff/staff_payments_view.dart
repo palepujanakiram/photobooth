@@ -423,16 +423,41 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
     if (!mounted || !ok) return;
 
     final settings = context.read<AppSettingsManager>().settings;
+    final sid = sessionId.trim();
+    final sessionRaw = await _fetchSessionMapForPrint(p);
+    if (!mounted) return;
     final stripUrl = await _resolveStripCompositeUrl(p);
     if (!mounted) return;
+    final single6x4Url = sessionRaw == null
+        ? null
+        : StaffPaymentsSessionImages.composePrimaryImageUrlFromSession(
+            sessionRaw,
+            sessionId: sid,
+          );
+    final classicShotCount = sessionRaw == null
+        ? null
+        : StaffPaymentsSessionImages.classicComposeShotCountFromSession(
+            sessionRaw,
+          );
     for (var i = 0; i < picked.length; i++) {
       if (!mounted) return;
+      final pickedUrl = picked[i];
+      final printSize = sessionRaw == null
+          ? null
+          : StaffPaymentsSessionImages.printSizeForImageUrl(
+              sessionRaw,
+              imageUrl: pickedUrl,
+              sessionId: sid,
+            );
       await staffPaymentsRunPrintJob(
         staffApi: _api,
         printService: _printService,
         settings: settings,
-        imageUrl: picked[i],
+        imageUrl: pickedUrl,
         stripCompositeUrl: stripUrl,
+        single6x4Url: single6x4Url,
+        printSize: printSize,
+        classicComposeShotCount: classicShotCount,
         isMounted: () => mounted,
         onState: ({loading, error, progressMessage}) {
           _applyPrintJobState(
@@ -446,6 +471,20 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
       );
       if (_error != null && _error!.isNotEmpty) return;
     }
+  }
+
+  Future<Map<String, dynamic>?> _fetchSessionMapForPrint(
+    Map<String, dynamic> payment,
+  ) async {
+    final embedded = payment['session'];
+    if (embedded is Map) {
+      return Map<String, dynamic>.from(embedded);
+    }
+    final sid = _sessionId(payment).trim();
+    if (sid.isEmpty) return null;
+    final raw = await _api.fetchSession(sid);
+    if (!mounted || raw == null) return null;
+    return raw;
   }
 
   Future<String?> _resolveStripCompositeUrl(Map<String, dynamic> payment) async {

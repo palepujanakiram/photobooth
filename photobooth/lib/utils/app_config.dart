@@ -53,4 +53,12 @@ class AppConfig {
   /// Set in `photobooth/.env` as `BUGSNAG_API_KEY=…`; release builds pick it up
   /// via `scripts/flutter_with_version.sh` (`--dart-define=BUGSNAG_API_KEY=…`).
   static const String bugsnagApiKey = String.fromEnvironment('BUGSNAG_API_KEY');
+
+  /// Optional override for DNP print routing: `auto`, `usb`, or `wifi`.
+  ///
+  /// When unset, booth `/api/settings` `printerTransport` applies (default `auto`).
+  static const String printerTransportOverride = String.fromEnvironment(
+    'PRINTER_TRANSPORT',
+    defaultValue: '',
+  );
 }

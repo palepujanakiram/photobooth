@@ -9,7 +9,6 @@ import '../../services/receipt_printer_service.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/print_size_helpers.dart';
-import '../../utils/printer_endpoint.dart';
 
 /// Staff payment print flow state updates (Sonar S3776 extraction).
 typedef StaffPaymentsPrintStateSink = void Function({
@@ -113,10 +112,11 @@ Future<void> staffPaymentsRunPrintJob({
   required VoidCallback? onSuccess,
   String? printSize,
   String? stripCompositeUrl,
+  String? single6x4Url,
+  int? classicComposeShotCount,
 }) async {
   onState(loading: true, error: null, progressMessage: 'Preparing image...');
   try {
-    final endpoint = resolvePrinterEndpoint(settings);
     final file = await staffApi.downloadImageToTemp(
       imageUrl,
       onProgress: (m) {
@@ -131,12 +131,14 @@ Future<void> staffPaymentsRunPrintJob({
         : resolveStaffNetworkPrintSize(
             imageUrl: imageUrl,
             stripCompositeUrl: stripCompositeUrl,
+            single6x4Url: single6x4Url,
+            sessionPrintSize: printSize,
+            classicComposeShotCount: classicComposeShotCount,
           );
-    await printService.printImageToNetworkPrinter(
+    printService.resetDnpPrintSession();
+    await printService.printImageSilent(
       file,
-      printerHost: endpoint.host,
-      printerPort: endpoint.port,
-      printerPath: endpoint.path,
+      settings: settings,
       printSize: resolvedSize,
     );
     if (!isMounted()) return;

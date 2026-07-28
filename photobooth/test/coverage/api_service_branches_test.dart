@@ -489,7 +489,7 @@ void main() {
 
   test('composeStrip validates shot count and returns print url', () async {
     expect(
-      () => api.composeStrip(sessionId: 's', images: const ['a']),
+      () => api.composeStrip(sessionId: 's', images: const ['a', 'b']),
       throwsA(isA<ApiException>()),
     );
     final images = List.filled(4, 'data:image/jpeg;base64,abc');
@@ -522,6 +522,26 @@ void main() {
     expect(result.printSize, 's6x2_2');
     expect(result.runId, 'run-compose-1');
     expect(SessionManager().sessionId, 'sess-1');
+
+    adapter.onPost(
+      '/api/sessions/sess-single/strip/compose',
+      (server) => server.reply(200, {
+        'imageUrl': 'https://example.com/single6x4.jpg',
+        'stripCompositeUrl': 'https://example.com/composite.jpg',
+        'filter': 'mono',
+        'printSize': 's6x2_2',
+        'copiesOnSheet': 2,
+      }),
+      data: Matchers.any,
+    );
+    final single = await api.composeStrip(
+      sessionId: 'sess-single',
+      images: const ['data:image/jpeg;base64,one'],
+      filter: 'mono',
+    );
+    expect(single.printSize, 's6x4');
+    expect(single.copiesOnSheet, 1);
+    expect(single.printImageUrl, 'https://example.com/single6x4.jpg');
   });
 
   test('composeStrip surfaces API failure and empty image', () async {

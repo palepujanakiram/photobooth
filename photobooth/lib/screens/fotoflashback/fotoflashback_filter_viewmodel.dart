@@ -8,6 +8,7 @@ import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/print_size_helpers.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
 
@@ -474,11 +475,16 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
             AppConstants.kEnableStripOverlayCleanup && !_previewCleaned,
       );
       _composeResult = result;
+      final printSize = resolveClassicComposePrintSize(
+        imageCount: _imageDataUrls.length,
+        apiPrintSize: result.printSize,
+      );
       return GeneratedImage(
         id: 'strip_${result.filter}_${DateTime.now().millisecondsSinceEpoch}',
         imageUrl: result.printImageUrl,
         theme: theme,
         isSelected: true,
+        printSize: printSize,
       );
     } on ApiException catch (e) {
       _errorMessage = e.message;

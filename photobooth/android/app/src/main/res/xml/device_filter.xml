@@ -4,5 +4,7 @@
     <usb-device class="239" subclass="2" />
     <!-- USB video class — many HDMI capture cards / webcams on Android TV. -->
     <usb-device class="14" />
+    <!-- DNP DS-RX1 / DS-RX1HS dye-sub printer (VID 0x1343, PID 0x0005). -->
+    <usb-device vendor-id="4931" product-id="5" />
 </resources>
 

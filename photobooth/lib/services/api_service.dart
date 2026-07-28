@@ -770,7 +770,10 @@ class ApiService {
           r.statusCode,
         );
       }
-      final result = StripComposeResult.fromJson(map);
+      final result = StripComposeResult.fromJson(
+        map,
+        composeImageCount: images.length,
+      );
       if (result.imageUrl.trim().isEmpty) {
         throw ApiException('Strip compose returned no image URL');
       }

@@ -148,7 +148,7 @@ void main() {
     expect(empty.copiesOnSheet, 2);
   });
 
-  test('StripComposeResult prefers stripCompositeUrl for print', () {
+  test('StripComposeResult prefers stripCompositeUrl for dual strip', () {
     final result = StripComposeResult.fromJson({
       'imageUrl': 'https://example.com/a.jpg',
       'stripCompositeUrl': 'https://example.com/b.jpg',
@@ -158,7 +158,7 @@ void main() {
       'width': 1200,
       'height': 1800,
       'copiesOnSheet': 2,
-      'printSize': 's4x6',
+      'printSize': 's6x2_2',
       'runId': 'run-strip-1',
     });
     expect(result.printImageUrl, 'https://example.com/b.jpg');
@@ -168,6 +168,36 @@ void main() {
     expect(result.width, 1200);
     expect(result.height, 1800);
     expect(result.runId, 'run-strip-1');
+  });
+
+  test('StripComposeResult single 6×4 uses imageUrl not composite', () {
+    final result = StripComposeResult.fromJson(
+      {
+        'imageUrl': 'https://example.com/single6x4.jpg',
+        'stripCompositeUrl': 'https://example.com/dual-strip.jpg',
+        'filter': 'classic_warm',
+        'printSize': 's6x2_2',
+        'copiesOnSheet': 2,
+        'width': 1800,
+        'height': 1200,
+      },
+      composeImageCount: 1,
+    );
+    expect(result.printSize, AppConstants.kPrintSizeLandscape6x4);
+    expect(result.copiesOnSheet, 1);
+    expect(result.printImageUrl, 'https://example.com/single6x4.jpg');
+    expect(result.imageUrl, 'https://example.com/single6x4.jpg');
+  });
+
+  test('StripComposeResult portrait s4x6 uses imageUrl not composite', () {
+    final result = StripComposeResult.fromJson({
+      'imageUrl': 'https://example.com/a.jpg',
+      'stripCompositeUrl': 'https://example.com/b.jpg',
+      'filter': 'candy_pop',
+      'printSize': 's4x6',
+      'copiesOnSheet': 1,
+    });
+    expect(result.printImageUrl, 'https://example.com/a.jpg');
   });
 
   test('StripComposeResult falls back to imageUrl', () {

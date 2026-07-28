@@ -2,8 +2,10 @@ import 'package:flutter/cupertino.dart';
 
 import '../../utils/constants.dart';
 import '../../views/widgets/app_colors.dart';
+import '../../models/kiosk_device_status.dart';
 import 'app_splash_copy_helpers.dart';
 import 'bootstrap_route_args.dart';
+import 'kiosk_device_status_widgets.dart';
 
 /// Branded card + kiosk form region (Sonar S3776 extraction from [AppSplashScreen]).
 class AppSplashScreenBody extends StatelessWidget {
@@ -26,6 +28,8 @@ class AppSplashScreenBody extends StatelessWidget {
     required this.buildCodeOrScanRow,
     required this.onSubmitCode,
     required this.onStaffLogin,
+    this.deviceStatusLoading = false,
+    this.deviceStatus,
   });
 
   final SplashRouteArgs args;
@@ -45,6 +49,8 @@ class AppSplashScreenBody extends StatelessWidget {
   final Widget Function(bool showManageSummary) buildCodeOrScanRow;
   final VoidCallback onSubmitCode;
   final VoidCallback onStaffLogin;
+  final bool deviceStatusLoading;
+  final KioskDeviceStatusSnapshot? deviceStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -98,6 +104,8 @@ class AppSplashScreenBody extends StatelessWidget {
                                   busy: busy,
                                   onManageEdit: onManageEdit,
                                   onDisconnect: onDisconnect,
+                                  deviceStatusLoading: deviceStatusLoading,
+                                  deviceStatus: deviceStatus,
                                 ),
                               if (showForm)
                                 _AppSplashKioskForm(
@@ -191,6 +199,8 @@ class _AppSplashManageSummary extends StatelessWidget {
     required this.busy,
     required this.onManageEdit,
     required this.onDisconnect,
+    this.deviceStatusLoading = false,
+    this.deviceStatus,
   });
 
   final AppColors appColors;
@@ -198,6 +208,8 @@ class _AppSplashManageSummary extends StatelessWidget {
   final bool busy;
   final VoidCallback onManageEdit;
   final VoidCallback onDisconnect;
+  final bool deviceStatusLoading;
+  final KioskDeviceStatusSnapshot? deviceStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -261,6 +273,11 @@ class _AppSplashManageSummary extends StatelessWidget {
               ),
             ),
           ],
+        ),
+        KioskDeviceStatusPanel(
+          appColors: appColors,
+          loading: deviceStatusLoading,
+          snapshot: deviceStatus,
         ),
       ],
     );
