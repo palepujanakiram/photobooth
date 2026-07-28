@@ -45,7 +45,6 @@ void main() {
     expect(stripPreviewFrameColor('grid_2x2'), const Color(0xFFFFFAF5));
     expect(stripPreviewFrameColor('filmstrip'), const Color(0xFF0A0A0A));
     expect(stripPreviewFrameColor('romantic'), Colors.white);
-    expect(stripPreviewFrameColor('plain_6x4'), Colors.white);
     expect(stripPreviewFrameAccent('classic'), isNull);
     expect(stripPreviewFrameAccent('noir'), isNotNull);
     expect(stripPreviewFrameAccent('polaroid'), isNotNull);

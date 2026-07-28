@@ -1,23 +1,27 @@
 import 'package:flutter/material.dart';
 
-import '../models/strip_models.dart';
 import '../screens/theme_selection/theme_model.dart';
 import 'app_strings.dart';
+import 'classic_shot_mode.dart';
 import 'constants.dart';
 import 'route_args.dart';
 
-/// Navigates into FotoFlashback multi-shot POSE (skips frames + Gemini).
+/// Navigates into Classic / FotoFlashback POSE (skips AI themes + Gemini).
 Future<void> navigateToFotoFlashbackCapture({
   required BuildContext context,
   required ThemeModel theme,
   bool replace = false,
+  ClassicShotMode shotMode = ClassicShotMode.fourShot,
 }) async {
   if (!context.mounted) return;
+  final total = shotMode.shotCount;
   final args = CaptureRouteArgs(
     returnPhotoOnly: true,
-    multiShotTotal: kStripShotCount,
+    multiShotTotal: total,
     flashbackTheme: theme,
-    subtitleHint: AppStrings.flashbackShotProgress(1, kStripShotCount),
+    subtitleHint: shotMode.isSingle6x4
+        ? AppStrings.flashbackSingle6x4Title
+        : AppStrings.flashbackShotProgress(1, total),
   );
   if (replace) {
     await Navigator.of(context).pushReplacementNamed(
