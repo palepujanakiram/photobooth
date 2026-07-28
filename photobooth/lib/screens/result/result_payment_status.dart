@@ -27,6 +27,15 @@ class ResultPaymentStatusPresentation {
       );
     }
     if (paymentSucceeded) {
+      final printFailed = !kIsWeb &&
+          viewModel.hasError &&
+          (viewModel.errorMessage?.isNotEmpty ?? false);
+      if (printFailed) {
+        return ResultPaymentStatusPresentation(
+          statusMessage: 'Payment confirmed. Print needs attention.',
+          statusMessageColor: Colors.orange.shade200,
+        );
+      }
       return ResultPaymentStatusPresentation(
         statusMessage: kIsWeb
             ? 'Payment confirmed. Preparing your digital copy…'

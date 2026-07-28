@@ -105,13 +105,24 @@ Dio createPrinterApiDio(String baseUrl) {
 /// the JPEG (common on DNP/WCM: slow HTTP response, connection reset after
 /// accept, or no CORS body). Treat as success so kiosk UI matches physical output.
 bool lanPrintResponseUncertainButJobLikelySent(DioException e) {
-  if (e.type == DioExceptionType.receiveTimeout) return true;
-  if (e.type != DioExceptionType.connectionError) return false;
+  if (e.type == DioExceptionType.receiveTimeout ||
+      e.type == DioExceptionType.sendTimeout) {
+    return true;
+  }
+  if (e.type != DioExceptionType.connectionError &&
+      e.type != DioExceptionType.unknown) {
+    return false;
+  }
   final msg = '${e.message ?? ''} ${e.error ?? ''}'.toLowerCase();
   return msg.contains('connection reset') ||
       msg.contains('connection closed') ||
       msg.contains('broken pipe') ||
-      msg.contains('software caused connection abort');
+      msg.contains('software caused connection abort') ||
+      msg.contains('stream closed') ||
+      msg.contains('connection abort') ||
+      msg.contains('socketexception') ||
+      msg.contains('http connection was closed') ||
+      msg.contains('unexpected end of stream');
 }
 
 Future<void> postNetworkPrintMultipart({

@@ -488,7 +488,20 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   }
 
   Future<void> _awaitSilentPrintInflight() async {
-    final job = _r._silentPrintInflight;
+    var job = _r._silentPrintInflight;
+    // [startPostPaymentPrintIfNeeded] marks started before assigning inflight.
+    if (job == null && _r._postPaymentPrintStarted) {
+      for (var i = 0; i < 40 && job == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+        job = _r._silentPrintInflight;
+        final phase = _r._printProgress.phase;
+        if (phase == PrintProgressPhase.complete ||
+            phase == PrintProgressPhase.failed ||
+            phase == PrintProgressPhase.skipped) {
+          return;
+        }
+      }
+    }
     if (job == null) return;
     try {
       await job.timeout(const Duration(minutes: 6));
@@ -1396,14 +1409,28 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         }
       }
       if (anyFailed) {
-        _r._errorMessage = lastError ?? AppStrings.printFailedGeneric;
-        _failPrintProgress(_r._errorMessage!);
+        final msg = lastError ?? AppStrings.printFailedGeneric;
+        // Do not surface a failure if LAN already accepted a page (finishing/complete).
+        if (shouldApplyPrintFailure(_r._printProgress)) {
+          _r._errorMessage = msg;
+          _failPrintProgress(msg);
+        } else {
+          _r._errorMessage = null;
+          if (!_r._printProgress.isComplete) {
+            _completePrintProgress(totalPages: _r._generatedImages.length);
+          }
+        }
       } else {
+        _r._errorMessage = null;
         _completePrintProgress(totalPages: _r._generatedImages.length);
       }
     } on PrintException catch (e, st) {
-      _r._errorMessage = e.message;
-      _failPrintProgress(e.message);
+      if (shouldApplyPrintFailure(_r._printProgress)) {
+        _r._errorMessage = e.message;
+        _failPrintProgress(e.message);
+      } else {
+        _r._errorMessage = null;
+      }
       unawaited(
         reportIssue(
           'Silent network print failed',
@@ -1413,8 +1440,12 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         ),
       );
     } catch (e, st) {
-      _r._errorMessage = AppStrings.printFailedGeneric;
-      _failPrintProgress(AppStrings.printFailedGeneric);
+      if (shouldApplyPrintFailure(_r._printProgress)) {
+        _r._errorMessage = AppStrings.printFailedGeneric;
+        _failPrintProgress(AppStrings.printFailedGeneric);
+      } else {
+        _r._errorMessage = null;
+      }
       unawaited(
         reportIssue(
           'Silent network print failed',

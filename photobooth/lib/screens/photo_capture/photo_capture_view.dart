@@ -42,7 +42,6 @@ import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
 import '../../utils/route_args.dart';
 import '../../utils/surprise_me_helpers.dart';
-import '../../utils/fotoflashback_single_6x4_helpers.dart';
 import '../../utils/uvc_capture_config.dart';
 import '../theme_selection/theme_model.dart';
 import '../../services/app_settings_manager.dart';
@@ -50,7 +49,6 @@ import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/uvc_device_event_hub.dart';
 import '../../services/uvc_session_coordinator.dart';
 import '../../views/widgets/app_colors.dart';
-import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/centered_max_width.dart';
 import 'photo_capture_rotation_screen.dart';
 import '../../services/hardware_key_service.dart';
@@ -347,9 +345,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   bool get _isFlashbackFourShot =>
       _isFlashbackMultiShot && _multiShotTotal! > 1;
 
-  bool get _isFlashbackSingle6x4 =>
-      _isFlashbackMultiShot && _multiShotTotal == 1;
-
   bool get _flashbackCameraReady => _isUsingUvc
       ? (_uvcReadyForCapture && !_uvcCaptureInFlight)
       : _captureViewModel.isReady;
@@ -408,7 +403,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _stripShots.add(photo);
       _syncFlashbackSubtitle();
     });
-    if (_stripShots.length == 1 && _isFlashbackFourShot) {
+    // Kick off Surprise Me on the first accepted Classic shot (1- or 4-shot).
+    // Look-picker time covers latency for 1-shot; shots 2–4 cover it for strips.
+    if (_stripShots.length == 1 && _isFlashbackMultiShot) {
       final enableSurprise = context
               .read<AppSettingsManager>()
               .settings
@@ -441,23 +438,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }
       if (!mounted) return;
 
-      if (_isFlashbackSingle6x4 && dataUrls.length == 1) {
-        unawaited(_releaseCaptureHardware());
-        final err = await finishClassicSingle6x4(
-          context: context,
-          theme: theme,
-          imageDataUrl: dataUrls.first,
-        );
-        if (!mounted) return;
-        if (err != null) {
-          setState(() => _stripFinishing = false);
-          _navigatingAwayFromCapture = false;
-          AppSnackBar.showError(context, err);
-        }
-        return;
-      }
-
-      if (dataUrls.length != kStripShotCount) {
+      final shotOk = dataUrls.length == 1 || dataUrls.length == kStripShotCount;
+      if (!shotOk) {
         setState(() => _stripFinishing = false);
         _navigatingAwayFromCapture = false;
         return;
@@ -3124,9 +3106,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final continueLabel = !multi
         ? (viewModel.isPreparingUploadPayload ? 'Preparing…' : 'Continue')
         : (isLastStripShot
-            ? (_isFlashbackSingle6x4
-                ? AppStrings.flashbackComposeCta
-                : AppStrings.flashbackContinueLooks)
+            ? AppStrings.flashbackContinueLooks
             : AppStrings.flashbackNextShot);
     return SizedBox(
       width: double.infinity,
@@ -3169,9 +3149,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             child: (viewModel.isUploading || _stripFinishing)
                 ? Text(
                     _stripFinishing
-                        ? (_isFlashbackSingle6x4
-                            ? AppStrings.flashbackComposingSingle
-                            : AppStrings.flashbackComposing)
+                        ? AppStrings.flashbackPreparingPreview
                         : 'Processing…',
                   )
                 : Text(continueLabel),

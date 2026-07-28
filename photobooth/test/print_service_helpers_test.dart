@@ -33,6 +33,31 @@ void main() {
       );
     });
 
+    test('unknown SocketException reset means job likely accepted', () {
+      expect(
+        lanPrintResponseUncertainButJobLikelySent(
+          DioException(
+            requestOptions: RequestOptions(path: '/api/PrintImage'),
+            type: DioExceptionType.unknown,
+            error: Exception('SocketException: Connection reset by peer'),
+          ),
+        ),
+        isTrue,
+      );
+    });
+
+    test('sendTimeout means job likely accepted', () {
+      expect(
+        lanPrintResponseUncertainButJobLikelySent(
+          DioException(
+            requestOptions: RequestOptions(path: '/api/PrintImage'),
+            type: DioExceptionType.sendTimeout,
+          ),
+        ),
+        isTrue,
+      );
+    });
+
     test('connection refused is a real failure', () {
       expect(
         lanPrintResponseUncertainButJobLikelySent(
