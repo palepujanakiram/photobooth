@@ -38,5 +38,17 @@ void main() {
     expect(AppStrings.resultPrintCopiesEach(3), '3 copies each');
     expect(AppStrings.resultPrintSheetsLine(1), '1 print total');
     expect(AppStrings.resultPrintSheetsLine(4), '4 prints total');
+    expect(
+      AppStrings.flashbackReviewHoldStatus(isLastShot: false, secondsLeft: 8),
+      'Getting ready for the next shot…  8',
+    );
+    expect(
+      AppStrings.flashbackReviewHoldStatus(isLastShot: true, secondsLeft: 3),
+      'Looking good! Continuing soon…  3',
+    );
+    expect(
+      AppStrings.flashbackReviewHoldStatus(isLastShot: false, secondsLeft: 0),
+      AppStrings.flashbackGettingReadyNextShot,
+    );
   });
 }
