@@ -230,7 +230,7 @@ void main() {
                     additionalPrintPrice: 75,
                     apiService: api,
                   );
-                  Navigator.of(context).pop(image?.theme.name);
+                  Navigator.of(context).pop(image?.image?.theme.name);
                 },
                 child: const Text('go'),
               );
