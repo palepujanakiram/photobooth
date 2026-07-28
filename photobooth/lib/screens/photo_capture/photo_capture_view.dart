@@ -19,6 +19,7 @@ import 'photo_capture_uvc_raster_capture.dart';
 import 'photo_capture_uvc_take_picture_helpers.dart';
 import 'photo_capture_uvc_shutter_helpers.dart';
 import 'photo_capture_desktop_body.dart';
+import 'photo_capture_body_phase.dart';
 import 'photo_capture_view_aspect.dart';
 import 'photo_capture_view_handlers.dart';
 import 'photo_capture_exit_handlers.dart';
@@ -928,7 +929,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       forceRefresh: forceRefresh,
     );
     if (!mounted) return;
-    if (!_uvcFeedIsHealthy &&
+
+    final uploadAllowed = context.read<AppSettingsManager>().settings
+            ?.photoUploadAllowed ==
+        true;
+    final camerasEmpty = _captureViewModel.availableCameras.isEmpty;
+    final skipUvcProbe = !shouldProbeUvcAfterNoCameraX(
+      photoUploadAllowed: uploadAllowed,
+      camerasEmpty: camerasEmpty,
+      uvcFeedHealthy: _uvcFeedIsHealthy,
+      cameraReady: _captureViewModel.isReady,
+    );
+
+    if (skipUvcProbe) {
+      _stopUvcEntryProbe();
+      _uvcTvProbeTimer?.cancel();
+      _uvcTvProbeTimer = null;
+    } else if (!_uvcFeedIsHealthy &&
         !_captureViewModel.isReady &&
         !_captureViewModel.isLoadingCameras &&
         !_captureViewModel.isInitializing &&
@@ -938,7 +955,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     } else {
       _stopUvcEntryProbe();
     }
-    _startUvcTvProbeIfNeeded();
+    if (!skipUvcProbe) {
+      _startUvcTvProbeIfNeeded();
+    }
     await _reportCaptureScreenNoCameraIfNeeded();
   }
 
@@ -2408,18 +2427,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   bool _isCapturePreviewStarting(CaptureViewModel viewModel) {
-    if (viewModel.capturedPhoto != null) return false;
-    if (viewModel.isDesktopCaptureMode) return viewModel.isLoadingCameras;
-    if (viewModel.isLoadingCameras || viewModel.isInitializing) return true;
-    if (_isUsingUvc) {
-      if (_uvcInitializing || _uvcOpeningController) return true;
-      final ctrl = _uvcController;
-      return ctrl == null || !ctrl.value.isInitialized;
-    }
-    if (viewModel.availableCameras.isEmpty && !viewModel.hasError) {
-      return viewModel.isLoadingCameras || viewModel.isInitializing;
-    }
-    return !viewModel.isReady;
+    return isCapturePreviewStarting(
+      hasCapturedPhoto: viewModel.capturedPhoto != null,
+      isDesktopCaptureMode: viewModel.isDesktopCaptureMode,
+      isLoadingCameras: viewModel.isLoadingCameras,
+      isInitializing: viewModel.isInitializing,
+      isUsingUvc: _isUsingUvc,
+      uvcInitializing: _uvcInitializing,
+      uvcOpeningController: _uvcOpeningController,
+      uvcControllerReady: _uvcController?.value.isInitialized == true,
+      camerasEmpty: viewModel.availableCameras.isEmpty,
+      isReady: viewModel.isReady,
+    );
   }
 
   Widget _buildCaptureBodyContent(
@@ -2459,46 +2478,60 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       );
     }
 
+    final phase = resolveCaptureBodyPhase(
+      isPreviewStarting: _isCapturePreviewStarting(viewModel),
+      camerasEmpty: viewModel.availableCameras.isEmpty,
+      hasError: viewModel.hasError,
+      isUsingUvc: _isUsingUvc,
+      hasCapturedPhoto: viewModel.capturedPhoto != null,
+      isSelectingFromGallery: viewModel.isSelectingFromGallery,
+    );
+
     final Widget body;
-    final String phase;
-    if (_isCapturePreviewStarting(viewModel)) {
-      const startingMessage = AppStrings.captureStartingPreview;
-      phase = 'starting-$startingMessage';
-      body = _buildStartingCameraState(message: startingMessage);
-    } else if (viewModel.availableCameras.isEmpty &&
-        !viewModel.hasError &&
-        !_isUsingUvc) {
-      phase = 'no-cameras';
-      body = _buildNoCamerasYetState(context, viewModel);
-    } else if (viewModel.hasError &&
-        viewModel.capturedPhoto == null &&
-        !_isUsingUvc) {
-      phase = 'error';
-      body = _buildCaptureFatalErrorState(context, viewModel);
-    } else {
-      final previewWidget = viewModel.isSelectingFromGallery
-          ? buildGallerySelectionPlaceholder()
-          : _isUsingUvc
-              ? _buildUvcPreview(context, viewModel)
-              : _buildCameraPreviewWithRotation(context, viewModel);
-      final hasCapturedPhoto = viewModel.capturedPhoto != null;
-      phase = hasCapturedPhoto ? 'captured' : 'live';
-      body = Padding(
-        padding: const EdgeInsets.only(left: 12, right: 12),
-        child: _buildCaptureColumn(
-          context: context,
-          viewModel: viewModel,
-          hasCapturedPhoto: hasCapturedPhoto,
-          previewWidget: previewWidget,
-        ),
-      );
+    final String phaseKey;
+    switch (phase) {
+      case CaptureBodyPhase.starting:
+        const startingMessage = AppStrings.captureStartingPreview;
+        phaseKey = 'starting-$startingMessage';
+        body = _buildStartingCameraState(message: startingMessage);
+      case CaptureBodyPhase.noCameras:
+        phaseKey = 'no-cameras';
+        body = _buildNoCamerasYetState(context, viewModel);
+      case CaptureBodyPhase.error:
+        phaseKey = 'error';
+        body = _buildCaptureFatalErrorState(context, viewModel);
+      case CaptureBodyPhase.live:
+        final hasCapturedPhoto = viewModel.capturedPhoto != null;
+        final Widget previewWidget;
+        if (viewModel.isSelectingFromGallery) {
+          previewWidget = buildGallerySelectionPlaceholder();
+        } else if (hasCapturedPhoto) {
+          // Review still — never mount CameraPreview without a controller.
+          previewWidget = const SizedBox.shrink();
+        } else if (_isUsingUvc) {
+          previewWidget = _buildUvcPreview(context, viewModel);
+        } else if (viewModel.cameraController == null) {
+          previewWidget = _buildNoCamerasYetState(context, viewModel);
+        } else {
+          previewWidget = _buildCameraPreviewWithRotation(context, viewModel);
+        }
+        phaseKey = hasCapturedPhoto ? 'captured' : 'live';
+        body = Padding(
+          padding: const EdgeInsets.only(left: 12, right: 12),
+          child: _buildCaptureColumn(
+            context: context,
+            viewModel: viewModel,
+            hasCapturedPhoto: hasCapturedPhoto,
+            previewWidget: previewWidget,
+          ),
+        );
     }
 
     return AnimatedSwitcher(
       duration: kIsWeb ? Duration.zero : const Duration(milliseconds: 200),
       switchInCurve: Curves.easeOut,
       child: KeyedSubtree(
-        key: ValueKey<String>(phase),
+        key: ValueKey<String>(phaseKey),
         child: body,
       ),
     );

@@ -33,14 +33,16 @@ const List<String> kStripFrameIds = [
   'grid_2x2',
   'filmstrip',
   'romantic',
+  'plain_6x4',
 ];
 
-/// Single 4×6 sheet layouts (print `s4x6`) vs dual 2×6 chrome (`s6x2_2`).
+/// Single-sheet layouts (print `s4x6` or landscape `s6x4`) vs dual 2×6 chrome
+/// (`s6x2_2`). Filmstrip is dual chrome, not a sheet layout.
 const List<String> kStripSheetLayoutIds = [
   'polaroid',
   'grid_2x2',
-  'filmstrip',
   'romantic',
+  'plain_6x4',
 ];
 
 bool isStripSheetLayout(String frameId) =>

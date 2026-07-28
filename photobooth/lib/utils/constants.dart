@@ -135,8 +135,8 @@ class AppConstants {
   /// AI themes must keep using [kPrintSizePortrait4x6] / [kPrintSizeLandscape6x4].
   static const String kPrintSizeStripDual2x6 = 's6x2_2';
 
-  /// When true, polish strip shots (HUD/AF inpaint + Gemini). Off while DSLR is MF.
-  static const bool kEnableStripOverlayCleanup = false;
+  /// When true, polish strip shots (HUD/AF inpaint + Gemini).
+  static const bool kEnableStripOverlayCleanup = true;
 
   /// BEHOLD single-result hero: width cap on landscape / desktop (wider than capture kiosk).
   static const double kBeholdResultCardMaxWidthFractionLandscape = 0.52;
@@ -237,7 +237,7 @@ class AppConstants {
 
   /// Brief hold on the just-taken Classic shot before auto-continuing.
   /// Tap Retake during this window (or Retake last on the next countdown).
-  static const Duration kFlashbackShotReviewDuration = Duration(seconds: 2);
+  static const Duration kFlashbackShotReviewDuration = Duration(seconds: 8);
 
   /// POSE screen: return to Terms after this much user inactivity (live feed or review).
   static const Duration kCaptureScreenIdleResetDuration = Duration(minutes: 3);

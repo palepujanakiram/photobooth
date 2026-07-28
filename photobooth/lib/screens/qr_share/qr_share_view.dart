@@ -80,9 +80,10 @@ class _QrShareScreenState extends State<QrShareScreen> {
 
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
-      // Don't count down (or wipe) while LAN print is still sending pages.
-      if (_viewModel?.isSilentPrinting == true ||
-          _viewModel?.printProgress.isActive == true) {
+      // Pause only while pages are still uploading to the printer.
+      // Do not wait on "finishing" / silentPrinting forever — that hung the
+      // 60s reset to Terms after payment.
+      if (_viewModel?.printProgress.blocksQrShareIdleCountdown == true) {
         return;
       }
       if (_secondsLeft <= 1) {

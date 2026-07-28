@@ -33,6 +33,12 @@ class PrintProgressSnapshot {
       phase == PrintProgressPhase.sending ||
       phase == PrintProgressPhase.finishing;
 
+  /// QR-share idle countdown should only pause while bytes are still uploading.
+  /// [finishing] can hang waiting on printer firmware — do not block reset forever.
+  bool get blocksQrShareIdleCountdown =>
+      phase == PrintProgressPhase.preparing ||
+      phase == PrintProgressPhase.sending;
+
   bool get isComplete => phase == PrintProgressPhase.complete;
 
   bool get isFailed => phase == PrintProgressPhase.failed;
