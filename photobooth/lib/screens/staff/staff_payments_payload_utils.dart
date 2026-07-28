@@ -67,12 +67,12 @@ abstract final class StaffPaymentsPayloadUtils {
   }
 
   static const List<String> paymentThumbUrlKeys = [
-    'latestImageUrl',
-    'latest_image_url',
     'stripCompositeUrl',
     'strip_composite_url',
     'surpriseImageUrl',
     'surprise_image_url',
+    'latestImageUrl',
+    'latest_image_url',
     'thumbnailUrl',
     'thumbUrl',
     'imageUrl',
@@ -175,12 +175,12 @@ abstract final class StaffPaymentsPayloadUtils {
     required String sessionId,
   }) {
     for (final key in const [
-      'latestImageUrl',
-      'latest_image_url',
       'stripCompositeUrl',
       'strip_composite_url',
       'surpriseImageUrl',
       'surprise_image_url',
+      'latestImageUrl',
+      'latest_image_url',
       'outputImageUrl',
       'output_image_url',
       'userImagePreviewUrl',
@@ -204,8 +204,7 @@ abstract final class StaffPaymentsPayloadUtils {
       }
     }
 
-    final captured =
-        raw['capturedImages'] ?? raw['captured_images'];
+    final captured = raw['capturedImages'] ?? raw['captured_images'];
     if (captured is List && captured.isNotEmpty) {
       for (final shot in captured) {
         if (shot is String && looksLikeUrl(shot)) {
@@ -261,12 +260,21 @@ abstract final class StaffPaymentsPayloadUtils {
     return pickString(raw, const ['userImageUrl', 'user_image_url']);
   }
 
-  /// Thumbnail URL from a staff payment row (flat fields, then nested session).
+  /// Prefer first `sessionImages` entry (strip before AI) for the row thumb.
   static String? resolvePaymentThumbUrl(
     Map<String, dynamic> payment, {
     required String sessionId,
   }) {
     final sid = sessionId.trim();
+    final fromList = payment['sessionImages'] ?? payment['session_images'];
+    if (fromList is List && fromList.isNotEmpty) {
+      for (final entry in fromList) {
+        if (entry is! String) continue;
+        final n = normalizeImageUrl(entry, sessionId: sid.isEmpty ? null : sid);
+        if (n.isNotEmpty) return n;
+      }
+    }
+
     final direct = pickString(payment, paymentThumbUrlKeys);
     if (direct.isNotEmpty) {
       return normalizeImageUrl(direct, sessionId: sid.isEmpty ? null : sid);

@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
+import '../../services/staff_api_service.dart';
+import '../../services/staff_session_manager.dart';
 import '../../utils/error_reporting_helpers.dart';
 import '../../utils/exceptions.dart';
 
@@ -11,12 +13,18 @@ class TransformationDetailsViewModel extends ChangeNotifier {
   TransformationDetailsViewModel({
     required this.runId,
     ApiService? apiService,
+    StaffApiService? staffApiService,
+    StaffSessionManager? staffSessionManager,
     SessionManager? sessionManager,
   })  : _apiService = apiService ?? ApiService(),
+        _staffApiService = staffApiService ?? StaffApiService(),
+        _staffSessionManager = staffSessionManager ?? StaffSessionManager(),
         _sessionManager = sessionManager ?? SessionManager();
 
   final String runId;
   final ApiService _apiService;
+  final StaffApiService _staffApiService;
+  final StaffSessionManager _staffSessionManager;
   final SessionManager _sessionManager;
 
   /// Active kiosk session when the API omits `run.sessionId`.
@@ -35,7 +43,7 @@ class TransformationDetailsViewModel extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
     try {
-      _payload = await _apiService.fetchGenerationRun(runId);
+      _payload = await _fetchRun(runId);
     } on ApiException catch (e) {
       _errorMessage = e.userFacingMessage;
       _payload = null;
@@ -54,5 +62,14 @@ class TransformationDetailsViewModel extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     }
+  }
+
+  /// Prefer staff token when logged in (payments → View details); else kiosk auth.
+  Future<Map<String, dynamic>> _fetchRun(String id) async {
+    final staffToken = await _staffSessionManager.getToken();
+    if (staffToken != null && staffToken.isNotEmpty) {
+      return _staffApiService.fetchGenerationRun(id);
+    }
+    return _apiService.fetchGenerationRun(id);
   }
 }

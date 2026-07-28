@@ -106,4 +106,37 @@ void main() {
       ),
     );
   });
+
+  test('fetchGenerationRun returns map with staff token', () async {
+    expect(
+      () => api.fetchGenerationRun(' '),
+      throwsA(isA<ApiException>()),
+    );
+    adapter.onGet(
+      '/api/generation-runs/run-9',
+      (s) => s.reply(200, {'id': 'run-9', 'status': 'ok'}),
+    );
+    final run = await api.fetchGenerationRun('run-9');
+    expect(run['id'], 'run-9');
+    expect(run['status'], 'ok');
+  });
+
+  test('fetchGenerationRun maps HTTP error body', () async {
+    adapter.onGet(
+      '/api/generation-runs/run-missing',
+      (s) => s.reply(403, {
+        'error': 'Session does not belong to this kiosk client',
+      }),
+    );
+    expect(
+      () => api.fetchGenerationRun('run-missing'),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.message,
+          'message',
+          contains('Session does not belong'),
+        ),
+      ),
+    );
+  });
 }

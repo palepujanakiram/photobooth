@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -11,22 +12,31 @@ import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_run_id.dart';
 import '../transformation_details/transformation_details_view.dart';
 
-/// Opens a full-screen pinch/zoom preview for a staff payment thumbnail.
+/// Opens a full-screen pinch/zoom preview for staff payment photo(s).
 void staffPaymentShowImagePreview(
   BuildContext context, {
   required String imageUrl,
+  List<String>? imageUrls,
   String? sessionId,
   String? title,
   String? subtitle,
   String? transformationRunId,
 }) {
-  final url = imageUrl.trim();
-  if (url.isEmpty) return;
+  final urls = <String>[];
+  for (final u in imageUrls ?? const <String>[]) {
+    final t = u.trim();
+    if (t.isNotEmpty && !urls.contains(t)) urls.add(t);
+  }
+  final single = imageUrl.trim();
+  if (single.isNotEmpty && !urls.contains(single)) {
+    urls.insert(0, single);
+  }
+  if (urls.isEmpty) return;
   Navigator.of(context).push<void>(
     MaterialPageRoute<void>(
       fullscreenDialog: true,
       builder: (ctx) => StaffPaymentImagePreviewScreen(
-        imageUrl: url,
+        imageUrls: urls,
         sessionId: sessionId,
         title: title,
         subtitle: subtitle,
@@ -83,14 +93,15 @@ Future<Uint8List?> staffPaymentLoadImageBytes({
 class StaffPaymentImagePreviewScreen extends StatefulWidget {
   const StaffPaymentImagePreviewScreen({
     super.key,
-    required this.imageUrl,
+    required this.imageUrls,
     this.sessionId,
     this.title,
     this.subtitle,
     this.transformationRunId,
   });
 
-  final String imageUrl;
+  /// One or more session deliverables (strip, Surprise Me, AI looks, …).
+  final List<String> imageUrls;
   final String? sessionId;
   final String? title;
   final String? subtitle;
@@ -103,31 +114,53 @@ class StaffPaymentImagePreviewScreen extends StatefulWidget {
 
 class _StaffPaymentImagePreviewScreenState
     extends State<StaffPaymentImagePreviewScreen> {
-  Uint8List? _bytes;
-  bool _failed = false;
+  final Map<int, Uint8List> _bytesByIndex = {};
+  final Set<int> _failedIndexes = {};
+  final Set<int> _loadingIndexes = {};
   String? _runId;
+  int _pageIndex = 0;
+  late final PageController _pageController;
 
   @override
   void initState() {
     super.initState();
     final seeded = widget.transformationRunId?.trim();
     _runId = (seeded != null && seeded.isNotEmpty) ? seeded : null;
-    _load();
+    _pageController = PageController();
+    _loadPage(0);
+    unawaited(_resolveRunId().then((runId) {
+      if (!mounted) return;
+      if (runId != null && runId.isNotEmpty) {
+        setState(() => _runId = runId);
+      }
+    }));
   }
 
-  Future<void> _load() async {
-    final bytesFuture = staffPaymentLoadImageBytes(
-      imageUrl: widget.imageUrl,
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadPage(int index) async {
+    if (index < 0 || index >= widget.imageUrls.length) return;
+    if (_bytesByIndex.containsKey(index) || _loadingIndexes.contains(index)) {
+      return;
+    }
+    _loadingIndexes.add(index);
+    final bytes = await staffPaymentLoadImageBytes(
+      imageUrl: widget.imageUrls[index],
       sessionId: widget.sessionId,
     );
-    final runFuture = _resolveRunId();
-    final bytes = await bytesFuture;
-    final runId = await runFuture;
     if (!mounted) return;
+    _loadingIndexes.remove(index);
     setState(() {
-      _bytes = bytes;
-      _failed = bytes == null;
-      if (runId != null && runId.isNotEmpty) _runId = runId;
+      if (bytes == null || bytes.isEmpty) {
+        _failedIndexes.add(index);
+      } else {
+        _bytesByIndex[index] = bytes;
+        _failedIndexes.remove(index);
+      }
     });
   }
 
@@ -165,6 +198,7 @@ class _StaffPaymentImagePreviewScreenState
     final hasCaption = (widget.title?.isNotEmpty ?? false) ||
         (widget.subtitle?.isNotEmpty ?? false);
     final hasRun = _runId != null && _runId!.isNotEmpty;
+    final multi = widget.imageUrls.length > 1;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -172,7 +206,20 @@ class _StaffPaymentImagePreviewScreenState
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Positioned.fill(child: _buildBody()),
+            Positioned.fill(
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: widget.imageUrls.length,
+                onPageChanged: (i) {
+                  setState(() => _pageIndex = i);
+                  unawaited(_loadPage(i));
+                  if (i + 1 < widget.imageUrls.length) {
+                    unawaited(_loadPage(i + 1));
+                  }
+                },
+                itemBuilder: (_, i) => _buildPage(i),
+              ),
+            ),
             Positioned(
               top: 0,
               left: 0,
@@ -225,6 +272,16 @@ class _StaffPaymentImagePreviewScreenState
                                   ),
                                 ),
                               ],
+                              if (multi) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${AppStrings.staffPrintPhotoN(_pageIndex + 1)} / ${widget.imageUrls.length}',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.72),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -253,8 +310,8 @@ class _StaffPaymentImagePreviewScreenState
     );
   }
 
-  Widget _buildBody() {
-    if (_failed) {
+  Widget _buildPage(int index) {
+    if (_failedIndexes.contains(index)) {
       return const Center(
         child: Icon(
           CupertinoIcons.exclamationmark_triangle,
@@ -263,7 +320,7 @@ class _StaffPaymentImagePreviewScreenState
         ),
       );
     }
-    final bytes = _bytes;
+    final bytes = _bytesByIndex[index];
     if (bytes == null) {
       return const Center(
         child: SizedBox(
@@ -276,7 +333,6 @@ class _StaffPaymentImagePreviewScreenState
         ),
       );
     }
-    // Lock to print sheet aspect (1200×1800) so staff view matches look + DNP.
     return InteractiveViewer(
       minScale: 0.85,
       maxScale: 4,
