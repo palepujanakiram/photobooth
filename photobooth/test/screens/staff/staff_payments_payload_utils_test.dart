@@ -125,7 +125,20 @@ void main() {
     );
   });
 
-  test('resolveSessionImageUrl prefers latestImageUrl then generatedImages', () {
+  test('resolveSessionImageUrl prefers strip over latestImageUrl', () {
+    expect(
+      StaffPaymentsPayloadUtils.resolveSessionImageUrl(
+        {
+          'stripCompositeUrl': '/api/img/strip.jpg',
+          'latestImageUrl': '/api/img/latest.jpg',
+          'generatedImages': [
+            {'imageUrl': '/api/img/from-list.jpg'},
+          ],
+        },
+        sessionId: 'sess-3',
+      ),
+      contains('strip.jpg'),
+    );
     expect(
       StaffPaymentsPayloadUtils.resolveSessionImageUrl(
         {
@@ -217,7 +230,21 @@ void main() {
     );
   });
 
-  test('resolvePaymentThumbUrl reads latestImageUrl from payment row', () {
+  test('resolvePaymentThumbUrl prefers sessionImages then latestImageUrl', () {
+    expect(
+      StaffPaymentsPayloadUtils.resolvePaymentThumbUrl(
+        {
+          'sessionImages': [
+            '/api/img/strip.jpg',
+            '/api/img/ai.jpg',
+          ],
+          'latestImageUrl': '/api/img/generated/thumb.jpg',
+          'sessionId': 'sess-4',
+        },
+        sessionId: 'sess-4',
+      ),
+      contains('strip.jpg'),
+    );
     expect(
       StaffPaymentsPayloadUtils.resolvePaymentThumbUrl(
         {

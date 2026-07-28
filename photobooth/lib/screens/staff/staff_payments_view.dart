@@ -230,20 +230,36 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
 
   void _openThumbPreview(Map<String, dynamic> payment) {
     final sid = _sessionId(payment);
-    final resolved = _resolvedThumbUrl(payment);
-    if (resolved.isEmpty) return;
+    final urls = _resolvedSessionImageUrls(payment);
+    if (urls.isEmpty) return;
     staffPaymentShowImagePreview(
       context,
-      imageUrl: resolved,
+      imageUrl: urls.first,
+      imageUrls: urls,
       sessionId: sid.isEmpty ? null : sid,
-      title: 'Payment photo',
-      subtitle: sid.isNotEmpty ? 'Session: $sid' : null,
+      title: 'Payment photos',
+      subtitle: sid.isNotEmpty
+          ? 'Session: $sid · ${urls.length} photo${urls.length == 1 ? '' : 's'}'
+          : null,
     );
+  }
+
+  /// All deliverables for this payment (strip + Surprise Me + AI looks).
+  List<String> _resolvedSessionImageUrls(Map<String, dynamic> payment) {
+    final sid = _sessionId(payment);
+    final fromPayload = StaffPaymentsSessionImages.fromPaymentPayload(
+      payment,
+      sessionId: sid,
+    );
+    if (fromPayload.isNotEmpty) return fromPayload;
+    final single = _resolvedThumbUrl(payment);
+    return single.isEmpty ? const [] : [single];
   }
 
   Widget _buildThumb(Map<String, dynamic> payment) {
     final sid = _sessionId(payment);
-    final resolved = _resolvedThumbUrl(payment);
+    final urls = _resolvedSessionImageUrls(payment);
+    final resolved = urls.isNotEmpty ? urls.first : _resolvedThumbUrl(payment);
 
     if (resolved.isEmpty) {
       if (sid.isNotEmpty) {
@@ -252,8 +268,9 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
       return staffPaymentThumbPlaceholder();
     }
 
-    return staffPaymentThumbImage(
+    return staffPaymentThumbWithCount(
       resolved: resolved,
+      totalCount: urls.isEmpty ? 1 : urls.length,
       sessionId: sid.isEmpty ? null : sid,
       placeholder: staffPaymentThumbPlaceholder,
       unavailable: staffPaymentThumbUnavailable,
@@ -714,7 +731,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
             ),
             actions: StaffPaymentCardActions(
               thumb: _buildThumb(p),
-              onThumbTap: _resolvedThumbUrl(p).isEmpty
+              onThumbTap: _resolvedSessionImageUrls(p).isEmpty
                   ? null
                   : () => _openThumbPreview(p),
               loading: _loading,
