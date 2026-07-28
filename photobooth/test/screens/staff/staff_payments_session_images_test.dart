@@ -51,6 +51,30 @@ void main() {
     ]);
   });
 
+  test('composePrimaryImageUrlFromSession reads generatedImages s6x4 entry', () {
+    expect(
+      StaffPaymentsSessionImages.composePrimaryImageUrlFromSession(
+        {
+          'generatedImages': [
+            {
+              'imageUrl': 'https://cdn/single6x4.jpg',
+              'printSize': 's6x4',
+            },
+          ],
+        },
+        sessionId: 's1',
+      ),
+      contains('single6x4.jpg'),
+    );
+    expect(
+      StaffPaymentsSessionImages.composePrimaryImageUrlFromSession(
+        {'generatedImages': 'not-a-list'},
+        sessionId: 's1',
+      ),
+      isNull,
+    );
+  });
+
   test('printSizeForImageUrl reads generatedImages and session print block', () {
     expect(
       StaffPaymentsSessionImages.printSizeForImageUrl(
@@ -90,6 +114,19 @@ void main() {
       ),
       's6x2_2',
     );
+    expect(
+      StaffPaymentsSessionImages.printSizeForImageUrl(
+        {
+          'generatedImages': [
+            {'imageUrl': 'https://cdn/other.jpg'},
+          ],
+          'printSize': 's5x7',
+        },
+        imageUrl: 'https://cdn/unrelated.jpg',
+        sessionId: 's1',
+      ),
+      's5x7',
+    );
   });
 
   test('classicComposeShotCountFromSession reads capturedImages length', () {
@@ -102,6 +139,18 @@ void main() {
     expect(
       StaffPaymentsSessionImages.classicComposeShotCountFromSession(
         {'capturedImages': List.filled(4, 'a')},
+      ),
+      4,
+    );
+    expect(
+      StaffPaymentsSessionImages.classicComposeShotCountFromSession(
+        {'shotCount': 1},
+      ),
+      1,
+    );
+    expect(
+      StaffPaymentsSessionImages.classicComposeShotCountFromSession(
+        {'shot_count': 4},
       ),
       4,
     );

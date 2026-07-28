@@ -52,5 +52,8 @@ void main() {
       AppStrings.flashbackReviewHoldStatus(isLastShot: false, secondsLeft: 0),
       AppStrings.flashbackGettingReadyNextShot,
     );
+    expect(AppStrings.printSelectionTotal(250), 'Total ₹250');
+    expect(AppStrings.printSelectionContinue(0), 'Select a photo');
+    expect(AppStrings.printSelectionContinue(2), 'Continue (2)');
   });
 }

@@ -113,6 +113,16 @@ void main() {
   });
 
   group('resolveStaffNetworkPrintSize', () {
+    test('prefers explicit strip session printSize over URL heuristics', () {
+      expect(
+        resolveStaffNetworkPrintSize(
+          imageUrl: 'https://cdn/ai.jpg',
+          sessionPrintSize: AppConstants.kPrintSizeStripDual2x6,
+        ),
+        AppConstants.kPrintSizeStripDual2x6,
+      );
+    });
+
     test('matches strip composite ignoring query params', () {
       expect(
         resolveStaffNetworkPrintSize(

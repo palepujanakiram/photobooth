@@ -123,6 +123,16 @@ void main() {
       expect(await DnpUsbClient().hasUsbHost(), isFalse);
     });
 
+    test('probeDevicePresent returns true when native probe succeeds', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'probeDevice') return true;
+        return null;
+      });
+      final client = DnpUsbClient(channel: channel, isAndroid: () => true);
+      expect(await client.probeDevicePresent(), isTrue);
+    });
+
     test('hasUsbHost returns true when channel succeeds on Android', () async {
       const channel = MethodChannel('com.srisarani.fotozenai/dnp_usb');
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -167,6 +177,23 @@ void main() {
       final url = await client.discoverOnPrefix('192.168.2', parallelism: 32);
       expect(url, 'http://192.168.2.108');
       expect(client.printerBaseUrl, url);
+    });
+
+    test('print throws when WCM Plus base URL is unset', () async {
+      final client = DnpWifiClient(
+        client: MockClient((_) async => http.Response('ok', 200)),
+      );
+      final jpeg = File(
+        '${Directory.systemTemp.path}/dnp_no_base_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await jpeg.writeAsBytes([0xFF]);
+      addTearDown(() async {
+        if (await jpeg.exists()) await jpeg.delete();
+      });
+      expect(
+        () => client.print(jpegFile: jpeg, printSize: 's4x6', copies: 1),
+        throwsA(isA<StateError>()),
+      );
     });
 
     test('print posts to PrintImage when base URL is set', () async {
@@ -495,10 +522,7 @@ void main() {
     });
 
     test('rejects web platform', () async {
-      final bridge = DnpPrintBridge(
-        webUnsupported: true,
-        wifiClient: DnpWifiClient(client: MockClient((_) async => http.Response('', 404))),
-      );
+      final bridge = DnpPrintBridge(webUnsupported: true);
       expect(
         () => bridge.printImage(
           imageFile: XFile('/tmp/x.jpg'),

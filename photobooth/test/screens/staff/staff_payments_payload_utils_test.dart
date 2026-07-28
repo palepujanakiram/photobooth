@@ -206,6 +206,13 @@ void main() {
       ),
       contains('shot1.jpg'),
     );
+    expect(
+      StaffPaymentsPayloadUtils.resolveSessionImageUrl(
+        {'userImageUrl': 'https://cdn.example/user.jpg'},
+        sessionId: 'sess-user',
+      ),
+      contains('user.jpg'),
+    );
   });
 
   test('resolveImageUrlFromRunsPayload reads latest run outputImageUrl', () {
