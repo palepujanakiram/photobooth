@@ -2248,7 +2248,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
   }
 
-  Widget _buildNoCamerasYetState(BuildContext context) {
+  Widget _buildNoCamerasYetState(
+    BuildContext context,
+    CaptureViewModel viewModel,
+  ) {
     final allowGallery = context.select<AppSettingsManager, bool>(
       (m) => m.settings?.photoUploadAllowed == true,
     );
@@ -2258,11 +2261,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(color: Colors.white),
-            const SizedBox(height: 16),
+            if (!allowGallery) ...[
+              const CircularProgressIndicator(color: Colors.white),
+              const SizedBox(height: 16),
+            ],
             Text(
               allowGallery
-                  ? 'Waiting for camera… or use Gallery below if this takes too long.'
+                  ? AppStrings.captureNoCameraUploadHint
                   : 'Waiting for camera…',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.85),
@@ -2275,8 +2280,59 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               onPressed: () => _resetAndInitializeCameras(forceRefresh: true),
               child: const Text('Retry camera'),
             ),
+            if (allowGallery) ...[
+              const SizedBox(height: 20),
+              _buildNoCameraUploadActions(context, viewModel),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// Gallery + Phone QR when the live camera path is unavailable.
+  Widget _buildNoCameraUploadActions(
+    BuildContext context,
+    CaptureViewModel viewModel,
+  ) {
+    final busy = viewModel.isSelectingFromGallery ||
+        viewModel.isWaitingForPhoneUpload;
+    return SizedBox(
+      width: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ElevatedButton.icon(
+            style: captureScreenButtonStyle(secondary: true),
+            onPressed: busy
+                ? null
+                : () async => _handleSelectFromGallery(viewModel),
+            icon: const Icon(CupertinoIcons.photo, size: 20),
+            label: Text(
+              viewModel.isSelectingFromGallery
+                  ? 'Selecting…'
+                  : AppStrings.galleryButtonLabel,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            style: captureScreenButtonStyle(secondary: true),
+            onPressed: busy
+                ? null
+                : () async {
+                    await showPhoneUploadQrSheet(
+                      context: context,
+                      viewModel: viewModel,
+                    );
+                  },
+            icon: const Icon(CupertinoIcons.qrcode, size: 20),
+            label: Text(
+              viewModel.isWaitingForPhoneUpload
+                  ? AppStrings.phoneUploadWaiting
+                  : AppStrings.phoneUploadButtonLabel,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2305,36 +2361,48 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     CaptureViewModel viewModel,
   ) {
     final appColors = AppColors.of(context);
+    final allowGallery = !_isFlashbackMultiShot &&
+        context.select<AppSettingsManager, bool>(
+          (m) => m.settings?.photoUploadAllowed == true,
+        );
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            CupertinoIcons.exclamationmark_triangle,
-            size: 64,
-            color: appColors.errorColor,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            viewModel.errorMessage ?? 'Unknown error',
-            style: const TextStyle(fontSize: 16, color: Colors.white),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              TextButton(
-                onPressed: () => _resetAndInitializeCameras(forceRefresh: true),
-                child: const Text('Retry'),
-              ),
-              TextButton(
-                onPressed: () => openAppSettings(),
-                child: const Text('Open Settings'),
-              ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              CupertinoIcons.exclamationmark_triangle,
+              size: 64,
+              color: appColors.errorColor,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              viewModel.errorMessage ?? 'Unknown error',
+              style: const TextStyle(fontSize: 16, color: Colors.white),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextButton(
+                  onPressed: () =>
+                      _resetAndInitializeCameras(forceRefresh: true),
+                  child: const Text('Retry'),
+                ),
+                TextButton(
+                  onPressed: () => openAppSettings(),
+                  child: const Text('Open Settings'),
+                ),
+              ],
+            ),
+            if (allowGallery) ...[
+              const SizedBox(height: 20),
+              _buildNoCameraUploadActions(context, viewModel),
             ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2401,7 +2469,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         !viewModel.hasError &&
         !_isUsingUvc) {
       phase = 'no-cameras';
-      body = _buildNoCamerasYetState(context);
+      body = _buildNoCamerasYetState(context, viewModel);
     } else if (viewModel.hasError &&
         viewModel.capturedPhoto == null &&
         !_isUsingUvc) {

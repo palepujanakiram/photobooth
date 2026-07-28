@@ -27,9 +27,27 @@ class TermsCameraPrimingResult {
 
   final TermsCameraPrimingPhase phase;
 
+  /// Camera-only continue gate (upload alternatives ignored).
   bool get allowsContinue =>
-      phase == TermsCameraPrimingPhase.skipped ||
-      phase == TermsCameraPrimingPhase.ready;
+      termsCameraPrimingAllowsContinue(phase: phase);
+}
+
+/// Whether Terms Continue may proceed for [phase].
+///
+/// When [photoUploadAllowed] is true, camera is optional: guests may continue
+/// after noneFound / permissionDenied / failed and use Gallery or Phone QR.
+bool termsCameraPrimingAllowsContinue({
+  required TermsCameraPrimingPhase phase,
+  bool photoUploadAllowed = false,
+}) {
+  if (phase == TermsCameraPrimingPhase.skipped ||
+      phase == TermsCameraPrimingPhase.ready) {
+    return true;
+  }
+  if (!photoUploadAllowed) return false;
+  return phase == TermsCameraPrimingPhase.noneFound ||
+      phase == TermsCameraPrimingPhase.permissionDenied ||
+      phase == TermsCameraPrimingPhase.failed;
 }
 
 /// Permission, enumeration, and optional prewarm kick-off for Terms idle time.
