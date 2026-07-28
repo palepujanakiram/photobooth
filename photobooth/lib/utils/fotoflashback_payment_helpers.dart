@@ -9,6 +9,7 @@ import '../services/print_selection_coordinator.dart';
 import 'app_strings.dart';
 import 'constants.dart';
 import 'payment_workflow_helpers.dart';
+import 'print_size_helpers.dart';
 import 'route_args.dart';
 import 'surprise_me_helpers.dart';
 
@@ -42,8 +43,10 @@ Future<String?> continueAfterFlashbackLook({
   }
 
   final stripImage = image.copyWith(
-    printSize: viewModel.composeResult?.printSize ??
-        AppConstants.kPrintSizeStripDual2x6,
+    printSize: resolveClassicComposePrintSize(
+      imageCount: viewModel.imageDataUrls.length,
+      apiPrintSize: viewModel.composeResult?.printSize,
+    ),
   );
   final offer = await _offerSurpriseIfReady(context);
   if (!context.mounted) return AppStrings.flashbackComposeFailed;
@@ -52,7 +55,7 @@ Future<String?> continueAfterFlashbackLook({
     context: context,
     image: stripImage,
     surpriseOffer: offer,
-    printSize: viewModel.composeResult?.printSize,
+    printSize: stripImage.printSize,
     transformationRunId: viewModel.composeResult?.runId,
   );
   return null;
@@ -77,8 +80,10 @@ Future<String?> composeFlashbackAfterPrePay({
   }
 
   final stripImage = image.copyWith(
-    printSize: vm.composeResult?.printSize ??
-        AppConstants.kPrintSizeStripDual2x6,
+    printSize: resolveClassicComposePrintSize(
+      imageCount: vm.imageDataUrls.length,
+      apiPrintSize: vm.composeResult?.printSize,
+    ),
   );
   final offer = await _offerSurpriseIfReady(context);
   if (!context.mounted) return AppStrings.flashbackComposeFailed;
@@ -87,7 +92,7 @@ Future<String?> composeFlashbackAfterPrePay({
     context: context,
     image: stripImage,
     surpriseOffer: offer,
-    printSize: vm.composeResult?.printSize,
+    printSize: stripImage.printSize,
     transformationRunId: vm.composeResult?.runId,
   );
   return null;
@@ -134,9 +139,11 @@ Future<void> navigateToFlashbackPrintSelection({
     strip,
     if (includeSurprise) surpriseImage.copyWith(isSelected: true),
   ];
-  final resolvedSize = (size != null && size.isNotEmpty)
-      ? size
-      : AppConstants.kPrintSizeStripDual2x6;
+  final resolvedSize = strip.printSize?.trim().isNotEmpty == true
+      ? strip.printSize!.trim()
+      : ((size != null && size.isNotEmpty)
+          ? size
+          : AppConstants.kPrintSizeStripDual2x6);
   final resolvedRunId =
       (runId != null && runId.isNotEmpty) ? runId : null;
 

@@ -86,7 +86,8 @@ object DnpUsbMethodChannel {
                     } else {
                         val copies = call.argument<Int>("copies") ?: 1
                         val paperSize = call.argument<String>("paperSize") ?: "4x6"
-                        startUsbPrint(filePath, copies, paperSize, result)
+                        val printSize = call.argument<String>("printSize")
+                        startUsbPrint(filePath, copies, paperSize, printSize, result)
                     }
                 }
                 else -> result.notImplemented()
@@ -257,6 +258,7 @@ object DnpUsbMethodChannel {
         filePath: String,
         copies: Int,
         paperSize: String,
+        networkPrintSize: String?,
         result: MethodChannel.Result,
     ) {
         if (!usbPrinter.isConnected) {
@@ -271,7 +273,8 @@ object DnpUsbMethodChannel {
                 val memoryEfficient = memoryEfficientMode()
                 if (memoryEfficient) System.gc()
                 emitPrintProgress("prepare", "Preparing photo for print…", 0.05)
-                val size = DnpPrintSize.fromLabel(paperSize)
+                val size = networkPrintSize?.let { DnpPrintSize.fromNetworkPrintSize(it) }
+                    ?: DnpPrintSize.fromLabel(paperSize)
                 val bitmap = DnpImageProcessor.prepareBitmap(
                     filePath,
                     size,
@@ -279,6 +282,7 @@ object DnpUsbMethodChannel {
                     brightness = 0,
                     bordered = false,
                     memoryEfficient = memoryEfficient,
+                    networkPrintSize = networkPrintSize,
                 )
                 emitPrintProgress(
                     "prepare",

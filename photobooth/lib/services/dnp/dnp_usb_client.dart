@@ -32,6 +32,7 @@ class DnpUsbClient {
   Future<void> print({
     required String filePath,
     required String paperSize,
+    required String printSize,
     required int copies,
   }) async {
     await _channel.invokeMethod<void>(
@@ -39,6 +40,7 @@ class DnpUsbClient {
       {
         'filePath': filePath,
         'paperSize': paperSize,
+        'printSize': printSize,
         'copies': copies,
       },
     );

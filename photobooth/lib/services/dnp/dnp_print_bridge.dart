@@ -62,7 +62,7 @@ class DnpPrintBridge {
 
     if (_shouldUseUsb(transport)) {
       try {
-        await _printUsb(localPath, size.usbLabel, copies);
+        await _printUsb(localPath, size, networkPrintSize, copies);
         return;
       } on PlatformException catch (e) {
         if (!_shouldFallbackToWifi(transport, e)) rethrow;
@@ -85,12 +85,22 @@ class DnpPrintBridge {
     return recoverable.contains(e.code);
   }
 
-  Future<void> _printUsb(String filePath, String paperSize, int copies) async {
+  Future<void> _printUsb(
+    String filePath,
+    DnpPrintSize size,
+    String networkPrintSize,
+    int copies,
+  ) async {
     if (!_usbReady) {
       await _usb.ensureConnected();
       _usbReady = true;
     }
-    await _usb.print(filePath: filePath, paperSize: paperSize, copies: copies);
+    await _usb.print(
+      filePath: filePath,
+      paperSize: size.usbLabel,
+      printSize: networkPrintSize,
+      copies: copies,
+    );
   }
 
   Future<void> _printWifi(String filePath, String printSize, int copies) async {

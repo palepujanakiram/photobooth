@@ -27,6 +27,7 @@ object DnpImageProcessor {
         brightness: Int,
         bordered: Boolean,
         memoryEfficient: Boolean = false,
+        networkPrintSize: String? = null,
     ): Bitmap {
         val targetW = size.width
         val targetH = size.height
@@ -51,9 +52,7 @@ object DnpImageProcessor {
             }
         }
 
-        val srcIsLandscape = bmp.width > bmp.height
-        val paperIsLandscape = targetW > targetH
-        if (srcIsLandscape != paperIsLandscape) {
+        if (shouldRotateForPrint(networkPrintSize, bmp.width, bmp.height, targetW, targetH)) {
             val matrix = android.graphics.Matrix().apply { postRotate(90f) }
             val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
             bmp.recycle()
@@ -109,6 +108,27 @@ object DnpImageProcessor {
         scaled.recycle()
 
         return canvas
+    }
+
+    /**
+     * Booth JPEGs are server-composed for WCM; USB must not re-orient landscape
+     * composites (Classic 6×4) while portrait sheets (4×6 / dual strip) still
+     * rotate to the DNP landscape raster buffer.
+     */
+    private fun shouldRotateForPrint(
+        networkPrintSize: String?,
+        srcW: Int,
+        srcH: Int,
+        targetW: Int,
+        targetH: Int,
+    ): Boolean {
+        val srcIsLandscape = srcW > srcH
+        val targetIsLandscape = targetW > targetH
+        return when (networkPrintSize?.trim()?.lowercase()) {
+            "s6x4" -> false
+            "s6x2_2", "s4x6" -> !srcIsLandscape && targetIsLandscape
+            else -> srcIsLandscape != targetIsLandscape
+        }
     }
 
     private fun buildCombinedColorMatrix(filter: String, brightness: Int): ColorMatrix? {

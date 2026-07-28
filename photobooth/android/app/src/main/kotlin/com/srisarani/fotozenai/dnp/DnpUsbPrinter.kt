@@ -171,7 +171,7 @@ class DnpUsbPrinter(
         val overcoat = if (matte) "00000001" else "00000000"
         cmd.sendCommand("CNTRL", "OVERCOAT", overcoat.toByteArray())
 
-        if (size == DnpPrintSize.SIZE_2X6) {
+        if (size.usesStripCutter) {
             cmd.sendCommand("CNTRL", "CUTTER", "00000120".toByteArray())
         }
 
@@ -398,6 +398,7 @@ class DnpUsbPrinter(
         1300 -> "Paper jam"
         1400 -> "Ribbon error"
         1500 -> "Paper size mismatch — check loaded media"
+        1600 -> "Print data error — check image size and print settings"
         else -> "Printer error ($code)"
     }
 

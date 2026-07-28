@@ -1,4 +1,6 @@
+import '../../models/strip_models.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/print_size_helpers.dart';
 import '../../utils/secure_image_url.dart';
 import 'staff_payments_payload_utils.dart';
 
@@ -115,6 +117,127 @@ abstract final class StaffPaymentsSessionImages {
           sessionId: sessionId,
         );
       }
+    }
+    return null;
+  }
+
+  /// Primary compose `imageUrl` (Classic 1-shot 6×4), distinct from [stripCompositeUrl].
+  static String? composePrimaryImageUrlFromSession(
+    Map<String, dynamic> raw, {
+    required String sessionId,
+  }) {
+    final direct = StaffPaymentsPayloadUtils.pickString(raw, const [
+      'imageUrl',
+      'image_url',
+    ]).trim();
+    if (direct.isNotEmpty) {
+      return StaffPaymentsPayloadUtils.normalizeImageUrl(
+        direct,
+        sessionId: sessionId,
+      );
+    }
+
+    final generated =
+        raw['generatedImages'] ?? raw['generated_images'] ?? raw['images'];
+    if (generated is! List) return null;
+    for (final entry in generated) {
+      if (entry is! Map) continue;
+      final m = Map<String, dynamic>.from(entry);
+      final size = StaffPaymentsPayloadUtils.pickString(m, const [
+        'printSize',
+        'print_size',
+      ]).trim();
+      if (size != 's6x4') continue;
+      final url = StaffPaymentsPayloadUtils.imageUrlFromGeneratedEntry(
+        entry,
+        sessionId: sessionId,
+      );
+      if (url != null && url.isNotEmpty) return url;
+    }
+    return null;
+  }
+
+  /// WCM print token for a picked deliverable URL (generatedImages → session print).
+  static String? printSizeForImageUrl(
+    Map<String, dynamic> raw, {
+    required String imageUrl,
+    required String sessionId,
+  }) {
+    final generatedMatch = _printSizeFromGeneratedImages(
+      raw,
+      imageUrl: imageUrl,
+      sessionId: sessionId,
+    );
+    if (generatedMatch != null) return generatedMatch;
+
+    final generated =
+        raw['generatedImages'] ?? raw['generated_images'] ?? raw['images'];
+    if (generated is List) {
+      for (final entry in generated) {
+        final url = StaffPaymentsPayloadUtils.imageUrlFromGeneratedEntry(
+          entry,
+          sessionId: sessionId,
+        );
+        if (url != null &&
+            imageUrlsReferToSameDeliverable(url, imageUrl)) {
+          return null;
+        }
+      }
+    }
+
+    final printBlock = raw['print'];
+    if (printBlock is Map) {
+      final fromPrint = StaffPaymentsPayloadUtils.pickString(
+        Map<String, dynamic>.from(printBlock),
+        const ['size', 'printSize', 'print_size'],
+      ).trim();
+      if (fromPrint.isNotEmpty) return fromPrint;
+    }
+
+    final top = StaffPaymentsPayloadUtils.pickString(raw, const [
+      'printSize',
+      'print_size',
+    ]).trim();
+    return top.isEmpty ? null : top;
+  }
+
+  /// Classic compose shot count when present on session payload (1 → 6×4, 4 → strip).
+  static int? classicComposeShotCountFromSession(Map<String, dynamic> raw) {
+    final captured = raw['capturedImages'] ?? raw['captured_images'];
+    if (captured is List) {
+      if (captured.length == 1) return 1;
+      if (captured.length == kStripShotCount) return kStripShotCount;
+    }
+    final shotCount = raw['shotCount'] ?? raw['shot_count'];
+    if (shotCount is int && (shotCount == 1 || shotCount == kStripShotCount)) {
+      return shotCount;
+    }
+    return null;
+  }
+
+  static String? _printSizeFromGeneratedImages(
+    Map<String, dynamic> raw, {
+    required String imageUrl,
+    required String sessionId,
+  }) {
+    final generated =
+        raw['generatedImages'] ?? raw['generated_images'] ?? raw['images'];
+    if (generated is! List) return null;
+    for (final entry in generated) {
+      if (entry is! Map) continue;
+      final url = StaffPaymentsPayloadUtils.imageUrlFromGeneratedEntry(
+        entry,
+        sessionId: sessionId,
+      );
+      if (url == null ||
+          !imageUrlsReferToSameDeliverable(url, imageUrl)) {
+        continue;
+      }
+      final size = StaffPaymentsPayloadUtils.pickString(
+        Map<String, dynamic>.from(entry),
+        const ['printSize', 'print_size'],
+      ).trim();
+      if (size.isNotEmpty) return size;
     }
     return null;
   }

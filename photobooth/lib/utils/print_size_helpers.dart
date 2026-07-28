@@ -8,6 +8,23 @@ bool isStripDualPrintSize(String? printSize) {
   return size == AppConstants.kPrintSizeStripDual2x6;
 }
 
+/// Resolves WCM print token after Classic strip compose.
+///
+/// One-shot Classic is always landscape 6×4 (`s6x4`) — the compose API may omit
+/// `printSize` or still return the strip default (`s6x2_2`). Four-shot uses
+/// dual-strip cut (`s6x2_2`).
+String resolveClassicComposePrintSize({
+  required int imageCount,
+  String? apiPrintSize,
+}) {
+  if (imageCount == 1) {
+    return AppConstants.kPrintSizeLandscape6x4;
+  }
+  final fromApi = apiPrintSize?.trim() ?? '';
+  if (fromApi.isNotEmpty) return fromApi;
+  return AppConstants.kPrintSizeStripDual2x6;
+}
+
 /// Network printer `printSize` for one cart image.
 ///
 /// Prefer the image's own [GeneratedImage.printSize]. Never fall back to the
@@ -22,6 +39,9 @@ String resolveNetworkPrintSizeForImage({
   if (own.isNotEmpty) return own;
 
   final session = sessionOverride?.trim() ?? '';
+  if (session == AppConstants.kPrintSizeLandscape6x4) {
+    return AppConstants.kPrintSizeLandscape6x4;
+  }
   if (isStripDualPrintSize(session)) {
     return orientation.printSize;
   }
@@ -48,15 +68,52 @@ List<GeneratedImage> ensureGeneratedImagePrintSizes(
   ];
 }
 
-/// Staff fallback: strip composite URL → dual 6×2; everything else → 4×6.
+/// Compare deliverable URLs ignoring query (e.g. sessionId) and trailing slash.
+bool imageUrlsReferToSameDeliverable(String? a, String? b) =>
+    _urlsReferToSameImage(a, b);
+
+/// Staff / reprint: infer WCM token from deliverable URLs and session hints.
+///
+/// When [sessionPrintSize] is set (from session or generatedImages), it wins.
+/// URL equality with [stripCompositeUrl] alone must not force dual-strip cut for
+/// Classic 1-shot sessions where the API reused the same URL for both fields.
 String resolveStaffNetworkPrintSize({
   required String imageUrl,
   String? stripCompositeUrl,
+  String? single6x4Url,
+  String? sessionPrintSize,
+  int? classicComposeShotCount,
 }) {
+  final explicit = _normalizeStaffPrintSizeToken(sessionPrintSize);
+  if (explicit != null) return explicit;
+
+  if (_urlsReferToSameImage(imageUrl, single6x4Url)) {
+    return AppConstants.kPrintSizeLandscape6x4;
+  }
+
   if (_urlsReferToSameImage(imageUrl, stripCompositeUrl)) {
+    if (classicComposeShotCount == 1) {
+      return AppConstants.kPrintSizeLandscape6x4;
+    }
     return AppConstants.kPrintSizeStripDual2x6;
   }
+
   return AppConstants.kPrintSizePortrait4x6;
+}
+
+String? _normalizeStaffPrintSizeToken(String? raw) {
+  final trimmed = raw?.trim() ?? '';
+  if (trimmed.isEmpty) return null;
+  switch (trimmed.toLowerCase()) {
+    case 's4x6':
+      return AppConstants.kPrintSizePortrait4x6;
+    case 's6x4':
+      return AppConstants.kPrintSizeLandscape6x4;
+    case 's6x2_2':
+      return AppConstants.kPrintSizeStripDual2x6;
+    default:
+      return trimmed;
+  }
 }
 
 /// Compare deliverable URLs ignoring query (e.g. sessionId) and trailing slash.

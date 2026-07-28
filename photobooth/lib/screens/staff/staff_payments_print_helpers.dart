@@ -112,6 +112,8 @@ Future<void> staffPaymentsRunPrintJob({
   required VoidCallback? onSuccess,
   String? printSize,
   String? stripCompositeUrl,
+  String? single6x4Url,
+  int? classicComposeShotCount,
 }) async {
   onState(loading: true, error: null, progressMessage: 'Preparing image...');
   try {
@@ -129,6 +131,9 @@ Future<void> staffPaymentsRunPrintJob({
         : resolveStaffNetworkPrintSize(
             imageUrl: imageUrl,
             stripCompositeUrl: stripCompositeUrl,
+            single6x4Url: single6x4Url,
+            sessionPrintSize: printSize,
+            classicComposeShotCount: classicComposeShotCount,
           );
     printService.resetDnpPrintSession();
     await printService.printImageSilent(

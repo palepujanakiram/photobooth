@@ -10,10 +10,11 @@ class DnpPrintSize {
 
   static const portrait4x6 = DnpPrintSize(usbLabel: '4x6', wifiPrintSize: 's4x6');
   static const landscape6x4 = DnpPrintSize(usbLabel: '4x6', wifiPrintSize: 's6x4');
-  static const strip2x6 = DnpPrintSize(usbLabel: '2x6', wifiPrintSize: 's2x6');
+  static const strip2x6 = DnpPrintSize(usbLabel: '4x6', wifiPrintSize: 's2x6');
   static const size5x7 = DnpPrintSize(usbLabel: '5x7', wifiPrintSize: 's5x7');
   static const size6x8 = DnpPrintSize(usbLabel: '6x8', wifiPrintSize: 's6x8');
-  static const stripDual6x2 = DnpPrintSize(usbLabel: '2x6', wifiPrintSize: 's6x2_2');
+  /// Dual strip uses 4×6 media + 2-inch cutter (WCM token `s6x2_2`).
+  static const stripDual6x2 = DnpPrintSize(usbLabel: '4x6', wifiPrintSize: 's6x2_2');
 
   /// Maps kiosk network `printSize` tokens to DNP USB paper + Wi-Fi tokens.
   static DnpPrintSize fromNetworkPrintSize(String? raw) {

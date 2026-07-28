@@ -21,6 +21,7 @@ class _RecordingUsbClient extends DnpUsbClient {
   int connectCalls = 0;
   int printCalls = 0;
   String? lastPaperSize;
+  String? lastPrintSize;
   int? lastCopies;
 
   @override
@@ -32,10 +33,12 @@ class _RecordingUsbClient extends DnpUsbClient {
   Future<void> print({
     required String filePath,
     required String paperSize,
+    required String printSize,
     required int copies,
   }) async {
     printCalls++;
     lastPaperSize = paperSize;
+    lastPrintSize = printSize;
     lastCopies = copies;
   }
 }
@@ -59,6 +62,11 @@ void main() {
       );
       expect(DnpPrintSize.fromNetworkPrintSize('s5x7').usbLabel, '5x7');
       expect(DnpPrintSize.fromNetworkPrintSize(null).wifiPrintSize, 's4x6');
+    });
+
+    test('maps strip tokens to 4x6 USB paper with cutter on native side', () {
+      expect(DnpPrintSize.fromNetworkPrintSize('s6x2_2').usbLabel, '4x6');
+      expect(DnpPrintSize.fromNetworkPrintSize('s2x6').usbLabel, '4x6');
     });
   });
 
@@ -136,7 +144,12 @@ void main() {
       });
       final client = DnpUsbClient(channel: channel);
       await client.ensureConnected();
-      await client.print(filePath: '/tmp/a.jpg', paperSize: '4x6', copies: 2);
+      await client.print(
+        filePath: '/tmp/a.jpg',
+        paperSize: '4x6',
+        printSize: 's4x6',
+        copies: 2,
+      );
       expect(calls, ['requestPermission', 'print']);
     });
   });
@@ -374,7 +387,8 @@ void main() {
         quantity: 2,
       );
       expect(usb.printCalls, 1);
-      expect(usb.lastPaperSize, '2x6');
+      expect(usb.lastPaperSize, '4x6');
+      expect(usb.lastPrintSize, AppConstants.kPrintSizeStripDual2x6);
       expect(usb.lastCopies, 2);
       expect(wifi.printerBaseUrl, isNull);
     });
