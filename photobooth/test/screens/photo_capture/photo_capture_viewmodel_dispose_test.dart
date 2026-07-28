@@ -8,4 +8,14 @@ void main() {
     expect(vm.isDisposed, isTrue);
     expect(() => vm.notifyListeners(), returnsNormally);
   });
+
+  test('markAwaitingCameraRemount shows loading before enumeration', () {
+    final vm = CaptureViewModel();
+    expect(vm.isLoadingCameras, isFalse);
+    vm.markAwaitingCameraRemount();
+    expect(vm.isLoadingCameras, isTrue);
+    vm.markAwaitingCameraRemount();
+    expect(vm.isLoadingCameras, isTrue);
+    vm.dispose();
+  });
 }

@@ -362,6 +362,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         _stripShots
           ..clear()
           ..addAll(captureArgs.acceptedStripShots);
+        // Web remount between Classic shots: show "Getting ready…" immediately
+        // instead of flashing Gallery / Phone QR before loadCameras runs.
+        _captureViewModel.markAwaitingCameraRemount();
       }
       if (_isFlashbackMultiShot) {
         _captureViewModel.preferStripPrintQuality = true;
@@ -819,6 +822,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     void beginSetup() {
       if (!mounted) return;
       unawaited(_beginPoseCaptureSetup());
+    }
+
+    // Classic strip remount between shots — start getUserMedia immediately so
+    // guests never linger on the empty-camera / Gallery fallback UI.
+    if (_isFlashbackMultiShot && _stripShots.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => beginSetup());
+      return;
     }
 
     if (CaptureViewModel.hasPrewarmedCamera) {
@@ -2300,9 +2310,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     BuildContext context,
     CaptureViewModel viewModel,
   ) {
-    final allowGallery = context.select<AppSettingsManager, bool>(
-      (m) => m.settings?.photoUploadAllowed == true,
-    );
+    // Classic strip never offers Gallery / Phone QR mid-session (would break
+    // the 4-shot flow and flash wide CTAs during web camera remount).
+    final allowGallery = !_isFlashbackMultiShot &&
+        context.select<AppSettingsManager, bool>(
+          (m) => m.settings?.photoUploadAllowed == true,
+        );
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -2316,7 +2329,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             Text(
               allowGallery
                   ? AppStrings.captureNoCameraUploadHint
-                  : 'Waiting for camera…',
+                  : (_isFlashbackMultiShot
+                      ? AppStrings.flashbackGettingReadyNextShot
+                      : 'Waiting for camera…'),
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.85),
                 fontSize: 15,
@@ -2516,11 +2531,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       isSelectingFromGallery: viewModel.isSelectingFromGallery,
     );
 
+    final midStripRemount =
+        _isFlashbackMultiShot && _stripShots.isNotEmpty;
     final Widget body;
     final String phaseKey;
     switch (phase) {
       case CaptureBodyPhase.starting:
-        const startingMessage = AppStrings.captureStartingPreview;
+        final startingMessage = midStripRemount
+            ? AppStrings.flashbackGettingReadyNextShot
+            : AppStrings.captureStartingPreview;
         phaseKey = 'starting-$startingMessage';
         body = _buildStartingCameraState(message: startingMessage);
       case CaptureBodyPhase.noCameras:
@@ -2540,7 +2559,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         } else if (_isUsingUvc) {
           previewWidget = _buildUvcPreview(context, viewModel);
         } else if (viewModel.cameraController == null) {
-          previewWidget = _buildNoCamerasYetState(context, viewModel);
+          // Controller briefly null during re-init — never flash Gallery CTAs.
+          previewWidget = midStripRemount || _isFlashbackMultiShot
+              ? _buildStartingCameraState(
+                  message: AppStrings.flashbackGettingReadyNextShot,
+                )
+              : _buildNoCamerasYetState(context, viewModel);
         } else {
           previewWidget = _buildCameraPreviewWithRotation(context, viewModel);
         }
