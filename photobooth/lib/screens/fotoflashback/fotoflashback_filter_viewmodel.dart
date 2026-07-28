@@ -11,7 +11,7 @@ import '../../utils/exceptions.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
 
-/// Loads strip looks and composes the dual strip (overlay polish gated off for MF).
+/// Loads strip looks and composes the dual strip (local HUD polish, no Gemini).
 class FotoFlashbackFilterViewModel extends ChangeNotifier {
   FotoFlashbackFilterViewModel({
     required this.theme,
@@ -55,21 +55,38 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   /// Sharp-graded thumbs for the selected look when available (Option A).
   List<String> get previewImageDataUrls {
     final graded = _gradedByFilter[_selectedFilterId];
-    if (graded != null && graded.length == kStripShotCount) {
+    final expected = _imageDataUrls.length;
+    if (graded != null && graded.length == expected) {
       return List<String>.unmodifiable(graded);
     }
     return imageDataUrls;
   }
 
   bool get previewImagesAreGraded =>
-      (_gradedByFilter[_selectedFilterId]?.length ?? 0) == kStripShotCount;
+      (_gradedByFilter[_selectedFilterId]?.length ?? 0) ==
+      _imageDataUrls.length;
+
+  /// Classic 1-shot landscape 6×4 (vs 4-shot dual strip / sheet).
+  bool get isSingleClassic => _imageDataUrls.length == 1;
+
+  bool get _hasComposableShotCount =>
+      _imageDataUrls.length == 1 ||
+      _imageDataUrls.length == kStripShotCount;
 
   StripWysiwygLayout get wysiwygLayout =>
       _catalog?.wysiwyg ?? StripWysiwygLayout.defaults;
 
   StripFiltersCatalog? get catalog => _catalog;
   List<StripFilter> get filters => _catalog?.filters ?? const [];
-  List<StripFrame> get frames => _catalog?.frames ?? const [];
+
+  /// Sheet layouts need 4 cells — hide them for Classic 1-shot 6×4.
+  List<StripFrame> get frames {
+    final all = _catalog?.frames ?? const <StripFrame>[];
+    if (!isSingleClassic) return all;
+    return all
+        .where((f) => !isStripSheetLayout(f.id))
+        .toList(growable: false);
+  }
   List<StripSticker> get stickers => _catalog?.stickers ?? const [];
   String get selectedFilterId => _selectedFilterId;
   String get selectedFrameId => _selectedFrameId;
@@ -118,7 +135,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   /// Look picker stays interactive while polish runs in the background.
   bool get canCompose =>
-      _imageDataUrls.length == kStripShotCount && !_composing && !_loading;
+      _hasComposableShotCount && !_composing && !_loading;
 
   StripFilter? get selectedFilter {
     for (final f in filters) {
@@ -155,6 +172,11 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
           !frames.any((f) => f.id == _selectedFrameId)) {
         _selectedFrameId = frames.first.id;
       }
+      if (isSingleClassic && isStripSheetLayout(_selectedFrameId)) {
+        _selectedFrameId = frames.isNotEmpty
+            ? frames.first.id
+            : kDefaultStripFrameId;
+      }
       if (stickers.isNotEmpty &&
           !stickers.any((s) => s.id == _selectedStickerId) &&
           _placements.isEmpty) {
@@ -167,12 +189,15 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     }
   }
 
-  /// Viewfinder/HUD cleanup so the look/pay preview matches print.
-  /// Currently disabled ([AppConstants.kEnableStripOverlayCleanup]) — DSLR on MF.
-  /// Fail-open: keeps originals if cleanup fails.
+  /// Local HUD/AF thin-line inpaint so look/pay preview matches print.
+  /// Fail-open: keeps originals if cleanup fails. Never uses Gemini.
   Future<void> preparePreview() async {
     if (!AppConstants.kEnableStripOverlayCleanup) return;
-    if (_previewCleaned || _imageDataUrls.length != kStripShotCount) return;
+    if (_previewCleaned ||
+        (_imageDataUrls.length != 1 &&
+            _imageDataUrls.length != kStripShotCount)) {
+      return;
+    }
     final existing = _prepareFuture;
     if (existing != null) return existing;
 
@@ -198,7 +223,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         sessionId: sessionId,
         images: _imageDataUrls,
       );
-      if (cleaned.length == kStripShotCount) {
+      if (cleaned.length == 1 || cleaned.length == kStripShotCount) {
         _imageDataUrls = List<String>.from(cleaned);
         _previewCleaned = true;
         _gradedByFilter.clear();
@@ -253,6 +278,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   }
 
   void selectFrame(String frameId) {
+    if (isSingleClassic && isStripSheetLayout(frameId)) return;
     if (frameId == _selectedFrameId) return;
     final wasSheet = isStripSheetLayout(_selectedFrameId);
     final nowSheet = isStripSheetLayout(frameId);
@@ -277,17 +303,22 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     addSticker(stickerId);
   }
 
-  /// Places one sticker on each of the 4 strip cells (drag afterward to adjust).
+  /// Places stickers on each photo cell (or one placement for Classic 1-shot).
   void addSticker(String type) {
     if (!kPlaceableStripStickerIds.contains(type)) return;
 
     final room = kMaxStripStickerPlacements - _placements.length;
     if (room <= 0) return;
 
-    final toAdd = room < kStripShotCount ? room : kStripShotCount;
-    final wave = _placements.where((p) => p.type == type).length ~/ kStripShotCount;
+    final cells = isSingleClassic ? 1 : kStripShotCount;
+    final toAdd = room < cells ? room : cells;
+    final wave = cells == 0
+        ? 0
+        : _placements.where((p) => p.type == type).length ~/ cells;
     for (var cell = 0; cell < toAdd; cell++) {
-      final spawn = _spawnPointForCell(type, cell, wave);
+      final spawn = isSingleClassic
+          ? _spawnPointForSingle(type, wave)
+          : _spawnPointForCell(type, cell, wave);
       _placementSeq += 1;
       _placements.add(
         StripStickerPlacement(
@@ -407,7 +438,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   /// Composes the strip and returns a selected [GeneratedImage] for Result.
   Future<GeneratedImage?> compose() async {
     if (!canCompose) {
-      _errorMessage = AppStrings.flashbackNeedFourShots;
+      _errorMessage = isSingleClassic
+          ? AppStrings.flashbackComposeFailed
+          : AppStrings.flashbackNeedFourShots;
       notifyListeners();
       return null;
     }
@@ -457,6 +490,20 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _composing = false;
       notifyListeners();
     }
+  }
+
+  /// Normalized center for Classic 1-shot landscape 6×4.
+  (double, double) _spawnPointForSingle(String type, int wave) {
+    final waveNudge = (wave % 3) * 0.05;
+    final preferLeft = switch (type) {
+      'sparkles' || 'confetti' || 'flowers' => true,
+      'stars' => false,
+      _ => wave.isEven,
+    };
+    final baseX = preferLeft ? 0.22 : 0.78;
+    final x = baseX + (preferLeft ? waveNudge : -waveNudge);
+    final y = 0.55 + (wave % 2) * 0.08;
+    return (x.clamp(0.08, 0.92), y.clamp(0.12, 0.88));
   }
 
   /// Normalized center inside photo cell [cell] (0–3). [wave] offsets later taps.

@@ -160,7 +160,7 @@ class FlashbackPrePayArgs {
       if (raw is! List) return null;
       final urls =
           raw.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
-      if (urls.length != kStripShotCount) return null;
+      if (urls.length != 1 && urls.length != kStripShotCount) return null;
       return FlashbackPrePayArgs(
         theme: args['theme'] as ThemeModel,
         imageDataUrls: urls,

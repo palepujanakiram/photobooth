@@ -135,7 +135,8 @@ class AppConstants {
   /// AI themes must keep using [kPrintSizePortrait4x6] / [kPrintSizeLandscape6x4].
   static const String kPrintSizeStripDual2x6 = 's6x2_2';
 
-  /// When true, polish strip shots (HUD/AF inpaint + Gemini).
+  /// When true, polish Classic strip shots with local HUD/AF thin-line inpaint
+  /// (no Gemini — generative clean softens faces).
   static const bool kEnableStripOverlayCleanup = true;
 
   /// BEHOLD single-result hero: width cap on landscape / desktop (wider than capture kiosk).

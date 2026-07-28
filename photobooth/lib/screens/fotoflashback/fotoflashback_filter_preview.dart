@@ -71,6 +71,9 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   static const double sheetAspectRatio =
       defaultSheetWidth / defaultSheetHeight;
 
+  /// Classic 1-shot landscape 6×4 (1800×1200).
+  static const double single6x4AspectRatio = 1800 / 1200;
+
   /// One 2×6 strip (half sheet width).
   static const double defaultStripWidth = defaultSheetWidth / 2;
   static const double defaultStripHeight = defaultSheetHeight;
@@ -89,6 +92,24 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wysiwyg = layout ?? StripWysiwygLayout.defaults;
+    if (imageDataUrls.length == 1) {
+      return _Single6x4Preview(
+        imageDataUrl: imageDataUrls.first,
+        filterId: filterId,
+        frameId: frameId,
+        imagesAreGraded: imagesAreGraded,
+        placements: placements,
+        scribbles: scribbles,
+        drawMode: drawMode,
+        width: width,
+        height: height,
+        onMovePlacement: onMovePlacement,
+        onRemovePlacement: onRemovePlacement,
+        onScribbleStart: onScribbleStart,
+        onScribbleUpdate: onScribbleUpdate,
+        onScribbleEnd: onScribbleEnd,
+      );
+    }
     if (isStripSheetLayout(frameId)) {
       // Glyph ref = half sheet width so icons match dual-strip booth size (print uses 600 on 1200).
       final glyphRefWidth = width / 2;
@@ -881,4 +902,181 @@ Uint8List _bytesFromDataUrl(String dataUrl) {
   final comma = dataUrl.indexOf(',');
   final b64 = comma >= 0 ? dataUrl.substring(comma + 1) : dataUrl;
   return base64Decode(b64);
+}
+
+/// Landscape Classic 1-shot preview (matches zenai composeSingle6x4).
+class _Single6x4Preview extends StatelessWidget {
+  const _Single6x4Preview({
+    required this.imageDataUrl,
+    required this.filterId,
+    required this.frameId,
+    required this.imagesAreGraded,
+    required this.placements,
+    required this.scribbles,
+    required this.drawMode,
+    required this.width,
+    required this.height,
+    this.onMovePlacement,
+    this.onRemovePlacement,
+    this.onScribbleStart,
+    this.onScribbleUpdate,
+    this.onScribbleEnd,
+  });
+
+  final String imageDataUrl;
+  final String filterId;
+  final String frameId;
+  final bool imagesAreGraded;
+  final List<StripStickerPlacement> placements;
+  final List<StripScribbleStroke> scribbles;
+  final bool drawMode;
+  final double width;
+  final double height;
+  final void Function(String id, double x, double y)? onMovePlacement;
+  final void Function(String id)? onRemovePlacement;
+  final void Function(double x, double y)? onScribbleStart;
+  final void Function(double x, double y)? onScribbleUpdate;
+  final VoidCallback? onScribbleEnd;
+
+  Color get _matte {
+    if (frameId == 'noir') return const Color(0xFF111111);
+    return Colors.white;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = _bytesFromDataUrl(imageDataUrl);
+    final margin = width * 0.027; // ~48/1800
+    final photo = Image.memory(
+      bytes,
+      fit: BoxFit.contain,
+      width: double.infinity,
+      height: double.infinity,
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.high,
+    );
+    final photoLayer = imagesAreGraded
+        ? photo
+        : ColorFiltered(
+            colorFilter: stripPreviewColorFilter(filterId),
+            child: photo,
+          );
+
+    return Container(
+      key: ValueKey<String>('single6x4_$frameId'),
+      width: width,
+      height: height,
+      color: _matte,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Padding(
+            padding: EdgeInsets.all(margin),
+            child: ColoredBox(
+              color: _matte,
+              child: photoLayer,
+            ),
+          ),
+          if (frameId == 'filmstrip')
+            CustomPaint(
+              painter: _SingleFilmstripSprocketPainter(margin: margin),
+            ),
+          if (placements.isNotEmpty)
+            for (final p in placements)
+              _PlacementSticker(
+                placement: p,
+                stripWidth: width,
+                stripHeight: height,
+                glyphRefWidth: width * 0.35,
+                layout: StripWysiwygLayout.defaults,
+                absorbPointers: drawMode,
+                onMove: onMovePlacement,
+                onRemove: onRemovePlacement,
+              ),
+          if (scribbles.isNotEmpty)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _ScribblePainter(
+                    strokes: scribbles,
+                    stripWidth: width,
+                    stripHeight: height,
+                  ),
+                ),
+              ),
+            ),
+          if (drawMode)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanStart: (details) {
+                  if (onScribbleStart == null) return;
+                  onScribbleStart!(
+                    (details.localPosition.dx / width).clamp(0.0, 1.0),
+                    (details.localPosition.dy / height).clamp(0.0, 1.0),
+                  );
+                },
+                onPanUpdate: (details) {
+                  if (onScribbleUpdate == null) return;
+                  onScribbleUpdate!(
+                    (details.localPosition.dx / width).clamp(0.0, 1.0),
+                    (details.localPosition.dy / height).clamp(0.0, 1.0),
+                  );
+                },
+                onPanEnd: (_) => onScribbleEnd?.call(),
+                onPanCancel: onScribbleEnd,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SingleFilmstripSprocketPainter extends CustomPainter {
+  _SingleFilmstripSprocketPainter({required this.margin});
+
+  final double margin;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rail = Paint()..color = const Color(0xFF1A1A1A);
+    final hole = Paint()..color = Colors.white;
+    final railW = margin.clamp(8.0, 28.0);
+    canvas.drawRect(Rect.fromLTWH(0, 0, railW, size.height), rail);
+    canvas.drawRect(
+      Rect.fromLTWH(size.width - railW, 0, railW, size.height),
+      rail,
+    );
+    final holeSize = railW * 0.45;
+    final step = holeSize * 2.2;
+    for (var y = holeSize; y < size.height - holeSize; y += step) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset(railW / 2, y),
+            width: holeSize,
+            height: holeSize * 0.7,
+          ),
+          const Radius.circular(2),
+        ),
+        hole,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset(size.width - railW / 2, y),
+            width: holeSize,
+            height: holeSize * 0.7,
+          ),
+          const Radius.circular(2),
+        ),
+        hole,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SingleFilmstripSprocketPainter oldDelegate) =>
+      oldDelegate.margin != margin;
 }

@@ -297,14 +297,17 @@ class _LookPickerBody extends StatelessWidget {
         final panelH = constraints.maxHeight;
         if (panelH <= 0) return const SizedBox.shrink();
 
-        // Dual-strip chrome → tall 2×6; sheet layouts → wider portrait 4×6.
-        final sheet = isStripSheetLayout(frameId);
-        final aspect = sheet
-            ? FotoFlashbackStripPreview.sheetAspectRatio
-            : FotoFlashbackStripPreview.stripAspectRatio;
+        // Dual-strip chrome → tall 2×6; sheet → portrait 4×6; 1-shot → landscape 6×4.
+        final single = imageDataUrls.length == 1;
+        final sheet = !single && isStripSheetLayout(frameId);
+        final aspect = single
+            ? FotoFlashbackStripPreview.single6x4AspectRatio
+            : sheet
+                ? FotoFlashbackStripPreview.sheetAspectRatio
+                : FotoFlashbackStripPreview.stripAspectRatio;
         var previewH = panelH;
         var previewW = previewH * aspect;
-        final maxW = constraints.maxWidth * 0.48;
+        final maxW = constraints.maxWidth * (single ? 0.58 : 0.48);
         if (previewW > maxW) {
           previewW = maxW;
           previewH = previewW / aspect;

@@ -121,10 +121,10 @@ void main() {
     vm.selectFilter('mono');
     expect(vm.selectedFilterId, 'mono');
 
-    // Overlay polish disabled (DSLR MF) — shots stay as-captured.
+    // Overlay polish runs in the background; compose skips a second clean.
     await vm.preparePreview();
-    expect(vm.previewCleaned, isFalse);
-    expect(vm.imageDataUrls.every((u) => u.endsWith('_clean')), isFalse);
+    expect(vm.previewCleaned, isTrue);
+    expect(vm.imageDataUrls.every((u) => u.endsWith('_clean')), isTrue);
 
     final image = await vm.compose();
     expect(image, isNotNull);
@@ -213,6 +213,16 @@ void main() {
     expect(shortVm.canCompose, isFalse);
     expect(await shortVm.compose(), isNull);
     expect(shortVm.errorMessage, isNotNull);
+
+    final singleVm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const ['data:image/jpeg;base64,/9j/4AAQ'],
+      apiService: _StripFakeApi(),
+    );
+    expect(singleVm.isSingleClassic, isTrue);
+    expect(singleVm.canCompose, isTrue);
+    singleVm.addSticker('hearts');
+    expect(singleVm.stickerPlacements, hasLength(1));
 
     SessionManager().clearSession();
     final noSession = FotoFlashbackFilterViewModel(
