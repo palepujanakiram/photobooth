@@ -91,4 +91,76 @@ void main() {
       expect(result.allowsContinue, isFalse);
     });
   });
+
+  group('termsCameraPrimingAllowsContinue', () {
+    test('allows skipped and ready without upload', () {
+      expect(
+        termsCameraPrimingAllowsContinue(
+          phase: TermsCameraPrimingPhase.skipped,
+        ),
+        isTrue,
+      );
+      expect(
+        termsCameraPrimingAllowsContinue(
+          phase: TermsCameraPrimingPhase.ready,
+        ),
+        isTrue,
+      );
+    });
+
+    test('blocks noneFound/permissionDenied/failed without upload', () {
+      expect(
+        termsCameraPrimingAllowsContinue(
+          phase: TermsCameraPrimingPhase.noneFound,
+        ),
+        isFalse,
+      );
+      expect(
+        termsCameraPrimingAllowsContinue(
+          phase: TermsCameraPrimingPhase.permissionDenied,
+        ),
+        isFalse,
+      );
+      expect(
+        termsCameraPrimingAllowsContinue(
+          phase: TermsCameraPrimingPhase.failed,
+        ),
+        isFalse,
+      );
+    });
+
+    test('still blocks detecting even when upload is allowed', () {
+      expect(
+        termsCameraPrimingAllowsContinue(
+          phase: TermsCameraPrimingPhase.detecting,
+          photoUploadAllowed: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('allows camera-failure phases when photo upload is allowed', () {
+      expect(
+        termsCameraPrimingAllowsContinue(
+          phase: TermsCameraPrimingPhase.noneFound,
+          photoUploadAllowed: true,
+        ),
+        isTrue,
+      );
+      expect(
+        termsCameraPrimingAllowsContinue(
+          phase: TermsCameraPrimingPhase.permissionDenied,
+          photoUploadAllowed: true,
+        ),
+        isTrue,
+      );
+      expect(
+        termsCameraPrimingAllowsContinue(
+          phase: TermsCameraPrimingPhase.failed,
+          photoUploadAllowed: true,
+        ),
+        isTrue,
+      );
+    });
+  });
 }

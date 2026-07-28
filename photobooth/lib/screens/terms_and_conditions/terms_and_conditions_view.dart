@@ -18,6 +18,7 @@ import '../photo_capture/photo_capture_view.dart';
 import '../photo_capture/photo_capture_viewmodel.dart';
 import '../splash/bootstrap_route_args.dart';
 import '../webview/webview_screen.dart';
+import '../../services/app_settings_manager.dart';
 import '../../services/kiosk_manager.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
@@ -46,12 +47,17 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   Object? _capturePrefillPhoto;
   TermsCameraPrimingPhase _cameraPrimingPhase = TermsCameraPrimingPhase.detecting;
 
-  bool get _cameraPrimingComplete =>
-      _cameraPrimingPhase == TermsCameraPrimingPhase.skipped ||
-      _cameraPrimingPhase == TermsCameraPrimingPhase.ready;
+  bool _photoUploadAllowed(BuildContext context) =>
+      context.select<AppSettingsManager, bool>(
+        (m) => m.settings?.photoUploadAllowed == true,
+      );
 
-  bool get _canStartExperience =>
-      _cameraPrimingComplete && !_navigatingToCapture;
+  bool _canStartExperience(bool photoUploadAllowed) =>
+      !_navigatingToCapture &&
+      termsCameraPrimingAllowsContinue(
+        phase: _cameraPrimingPhase,
+        photoUploadAllowed: photoUploadAllowed,
+      );
 
   @override
   void initState() {
@@ -343,7 +349,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           // Divider
           Divider(height: 1, color: appColors.dividerColor),
 
-          _buildCameraPrimingBanner(appColors, layout, compact: compact),
+          _buildCameraPrimingBanner(context, appColors, layout, compact: compact),
 
           // Content
           Padding(
@@ -416,10 +422,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Widget _buildCameraPrimingBanner(
+    BuildContext context,
     AppColors appColors,
     TermsLayoutMetrics layout, {
     bool compact = false,
   }) {
+    final uploadOk = _photoUploadAllowed(context);
     switch (_cameraPrimingPhase) {
       case TermsCameraPrimingPhase.skipped:
       case TermsCameraPrimingPhase.ready:
@@ -437,7 +445,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           appColors: appColors,
           layout: layout,
           compact: compact,
-          message: AppStrings.termsCameraPermissionDenied,
+          message: uploadOk
+              ? AppStrings.termsCameraPermissionDeniedUploadOk
+              : AppStrings.termsCameraPermissionDenied,
           showRetry: true,
         );
       case TermsCameraPrimingPhase.noneFound:
@@ -445,7 +455,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           appColors: appColors,
           layout: layout,
           compact: compact,
-          message: AppStrings.termsNoCameraDetected,
+          message: uploadOk
+              ? AppStrings.termsNoCameraDetectedUploadOk
+              : AppStrings.termsNoCameraDetected,
           showRetry: true,
         );
       case TermsCameraPrimingPhase.failed:
@@ -453,7 +465,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           appColors: appColors,
           layout: layout,
           compact: compact,
-          message: AppStrings.termsCameraDetectionFailed,
+          message: uploadOk
+              ? AppStrings.termsCameraDetectionFailedUploadOk
+              : AppStrings.termsCameraDetectionFailed,
           showRetry: true,
         );
     }
@@ -638,7 +652,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Widget _buildActionButtons(TermsAndConditionsViewModel viewModel, AppColors appColors) {
-    final canSubmit = viewModel.canSubmit && _canStartExperience;
+    final photoUploadAllowed = _photoUploadAllowed(context);
+    final canSubmit =
+        viewModel.canSubmit && _canStartExperience(photoUploadAllowed);
     final buttonLabel = _cameraPrimingPhase == TermsCameraPrimingPhase.detecting
         ? AppStrings.termsContinueWhenReady
         : 'Start Your Experience';
