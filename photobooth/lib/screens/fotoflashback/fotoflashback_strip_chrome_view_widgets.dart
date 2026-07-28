@@ -33,6 +33,8 @@ class StripChromeLook {
   static const double filmHoleHRatio = 34 / 1800;
   static const double filmHolePitchRatio = 58 / 1800;
   static const double filmHoleStartYRatio = 40 / 1800;
+  /// Matches zenai `FILMSTRIP_DUAL.holeInset` (pull punches toward photo).
+  static const double filmHoleInsetRatio = 6 / 600;
 
   static StripChromeLook forFrame(
     String frameId, {
@@ -146,8 +148,9 @@ class _FilmstripSprocketOverlay extends StatelessWidget {
     final holeH = height * StripChromeLook.filmHoleHRatio;
     final pitch = height * StripChromeLook.filmHolePitchRatio;
     final startY = height * StripChromeLook.filmHoleStartYRatio;
-    final leftHoleX = (railPad - holeW) / 2;
-    final rightHoleX = width - railPad + (railPad - holeW) / 2;
+    final inset = width * StripChromeLook.filmHoleInsetRatio;
+    final leftHoleX = (railPad - holeW) / 2 + inset;
+    final rightHoleX = width - railPad + (railPad - holeW) / 2 - inset;
     final holes = <Widget>[];
     for (var y = startY; y + holeH < height - (height * (24 / 1800)); y += pitch) {
       holes.add(
