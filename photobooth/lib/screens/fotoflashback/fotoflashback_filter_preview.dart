@@ -8,7 +8,7 @@ import 'fotoflashback_sheet_layout_view_widgets.dart';
 import 'fotoflashback_strip_chrome_view_widgets.dart';
 
 /// Single 2×6 strip preview (one cut of the dual print sheet), or a 4×6 sheet
-/// layout preview when [frameId] is polaroid / grid_2x2 / filmstrip / romantic.
+/// layout preview when [frameId] is polaroid / grid_2x2 / romantic / plain_6x4.
 ///
 /// Dual-strip chrome: print hands off two identical strips on a 4×6 sheet; the
 /// look UI shows one strip so guests edit the piece they keep. Sheet layouts
@@ -279,18 +279,24 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
       noirAccentStrokeRatio: wysiwyg.noirAccentStrokeRatio,
     );
     final pad = width * chrome.borderRatio;
+    // Filmstrip print uses contain so faces aren't cropped into the rails.
+    final photoFit =
+        chrome.showFilmstripSprockets ? BoxFit.contain : BoxFit.cover;
     final photoColumn = Column(
       children: [
         for (var i = 0; i < kStripShotCount; i++)
           Expanded(
             child: images.length > i
-                ? Image.memory(
-                    images[i],
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: double.infinity,
-                    gaplessPlayback: true,
-                    filterQuality: FilterQuality.high,
+                ? ColoredBox(
+                    color: Colors.black,
+                    child: Image.memory(
+                      images[i],
+                      fit: photoFit,
+                      width: double.infinity,
+                      height: double.infinity,
+                      gaplessPlayback: true,
+                      filterQuality: FilterQuality.high,
+                    ),
                   )
                 : const ColoredBox(color: Colors.black12),
           ),

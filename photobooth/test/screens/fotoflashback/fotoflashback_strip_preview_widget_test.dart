@@ -117,6 +117,8 @@ void main() {
     );
     await tester.pump();
     expect(find.byKey(const ValueKey('strip_chrome_filmstrip')), findsOneWidget);
+    // Sprocket punches are white rounded boxes on the rails.
+    expect(find.byType(DecoratedBox), findsWidgets);
   });
 
   testWidgets('FotoFlashbackStripPreview accepts raw base64 and placeholders', (

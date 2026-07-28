@@ -387,6 +387,7 @@ class StripWysiwygLayout {
     gridGap: 28 / 1200,
     gridTitle: 'Together',
     gridSubtitle: 'Our favorite moments',
+    // Sheet-normalized (1200-wide); dual-strip chrome uses StripChromeLook ratios.
     filmRailW: 52 / 1200,
     filmMarginY: 72 / 1800,
     filmGutter: 14 / 1800,
@@ -394,7 +395,7 @@ class StripWysiwygLayout {
     filmHoleW: 26 / 1200,
     filmHoleH: 34 / 1800,
     filmHolePitch: 58 / 1800,
-    filmCellAspect: 592 / 448,
+    filmCellAspect: 496 / 448,
     filmLabel: 'MEMORIES',
   );
 
