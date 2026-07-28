@@ -156,6 +156,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void _cancelFlashbackAutoTimers() {
     _flashbackReviewTimer?.cancel();
     _flashbackReviewTimer = null;
+    _flashbackReviewTick?.cancel();
+    _flashbackReviewTick = null;
+    if (_flashbackReviewSecondsLeft != null && mounted) {
+      setState(() => _flashbackReviewSecondsLeft = null);
+    } else {
+      _flashbackReviewSecondsLeft = null;
+    }
   }
 
   void _maybeAdvanceFlashbackAutoChain() {
@@ -190,10 +197,30 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   void _scheduleFlashbackAutoAccept() {
     _flashbackReviewTimer?.cancel();
+    _flashbackReviewTick?.cancel();
+    final totalMs = AppConstants.kFlashbackShotReviewDuration.inMilliseconds;
+    final totalSecs = (totalMs / 1000).ceil().clamp(1, 60);
+    setState(() => _flashbackReviewSecondsLeft = totalSecs);
+    _flashbackReviewTick = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      final next = (_flashbackReviewSecondsLeft ?? 1) - 1;
+      if (next <= 0) {
+        t.cancel();
+        _flashbackReviewTick = null;
+        setState(() => _flashbackReviewSecondsLeft = 0);
+        return;
+      }
+      setState(() => _flashbackReviewSecondsLeft = next);
+    });
     _flashbackReviewTimer = Timer(
       AppConstants.kFlashbackShotReviewDuration,
       () {
         if (!mounted) return;
+        _flashbackReviewTick?.cancel();
+        _flashbackReviewTick = null;
         unawaited(_acceptFlashbackShot(_captureViewModel));
       },
     );
@@ -305,6 +332,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   final List<PhotoModel> _stripShots = <PhotoModel>[];
   bool _stripFinishing = false;
   Timer? _flashbackReviewTimer;
+  Timer? _flashbackReviewTick;
+  int? _flashbackReviewSecondsLeft;
   bool _flashbackCountdownStarting = false;
 
   bool get _isFlashbackMultiShot =>
@@ -2775,6 +2804,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     Positioned.fill(
                       child: _buildCountdownOverlay(context, viewModel.countdownValue!),
                     ),
+                  if (hasCapturedPhoto &&
+                      _isFlashbackMultiShot &&
+                      _flashbackReviewSecondsLeft != null &&
+                      !_stripFinishing)
+                    Positioned(
+                      left: 12,
+                      right: 12,
+                      bottom: 12,
+                      child: _buildFlashbackReviewHoldBanner(
+                        isLastShot: (_stripShots.length + 1) >=
+                            (_multiShotTotal ?? kStripShotCount),
+                        secondsLeft: _flashbackReviewSecondsLeft!,
+                      ),
+                    ),
                   if (!_showCaptureFlash &&
                       !hasCapturedPhoto &&
                       (viewModel.isCapturing || _uvcCaptureInFlight) &&
@@ -3073,6 +3116,34 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                 : Text(continueLabel),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFlashbackReviewHoldBanner({
+    required bool isLastShot,
+    required int secondsLeft,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Text(
+        AppStrings.flashbackReviewHoldStatus(
+          isLastShot: isLastShot,
+          secondsLeft: secondsLeft,
+        ),
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          height: 1.3,
+        ),
       ),
     );
   }

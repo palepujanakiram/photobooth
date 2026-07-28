@@ -420,6 +420,24 @@ abstract final class AppStrings {
   static const flashbackNextShot = 'Next shot';
   static const flashbackRetakeLast = 'Retake last';
   static const flashbackContinueLooks = 'Pick a look';
+
+  /// Shown during the inter-shot hold while the guest reviews the still.
+  static const flashbackGettingReadyNextShot = 'Getting ready for the next shot…';
+
+  /// Inter-shot hold on the final Classic still before looks.
+  static const flashbackReviewLastShot = 'Looking good! Continuing soon…';
+
+  static String flashbackReviewHoldStatus({
+    required bool isLastShot,
+    required int secondsLeft,
+  }) {
+    final base = isLastShot
+        ? flashbackReviewLastShot
+        : flashbackGettingReadyNextShot;
+    if (secondsLeft <= 0) return base;
+    return '$base  $secondsLeft';
+  }
+
   static const flashbackFilterTitle = 'Pick your look';
   static const flashbackFilterSubtitle =
       'Pick a look & frame. Add stickers, or Scribble to write on your strip';
