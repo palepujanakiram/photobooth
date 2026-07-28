@@ -85,7 +85,6 @@ class _ResultScreenState extends State<ResultScreen> {
       appSettingsManager: context.read<AppSettingsManager>(),
       contact: parsed.contact,
     );
-    _viewModel!.refreshPrinterFromSettings();
     _isInitialized = true;
     unawaited(_initPaymentMode());
   }

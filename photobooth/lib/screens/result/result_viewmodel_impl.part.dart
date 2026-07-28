@@ -1336,8 +1336,6 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   }
 
   Future<void> _runSilentPrintToNetwork() async {
-    _r.refreshPrinterFromSettings();
-
     if (_r._appSettingsManager?.settings?.printerEnabled == false) {
       _r._errorMessage = 'Printing is disabled in booth settings';
       _failPrintProgress(_r._errorMessage!);
@@ -1345,12 +1343,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       return;
     }
 
-    if (_r._printerHost.isEmpty) {
-      _r._errorMessage = 'Please enter a printer address';
-      _failPrintProgress(_r._errorMessage!);
-      notifyListeners();
-      return;
-    }
+    _r._printService.resetDnpPrintSession();
 
     if (_r._downloadedFilesList.length != _r._generatedImages.length) {
       if (kIsWeb) {
@@ -1488,11 +1481,9 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       sessionOverride: _r._printSizeOverride,
     );
     try {
-      await _r._printService.printImageToNetworkPrinter(
+      await _r._printService.printImageSilent(
         file,
-        printerHost: _r._printerHost,
-        printerPort: _r.effectivePrinterPort,
-        printerPath: _r.effectivePrinterPath,
+        settings: _r._appSettingsManager?.settings,
         printSize: printSize,
         quantity: _r._printCopies,
       );

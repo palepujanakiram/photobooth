@@ -1,20 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Cleartext is limited to the LAN printer and loopback. API traffic uses HTTPS.
-  If your event printer uses a different LAN IP, add a <domain> entry before building.
+  API traffic uses HTTPS. DNP WCM Plus on the event LAN is discovered at runtime
+  and speaks HTTP (/api/PrintImage), so cleartext is permitted for those hosts.
 -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false">
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
-
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">localhost</domain>
-        <domain includeSubdomains="false">127.0.0.1</domain>
-        <domain includeSubdomains="false">10.0.2.2</domain>
-        <!-- AppConstants.kDefaultPrinterHost -->
-        <domain includeSubdomains="false">192.168.2.108</domain>
-    </domain-config>
 </network-security-config>

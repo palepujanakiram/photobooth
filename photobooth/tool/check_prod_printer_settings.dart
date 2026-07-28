@@ -33,9 +33,7 @@ Future<void> main(List<String> args) async {
     print('baseUrl: $baseUrl');
     for (final key in [
       'printerEnabled',
-      'printerHost',
-      'printerPort',
-      'printerPath',
+      'printerTransport',
       'paymentGatewayEnabled',
     ]) {
       print('$key: ${data[key]}');

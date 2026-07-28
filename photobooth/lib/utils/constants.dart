@@ -47,9 +47,6 @@ class AppConstants {
   /// Fallback when `/api/settings` omits `maxRegenerations` (total generation slots on Generate screen).
   static const int kDefaultMaxRegenerations = 3;
 
-  /// Fallback when `/api/settings` omits `printerHost`.
-  static const String kDefaultPrinterHost = '192.168.2.108';
-
   // Image Configuration
   static const int kImageQuality = 85;
   static const int kMaxImageWidth = 1920;

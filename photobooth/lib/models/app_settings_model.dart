@@ -32,6 +32,8 @@ class AppSettingsModel {
   final String? printerHost;
   final int? printerPort;
   final String? printerPath;
+  /// `auto` | `usb` | `wifi` | `network` — DNP print routing (default `auto`).
+  final String? printerTransport;
   final bool? receiptPrinterEnabled;
   final String? receiptPrinterHost;
   final int? receiptPrinterPort;
@@ -83,6 +85,7 @@ class AppSettingsModel {
     this.printerHost,
     this.printerPort,
     this.printerPath,
+    this.printerTransport,
     this.receiptPrinterEnabled,
     this.receiptPrinterHost,
     this.receiptPrinterPort,
@@ -147,6 +150,7 @@ class AppSettingsModel {
       printerHost: JsonParseHelpers.stringOrNull(json['printerHost']),
       printerPort: JsonParseHelpers.intOrNull(json['printerPort']),
       printerPath: JsonParseHelpers.stringOrNull(json['printerPath']),
+      printerTransport: JsonParseHelpers.stringOrNull(json['printerTransport']),
       receiptPrinterEnabled:
           JsonParseHelpers.boolOrNull(json['receiptPrinterEnabled']),
       receiptPrinterHost:
