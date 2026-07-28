@@ -9,6 +9,48 @@ import '../../utils/app_strings.dart';
 import '../../utils/secure_image_url.dart';
 import 'staff_payments_payload_utils.dart';
 
+Widget staffPaymentThumbWithCount({
+  required String resolved,
+  required int totalCount,
+  String? sessionId,
+  required Widget Function() placeholder,
+  Widget Function()? unavailable,
+}) {
+  final thumb = staffPaymentThumbImage(
+    resolved: resolved,
+    sessionId: sessionId,
+    placeholder: placeholder,
+    unavailable: unavailable,
+  );
+  if (totalCount <= 1) return thumb;
+  return Stack(
+    clipBehavior: Clip.none,
+    children: [
+      thumb,
+      Positioned(
+        right: -2,
+        bottom: -2,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.78),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white24),
+          ),
+          child: Text(
+            '$totalCount',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
 /// Thumbnail rendering for staff payment rows (Sonar S3776 extraction).
 Widget staffPaymentThumbImage({
   required String resolved,

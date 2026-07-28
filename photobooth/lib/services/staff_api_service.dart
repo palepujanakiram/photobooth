@@ -385,6 +385,45 @@ class StaffApiService {
     }
   }
 
+  /// GET `/api/generation-runs/:runId` with staff auth (forensics from payments).
+  Future<Map<String, dynamic>> fetchGenerationRun(String runId) async {
+    final id = runId.trim();
+    if (id.isEmpty) {
+      throw ApiException('runId is required');
+    }
+
+    final token = await _sessionManager.getToken();
+    if (token == null || token.isEmpty) {
+      throw ApiException('Staff session expired. Please log in again.');
+    }
+
+    try {
+      final r = await _dio.get<dynamic>(
+        '/api/generation-runs/$id',
+        options: Options(
+          headers: {AppStrings.staffTokenHeader: token},
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+          responseType: ResponseType.json,
+        ),
+      );
+      if (r.statusCode != null && r.statusCode! >= 200 && r.statusCode! < 300) {
+        final data = r.data;
+        if (data is Map<String, dynamic>) return data;
+        if (data is Map) return Map<String, dynamic>.from(data);
+        throw ApiException('Unexpected generation run response');
+      }
+      throw ApiException(
+        _extractErrorMessage(r.data) ?? 'Failed to load transformation details',
+        r.statusCode,
+      );
+    } on DioException catch (e) {
+      throw ApiException(
+        e.message ?? 'Failed to load transformation details',
+        e.response?.statusCode,
+      );
+    }
+  }
+
   /// Download a protected `/api/img/*` URL using staff auth (for print flow).
   Future<XFile> downloadImageToTemp(
     String imageUrl, {

@@ -53,7 +53,7 @@ void main() {
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => const StaffPaymentImagePreviewScreen(
-                      imageUrl: 'not-valid-image',
+                      imageUrls: ['not-valid-image'],
                       title: 'Payment',
                     ),
                   ),
@@ -116,7 +116,7 @@ void main() {
   testWidgets('StaffPaymentImagePreviewScreen shows failure icon', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
-        home: StaffPaymentImagePreviewScreen(imageUrl: 'not-valid-image'),
+        home: StaffPaymentImagePreviewScreen(imageUrls: ['not-valid-image']),
       ),
     );
     await tester.pumpAndSettle();
