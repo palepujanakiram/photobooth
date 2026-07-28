@@ -430,6 +430,12 @@ abstract final class AppStrings {
   static const flashbackRetakeLast = 'Retake last';
   static const flashbackContinueLooks = 'Pick a look';
 
+  /// Theme selection primary CTA.
+  static const themeSelectionContinue = 'Continue';
+
+  /// Theme selection CTA while session/theme sync runs before the next route.
+  static const themeSelectionContinuing = 'Continuing…';
+
   /// Shown during the inter-shot hold while the guest reviews the still.
   static const flashbackGettingReadyNextShot = 'Getting ready for the next shot…';
 

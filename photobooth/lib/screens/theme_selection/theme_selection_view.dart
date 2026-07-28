@@ -10,10 +10,10 @@ import 'theme_selection_layout.dart';
 import 'theme_selection_viewmodel.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import '../photo_capture/photo_model.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/theme_card.dart';
 import '../../views/widgets/cached_network_image.dart';
-import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/bottom_safe_area.dart';
 import '../../views/widgets/falling_starfield_background.dart';
 import '../../views/widgets/centered_max_width.dart';
@@ -38,11 +38,10 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
   PhotoModel? _photoFromCapture;
   bool _addOneMoreStyle = false;
   List<String> _usedThemeIds = const [];
-  bool _isGenerating = false;
-  Timer? _timer;
+  /// True while Continue awaits session sync / navigation prep.
+  bool _isContinuing = false;
   Timer? _carouselTimer;
   Timer? _autoScrollResumeTimer;
-  int _elapsedSeconds = 0;
   PageController? _pageController;
   ScrollController? _thumbScrollController;
   String? _prevCategoryId;
@@ -52,19 +51,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
   /// Tracks [PageController.viewportFraction] so we can rebuild when phone vs tablet layout changes.
   double? _carouselViewportFraction;
   int _lastSelectionResetToken = 0;
-
-  void _startTimer() {
-    _elapsedSeconds = 0;
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) setState(() => _elapsedSeconds++);
-    });
-  }
-
-  void _stopTimer() {
-    _timer?.cancel();
-    _timer = null;
-  }
 
   void _startCarouselTimer(ThemeViewModel viewModel) {
     if (!viewModel.themeCarouselAutoScroll) return;
@@ -170,7 +156,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
       _stopCarouselTimer();
       _autoScrollResumeTimer?.cancel();
       _autoScrollResumeTimer = null;
-      _stopTimer();
       return;
     }
     if (!mounted) return;
@@ -184,7 +169,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
 
   @override
   void dispose() {
-    _stopTimer();
     _stopCarouselTimer();
     _autoScrollResumeTimer?.cancel();
     _pageController?.dispose();
@@ -242,35 +226,37 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
       BuildContext context, ThemeViewModel viewModel) async {
     final selectedTheme = viewModel.armedTheme ?? viewModel.selectedTheme;
     if (selectedTheme == null) return;
+    if (_isContinuing) return;
 
     if (_addOneMoreStyle) {
       Navigator.of(context).pop(selectedTheme);
       return;
     }
 
-    if (_photoFromCapture != null) {
-      _startTimer();
-      await themeSelectionContinueWithPhoto(
+    setState(() => _isContinuing = true);
+    try {
+      if (_photoFromCapture != null) {
+        await themeSelectionContinueWithPhoto(
+          context: context,
+          viewModel: viewModel,
+          photo: _photoFromCapture!,
+          selectedTheme: selectedTheme,
+          setGenerating: (_) {},
+        );
+        return;
+      }
+
+      await themeSelectionContinueToCapture(
         context: context,
         viewModel: viewModel,
-        photo: _photoFromCapture!,
         selectedTheme: selectedTheme,
-        setGenerating: (v) {
-          if (mounted) setState(() => _isGenerating = v);
+        setPhotoFromCapture: (photo) {
+          if (mounted) setState(() => _photoFromCapture = photo);
         },
       );
-      _stopTimer();
-      return;
+    } finally {
+      if (mounted) setState(() => _isContinuing = false);
     }
-
-    await themeSelectionContinueToCapture(
-      context: context,
-      viewModel: viewModel,
-      selectedTheme: selectedTheme,
-      setPhotoFromCapture: (photo) {
-        if (mounted) setState(() => _photoFromCapture = photo);
-      },
-    );
   }
 
   Future<void> _openThemePreview(
@@ -452,14 +438,18 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
                           0.0,
                           effectiveBottomInset(context) - 40.0,
                         );
-                        return ThemeSelectionLoadedBody(
-                          viewModel: viewModel,
-                          mounted: mounted,
-                          bottomPadding: reducedBottomInset,
-                          carousel: _buildCarouselAndThumbnails(
-                            context,
-                            viewModel,
-                            isLandscape,
+                        final busy = _isContinuing || viewModel.isUpdatingSession;
+                        return AbsorbPointer(
+                          absorbing: busy,
+                          child: ThemeSelectionLoadedBody(
+                            viewModel: viewModel,
+                            mounted: mounted,
+                            bottomPadding: reducedBottomInset,
+                            carousel: _buildCarouselAndThumbnails(
+                              context,
+                              viewModel,
+                              isLandscape,
+                            ),
                           ),
                         );
                       },
@@ -469,14 +459,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
               ],
             ),
           ),
-          if (_isGenerating)
-            Positioned.fill(
-              child: FullScreenLoader(
-                text: 'Updating Session',
-                loaderColor: Colors.blue,
-                elapsedSeconds: _elapsedSeconds,
-              ),
-            ),
         ],
       ),
     );
@@ -618,9 +600,15 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
     BuildContext context,
     ThemeViewModel viewModel,
   ) {
-    final enabled = viewModel.armedTheme != null &&
-        !_isGenerating &&
-        !viewModel.isUpdatingSession;
+    final hasTheme = viewModel.armedTheme != null;
+    final busy = _isContinuing || viewModel.isUpdatingSession;
+    // Keep the primary blue look while busy (null onPressed greys CupertinoButton).
+    final onPressed = !hasTheme
+        ? null
+        : () {
+            if (busy) return;
+            _onContinue(context, viewModel);
+          };
 
     return SafeArea(
       top: false,
@@ -632,19 +620,43 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
             width: double.infinity,
             child: CupertinoButton(
               padding: const EdgeInsets.symmetric(vertical: 16),
-              color: enabled
+              color: hasTheme
                   ? CupertinoColors.systemBlue
                   : CupertinoColors.systemGrey,
               borderRadius: BorderRadius.circular(14),
-              onPressed: enabled ? () => _onContinue(context, viewModel) : null,
-              child: const Text(
-                'Continue',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: CupertinoColors.white,
-                ),
-              ),
+              onPressed: onPressed,
+              child: busy
+                  ? const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: CupertinoColors.white,
+                          ),
+                        ),
+                        SizedBox(width: 10),
+                        Text(
+                          AppStrings.themeSelectionContinuing,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: CupertinoColors.white,
+                          ),
+                        ),
+                      ],
+                    )
+                  : const Text(
+                      AppStrings.themeSelectionContinue,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: CupertinoColors.white,
+                      ),
+                    ),
             ),
           ),
         ),
