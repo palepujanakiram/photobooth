@@ -46,6 +46,9 @@ const List<String> kStripSheetLayoutIds = [
 bool isStripSheetLayout(String frameId) =>
     kStripSheetLayoutIds.contains(frameId);
 
+/// Admin scrapbook templates use catalog ids `st:<uuid>`.
+bool isStripTemplateFrame(String frameId) => frameId.startsWith('st:');
+
 const List<String> kStripStickerIds = [
   'none',
   'hearts',
@@ -199,17 +202,33 @@ class StripFrame {
     required this.id,
     required this.name,
     required this.description,
+    this.kind,
+    this.overlayUrl,
+    this.caption,
+    this.logoUrl,
   });
 
   final String id;
   final String name;
   final String description;
 
+  /// `template` for admin scrapbook strips; null/builtin otherwise.
+  final String? kind;
+  final String? overlayUrl;
+  final String? caption;
+  final String? logoUrl;
+
+  bool get isTemplate => kind == 'template' || isStripTemplateFrame(id);
+
   factory StripFrame.fromJson(Map<String, dynamic> json) {
     return StripFrame(
       id: JsonParseHelpers.stringValue(json['id']),
       name: JsonParseHelpers.stringValue(json['name']),
       description: JsonParseHelpers.stringValue(json['description']),
+      kind: JsonParseHelpers.stringOrNull(json['kind']),
+      overlayUrl: JsonParseHelpers.stringOrNull(json['overlayUrl']),
+      caption: JsonParseHelpers.stringOrNull(json['caption']),
+      logoUrl: JsonParseHelpers.stringOrNull(json['logoUrl']),
     );
   }
 }

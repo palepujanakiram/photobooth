@@ -161,6 +161,8 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           layout: viewModel.wysiwygLayout,
                           filterId: viewModel.selectedFilterId,
                           frameId: viewModel.selectedFrameId,
+                          frameOverlayUrl: viewModel.selectedFrame?.overlayUrl,
+                          frameCaption: viewModel.selectedFrame?.caption,
                           stickerId: viewModel.selectedStickerId,
                           placements: viewModel.stickerPlacements,
                           scribbles: viewModel.scribbles,
@@ -252,6 +254,8 @@ class _LookPickerBody extends StatelessWidget {
     required this.layout,
     required this.filterId,
     required this.frameId,
+    this.frameOverlayUrl,
+    this.frameCaption,
     required this.stickerId,
     required this.placements,
     required this.scribbles,
@@ -271,6 +275,8 @@ class _LookPickerBody extends StatelessWidget {
   final StripWysiwygLayout layout;
   final String filterId;
   final String frameId;
+  final String? frameOverlayUrl;
+  final String? frameCaption;
   final String stickerId;
   final List<StripStickerPlacement> placements;
   final List<StripScribbleStroke> scribbles;
@@ -315,6 +321,8 @@ class _LookPickerBody extends StatelessWidget {
                 layout: layout,
                 filterId: filterId,
                 frameId: frameId,
+                frameOverlayUrl: frameOverlayUrl,
+                frameCaption: frameCaption,
                 stickerId: stickerId,
                 placements: placements,
                 scribbles: scribbles,
