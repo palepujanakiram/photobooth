@@ -19,6 +19,8 @@ class FotoFlashbackStripPreview extends StatelessWidget {
     required this.imageDataUrls,
     required this.filterId,
     this.frameId = kDefaultStripFrameId,
+    this.frameOverlayUrl,
+    this.frameCaption,
     this.stickerId = kDefaultStripStickerId,
     this.placements = const [],
     this.scribbles = const [],
@@ -37,6 +39,10 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   final List<String> imageDataUrls;
   final String filterId;
   final String frameId;
+
+  /// Admin scrapbook template overlay (https PNG) for live preview.
+  final String? frameOverlayUrl;
+  final String? frameCaption;
 
   /// When true, [imageDataUrls] are already Sharp-graded — skip ColorFilter.
   final bool imagesAreGraded;
@@ -170,6 +176,8 @@ class FotoFlashbackStripPreview extends StatelessWidget {
             imageDataUrls: imageDataUrls,
             filterId: filterId,
             frameId: frameId,
+            frameOverlayUrl: frameOverlayUrl,
+            frameCaption: frameCaption,
             stickerId: stickerId,
             imagesAreGraded: imagesAreGraded,
             layout: wysiwyg,
@@ -228,6 +236,8 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
     required this.interactive,
     required this.width,
     required this.height,
+    this.frameOverlayUrl,
+    this.frameCaption,
     this.imagesAreGraded = false,
     this.layout,
     this.onMovePlacement,
@@ -240,6 +250,8 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
   final List<String> imageDataUrls;
   final String filterId;
   final String frameId;
+  final String? frameOverlayUrl;
+  final String? frameCaption;
   final String stickerId;
   final List<StripStickerPlacement> placements;
   final List<StripScribbleStroke> scribbles;
@@ -308,6 +320,32 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
             height: height,
             borderPad: pad,
           ),
+          if (frameOverlayUrl != null && frameOverlayUrl!.isNotEmpty)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Image.network(
+                  frameOverlayUrl!,
+                  fit: BoxFit.fill,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          if (frameCaption != null && frameCaption!.trim().isNotEmpty)
+            Positioned(
+              left: width * 0.08,
+              bottom: height * 0.025,
+              child: IgnorePointer(
+                child: Text(
+                  '${frameCaption!.trim()}  ♥',
+                  style: TextStyle(
+                    color: const Color(0xFF111111),
+                    fontSize: width * 0.055,
+                    fontStyle: FontStyle.italic,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
           if (placements.isEmpty)
             ..._stickerOverlays(stickerId, width, height)
           else

@@ -194,4 +194,21 @@ void main() {
     );
     expect(blankComposite.printImageUrl, 'https://example.com/a.jpg');
   });
+
+  test('StripFrame parses admin template fields', () {
+    final frame = StripFrame.fromJson({
+      'id': 'st:abc',
+      'name': 'Date night',
+      'description': 'Scrapbook',
+      'kind': 'template',
+      'overlayUrl': 'https://example.com/o.png',
+      'caption': 'Date night',
+      'logoUrl': 'https://example.com/l.png',
+    });
+    expect(frame.isTemplate, isTrue);
+    expect(isStripTemplateFrame(frame.id), isTrue);
+    expect(frame.overlayUrl, 'https://example.com/o.png');
+    expect(frame.caption, 'Date night');
+    expect(isStripSheetLayout(frame.id), isFalse);
+  });
 }

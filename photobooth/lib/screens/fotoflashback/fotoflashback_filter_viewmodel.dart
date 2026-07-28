@@ -74,6 +74,13 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   String get selectedFilterId => _selectedFilterId;
   String get selectedFrameId => _selectedFrameId;
 
+  StripFrame? get selectedFrame {
+    for (final f in frames) {
+      if (f.id == _selectedFrameId) return f;
+    }
+    return null;
+  }
+
   /// Chip highlight: `none` when empty, else last-added placeable type.
   String get selectedStickerId => _selectedStickerId;
 
