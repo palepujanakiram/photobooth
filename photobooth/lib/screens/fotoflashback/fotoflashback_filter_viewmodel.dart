@@ -511,17 +511,11 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       top = slot.top;
       width = layout.polaroidFrameW;
       height = layout.polaroidFrameH;
-    } else if (_selectedFrameId == 'grid_2x2' ||
-        _selectedFrameId == 'plain_6x4') {
-      final margin = _selectedFrameId == 'plain_6x4'
-          ? 36 / 1800
-          : layout.gridMargin;
-      final gap =
-          _selectedFrameId == 'plain_6x4' ? 24 / 1800 : layout.gridGap;
-      final headerH =
-          _selectedFrameId == 'plain_6x4' ? 0.0 : layout.gridHeaderH;
-      final footerH =
-          _selectedFrameId == 'plain_6x4' ? 0.0 : layout.gridFooterH;
+    } else if (_selectedFrameId == 'grid_2x2') {
+      final margin = layout.gridMargin;
+      final gap = layout.gridGap;
+      final headerH = layout.gridHeaderH;
+      final footerH = layout.gridFooterH;
       final cellW = (1 - margin * 2 - gap) / 2;
       final cellH = (1 - headerH - footerH - margin - gap) / 2;
       final col = i % 2;

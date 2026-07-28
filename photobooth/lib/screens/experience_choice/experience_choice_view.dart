@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../services/kiosk_manager.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/classic_shot_mode.dart';
 import '../../utils/constants.dart';
 import '../../utils/fotoflashback_navigation.dart';
 import '../../utils/kiosk_page_route.dart';
@@ -38,6 +39,7 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
   late final ExperienceChoiceViewModel _viewModel;
   late final KioskManager _kioskManager;
   bool _redirectingToAi = false;
+  ClassicShotMode _classicShotMode = ClassicShotMode.fourShot;
 
   @override
   void initState() {
@@ -91,6 +93,7 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
       context: context,
       theme: theme,
       replace: true,
+      shotMode: _classicShotMode,
     );
   }
 
@@ -142,6 +145,11 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
                           isLoading: vm.isLoading,
                           fotoFlashAvailable: vm.fotoFlashAvailable,
                           startingFlashback: vm.isStartingFlashback,
+                          classicShotMode: _classicShotMode,
+                          onClassicShotModeChanged: (mode) {
+                            if (mode == null) return;
+                            setState(() => _classicShotMode = mode);
+                          },
                           onAi: () => unawaited(_chooseAi()),
                           onFotoFlash: () => unawaited(_chooseFotoFlash()),
                           onBackToTerms: () {
@@ -169,6 +177,8 @@ class _ExperienceChoicePanel extends StatelessWidget {
     required this.isLoading,
     required this.fotoFlashAvailable,
     required this.startingFlashback,
+    required this.classicShotMode,
+    required this.onClassicShotModeChanged,
     required this.onAi,
     required this.onFotoFlash,
     required this.onBackToTerms,
@@ -178,6 +188,8 @@ class _ExperienceChoicePanel extends StatelessWidget {
   final bool isLoading;
   final bool fotoFlashAvailable;
   final bool startingFlashback;
+  final ClassicShotMode classicShotMode;
+  final ValueChanged<ClassicShotMode?> onClassicShotModeChanged;
   final VoidCallback onAi;
   final VoidCallback onFotoFlash;
   final VoidCallback onBackToTerms;
@@ -252,6 +264,13 @@ class _ExperienceChoicePanel extends StatelessWidget {
               enabled: fotoFlashAvailable && !startingFlashback,
               busy: startingFlashback,
               onTap: onFotoFlash,
+              footer: fotoFlashAvailable
+                  ? _ClassicShotModeDropdown(
+                      value: classicShotMode,
+                      enabled: !startingFlashback,
+                      onChanged: onClassicShotModeChanged,
+                    )
+                  : null,
             ),
           ],
           const SizedBox(height: 12),
@@ -271,6 +290,78 @@ class _ExperienceChoicePanel extends StatelessWidget {
   }
 }
 
+/// Compact shot-count control — default stays 4-shot until opened.
+class _ClassicShotModeDropdown extends StatelessWidget {
+  const _ClassicShotModeDropdown({
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final ClassicShotMode value;
+  final bool enabled;
+  final ValueChanged<ClassicShotMode?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final appColors = AppColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        children: [
+          Text(
+            AppStrings.experienceClassicShotModeLabel,
+            style: TextStyle(
+              color: appColors.secondaryTextColor,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: appColors.backgroundColor.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: appColors.borderColor),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<ClassicShotMode>(
+                    value: value,
+                    isExpanded: true,
+                    isDense: true,
+                    borderRadius: BorderRadius.circular(12),
+                    dropdownColor: appColors.cardBackgroundColor,
+                    style: TextStyle(
+                      color: appColors.textColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    iconEnabledColor: const Color(0xFFD4922A),
+                    items: const [
+                      DropdownMenuItem(
+                        value: ClassicShotMode.fourShot,
+                        child: Text(AppStrings.experienceClassicFourShot),
+                      ),
+                      DropdownMenuItem(
+                        value: ClassicShotMode.single6x4,
+                        child: Text(AppStrings.experienceClassicOneShot),
+                      ),
+                    ],
+                    onChanged: enabled ? onChanged : null,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ExperienceOptionCard extends StatelessWidget {
   const _ExperienceOptionCard({
     required this.title,
@@ -280,6 +371,7 @@ class _ExperienceOptionCard extends StatelessWidget {
     required this.onTap,
     this.enabled = true,
     this.busy = false,
+    this.footer,
   });
 
   final String title;
@@ -289,6 +381,7 @@ class _ExperienceOptionCard extends StatelessWidget {
   final VoidCallback onTap;
   final bool enabled;
   final bool busy;
+  final Widget? footer;
 
   @override
   Widget build(BuildContext context) {
@@ -317,51 +410,62 @@ class _ExperienceOptionCard extends StatelessWidget {
               width: muted ? 1 : 2,
             ),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              preview,
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: titleColor,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: subtitleColor,
-                        fontSize: 14,
-                        height: 1.3,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (busy) ...[
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: accent,
+              Row(
+                children: [
+                  preview,
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            color: titleColor,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                      ),
-                    ],
-                  ],
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            color: subtitleColor,
+                            fontSize: 14,
+                            height: 1.3,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (busy) ...[
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              color: accent,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 18,
+                    color: muted ? appColors.secondaryTextColor : accent,
+                  ),
+                ],
+              ),
+              if (footer != null)
+                GestureDetector(
+                  onTap: () {}, // Keep dropdown taps from starting Classic.
+                  behavior: HitTestBehavior.opaque,
+                  child: footer!,
                 ),
-              ),
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                size: 18,
-                color: muted ? appColors.secondaryTextColor : accent,
-              ),
             ],
           ),
         ),

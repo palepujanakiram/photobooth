@@ -717,7 +717,8 @@ class ApiService {
     }
   }
 
-  /// POST `/api/sessions/:id/strip/compose` — dual 2×6 strip on one 4×6 sheet.
+  /// POST `/api/sessions/:id/strip/compose` — dual 2×6 strip, sheet layout, or
+  /// single landscape 6×4 when [images] has one still.
   Future<StripComposeResult> composeStrip({
     required String sessionId,
     required List<String> images,
@@ -728,9 +729,9 @@ class ApiService {
     List<StripScribbleStroke> scribbles = const [],
     bool cleanOverlays = false,
   }) async {
-    if (images.length != kStripShotCount) {
+    if (images.length != 1 && images.length != kStripShotCount) {
       throw ApiException(
-        'FotoFlashback requires exactly $kStripShotCount photos.',
+        'Classic compose requires 1 or $kStripShotCount photos.',
       );
     }
     try {

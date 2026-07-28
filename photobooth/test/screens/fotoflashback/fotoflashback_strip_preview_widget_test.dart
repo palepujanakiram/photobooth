@@ -90,9 +90,6 @@ void main() {
     expect(find.byKey(const ValueKey('sheet_layout_grid_2x2')), findsOneWidget);
     expect(find.text('Together'), findsOneWidget);
 
-    await pumpLayout('plain_6x4');
-    expect(find.byKey(const ValueKey('sheet_layout_plain_6x4')), findsOneWidget);
-
     await pumpLayout('romantic');
     expect(find.byKey(const ValueKey('sheet_layout_romantic')), findsOneWidget);
     expect(find.text('Love'), findsNothing);

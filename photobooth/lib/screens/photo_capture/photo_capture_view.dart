@@ -42,6 +42,7 @@ import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
 import '../../utils/route_args.dart';
 import '../../utils/surprise_me_helpers.dart';
+import '../../utils/fotoflashback_single_6x4_helpers.dart';
 import '../../utils/uvc_capture_config.dart';
 import '../theme_selection/theme_model.dart';
 import '../../services/app_settings_manager.dart';
@@ -49,6 +50,7 @@ import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/uvc_device_event_hub.dart';
 import '../../services/uvc_session_coordinator.dart';
 import '../../views/widgets/app_colors.dart';
+import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/centered_max_width.dart';
 import 'photo_capture_rotation_screen.dart';
 import '../../services/hardware_key_service.dart';
@@ -339,8 +341,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   bool get _isFlashbackMultiShot =>
       _returnPhotoOnly &&
       _multiShotTotal != null &&
-      _multiShotTotal! > 1 &&
+      _multiShotTotal! >= 1 &&
       _flashbackTheme != null;
+
+  bool get _isFlashbackFourShot =>
+      _isFlashbackMultiShot && _multiShotTotal! > 1;
+
+  bool get _isFlashbackSingle6x4 =>
+      _isFlashbackMultiShot && _multiShotTotal == 1;
 
   bool get _flashbackCameraReady => _isUsingUvc
       ? (_uvcReadyForCapture && !_uvcCaptureInFlight)
@@ -380,6 +388,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void _syncFlashbackSubtitle() {
     final total = _multiShotTotal;
     if (total == null) return;
+    if (total == 1) {
+      _subtitleHint = AppStrings.flashbackSingle6x4Title;
+      return;
+    }
     final next = (_stripShots.length + 1).clamp(1, total);
     _subtitleHint = AppStrings.flashbackShotProgress(next, total);
   }
@@ -396,7 +408,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _stripShots.add(photo);
       _syncFlashbackSubtitle();
     });
-    if (_stripShots.length == 1) {
+    if (_stripShots.length == 1 && _isFlashbackFourShot) {
       final enableSurprise = context
               .read<AppSettingsManager>()
               .settings
@@ -428,8 +440,26 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         dataUrls.add(await ImageHelper.encodeImageToBase64(shot.imageFile));
       }
       if (!mounted) return;
+
+      if (_isFlashbackSingle6x4 && dataUrls.length == 1) {
+        unawaited(_releaseCaptureHardware());
+        final err = await finishClassicSingle6x4(
+          context: context,
+          theme: theme,
+          imageDataUrl: dataUrls.first,
+        );
+        if (!mounted) return;
+        if (err != null) {
+          setState(() => _stripFinishing = false);
+          _navigatingAwayFromCapture = false;
+          AppSnackBar.showError(context, err);
+        }
+        return;
+      }
+
       if (dataUrls.length != kStripShotCount) {
         setState(() => _stripFinishing = false);
+        _navigatingAwayFromCapture = false;
         return;
       }
       unawaited(_releaseCaptureHardware());
@@ -446,7 +476,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         error: e,
         stackTrace: st,
       );
-      if (mounted) setState(() => _stripFinishing = false);
+      if (mounted) {
+        setState(() => _stripFinishing = false);
+        _navigatingAwayFromCapture = false;
+      }
     }
   }
 
@@ -824,9 +857,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       unawaited(_beginPoseCaptureSetup());
     }
 
-    // Classic strip remount between shots — start getUserMedia immediately so
-    // guests never linger on the empty-camera / Gallery fallback UI.
-    if (_isFlashbackMultiShot && _stripShots.isNotEmpty) {
+    if (_isFlashbackFourShot && _stripShots.isNotEmpty) {
+      // Web remount between Classic shots — start getUserMedia immediately so
+      // guests never linger on the empty-camera / Gallery fallback UI.
       WidgetsBinding.instance.addPostFrameCallback((_) => beginSetup());
       return;
     }
@@ -2532,7 +2565,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
 
     final midStripRemount =
-        _isFlashbackMultiShot && _stripShots.isNotEmpty;
+        _isFlashbackFourShot && _stripShots.isNotEmpty;
     final Widget body;
     final String phaseKey;
     switch (phase) {
@@ -2606,11 +2639,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                   viewModel: viewModel,
                   subtitleHint: _subtitleHint,
                   stripShotTotal:
-                      _isFlashbackMultiShot ? _multiShotTotal : null,
-                  stripShotFiles: _stripShots
-                      .map((p) => p.imageFile)
-                      .toList(growable: false),
-                  stripPendingFile: _isFlashbackMultiShot
+                      _isFlashbackFourShot ? _multiShotTotal : null,
+                  stripShotFiles: _isFlashbackFourShot
+                      ? _stripShots.map((p) => p.imageFile).toList(growable: false)
+                      : const [],
+                  stripPendingFile: _isFlashbackFourShot
                       ? viewModel.capturedPhoto?.imageFile
                       : null,
                   onBack: () => unawaited(_handleCaptureBack(context)),
@@ -3091,7 +3124,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final continueLabel = !multi
         ? (viewModel.isPreparingUploadPayload ? 'Preparing…' : 'Continue')
         : (isLastStripShot
-            ? AppStrings.flashbackContinueLooks
+            ? (_isFlashbackSingle6x4
+                ? AppStrings.flashbackComposeCta
+                : AppStrings.flashbackContinueLooks)
             : AppStrings.flashbackNextShot);
     return SizedBox(
       width: double.infinity,
@@ -3134,7 +3169,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             child: (viewModel.isUploading || _stripFinishing)
                 ? Text(
                     _stripFinishing
-                        ? AppStrings.flashbackComposing
+                        ? (_isFlashbackSingle6x4
+                            ? AppStrings.flashbackComposingSingle
+                            : AppStrings.flashbackComposing)
                         : 'Processing…',
                   )
                 : Text(continueLabel),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/strip_models.dart';
+import 'package:photobooth/utils/classic_shot_mode.dart';
 import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/fotoflashback_navigation.dart';
 import 'package:photobooth/utils/route_args.dart';
@@ -50,8 +51,52 @@ void main() {
     expect(pushedArgs, isA<CaptureRouteArgs>());
     final args = pushedArgs! as CaptureRouteArgs;
     expect(args.isFlashbackMultiShot, isTrue);
+    expect(args.isFlashbackFourShot, isTrue);
     expect(args.multiShotTotal, kStripShotCount);
     expect(args.flashbackTheme?.id, 'strip');
+  });
+
+  testWidgets('navigateToFotoFlashbackCapture supports Classic 1-shot 6×4', (
+    tester,
+  ) async {
+    final theme = sampleTheme('strip1').copyWith((p) {
+      p.tier = 'photo_strip';
+    });
+    Object? pushedArgs;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return TextButton(
+              onPressed: () {
+                navigateToFotoFlashbackCapture(
+                  context: context,
+                  theme: theme,
+                  shotMode: ClassicShotMode.single6x4,
+                );
+              },
+              child: const Text('go'),
+            );
+          },
+        ),
+        onGenerateRoute: (settings) {
+          pushedArgs = settings.arguments;
+          return MaterialPageRoute<void>(
+            settings: settings,
+            builder: (_) => const Scaffold(body: Text('capture')),
+          );
+        },
+      ),
+    );
+
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+
+    final args = pushedArgs! as CaptureRouteArgs;
+    expect(args.isFlashbackSingle6x4, isTrue);
+    expect(args.isFlashbackFourShot, isFalse);
+    expect(args.multiShotTotal, 1);
   });
 
   testWidgets('navigateToFotoFlashbackCapture replace uses pushReplacement', (

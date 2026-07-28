@@ -60,8 +60,15 @@ class CaptureRouteArgs {
   bool get isFlashbackMultiShot =>
       returnPhotoOnly &&
       multiShotTotal != null &&
-      multiShotTotal! > 1 &&
+      multiShotTotal! >= 1 &&
       flashbackTheme != null;
+
+  /// Four-pose strip (look picker) vs single 6×4 print.
+  bool get isFlashbackFourShot =>
+      isFlashbackMultiShot && multiShotTotal! > 1;
+
+  bool get isFlashbackSingle6x4 =>
+      isFlashbackMultiShot && multiShotTotal == 1;
 
   static CaptureRouteArgs? tryParse(Object? args) {
     if (args is CaptureRouteArgs) return args;
