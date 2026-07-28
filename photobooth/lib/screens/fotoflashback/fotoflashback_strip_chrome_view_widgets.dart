@@ -1,6 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
-/// Dual-strip chrome for Classic / Noir previews.
+/// Dual-strip chrome for Classic / Noir / Filmstrip previews.
 class StripChromeLook {
   const StripChromeLook({
     required this.fill,
@@ -9,6 +11,7 @@ class StripChromeLook {
     this.accentWidthFactor = 0.0,
     this.secondaryAccent,
     this.showNoirDoubleLine = false,
+    this.showFilmstripSprockets = false,
   });
 
   final Color fill;
@@ -17,11 +20,19 @@ class StripChromeLook {
   final double accentWidthFactor;
   final Color? secondaryAccent;
   final bool showNoirDoubleLine;
+  final bool showFilmstripSprockets;
 
   /// Print uses a 4px pad on a 600-wide strip for every chrome frame.
   static const double printBorderRatio = 4 / 600;
   static const double printAccentStrokeRatio = 1.75 / 600;
   static const double printNoirAccentStrokeRatio = 2.5 / 600;
+
+  /// Matches zenai `FILMSTRIP_DUAL` on a 600×1800 strip.
+  static const double filmRailRatio = 52 / 600;
+  static const double filmHoleWRatio = 26 / 600;
+  static const double filmHoleHRatio = 34 / 1800;
+  static const double filmHolePitchRatio = 58 / 1800;
+  static const double filmHoleStartYRatio = 40 / 1800;
 
   static StripChromeLook forFrame(
     String frameId, {
@@ -42,11 +53,11 @@ class StripChromeLook {
           showNoirDoubleLine: true,
         );
       case 'filmstrip':
-        return StripChromeLook(
-          fill: const Color(0xFF0A0A0A),
-          borderRatio: border,
-          accent: Colors.white24,
-          accentWidthFactor: printAccentStrokeRatio,
+        // Rail width matches zenai FILMSTRIP_DUAL.railW (52 on 600-wide strip).
+        return const StripChromeLook(
+          fill: Color(0xFF0A0A0A),
+          borderRatio: filmRailRatio,
+          showFilmstripSprockets: true,
         );
       case 'classic':
       default:
@@ -59,7 +70,7 @@ class StripChromeLook {
   }
 }
 
-/// Thin accent rim or Noir double line overlay.
+/// Thin accent rim, Noir double line, or Filmstrip sprocket punches.
 class StripChromeOverlay extends StatelessWidget {
   const StripChromeOverlay({
     super.key,
@@ -76,8 +87,18 @@ class StripChromeOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (look.showFilmstripSprockets) {
+      return _FilmstripSprocketOverlay(
+        width: width,
+        height: height,
+        railPad: borderPad,
+      );
+    }
+
     final accent = look.accent;
-    if (accent == null) return const SizedBox.shrink();
+    if (accent == null || look.accentWidthFactor <= 0) {
+      return const SizedBox.shrink();
+    }
 
     final accentW = (width * look.accentWidthFactor).clamp(0.5, 4.0);
     final noirInset = width * (5 / 600);
@@ -102,6 +123,69 @@ class StripChromeOverlay extends StatelessWidget {
                 )
               : null,
         ),
+      ),
+    );
+  }
+}
+
+/// White sprocket punches on the left/right film rails (preview parity with print).
+class _FilmstripSprocketOverlay extends StatelessWidget {
+  const _FilmstripSprocketOverlay({
+    required this.width,
+    required this.height,
+    required this.railPad,
+  });
+
+  final double width;
+  final double height;
+  final double railPad;
+
+  @override
+  Widget build(BuildContext context) {
+    final holeW = width * StripChromeLook.filmHoleWRatio;
+    final holeH = height * StripChromeLook.filmHoleHRatio;
+    final pitch = height * StripChromeLook.filmHolePitchRatio;
+    final startY = height * StripChromeLook.filmHoleStartYRatio;
+    final leftHoleX = (railPad - holeW) / 2;
+    final rightHoleX = width - railPad + (railPad - holeW) / 2;
+    final holes = <Widget>[];
+    for (var y = startY; y + holeH < height - (height * (24 / 1800)); y += pitch) {
+      holes.add(
+        Positioned(
+          left: leftHoleX,
+          top: y,
+          child: _SprocketHole(width: holeW, height: holeH),
+        ),
+      );
+      holes.add(
+        Positioned(
+          left: rightHoleX,
+          top: y,
+          child: _SprocketHole(width: holeW, height: holeH),
+        ),
+      );
+    }
+
+    return IgnorePointer(
+      child: Stack(clipBehavior: Clip.hardEdge, children: holes),
+    );
+  }
+}
+
+class _SprocketHole extends StatelessWidget {
+  const _SprocketHole({required this.width, required this.height});
+
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(math.min(width, height) / 2),
       ),
     );
   }

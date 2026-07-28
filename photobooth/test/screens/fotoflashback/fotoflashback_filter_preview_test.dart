@@ -2,8 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/strip_models.dart';
 import 'package:photobooth/screens/fotoflashback/fotoflashback_filter_preview.dart';
+import 'package:photobooth/screens/fotoflashback/fotoflashback_strip_chrome_view_widgets.dart';
 
 void main() {
+  test('StripChromeLook filmstrip exposes sprocket rails', () {
+    final look = StripChromeLook.forFrame('filmstrip');
+    expect(look.showFilmstripSprockets, isTrue);
+    expect(look.borderRatio, StripChromeLook.filmRailRatio);
+    expect(look.fill, const Color(0xFF0A0A0A));
+    // Sheet layout borderRatio must not shrink the film rails.
+    final withWysiwyg = StripChromeLook.forFrame(
+      'filmstrip',
+      borderRatio: 4 / 600,
+    );
+    expect(withWysiwyg.borderRatio, StripChromeLook.filmRailRatio);
+  });
   test('stripPreviewColorFilter covers full catalog ids', () {
     expect(kStripFilterIds, hasLength(9));
     for (final id in kStripFilterIds) {
