@@ -8,11 +8,13 @@ import 'package:provider/provider.dart';
 
 import 'bootstrap_route_args.dart';
 import 'kiosk_qr_scan_screen.dart';
+import '../../models/kiosk_device_status.dart';
 import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/client_identification.dart';
 import '../../services/customer_session_lifecycle.dart';
 import '../../services/kiosk_manager.dart';
+import '../../services/kiosk_device_status_service.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/animated_slideshow_background.dart'
@@ -46,6 +48,9 @@ class _AppSplashScreenState extends State<AppSplashScreen>
   String? _storedCode;
   bool _needsEntry = false;
   bool _manageEditing = false;
+  bool _deviceStatusLoading = false;
+  KioskDeviceStatusSnapshot? _deviceStatus;
+  final KioskDeviceStatusService _deviceStatusService = KioskDeviceStatusService();
 
   @override
   void initState() {
@@ -90,6 +95,18 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     }
   }
 
+  Future<void> _refreshDeviceStatus() async {
+    if (!mounted || !widget.args.manageKiosk) return;
+    setState(() => _deviceStatusLoading = true);
+    final settings = context.read<AppSettingsManager>().settings;
+    final snapshot = await _deviceStatusService.probe(settings: settings);
+    if (!mounted) return;
+    setState(() {
+      _deviceStatus = snapshot;
+      _deviceStatusLoading = false;
+    });
+  }
+
   Future<void> _bootstrap() async {
     await _ensureMinSplashElapsed();
     if (!mounted) return;
@@ -102,6 +119,9 @@ class _AppSplashScreenState extends State<AppSplashScreen>
         _storedCode = code;
         _codeController.text = (code ?? '').trim();
       });
+      if ((code ?? '').trim().isNotEmpty) {
+        unawaited(_refreshDeviceStatus());
+      }
       return;
     }
 
@@ -556,6 +576,8 @@ class _AppSplashScreenState extends State<AppSplashScreen>
                     onSubmitCode: _submitCode,
                     onStaffLogin: () => Navigator.of(context)
                         .pushNamed(AppConstants.kRouteStaffLogin),
+                    deviceStatusLoading: _deviceStatusLoading,
+                    deviceStatus: _deviceStatus,
                   ),
                 ),
                 appSplashVersionFooter(versionFooter, appColors),

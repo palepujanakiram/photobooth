@@ -25,6 +25,16 @@ class DnpUsbClient {
     }
   }
 
+  /// True when a DNP DS-RX1 is visible on USB (no permission/connect required).
+  Future<bool> probeDevicePresent() async {
+    if (kIsWeb || !_isAndroid()) return false;
+    try {
+      return await _channel.invokeMethod<bool>('probeDevice') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> ensureConnected() async {
     await _channel.invokeMethod<void>('requestPermission');
   }

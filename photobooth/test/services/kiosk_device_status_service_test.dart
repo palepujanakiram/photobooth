@@ -1,0 +1,179 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:photobooth/models/app_settings_model.dart';
+import 'package:photobooth/models/kiosk_device_status.dart';
+import 'package:photobooth/services/dnp/dnp_usb_client.dart';
+import 'package:photobooth/services/dnp/dnp_wifi_client.dart';
+import 'package:photobooth/services/kiosk_device_status_service.dart';
+import 'package:photobooth/utils/app_strings.dart';
+
+void main() {
+  group('KioskDeviceStatusService', () {
+    test('USB DNP transport reports USB mode when device present', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: true),
+        probeReceiptTcp: (_, __) async => false,
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(printerTransport: 'usb'),
+      );
+      expect(snap.dnpPrinter.connected, isTrue);
+      expect(snap.dnpPrinter.transport, KioskDeviceTransport.usb);
+      expect(snap.dnpPrinter.deviceName, AppStrings.kioskDeviceDnpPrinter);
+    });
+
+    test('auto transport prefers USB when DNP visible on USB', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: true),
+        wifiClient: DnpWifiClient(
+          discoverFn: ({int parallelism = 20}) async => 'http://10.0.0.9',
+        ),
+        probeReceiptTcp: (_, __) async => false,
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(settings: AppSettingsModel());
+      expect(snap.dnpPrinter.connected, isTrue);
+      expect(snap.dnpPrinter.transport, KioskDeviceTransport.usb);
+    });
+
+    test('wifi DNP transport uses WiFi discovery', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        wifiClient: DnpWifiClient(
+          discoverFn: ({int parallelism = 20}) async => 'http://10.0.0.9',
+        ),
+        probeReceiptTcp: (_, __) async => false,
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(printerTransport: 'wifi'),
+      );
+      expect(snap.dnpPrinter.connected, isTrue);
+      expect(snap.dnpPrinter.transport, KioskDeviceTransport.wifi);
+    });
+
+    test('receipt printer not configured shows not configured', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        probeReceiptTcp: (_, __) async => true,
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(receiptPrinterEnabled: false),
+      );
+      expect(snap.receiptPrinter.configured, isFalse);
+      expect(snap.receiptPrinter.connected, isFalse);
+      expect(snap.receiptPrinter.transport, KioskDeviceTransport.wifi);
+    });
+
+    test('receipt printer reachable over LAN reports WiFi mode', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        probeReceiptTcp: (_, __) async => true,
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          receiptPrinterEnabled: true,
+          receiptPrinterHost: '192.168.1.50',
+          receiptPrinterPort: 9100,
+        ),
+      );
+      expect(snap.receiptPrinter.configured, isTrue);
+      expect(snap.receiptPrinter.connected, isTrue);
+      expect(snap.receiptPrinter.transport, KioskDeviceTransport.wifi);
+    });
+
+    test('auto transport falls back to WiFi when USB absent', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        wifiClient: DnpWifiClient(
+          discoverFn: ({int parallelism = 20}) async => 'http://10.0.0.9',
+        ),
+        probeReceiptTcp: (_, __) async => false,
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(settings: AppSettingsModel());
+      expect(snap.dnpPrinter.connected, isTrue);
+      expect(snap.dnpPrinter.transport, KioskDeviceTransport.wifi);
+    });
+
+    test('wifi DNP discovery timeout reports not connected', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        wifiClient: DnpWifiClient(
+          discoverFn: ({int parallelism = 20}) async {
+            await Future<void>.delayed(const Duration(seconds: 10));
+            return 'http://10.0.0.9';
+          },
+        ),
+        wifiDiscoverTimeout: const Duration(milliseconds: 50),
+        probeReceiptTcp: (_, __) async => false,
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(printerTransport: 'wifi'),
+      );
+      expect(snap.dnpPrinter.connected, isFalse);
+      expect(snap.dnpPrinter.transport, KioskDeviceTransport.wifi);
+    });
+
+    test('receipt printer enabled without host is not configured', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        probeReceiptTcp: (_, __) async => true,
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          receiptPrinterEnabled: true,
+          receiptPrinterHost: '  ',
+        ),
+      );
+      expect(snap.receiptPrinter.configured, isFalse);
+    });
+
+    test('USB camera present reports connected USB', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        probeReceiptTcp: (_, __) async => false,
+        probeUvcDevices: () async => true,
+      );
+      final snap = await service.probe(settings: AppSettingsModel());
+      expect(snap.usbCamera.connected, isTrue);
+      expect(snap.usbCamera.transport, KioskDeviceTransport.usb);
+    });
+
+    test('USB camera absent reports not connected', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        probeReceiptTcp: (_, __) async => false,
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(settings: AppSettingsModel());
+      expect(snap.usbCamera.connected, isFalse);
+    });
+  });
+}
+
+class _FakeUsbClient extends DnpUsbClient {
+  _FakeUsbClient({required this.present});
+
+  final bool present;
+
+  @override
+  Future<bool> probeDevicePresent() async => present;
+
+  @override
+  Future<bool> hasUsbHost() async => present;
+}

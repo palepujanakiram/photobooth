@@ -76,6 +76,7 @@ object DnpUsbMethodChannel {
         MethodChannel(messenger, METHOD_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "hasUsbHost" -> result.success(hasUsbHost(context))
+                "probeDevice" -> result.success(usbPrinter.findDevice() != null)
                 "prepareWifiNetwork" -> prepareWifiNetwork(result)
                 "requestPermission" -> requestUsbPermission(result)
                 "getPrinterStatus" -> getPrinterStatus(result)

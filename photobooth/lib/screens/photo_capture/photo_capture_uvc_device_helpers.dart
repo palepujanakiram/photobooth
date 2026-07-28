@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:uvccamera/uvccamera.dart';
 import '../../utils/camera_permission_helper.dart';
+import '../../utils/uvc_webcam_filter.dart';
 
 /// True when [a] and [b] refer to the same physical UVC device.
 bool uvcDeviceMatches(UvcCameraDevice a, UvcCameraDevice b) {
@@ -35,7 +36,7 @@ Future<bool> hasAttachedUvcDevices() async {
     if (!await UvcCamera.isSupported()) return false;
     if (!await ensureAndroidCameraPermissionForUvc()) return false;
     final devices = await UvcCamera.getDevices();
-    return devices.isNotEmpty;
+    return hasUvcWebcamDevices(devices);
   } catch (_) {
     return false;
   }
@@ -54,8 +55,9 @@ Future<UvcCameraDevice?> probeFirstUvcDevice({
       return null;
     }
     final devices = await UvcCamera.getDevices();
-    if (devices.isEmpty) return null;
-    return devices.values.first;
+    final webcams = filterUvcWebcamDevices(devices.values);
+    if (webcams.isEmpty) return null;
+    return webcams.first;
   } catch (_) {
     return null;
   }
