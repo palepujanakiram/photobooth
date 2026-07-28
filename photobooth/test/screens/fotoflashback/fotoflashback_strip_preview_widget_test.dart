@@ -90,15 +90,33 @@ void main() {
     expect(find.byKey(const ValueKey('sheet_layout_grid_2x2')), findsOneWidget);
     expect(find.text('Together'), findsOneWidget);
 
-    await pumpLayout('filmstrip');
-    expect(find.byKey(const ValueKey('sheet_layout_filmstrip')), findsOneWidget);
-    expect(find.text('MEMORIES'), findsOneWidget);
+    await pumpLayout('plain_6x4');
+    expect(find.byKey(const ValueKey('sheet_layout_plain_6x4')), findsOneWidget);
 
     await pumpLayout('romantic');
     expect(find.byKey(const ValueKey('sheet_layout_romantic')), findsOneWidget);
     expect(find.text('Love'), findsNothing);
     expect(find.text('♥'), findsOneWidget);
     expect(find.text('Forever starts here'), findsOneWidget);
+  });
+
+  testWidgets('filmstrip uses dual-strip chrome preview', (tester) async {
+    final url = 'data:image/jpeg;base64,$jpegB64';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FotoFlashbackStripPreview(
+            imageDataUrls: List.filled(4, url),
+            filterId: 'clean',
+            frameId: 'filmstrip',
+            width: 120,
+            height: 360,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('strip_chrome_filmstrip')), findsOneWidget);
   });
 
   testWidgets('FotoFlashbackStripPreview accepts raw base64 and placeholders', (

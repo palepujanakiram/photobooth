@@ -1255,8 +1255,10 @@ class CaptureViewModel extends ChangeNotifier {
           );
           await initializeCamera(_currentCamera!);
         } else {
+          // Leave error unset so POSE can show Gallery / Phone QR instead of a
+          // fatal camera overlay (upload is a valid path without hardware).
           AppLogger.debug('⚠️ No cameras available');
-          _errorMessage = 'No cameras available';
+          _errorMessage = null;
           unawaited(
             reportCameraNotFound(
               reason: 'No cameras detected',
@@ -2386,6 +2388,11 @@ class CaptureViewModel extends ChangeNotifier {
 
     final camera = _currentCamera;
     if (camera == null) {
+      // Upload-only session: do not thrash camera init / preview after Gallery.
+      if (_availableCameras.isEmpty && !isDesktopCaptureMode) {
+        notifyListeners();
+        return;
+      }
       await resetAndInitializeCameras();
       return;
     }

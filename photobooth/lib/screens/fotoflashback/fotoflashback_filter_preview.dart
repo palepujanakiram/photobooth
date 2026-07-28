@@ -623,9 +623,9 @@ Color stripPreviewFrameColor(String frameId) {
       return Colors.white;
     case 'grid_2x2':
       return const Color(0xFFFFFAF5);
-    case 'filmstrip':
-      return Colors.white;
     case 'romantic':
+      return Colors.white;
+    case 'plain_6x4':
       return Colors.white;
     default:
       return Colors.white;
@@ -641,10 +641,10 @@ Color? stripPreviewFrameAccent(String frameId) {
       return const Color(0xFF8A6A55);
     case 'grid_2x2':
       return const Color(0xFF2C1810);
-    case 'filmstrip':
-      return const Color(0xFFC9A227);
     case 'romantic':
       return const Color(0xFFE8919A);
+    case 'plain_6x4':
+      return const Color(0xFF444444);
     default:
       return null;
   }

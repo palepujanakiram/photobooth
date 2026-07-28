@@ -1,0 +1,66 @@
+// Pure helpers for POSE body phase when camera may be absent (upload-only).
+
+/// Whether the capture screen should show the "Starting camera…" placeholder.
+bool isCapturePreviewStarting({
+  required bool hasCapturedPhoto,
+  required bool isDesktopCaptureMode,
+  required bool isLoadingCameras,
+  required bool isInitializing,
+  required bool isUsingUvc,
+  required bool uvcInitializing,
+  required bool uvcOpeningController,
+  required bool uvcControllerReady,
+  required bool camerasEmpty,
+  required bool isReady,
+}) {
+  if (hasCapturedPhoto) return false;
+  if (isDesktopCaptureMode) return isLoadingCameras;
+  if (isLoadingCameras || isInitializing) return true;
+  if (isUsingUvc) {
+    if (uvcInitializing || uvcOpeningController) return true;
+    return !uvcControllerReady;
+  }
+  // Enumeration finished with nothing — show no-camera / upload UI, not spinner.
+  if (camerasEmpty) return false;
+  return !isReady;
+}
+
+/// Body content branch for the capture screen (non-desktop).
+enum CaptureBodyPhase {
+  starting,
+  noCameras,
+  error,
+  live,
+}
+
+CaptureBodyPhase resolveCaptureBodyPhase({
+  required bool isPreviewStarting,
+  required bool camerasEmpty,
+  required bool hasError,
+  required bool isUsingUvc,
+  required bool hasCapturedPhoto,
+  bool isSelectingFromGallery = false,
+}) {
+  if (isPreviewStarting) return CaptureBodyPhase.starting;
+  // Gallery / phone upload review must not fall back to the empty-camera screen.
+  if (hasCapturedPhoto || isSelectingFromGallery) {
+    return CaptureBodyPhase.live;
+  }
+  // Prefer upload / retry UI over fatal error when no camera was enumerated.
+  if (camerasEmpty && !isUsingUvc) return CaptureBodyPhase.noCameras;
+  if (hasError && !isUsingUvc) return CaptureBodyPhase.error;
+  return CaptureBodyPhase.live;
+}
+
+/// Whether continuous UVC probing should run after CameraX found nothing.
+bool shouldProbeUvcAfterNoCameraX({
+  required bool photoUploadAllowed,
+  required bool camerasEmpty,
+  required bool uvcFeedHealthy,
+  required bool cameraReady,
+}) {
+  if (uvcFeedHealthy || cameraReady) return false;
+  // Upload path is available — do not keep opening UVC in the background.
+  if (photoUploadAllowed && camerasEmpty) return false;
+  return camerasEmpty;
+}

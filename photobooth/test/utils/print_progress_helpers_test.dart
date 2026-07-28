@@ -26,6 +26,10 @@ void main() {
       final phaseOnly = base.copyWith(phase: PrintProgressPhase.finishing);
       expect(phaseOnly.phase, PrintProgressPhase.finishing);
       expect(phaseOnly.percent, base.percent);
+      expect(phaseOnly.isActive, isTrue);
+      expect(phaseOnly.blocksQrShareIdleCountdown, isFalse);
+
+      expect(base.blocksQrShareIdleCountdown, isTrue);
 
       const complete = PrintProgressSnapshot(phase: PrintProgressPhase.complete);
       expect(complete.isComplete, isTrue);

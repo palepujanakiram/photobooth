@@ -41,6 +41,13 @@ class StripChromeLook {
           secondaryAccent: const Color(0xFF6E6E78),
           showNoirDoubleLine: true,
         );
+      case 'filmstrip':
+        return StripChromeLook(
+          fill: const Color(0xFF0A0A0A),
+          borderRatio: border,
+          accent: Colors.white24,
+          accentWidthFactor: printAccentStrokeRatio,
+        );
       case 'classic':
       default:
         // Legacy Sky/Blush/Gold and removed doodle frames fall through here.

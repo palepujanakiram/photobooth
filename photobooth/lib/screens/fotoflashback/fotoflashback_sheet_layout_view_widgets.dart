@@ -39,14 +39,13 @@ class FotoFlashbackSheetLayoutPreview extends StatelessWidget {
           layout: wysiwyg,
           colorFilter: colorFilter,
         ),
-      'filmstrip' => _FilmstripSheetPreview(
+      'romantic' => _RomanticSheetPreview(
           images: images,
           layout: wysiwyg,
           colorFilter: colorFilter,
         ),
-      'romantic' => _RomanticSheetPreview(
+      'plain_6x4' => _Plain6x4SheetPreview(
           images: images,
-          layout: wysiwyg,
           colorFilter: colorFilter,
         ),
       _ => _Grid2x2SheetPreview(
@@ -206,6 +205,58 @@ class _PolaroidCell extends StatelessWidget {
   }
 }
 
+class _Plain6x4SheetPreview extends StatelessWidget {
+  const _Plain6x4SheetPreview({
+    required this.images,
+    this.colorFilter,
+  });
+
+  final List<Uint8List> images;
+  final ColorFilter? colorFilter;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+        const marginFrac = 36 / 1800;
+        const gapFrac = 24 / 1800;
+        final margin = w * marginFrac;
+        final gap = w * gapFrac;
+        final cellW = (w - margin * 2 - gap) / 2;
+        final cellH = (h - margin * 2 - gap) / 2;
+
+        Widget cell(int i) {
+          return SizedBox(
+            width: cellW,
+            height: cellH,
+            child: _gradedPhoto(
+              bytes: images.length > i ? images[i] : null,
+              colorFilter: colorFilter,
+              fit: BoxFit.contain,
+            ),
+          );
+        }
+
+        return ColoredBox(
+          color: Colors.white,
+          child: Padding(
+            padding: EdgeInsets.all(margin),
+            child: Column(
+              children: [
+                Row(children: [cell(0), SizedBox(width: gap), cell(1)]),
+                SizedBox(height: gap),
+                Row(children: [cell(2), SizedBox(width: gap), cell(3)]),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _Grid2x2SheetPreview extends StatelessWidget {
   const _Grid2x2SheetPreview({
     required this.images,
@@ -238,6 +289,7 @@ class _Grid2x2SheetPreview extends StatelessWidget {
             child: _gradedPhoto(
               bytes: images.length > i ? images[i] : null,
               colorFilter: colorFilter,
+              fit: BoxFit.contain,
             ),
           );
         }
@@ -468,6 +520,7 @@ class _RomanticSheetPreview extends StatelessWidget {
             child: _gradedPhoto(
               bytes: images.length > i ? images[i] : null,
               colorFilter: colorFilter,
+              fit: BoxFit.contain,
             ),
           );
         }
