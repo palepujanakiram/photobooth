@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/app_settings_model.dart';
-import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/printer_endpoint.dart';
 
 void main() {
@@ -44,9 +43,9 @@ void main() {
       expect(endpoint.baseUrl, 'http://172.16.4.113');
     });
 
-    test('falls back when settings missing', () {
+    test('returns empty host when settings missing', () {
       final endpoint = resolvePrinterEndpoint(null);
-      expect(endpoint.host, AppConstants.kDefaultPrinterHost);
+      expect(endpoint.host, isEmpty);
       expect(endpoint.path, '/api/PrintImage');
     });
   });

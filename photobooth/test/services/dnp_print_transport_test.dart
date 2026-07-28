@@ -685,5 +685,35 @@ void main() {
         throwsA(isA<PrintException>()),
       );
     });
+
+    test('discovers WCM Plus on first wifi print when base URL unset', () async {
+      var printedWifi = false;
+      final wifi = DnpWifiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/PrintImage') {
+            printedWifi = true;
+            return http.Response('ok', 200);
+          }
+          return http.Response('', 404);
+        }),
+        discoverFn: ({int parallelism = 20}) async => 'http://192.168.3.20',
+      );
+      final bridge = DnpPrintBridge(wifiClient: wifi, isAndroid: () => false);
+      final jpeg = File(
+        '${Directory.systemTemp.path}/dnp_discover_ok_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await jpeg.writeAsBytes([0xFF]);
+      addTearDown(() async {
+        if (await jpeg.exists()) await jpeg.delete();
+      });
+
+      await bridge.printImage(
+        imageFile: XFile(jpeg.path),
+        settings: AppSettingsModel(printerTransport: 'wifi'),
+        networkPrintSize: 's4x6',
+      );
+      expect(printedWifi, isTrue);
+      expect(wifi.printerBaseUrl, 'http://192.168.3.20');
+    });
   });
 }
