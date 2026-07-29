@@ -34,6 +34,7 @@ import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/capture_sound_service.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_camera_config.dart';
+import 'photo_capture_normalize_helpers.dart';
 import 'photo_capture_preview_rotation.dart';
 import 'photo_capture_preprocess_helpers.dart';
 import 'photo_capture_viewmodel_helpers.dart';
@@ -81,27 +82,17 @@ class CaptureViewModel extends ChangeNotifier {
   bool preferStripPrintQuality = false;
 
   int? _normalizeJpegQualityForCapture({required bool isUvc}) {
-    // Thermal relief still wins on UVC to limit device heat/RAM.
-    if (isUvc && UvcCaptureConfig.thermalReliefEnabled) {
-      return UvcCaptureConfig.effectiveNormalizeJpegQuality;
-    }
-    if (preferStripPrintQuality) {
-      return kStripCapturedPhotoJpegQuality;
-    }
-    if (isUvc) {
-      return UvcCaptureConfig.effectiveNormalizeJpegQuality;
-    }
-    return null;
+    return captureNormalizeJpegQuality(
+      isUvc: isUvc,
+      preferStripPrintQuality: preferStripPrintQuality,
+    );
   }
 
   int? _normalizeMaxDimensionForCapture({required bool isUvc}) {
-    if (isUvc) {
-      return UvcCaptureConfig.effectiveNormalizeMaxDimension;
-    }
-    if (preferStripPrintQuality) {
-      return kStripCapturedPhotoMaxDimension;
-    }
-    return null;
+    return captureNormalizeMaxDimension(
+      isUvc: isUvc,
+      preferStripPrintQuality: preferStripPrintQuality,
+    );
   }
 
   /// No-op once [_disposed] — safe for fire-and-forget camera/upload callbacks.
@@ -1034,16 +1025,27 @@ class CaptureViewModel extends ChangeNotifier {
 
     try {
       XFile savedFile;
+      final maxDimension = _normalizeMaxDimensionForCapture(isUvc: isUvc);
+      final jpegQuality = _normalizeJpegQualityForCapture(isUvc: isUvc);
       try {
         savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
           rawFile,
           flipHorizontal: false,
           fixBgrChannelOrder: isUvc,
-          maxDimension: _normalizeMaxDimensionForCapture(isUvc: isUvc),
-          jpegQuality: _normalizeJpegQualityForCapture(isUvc: isUvc),
+          maxDimension: maxDimension,
+          jpegQuality: jpegQuality,
         );
         if (isUvc) {
           await ImageHelper.tryDeleteLocalFile(rawFile.path);
+        }
+        final meta = await ImageHelper.getImageMetadata(savedFile);
+        if (meta != null) {
+          AppLogger.debug(
+            'Capture still ${meta.width}×${meta.height} '
+            '(${meta.fileSizeBytes} bytes, maxDim=$maxDimension, '
+            'jpegQ=$jpegQuality, camera=$cameraId, '
+            'stripQ=$preferStripPrintQuality)',
+          );
         }
       } catch (normalizeError, normalizeSt) {
         if (!isUvc) rethrow;

@@ -5,9 +5,10 @@ bool isUvcShutterCaptureSource(String source) {
       source.startsWith('android_key_');
 }
 
-/// Raster [toImage] does not capture UVC Texture pixels reliably on Android.
+/// Raster [toImage] of the UVC Texture yields display-sized mush (~500–700px).
+/// Never fall back — fail the shot so the guest retakes a real HDMI frame.
 bool uvcAllowsRasterFallback(String source) {
-  return source == 'preview_interrupt';
+  return false;
 }
 
 /// Single plugin capture; DSLR HDMI pause needs one long wait, not retries.

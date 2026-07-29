@@ -748,13 +748,17 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     try {
       return await _takeUvcPicture(ctrl, source: source);
     } catch (pluginError) {
+      if (!uvcAllowsRasterFallback(source)) {
+        AppLogger.error(
+          'UVC takePicture failed (no raster fallback)',
+          error: pluginError,
+        );
+        rethrow;
+      }
       AppLogger.error(
         'UVC takePicture failed; trying raster fallback',
         error: pluginError,
       );
-      if (!uvcAllowsRasterFallback(source)) {
-        rethrow;
-      }
       final raster = await rasterCaptureRepaintBoundary(
         boundaryKey: _uvcPreviewBoundaryKey,
         maxLongEdge: UvcCaptureConfig.effectiveNormalizeMaxDimension,
@@ -1776,6 +1780,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           device: device,
           resolutionPreset: UvcCaptureConfig.resolutionPresetFor(
             _captureViewModel.deviceType,
+            preferStripPrintQuality:
+                _captureViewModel.preferStripPrintQuality,
           ),
         );
         await pending.initialize().timeout(
@@ -1806,7 +1812,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         unawaited(_captureViewModel.warmUpCaptureShutterSound());
         AppLogger.debug(
           'UVC preview opened preset='
-          '${UvcCaptureConfig.resolutionPresetFor(_captureViewModel.deviceType).name} '
+          '${UvcCaptureConfig.resolutionPresetFor(
+            _captureViewModel.deviceType,
+            preferStripPrintQuality:
+                _captureViewModel.preferStripPrintQuality,
+          ).name} '
+          'stripQ=${_captureViewModel.preferStripPrintQuality} '
           'gen=$_uvcPreviewGeneration',
         );
       } catch (e, st) {

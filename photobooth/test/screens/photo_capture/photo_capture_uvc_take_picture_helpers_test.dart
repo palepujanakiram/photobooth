@@ -9,9 +9,10 @@ void main() {
     expect(isUvcShutterCaptureSource('ui_button'), isFalse);
   });
 
-  test('uvcAllowsRasterFallback only for preview interrupt', () {
-    expect(uvcAllowsRasterFallback('preview_interrupt'), isTrue);
+  test('uvcAllowsRasterFallback is always false (no soft Texture stills)', () {
+    expect(uvcAllowsRasterFallback('preview_interrupt'), isFalse);
     expect(uvcAllowsRasterFallback('ui_button'), isFalse);
+    expect(uvcAllowsRasterFallback('uvc_button'), isFalse);
   });
 
   test('uvcTakePictureAttemptsForSource always uses single attempt', () {
