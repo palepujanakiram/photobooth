@@ -470,9 +470,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         sticker: kDefaultStripStickerId,
         stickerPlacements: _placements,
         scribbles: _scribbles,
-        // Skip cleanup when polish is disabled or preview already cleaned.
-        cleanOverlays:
-            AppConstants.kEnableStripOverlayCleanup && !_previewCleaned,
+        // Always clean at compose — look-screen polish can miss white-on-white AF
+        // brackets and still mark preview cleaned (compose must be source of truth).
+        cleanOverlays: AppConstants.kEnableStripOverlayCleanup,
       );
       _composeResult = result;
       final printSize = resolveClassicComposePrintSize(
