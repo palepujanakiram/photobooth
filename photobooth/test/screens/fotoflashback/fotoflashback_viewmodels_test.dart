@@ -139,6 +139,25 @@ void main() {
     expect(api.lastPlacements, hasLength(kStripShotCount));
   });
 
+  test('FotoFlashbackFilterViewModel skips cleanup when scrub is OFF', () async {
+    final api = _StripFakeApi(enableOsdScrub: false);
+    SessionManager().setSessionFromResponse(_sessionJson('sess-scrub-off'));
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: api,
+    );
+    await vm.loadFilters();
+    expect(vm.classicOverlayCleanupEnabled, isFalse);
+    await vm.preparePreview();
+    expect(vm.previewCleaned, isFalse);
+    expect(vm.imageDataUrls.any((u) => u.endsWith('_clean')), isFalse);
+
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    expect(api.lastCleanOverlays, isFalse);
+  });
+
   test('FotoFlashbackFilterViewModel scribble draw/undo/clear', () {
     final vm = FotoFlashbackFilterViewModel(
       theme: stripTheme,
@@ -304,6 +323,7 @@ class _StripFakeApi extends FakeApiService {
     this.throwGenericCompose = false,
     this.monoOnly = false,
     this.altChromeOnly = false,
+    this.enableOsdScrub = true,
   });
 
   final bool failCompose;
@@ -312,6 +332,7 @@ class _StripFakeApi extends FakeApiService {
   final bool throwGenericCompose;
   final bool monoOnly;
   final bool altChromeOnly;
+  final bool enableOsdScrub;
   int composeCalls = 0;
 
   @override
@@ -355,6 +376,10 @@ class _StripFakeApi extends FakeApiService {
     return StripFiltersCatalog.fromJson({
       'brand': 'FotoFlashback',
       'shotCount': 4,
+      'features': {
+        'enableOsdScrub': enableOsdScrub,
+        'enableSurpriseMeAi': false,
+      },
       'filters': [
         {
           'id': 'classic_warm',

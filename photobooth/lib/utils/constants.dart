@@ -132,8 +132,8 @@ class AppConstants {
   /// AI themes must keep using [kPrintSizePortrait4x6] / [kPrintSizeLandscape6x4].
   static const String kPrintSizeStripDual2x6 = 's6x2_2';
 
-  /// When true, polish Classic strip shots with Gemini AF/HUD cleanup
-  /// (`POST …/strip/clean-overlays`). Local HUD inpaint is fallback only.
+  /// When true, Classic may polish shots (AF/HUD + OSD) when admin
+  /// `enableOsdScrub` is also on. Build-time kill-switch.
   static const bool kEnableStripOverlayCleanup = true;
 
   /// BEHOLD single-result hero: width cap on landscape / desktop (wider than capture kiosk).

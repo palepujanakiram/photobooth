@@ -78,6 +78,12 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _catalog?.wysiwyg ?? StripWysiwygLayout.defaults;
 
   StripFiltersCatalog? get catalog => _catalog;
+
+  /// Admin master switch from strip catalog + build kill-switch.
+  bool get classicOverlayCleanupEnabled =>
+      AppConstants.kEnableStripOverlayCleanup &&
+      (_catalog?.enableOsdScrub ?? false);
+
   List<StripFilter> get filters => _catalog?.filters ?? const [];
 
   /// Sheet layouts need 4 cells — hide them for Classic 1-shot 6×4.
@@ -155,7 +161,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     }
-    if (AppConstants.kEnableStripOverlayCleanup) {
+    if (classicOverlayCleanupEnabled) {
       // Non-blocking: show looks immediately; swap in cleaned shots when ready.
       unawaited(preparePreview());
     }
@@ -190,10 +196,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     }
   }
 
-  /// Gemini AF/HUD cleanup so look/pay preview matches print.
-  /// Fail-open: keeps originals if cleanup fails.
+  /// Classic overlay polish when admin scrub is ON (Gemini AF + OSD).
+  /// Fail-open: keeps originals if cleanup fails. No-op when scrub is OFF.
   Future<void> preparePreview() async {
-    if (!AppConstants.kEnableStripOverlayCleanup) return;
+    if (!classicOverlayCleanupEnabled) return;
     if (_previewCleaned ||
         (_imageDataUrls.length != 1 &&
             _imageDataUrls.length != kStripShotCount)) {
@@ -456,7 +462,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
     try {
-      if (AppConstants.kEnableStripOverlayCleanup) {
+      if (classicOverlayCleanupEnabled) {
         // Finish background polish if still running so print matches preview.
         await preparePreview();
       }
@@ -470,10 +476,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         sticker: kDefaultStripStickerId,
         stickerPlacements: _placements,
         scribbles: _scribbles,
-        // Clean at compose only if look-screen polish did not finish — Gemini
-        // AF clean is expensive and softens faces if run twice.
+        // Clean at compose only if look polish did not finish — skip entirely
+        // when admin scrub is OFF (server also gates on enableOsdScrub).
         cleanOverlays:
-            AppConstants.kEnableStripOverlayCleanup && !_previewCleaned,
+            classicOverlayCleanupEnabled && !_previewCleaned,
       );
       _composeResult = result;
       final printSize = resolveClassicComposePrintSize(

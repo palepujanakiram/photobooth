@@ -49,7 +49,8 @@ class AppSettingsModel {
   final bool? watermarkEnabled;
   final bool? exifStampEnabled;
   final bool? c2paSigningEnabled;
-  /// Classic local OSD scrub (`settings.photoStripConfig.enableOsdScrub`).
+  /// Classic shot cleanup master switch (`photoStripConfig.enableOsdScrub`):
+  /// Gemini AF polish + OSD scrub when true; originals when false/null.
   final bool? enableOsdScrub;
   /// Classic Surprise Me AI teaser (`settings.photoStripConfig.enableSurpriseMeAi`).
   final bool? enableSurpriseMeAi;

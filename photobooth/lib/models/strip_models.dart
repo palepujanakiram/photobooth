@@ -536,6 +536,7 @@ class StripFiltersCatalog {
   final String? printNote;
   final StripWysiwygLayout? layout;
   final bool enableSurpriseMeAi;
+  /// Master Classic cleanup switch from admin (`features.enableOsdScrub`).
   final bool enableOsdScrub;
 
   StripWysiwygLayout get wysiwyg => layout ?? StripWysiwygLayout.defaults;
