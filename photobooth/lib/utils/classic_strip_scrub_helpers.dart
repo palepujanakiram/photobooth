@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../services/api_service.dart';
 import '../services/session_manager.dart';
 import 'constants.dart';
@@ -22,10 +24,38 @@ class ClassicShotScrubResult {
   final bool scrubbed;
 }
 
+/// Serializes Classic Gemini scrub calls so concurrent accepts do not race the
+/// image API (parallel cleans often succeed only for the first shot).
+class ClassicStripScrubGate {
+  ClassicStripScrubGate._();
+
+  static Future<void> _chain = Future<void>.value();
+
+  /// Runs [fn] after prior scrub work; errors do not break the queue.
+  static Future<T> enqueue<T>(Future<T> Function() fn) {
+    final done = Completer<T>();
+    _chain = _chain.then((_) async {
+      try {
+        done.complete(await fn());
+      } catch (e, st) {
+        done.completeError(e, st);
+      }
+    });
+    // Keep the chain alive after a scrub failure.
+    _chain = _chain.catchError((Object _) {});
+    return done.future;
+  }
+
+  /// Test-only: reset queue between cases.
+  static void resetForTests() {
+    _chain = Future<void>.value();
+  }
+}
+
 /// Encode + optional Gemini scrub for one Classic shot (fail-open → original).
 ///
 /// Kick off as soon as a shot is accepted so Gemini latency hides under the
-/// next pose / countdown.
+/// next pose / countdown. Scrubs are **serialized** via [ClassicStripScrubGate].
 Future<ClassicShotScrubResult> scrubClassicShotDataUrl({
   required Future<String> Function() encodeShotDataUrl,
   required bool enableScrub,
@@ -37,6 +67,20 @@ Future<ClassicShotScrubResult> scrubClassicShotDataUrl({
     return ClassicShotScrubResult(dataUrl: raw, scrubbed: false);
   }
 
+  return ClassicStripScrubGate.enqueue(
+    () => _scrubEncodedShot(
+      raw: raw,
+      apiService: apiService,
+      sessionManager: sessionManager,
+    ),
+  );
+}
+
+Future<ClassicShotScrubResult> _scrubEncodedShot({
+  required String raw,
+  ApiService? apiService,
+  SessionManager? sessionManager,
+}) async {
   try {
     final sessionId =
         (sessionManager ?? SessionManager()).sessionId?.trim() ?? '';
@@ -44,19 +88,22 @@ Future<ClassicShotScrubResult> scrubClassicShotDataUrl({
       return ClassicShotScrubResult(dataUrl: raw, scrubbed: false);
     }
 
-    final cleaned = await (apiService ?? ApiService()).cleanStripOverlays(
+    final result = await (apiService ?? ApiService()).cleanStripOverlays(
       sessionId: sessionId,
       images: [raw],
     );
-    if (cleaned.length == 1 && cleaned.first.trim().isNotEmpty) {
-      final url = cleaned.first;
-      // Identical payload usually means skipped/fail-open echo — not scrubbed.
-      final scrubbed = url != raw;
+    if (result.images.length == 1 && result.images.first.trim().isNotEmpty) {
+      final url = result.images.first;
+      final scrubbed =
+          !result.skipped &&
+          result.cleanedFlags.length == 1 &&
+          result.cleanedFlags.first;
       if (scrubbed) {
         AppLogger.debug('Classic per-shot scrub done for session $sessionId');
       } else {
         AppLogger.warning(
-          'Classic per-shot scrub returned unchanged image for $sessionId',
+          'Classic per-shot scrub did not clean image for $sessionId '
+          '(skipped=${result.skipped})',
         );
       }
       return ClassicShotScrubResult(dataUrl: url, scrubbed: scrubbed);

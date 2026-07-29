@@ -415,13 +415,17 @@ class _StripFakeApi extends FakeApiService {
   }
 
   @override
-  Future<List<String>> cleanStripOverlays({
+  Future<StripOverlayCleanResult> cleanStripOverlays({
     required String sessionId,
     required List<String> images,
   }) async {
-    return images
+    final out = images
         .map((e) => e.endsWith('_clean') ? e : '${e}_clean')
         .toList();
+    return StripOverlayCleanResult(
+      images: out,
+      cleanedFlags: List<bool>.filled(out.length, true),
+    );
   }
 
   @override

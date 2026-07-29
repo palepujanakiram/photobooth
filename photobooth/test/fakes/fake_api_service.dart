@@ -201,11 +201,14 @@ class FakeApiService extends ApiService {
   }
 
   @override
-  Future<List<String>> cleanStripOverlays({
+  Future<StripOverlayCleanResult> cleanStripOverlays({
     required String sessionId,
     required List<String> images,
   }) async {
-    return List<String>.from(images);
+    return StripOverlayCleanResult(
+      images: List<String>.from(images),
+      cleanedFlags: List<bool>.filled(images.length, false),
+    );
   }
 
   @override

@@ -482,7 +482,9 @@ void main() {
       sessionId: 'sess-1',
       images: const ['data:image/jpeg;base64,one'],
     );
-    expect(one, ['data:image/jpeg;base64,one_clean']);
+    expect(one.images, ['data:image/jpeg;base64,one_clean']);
+    expect(one.cleanedFlags, [true]);
+    expect(one.allCleaned, isTrue);
 
     final images = List.filled(4, 'data:image/jpeg;base64,abc');
     adapter.onPost(
@@ -490,7 +492,8 @@ void main() {
       (server) => server.reply(200, {
         'success': true,
         'images': images.map((e) => '${e}_clean').toList(),
-        'overlayCleanup': {'detectedCount': 1, 'cleanedCount': 1},
+        'cleaned': [true, false, true, false],
+        'overlayCleanup': {'detectedCount': 2, 'cleanedCount': 2},
       }),
       data: Matchers.any,
     );
@@ -498,8 +501,10 @@ void main() {
       sessionId: 'sess-1',
       images: images,
     );
-    expect(cleaned, hasLength(4));
-    expect(cleaned.first.endsWith('_clean'), isTrue);
+    expect(cleaned.images, hasLength(4));
+    expect(cleaned.images.first.endsWith('_clean'), isTrue);
+    expect(cleaned.cleanedFlags, [true, false, true, false]);
+    expect(cleaned.allCleaned, isFalse);
   });
 
   test('composeStrip validates shot count and returns print url', () async {

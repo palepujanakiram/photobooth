@@ -621,6 +621,29 @@ class SurpriseMeStatus {
   }
 }
 
+/// Result of `POST /api/sessions/:id/strip/clean-overlays`.
+class StripOverlayCleanResult {
+  const StripOverlayCleanResult({
+    required this.images,
+    required this.cleanedFlags,
+    this.skipped = false,
+  });
+
+  final List<String> images;
+
+  /// Per-shot cleanup success from the server (Gemini / local AF scrub).
+  final List<bool> cleanedFlags;
+
+  /// Admin scrub OFF / kill-switch — images are unchanged inputs.
+  final bool skipped;
+
+  bool get allCleaned =>
+      !skipped &&
+      cleanedFlags.length == images.length &&
+      cleanedFlags.isNotEmpty &&
+      cleanedFlags.every((c) => c);
+}
+
 /// Result of `POST /api/sessions/:id/strip/compose`.
 class StripComposeResult {
   const StripComposeResult({

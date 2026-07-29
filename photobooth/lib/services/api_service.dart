@@ -601,7 +601,7 @@ class ApiService {
 
   /// POST `/api/sessions/:id/strip/clean-overlays` — remove viewfinder HUD.
   /// Accepts 1 shot (per-accept scrub / Classic 6×4) or [kStripShotCount].
-  Future<List<String>> cleanStripOverlays({
+  Future<StripOverlayCleanResult> cleanStripOverlays({
     required String sessionId,
     required List<String> images,
   }) async {
@@ -634,7 +634,11 @@ class ApiService {
       }
       if (map['skipped'] == true) {
         // Admin scrub OFF / kill-switch — return inputs unchanged.
-        return List<String>.from(images);
+        return StripOverlayCleanResult(
+          images: List<String>.from(images),
+          cleanedFlags: List<bool>.filled(images.length, false),
+          skipped: true,
+        );
       }
       final raw = map['images'];
       if (raw is! List || raw.length != images.length) {
@@ -648,7 +652,10 @@ class ApiService {
         }
         out.add(s);
       }
-      return out;
+      return StripOverlayCleanResult(
+        images: out,
+        cleanedFlags: _parseCleanedFlags(map, images: images, out: out),
+      );
     } on ApiException {
       rethrow;
     } on DioException catch (e) {
@@ -658,6 +665,29 @@ class ApiService {
         e.response?.statusCode,
       );
     }
+  }
+
+  /// Prefer per-shot `cleaned` flags; fall back to URL / cleanedCount.
+  static List<bool> _parseCleanedFlags(
+    Map<String, dynamic> map, {
+    required List<String> images,
+    required List<String> out,
+  }) {
+    final cleanedField = map['cleaned'];
+    if (cleanedField is List && cleanedField.length == images.length) {
+      return cleanedField.map((e) => e == true).toList(growable: false);
+    }
+    final summary = map['overlayCleanup'];
+    final count = summary is Map ? summary['cleanedCount'] : null;
+    if (count is int && count == images.length) {
+      return List<bool>.filled(images.length, true);
+    }
+    if (count is int && count == 0) {
+      return List<bool>.filled(images.length, false);
+    }
+    return [
+      for (var i = 0; i < out.length; i++) out[i] != images[i],
+    ];
   }
 
   /// POST `/api/sessions/:id/surprise-me` — silent Classic shot-1 AI kickoff.

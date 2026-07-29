@@ -163,11 +163,15 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     }
-    if (classicOverlayCleanupEnabled) {
-      // Non-blocking: show looks immediately; swap in cleaned shots when ready.
-      unawaited(preparePreview());
+    if (classicOverlayCleanupEnabled && !_previewCleaned) {
+      // Polish first (serialized per shot), then grade — avoids freezing dirty AF
+      // thumbs under the look while Gemini is still running.
+      unawaited(preparePreview().then((_) {
+        unawaited(refreshPreviewGrade());
+      }));
+    } else {
+      unawaited(refreshPreviewGrade());
     }
-    unawaited(refreshPreviewGrade());
   }
 
   Future<void> _loadCatalog() async {
@@ -228,18 +232,31 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _preparingPreview = true;
     notifyListeners();
     try {
-      final cleaned = await _api.cleanStripOverlays(
-        sessionId: sessionId,
-        images: _imageDataUrls,
-      );
-      if (cleaned.length == 1 || cleaned.length == kStripShotCount) {
-        _imageDataUrls = List<String>.from(cleaned);
-        _previewCleaned = true;
+      // One shot at a time so the strip updates progressively and we never
+      // stamp "_previewCleaned" after a partial/fail-open batch.
+      var allClean = true;
+      for (var i = 0; i < _imageDataUrls.length; i++) {
+        final result = await _api.cleanStripOverlays(
+          sessionId: sessionId,
+          images: [_imageDataUrls[i]],
+        );
+        if (result.images.length != 1 || result.images.first.trim().isEmpty) {
+          allClean = false;
+          continue;
+        }
+        _imageDataUrls[i] = result.images.first;
+        final shotClean =
+            !result.skipped &&
+            result.cleanedFlags.length == 1 &&
+            result.cleanedFlags.first;
+        if (!shotClean) allClean = false;
         _gradedByFilter.clear();
-        unawaited(refreshPreviewGrade());
+        notifyListeners();
       }
+      _previewCleaned = allClean;
     } catch (_) {
       // Preview still usable with originals; compose will clean again.
+      _previewCleaned = false;
     } finally {
       _preparingPreview = false;
       notifyListeners();
