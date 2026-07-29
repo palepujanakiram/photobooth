@@ -17,6 +17,7 @@ bool shouldDeleteTempImageFileName(String fileName) {
     'capture_',
     'captured_',
     'photo_',
+    'af_inject_',
     'img_',
     'pxl_',
     'cap',

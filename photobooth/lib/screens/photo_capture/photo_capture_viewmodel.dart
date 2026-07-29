@@ -15,6 +15,8 @@ import '../../services/face_count_service.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/phone_upload_helpers.dart';
 import '../../services/session_manager.dart';
+import '../../utils/app_runtime_config.dart';
+import '../../utils/classic_af_marker_inject.dart';
 import '../../utils/constants.dart';
 import '../../utils/device_classifier.dart';
 import '../../utils/app_device_type.dart';
@@ -1038,6 +1040,10 @@ class CaptureViewModel extends ChangeNotifier {
         if (isUvc) {
           await ImageHelper.tryDeleteLocalFile(rawFile.path);
         }
+        if (preferStripPrintQuality &&
+            AppRuntimeConfig.instance.injectClassicAfMarkers) {
+          savedFile = await injectClassicAfMarkers(savedFile);
+        }
         final meta = await ImageHelper.getImageMetadata(savedFile);
         if (meta != null) {
           AppLogger.debug(
@@ -1873,7 +1879,12 @@ class CaptureViewModel extends ChangeNotifier {
         jpegQuality: _normalizeJpegQualityForCapture(isUvc: false),
       );
       WebFlowTrace.log('CAPTURE', 'normalize_done');
-      await _assignCapturedPhotoModel(savedFile);
+      var reviewFile = savedFile;
+      if (preferStripPrintQuality &&
+          AppRuntimeConfig.instance.injectClassicAfMarkers) {
+        reviewFile = await injectClassicAfMarkers(savedFile);
+      }
+      await _assignCapturedPhotoModel(reviewFile);
     } on CameraException catch (e, stackTrace) {
       await _handleCaptureCameraException(e, stackTrace);
     } catch (e, stackTrace) {

@@ -52,6 +52,8 @@ class AppSettingsModel {
   /// Classic shot cleanup master switch (`photoStripConfig.enableOsdScrub`):
   /// Gemini AF polish + OSD scrub when true; originals when false/null.
   final bool? enableOsdScrub;
+  /// Test-only: burn AF brackets into Classic captures (`injectAfMarkers`).
+  final bool? injectAfMarkers;
   /// Classic Surprise Me AI teaser (`settings.photoStripConfig.enableSurpriseMeAi`).
   final bool? enableSurpriseMeAi;
   final DateTime? createdAt;
@@ -102,6 +104,7 @@ class AppSettingsModel {
     this.exifStampEnabled,
     this.c2paSigningEnabled,
     this.enableOsdScrub,
+    this.injectAfMarkers,
     this.enableSurpriseMeAi,
     this.createdAt,
     this.updatedAt,
@@ -176,6 +179,10 @@ class AppSettingsModel {
             stripMap?['enableOsdScrub'],
           ) ??
           JsonParseHelpers.boolOrNull(json['enableOsdScrub']),
+      injectAfMarkers: JsonParseHelpers.boolOrNull(
+            stripMap?['injectAfMarkers'],
+          ) ??
+          JsonParseHelpers.boolOrNull(json['injectAfMarkers']),
       enableSurpriseMeAi: JsonParseHelpers.boolOrNull(
             stripMap?['enableSurpriseMeAi'],
           ) ??

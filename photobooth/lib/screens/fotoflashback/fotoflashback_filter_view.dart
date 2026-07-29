@@ -40,6 +40,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
     _viewModel = FotoFlashbackFilterViewModel(
       theme: args.theme,
       imageDataUrls: args.imageDataUrls,
+      overlayCleanupAlreadyDone: args.overlayCleanupAlreadyDone,
     );
     unawaited(_viewModel!.loadFilters());
     unawaited(_loadCta());

@@ -19,9 +19,11 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     required List<String> imageDataUrls,
     ApiService? apiService,
     SessionManager? sessionManager,
+    bool overlayCleanupAlreadyDone = false,
   })  : _imageDataUrls = List<String>.from(imageDataUrls),
         _api = apiService ?? ApiService(),
-        _sessionManager = sessionManager ?? SessionManager();
+        _sessionManager = sessionManager ?? SessionManager(),
+        _previewCleaned = overlayCleanupAlreadyDone;
 
   final ThemeModel theme;
   List<String> _imageDataUrls;

@@ -36,6 +36,7 @@ import '../../models/strip_models.dart';
 import '../../utils/app_device_type.dart';
 import '../../utils/app_runtime_config.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/classic_strip_scrub_helpers.dart';
 import '../../utils/constants.dart';
 import '../../utils/device_classifier.dart';
 import '../../utils/image_helper.dart';
@@ -265,6 +266,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
   }
 
+  void _dropLastStripShot() {
+    if (_stripShots.isEmpty) return;
+    _stripShots.removeLast();
+    if (_stripScrubFutures.isNotEmpty) {
+      _stripScrubFutures.removeLast();
+    }
+    _syncFlashbackSubtitle();
+  }
+
   Future<void> _retakeLastFlashbackShot() async {
     _cancelFlashbackAutoTimers();
     _captureViewModel.cancelCountdown();
@@ -273,10 +283,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return;
     }
     if (_stripShots.isEmpty) return;
-    setState(() {
-      _stripShots.removeLast();
-      _syncFlashbackSubtitle();
-    });
+    setState(_dropLastStripShot);
     _maybeAdvanceFlashbackAutoChain();
   }
 
@@ -330,6 +337,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   int? _multiShotTotal;
   ThemeModel? _flashbackTheme;
   final List<PhotoModel> _stripShots = <PhotoModel>[];
+  /// Parallel to [_stripShots]: in-flight / completed per-shot scrub data URLs.
+  final List<Future<String>?> _stripScrubFutures = <Future<String>?>[];
   bool _stripFinishing = false;
   Timer? _flashbackReviewTimer;
   Timer? _flashbackReviewTick;
@@ -399,8 +408,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return;
     }
     _cancelFlashbackAutoTimers();
+    final scrubEnabled = classicOverlayScrubEnabled(
+      context.read<AppSettingsManager>().settings?.enableOsdScrub,
+    );
+    // Start Gemini scrub immediately so latency hides under the next pose.
+    final scrubFuture = scrubEnabled
+        ? scrubClassicShotDataUrl(
+            encodeShotDataUrl: () =>
+                ImageHelper.encodeImageToBase64(photo.imageFile),
+            enableScrub: true,
+          )
+        : null;
     setState(() {
       _stripShots.add(photo);
+      _stripScrubFutures.add(scrubFuture);
       _syncFlashbackSubtitle();
     });
     // Kick off Surprise Me on the first accepted Classic shot (1- or 4-shot).
@@ -433,8 +454,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _stopPoseIdleTimer();
     try {
       final dataUrls = <String>[];
-      for (final shot in _stripShots) {
-        dataUrls.add(await ImageHelper.encodeImageToBase64(shot.imageFile));
+      var scrubCompleted = false;
+      for (var i = 0; i < _stripShots.length; i++) {
+        final pending =
+            i < _stripScrubFutures.length ? _stripScrubFutures[i] : null;
+        if (pending != null) {
+          dataUrls.add(await pending);
+          scrubCompleted = true;
+        } else {
+          dataUrls.add(
+            await ImageHelper.encodeImageToBase64(_stripShots[i].imageFile),
+          );
+        }
       }
       if (!mounted) return;
 
@@ -450,6 +481,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         arguments: FlashbackFilterArgs(
           theme: theme,
           imageDataUrls: dataUrls,
+          overlayCleanupAlreadyDone: scrubCompleted,
         ),
       );
     } catch (e, st) {
@@ -1415,10 +1447,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
     if (_isFlashbackMultiShot && _stripShots.isNotEmpty) {
       _captureViewModel.cancelCountdown();
-      setState(() {
-        _stripShots.removeLast();
-        _syncFlashbackSubtitle();
-      });
+      setState(_dropLastStripShot);
       _maybeAdvanceFlashbackAutoChain();
       return;
     }

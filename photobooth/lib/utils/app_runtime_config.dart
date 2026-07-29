@@ -16,6 +16,7 @@ class AppRuntimeConfig extends ChangeNotifier {
 
   bool _showGenerationCommentary = false;
   bool _thermalSafeMode = false;
+  bool _injectClassicAfMarkers = false;
 
   /// Mirrors `/api/settings` → `showGenerationCommentary`. Drives debug / kiosk-RAM behavior.
   bool get showGenerationCommentary => _showGenerationCommentary;
@@ -23,15 +24,21 @@ class AppRuntimeConfig extends ChangeNotifier {
   /// Mirrors `/api/settings` → `thermalSafeMode`. Drives UVC thermal relief on capture.
   bool get thermalSafeMode => _thermalSafeMode;
 
+  /// Test-only: burn AF brackets into Classic captures (`photoStripConfig.injectAfMarkers`).
+  bool get injectClassicAfMarkers => _injectClassicAfMarkers;
+
   void applyFromSettings(AppSettingsModel? settings) {
     final nextCommentary = settings?.showGenerationCommentary == true;
     final nextThermal = settings?.thermalSafeMode == true;
+    final nextInject = settings?.injectAfMarkers == true;
     if (nextCommentary == _showGenerationCommentary &&
-        nextThermal == _thermalSafeMode) {
+        nextThermal == _thermalSafeMode &&
+        nextInject == _injectClassicAfMarkers) {
       return;
     }
     _showGenerationCommentary = nextCommentary;
     _thermalSafeMode = nextThermal;
+    _injectClassicAfMarkers = nextInject;
     notifyListeners();
   }
 }

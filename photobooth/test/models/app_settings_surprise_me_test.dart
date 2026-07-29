@@ -3,6 +3,18 @@ import 'package:photobooth/models/app_settings_model.dart';
 import 'package:photobooth/models/strip_models.dart';
 
 void main() {
+  test('parses injectAfMarkers from photoStripConfig', () {
+    final model = AppSettingsModel.fromJson({
+      'photoStripConfig': {'injectAfMarkers': true},
+    });
+    expect(model.injectAfMarkers, isTrue);
+  });
+
+  test('defaults injectAfMarkers when omitted', () {
+    final model = AppSettingsModel.fromJson({});
+    expect(model.injectAfMarkers, isNull);
+  });
+
   test('parses enableOsdScrub from photoStripConfig', () {
     final model = AppSettingsModel.fromJson({
       'photoStripConfig': {'enableOsdScrub': true},

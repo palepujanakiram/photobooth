@@ -118,10 +118,13 @@ class FlashbackCaptureArgs {
 class FlashbackFilterArgs {
   final ThemeModel theme;
   final List<String> imageDataUrls;
+  /// True when capture already awaited per-shot Gemini scrub.
+  final bool overlayCleanupAlreadyDone;
 
   const FlashbackFilterArgs({
     required this.theme,
     required this.imageDataUrls,
+    this.overlayCleanupAlreadyDone = false,
   });
 
   static FlashbackFilterArgs? tryParse(Object? args) {
@@ -133,6 +136,7 @@ class FlashbackFilterArgs {
       return FlashbackFilterArgs(
         theme: args['theme'] as ThemeModel,
         imageDataUrls: urls,
+        overlayCleanupAlreadyDone: args['overlayCleanupAlreadyDone'] == true,
       );
     }
     return null;
