@@ -12,7 +12,7 @@ import '../../utils/print_size_helpers.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
 
-/// Loads strip looks and composes the dual strip (local HUD polish, no Gemini).
+/// Loads strip looks and composes the dual strip (Gemini AF polish on shots).
 class FotoFlashbackFilterViewModel extends ChangeNotifier {
   FotoFlashbackFilterViewModel({
     required this.theme,
@@ -190,8 +190,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     }
   }
 
-  /// Local HUD/AF thin-line inpaint so look/pay preview matches print.
-  /// Fail-open: keeps originals if cleanup fails. Never uses Gemini.
+  /// Gemini AF/HUD cleanup so look/pay preview matches print.
+  /// Fail-open: keeps originals if cleanup fails.
   Future<void> preparePreview() async {
     if (!AppConstants.kEnableStripOverlayCleanup) return;
     if (_previewCleaned ||
@@ -470,9 +470,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         sticker: kDefaultStripStickerId,
         stickerPlacements: _placements,
         scribbles: _scribbles,
-        // Always clean at compose — look-screen polish can miss white-on-white AF
-        // brackets and still mark preview cleaned (compose must be source of truth).
-        cleanOverlays: AppConstants.kEnableStripOverlayCleanup,
+        // Clean at compose only if look-screen polish did not finish — Gemini
+        // AF clean is expensive and softens faces if run twice.
+        cleanOverlays:
+            AppConstants.kEnableStripOverlayCleanup && !_previewCleaned,
       );
       _composeResult = result;
       final printSize = resolveClassicComposePrintSize(

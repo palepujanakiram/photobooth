@@ -121,8 +121,8 @@ void main() {
     vm.selectFilter('mono');
     expect(vm.selectedFilterId, 'mono');
 
-    // Overlay polish runs in the background; compose still requests cleanup
-    // so print remains source of truth if look-screen polish missed AF marks.
+    // Overlay polish runs on the look screen; compose skips a second Gemini
+    // AF clean when preview already finished.
     await vm.preparePreview();
     expect(vm.previewCleaned, isTrue);
     expect(vm.imageDataUrls.every((u) => u.endsWith('_clean')), isTrue);
@@ -133,7 +133,7 @@ void main() {
     expect(image.isSelected, isTrue);
     expect(vm.composeResult, isNotNull);
     expect(api.composeCalls, 1);
-    expect(api.lastCleanOverlays, isTrue);
+    expect(api.lastCleanOverlays, isFalse);
     expect(api.lastFrame, 'noir');
     expect(api.lastSticker, kDefaultStripStickerId);
     expect(api.lastPlacements, hasLength(kStripShotCount));
