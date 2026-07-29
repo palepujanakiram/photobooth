@@ -16,6 +16,7 @@ import '../screens/result/transformed_image_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../utils/exceptions.dart';
 import '../utils/constants.dart';
+import '../utils/print_orientation.dart';
 import '../utils/session_user_image_validation.dart';
 import '../utils/logger.dart';
 import '../utils/web_flow_trace.dart';
@@ -753,7 +754,7 @@ class ApiService {
   }
 
   /// POST `/api/sessions/:id/strip/compose` — dual 2×6 strip, sheet layout, or
-  /// single landscape 6×4 when [images] has one still.
+  /// single 6×4 / 4×6 when [images] has one still.
   Future<StripComposeResult> composeStrip({
     required String sessionId,
     required List<String> images,
@@ -763,6 +764,7 @@ class ApiService {
     List<StripStickerPlacement> stickerPlacements = const [],
     List<StripScribbleStroke> scribbles = const [],
     bool cleanOverlays = false,
+    PrintOrientation? orientation,
   }) async {
     if (images.length != 1 && images.length != kStripShotCount) {
       throw ApiException(
@@ -777,6 +779,9 @@ class ApiService {
         'sticker': sticker,
         'cleanOverlays': cleanOverlays,
       };
+      if (images.length == 1 && orientation != null) {
+        body['orientation'] = orientation.apiValue;
+      }
       if (stickerPlacements.isNotEmpty) {
         body['stickerPlacements'] =
             stickerPlacements.map((p) => p.toJson()).toList();

@@ -5,7 +5,7 @@ enum ClassicShotMode {
   /// Default: four poses → dual 2×6 strip looks.
   fourShot,
 
-  /// One pose → landscape 6×4 print (no strip frames).
+  /// One pose → single 6×4 / 4×6 print (orientation chosen separately).
   single6x4,
 }
 

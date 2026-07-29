@@ -397,7 +397,10 @@ abstract final class AppStrings {
       'Couldn’t start Classic. Please try again.';
   static const experienceClassicShotModeLabel = 'Shots';
   static const experienceClassicFourShot = '4-shot strip';
-  static const experienceClassicOneShot = '1-shot 6×4';
+  static const experienceClassicOneShot = '1-shot';
+  static const experienceClassicOrientationLabel = 'Print';
+  static const experienceClassicLandscape = 'Landscape 6×4';
+  static const experienceClassicPortrait = 'Portrait 4×6';
   static const experienceBackToTerms = 'Back to terms';
 
   /// Bundled preview art for the experience-choice cards.
@@ -412,18 +415,19 @@ abstract final class AppStrings {
       'lib/images/experience/classic_4shot_preview.png';
   static const experienceAiPreviewBadge = 'AI themes';
   static const experienceClassicPreviewBadge = '4-shot strip';
-  static const experienceClassicOneShotPreviewBadge = '1-shot 6×4';
-
+  static const experienceClassicOneShotPreviewBadge = '1-shot';
   static const flashbackBrand = 'FotoFlashback';
   static const flashbackCaptureTitle = 'FotoFlashback';
   static const flashbackCaptureSubtitle =
       'Strike a pose — we need 4 shots for your strip.';
   static const flashbackCaptureSubtitleSingle =
-      'Strike a pose — one shot for your 6×4 print.';
+      'Strike a pose — one shot for your print.';
   static String flashbackShotProgress(int current, int total) =>
       'Shot $current of $total';
-  static const flashbackSingle6x4Title = 'Classic 6×4';
-  static const flashbackComposingSingle = 'Building your 6×4 print…';
+  static const flashbackSingle6x4Title = 'Classic print';
+  static String flashbackSinglePrintTitle(bool portrait) =>
+      portrait ? 'Classic 4×6' : 'Classic 6×4';
+  static const flashbackComposingSingle = 'Building your print…';
   static const flashbackNeedOneShot = 'Take a photo to continue.';
   static const flashbackTakeShot = 'Take shot';
   static const flashbackNextShot = 'Next shot';

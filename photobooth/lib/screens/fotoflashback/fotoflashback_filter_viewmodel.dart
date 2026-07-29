@@ -9,6 +9,7 @@ import '../../utils/app_strings.dart';
 import '../../utils/classic_strip_scrub_coordinator.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/print_orientation.dart';
 import '../../utils/print_size_helpers.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
@@ -22,6 +23,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     SessionManager? sessionManager,
     bool overlayCleanupAlreadyDone = false,
     List<bool> shotCleaned = const [],
+    this.singlePrintOrientation = PrintOrientation.landscape,
   })  : _imageDataUrls = List<String>.from(imageDataUrls),
         _api = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager(),
@@ -34,6 +36,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         );
 
   final ThemeModel theme;
+  /// Classic 1-shot print orientation (landscape 6×4 / portrait 4×6).
+  final PrintOrientation singlePrintOrientation;
   List<String> _imageDataUrls;
   final ApiService _api;
   final SessionManager _sessionManager;
@@ -533,11 +537,13 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         // when admin scrub is OFF (server also gates on enableOsdScrub).
         cleanOverlays:
             classicOverlayCleanupEnabled && !_previewCleaned,
+        orientation: isSingleClassic ? singlePrintOrientation : null,
       );
       _composeResult = result;
       final printSize = resolveClassicComposePrintSize(
         imageCount: _imageDataUrls.length,
         apiPrintSize: result.printSize,
+        singleOrientation: singlePrintOrientation,
       );
       return GeneratedImage(
         id: 'strip_${result.filter}_${DateTime.now().millisecondsSinceEpoch}',

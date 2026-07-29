@@ -43,6 +43,7 @@ import '../../views/widgets/classic_scrub_progress_dots.dart';
 import '../../utils/device_classifier.dart';
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
+import '../../utils/print_orientation.dart';
 import '../../utils/route_args.dart';
 import '../../utils/surprise_me_helpers.dart';
 import '../../utils/uvc_capture_config.dart';
@@ -343,6 +344,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   String? _subtitleHint;
   int? _multiShotTotal;
   ThemeModel? _flashbackTheme;
+  PrintOrientation _singlePrintOrientation = PrintOrientation.landscape;
   final List<PhotoModel> _stripShots = <PhotoModel>[];
   /// Parallel to [_stripShots]: in-flight / completed per-shot scrub results.
   final List<Future<ClassicShotScrubResult>?> _stripScrubFutures =
@@ -378,6 +380,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _subtitleHint = captureArgs.subtitleHint;
       _multiShotTotal = captureArgs.multiShotTotal;
       _flashbackTheme = captureArgs.flashbackTheme;
+      _singlePrintOrientation = captureArgs.singlePrintOrientation;
       if (captureArgs.acceptedStripShots.isNotEmpty) {
         _stripShots
           ..clear()
@@ -404,7 +407,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final total = _multiShotTotal;
     if (total == null) return;
     if (total == 1) {
-      _subtitleHint = AppStrings.flashbackSingle6x4Title;
+      _subtitleHint = AppStrings.flashbackSinglePrintTitle(
+        _singlePrintOrientation == PrintOrientation.portrait,
+      );
       return;
     }
     final next = (_stripShots.length + 1).clamp(1, total);
@@ -523,6 +528,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           // Only skip look-screen polish when every per-shot scrub succeeded.
           overlayCleanupAlreadyDone: allScrubbed,
           shotCleaned: shotCleaned,
+          singlePrintOrientation: _singlePrintOrientation,
         ),
       );
     } catch (e, st) {
@@ -1437,6 +1443,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       multiShotTotal: _multiShotTotal,
       flashbackTheme: _flashbackTheme,
       acceptedStripShots: List<PhotoModel>.from(_stripShots),
+      singlePrintOrientation: _singlePrintOrientation,
     );
   }
 

@@ -10,15 +10,15 @@ bool isStripDualPrintSize(String? printSize) {
 
 /// Resolves WCM print token after Classic strip compose.
 ///
-/// One-shot Classic is always landscape 6×4 (`s6x4`) — the compose API may omit
-/// `printSize` or still return the strip default (`s6x2_2`). Four-shot uses
-/// dual-strip cut (`s6x2_2`).
+/// One-shot Classic uses [singleOrientation] (`s6x4` landscape default, or
+/// `s4x6` portrait). Four-shot uses dual-strip cut (`s6x2_2`).
 String resolveClassicComposePrintSize({
   required int imageCount,
   String? apiPrintSize,
+  PrintOrientation singleOrientation = PrintOrientation.landscape,
 }) {
   if (imageCount == 1) {
-    return AppConstants.kPrintSizeLandscape6x4;
+    return singleOrientation.printSize;
   }
   final fromApi = apiPrintSize?.trim() ?? '';
   if (fromApi.isNotEmpty) return fromApi;

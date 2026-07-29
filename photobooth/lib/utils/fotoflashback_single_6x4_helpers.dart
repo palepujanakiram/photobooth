@@ -7,17 +7,19 @@ import '../services/api_service.dart';
 import '../services/session_manager.dart';
 import '../utils/app_strings.dart';
 import '../utils/exceptions.dart';
+import '../utils/print_orientation.dart';
 import '../utils/print_size_helpers.dart';
 import '../utils/fotoflashback_payment_helpers.dart';
 import '../utils/logger.dart';
 
-/// Compose one Classic still as landscape 6×4 and open print selection.
+/// Compose one Classic still as 6×4 / 4×6 and open print selection.
 Future<String?> finishClassicSingle6x4({
   required BuildContext context,
   required ThemeModel theme,
   required String imageDataUrl,
   ApiService? api,
   SessionManager? sessionManager,
+  PrintOrientation orientation = PrintOrientation.landscape,
 }) async {
   final sessionId =
       (sessionManager ?? SessionManager()).sessionId?.trim() ?? '';
@@ -31,12 +33,14 @@ Future<String?> finishClassicSingle6x4({
       images: [imageDataUrl],
       filter: kDefaultStripFilterId,
       frame: kDefaultStripFrameId,
+      orientation: orientation,
     );
     if (!context.mounted) return AppStrings.flashbackComposeFailed;
 
     final printSize = resolveClassicComposePrintSize(
       imageCount: 1,
       apiPrintSize: result.printSize,
+      singleOrientation: orientation,
     );
     final image = GeneratedImage(
       id: 'classic6x4_${DateTime.now().millisecondsSinceEpoch}',

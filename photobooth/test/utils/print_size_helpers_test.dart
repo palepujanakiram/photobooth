@@ -80,7 +80,7 @@ void main() {
   });
 
   group('resolveClassicComposePrintSize', () {
-    test('one-shot Classic always uses landscape 6x4', () {
+    test('one-shot Classic defaults to landscape 6x4', () {
       expect(
         resolveClassicComposePrintSize(
           imageCount: 1,
@@ -91,6 +91,16 @@ void main() {
       expect(
         resolveClassicComposePrintSize(imageCount: 1),
         AppConstants.kPrintSizeLandscape6x4,
+      );
+    });
+
+    test('one-shot Classic portrait uses 4x6', () {
+      expect(
+        resolveClassicComposePrintSize(
+          imageCount: 1,
+          singleOrientation: PrintOrientation.portrait,
+        ),
+        AppConstants.kPrintSizePortrait4x6,
       );
     });
 

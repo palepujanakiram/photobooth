@@ -74,6 +74,9 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   /// Classic 1-shot landscape 6×4 (1800×1200).
   static const double single6x4AspectRatio = 1800 / 1200;
 
+  /// Classic 1-shot portrait 4×6 (1200×1800).
+  static const double single4x6AspectRatio = 1200 / 1800;
+
   /// One 2×6 strip (half sheet width).
   static const double defaultStripWidth = defaultSheetWidth / 2;
   static const double defaultStripHeight = defaultSheetHeight;

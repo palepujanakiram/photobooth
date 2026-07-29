@@ -8,6 +8,7 @@ import 'package:photobooth/models/kiosk_frame_model.dart';
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
 import 'package:photobooth/services/api_service.dart';
 import 'package:photobooth/utils/exceptions.dart';
+import 'package:photobooth/utils/print_orientation.dart';
 
 /// Minimal [ApiService] override for ViewModel unit tests (no network).
 class FakeApiService extends ApiService {
@@ -221,6 +222,7 @@ class FakeApiService extends ApiService {
     List<StripStickerPlacement> stickerPlacements = const [],
     List<StripScribbleStroke> scribbles = const [],
     bool cleanOverlays = false,
+    PrintOrientation? orientation,
   }) async {
     return StripComposeResult(
       imageUrl: 'https://example.com/strip.jpg',

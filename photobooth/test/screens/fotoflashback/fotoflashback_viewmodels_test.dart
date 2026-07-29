@@ -8,6 +8,7 @@ import 'package:photobooth/screens/fotoflashback/fotoflashback_filter_viewmodel.
 import 'package:photobooth/screens/photo_capture/photo_model.dart';
 import 'package:photobooth/services/session_manager.dart';
 import 'package:photobooth/utils/exceptions.dart';
+import 'package:photobooth/utils/print_orientation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../fakes/fake_api_service.dart';
@@ -438,6 +439,7 @@ class _StripFakeApi extends FakeApiService {
     List<StripStickerPlacement> stickerPlacements = const [],
     List<StripScribbleStroke> scribbles = const [],
     bool cleanOverlays = false,
+    PrintOrientation? orientation,
   }) async {
     composeCalls++;
     lastCleanOverlays = cleanOverlays;

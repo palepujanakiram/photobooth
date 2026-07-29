@@ -8,6 +8,7 @@ import '../../services/app_settings_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/fotoflashback_payment_helpers.dart';
 import '../../utils/payment_workflow_helpers.dart';
+import '../../utils/print_orientation.dart';
 import '../../utils/route_args.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
@@ -43,6 +44,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
       imageDataUrls: args.imageDataUrls,
       overlayCleanupAlreadyDone: args.overlayCleanupAlreadyDone,
       shotCleaned: args.shotCleaned,
+      singlePrintOrientation: args.singlePrintOrientation,
     );
     unawaited(_viewModel!.loadFilters());
     unawaited(_loadCta());
@@ -179,6 +181,8 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           drawMode: viewModel.drawMode,
                           filters: viewModel.filters,
                           isLoading: viewModel.isLoading,
+                          singlePrintOrientation:
+                              viewModel.singlePrintOrientation,
                           onSelectFilter: viewModel.selectFilter,
                           onMovePlacement: viewModel.moveSticker,
                           onRemovePlacement: viewModel.removeSticker,
@@ -272,6 +276,7 @@ class _LookPickerBody extends StatelessWidget {
     required this.drawMode,
     required this.filters,
     required this.isLoading,
+    required this.singlePrintOrientation,
     required this.onSelectFilter,
     required this.onMovePlacement,
     required this.onRemovePlacement,
@@ -293,6 +298,7 @@ class _LookPickerBody extends StatelessWidget {
   final bool drawMode;
   final List<StripFilter> filters;
   final bool isLoading;
+  final PrintOrientation singlePrintOrientation;
   final ValueChanged<String> onSelectFilter;
   final void Function(String id, double x, double y) onMovePlacement;
   final ValueChanged<String> onRemovePlacement;
@@ -307,11 +313,13 @@ class _LookPickerBody extends StatelessWidget {
         final panelH = constraints.maxHeight;
         if (panelH <= 0) return const SizedBox.shrink();
 
-        // Dual-strip chrome → tall 2×6; sheet → portrait 4×6; 1-shot → landscape 6×4.
+        // Dual-strip chrome → tall 2×6; sheet → portrait 4×6; 1-shot → L/P.
         final single = imageDataUrls.length == 1;
         final sheet = !single && isStripSheetLayout(frameId);
         final aspect = single
-            ? FotoFlashbackStripPreview.single6x4AspectRatio
+            ? (singlePrintOrientation == PrintOrientation.portrait
+                ? FotoFlashbackStripPreview.single4x6AspectRatio
+                : FotoFlashbackStripPreview.single6x4AspectRatio)
             : sheet
                 ? FotoFlashbackStripPreview.sheetAspectRatio
                 : FotoFlashbackStripPreview.stripAspectRatio;
