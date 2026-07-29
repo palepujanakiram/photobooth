@@ -12,6 +12,7 @@ import '../../utils/route_args.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/centered_max_width.dart';
+import '../../views/widgets/classic_scrub_progress_dots.dart';
 import 'fotoflashback_filter_preview.dart';
 import 'fotoflashback_filter_viewmodel.dart';
 
@@ -41,6 +42,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
       theme: args.theme,
       imageDataUrls: args.imageDataUrls,
       overlayCleanupAlreadyDone: args.overlayCleanupAlreadyDone,
+      shotCleaned: args.shotCleaned,
     );
     unawaited(_viewModel!.loadFilters());
     unawaited(_loadCta());
@@ -152,6 +154,13 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                               ),
                             ),
                           ],
+                        ),
+                      ],
+                      if (viewModel.classicOverlayCleanupEnabled &&
+                          viewModel.scrubDotStatuses.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        ClassicScrubProgressDots(
+                          statuses: viewModel.scrubDotStatuses,
                         ),
                       ],
                       const SizedBox(height: 12),

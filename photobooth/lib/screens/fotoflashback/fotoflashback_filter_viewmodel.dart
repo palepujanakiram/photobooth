@@ -6,6 +6,7 @@ import '../../models/strip_models.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/classic_strip_scrub_coordinator.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/print_size_helpers.dart';
@@ -20,10 +21,17 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     ApiService? apiService,
     SessionManager? sessionManager,
     bool overlayCleanupAlreadyDone = false,
+    List<bool> shotCleaned = const [],
   })  : _imageDataUrls = List<String>.from(imageDataUrls),
         _api = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager(),
-        _previewCleaned = overlayCleanupAlreadyDone;
+        _previewCleaned = overlayCleanupAlreadyDone,
+        _shotCleaned = List<bool>.generate(
+          imageDataUrls.length,
+          (i) =>
+              overlayCleanupAlreadyDone ||
+              (i < shotCleaned.length && shotCleaned[i]),
+        );
 
   final ThemeModel theme;
   List<String> _imageDataUrls;
@@ -51,6 +59,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   int _placementSeq = 0;
   int _gradeSeq = 0;
   final Map<String, List<String>> _gradedByFilter = {};
+  final List<bool> _shotCleaned;
+  int? _scrubbingIndex;
 
   /// Raw captures (for compose). Prefer [previewImageDataUrls] for the look UI.
   List<String> get imageDataUrls => List<String>.unmodifiable(_imageDataUrls);
@@ -137,6 +147,20 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   bool get isLoading => _loading;
   bool get isPreparingPreview => _preparingPreview || _gradingPreview;
   bool get previewCleaned => _previewCleaned;
+
+  /// Progress dots for Classic AF polish (capture + look-screen remainder).
+  List<ClassicScrubDotStatus> get scrubDotStatuses {
+    return [
+      for (var i = 0; i < _imageDataUrls.length; i++)
+        if (i < _shotCleaned.length && _shotCleaned[i])
+          ClassicScrubDotStatus.cleaned
+        else if (_preparingPreview && _scrubbingIndex == i)
+          ClassicScrubDotStatus.scrubbing
+        else
+          ClassicScrubDotStatus.pending,
+    ];
+  }
+
   bool get isGradingPreview => _gradingPreview;
   bool get isComposing => _composing;
   String? get errorMessage => _errorMessage;
@@ -232,16 +256,21 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _preparingPreview = true;
     notifyListeners();
     try {
-      // One shot at a time so the strip updates progressively and we never
-      // stamp "_previewCleaned" after a partial/fail-open batch.
+      // Only re-clean shots that did not finish during capture.
       var allClean = true;
       for (var i = 0; i < _imageDataUrls.length; i++) {
+        if (i < _shotCleaned.length && _shotCleaned[i]) {
+          continue;
+        }
+        _scrubbingIndex = i;
+        notifyListeners();
         final result = await _api.cleanStripOverlays(
           sessionId: sessionId,
           images: [_imageDataUrls[i]],
         );
         if (result.images.length != 1 || result.images.first.trim().isEmpty) {
           allClean = false;
+          if (i < _shotCleaned.length) _shotCleaned[i] = false;
           continue;
         }
         _imageDataUrls[i] = result.images.first;
@@ -249,14 +278,19 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
             !result.skipped &&
             result.cleanedFlags.length == 1 &&
             result.cleanedFlags.first;
+        if (i < _shotCleaned.length) _shotCleaned[i] = shotClean;
         if (!shotClean) allClean = false;
         _gradedByFilter.clear();
         notifyListeners();
       }
-      _previewCleaned = allClean;
+      _scrubbingIndex = null;
+      _previewCleaned = allClean &&
+          _shotCleaned.length == _imageDataUrls.length &&
+          _shotCleaned.every((c) => c);
     } catch (_) {
       // Preview still usable with originals; compose will clean again.
       _previewCleaned = false;
+      _scrubbingIndex = null;
     } finally {
       _preparingPreview = false;
       notifyListeners();

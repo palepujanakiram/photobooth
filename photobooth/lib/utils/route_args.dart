@@ -120,11 +120,14 @@ class FlashbackFilterArgs {
   final List<String> imageDataUrls;
   /// True when capture already awaited per-shot Gemini scrub.
   final bool overlayCleanupAlreadyDone;
+  /// Per-shot scrub success from capture (parallel to [imageDataUrls]).
+  final List<bool> shotCleaned;
 
   const FlashbackFilterArgs({
     required this.theme,
     required this.imageDataUrls,
     this.overlayCleanupAlreadyDone = false,
+    this.shotCleaned = const [],
   });
 
   static FlashbackFilterArgs? tryParse(Object? args) {
@@ -133,10 +136,15 @@ class FlashbackFilterArgs {
       final raw = args['imageDataUrls'] ?? args['images'];
       if (raw is! List) return null;
       final urls = raw.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+      final cleanedRaw = args['shotCleaned'];
+      final shotCleaned = cleanedRaw is List
+          ? cleanedRaw.map((e) => e == true).toList()
+          : const <bool>[];
       return FlashbackFilterArgs(
         theme: args['theme'] as ThemeModel,
         imageDataUrls: urls,
         overlayCleanupAlreadyDone: args['overlayCleanupAlreadyDone'] == true,
+        shotCleaned: shotCleaned,
       );
     }
     return null;

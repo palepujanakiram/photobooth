@@ -37,7 +37,9 @@ import '../../utils/app_device_type.dart';
 import '../../utils/app_runtime_config.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/classic_strip_scrub_helpers.dart';
+import '../../utils/classic_strip_scrub_coordinator.dart';
 import '../../utils/constants.dart';
+import '../../views/widgets/classic_scrub_progress_dots.dart';
 import '../../utils/device_classifier.dart';
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
@@ -152,6 +154,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!mounted) return;
     _syncPoseIdleTimer(_captureViewModel);
     _maybeAdvanceFlashbackAutoChain();
+  }
+
+  void _onScrubProgressChanged() {
+    if (mounted) setState(() {});
   }
 
   void _cancelFlashbackAutoTimers() {
@@ -272,6 +278,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (_stripScrubFutures.isNotEmpty) {
       _stripScrubFutures.removeLast();
     }
+    ClassicStripScrubCoordinator.instance.dropLast();
     _syncFlashbackSubtitle();
   }
 
@@ -378,6 +385,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         // Web remount between Classic shots: show "Getting ready…" immediately
         // instead of flashing Gallery / Phone QR before loadCameras runs.
         _captureViewModel.markAwaitingCameraRemount();
+      } else if (_isFlashbackMultiShot) {
+        // Fresh strip — clear any prior session polish progress.
+        ClassicStripScrubCoordinator.instance.reset();
       }
       if (_isFlashbackMultiShot) {
         _captureViewModel.preferStripPrintQuality = true;
@@ -412,14 +422,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final scrubEnabled = classicOverlayScrubEnabled(
       context.read<AppSettingsManager>().settings?.enableOsdScrub,
     );
-    // Start Gemini scrub immediately so latency hides under the next pose.
-    final scrubFuture = scrubEnabled
-        ? scrubClassicShotDataUrl(
-            encodeShotDataUrl: () =>
-                ImageHelper.encodeImageToBase64(photo.imageFile),
-            enableScrub: true,
-          )
-        : null;
+    // Coordinator encodes immediately + queues Gemini so polish survives web
+    // remounts and runs during poses 2–4 (not only on the look screen).
+    final Future<ClassicShotScrubResult> scrubFuture;
+    if (scrubEnabled) {
+      scrubFuture = ClassicStripScrubCoordinator.instance.enqueueShot(
+        encodeShotDataUrl: () =>
+            ImageHelper.encodeImageToBase64(photo.imageFile),
+        enableScrub: true,
+      );
+    } else {
+      scrubFuture = ImageHelper.encodeImageToBase64(photo.imageFile).then(
+        (raw) => ClassicShotScrubResult(dataUrl: raw, scrubbed: false),
+      );
+    }
     setState(() {
       _stripShots.add(photo);
       _stripScrubFutures.add(scrubFuture);
@@ -456,11 +472,27 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     try {
       final dataUrls = <String>[];
       var allScrubbed = _stripShots.isNotEmpty;
+      final coord = ClassicStripScrubCoordinator.instance;
+      final List<ClassicShotScrubResult> scrubResults;
+      if (coord.shotCount == _stripShots.length && _stripShots.isNotEmpty) {
+        scrubResults = await coord.awaitAll();
+      } else {
+        scrubResults = [
+          for (var i = 0; i < _stripShots.length; i++)
+            if (i < _stripScrubFutures.length && _stripScrubFutures[i] != null)
+              await _stripScrubFutures[i]!
+            else
+              ClassicShotScrubResult(
+                dataUrl: await ImageHelper.encodeImageToBase64(
+                  _stripShots[i].imageFile,
+                ),
+                scrubbed: false,
+              ),
+        ];
+      }
       for (var i = 0; i < _stripShots.length; i++) {
-        final pending =
-            i < _stripScrubFutures.length ? _stripScrubFutures[i] : null;
-        if (pending != null) {
-          final result = await pending;
+        final result = i < scrubResults.length ? scrubResults[i] : null;
+        if (result != null && result.dataUrl.trim().isNotEmpty) {
           dataUrls.add(result.dataUrl);
           if (!result.scrubbed) allScrubbed = false;
         } else {
@@ -479,6 +511,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         return;
       }
       unawaited(_releaseCaptureHardware());
+      final shotCleaned = List<bool>.generate(
+        dataUrls.length,
+        (i) => i < scrubResults.length && scrubResults[i].scrubbed,
+      );
       await Navigator.of(context).pushReplacementNamed(
         AppConstants.kRouteFlashbackFilter,
         arguments: FlashbackFilterArgs(
@@ -486,6 +522,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           imageDataUrls: dataUrls,
           // Only skip look-screen polish when every per-shot scrub succeeded.
           overlayCleanupAlreadyDone: allScrubbed,
+          shotCleaned: shotCleaned,
         ),
       );
     } catch (e, st) {
@@ -813,6 +850,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     WidgetsBinding.instance.addObserver(this);
     _captureViewModel = CaptureViewModel();
     _captureViewModel.addListener(_onCaptureViewModelStateChanged);
+    ClassicStripScrubCoordinator.instance.addListener(_onScrubProgressChanged);
     _tryAdoptTermsPrewarmOnInit();
     _skipUvcForCameraXSession =
         _captureViewModel.isReady ||
@@ -1223,6 +1261,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _captureViewModel.removeListener(_onCaptureViewModelStateChanged);
+    ClassicStripScrubCoordinator.instance.removeListener(_onScrubProgressChanged);
     _stopPoseIdleTimer();
     _cancelFlashbackAutoTimers();
     _uvcReconnectTimer?.cancel();
@@ -1424,7 +1463,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       viewModel: _captureViewModel,
       isMounted: () => mounted,
       routeArguments: _currentCaptureRouteArgs,
-      skipWebRouteReplace: flashback && !kIsWeb,
+      skipWebRouteReplace: flashback,
     );
     if (!mounted) return;
     if (_uvcDevice != null) {
@@ -3329,7 +3368,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             ),
             const SizedBox(height: 12),
           ],
-          if (flashback && _stripShots.isNotEmpty) ...[
+          if (flashback &&
+              _stripShots.isNotEmpty &&
+              ClassicStripScrubCoordinator.instance.shotCount > 0) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: ClassicScrubProgressDots(
+                statuses: ClassicStripScrubCoordinator.instance.statuses,
+                totalSlots: _multiShotTotal,
+              ),
+            ),
             ElevatedButton(
               style: captureScreenButtonStyle(secondary: true),
               onPressed: (viewModel.isCapturing ||
