@@ -464,11 +464,26 @@ void main() {
     expect(api.fetchStripFilters(), throwsA(isA<ApiException>()));
   });
 
-  test('cleanStripOverlays returns cleaned images', () async {
+  test('cleanStripOverlays accepts one or four shots', () async {
     expect(
-      () => api.cleanStripOverlays(sessionId: 's', images: const ['a']),
+      () => api.cleanStripOverlays(sessionId: 's', images: const ['a', 'b']),
       throwsA(isA<ApiException>()),
     );
+    adapter.onPost(
+      '/api/sessions/sess-1/strip/clean-overlays',
+      (server) => server.reply(200, {
+        'success': true,
+        'images': ['data:image/jpeg;base64,one_clean'],
+        'overlayCleanup': {'detectedCount': 1, 'cleanedCount': 1},
+      }),
+      data: Matchers.any,
+    );
+    final one = await api.cleanStripOverlays(
+      sessionId: 'sess-1',
+      images: const ['data:image/jpeg;base64,one'],
+    );
+    expect(one, ['data:image/jpeg;base64,one_clean']);
+
     final images = List.filled(4, 'data:image/jpeg;base64,abc');
     adapter.onPost(
       '/api/sessions/sess-1/strip/clean-overlays',

@@ -599,14 +599,15 @@ class ApiService {
     }
   }
 
-  /// POST `/api/sessions/:id/strip/clean-overlays` — remove viewfinder HUD for preview.
+  /// POST `/api/sessions/:id/strip/clean-overlays` — remove viewfinder HUD.
+  /// Accepts 1 shot (per-accept scrub / Classic 6×4) or [kStripShotCount].
   Future<List<String>> cleanStripOverlays({
     required String sessionId,
     required List<String> images,
   }) async {
-    if (images.length != kStripShotCount) {
+    if (images.length != 1 && images.length != kStripShotCount) {
       throw ApiException(
-        'FotoFlashback requires exactly $kStripShotCount photos.',
+        'Classic overlay cleanup requires 1 or $kStripShotCount photos.',
       );
     }
     try {
@@ -631,8 +632,12 @@ class ApiService {
           r.statusCode,
         );
       }
+      if (map['skipped'] == true) {
+        // Admin scrub OFF / kill-switch — return inputs unchanged.
+        return List<String>.from(images);
+      }
       final raw = map['images'];
-      if (raw is! List || raw.length != kStripShotCount) {
+      if (raw is! List || raw.length != images.length) {
         throw ApiException('Strip overlay cleanup returned invalid images');
       }
       final out = <String>[];

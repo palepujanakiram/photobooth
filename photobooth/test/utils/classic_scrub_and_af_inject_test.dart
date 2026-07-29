@@ -27,7 +27,8 @@ void main() {
         encodeShotDataUrl: () async => 'data:image/jpeg;base64,raw',
         enableScrub: false,
       );
-      expect(out, 'data:image/jpeg;base64,raw');
+      expect(out.dataUrl, 'data:image/jpeg;base64,raw');
+      expect(out.scrubbed, isFalse);
     });
   });
 

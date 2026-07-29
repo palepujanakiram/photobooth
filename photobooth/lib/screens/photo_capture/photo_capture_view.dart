@@ -337,8 +337,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   int? _multiShotTotal;
   ThemeModel? _flashbackTheme;
   final List<PhotoModel> _stripShots = <PhotoModel>[];
-  /// Parallel to [_stripShots]: in-flight / completed per-shot scrub data URLs.
-  final List<Future<String>?> _stripScrubFutures = <Future<String>?>[];
+  /// Parallel to [_stripShots]: in-flight / completed per-shot scrub results.
+  final List<Future<ClassicShotScrubResult>?> _stripScrubFutures =
+      <Future<ClassicShotScrubResult>?>[];
   bool _stripFinishing = false;
   Timer? _flashbackReviewTimer;
   Timer? _flashbackReviewTick;
@@ -454,17 +455,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _stopPoseIdleTimer();
     try {
       final dataUrls = <String>[];
-      var scrubCompleted = false;
+      var allScrubbed = _stripShots.isNotEmpty;
       for (var i = 0; i < _stripShots.length; i++) {
         final pending =
             i < _stripScrubFutures.length ? _stripScrubFutures[i] : null;
         if (pending != null) {
-          dataUrls.add(await pending);
-          scrubCompleted = true;
+          final result = await pending;
+          dataUrls.add(result.dataUrl);
+          if (!result.scrubbed) allScrubbed = false;
         } else {
           dataUrls.add(
             await ImageHelper.encodeImageToBase64(_stripShots[i].imageFile),
           );
+          allScrubbed = false;
         }
       }
       if (!mounted) return;
@@ -481,7 +484,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         arguments: FlashbackFilterArgs(
           theme: theme,
           imageDataUrls: dataUrls,
-          overlayCleanupAlreadyDone: scrubCompleted,
+          // Only skip look-screen polish when every per-shot scrub succeeded.
+          overlayCleanupAlreadyDone: allScrubbed,
         ),
       );
     } catch (e, st) {
