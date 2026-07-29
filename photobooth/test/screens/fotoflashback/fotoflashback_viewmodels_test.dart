@@ -7,6 +7,7 @@ import 'package:photobooth/screens/fotoflashback/fotoflashback_capture_viewmodel
 import 'package:photobooth/screens/fotoflashback/fotoflashback_filter_viewmodel.dart';
 import 'package:photobooth/screens/photo_capture/photo_model.dart';
 import 'package:photobooth/services/session_manager.dart';
+import 'package:photobooth/utils/classic_strip_scrub_coordinator.dart';
 import 'package:photobooth/utils/exceptions.dart';
 import 'package:photobooth/utils/print_orientation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -42,7 +43,7 @@ void main() {
     expect(vm.printOrientation, PrintOrientation.portrait);
   });
 
-  test('FotoFlashbackFilterViewModel print orientation for 1 and 4 shot', () {
+  test('FotoFlashbackFilterViewModel print orientation for 1-shot only', () {
     final single = FotoFlashbackFilterViewModel(
       theme: stripTheme,
       imageDataUrls: ['data:image/jpeg;base64,/9j/4AAQ'],
@@ -57,9 +58,32 @@ void main() {
     );
     expect(four.printOrientation, PrintOrientation.portrait);
     four.selectPrintOrientation(PrintOrientation.landscape);
-    expect(four.printOrientation, PrintOrientation.landscape);
-    four.selectPrintOrientation(PrintOrientation.landscape);
-    expect(four.printOrientation, PrintOrientation.landscape);
+    expect(four.printOrientation, PrintOrientation.portrait);
+  });
+
+  test('FotoFlashbackFilterViewModel retries unfinished scrub', () async {
+    final api = _FlakyScrubFakeApi();
+    SessionManager().setSessionFromResponse(_sessionJson('sess-retry-scrub'));
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
+      apiService: api,
+      shotCleaned: const [true, true, false, false],
+    );
+    await vm.loadFilters();
+    await vm.preparePreview();
+    expect(vm.hasUnfinishedScrub, isTrue);
+    expect(vm.canRetryUnfinishedScrub, isTrue);
+    expect(
+      vm.scrubDotStatuses.where((s) => s == ClassicScrubDotStatus.failed),
+      hasLength(2),
+    );
+
+    api.succeedRemaining = true;
+    await vm.retryUnfinishedScrub();
+    expect(vm.hasUnfinishedScrub, isFalse);
+    expect(vm.previewCleaned, isTrue);
+    expect(vm.canRetryUnfinishedScrub, isFalse);
   });
 
   test('FotoFlashbackCaptureViewModel collects four shots', () {
@@ -336,6 +360,24 @@ Map<String, dynamic> _sessionJson(String id) => {
       'generatedImages': <dynamic>[],
       'expiresAt': DateTime.utc(2026, 12, 31).toIso8601String(),
     };
+
+class _FlakyScrubFakeApi extends _StripFakeApi {
+  bool succeedRemaining = false;
+
+  @override
+  Future<StripOverlayCleanResult> cleanStripOverlays({
+    required String sessionId,
+    required List<String> images,
+  }) async {
+    if (!succeedRemaining) {
+      return StripOverlayCleanResult(
+        images: List<String>.from(images),
+        cleanedFlags: List<bool>.filled(images.length, false),
+      );
+    }
+    return super.cleanStripOverlays(sessionId: sessionId, images: images);
+  }
+}
 
 class _StripFakeApi extends FakeApiService {
   _StripFakeApi({

@@ -471,6 +471,7 @@ abstract final class AppStrings {
   static const flashbackComposePayCta = 'Continue to pay';
   static const flashbackComposing = 'Building your strip…';
   static const flashbackPreparingPreview = 'Polishing photos…';
+  static const flashbackRetryScrub = 'Retry polish';
   static const flashbackComposeFailed = 'Couldn’t build strip. Please try again.';
   static const flashbackNeedFourShots = 'Take all 4 shots to continue.';
   static const surpriseMeUpsellTitle = 'Surprise AI look';

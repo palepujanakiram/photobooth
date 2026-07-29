@@ -68,6 +68,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   final Map<String, List<String>> _gradedByFilter = {};
   final List<bool> _shotCleaned;
   int? _scrubbingIndex;
+  /// True after at least one look-screen scrub pass finished (success or fail).
+  bool _scrubPassCompleted = false;
 
   /// Raw captures (for compose). Prefer [previewImageDataUrls] for the look UI.
   List<String> get imageDataUrls => List<String>.unmodifiable(_imageDataUrls);
@@ -105,30 +107,24 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   List<StripFilter> get filters => _catalog?.filters ?? const [];
 
-  /// Sheet layouts need 4 cells — hide for 1-shot and for landscape four-up.
+  /// Sheet layouts need 4 cells — hide them for Classic 1-shot 6×4.
   List<StripFrame> get frames {
     final all = _catalog?.frames ?? const <StripFrame>[];
-    if (isSingleClassic ||
-        _printOrientation == PrintOrientation.landscape) {
-      return all
-          .where((f) => !isStripSheetLayout(f.id))
-          .toList(growable: false);
-    }
-    return all;
+    if (!isSingleClassic) return all;
+    return all
+        .where((f) => !isStripSheetLayout(f.id))
+        .toList(growable: false);
   }
   List<StripSticker> get stickers => _catalog?.stickers ?? const [];
   String get selectedFilterId => _selectedFilterId;
   String get selectedFrameId => _selectedFrameId;
   PrintOrientation get printOrientation => _printOrientation;
 
-  /// Landscape 6×4 vs portrait 4×6 (1-shot and 4-shot Classic).
+  /// Landscape 6×4 vs portrait 4×6 — Classic 1-shot only.
   void selectPrintOrientation(PrintOrientation orientation) {
+    if (!isSingleClassic) return;
     if (_printOrientation == orientation) return;
     _printOrientation = orientation;
-    if (orientation == PrintOrientation.landscape &&
-        isStripSheetLayout(_selectedFrameId)) {
-      _selectedFrameId = kDefaultStripFrameId;
-    }
     notifyListeners();
   }
 
@@ -178,10 +174,23 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
           ClassicScrubDotStatus.cleaned
         else if (_preparingPreview && _scrubbingIndex == i)
           ClassicScrubDotStatus.scrubbing
+        else if (_preparingPreview)
+          ClassicScrubDotStatus.pending
+        else if (_scrubPassCompleted)
+          ClassicScrubDotStatus.failed
         else
           ClassicScrubDotStatus.pending,
     ];
   }
+
+  /// True when at least one shot still needs AF polish.
+  bool get hasUnfinishedScrub =>
+      classicOverlayCleanupEnabled &&
+      _shotCleaned.any((c) => !c);
+
+  /// Operator may tap Refresh when [hasUnfinishedScrub] after a scrub pass.
+  bool get canRetryUnfinishedScrub =>
+      hasUnfinishedScrub && !_preparingPreview && !_loading;
 
   bool get isGradingPreview => _gradingPreview;
   bool get isComposing => _composing;
@@ -274,6 +283,17 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     }
   }
 
+  /// Operator refresh: re-scrub any shots that are still unfinished.
+  Future<void> retryUnfinishedScrub() async {
+    if (!canRetryUnfinishedScrub) return;
+    _previewCleaned = false;
+    _scrubPassCompleted = false;
+    _gradedByFilter.clear();
+    notifyListeners();
+    await preparePreview();
+    unawaited(refreshPreviewGrade());
+  }
+
   Future<void> _runPreparePreview(String sessionId) async {
     _preparingPreview = true;
     notifyListeners();
@@ -314,6 +334,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _previewCleaned = false;
       _scrubbingIndex = null;
     } finally {
+      _scrubPassCompleted = true;
       _preparingPreview = false;
       notifyListeners();
     }
@@ -360,11 +381,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   }
 
   void selectFrame(String frameId) {
-    if (isStripSheetLayout(frameId) &&
-        (isSingleClassic ||
-            _printOrientation == PrintOrientation.landscape)) {
-      return;
-    }
+    if (isSingleClassic && isStripSheetLayout(frameId)) return;
     if (frameId == _selectedFrameId) return;
     final wasSheet = isStripSheetLayout(_selectedFrameId);
     final nowSheet = isStripSheetLayout(frameId);

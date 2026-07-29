@@ -163,6 +163,27 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                         ClassicScrubProgressDots(
                           statuses: viewModel.scrubDotStatuses,
                         ),
+                        if (viewModel.canRetryUnfinishedScrub) ...[
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            onPressed: () => unawaited(
+                              viewModel.retryUnfinishedScrub(),
+                            ),
+                            icon: Icon(
+                              Icons.refresh,
+                              size: 18,
+                              color: Colors.amber.shade200,
+                            ),
+                            label: Text(
+                              AppStrings.flashbackRetryScrub,
+                              style: TextStyle(
+                                color: Colors.amber.shade100,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                       const SizedBox(height: 12),
                       Expanded(
@@ -189,27 +210,29 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           onScribbleEnd: viewModel.endScribble,
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      _ChipPickerRow(
-                        label: AppStrings.experienceClassicOrientationLabel,
-                        options: const [
-                          (
-                            id: 'landscape',
-                            name: AppStrings.experienceClassicLandscape,
-                          ),
-                          (
-                            id: 'portrait',
-                            name: AppStrings.experienceClassicPortrait,
-                          ),
-                        ],
-                        selectedId: viewModel.printOrientation.apiValue,
-                        onSelect: (id) {
-                          final next = PrintOrientation.tryParse(id);
-                          if (next != null) {
-                            viewModel.selectPrintOrientation(next);
-                          }
-                        },
-                      ),
+                      if (viewModel.isSingleClassic) ...[
+                        const SizedBox(height: 10),
+                        _ChipPickerRow(
+                          label: AppStrings.experienceClassicOrientationLabel,
+                          options: const [
+                            (
+                              id: 'landscape',
+                              name: AppStrings.experienceClassicLandscape,
+                            ),
+                            (
+                              id: 'portrait',
+                              name: AppStrings.experienceClassicPortrait,
+                            ),
+                          ],
+                          selectedId: viewModel.printOrientation.apiValue,
+                          onSelect: (id) {
+                            final next = PrintOrientation.tryParse(id);
+                            if (next != null) {
+                              viewModel.selectPrintOrientation(next);
+                            }
+                          },
+                        ),
+                      ],
                       const SizedBox(height: 6),
                       _ChipPickerRow(
                         label: AppStrings.flashbackFrameLabel,
@@ -332,26 +355,19 @@ class _LookPickerBody extends StatelessWidget {
         final panelH = constraints.maxHeight;
         if (panelH <= 0) return const SizedBox.shrink();
 
-        // Dual-strip / sheet / 1-shot / 4-shot landscape four-up.
+        // Dual-strip chrome → tall 2×6; sheet → portrait 4×6; 1-shot → L/P.
         final single = imageDataUrls.length == 1;
-        final landscapeFour = !single &&
-            printOrientation == PrintOrientation.landscape;
-        final sheet = !single &&
-            !landscapeFour &&
-            isStripSheetLayout(frameId);
+        final sheet = !single && isStripSheetLayout(frameId);
         final aspect = single
             ? (printOrientation == PrintOrientation.portrait
                 ? FotoFlashbackStripPreview.single4x6AspectRatio
                 : FotoFlashbackStripPreview.single6x4AspectRatio)
-            : landscapeFour
-                ? FotoFlashbackStripPreview.single6x4AspectRatio
-                : sheet
-                    ? FotoFlashbackStripPreview.sheetAspectRatio
-                    : FotoFlashbackStripPreview.stripAspectRatio;
+            : sheet
+                ? FotoFlashbackStripPreview.sheetAspectRatio
+                : FotoFlashbackStripPreview.stripAspectRatio;
         var previewH = panelH;
         var previewW = previewH * aspect;
-        final maxW = constraints.maxWidth *
-            (single || landscapeFour ? 0.58 : 0.48);
+        final maxW = constraints.maxWidth * (single ? 0.58 : 0.48);
         if (previewW > maxW) {
           previewW = maxW;
           previewH = previewW / aspect;
@@ -367,9 +383,9 @@ class _LookPickerBody extends StatelessWidget {
                 imagesAreGraded: imagesAreGraded,
                 layout: layout,
                 filterId: filterId,
-                frameId: landscapeFour ? 'grid_2x2' : frameId,
-                frameOverlayUrl: landscapeFour ? null : frameOverlayUrl,
-                frameCaption: landscapeFour ? null : frameCaption,
+                frameId: frameId,
+                frameOverlayUrl: frameOverlayUrl,
+                frameCaption: frameCaption,
                 stickerId: stickerId,
                 placements: placements,
                 scribbles: scribbles,
