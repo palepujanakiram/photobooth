@@ -40,7 +40,7 @@ Future<String?> finishClassicSingle6x4({
     final printSize = resolveClassicComposePrintSize(
       imageCount: 1,
       apiPrintSize: result.printSize,
-      singleOrientation: orientation,
+      orientation: orientation,
     );
     final image = GeneratedImage(
       id: 'classic6x4_${DateTime.now().millisecondsSinceEpoch}',

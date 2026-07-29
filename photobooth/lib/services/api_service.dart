@@ -779,7 +779,7 @@ class ApiService {
         'sticker': sticker,
         'cleanOverlays': cleanOverlays,
       };
-      if (images.length == 1 && orientation != null) {
+      if (orientation != null) {
         body['orientation'] = orientation.apiValue;
       }
       if (stickerPlacements.isNotEmpty) {

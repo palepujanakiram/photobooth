@@ -98,7 +98,7 @@ void main() {
       expect(
         resolveClassicComposePrintSize(
           imageCount: 1,
-          singleOrientation: PrintOrientation.portrait,
+          orientation: PrintOrientation.portrait,
         ),
         AppConstants.kPrintSizePortrait4x6,
       );
@@ -118,6 +118,17 @@ void main() {
       expect(
         resolveClassicComposePrintSize(imageCount: 4),
         AppConstants.kPrintSizeStripDual2x6,
+      );
+    });
+
+    test('four-shot Classic landscape uses 6x4', () {
+      expect(
+        resolveClassicComposePrintSize(
+          imageCount: 4,
+          orientation: PrintOrientation.landscape,
+          apiPrintSize: AppConstants.kPrintSizeStripDual2x6,
+        ),
+        AppConstants.kPrintSizeLandscape6x4,
       );
     });
   });

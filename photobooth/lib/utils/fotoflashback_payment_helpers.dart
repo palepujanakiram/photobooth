@@ -46,7 +46,7 @@ Future<String?> continueAfterFlashbackLook({
     printSize: resolveClassicComposePrintSize(
       imageCount: viewModel.imageDataUrls.length,
       apiPrintSize: viewModel.composeResult?.printSize,
-      singleOrientation: viewModel.singlePrintOrientation,
+      orientation: viewModel.printOrientation,
     ),
   );
   final offer = await _offerSurpriseIfReady(context);
@@ -84,7 +84,7 @@ Future<String?> composeFlashbackAfterPrePay({
     printSize: resolveClassicComposePrintSize(
       imageCount: vm.imageDataUrls.length,
       apiPrintSize: vm.composeResult?.printSize,
-      singleOrientation: vm.singlePrintOrientation,
+      orientation: vm.printOrientation,
     ),
   );
   final offer = await _offerSurpriseIfReady(context);

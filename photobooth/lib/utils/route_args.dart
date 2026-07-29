@@ -49,16 +49,12 @@ class CaptureRouteArgs {
   /// Already-accepted FotoFlashback stills (restored after web camera remount).
   final List<PhotoModel> acceptedStripShots;
 
-  /// Classic 1-shot print orientation (ignored for 4-shot strips).
-  final PrintOrientation singlePrintOrientation;
-
   const CaptureRouteArgs({
     this.returnPhotoOnly = false,
     this.subtitleHint,
     this.multiShotTotal,
     this.flashbackTheme,
     this.acceptedStripShots = const [],
-    this.singlePrintOrientation = PrintOrientation.landscape,
   });
 
   bool get isFlashbackMultiShot =>
@@ -97,11 +93,6 @@ class CaptureRouteArgs {
                 ? args['flashbackTheme'] as ThemeModel
                 : null,
         acceptedStripShots: shots,
-        singlePrintOrientation:
-            PrintOrientation.tryParse(
-              args['singlePrintOrientation']?.toString(),
-            ) ??
-            PrintOrientation.landscape,
       );
     }
     return null;
@@ -131,15 +122,12 @@ class FlashbackFilterArgs {
   final bool overlayCleanupAlreadyDone;
   /// Per-shot scrub success from capture (parallel to [imageDataUrls]).
   final List<bool> shotCleaned;
-  /// Classic 1-shot print orientation (landscape 6×4 default).
-  final PrintOrientation singlePrintOrientation;
 
   const FlashbackFilterArgs({
     required this.theme,
     required this.imageDataUrls,
     this.overlayCleanupAlreadyDone = false,
     this.shotCleaned = const [],
-    this.singlePrintOrientation = PrintOrientation.landscape,
   });
 
   static FlashbackFilterArgs? tryParse(Object? args) {
@@ -157,11 +145,6 @@ class FlashbackFilterArgs {
         imageDataUrls: urls,
         overlayCleanupAlreadyDone: args['overlayCleanupAlreadyDone'] == true,
         shotCleaned: shotCleaned,
-        singlePrintOrientation:
-            PrintOrientation.tryParse(
-              args['singlePrintOrientation']?.toString(),
-            ) ??
-            PrintOrientation.landscape,
       );
     }
     return null;

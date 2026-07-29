@@ -9,7 +9,6 @@ import '../../utils/classic_shot_mode.dart';
 import '../../utils/constants.dart';
 import '../../utils/fotoflashback_navigation.dart';
 import '../../utils/kiosk_page_route.dart';
-import '../../utils/print_orientation.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/animated_slideshow_background.dart';
@@ -41,7 +40,6 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
   late final KioskManager _kioskManager;
   bool _redirectingToAi = false;
   ClassicShotMode _classicShotMode = ClassicShotMode.fourShot;
-  PrintOrientation _classicPrintOrientation = PrintOrientation.landscape;
 
   @override
   void initState() {
@@ -96,7 +94,6 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
       theme: theme,
       replace: true,
       shotMode: _classicShotMode,
-      singlePrintOrientation: _classicPrintOrientation,
     );
   }
 
@@ -149,16 +146,9 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
                           fotoFlashAvailable: vm.fotoFlashAvailable,
                           startingFlashback: vm.isStartingFlashback,
                           classicShotMode: _classicShotMode,
-                          classicPrintOrientation: _classicPrintOrientation,
                           onClassicShotModeChanged: (mode) {
                             if (mode == null) return;
                             setState(() => _classicShotMode = mode);
-                          },
-                          onClassicPrintOrientationChanged: (orientation) {
-                            if (orientation == null) return;
-                            setState(
-                              () => _classicPrintOrientation = orientation,
-                            );
                           },
                           onAi: () => unawaited(_chooseAi()),
                           onFotoFlash: () => unawaited(_chooseFotoFlash()),
@@ -188,9 +178,7 @@ class _ExperienceChoicePanel extends StatelessWidget {
     required this.fotoFlashAvailable,
     required this.startingFlashback,
     required this.classicShotMode,
-    required this.classicPrintOrientation,
     required this.onClassicShotModeChanged,
-    required this.onClassicPrintOrientationChanged,
     required this.onAi,
     required this.onFotoFlash,
     required this.onBackToTerms,
@@ -201,9 +189,7 @@ class _ExperienceChoicePanel extends StatelessWidget {
   final bool fotoFlashAvailable;
   final bool startingFlashback;
   final ClassicShotMode classicShotMode;
-  final PrintOrientation classicPrintOrientation;
   final ValueChanged<ClassicShotMode?> onClassicShotModeChanged;
-  final ValueChanged<PrintOrientation?> onClassicPrintOrientationChanged;
   final VoidCallback onAi;
   final VoidCallback onFotoFlash;
   final VoidCallback onBackToTerms;
@@ -279,21 +265,10 @@ class _ExperienceChoicePanel extends StatelessWidget {
               busy: startingFlashback,
               onTap: onFotoFlash,
               footer: fotoFlashAvailable
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _ClassicShotModeDropdown(
-                          value: classicShotMode,
-                          enabled: !startingFlashback,
-                          onChanged: onClassicShotModeChanged,
-                        ),
-                        if (classicShotMode.isSingle6x4)
-                          _ClassicOrientationDropdown(
-                            value: classicPrintOrientation,
-                            enabled: !startingFlashback,
-                            onChanged: onClassicPrintOrientationChanged,
-                          ),
-                      ],
+                  ? _ClassicShotModeDropdown(
+                      value: classicShotMode,
+                      enabled: !startingFlashback,
+                      onChanged: onClassicShotModeChanged,
                     )
                   : null,
             ),
@@ -342,39 +317,6 @@ class _ClassicShotModeDropdown extends StatelessWidget {
         DropdownMenuItem(
           value: ClassicShotMode.single6x4,
           child: Text(AppStrings.experienceClassicOneShot),
-        ),
-      ],
-    );
-  }
-}
-
-/// Landscape 6×4 vs portrait 4×6 for Classic 1-shot.
-class _ClassicOrientationDropdown extends StatelessWidget {
-  const _ClassicOrientationDropdown({
-    required this.value,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  final PrintOrientation value;
-  final bool enabled;
-  final ValueChanged<PrintOrientation?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return _ClassicOptionDropdown<PrintOrientation>(
-      label: AppStrings.experienceClassicOrientationLabel,
-      value: value,
-      enabled: enabled,
-      onChanged: onChanged,
-      items: const [
-        DropdownMenuItem(
-          value: PrintOrientation.landscape,
-          child: Text(AppStrings.experienceClassicLandscape),
-        ),
-        DropdownMenuItem(
-          value: PrintOrientation.portrait,
-          child: Text(AppStrings.experienceClassicPortrait),
         ),
       ],
     );

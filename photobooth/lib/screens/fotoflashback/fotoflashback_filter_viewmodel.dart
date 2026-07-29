@@ -23,11 +23,15 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     SessionManager? sessionManager,
     bool overlayCleanupAlreadyDone = false,
     List<bool> shotCleaned = const [],
-    this.singlePrintOrientation = PrintOrientation.landscape,
+    PrintOrientation? printOrientation,
   })  : _imageDataUrls = List<String>.from(imageDataUrls),
         _api = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager(),
         _previewCleaned = overlayCleanupAlreadyDone,
+        _printOrientation = printOrientation ??
+            (imageDataUrls.length == 1
+                ? PrintOrientation.landscape
+                : PrintOrientation.portrait),
         _shotCleaned = List<bool>.generate(
           imageDataUrls.length,
           (i) =>
@@ -36,11 +40,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         );
 
   final ThemeModel theme;
-  /// Classic 1-shot print orientation (landscape 6×4 / portrait 4×6).
-  final PrintOrientation singlePrintOrientation;
   List<String> _imageDataUrls;
   final ApiService _api;
   final SessionManager _sessionManager;
+  PrintOrientation _printOrientation;
 
   StripFiltersCatalog? _catalog;
   String _selectedFilterId = kDefaultStripFilterId;
@@ -102,17 +105,32 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   List<StripFilter> get filters => _catalog?.filters ?? const [];
 
-  /// Sheet layouts need 4 cells — hide them for Classic 1-shot 6×4.
+  /// Sheet layouts need 4 cells — hide for 1-shot and for landscape four-up.
   List<StripFrame> get frames {
     final all = _catalog?.frames ?? const <StripFrame>[];
-    if (!isSingleClassic) return all;
-    return all
-        .where((f) => !isStripSheetLayout(f.id))
-        .toList(growable: false);
+    if (isSingleClassic ||
+        _printOrientation == PrintOrientation.landscape) {
+      return all
+          .where((f) => !isStripSheetLayout(f.id))
+          .toList(growable: false);
+    }
+    return all;
   }
   List<StripSticker> get stickers => _catalog?.stickers ?? const [];
   String get selectedFilterId => _selectedFilterId;
   String get selectedFrameId => _selectedFrameId;
+  PrintOrientation get printOrientation => _printOrientation;
+
+  /// Landscape 6×4 vs portrait 4×6 (1-shot and 4-shot Classic).
+  void selectPrintOrientation(PrintOrientation orientation) {
+    if (_printOrientation == orientation) return;
+    _printOrientation = orientation;
+    if (orientation == PrintOrientation.landscape &&
+        isStripSheetLayout(_selectedFrameId)) {
+      _selectedFrameId = kDefaultStripFrameId;
+    }
+    notifyListeners();
+  }
 
   StripFrame? get selectedFrame {
     for (final f in frames) {
@@ -342,7 +360,11 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   }
 
   void selectFrame(String frameId) {
-    if (isSingleClassic && isStripSheetLayout(frameId)) return;
+    if (isStripSheetLayout(frameId) &&
+        (isSingleClassic ||
+            _printOrientation == PrintOrientation.landscape)) {
+      return;
+    }
     if (frameId == _selectedFrameId) return;
     final wasSheet = isStripSheetLayout(_selectedFrameId);
     final nowSheet = isStripSheetLayout(frameId);
@@ -537,13 +559,13 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         // when admin scrub is OFF (server also gates on enableOsdScrub).
         cleanOverlays:
             classicOverlayCleanupEnabled && !_previewCleaned,
-        orientation: isSingleClassic ? singlePrintOrientation : null,
+        orientation: _printOrientation,
       );
       _composeResult = result;
       final printSize = resolveClassicComposePrintSize(
         imageCount: _imageDataUrls.length,
         apiPrintSize: result.printSize,
-        singleOrientation: singlePrintOrientation,
+        orientation: _printOrientation,
       );
       return GeneratedImage(
         id: 'strip_${result.filter}_${DateTime.now().millisecondsSinceEpoch}',

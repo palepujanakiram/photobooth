@@ -39,6 +39,27 @@ void main() {
     );
     expect(vm.canCompose, isTrue);
     expect(vm.selectedFilterId, kDefaultStripFilterId);
+    expect(vm.printOrientation, PrintOrientation.portrait);
+  });
+
+  test('FotoFlashbackFilterViewModel print orientation for 1 and 4 shot', () {
+    final single = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: ['data:image/jpeg;base64,/9j/4AAQ'],
+    );
+    expect(single.printOrientation, PrintOrientation.landscape);
+    single.selectPrintOrientation(PrintOrientation.portrait);
+    expect(single.printOrientation, PrintOrientation.portrait);
+
+    final four = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+    );
+    expect(four.printOrientation, PrintOrientation.portrait);
+    four.selectPrintOrientation(PrintOrientation.landscape);
+    expect(four.printOrientation, PrintOrientation.landscape);
+    four.selectPrintOrientation(PrintOrientation.landscape);
+    expect(four.printOrientation, PrintOrientation.landscape);
   });
 
   test('FotoFlashbackCaptureViewModel collects four shots', () {
