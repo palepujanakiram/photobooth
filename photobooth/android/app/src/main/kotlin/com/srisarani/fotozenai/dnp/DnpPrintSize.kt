@@ -18,12 +18,16 @@ enum class DnpPrintSize(
     val width: Int,
     val height: Int,
     val wifiPrintSize: String,
+    /** DNP driver imageable width (dots); raster [width] includes horizontal bleed. */
+    val imageableWidth: Int,
+    /** DNP driver imageable height (dots); matches [height] for current sizes. */
+    val imageableHeight: Int,
 ) {
-    SIZE_4X6("4x6", MULTICUT_6X4, NATIVE_WIDTH, 1240, "s4x6"),
-    SIZE_5X7("5x7", MULTICUT_5X7, NATIVE_WIDTH, 2138, "s5x7"),
-    SIZE_6X8("6x8", MULTICUT_6X8, NATIVE_WIDTH, 2436, "s6x8"),
+    SIZE_4X6("4x6", MULTICUT_6X4, NATIVE_WIDTH, 1240, "s4x6", 1844, 1240),
+    SIZE_5X7("5x7", MULTICUT_5X7, NATIVE_WIDTH, 2138, "s5x7", 1548, 2138),
+    SIZE_6X8("6x8", MULTICUT_6X8, NATIVE_WIDTH, 2436, "s6x8", 1844, 2436),
     /** 2-inch strip cut on loaded 4×6 media — multicut must stay 6×4 (2), not 12. */
-    SIZE_2X6("2x6", MULTICUT_6X4, NATIVE_WIDTH, 1240, "s2x6");
+    SIZE_2X6("2x6", MULTICUT_6X4, NATIVE_WIDTH, 1240, "s2x6", 1844, 1240);
 
     /** Aspect ratio (width / height) for UI preview. */
     val aspectRatio: Float get() = width.toFloat() / height.toFloat()

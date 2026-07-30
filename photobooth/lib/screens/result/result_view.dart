@@ -250,22 +250,15 @@ class _ResultScreenState extends State<ResultScreen> {
     if (!mounted || _didNavigateToThankYou) return;
     if (viewModel.fcmPaymentPushSuccess != true) return;
 
-    // Finish all print pages before leaving Pay — QR idle wipe must not delete
-    // temp files mid-cart (Classic strip + Surprise Me + AI).
-    try {
-      await viewModel.awaitPostPaymentPrintSettled();
-    } catch (e, st) {
-      AppLogger.debug('Post-payment print wait failed: $e\n$st');
-    }
-    if (!mounted || _didNavigateToThankYou) return;
-    if (viewModel.fcmPaymentPushSuccess != true) return;
-
     _didNavigateToThankYou = true;
-    try {
-      await viewModel.ensurePostPaymentShareArtifacts();
-    } catch (e, st) {
-      AppLogger.debug('Post-payment share preparation failed: $e\n$st');
-    }
+
+    // Print and receipt/share already run on [ResultViewModel] from
+    // [onFcmPaymentPush]. Do not block Pay on DNP physical output — native
+    // status polling can outlast the paper; QR share keeps the same ViewModel
+    // and temp downloads alive for multi-page carts.
+    unawaited(viewModel.ensurePostPaymentShareArtifacts());
+    unawaited(viewModel.startPostPaymentPrintIfNeeded());
+
     if (!mounted) return;
     // Keep the session alive for a short window so operators can print/share.
     // QrShareScreen will wipe locally and reset back to Terms after 60s.

@@ -57,6 +57,11 @@ class DnpUsbPrinter(
             throw DnpPrinterException("USB permission not granted")
         }
 
+        if (isConnected && device?.deviceId == dev.deviceId) {
+            return displayName
+        }
+        disconnect()
+
         val (intf, inEp, outEp) = locateEndpoints(dev)
         val conn = usbManager.openDevice(dev)
             ?: throw DnpPrinterException("Could not open USB device")
