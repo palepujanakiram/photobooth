@@ -32,3 +32,29 @@ String qrShareExpiryText(DateTime? expiresAt) {
   final mm = local.minute.toString().padLeft(2, '0');
   return 'Link expires at $hh:$mm';
 }
+
+/// Prefer live [ResultViewModel] share fields; fall back to route args from Pay.
+String resolveQrShareData({
+  required String? receiptShareUrl,
+  required String? kioskFallbackShareUrl,
+  required String? parsedShareUrl,
+  required String? parsedKioskShareUrl,
+}) {
+  final shareUrl = (receiptShareUrl ?? parsedShareUrl ?? '').trim();
+  final kioskUrl = (kioskFallbackShareUrl ?? parsedKioskShareUrl ?? '').trim();
+  return shareUrl.isNotEmpty ? shareUrl : kioskUrl;
+}
+
+String resolveQrShareLongUrl({
+  required String? receiptShareLongUrl,
+  required String? parsedShareLongUrl,
+}) {
+  return (receiptShareLongUrl ?? parsedShareLongUrl ?? '').trim();
+}
+
+DateTime? resolveQrShareExpiresAt({
+  required DateTime? receiptShareExpiresAt,
+  required DateTime? parsedShareExpiresAt,
+}) {
+  return receiptShareExpiresAt ?? parsedShareExpiresAt;
+}

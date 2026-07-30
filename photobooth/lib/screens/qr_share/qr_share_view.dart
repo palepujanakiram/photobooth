@@ -33,6 +33,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
   /// per QR share screen lifecycle.
   bool _postReceiptToastShown = false;
   bool _printKickoffScheduled = false;
+  bool _shareArtifactsKickoffScheduled = false;
 
   void _onWhatsappStatusFromFcm(WhatsAppStatusPayload payload) {
     _viewModel?.applyWhatsappStatusPush(payload);
@@ -179,11 +180,6 @@ class _QrShareScreenState extends State<QrShareScreen> {
   Widget build(BuildContext context) {
     final appColors = AppColors.of(context);
     final parsed = QrShareArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
-    final shareUrl = (parsed?.shareUrl ?? '').trim();
-    final kioskUrl = (parsed?.kioskShareUrl ?? '').trim();
-    final qrData = shareUrl.isNotEmpty ? shareUrl : kioskUrl;
-    final longUrl = (parsed?.shareLongUrl ?? '').trim();
-    final expiresAt = parsed?.shareExpiresAt;
 
     if (!_initialized || _viewModel == null || parsed == null) {
       return Scaffold(
@@ -192,12 +188,33 @@ class _QrShareScreenState extends State<QrShareScreen> {
       );
     }
 
-    final expiry = qrShareExpiryText(expiresAt);
-
     return ChangeNotifierProvider.value(
       value: _viewModel!,
       child: Consumer<ResultViewModel>(
         builder: (context, viewModel, _) {
+          final qrData = resolveQrShareData(
+            receiptShareUrl: viewModel.receiptShareUrl,
+            kioskFallbackShareUrl: viewModel.kioskFallbackShareUrl,
+            parsedShareUrl: parsed.shareUrl,
+            parsedKioskShareUrl: parsed.kioskShareUrl,
+          );
+          if (qrData.isEmpty && !_shareArtifactsKickoffScheduled) {
+            _shareArtifactsKickoffScheduled = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              unawaited(viewModel.ensurePostPaymentShareArtifacts());
+            });
+          }
+
+          final longUrl = resolveQrShareLongUrl(
+            receiptShareLongUrl: viewModel.receiptShareLongUrl,
+            parsedShareLongUrl: parsed.shareLongUrl,
+          );
+          final expiresAt = resolveQrShareExpiresAt(
+            receiptShareExpiresAt: viewModel.receiptShareExpiresAt,
+            parsedShareExpiresAt: parsed.shareExpiresAt,
+          );
+          final expiry = qrShareExpiryText(expiresAt);
+
           final phone = (parsed.customerPhone ?? '').trim();
           final waRequested = viewModel.effectiveWhatsappOptIn;
           final waActuallyQueued = viewModel.whatsappQueued;

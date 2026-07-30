@@ -272,21 +272,45 @@ class CaptureViewModel extends ChangeNotifier {
   bool _isRecoveringCamera = false;
   Completer<void>? _cameraRecoveryCompleter;
   static const Duration _takePictureTimeout = Duration(seconds: 12);
-  static const Duration _singleFrameStreamTimeout = Duration(seconds: 3);
+  static const Duration _singleFrameStreamTimeout = Duration(seconds: 5);
+  static const Duration _captureOverallTimeout = Duration(seconds: 45);
+  static const Duration _captureNormalizeTimeout = Duration(seconds: 20);
 
   // Serializes camera operations (dispose/init/capture/stream) to avoid races on Android TV.
   Future<void> _cameraOp = Future<void>.value();
   int _cameraGeneration = 0;
   int get cameraGeneration => _cameraGeneration;
 
-  Future<T> _withCameraLock<T>(Future<T> Function() fn) {
+  static const Duration _cameraLockQueueTimeout = Duration(seconds: 4);
+  static const Duration _cameraLockOpTimeout = Duration(seconds: 28);
+
+  Future<T> _withCameraLock<T>(Future<T> Function() fn) async {
     final next = Completer<void>();
     final prev = _cameraOp;
     _cameraOp = next.future;
-    return prev
-        .catchError((_) {})
-        .then((_) => fn())
-        .whenComplete(() => next.complete());
+    try {
+      await prev.timeout(
+        _cameraLockQueueTimeout,
+        onTimeout: () {
+          AppLogger.debug('Camera lock queue wait timed out; proceeding');
+        },
+      );
+      return await fn().timeout(
+        _cameraLockOpTimeout,
+        onTimeout: () => throw TimeoutException(
+          'Camera operation timed out after ${_cameraLockOpTimeout.inSeconds}s',
+        ),
+      );
+    } finally {
+      next.complete();
+    }
+  }
+
+  /// Clears loading flags after a POSE watchdog timeout (preview stuck spinner).
+  void clearStuckLoadingFlags() {
+    _isLoadingCameras = false;
+    _isInitializing = false;
+    notifyListeners();
   }
   
   // Timer tracking for upload
@@ -1036,6 +1060,9 @@ class CaptureViewModel extends ChangeNotifier {
           fixBgrChannelOrder: isUvc,
           maxDimension: maxDimension,
           jpegQuality: jpegQuality,
+        ).timeout(
+          const Duration(seconds: 20),
+          onTimeout: () => throw TimeoutException('External capture normalize timed out'),
         );
         if (isUvc) {
           await ImageHelper.tryDeleteLocalFile(rawFile.path);
@@ -1506,31 +1533,43 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Initializes the camera with the selected camera
   Future<void> initializeCamera(CameraDescription camera) async {
-    await _withCameraLock(() async {
+    await _withCameraLock(
+      () => _initializeCameraLocked(camera),
+    );
+  }
+
+  /// Camera init body — must run under [_withCameraLock] (never call [initializeCamera] from here).
+  Future<void> _initializeCameraLocked(
+    CameraDescription camera, {
+    bool notifyInitializing = true,
+  }) async {
+    if (notifyInitializing) {
       _isInitializing = true;
       _errorMessage = null;
       notifyListeners();
+    }
 
-      try {
-        _minZoom = null;
-        _maxZoom = null;
-        _currentZoom = 1.0;
+    try {
+      _minZoom = null;
+      _maxZoom = null;
+      _currentZoom = 1.0;
 
-        final cameraToUse = _resolveListedCamera(camera);
-        if (await _tryFastCameraDescriptionSwitch(cameraToUse, camera)) {
-          return;
-        }
+      final cameraToUse = _resolveListedCamera(camera);
+      if (await _tryFastCameraDescriptionSwitch(cameraToUse, camera)) {
+        return;
+      }
 
-        await _disposeCameraControllerForSwitch();
-        _logCameraInitializationStart(camera);
-        await _openFreshCameraController(cameraToUse, camera);
-      } catch (e, stackTrace) {
-        await _handleCameraInitializationError(e, stackTrace, camera);
-      } finally {
+      await _disposeCameraControllerForSwitch();
+      _logCameraInitializationStart(camera);
+      await _openFreshCameraController(cameraToUse, camera);
+    } catch (e, stackTrace) {
+      await _handleCameraInitializationError(e, stackTrace, camera);
+    } finally {
+      if (notifyInitializing) {
         _isInitializing = false;
         notifyListeners();
       }
-    });
+    }
   }
 
   Future<void> _finishCameraSetup(CameraDescription camera) async {
@@ -1733,15 +1772,26 @@ class CaptureViewModel extends ChangeNotifier {
 
   Future<XFile> _obtainRawCaptureFile() async {
     if (_shouldUseStreamOnlyCapture()) {
-      WebFlowTrace.log('CAPTURE', 'streamFallback_start');
-      final file = await _captureSingleFrameFallback(
-        reason: 'streamOnlyCapture',
-        details:
-            'android=${_deviceType?.toString()} camera=${_currentCamera?.name ?? "unknown"}',
-      );
-      WebFlowTrace.log('CAPTURE', 'streamFallback_done pathLen=${file.path.length}');
-      return file;
+      return _obtainRawCaptureViaStreamPreferred();
     }
+    return _obtainRawCaptureViaTakePicturePreferred();
+  }
+
+  /// Android TV / external USB: stream grab from the live preview (no takePicture).
+  Future<XFile> _obtainRawCaptureViaStreamPreferred() async {
+    WebFlowTrace.log('CAPTURE', 'streamFallback_start');
+    final file = await _captureSingleFrameFallback(
+      reason: 'streamOnlyCapture',
+      details:
+          'android=${_deviceType?.toString()} camera=${_currentCamera?.name ?? "unknown"}',
+      serializeWithCameraLock: false,
+    );
+    WebFlowTrace.log('CAPTURE', 'streamFallback_done pathLen=${file.path.length}');
+    return file;
+  }
+
+  /// Phones / built-in: takePicture with recovery, then stream fallback.
+  Future<XFile> _obtainRawCaptureViaTakePicturePreferred() async {
     try {
       WebFlowTrace.log('CAPTURE', 'takePicture_start');
       final file = await _takePictureWithRecovery();
@@ -1849,6 +1899,47 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Shutter → normalize → review model (bounded by [_captureOverallTimeout]).
+  Future<void> _runCapturePipeline() async {
+    WebFlowTrace.reset(label: 'capture');
+    WebFlowTrace.log('CAPTURE', 'shutter_begin kIsWeb=$kIsWeb isReady=$isReady');
+    final imageFile = await _obtainRawCaptureFile();
+    unawaited(playCaptureShutterSound());
+    final isFrontCamera =
+        _currentCamera?.lensDirection == CameraLensDirection.front;
+    WebFlowTrace.log('CAPTURE', 'normalize_start');
+    final savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
+      imageFile,
+      flipHorizontal: isFrontCamera,
+      maxDimension: _normalizeMaxDimensionForCapture(isUvc: false),
+      jpegQuality: _normalizeJpegQualityForCapture(isUvc: false),
+    ).timeout(
+      _captureNormalizeTimeout,
+      onTimeout: () => throw TimeoutException(
+        'Capture normalize timed out after ${_captureNormalizeTimeout.inSeconds}s',
+      ),
+    );
+    WebFlowTrace.log('CAPTURE', 'normalize_done');
+    var reviewFile = savedFile;
+    if (preferStripPrintQuality &&
+        AppRuntimeConfig.instance.injectClassicAfMarkers) {
+      reviewFile = await injectClassicAfMarkers(savedFile);
+    }
+    await _assignCapturedPhotoModel(reviewFile);
+  }
+
+  Future<void> _awaitCameraIdleBeforeCapture() async {
+    await waitForInFlightCameraRecovery(
+      _cameraRecoveryCompleter,
+      timeout: const Duration(seconds: 8),
+    );
+    try {
+      await _cameraOp.timeout(const Duration(seconds: 2));
+    } catch (_) {
+      AppLogger.debug('Camera op queue slow before capture; proceeding');
+    }
+  }
+
   /// Captures a photo
   Future<void> capturePhoto() async {
     ErrorReportingManager.log('📸 Photo capture attempt started');
@@ -1864,27 +1955,15 @@ class CaptureViewModel extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
+    await _awaitCameraIdleBeforeCapture();
+
     try {
-      WebFlowTrace.reset(label: 'capture');
-      WebFlowTrace.log('CAPTURE', 'shutter_begin kIsWeb=$kIsWeb isReady=$isReady');
-      final imageFile = await _obtainRawCaptureFile();
-      unawaited(playCaptureShutterSound());
-      final isFrontCamera =
-          _currentCamera?.lensDirection == CameraLensDirection.front;
-      WebFlowTrace.log('CAPTURE', 'normalize_start');
-      final savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
-        imageFile,
-        flipHorizontal: isFrontCamera,
-        maxDimension: _normalizeMaxDimensionForCapture(isUvc: false),
-        jpegQuality: _normalizeJpegQualityForCapture(isUvc: false),
+      await _runCapturePipeline().timeout(
+        _captureOverallTimeout,
+        onTimeout: () => throw TimeoutException(
+          'Capture timed out after ${_captureOverallTimeout.inSeconds}s',
+        ),
       );
-      WebFlowTrace.log('CAPTURE', 'normalize_done');
-      var reviewFile = savedFile;
-      if (preferStripPrintQuality &&
-          AppRuntimeConfig.instance.injectClassicAfMarkers) {
-        reviewFile = await injectClassicAfMarkers(savedFile);
-      }
-      await _assignCapturedPhotoModel(reviewFile);
     } on CameraException catch (e, stackTrace) {
       await _handleCaptureCameraException(e, stackTrace);
     } catch (e, stackTrace) {
@@ -1899,11 +1978,19 @@ class CaptureViewModel extends ChangeNotifier {
   Future<XFile> _captureSingleFrameFallback({
     required String reason,
     required String details,
+    bool serializeWithCameraLock = true,
   }) async {
-    return _withCameraLock(() => _captureSingleFrameFallbackLocked(
+    Future<XFile> capture() => _captureSingleFrameFallbackLocked(
       reason: reason,
       details: details,
-    ));
+    ).timeout(
+      const Duration(seconds: 22),
+      onTimeout: () => throw TimeoutException(
+        'Stream capture timed out ($reason)',
+      ),
+    );
+    if (!serializeWithCameraLock) return capture();
+    return _withCameraLock(capture);
   }
 
   Future<XFile> _captureSingleFrameFallbackLocked({
@@ -2090,6 +2177,10 @@ class CaptureViewModel extends ChangeNotifier {
 
     // Serialize recovery so we don't dispose while another camera operation is active.
     await _withCameraLock(() async {
+      if (_isCapturing) {
+        AppLogger.debug('Camera recovery skipped — capture in progress');
+        return;
+      }
       _isRecoveringCamera = true;
       final completer = Completer<void>();
       _cameraRecoveryCompleter = completer;
@@ -2120,7 +2211,8 @@ class CaptureViewModel extends ChangeNotifier {
         await Future.delayed(
           Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
         );
-        await initializeCamera(camera);
+        // Already holding [_withCameraLock] — do not call [initializeCamera].
+        await _initializeCameraLocked(camera, notifyInitializing: false);
         _errorMessage = null;
         notifyListeners();
         ErrorReportingManager.log('✅ Camera recovery completed');
