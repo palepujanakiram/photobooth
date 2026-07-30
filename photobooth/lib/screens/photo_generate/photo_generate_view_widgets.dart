@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/print_orientation.dart';
+import '../../utils/print_size_helpers.dart';
 import '../../utils/route_args.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
@@ -1251,8 +1252,13 @@ Future<void> _onPhotoGenerateContinuePressed({
 
   viewModel.trimMemoryWhenRouteInactive();
 
+  final checkoutImages = ensureGeneratedImagePrintSizes(
+    selectedImages,
+    orientation: viewModel.printOrientation,
+  );
+
   final args = <String, dynamic>{
-    'generatedImages': selectedImages,
+    'generatedImages': checkoutImages,
     'originalPhoto': viewModel.originalPhoto,
     'printOrientation': viewModel.printOrientation.apiValue,
   };

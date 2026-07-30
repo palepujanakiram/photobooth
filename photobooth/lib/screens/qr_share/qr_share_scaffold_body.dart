@@ -1,10 +1,10 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../utils/app_strings.dart';
 import '../../views/widgets/delete_my_photos_action.dart';
-import '../../views/widgets/theme_background.dart';
 
 /// Loaded QR share screen body (Sonar S3776 extraction from [QrShareScreen]).
 class QrShareScaffoldBody extends StatelessWidget {
@@ -15,7 +15,7 @@ class QrShareScaffoldBody extends StatelessWidget {
     required this.expiry,
     required this.headline,
     required this.waLine,
-    required this.secondsLeft,
+    required this.secondsLeftListenable,
     required this.onExit,
   });
 
@@ -24,7 +24,7 @@ class QrShareScaffoldBody extends StatelessWidget {
   final String expiry;
   final String headline;
   final String waLine;
-  final int secondsLeft;
+  final ValueListenable<int> secondsLeftListenable;
   final VoidCallback onExit;
 
   @override
@@ -54,7 +54,7 @@ class QrShareScaffoldBody extends StatelessWidget {
       ),
       body: Stack(
         children: [
-          const Positioned.fill(child: ThemeBackground()),
+          const Positioned.fill(child: _QrShareStaticBackground()),
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -115,7 +115,7 @@ class QrShareScaffoldBody extends StatelessWidget {
                       ],
                       const SizedBox(height: 18),
                       _QrShareFooter(
-                        secondsLeft: secondsLeft,
+                        secondsLeftListenable: secondsLeftListenable,
                         onStartAgain: onExit,
                       ),
                     ],
@@ -155,16 +155,19 @@ class _QrShareCodeBox extends StatelessWidget {
         ],
       ),
       child: canShowQr
-          ? QrImageView(
-              data: qrData,
-              backgroundColor: Colors.white,
-              errorStateBuilder: (ctx, err) => Center(
-                child: Text(
-                  err.toString(),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade700,
+          ? RepaintBoundary(
+              child: QrImageView(
+                key: ValueKey<String>(qrData),
+                data: qrData,
+                backgroundColor: Colors.white,
+                errorStateBuilder: (ctx, err) => Center(
+                  child: Text(
+                    err.toString(),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade700,
+                    ),
                   ),
                 ),
               ),
@@ -178,13 +181,36 @@ class _QrShareCodeBox extends StatelessWidget {
 
 /// Start-again CTA + idle countdown (print/share actions removed — no reliable
 /// printer acknowledgement, and guests should leave via QR / Start again).
+/// Lightweight gradient — avoids blur, network image, and starfield animation
+/// on a screen that must stay responsive during background DNP printing.
+class _QrShareStaticBackground extends StatelessWidget {
+  const _QrShareStaticBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF0D2130),
+            Color(0xFF0A1628),
+            Color(0xFF050810),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _QrShareFooter extends StatelessWidget {
   const _QrShareFooter({
-    required this.secondsLeft,
+    required this.secondsLeftListenable,
     required this.onStartAgain,
   });
 
-  final int secondsLeft;
+  final ValueListenable<int> secondsLeftListenable;
   final VoidCallback onStartAgain;
 
   @override
@@ -208,12 +234,17 @@ class _QrShareFooter extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        Text(
-          AppStrings.qrShareResettingIn(secondsLeft),
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.white.withValues(alpha: 0.8),
-          ),
+        ValueListenableBuilder<int>(
+          valueListenable: secondsLeftListenable,
+          builder: (context, secondsLeft, _) {
+            return Text(
+              AppStrings.qrShareResettingIn(secondsLeft),
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withValues(alpha: 0.8),
+              ),
+            );
+          },
         ),
         const DeleteMyPhotosButton(compact: true),
       ],

@@ -53,4 +53,38 @@ void main() {
       isTrue,
     );
   });
+
+  test('takePictureTimeoutForDevice is shorter on Android TV kiosks', () {
+    expect(
+      takePictureTimeoutForDevice(
+        camera: back,
+        deviceType: AppDeviceType.androidTv,
+      ),
+      const Duration(seconds: 4),
+    );
+    expect(
+      takePictureTimeoutForDevice(
+        camera: back,
+        deviceType: AppDeviceType.androidPhone,
+      ),
+      const Duration(seconds: 12),
+    );
+  });
+
+  test('preferImmediateStreamFallbackAfterStillFailure mirrors kiosk eligibility', () {
+    expect(
+      preferImmediateStreamFallbackAfterStillFailure(
+        camera: external,
+        deviceType: AppDeviceType.androidPhone,
+      ),
+      isTrue,
+    );
+    expect(
+      preferImmediateStreamFallbackAfterStillFailure(
+        camera: back,
+        deviceType: AppDeviceType.androidPhone,
+      ),
+      isFalse,
+    );
+  });
 }

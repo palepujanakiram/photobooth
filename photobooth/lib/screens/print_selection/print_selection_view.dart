@@ -5,9 +5,9 @@ import 'package:provider/provider.dart';
 
 import '../../services/app_settings_manager.dart';
 import '../../services/print_selection_coordinator.dart';
+import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
-import '../../utils/print_orientation.dart';
 import '../../utils/print_size_helpers.dart';
 import '../../utils/route_args.dart';
 import '../../views/widgets/app_colors.dart';
@@ -72,18 +72,22 @@ class _PrintSelectionScreenState extends State<PrintSelectionScreen> {
   Future<void> _continueToPay() async {
     final vm = _viewModel;
     if (vm == null) return;
-    final selected = ensureGeneratedImagePrintSizes(vm.selectedImages);
+    final orientation = SessionManager().printOrientation;
+    final selected = ensureGeneratedImagePrintSizes(
+      vm.selectedImages,
+      orientation: orientation,
+    );
     if (selected.isEmpty) return;
     if (!mounted) return;
     PrintSelectionCoordinator.instance.awaitingExploreMoreReturn = false;
     final runId = vm.transformationRunId?.trim();
-    // Per-image printSize is authoritative (strip s6x2_2, AI s4x6). Do not pass
+    // Per-image printSize is authoritative (strip s6x2_2, AI s4x6/s6x4). Do not pass
     // a session-wide strip override — Result used that as fallback for AI pages.
     await Navigator.of(context).pushNamed(
       AppConstants.kRouteResult,
       arguments: ResultArgs(
         generatedImages: selected,
-        printOrientation: PrintOrientation.portrait,
+        printOrientation: orientation,
         transformationRunId:
             (runId != null && runId.isNotEmpty) ? runId : null,
         printSize: _classicSessionPrintSize(selected, vm.stripPrintSize),

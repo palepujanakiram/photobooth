@@ -157,6 +157,30 @@ class ImageHelper {
     return XFile((file as dynamic).path);
   }
 
+  /// Copies a capture still into app temp storage without decode/re-encode.
+  ///
+  /// Used on memory-constrained kiosks where UVC [takePicture] already returns
+  /// a JPEG at the negotiated preview resolution.
+  static Future<XFile> copyCaptureToAppPhotosDir(XFile sourceFile) async {
+    if (kIsWeb) return sourceFile;
+    final path = sourceFile.path;
+    if (path.isEmpty) {
+      throw Exception('Captured image path is empty');
+    }
+    final source = File(path);
+    if (!await source.exists()) {
+      throw Exception('Captured image file missing: $path');
+    }
+    final tempDir = await FileHelper.getTempDirectoryPath();
+    const photosSubdir = 'photos';
+    final photosDir = '$tempDir/$photosSubdir';
+    await FileHelper.ensureDirectory(photosDir);
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final savePath = '$photosDir/photo_$timestamp.jpg';
+    await source.copy(savePath);
+    return XFile(savePath);
+  }
+
   /// Deletes a temp capture file after normalization to free disk/RAM on kiosks.
   static Future<void> tryDeleteLocalFile(String? path) async {
     if (kIsWeb || path == null || path.isEmpty) return;

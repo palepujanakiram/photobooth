@@ -85,6 +85,33 @@ bool androidStreamFallbackCaptureEligible({
   return isExternal || deviceType == AppDeviceType.androidTv;
 }
 
+/// Kiosk USB / Android TV: skip multi-second takePicture recovery — fall back to
+/// stream grab quickly when still capture fails or times out.
+bool preferImmediateStreamFallbackAfterStillFailure({
+  required CameraDescription? camera,
+  required AppDeviceType? deviceType,
+}) {
+  return androidStreamFallbackCaptureEligible(
+    camera: camera,
+    deviceType: deviceType,
+  );
+}
+
+/// Shorter still timeout on kiosks so stream fallback starts within a few seconds.
+Duration takePictureTimeoutForDevice({
+  required CameraDescription? camera,
+  required AppDeviceType? deviceType,
+  Duration defaultTimeout = const Duration(seconds: 12),
+}) {
+  if (preferImmediateStreamFallbackAfterStillFailure(
+    camera: camera,
+    deviceType: deviceType,
+  )) {
+    return const Duration(seconds: 4);
+  }
+  return defaultTimeout;
+}
+
 /// Max wait for [CameraController.startImageStream] to return (Android TV USB).
 const Duration kStreamCaptureStartTimeout = Duration(seconds: 5);
 
@@ -99,7 +126,17 @@ Future<XFile> grabStreamFrameAsJpegFile({
 }) async {
   final completer = Completer<CameraImage>();
   var streaming = false;
+  var previewPaused = false;
   try {
+    if (controller.value.isInitialized && !controller.value.isPreviewPaused) {
+      try {
+        await controller.pausePreview().timeout(const Duration(seconds: 2));
+        previewPaused = true;
+      } catch (_) {
+        // Best-effort — some hosts still stream without pause.
+      }
+    }
+
     await controller.startImageStream((CameraImage image) {
       if (completer.isCompleted) return;
       completer.complete(image);
@@ -143,6 +180,13 @@ Future<XFile> grabStreamFrameAsJpegFile({
         await controller
             .stopImageStream()
             .timeout(const Duration(seconds: 2));
+      } catch (_) {}
+    }
+    if (previewPaused &&
+        controller.value.isInitialized &&
+        controller.value.isPreviewPaused) {
+      try {
+        await controller.resumePreview().timeout(const Duration(seconds: 2));
       } catch (_) {}
     }
   }

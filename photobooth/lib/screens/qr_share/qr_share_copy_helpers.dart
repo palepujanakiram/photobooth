@@ -1,5 +1,76 @@
 import '../result/result_viewmodel.dart';
 
+/// Share-screen fields that should trigger a UI rebuild (excludes print progress).
+class QrShareUiSnapshot {
+  const QrShareUiSnapshot({
+    required this.qrData,
+    required this.longUrl,
+    this.expiresAt,
+    required this.headline,
+    required this.waLine,
+  });
+
+  final String qrData;
+  final String longUrl;
+  final DateTime? expiresAt;
+  final String headline;
+  final String waLine;
+
+  factory QrShareUiSnapshot.fromViewModel({
+    required ResultViewModel viewModel,
+    required String? parsedShareUrl,
+    required String? parsedKioskShareUrl,
+    required String? parsedShareLongUrl,
+    required DateTime? parsedShareExpiresAt,
+    required String phone,
+  }) {
+    final qrData = resolveQrShareData(
+      receiptShareUrl: viewModel.receiptShareUrl,
+      kioskFallbackShareUrl: viewModel.kioskFallbackShareUrl,
+      parsedShareUrl: parsedShareUrl,
+      parsedKioskShareUrl: parsedKioskShareUrl,
+    );
+    final longUrl = resolveQrShareLongUrl(
+      receiptShareLongUrl: viewModel.receiptShareLongUrl,
+      parsedShareLongUrl: parsedShareLongUrl,
+    );
+    final expiresAt = resolveQrShareExpiresAt(
+      receiptShareExpiresAt: viewModel.receiptShareExpiresAt,
+      parsedShareExpiresAt: parsedShareExpiresAt,
+    );
+    final waActuallyQueued = viewModel.whatsappQueued;
+    final waRequested = viewModel.effectiveWhatsappOptIn;
+    final vmStatus = (viewModel.whatsappDeliveryStatus ?? '').trim();
+    return QrShareUiSnapshot(
+      qrData: qrData,
+      longUrl: longUrl,
+      expiresAt: expiresAt,
+      headline: qrShareHeadline(
+        waActuallyQueued: waActuallyQueued,
+        phone: phone,
+      ),
+      waLine: qrShareWhatsappLine(
+        waActuallyQueued: waActuallyQueued,
+        vmStatus: vmStatus,
+        waRequested: waRequested,
+      ),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is QrShareUiSnapshot &&
+        qrData == other.qrData &&
+        longUrl == other.longUrl &&
+        expiresAt == other.expiresAt &&
+        headline == other.headline &&
+        waLine == other.waLine;
+  }
+
+  @override
+  int get hashCode => Object.hash(qrData, longUrl, expiresAt, headline, waLine);
+}
+
 /// QR share screen copy (Sonar S3358 / S3776 extractions).
 String qrShareHeadline({
   required bool waActuallyQueued,

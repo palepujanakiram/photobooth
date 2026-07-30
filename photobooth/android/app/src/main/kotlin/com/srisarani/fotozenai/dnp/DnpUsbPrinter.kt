@@ -308,6 +308,13 @@ class DnpUsbPrinter(
                 onProgress("complete", "Print finished", 1.0)
                 return
             }
+            // DS-RX1 often reports head/paper cooling (500/510) right after output
+            // instead of idle (0). Treat that as done so Flutter is not blocked for
+            // up to two minutes while the guest waits on Scan & Share.
+            if (sawPrinterActive && (status == 500 || status == 510)) {
+                onProgress("complete", "Print finished", 1.0)
+                return
+            }
             if (status == 0 && !sawPrinterActive && attempt >= MIN_START_POLLS && !startRetried) {
                 Log.w(TAG, "Printer still idle after job send; retrying CNTRL START")
                 startRetried = true

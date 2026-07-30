@@ -36,10 +36,14 @@ class _ResultScreenState extends State<ResultScreen> {
   ResultViewModel? _viewModel;
   bool _isInitialized = false;
   bool _didNavigateToThankYou = false;
+  bool _navigatingToQrShare = false;
+  bool? _lastPaymentSuccessForNav;
+  bool _paymentConfirmedSnackShown = false;
   String? _customerPhone;
   String? _transformationRunId;
   bool? _paymentsEnabledOverride;
   Timer? _failureIdleTimer;
+  Timer? _paymentSuccessNavFallback;
   int _failureSecondsLeft = 0;
   bool _navigatingAway = false;
   bool _retryingPrint = false;
@@ -85,6 +89,7 @@ class _ResultScreenState extends State<ResultScreen> {
       appSettingsManager: context.read<AppSettingsManager>(),
       contact: parsed.contact,
     );
+    _viewModel!.addListener(_onViewModelUpdated);
     _isInitialized = true;
     unawaited(_initPaymentMode());
   }
@@ -123,11 +128,56 @@ class _ResultScreenState extends State<ResultScreen> {
   void dispose() {
     PaymentPushCoordinator.instance.registerResultScreenCallback(null);
     _failureIdleTimer?.cancel();
+    _paymentSuccessNavFallback?.cancel();
+    _viewModel?.removeListener(_onViewModelUpdated);
     // QrShareScreen reuses the same ResultViewModel for print/share + WhatsApp status.
     if (!_didNavigateToThankYou) {
       _viewModel?.dispose();
     }
     super.dispose();
+  }
+
+  /// Payment polling updates [ResultViewModel] without the FCM callback path.
+  /// Navigate as soon as success is observed — do not rely on [build] post-frame only.
+  void _onViewModelUpdated() {
+    if (!mounted || _viewModel == null) return;
+    final success = _viewModel!.fcmPaymentPushSuccess;
+    if (success == true && _lastPaymentSuccessForNav != true) {
+      _lastPaymentSuccessForNav = true;
+      _onPaymentSucceeded(_viewModel!);
+      return;
+    }
+    if (success == false) {
+      _lastPaymentSuccessForNav = false;
+    }
+  }
+
+  void _onPaymentSucceeded(ResultViewModel viewModel) {
+    _failureIdleTimer?.cancel();
+    _failureSecondsLeft = 0;
+    if (!_paymentConfirmedSnackShown) {
+      _paymentConfirmedSnackShown = true;
+      if (!kIsWeb || !viewModel.hasError) {
+        AppSnackBar.showSuccess(
+          context,
+          AppStrings.paymentConfirmedTitle,
+        );
+      }
+    }
+    _schedulePaymentSuccessNavigationFallback();
+    unawaited(_navigateToThankYouIfEligible(viewModel));
+  }
+
+  void _schedulePaymentSuccessNavigationFallback() {
+    _paymentSuccessNavFallback?.cancel();
+    _paymentSuccessNavFallback = Timer(const Duration(seconds: 4), () {
+      if (!mounted || _didNavigateToThankYou) return;
+      final vm = _viewModel;
+      if (vm?.fcmPaymentPushSuccess == true) {
+        AppLogger.error('PAY screen: forcing Scan & Share navigation (fallback)');
+        unawaited(_navigateToThankYouIfEligible(vm!));
+      }
+    });
   }
 
   Future<void> _triggerFreeModePrint() async {
@@ -160,15 +210,8 @@ class _ResultScreenState extends State<ResultScreen> {
 
   Future<void> _onPaymentPushOutcome(ResultViewModel viewModel) async {
     if (viewModel.fcmPaymentPushSuccess == true) {
-      _failureIdleTimer?.cancel();
-      _failureSecondsLeft = 0;
-      if (!kIsWeb || !viewModel.hasError) {
-        AppSnackBar.showSuccess(
-          context,
-          AppStrings.paymentConfirmedTitle,
-        );
-      }
-      await _navigateToThankYouIfEligible(viewModel);
+      // [onFcmPaymentPush] already notified listeners; [_onViewModelUpdated]
+      // handles snackbar + navigation for both FCM and polling.
       return;
     }
     if (viewModel.fcmPaymentPushSuccess == false) {
@@ -247,38 +290,52 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   Future<void> _navigateToThankYouIfEligible(ResultViewModel viewModel) async {
-    if (!mounted || _didNavigateToThankYou) return;
+    if (!mounted || _didNavigateToThankYou || _navigatingToQrShare) return;
     if (viewModel.fcmPaymentPushSuccess != true) return;
 
-    _didNavigateToThankYou = true;
+    _navigatingToQrShare = true;
+    try {
+      // Print and receipt/share already run on [ResultViewModel] from
+      // [onFcmPaymentPush]. Do not block Pay on DNP physical output — native
+      // status polling can outlast the paper; QR share keeps the same ViewModel
+      // and temp downloads alive for multi-page carts.
+      unawaited(viewModel.ensurePostPaymentShareArtifacts());
+      unawaited(viewModel.startPostPaymentPrintIfNeeded());
 
-    // Print and receipt/share already run on [ResultViewModel] from
-    // [onFcmPaymentPush]. Do not block Pay on DNP physical output — native
-    // status polling can outlast the paper; QR share keeps the same ViewModel
-    // and temp downloads alive for multi-page carts.
-    unawaited(viewModel.ensurePostPaymentShareArtifacts());
-    unawaited(viewModel.startPostPaymentPrintIfNeeded());
+      if (!mounted) return;
 
-    if (!mounted) return;
-    // Keep the session alive for a short window so operators can print/share.
-    // QrShareScreen will wipe locally and reset back to Terms after 60s.
-    Navigator.pushReplacementNamed(
-      context,
-      AppConstants.kRouteQrShare,
-      arguments: QrShareArgs(
-        generatedImages: viewModel.generatedImages,
-        originalPhoto: viewModel.originalPhoto,
-        resultViewModel: viewModel,
-        shareUrl: viewModel.receiptShareUrl,
-        shareLongUrl: viewModel.receiptShareLongUrl,
-        shareExpiresAt: viewModel.receiptShareExpiresAt,
-        kioskShareUrl: viewModel.kioskFallbackShareUrl,
-        whatsappQueued: viewModel.whatsappQueued,
-        customerWhatsappOptIn: viewModel.customerWhatsappOptIn,
-        customerPhone: viewModel.customerPhone,
-        receiptPdfUrl: viewModel.receiptPdfUrl,
-      ),
-    );
+      // Stop DNP progress polls from rebuilding PAY while we push Scan & Share.
+      viewModel.enterGuestQrShareMode();
+
+      // Keep the session alive for a short window so operators can print/share.
+      // QrShareScreen will wipe locally and reset back to Terms after 60s.
+      await Navigator.of(context).pushReplacementNamed(
+        AppConstants.kRouteQrShare,
+        arguments: QrShareArgs(
+          generatedImages: viewModel.generatedImages,
+          originalPhoto: viewModel.originalPhoto,
+          resultViewModel: viewModel,
+          shareUrl: viewModel.receiptShareUrl,
+          shareLongUrl: viewModel.receiptShareLongUrl,
+          shareExpiresAt: viewModel.receiptShareExpiresAt,
+          kioskShareUrl: viewModel.kioskFallbackShareUrl,
+          whatsappQueued: viewModel.whatsappQueued,
+          customerWhatsappOptIn: viewModel.customerWhatsappOptIn,
+          customerPhone: viewModel.customerPhone,
+          receiptPdfUrl: viewModel.receiptPdfUrl,
+        ),
+      );
+      _didNavigateToThankYou = true;
+      _paymentSuccessNavFallback?.cancel();
+    } catch (e, st) {
+      AppLogger.error(
+        'Navigate to Scan & Share failed',
+        error: e,
+        stackTrace: st,
+      );
+    } finally {
+      _navigatingToQrShare = false;
+    }
   }
 
   Future<void> _retryPrint(ResultViewModel viewModel) async {

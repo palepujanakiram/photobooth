@@ -7,14 +7,34 @@ import 'package:photobooth/utils/print_size_helpers.dart';
 
 void main() {
   group('resolveNetworkPrintSizeForImage', () {
-    test('prefers image printSize', () {
+    test('prefers fixed strip printSize over orientation', () {
       expect(
         resolveNetworkPrintSizeForImage(
           imagePrintSize: AppConstants.kPrintSizeStripDual2x6,
-          orientation: PrintOrientation.portrait,
+          orientation: PrintOrientation.landscape,
           sessionOverride: AppConstants.kPrintSizePortrait4x6,
         ),
         AppConstants.kPrintSizeStripDual2x6,
+      );
+    });
+
+    test('uses customer landscape over default AI s4x6 on image', () {
+      expect(
+        resolveNetworkPrintSizeForImage(
+          imagePrintSize: AppConstants.kPrintSizePortrait4x6,
+          orientation: PrintOrientation.landscape,
+        ),
+        AppConstants.kPrintSizeLandscape6x4,
+      );
+    });
+
+    test('uses customer portrait over default AI s4x6 on image', () {
+      expect(
+        resolveNetworkPrintSizeForImage(
+          imagePrintSize: AppConstants.kPrintSizePortrait4x6,
+          orientation: PrintOrientation.portrait,
+        ),
+        AppConstants.kPrintSizePortrait4x6,
       );
     });
 
@@ -53,7 +73,7 @@ void main() {
   });
 
   group('ensureGeneratedImagePrintSizes', () {
-    test('backfills missing AI printSize to portrait 4x6', () {
+    test('backfills missing AI printSize from orientation', () {
       final theme = ThemeModel(
         id: 't1',
         categoryId: 'c',
@@ -73,9 +93,28 @@ void main() {
           imageUrl: 'https://cdn/ai.jpg',
           theme: theme,
         ),
-      ]);
+      ], orientation: PrintOrientation.landscape);
       expect(out[0].printSize, AppConstants.kPrintSizeStripDual2x6);
-      expect(out[1].printSize, AppConstants.kPrintSizePortrait4x6);
+      expect(out[1].printSize, AppConstants.kPrintSizeLandscape6x4);
+    });
+
+    test('overrides default AI s4x6 when customer chose landscape', () {
+      final theme = ThemeModel(
+        id: 't1',
+        categoryId: 'c',
+        name: 'Theme',
+        description: '',
+        promptText: '',
+      );
+      final out = ensureGeneratedImagePrintSizes([
+        GeneratedImage(
+          id: 'ai',
+          imageUrl: 'https://cdn/ai.jpg',
+          theme: theme,
+          printSize: AppConstants.kPrintSizePortrait4x6,
+        ),
+      ], orientation: PrintOrientation.landscape);
+      expect(out.single.printSize, AppConstants.kPrintSizeLandscape6x4);
     });
   });
 
@@ -222,5 +261,21 @@ void main() {
     expect(isStripDualPrintSize(AppConstants.kPrintSizeStripDual2x6), isTrue);
     expect(isStripDualPrintSize(AppConstants.kPrintSizePortrait4x6), isFalse);
     expect(isStripDualPrintSize(null), isFalse);
+  });
+
+  test('isOrientationSelectablePrintSize', () {
+    expect(isOrientationSelectablePrintSize(null), isTrue);
+    expect(
+      isOrientationSelectablePrintSize(AppConstants.kPrintSizePortrait4x6),
+      isTrue,
+    );
+    expect(
+      isOrientationSelectablePrintSize(AppConstants.kPrintSizeLandscape6x4),
+      isTrue,
+    );
+    expect(
+      isOrientationSelectablePrintSize(AppConstants.kPrintSizeStripDual2x6),
+      isFalse,
+    );
   });
 }

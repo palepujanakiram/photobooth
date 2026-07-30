@@ -440,6 +440,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     _r._fcmPaymentStatusDetail = kIsWeb
         ? 'Preparing your photos…'
         : 'Printing your photos…';
+    _r.enterGuestQrShareMode();
     notifyListeners();
     await startPostPaymentPrintIfNeeded();
   }
@@ -524,6 +525,8 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     if (payload.isApproved) {
       _r._fcmPaymentPushSuccess = true;
       _r._fcmPaymentStatusDetail = _fcmApprovedDetailText(payload);
+      // Suppress DNP print-progress rebuilds on PAY while navigation runs.
+      _r.enterGuestQrShareMode();
       notifyListeners();
 
       // Fire-and-forget: queue receipt + WhatsApp send in parallel with print.
@@ -1121,7 +1124,12 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   void _cancelPrintProgressTicker() {
     _r._printProgressTicker?.cancel();
     _r._printProgressTicker = null;
-    _r._printFinishingStartedAt = null;
+  }
+
+  /// Print progress is internal on Scan & Share — do not notify every DNP poll.
+  void _notifyPrintProgressUi() {
+    if (_r._guestQrShareActive) return;
+    notifyListeners();
   }
 
   void _resetPrintProgressForRun({required int totalPages}) {
@@ -1132,7 +1140,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       totalPages: totalPages,
       percent: 0,
     );
-    notifyListeners();
+    _notifyPrintProgressUi();
   }
 
   void _setPrintMilestone({
@@ -1148,7 +1156,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       percent: percent,
       clearError: true,
     );
-    notifyListeners();
+    _notifyPrintProgressUi();
   }
 
   void _failPrintProgress(String message) {
@@ -1158,7 +1166,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       phase: PrintProgressPhase.failed,
       errorMessage: message,
     );
-    notifyListeners();
+    _notifyPrintProgressUi();
   }
 
   void _completePrintProgress({required int totalPages}) {
@@ -1169,61 +1177,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       totalPages: totalPages,
       percent: allPagesCompletePercent(totalPages),
     );
-    notifyListeners();
-  }
-
-  Future<void> _runPageFinishingPhase({
-    required int pageIndex,
-    required int totalPages,
-  }) async {
-    _r._printFinishingPageIndex = pageIndex;
-    _r._printFinishingTotalPages = totalPages;
-    _r._printFinishingStartedAt = DateTime.now();
-    _setPrintMilestone(
-      pageIndex: pageIndex,
-      totalPages: totalPages,
-      phase: PrintProgressPhase.finishing,
-      percent: finishingPercent(
-        pageIndex: pageIndex,
-        totalPages: totalPages,
-        elapsed: Duration.zero,
-      ),
-    );
-
-    _cancelPrintProgressTicker();
-    _r._printProgressTicker = Timer.periodic(
-      const Duration(milliseconds: 250),
-      (_) => _tickPrintFinishingProgress(),
-    );
-
-    final started = _r._printFinishingStartedAt!;
-    const minimum = kPrintFinishingMinimumDisplay;
-    const estimate = kPrintFinishingEstimatePerPage;
-    await Future<void>.delayed(minimum);
-    final remaining = estimate - DateTime.now().difference(started);
-    if (remaining > Duration.zero) {
-      await Future<void>.delayed(remaining);
-    }
-    _cancelPrintProgressTicker();
-  }
-
-  void _tickPrintFinishingProgress() {
-    final started = _r._printFinishingStartedAt;
-    if (started == null) return;
-    final pageIndex = _r._printFinishingPageIndex;
-    final totalPages = _r._printFinishingTotalPages;
-    final percent = finishingPercent(
-      pageIndex: pageIndex,
-      totalPages: totalPages,
-      elapsed: DateTime.now().difference(started),
-    );
-    _r._printProgress = _r._printProgress.copyWith(
-      phase: PrintProgressPhase.finishing,
-      currentPage: pageIndex + 1,
-      totalPages: totalPages,
-      percent: percent,
-    );
-    notifyListeners();
+    _notifyPrintProgressUi();
   }
 
   /// Fetch ESC/POS from API and deliver to the LAN thermal receipt printer.
@@ -1486,10 +1440,6 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         settings: _r._appSettingsManager?.settings,
         printSize: printSize,
         quantity: _r._printCopies,
-      );
-      await _runPageFinishingPhase(
-        pageIndex: pageIndex,
-        totalPages: totalPages,
       );
       return null;
     } on PrintException catch (e, st) {

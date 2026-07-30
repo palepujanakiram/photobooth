@@ -26,8 +26,10 @@ class _QrShareScreenState extends State<QrShareScreen> {
   bool _ownsViewModel = false;
   bool _initialized = false;
   Timer? _timer;
-  int _secondsLeft = AppConstants.kQrShareIdleSeconds;
+  final ValueNotifier<int> _secondsLeft =
+      ValueNotifier<int>(AppConstants.kQrShareIdleSeconds);
   bool _exiting = false;
+  QrShareArgs? _parsedArgs;
 
   /// One-shot toast guard: we show the post-receipt outcome dialog at most once
   /// per QR share screen lifecycle.
@@ -37,8 +39,6 @@ class _QrShareScreenState extends State<QrShareScreen> {
 
   void _onWhatsappStatusFromFcm(WhatsAppStatusPayload payload) {
     _viewModel?.applyWhatsappStatusPush(payload);
-    if (!mounted) return;
-    setState(() {});
   }
 
   @override
@@ -48,6 +48,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
     final parsed =
         QrShareArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
     if (parsed == null) return;
+    _parsedArgs = parsed;
 
     final vmArg = parsed.resultViewModel;
     if (vmArg is ResultViewModel) {
@@ -64,6 +65,8 @@ class _QrShareScreenState extends State<QrShareScreen> {
     }
     _initialized = true;
 
+    _viewModel?.enterGuestQrShareMode();
+
     WhatsAppPushCoordinator.instance.registerCallback(_onWhatsappStatusFromFcm);
     _viewModel?.startWhatsappDeliveryPolling();
 
@@ -77,28 +80,43 @@ class _QrShareScreenState extends State<QrShareScreen> {
       if (_printKickoffScheduled) return;
       _printKickoffScheduled = true;
       unawaited(_viewModel?.startPostPaymentPrintIfNeeded());
+      _scheduleShareArtifactsKickoffIfNeeded();
     });
 
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
-      // Pause only while pages are still uploading to the printer.
-      // Do not wait on "finishing" / silentPrinting forever — that hung the
-      // 60s reset to Terms after payment.
-      if (_viewModel?.printProgress.blocksQrShareIdleCountdown == true) {
-        return;
-      }
-      if (_secondsLeft <= 1) {
+      if (_secondsLeft.value <= 1) {
         t.cancel();
         unawaited(_exitToStart());
         return;
       }
-      setState(() => _secondsLeft -= 1);
+      _secondsLeft.value -= 1;
     });
+  }
+
+  void _scheduleShareArtifactsKickoffIfNeeded() {
+    if (_shareArtifactsKickoffScheduled || _viewModel == null) return;
+    final parsed = _parsedArgs;
+    if (parsed == null) return;
+
+    final snapshot = QrShareUiSnapshot.fromViewModel(
+      viewModel: _viewModel!,
+      parsedShareUrl: parsed.shareUrl,
+      parsedKioskShareUrl: parsed.kioskShareUrl,
+      parsedShareLongUrl: parsed.shareLongUrl,
+      parsedShareExpiresAt: parsed.shareExpiresAt,
+      phone: (parsed.customerPhone ?? '').trim(),
+    );
+    if (snapshot.qrData.isNotEmpty) return;
+
+    _shareArtifactsKickoffScheduled = true;
+    unawaited(_viewModel!.ensurePostPaymentShareArtifacts());
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _secondsLeft.dispose();
     WhatsAppPushCoordinator.instance.registerCallback(null);
     _viewModel?.removeListener(_maybeShowPostReceiptToast);
     _viewModel?.stopWhatsappDeliveryPolling();
@@ -163,23 +181,24 @@ class _QrShareScreenState extends State<QrShareScreen> {
     if (!mounted || _exiting) return;
     _exiting = true;
     _timer?.cancel();
-    try {
-      await _viewModel?.privacyWipeLocal();
-    } catch (e, st) {
-      AppLogger.debug('Privacy wipe (qr-share) failed: $e\n$st');
-    }
+    final vm = _viewModel;
     if (!mounted) return;
     Navigator.pushNamedAndRemoveUntil(
       context,
       AppConstants.kRouteTerms,
       (route) => false,
     );
+    try {
+      await vm?.privacyWipeLocal();
+    } catch (e, st) {
+      AppLogger.debug('Privacy wipe (qr-share) failed: $e\n$st');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final appColors = AppColors.of(context);
-    final parsed = QrShareArgs.tryParse(ModalRoute.of(context)?.settings.arguments);
+    final parsed = _parsedArgs;
 
     if (!_initialized || _viewModel == null || parsed == null) {
       return Scaffold(
@@ -188,58 +207,31 @@ class _QrShareScreenState extends State<QrShareScreen> {
       );
     }
 
+    final phone = (parsed.customerPhone ?? '').trim();
+
     return ChangeNotifierProvider.value(
       value: _viewModel!,
-      child: Consumer<ResultViewModel>(
-        builder: (context, viewModel, _) {
-          final qrData = resolveQrShareData(
-            receiptShareUrl: viewModel.receiptShareUrl,
-            kioskFallbackShareUrl: viewModel.kioskFallbackShareUrl,
-            parsedShareUrl: parsed.shareUrl,
-            parsedKioskShareUrl: parsed.kioskShareUrl,
-          );
-          if (qrData.isEmpty && !_shareArtifactsKickoffScheduled) {
-            _shareArtifactsKickoffScheduled = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              unawaited(viewModel.ensurePostPaymentShareArtifacts());
-            });
-          }
-
-          final longUrl = resolveQrShareLongUrl(
-            receiptShareLongUrl: viewModel.receiptShareLongUrl,
-            parsedShareLongUrl: parsed.shareLongUrl,
-          );
-          final expiresAt = resolveQrShareExpiresAt(
-            receiptShareExpiresAt: viewModel.receiptShareExpiresAt,
-            parsedShareExpiresAt: parsed.shareExpiresAt,
-          );
-          final expiry = qrShareExpiryText(expiresAt);
-
-          final phone = (parsed.customerPhone ?? '').trim();
-          final waRequested = viewModel.effectiveWhatsappOptIn;
-          final waActuallyQueued = viewModel.whatsappQueued;
-          final vmStatus = (viewModel.whatsappDeliveryStatus ?? '').trim();
-          final headline = qrShareHeadline(
-            waActuallyQueued: waActuallyQueued,
-            phone: phone,
-          );
-          final waLine = qrShareWhatsappLine(
-            waActuallyQueued: waActuallyQueued,
-            vmStatus: vmStatus,
-            waRequested: waRequested,
-          );
+      child: Selector<ResultViewModel, QrShareUiSnapshot>(
+        selector: (_, viewModel) => QrShareUiSnapshot.fromViewModel(
+          viewModel: viewModel,
+          parsedShareUrl: parsed.shareUrl,
+          parsedKioskShareUrl: parsed.kioskShareUrl,
+          parsedShareLongUrl: parsed.shareLongUrl,
+          parsedShareExpiresAt: parsed.shareExpiresAt,
+          phone: phone,
+        ),
+        builder: (context, snapshot, _) {
           return QrShareScaffoldBody(
-            qrData: qrData,
-            longUrl: longUrl,
-            expiry: expiry,
-            headline: headline,
-            waLine: waLine,
-            secondsLeft: _secondsLeft,
-            onExit: _exitToStart,
+            qrData: snapshot.qrData,
+            longUrl: snapshot.longUrl,
+            expiry: qrShareExpiryText(snapshot.expiresAt),
+            headline: snapshot.headline,
+            waLine: snapshot.waLine,
+            secondsLeftListenable: _secondsLeft,
+            onExit: () => unawaited(_exitToStart()),
           );
         },
       ),
     );
   }
 }
-

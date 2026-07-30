@@ -6,14 +6,20 @@ bool isCapturePreviewStarting({
   required bool isDesktopCaptureMode,
   required bool isLoadingCameras,
   required bool isInitializing,
+  required bool isCapturing,
   required bool isUsingUvc,
+  required bool uvcHoldLivePreviewClosed,
   required bool uvcInitializing,
   required bool uvcOpeningController,
   required bool uvcControllerReady,
   required bool camerasEmpty,
   required bool isReady,
+  bool cameraSetupStalled = false,
 }) {
   if (hasCapturedPhoto) return false;
+  if (isCapturing) return false;
+  if (uvcHoldLivePreviewClosed) return false;
+  if (cameraSetupStalled) return false;
   if (isDesktopCaptureMode) return isLoadingCameras;
   if (isLoadingCameras || isInitializing) return true;
   if (isUsingUvc) {
