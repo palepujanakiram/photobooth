@@ -72,6 +72,9 @@ class UvcCaptureConfig {
   /// JPEG quality after normalize (matches built-in default).
   static const int normalizeJpegQuality = 85;
 
+  /// Native UVC still JPEG quality in vendored [UvcCameraPlatform] (must stay in sync).
+  static const int nativeStillJpegQuality = normalizeJpegQuality;
+
   static const int thermalNormalizeJpegQuality = 75;
 
   /// Effective JPEG quality for UVC still normalize.

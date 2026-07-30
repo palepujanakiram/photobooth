@@ -1102,9 +1102,11 @@ import io.flutter.view.TextureRegistry;
         }
 
         try {
+            // Match photobooth UvcCaptureConfig.normalizeJpegQuality (85) — avoid
+            // a full-quality native encode before Dart-side normalize/upload.
             yuvImage.compressToJpeg(
                     new Rect(0, 0, previewSize.width, previewSize.height),
-                    100,
+                    85,
                     outputFileStream
             );
         } catch (Exception e) {

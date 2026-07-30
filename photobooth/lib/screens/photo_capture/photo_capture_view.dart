@@ -43,6 +43,7 @@ import '../../views/widgets/classic_scrub_progress_dots.dart';
 import '../../utils/device_classifier.dart';
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
+import '../../utils/memory_pressure_response.dart';
 import '../../utils/route_args.dart';
 import '../../utils/surprise_me_helpers.dart';
 import '../../utils/uvc_capture_config.dart';
@@ -51,6 +52,7 @@ import '../../services/app_settings_manager.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/uvc_device_event_hub.dart';
 import '../../services/uvc_session_coordinator.dart';
+import '../../services/usb_resource_gate.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/centered_max_width.dart';
 import 'photo_capture_rotation_screen.dart';
@@ -1823,7 +1825,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   Future<void> _openUvcController() async {
-    await _withUvcLock(() async {
+    await UsbResourceGate.runExclusive(
+      () => _withUvcLock(() async {
       final device = _uvcDevice;
       if (device == null || !mounted) return;
       if (_uvcOpeningController || !_uvcMayAutoOpenLiveFeed) {
@@ -1926,7 +1929,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           setState(() => _uvcInitializing = false);
         }
       }
-    });
+    }));
   }
 
   Future<void> _setUvcShutterKeysEnabled(bool enabled) async {
@@ -2239,6 +2242,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     CaptureViewModel viewModel, {
     required String source,
   }) async {
+    trimFlutterMemoryCaches(aggressive: true);
     final device = _uvcDevice;
     if (device == null ||
         _uvcPhase == UvcFeedPhase.capturing ||
@@ -2253,7 +2257,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     XFile? capturedFile;
     var captureFailed = false;
 
-    await _withUvcLock(() async {
+    await UsbResourceGate.runExclusive(
+      () => _withUvcLock(() async {
       final ctrl = _uvcController;
       if (ctrl == null ||
           _uvcDevice == null ||
@@ -2350,7 +2355,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         _clearUvcTransientCaptureUi();
         if (mounted) setState(() {});
       }
-    });
+    }));
 
     if (!mounted || capturedFile == null) {
       return;
@@ -2377,6 +2382,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         _uvcLastUiCaptureEndedAt = DateTime.now();
       }
       if (mounted) setState(() {});
+      viewModel.kickoffDeferredUploadPreparation(
+        initialDelay: UvcCaptureConfig.uploadPrepDelay,
+      );
     } catch (e, st) {
       AppLogger.error(
         'UVC capture normalize failed source=$source',

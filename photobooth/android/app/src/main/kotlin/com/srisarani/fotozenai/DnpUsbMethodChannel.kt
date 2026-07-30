@@ -91,6 +91,12 @@ object DnpUsbMethodChannel {
                         startUsbPrint(filePath, copies, paperSize, printSize, result)
                     }
                 }
+                "disconnect" -> {
+                    ioExecutor.execute {
+                        usbPrinter.disconnect()
+                        mainHandler.post { result.success(null) }
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

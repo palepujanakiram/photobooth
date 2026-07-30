@@ -34,7 +34,14 @@ object DnpPrintJobBuilder {
         chunks += buildPlaneChunk('C', planeLen, width, height, cPlane)
         chunks += buildStartChunk()
 
-        return chunks.fold(ByteArray(0)) { acc, chunk -> acc + chunk }
+        val totalSize = chunks.sumOf { it.size }
+        val job = ByteArray(totalSize)
+        var offset = 0
+        for (chunk in chunks) {
+            System.arraycopy(chunk, 0, job, offset, chunk.size)
+            offset += chunk.size
+        }
+        return job
     }
 
     private fun buildPlaneChunk(

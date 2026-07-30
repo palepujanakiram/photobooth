@@ -15,6 +15,7 @@ import '../../services/face_count_service.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/phone_upload_helpers.dart';
 import '../../services/session_manager.dart';
+import '../../services/usb_resource_gate.dart';
 import '../../utils/app_runtime_config.dart';
 import '../../utils/classic_af_marker_inject.dart';
 import '../../utils/constants.dart';
@@ -28,6 +29,7 @@ import 'camera_description_label.dart';
 import 'photo_capture_camera_selection_helpers.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/logger.dart';
+import '../../utils/memory_pressure_response.dart';
 import '../../utils/error_reporting_helpers.dart';
 import 'photo_capture_camera_error_helpers.dart';
 import '../../utils/web_flow_trace.dart';
@@ -2525,6 +2527,7 @@ class CaptureViewModel extends ChangeNotifier {
   void kickoffDeferredUploadPreparation({
     Duration initialDelay = Duration.zero,
   }) {
+    trimFlutterMemoryCaches(aggressive: true);
     _kickoffUploadPreparation(initialDelay: initialDelay);
   }
 
@@ -2604,33 +2607,38 @@ class CaptureViewModel extends ChangeNotifier {
   }
 
   Future<String> _buildUploadPayload(PhotoModel photo) async {
-    var imageFile = photo.imageFile;
-    if (kIsWeb) {
-      imageFile = await _materializeWebXFile(imageFile, 'upload');
-      if (_capturedPhoto?.id == photo.id) {
-        _capturedPhoto = photo.copyWith(imageFile: imageFile);
+    Future<String> build() async {
+      var imageFile = photo.imageFile;
+      if (kIsWeb) {
+        imageFile = await _materializeWebXFile(imageFile, 'upload');
+        if (_capturedPhoto?.id == photo.id) {
+          _capturedPhoto = photo.copyWith(imageFile: imageFile);
+        }
       }
-    }
-    WebFlowTrace.log('UPLOAD_PREP', 'encode_start');
-    final base64 = await ImageHelper.encodeImageForUpload(imageFile);
-    WebFlowTrace.log('UPLOAD_PREP', 'encode_done len=${base64.length}');
-    final isUvc = photo.cameraId?.startsWith('uvc:') ?? false;
-    if (isUvc) {
-      // Face ML Kit decodes the full image again — skip on UVC/tablet to avoid OOM;
-      // server preprocess refines person count after PATCH.
-      _preparedClientFaceCount = 0;
-      WebFlowTrace.log('UPLOAD_PREP', 'face_skipped uvc=true');
-    } else {
-      _preparedClientFaceCount = await detectFaceCountFromXFile(imageFile);
-      WebFlowTrace.log(
-        'UPLOAD_PREP',
-        'face_done count=$_preparedClientFaceCount',
-      );
-      if (_capturedPhoto?.id == photo.id) {
-        notifyListeners();
+      WebFlowTrace.log('UPLOAD_PREP', 'encode_start');
+      final base64 = await ImageHelper.encodeImageForUpload(imageFile);
+      WebFlowTrace.log('UPLOAD_PREP', 'encode_done len=${base64.length}');
+      final isUvc = photo.cameraId?.startsWith('uvc:') ?? false;
+      if (isUvc) {
+        // Face ML Kit decodes the full image again — skip on UVC/tablet to avoid OOM;
+        // server preprocess refines person count after PATCH.
+        _preparedClientFaceCount = 0;
+        WebFlowTrace.log('UPLOAD_PREP', 'face_skipped uvc=true');
+      } else {
+        _preparedClientFaceCount = await detectFaceCountFromXFile(imageFile);
+        WebFlowTrace.log(
+          'UPLOAD_PREP',
+          'face_done count=$_preparedClientFaceCount',
+        );
+        if (_capturedPhoto?.id == photo.id) {
+          notifyListeners();
+        }
       }
+      return base64;
     }
-    return base64;
+
+    if (kIsWeb) return build();
+    return UsbResourceGate.runExclusive(build);
   }
 
   /// Clears [errorMessage] only (e.g. after a failed upload) while keeping the capture.

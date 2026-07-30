@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
 
 import 'package:camera/camera.dart';
@@ -8,10 +9,13 @@ import '../../models/app_settings_model.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
+import '../../utils/memory_pressure_response.dart';
 import 'dnp_print_size.dart';
 import 'dnp_print_transport.dart';
 import 'dnp_usb_client.dart';
 import 'dnp_wifi_client.dart';
+import '../uvc_session_coordinator.dart';
+import '../usb_resource_gate.dart';
 
 /// Routes DNP print jobs to USB (Android) or WCM Plus Wi-Fi (iOS + Android).
 class DnpPrintBridge {
@@ -40,6 +44,7 @@ class DnpPrintBridge {
   void resetSession() {
     _usbReady = false;
     _wifi.clear();
+    unawaited(_usb.disconnect());
   }
 
   Future<void> printImage({
@@ -52,25 +57,31 @@ class DnpPrintBridge {
       throw PrintException('DNP direct print is not supported on web');
     }
 
-    final transport = resolveDnpPrintTransport(settings);
-    final copies = quantity.clamp(
-      AppConstants.kDefaultPrintCopies,
-      AppConstants.kMaxPrintCopies,
-    );
-    final size = DnpPrintSize.fromNetworkPrintSize(networkPrintSize);
-    final localPath = await _resolveLocalPath(imageFile);
+    await UvcSessionCoordinator.waitBeforeOpen();
+    trimFlutterMemoryCaches(aggressive: true);
+    await UsbResourceGate.runExclusive(() async {
+      final transport = resolveDnpPrintTransport(settings);
+      final copies = quantity.clamp(
+        AppConstants.kDefaultPrintCopies,
+        AppConstants.kMaxPrintCopies,
+      );
+      final size = DnpPrintSize.fromNetworkPrintSize(networkPrintSize);
+      final localPath = await _resolveLocalPath(imageFile);
 
-    if (_shouldUseUsb(transport)) {
-      try {
-        await _printUsb(localPath, size, networkPrintSize, copies);
-        return;
-      } on PlatformException catch (e) {
-        if (!_shouldFallbackToWifi(transport, e)) rethrow;
-        AppLogger.warning('DNP USB print unavailable, trying WCM Plus Wi-Fi: ${e.code}');
+      if (_shouldUseUsb(transport)) {
+        try {
+          await _printUsb(localPath, size, networkPrintSize, copies);
+          return;
+        } on PlatformException catch (e) {
+          if (!_shouldFallbackToWifi(transport, e)) rethrow;
+          AppLogger.warning(
+            'DNP USB print unavailable, trying WCM Plus Wi-Fi: ${e.code}',
+          );
+        }
       }
-    }
 
-    await _printWifi(localPath, size.wifiPrintSize, copies);
+      await _printWifi(localPath, size.wifiPrintSize, copies);
+    });
   }
 
   bool _shouldUseUsb(DnpPrintTransport transport) {
@@ -91,16 +102,21 @@ class DnpPrintBridge {
     String networkPrintSize,
     int copies,
   ) async {
-    if (!_usbReady) {
-      await _usb.ensureConnected();
-      _usbReady = true;
+    try {
+      if (!_usbReady) {
+        await _usb.ensureConnected();
+        _usbReady = true;
+      }
+      await _usb.print(
+        filePath: filePath,
+        paperSize: size.usbLabel,
+        printSize: networkPrintSize,
+        copies: copies,
+      );
+    } finally {
+      await _usb.disconnect();
+      _usbReady = false;
     }
-    await _usb.print(
-      filePath: filePath,
-      paperSize: size.usbLabel,
-      printSize: networkPrintSize,
-      copies: copies,
-    );
   }
 
   Future<void> _printWifi(String filePath, String printSize, int copies) async {

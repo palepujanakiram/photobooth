@@ -55,4 +55,14 @@ class DnpUsbClient {
       },
     );
   }
+
+  /// Releases the native USB connection after print (reconnect on next job).
+  Future<void> disconnect() async {
+    if (kIsWeb || !_isAndroid()) return;
+    try {
+      await _channel.invokeMethod<void>('disconnect');
+    } catch (_) {
+      // Best-effort — kiosk may already be disconnected.
+    }
+  }
 }

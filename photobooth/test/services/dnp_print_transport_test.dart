@@ -19,6 +19,7 @@ class _RecordingUsbClient extends DnpUsbClient {
 
   final MethodChannel channel;
   int connectCalls = 0;
+  int disconnectCalls = 0;
   int printCalls = 0;
   String? lastPaperSize;
   String? lastPrintSize;
@@ -27,6 +28,11 @@ class _RecordingUsbClient extends DnpUsbClient {
   @override
   Future<void> ensureConnected() async {
     connectCalls++;
+  }
+
+  @override
+  Future<void> disconnect() async {
+    disconnectCalls++;
   }
 
   @override
@@ -152,7 +158,7 @@ void main() {
         calls.add(call.method);
         return null;
       });
-      final client = DnpUsbClient(channel: channel);
+      final client = DnpUsbClient(channel: channel, isAndroid: () => true);
       await client.ensureConnected();
       await client.print(
         filePath: '/tmp/a.jpg',
@@ -160,7 +166,8 @@ void main() {
         printSize: 's4x6',
         copies: 2,
       );
-      expect(calls, ['requestPermission', 'print']);
+      await client.disconnect();
+      expect(calls, ['requestPermission', 'print', 'disconnect']);
     });
   });
 
@@ -444,7 +451,7 @@ void main() {
       expect(usb.lastCopies, AppConstants.kMaxPrintCopies);
     });
 
-    test('reuses warm USB session for subsequent pages', () async {
+    test('disconnects USB after each print and reconnects on next job', () async {
       final usb = _RecordingUsbClient(const MethodChannel('test/usb'));
       final bridge = DnpPrintBridge(
         usbClient: usb,
@@ -469,8 +476,9 @@ void main() {
         settings: AppSettingsModel(printerTransport: 'usb'),
         networkPrintSize: 's4x6',
       );
-      expect(usb.connectCalls, 1);
+      expect(usb.connectCalls, 2);
       expect(usb.printCalls, 2);
+      expect(usb.disconnectCalls, 2);
     });
 
     test('auto transport falls back to wifi when USB is unavailable', () async {
