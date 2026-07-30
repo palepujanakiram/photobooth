@@ -88,23 +88,43 @@ object DnpImageProcessor {
             return canvas
         }
 
-        // Borderless: fill the full printable area (cover), no white inset margins.
-        val scale = max(targetW / srcW, targetH / srcH)
+        // Borderless: cover-fill the DNP imageable area (full-bleed 4×6 / 6×4).
+        val areaW = size.imageableWidth
+        val areaH = size.imageableHeight
+        val insetX = (targetW - areaW) / 2
+        val insetY = (targetH - areaH) / 2
+        val scale = max(areaW / srcW, areaH / srcH)
         val scaledW = max(1, (srcW * scale).toInt())
         val scaledH = max(1, (srcH * scale).toInt())
         val scaled = Bitmap.createScaledBitmap(bmp, scaledW, scaledH, true)
         bmp.recycle()
 
+        val srcLeft = max(0, (scaledW - areaW) / 2)
+        val srcTop = max(0, (scaledH - areaH) / 2)
+
         val canvas = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
         val c = Canvas(canvas)
         c.drawColor(Color.WHITE)
-        val left = (targetW - scaledW) / 2f
-        val top = (targetH - scaledH) / 2f
         val paint = Paint(Paint.FILTER_BITMAP_FLAG)
         buildCombinedColorMatrix(filter, brightness)?.let { matrix ->
             paint.colorFilter = ColorMatrixColorFilter(matrix)
         }
-        c.drawBitmap(scaled, left, top, paint)
+        c.drawBitmap(
+            scaled,
+            android.graphics.Rect(
+                srcLeft,
+                srcTop,
+                srcLeft + areaW,
+                srcTop + areaH,
+            ),
+            android.graphics.RectF(
+                insetX.toFloat(),
+                insetY.toFloat(),
+                (insetX + areaW).toFloat(),
+                (insetY + areaH).toFloat(),
+            ),
+            paint,
+        )
         scaled.recycle()
 
         return canvas
@@ -163,9 +183,29 @@ object DnpImageProcessor {
         return matrix
     }
 
-    fun bitmapToPixels(bitmap: Bitmap): IntArray {
-        val pixels = IntArray(bitmap.width * bitmap.height)
-        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+    /**
+     * Reads raster pixels for the DNP job stream.
+     *
+     * When [mirrorHorizontal] is true, each row is reversed so the physical print
+     * matches the preview — DNP dye-sub heads scan in reverse without allocating
+     * a second full-size bitmap (important on Android TV / low-RAM hosts).
+     */
+    fun bitmapToPixels(bitmap: Bitmap, mirrorHorizontal: Boolean = false): IntArray {
+        val w = bitmap.width
+        val h = bitmap.height
+        val pixels = IntArray(w * h)
+        if (!mirrorHorizontal) {
+            bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+            return pixels
+        }
+        val row = IntArray(w)
+        for (y in 0 until h) {
+            bitmap.getPixels(row, 0, w, 0, y, w, 1)
+            val base = y * w
+            for (x in 0 until w) {
+                pixels[base + x] = row[w - 1 - x]
+            }
+        }
         return pixels
     }
 }

@@ -1,21 +1,70 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/photo_capture/photo_capture_body_phase.dart';
 
+bool _starting({
+  bool hasCapturedPhoto = false,
+  bool isDesktopCaptureMode = false,
+  bool isLoadingCameras = false,
+  bool isInitializing = false,
+  bool isCapturing = false,
+  bool isUsingUvc = false,
+  bool uvcHoldLivePreviewClosed = false,
+  bool uvcInitializing = false,
+  bool uvcOpeningController = false,
+  bool uvcControllerReady = false,
+  bool camerasEmpty = false,
+  bool isReady = false,
+  bool cameraSetupStalled = false,
+}) {
+  return isCapturePreviewStarting(
+    hasCapturedPhoto: hasCapturedPhoto,
+    isDesktopCaptureMode: isDesktopCaptureMode,
+    isLoadingCameras: isLoadingCameras,
+    isInitializing: isInitializing,
+    isCapturing: isCapturing,
+    isUsingUvc: isUsingUvc,
+    uvcHoldLivePreviewClosed: uvcHoldLivePreviewClosed,
+    uvcInitializing: uvcInitializing,
+    uvcOpeningController: uvcOpeningController,
+    uvcControllerReady: uvcControllerReady,
+    camerasEmpty: camerasEmpty,
+    isReady: isReady,
+    cameraSetupStalled: cameraSetupStalled,
+  );
+}
+
 void main() {
   group('isCapturePreviewStarting', () {
     test('false when a photo is already captured', () {
       expect(
-        isCapturePreviewStarting(
+        _starting(
           hasCapturedPhoto: true,
-          isDesktopCaptureMode: false,
           isLoadingCameras: true,
           isInitializing: true,
-          isUsingUvc: false,
-          uvcInitializing: false,
-          uvcOpeningController: false,
+          isReady: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('false while capture or UVC review is in progress', () {
+      expect(_starting(isCapturing: true, isUsingUvc: true), isFalse);
+      expect(
+        _starting(
+          isUsingUvc: true,
+          uvcHoldLivePreviewClosed: true,
           uvcControllerReady: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('false when camera setup stalled with an error path', () {
+      expect(
+        _starting(
           camerasEmpty: false,
           isReady: false,
+          cameraSetupStalled: true,
         ),
         isFalse,
       );
@@ -23,200 +72,68 @@ void main() {
 
     test('desktop only waits on camera list load', () {
       expect(
-        isCapturePreviewStarting(
-          hasCapturedPhoto: false,
-          isDesktopCaptureMode: true,
-          isLoadingCameras: true,
-          isInitializing: false,
-          isUsingUvc: false,
-          uvcInitializing: false,
-          uvcOpeningController: false,
-          uvcControllerReady: false,
-          camerasEmpty: true,
-          isReady: false,
-        ),
+        _starting(isDesktopCaptureMode: true, isLoadingCameras: true),
         isTrue,
       );
       expect(
-        isCapturePreviewStarting(
-          hasCapturedPhoto: false,
+        _starting(
           isDesktopCaptureMode: true,
-          isLoadingCameras: false,
           isInitializing: true,
-          isUsingUvc: false,
-          uvcInitializing: false,
-          uvcOpeningController: false,
-          uvcControllerReady: false,
           camerasEmpty: true,
-          isReady: false,
         ),
         isFalse,
       );
     });
 
     test('stops starting once cameras are empty after load', () {
-      expect(
-        isCapturePreviewStarting(
-          hasCapturedPhoto: false,
-          isDesktopCaptureMode: false,
-          isLoadingCameras: false,
-          isInitializing: false,
-          isUsingUvc: false,
-          uvcInitializing: false,
-          uvcOpeningController: false,
-          uvcControllerReady: false,
-          camerasEmpty: true,
-          isReady: false,
-        ),
-        isFalse,
-      );
+      expect(_starting(camerasEmpty: true), isFalse);
     });
 
     test('stays starting while isLoadingCameras during Classic remount', () {
       expect(
-        isCapturePreviewStarting(
-          hasCapturedPhoto: false,
-          isDesktopCaptureMode: false,
-          isLoadingCameras: true,
-          isInitializing: false,
-          isUsingUvc: false,
-          uvcInitializing: false,
-          uvcOpeningController: false,
-          uvcControllerReady: false,
-          camerasEmpty: true,
-          isReady: false,
-        ),
+        _starting(isLoadingCameras: true, camerasEmpty: true),
         isTrue,
       );
     });
 
     test('stays starting while enumeration or init is in progress', () {
       expect(
-        isCapturePreviewStarting(
-          hasCapturedPhoto: false,
-          isDesktopCaptureMode: false,
-          isLoadingCameras: true,
-          isInitializing: false,
-          isUsingUvc: false,
-          uvcInitializing: false,
-          uvcOpeningController: false,
-          uvcControllerReady: false,
-          camerasEmpty: true,
-          isReady: false,
-        ),
+        _starting(isLoadingCameras: true, camerasEmpty: true),
         isTrue,
       );
-      expect(
-        isCapturePreviewStarting(
-          hasCapturedPhoto: false,
-          isDesktopCaptureMode: false,
-          isLoadingCameras: false,
-          isInitializing: true,
-          isUsingUvc: false,
-          uvcInitializing: false,
-          uvcOpeningController: false,
-          uvcControllerReady: false,
-          camerasEmpty: false,
-          isReady: false,
-        ),
-        isTrue,
-      );
+      expect(_starting(isInitializing: true), isTrue);
     });
 
     test('UVC waits until controller is ready', () {
       expect(
-        isCapturePreviewStarting(
-          hasCapturedPhoto: false,
-          isDesktopCaptureMode: false,
-          isLoadingCameras: false,
-          isInitializing: false,
-          isUsingUvc: true,
-          uvcInitializing: true,
-          uvcOpeningController: false,
-          uvcControllerReady: false,
-          camerasEmpty: true,
-          isReady: false,
-        ),
+        _starting(isUsingUvc: true, uvcInitializing: true, camerasEmpty: true),
         isTrue,
       );
       expect(
-        isCapturePreviewStarting(
-          hasCapturedPhoto: false,
-          isDesktopCaptureMode: false,
-          isLoadingCameras: false,
-          isInitializing: false,
+        _starting(
           isUsingUvc: true,
-          uvcInitializing: false,
           uvcOpeningController: true,
-          uvcControllerReady: false,
           camerasEmpty: true,
-          isReady: false,
         ),
         isTrue,
       );
       expect(
-        isCapturePreviewStarting(
-          hasCapturedPhoto: false,
-          isDesktopCaptureMode: false,
-          isLoadingCameras: false,
-          isInitializing: false,
-          isUsingUvc: true,
-          uvcInitializing: false,
-          uvcOpeningController: false,
-          uvcControllerReady: false,
-          camerasEmpty: true,
-          isReady: false,
-        ),
+        _starting(isUsingUvc: true, camerasEmpty: true),
         isTrue,
       );
       expect(
-        isCapturePreviewStarting(
-          hasCapturedPhoto: false,
-          isDesktopCaptureMode: false,
-          isLoadingCameras: false,
-          isInitializing: false,
+        _starting(
           isUsingUvc: true,
-          uvcInitializing: false,
-          uvcOpeningController: false,
           uvcControllerReady: true,
           camerasEmpty: true,
-          isReady: false,
         ),
         isFalse,
       );
     });
 
     test('waits for camera ready when cameras exist', () {
-      expect(
-        isCapturePreviewStarting(
-          hasCapturedPhoto: false,
-          isDesktopCaptureMode: false,
-          isLoadingCameras: false,
-          isInitializing: false,
-          isUsingUvc: false,
-          uvcInitializing: false,
-          uvcOpeningController: false,
-          uvcControllerReady: false,
-          camerasEmpty: false,
-          isReady: false,
-        ),
-        isTrue,
-      );
-      expect(
-        isCapturePreviewStarting(
-          hasCapturedPhoto: false,
-          isDesktopCaptureMode: false,
-          isLoadingCameras: false,
-          isInitializing: false,
-          isUsingUvc: false,
-          uvcInitializing: false,
-          uvcOpeningController: false,
-          uvcControllerReady: false,
-          camerasEmpty: false,
-          isReady: true,
-        ),
-        isFalse,
-      );
+      expect(_starting(isReady: false), isTrue);
+      expect(_starting(isReady: true), isFalse);
     });
   });
 

@@ -10,6 +10,7 @@ import 'package:camera/camera.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'package:uvccamera/uvccamera.dart';
 import 'photo_capture_camera_picker_screen.dart';
+import 'photo_capture_pose_setup_helpers.dart';
 import 'photo_capture_preview_rotation.dart';
 import 'photo_capture_camera_error_helpers.dart';
 import 'photo_capture_uvc_device_helpers.dart';
@@ -104,6 +105,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   bool _prefillApplied = false;
   Timer? _poseIdleTimer;
+  Timer? _poseLoadingWatchdog;
+  Timer? _captureWatchdog;
   bool _navigatingAwayFromCapture = false;
   bool _appInForeground = true;
 
@@ -153,7 +156,44 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void _onCaptureViewModelStateChanged() {
     if (!mounted) return;
     _syncPoseIdleTimer(_captureViewModel);
+    _syncCaptureWatchdog(_captureViewModel);
     _maybeAdvanceFlashbackAutoChain();
+  }
+
+  void _syncCaptureWatchdog(CaptureViewModel viewModel) {
+    if (viewModel.isCapturing || _uvcCaptureInFlight) {
+      if (_captureWatchdog?.isActive == true) return;
+      _armCaptureWatchdog();
+      return;
+    }
+    _cancelCaptureWatchdog();
+  }
+
+  void _armCaptureWatchdog() {
+    _captureWatchdog?.cancel();
+    final deviceType = _captureViewModel.deviceType;
+    final seconds = kioskShouldTryUvcBeforeCameraX(deviceType) ? 22 : 48;
+    _captureWatchdog = Timer(Duration(seconds: seconds), _onCaptureWatchdogFired);
+  }
+
+  void _cancelCaptureWatchdog() {
+    _captureWatchdog?.cancel();
+    _captureWatchdog = null;
+  }
+
+  void _onCaptureWatchdogFired() {
+    if (!mounted) return;
+    if (!_captureViewModel.isCapturing && !_uvcCaptureInFlight) return;
+    AppLogger.error('POSE capture watchdog — forcing abort');
+    _captureViewModel.forceAbortCapture();
+    _clearUvcTransientCaptureUi();
+    if (_uvcPhase == UvcFeedPhase.capturing) {
+      _uvcPhase = UvcFeedPhase.error;
+    }
+    setState(() {
+      _uvcError ??=
+          'Capture took too long. Tap Capture to retry or use Gallery.';
+    });
   }
 
   void _onScrubProgressChanged() {
@@ -538,13 +578,26 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
   }
 
-  Future<T> _withUvcLock<T>(Future<T> Function() fn) async {
+  Future<T> _withUvcLock<T>(
+    Future<T> Function() fn, {
+    Duration timeout = const Duration(seconds: 25),
+  }) async {
     final gate = Completer<void>();
     final previous = _uvcOp;
     _uvcOp = gate.future;
-    await previous.catchError((_) {});
     try {
-      return await fn();
+      await previous.timeout(
+        const Duration(seconds: 4),
+        onTimeout: () {
+          AppLogger.debug('UVC lock queue wait timed out; proceeding');
+        },
+      );
+      return await fn().timeout(
+        timeout,
+        onTimeout: () => throw TimeoutException(
+          'UVC operation timed out after ${timeout.inSeconds}s',
+        ),
+      );
     } finally {
       gate.complete();
     }
@@ -663,6 +716,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void _clearUvcTransientCaptureUi() {
     _showCaptureFlash = false;
     _uvcCaptureInFlight = false;
+    _syncCaptureWatchdog(_captureViewModel);
   }
 
   Future<void> _pulseCaptureFlash() async {
@@ -851,9 +905,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _captureViewModel = CaptureViewModel();
     _captureViewModel.addListener(_onCaptureViewModelStateChanged);
     ClassicStripScrubCoordinator.instance.addListener(_onScrubProgressChanged);
-    _tryAdoptTermsPrewarmOnInit();
+    _tryAdoptTermsPrewarmOnInitIfAllowed();
     _skipUvcForCameraXSession =
-        _captureViewModel.isReady ||
         _captureViewModel.preferEnumeratedCameraPath ||
         CaptureViewModel.hasEnumerationCache;
     _attachUvcDeviceEvents();
@@ -879,7 +932,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_captureViewModel.isReady) {
+      final deviceType = _captureViewModel.deviceType ??
+          CaptureViewModel.prewarmedDeviceType;
+      if (_captureViewModel.isReady &&
+          !kioskShouldTryUvcBeforeCameraX(deviceType)) {
         unawaited(_finishPrewarmPoseSetup());
         return;
       }
@@ -887,9 +943,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     });
   }
 
-  void _tryAdoptTermsPrewarmOnInit() {
+  void _tryAdoptTermsPrewarmOnInitIfAllowed() {
     if (!CaptureViewModel.hasPrewarmedCamera) return;
     final prewarmedType = CaptureViewModel.prewarmedDeviceType;
+    if (!shouldAdoptTermsPrewarmOnPoseInit(prewarmedType)) return;
     if (prewarmedType != null) {
       _captureViewModel.setDeviceType(prewarmedType);
     }
@@ -908,24 +965,62 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _maybeAdvanceFlashbackAutoChain();
   }
 
+  void _cancelPoseLoadingWatchdog() {
+    _poseLoadingWatchdog?.cancel();
+    _poseLoadingWatchdog = null;
+  }
+
+  void _armPoseLoadingWatchdog() {
+    _cancelPoseLoadingWatchdog();
+    _poseLoadingWatchdog = Timer(const Duration(seconds: 28), () {
+      if (!mounted) return;
+      if (!_isCapturePreviewStarting(_captureViewModel)) return;
+      AppLogger.error('POSE preview loading exceeded watchdog');
+      _forceClearPoseLoadingState();
+    });
+  }
+
+  void _forceClearPoseLoadingState() {
+    _captureViewModel.clearStuckLoadingFlags();
+    if (_uvcDevice != null && !_uvcFeedIsHealthy) {
+      unawaited(_clearUvcBinding());
+    }
+    if (!mounted) return;
+    setState(() {
+      _uvcInitializing = false;
+      _uvcOpeningController = false;
+      _uvcError ??= 'Camera took too long to start. Tap Retry or use Gallery.';
+    });
+  }
+
   /// Defers camera work until the route transition finishes (smoother POSE entry).
   void _schedulePoseSetupAfterTransition() {
     if (!mounted) return;
 
-    void beginSetup() {
-      if (!mounted) return;
+    var setupStarted = false;
+    Timer? setupFallback;
+
+    void beginSetupOnce() {
+      if (setupStarted || !mounted) return;
+      setupStarted = true;
+      setupFallback?.cancel();
       unawaited(_beginPoseCaptureSetup());
     }
 
     if (_isFlashbackFourShot && _stripShots.isNotEmpty) {
-      // Web remount between Classic shots — start getUserMedia immediately so
-      // guests never linger on the empty-camera / Gallery fallback UI.
-      WidgetsBinding.instance.addPostFrameCallback((_) => beginSetup());
+      WidgetsBinding.instance.addPostFrameCallback((_) => beginSetupOnce());
       return;
     }
 
     if (CaptureViewModel.hasPrewarmedCamera) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => beginSetup());
+      WidgetsBinding.instance.addPostFrameCallback((_) => beginSetupOnce());
+      return;
+    }
+
+    // Android TV launchers: skip waiting on route animation (often never completes).
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => beginSetupOnce());
+      setupFallback = Timer(const Duration(seconds: 1), beginSetupOnce);
       return;
     }
 
@@ -934,17 +1029,42 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       void onStatus(AnimationStatus status) {
         if (status == AnimationStatus.completed) {
           animation.removeStatusListener(onStatus);
-          beginSetup();
+          beginSetupOnce();
         }
       }
       animation.addStatusListener(onStatus);
+      setupFallback = Timer(const Duration(seconds: 3), () {
+        animation.removeStatusListener(onStatus);
+        beginSetupOnce();
+      });
       return;
     }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) => beginSetup());
+    WidgetsBinding.instance.addPostFrameCallback((_) => beginSetupOnce());
   }
 
   Future<void> _beginPoseCaptureSetup() async {
+    if (!mounted) return;
+    _armPoseLoadingWatchdog();
+    final deviceType = _captureViewModel.deviceType ??
+        CaptureViewModel.prewarmedDeviceType;
+    final setupTimeout = kioskShouldTryUvcBeforeCameraX(deviceType)
+        ? const Duration(seconds: 45)
+        : const Duration(seconds: 30);
+    try {
+      await _beginPoseCaptureSetupBody().timeout(
+        setupTimeout,
+        onTimeout: () => throw TimeoutException('POSE camera setup timed out'),
+      );
+    } catch (e, st) {
+      AppLogger.error('POSE camera setup failed', error: e, stackTrace: st);
+      _forceClearPoseLoadingState();
+    } finally {
+      _cancelPoseLoadingWatchdog();
+    }
+  }
+
+  Future<void> _beginPoseCaptureSetupBody() async {
     if (!mounted) return;
     unawaited(
       HardwareKeyService.setEnabled(true).then((_) {
@@ -952,7 +1072,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }),
     );
 
-    await CaptureViewModel.awaitPrewarmIfInFlight();
+    await CaptureViewModel.awaitPrewarmIfInFlight(
+      timeout: const Duration(seconds: 8),
+    );
     if (!mounted) return;
 
     final prewarmedType = CaptureViewModel.prewarmedDeviceType;
@@ -960,17 +1082,58 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _captureViewModel.setDeviceType(prewarmedType);
     }
 
-    if (!_captureViewModel.isReady) {
-      _tryAdoptTermsPrewarmOnInit();
+    AppDeviceType? deviceType = _captureViewModel.deviceType;
+    if (deviceType == null) {
+      try {
+        deviceType = await DeviceClassifier.getDeviceType(context).timeout(
+          const Duration(seconds: 5),
+        );
+        if (mounted) _captureViewModel.setDeviceType(deviceType);
+      } catch (_) {
+        // Best-effort; setup continues with null device type.
+      }
     }
 
-    if (_captureViewModel.isReady) {
+    final kioskUvc = kioskShouldTryUvcBeforeCameraX(deviceType);
+    if (kioskUvc) {
+      _skipUvcForCameraXSession = false;
+      await _releaseCameraXForUvcSession();
+      if (!_uvcFeedIsHealthy) {
+        if (defaultTargetPlatform == TargetPlatform.android) {
+          await UvcSessionCoordinator.waitBeforeOpen(
+            deviceType: _captureViewModel.deviceType,
+          );
+          if (!mounted) return;
+        }
+        final uvcReady = await _tryInitializeUvcForPoseEntry(
+          preferred: _uvcDevice,
+          deviceType: deviceType,
+        );
+        if (!mounted) return;
+        if (uvcReady) {
+          await _finishPrewarmPoseSetup();
+          return;
+        }
+        await _clearUvcBinding();
+        // CameraX fallback below — do not retry UVC in the same POSE visit.
+        _skipUvcForCameraXSession = true;
+      } else {
+        await _finishPrewarmPoseSetup();
+        return;
+      }
+    }
+
+    if (!_captureViewModel.isReady) {
+      _tryAdoptTermsPrewarmOnInitIfAllowed();
+    }
+
+    if (_captureViewModel.isReady && !kioskUvc) {
       _skipUvcForCameraXSession = true;
       await _finishPrewarmPoseSetup();
       return;
     }
 
-    if (_captureViewModel.preferEnumeratedCameraPath) {
+    if (_captureViewModel.preferEnumeratedCameraPath && !kioskUvc) {
       _skipUvcForCameraXSession = true;
     }
 
@@ -978,7 +1141,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!mounted) return;
     await _resetAndInitializeCameras();
     if (!mounted) return;
+    await _finishPrewarmPoseSetup();
+    if (!mounted) return;
+    if (!_uvcFeedIsHealthy &&
+        !_captureViewModel.isReady &&
+        !_captureViewModel.isLoadingCameras &&
+        !_captureViewModel.isInitializing) {
+      _forceClearPoseLoadingState();
+    }
     _syncPoseIdleTimer(_captureViewModel);
+  }
+
+  Future<void> _releaseCameraXForUvcSession() async {
+    unawaited(CaptureViewModel.disposePrewarm());
+    await _captureViewModel.disposeCamera();
+    _skipUvcForCameraXSession = false;
   }
 
   /// Common function to reset and initialize cameras
@@ -989,10 +1166,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final initGate = Completer<void>();
     final previousInit = _captureInitOp;
     _captureInitOp = initGate.future;
-    await previousInit.catchError((_) {});
+    await previousInit.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () {
+        AppLogger.debug('POSE init queue wait timed out; proceeding');
+      },
+    );
 
     try {
-      await _resetAndInitializeCamerasBody(forceRefresh: forceRefresh);
+      await _resetAndInitializeCamerasBody(forceRefresh: forceRefresh).timeout(
+        const Duration(seconds: 28),
+        onTimeout: () => throw TimeoutException('Camera reset timed out'),
+      );
     } finally {
       initGate.complete();
     }
@@ -1001,9 +1186,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Future<void> _resetAndInitializeCamerasBody({bool forceRefresh = false}) async {
     if (!mounted) return;
 
+    final kioskUvc =
+        kioskShouldTryUvcBeforeCameraX(_captureViewModel.deviceType);
+
     if (!forceRefresh &&
         _captureViewModel.isReady &&
-        _captureViewModel.preferEnumeratedCameraPath) {
+        _captureViewModel.preferEnumeratedCameraPath &&
+        !kioskUvc) {
       _skipUvcForCameraXSession = true;
       _syncPoseIdleTimer(_captureViewModel);
       return;
@@ -1027,11 +1216,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       );
     }
 
+    if (kioskShouldTryUvcBeforeCameraX(deviceType)) {
+      _skipUvcForCameraXSession = false;
+    } else {
+      _skipUvcForCameraXSession = _captureViewModel.preferEnumeratedCameraPath;
+    }
+
     if (_uvcFeedIsHealthy && !_uvcFeedAsleep) {
       return;
     }
-
-    _skipUvcForCameraXSession = _captureViewModel.preferEnumeratedCameraPath;
 
     if (defaultTargetPlatform == TargetPlatform.android &&
         !_skipUvcForCameraXSession) {
@@ -1048,6 +1241,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         final uvcReady = await _tryInitializeUvcQuick(preferred: _uvcDevice);
         if (!mounted) return;
         if (uvcReady) {
+          await _releaseCameraXForUvcSession();
           unawaited(_captureViewModel.warmCameraEnumerationCache());
           _stopUvcEntryProbe();
           _startUvcTvProbeIfNeeded();
@@ -1093,22 +1287,44 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     await _reportCaptureScreenNoCameraIfNeeded();
   }
 
-  /// One quick UVC attempt with timeout so CameraX can start without a 20s block.
+  /// One quick UVC attempt with timeout so CameraX fallback is not blocked long.
   Future<bool> _tryInitializeUvcQuick({UvcCameraDevice? preferred}) async {
+    return _tryInitializeUvcForPoseEntry(
+      preferred: preferred,
+      deviceType: _captureViewModel.deviceType,
+    );
+  }
+
+  /// Opens UVC on POSE entry; kiosks use a longer budget than [quickOpenTimeout].
+  Future<bool> _tryInitializeUvcForPoseEntry({
+    UvcCameraDevice? preferred,
+    AppDeviceType? deviceType,
+  }) async {
     if (!mounted) return false;
+    final timeout = uvcPoseEntryOpenTimeout(deviceType);
     try {
       return await _tryInitializeUvc(preferred: preferred).timeout(
-        UvcCaptureConfig.quickOpenTimeout,
-        onTimeout: () {
-          throw TimeoutException('UVC open timed out');
-        },
+        timeout,
+        onTimeout: () => throw TimeoutException('UVC open timed out'),
       );
     } on TimeoutException {
-      await _closeUvcControllerUnlocked();
+      await _awaitUvcLockIdle();
+      await _clearUvcBinding();
       return false;
     } catch (_) {
-      await _closeUvcControllerUnlocked();
+      await _awaitUvcLockIdle();
+      await _clearUvcBinding();
       return false;
+    }
+  }
+
+  Future<void> _awaitUvcLockIdle({
+    Duration cap = const Duration(seconds: 6),
+  }) async {
+    try {
+      await _uvcOp.timeout(cap);
+    } on TimeoutException {
+      AppLogger.debug('UVC lock still held after ${cap.inSeconds}s');
     }
   }
 
@@ -1263,6 +1479,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _captureViewModel.removeListener(_onCaptureViewModelStateChanged);
     ClassicStripScrubCoordinator.instance.removeListener(_onScrubProgressChanged);
     _stopPoseIdleTimer();
+    _cancelPoseLoadingWatchdog();
+    _cancelCaptureWatchdog();
     _cancelFlashbackAutoTimers();
     _uvcReconnectTimer?.cancel();
     _uvcReconnectTimer = null;
@@ -1881,6 +2099,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         _armUvcSessionRecycleTimer();
         _resetUvcAutoReconnectAttempts();
         _captureViewModel.markCameraAvailabilityRestored();
+        if (kioskShouldTryUvcBeforeCameraX(_captureViewModel.deviceType)) {
+          unawaited(_releaseCameraXForUvcSession());
+        }
         unawaited(_captureViewModel.warmUpCaptureShutterSound());
         AppLogger.debug(
           'UVC preview opened preset='
@@ -2356,6 +2577,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return;
     }
 
+    if (mounted) {
+      setState(() => _uvcPhase = UvcFeedPhase.reviewing);
+    }
+
     try {
       await viewModel.setCapturedPhotoFromExternalFile(
         rawFile: capturedFile!,
@@ -2568,18 +2793,29 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
+  bool get _uvcHoldLivePreviewClosed =>
+      uvcFeedPhaseBlocksLivePreview(_uvcPhase);
+
   bool _isCapturePreviewStarting(CaptureViewModel viewModel) {
+    final setupStalled = _uvcError != null &&
+        !_uvcFeedIsHealthy &&
+        !viewModel.isReady &&
+        !viewModel.isLoadingCameras &&
+        !viewModel.isInitializing;
     return isCapturePreviewStarting(
       hasCapturedPhoto: viewModel.capturedPhoto != null,
       isDesktopCaptureMode: viewModel.isDesktopCaptureMode,
       isLoadingCameras: viewModel.isLoadingCameras,
       isInitializing: viewModel.isInitializing,
+      isCapturing: viewModel.isCapturing || _uvcCaptureInFlight,
       isUsingUvc: _isUsingUvc,
+      uvcHoldLivePreviewClosed: _uvcHoldLivePreviewClosed,
       uvcInitializing: _uvcInitializing,
       uvcOpeningController: _uvcOpeningController,
       uvcControllerReady: _uvcController?.value.isInitialized == true,
       camerasEmpty: viewModel.availableCameras.isEmpty,
       isReady: viewModel.isReady,
+      cameraSetupStalled: setupStalled,
     );
   }
 
@@ -2894,7 +3130,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                               cardH,
                               // Match live preview: full frame visible (no cover crop).
                               fit: BoxFit.contain,
-                              sharpDisplay: true,
+                              sharpDisplay: !kioskShouldTryUvcBeforeCameraX(
+                                viewModel.deviceType,
+                              ),
                             )
                           : KeyedSubtree(
                               // Web builds can aggressively reuse platform views / textures.
@@ -2942,8 +3180,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     ),
                   if (!_showCaptureFlash &&
                       !hasCapturedPhoto &&
-                      (viewModel.isCapturing || _uvcCaptureInFlight) &&
-                      !_isUsingUvc)
+                      (viewModel.isCapturing || _uvcCaptureInFlight))
                     Positioned.fill(
                       child: ColoredBox(
                         color: Colors.black.withValues(alpha: 0.35),

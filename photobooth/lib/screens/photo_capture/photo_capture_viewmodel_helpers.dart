@@ -64,10 +64,13 @@ void logNativeCameraDetails(CameraDetails details) {
 }
 
 /// Waits briefly for an in-flight camera recovery before capture/fallback.
-Future<void> waitForInFlightCameraRecovery(Completer<void>? recovery) async {
+Future<void> waitForInFlightCameraRecovery(
+  Completer<void>? recovery, {
+  Duration timeout = const Duration(seconds: 4),
+}) async {
   if (recovery == null) return;
   try {
-    await recovery.future.timeout(const Duration(seconds: 4));
+    await recovery.future.timeout(timeout);
   } catch (_) {}
 }
 
@@ -82,24 +85,86 @@ bool androidStreamFallbackCaptureEligible({
   return isExternal || deviceType == AppDeviceType.androidTv;
 }
 
+/// Kiosk USB / Android TV: skip multi-second takePicture recovery — fall back to
+/// stream grab quickly when still capture fails or times out.
+bool preferImmediateStreamFallbackAfterStillFailure({
+  required CameraDescription? camera,
+  required AppDeviceType? deviceType,
+}) {
+  return androidStreamFallbackCaptureEligible(
+    camera: camera,
+    deviceType: deviceType,
+  );
+}
+
+/// Shorter still timeout on kiosks so stream fallback starts within a few seconds.
+Duration takePictureTimeoutForDevice({
+  required CameraDescription? camera,
+  required AppDeviceType? deviceType,
+  Duration defaultTimeout = const Duration(seconds: 12),
+}) {
+  if (preferImmediateStreamFallbackAfterStillFailure(
+    camera: camera,
+    deviceType: deviceType,
+  )) {
+    return const Duration(seconds: 4);
+  }
+  return defaultTimeout;
+}
+
+/// Max wait for [CameraController.startImageStream] to return (Android TV USB).
+const Duration kStreamCaptureStartTimeout = Duration(seconds: 5);
+
+/// Max wait for YUV→JPEG encode in a background isolate.
+const Duration kStreamCaptureEncodeTimeout = Duration(seconds: 12);
+
 /// Grabs one preview stream frame and writes a JPEG [XFile].
 Future<XFile> grabStreamFrameAsJpegFile({
   required CameraController controller,
   required Duration streamTimeout,
+  Duration startStreamTimeout = kStreamCaptureStartTimeout,
 }) async {
   final completer = Completer<CameraImage>();
   var streaming = false;
+  var previewPaused = false;
   try {
-    streaming = true;
+    if (controller.value.isInitialized && !controller.value.isPreviewPaused) {
+      try {
+        await controller.pausePreview().timeout(const Duration(seconds: 2));
+        previewPaused = true;
+      } catch (_) {
+        // Best-effort — some hosts still stream without pause.
+      }
+    }
+
     await controller.startImageStream((CameraImage image) {
       if (completer.isCompleted) return;
       completer.complete(image);
-    });
-    final frame = await completer.future.timeout(streamTimeout);
-    await controller.stopImageStream();
+    }).timeout(
+      startStreamTimeout,
+      onTimeout: () => throw TimeoutException(
+        'startImageStream timed out after ${startStreamTimeout.inSeconds}s',
+      ),
+    );
+    streaming = true;
+    final frame = await completer.future.timeout(
+      streamTimeout,
+      onTimeout: () => throw TimeoutException(
+        'No preview frame within ${streamTimeout.inSeconds}s',
+      ),
+    );
+    await controller.stopImageStream().timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => throw TimeoutException('stopImageStream timed out'),
+    );
     streaming = false;
 
-    final jpegBytes = await compute(cameraImageToJpegBytes, frame);
+    final jpegBytes = await compute(cameraImageToJpegBytes, frame).timeout(
+      kStreamCaptureEncodeTimeout,
+      onTimeout: () => throw TimeoutException(
+        'Stream frame encode timed out after ${kStreamCaptureEncodeTimeout.inSeconds}s',
+      ),
+    );
     final tempDir = await FileHelper.getTempDirectoryPath();
     const photosSubdir = 'photos';
     final photosDir = '$tempDir/$photosSubdir';
@@ -112,7 +177,16 @@ Future<XFile> grabStreamFrameAsJpegFile({
   } finally {
     if (streaming) {
       try {
-        await controller.stopImageStream();
+        await controller
+            .stopImageStream()
+            .timeout(const Duration(seconds: 2));
+      } catch (_) {}
+    }
+    if (previewPaused &&
+        controller.value.isInitialized &&
+        controller.value.isPreviewPaused) {
+      try {
+        await controller.resumePreview().timeout(const Duration(seconds: 2));
       } catch (_) {}
     }
   }

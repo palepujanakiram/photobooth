@@ -8,6 +8,14 @@ bool isStripDualPrintSize(String? printSize) {
   return size == AppConstants.kPrintSizeStripDual2x6;
 }
 
+/// Portrait 4×6 vs landscape 6×4 — customer orientation can override these.
+bool isOrientationSelectablePrintSize(String? printSize) {
+  final token = printSize?.trim().toLowerCase() ?? '';
+  return token.isEmpty ||
+      token == AppConstants.kPrintSizePortrait4x6 ||
+      token == AppConstants.kPrintSizeLandscape6x4;
+}
+
 /// Resolves WCM print token after Classic strip compose.
 ///
 /// One-shot uses [orientation] (`s6x4` / `s4x6`; default landscape).
@@ -39,8 +47,9 @@ String resolveClassicComposePrintSize({
 
 /// Network printer `printSize` for one cart image.
 ///
-/// Prefer the image's own [GeneratedImage.printSize]. Never fall back to the
-/// session strip override (`s6x2_2`) for images that did not declare a size —
+/// Strip / cutter tokens on the image are fixed. AI defaults (`s4x6`) and empty
+/// sizes follow [orientation] so BEHOLD portrait/landscape toggles reach DNP.
+/// Never fall back to the session strip override (`s6x2_2`) for AI pages —
 /// that caused mixed Classic+AI carts to send AI pages as dual-strip cuts.
 String resolveNetworkPrintSizeForImage({
   required String? imagePrintSize,
@@ -48,16 +57,20 @@ String resolveNetworkPrintSizeForImage({
   String? sessionOverride,
 }) {
   final own = imagePrintSize?.trim() ?? '';
-  if (own.isNotEmpty) return own;
+  if (own.isNotEmpty && !isOrientationSelectablePrintSize(own)) {
+    return own;
+  }
 
   final session = sessionOverride?.trim() ?? '';
-  if (session == AppConstants.kPrintSizeLandscape6x4) {
-    return AppConstants.kPrintSizeLandscape6x4;
-  }
   if (isStripDualPrintSize(session)) {
     return orientation.printSize;
   }
-  if (session.isNotEmpty) return session;
+  if (session == AppConstants.kPrintSizeLandscape6x4) {
+    return AppConstants.kPrintSizeLandscape6x4;
+  }
+  if (session.isNotEmpty && !isOrientationSelectablePrintSize(session)) {
+    return session;
+  }
   return orientation.printSize;
 }
 
@@ -74,7 +87,9 @@ List<GeneratedImage> ensureGeneratedImagePrintSizes(
     for (final image in images)
       () {
         final own = image.printSize?.trim() ?? '';
-        if (own.isNotEmpty) return image;
+        if (own.isNotEmpty && !isOrientationSelectablePrintSize(own)) {
+          return image;
+        }
         return image.copyWith(printSize: fallback);
       }(),
   ];

@@ -15,6 +15,7 @@ import '../../utils/device_classifier.dart';
 import '../../utils/kiosk_page_route.dart';
 import '../experience_choice/experience_choice_view.dart';
 import '../photo_capture/photo_capture_view.dart';
+import '../photo_capture/photo_capture_pose_setup_helpers.dart';
 import '../photo_capture/photo_capture_viewmodel.dart';
 import '../splash/bootstrap_route_args.dart';
 import '../webview/webview_screen.dart';
@@ -81,8 +82,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         if (!mounted) return null;
         return DeviceClassifier.getDeviceType(context);
       },
-      startPrewarm: (deviceType) =>
-          CaptureViewModel.prewarmLiveCamera(deviceType: deviceType),
+      startPrewarm: (deviceType) async {
+        if (shouldSkipTermsCameraPrewarm(deviceType)) return;
+        await CaptureViewModel.prewarmLiveCamera(deviceType: deviceType);
+      },
       hasOpenableCamera: (deviceType) =>
           CaptureViewModel.hasOpenableCaptureCamera(deviceType: deviceType),
       isCameraPlatform: supportsTermsCameraPriming,

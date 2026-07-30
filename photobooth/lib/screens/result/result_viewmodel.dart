@@ -106,9 +106,8 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   bool _postPaymentReceiptPrintStarted = false;
   PrintProgressSnapshot _printProgress = const PrintProgressSnapshot();
   Timer? _printProgressTicker;
-  DateTime? _printFinishingStartedAt;
-  int _printFinishingPageIndex = 0;
-  int _printFinishingTotalPages = 0;
+  /// When true, print progress ticks must not rebuild guest-facing UI (Scan & Share).
+  bool _guestQrShareActive = false;
   bool _isSharing = false;
   bool _isDownloading = false;
   String _downloadMessage = '';
@@ -198,6 +197,14 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
     _paymentIdPollTimer = null;
     _sessionPollTimer?.cancel();
     _sessionPollTimer = null;
+  }
+
+  /// Scan & Share is showing — stop print-progress animation/notifications so DNP
+  /// USB polling does not rebuild the QR screen or pause the idle countdown.
+  void enterGuestQrShareMode() {
+    _guestQrShareActive = true;
+    _printProgressTicker?.cancel();
+    _printProgressTicker = null;
   }
 
   /// Re-runs payment initiate (e.g. when the first response had an id but no QR).

@@ -292,7 +292,7 @@ object DnpUsbMethodChannel {
                 )
 
                 emitPrintProgress("convert", "Reading pixel data…", 0.20)
-                val pixels = DnpImageProcessor.bitmapToPixels(bitmap)
+                val pixels = DnpImageProcessor.bitmapToPixels(bitmap, mirrorHorizontal = true)
                 val w = bitmap.width
                 val h = bitmap.height
                 bitmap.recycle()

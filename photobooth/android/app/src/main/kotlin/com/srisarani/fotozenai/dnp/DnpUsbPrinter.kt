@@ -57,6 +57,11 @@ class DnpUsbPrinter(
             throw DnpPrinterException("USB permission not granted")
         }
 
+        if (isConnected && device?.deviceId == dev.deviceId) {
+            return displayName
+        }
+        disconnect()
+
         val (intf, inEp, outEp) = locateEndpoints(dev)
         val conn = usbManager.openDevice(dev)
             ?: throw DnpPrinterException("Could not open USB device")
@@ -300,6 +305,13 @@ class DnpUsbPrinter(
                 unreadableStatusCount = 0
             }
             if (status == 0 && sawPrinterActive) {
+                onProgress("complete", "Print finished", 1.0)
+                return
+            }
+            // DS-RX1 often reports head/paper cooling (500/510) right after output
+            // instead of idle (0). Treat that as done so Flutter is not blocked for
+            // up to two minutes while the guest waits on Scan & Share.
+            if (sawPrinterActive && (status == 500 || status == 510)) {
                 onProgress("complete", "Print finished", 1.0)
                 return
             }
