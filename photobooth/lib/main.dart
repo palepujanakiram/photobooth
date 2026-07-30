@@ -39,6 +39,10 @@ import 'utils/platform_capabilities.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
+
   await ClientIdentification.ensureInitialized();
 
   // Generous defaults until `/api/settings` loads; [AppSettingsManager] reapplies limits.
