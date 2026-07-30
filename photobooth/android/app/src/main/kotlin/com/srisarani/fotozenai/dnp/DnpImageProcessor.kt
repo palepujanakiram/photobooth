@@ -53,8 +53,7 @@ object DnpImageProcessor {
         }
 
         if (shouldRotateForPrint(networkPrintSize, bmp.width, bmp.height, targetW, targetH)) {
-            val degrees = rotationDegreesForPrint(networkPrintSize)
-            val matrix = android.graphics.Matrix().apply { postRotate(degrees) }
+            val matrix = android.graphics.Matrix().apply { postRotate(90f) }
             val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
             bmp.recycle()
             bmp = rotated
@@ -131,17 +130,6 @@ object DnpImageProcessor {
             else -> srcIsLandscape != targetIsLandscape
         }
     }
-
-    /**
-     * DS-RX1 expects portrait booth JPEGs (s4x6 / dual strip) mapped into the
-     * 1920×1240 landscape raster with 270° CW (-90°). +90° printed upside-down
-     * vs the on-app preview for server-composed portrait sheets.
-     */
-    private fun rotationDegreesForPrint(networkPrintSize: String?): Float =
-        when (networkPrintSize?.trim()?.lowercase()) {
-            "s6x2_2", "s4x6" -> -90f
-            else -> 90f
-        }
 
     private fun buildCombinedColorMatrix(filter: String, brightness: Int): ColorMatrix? {
         var matrix: ColorMatrix? = when (filter) {
