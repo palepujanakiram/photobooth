@@ -51,6 +51,19 @@ void main() {
     expect(m.receiptPrinterPort, 9100);
   });
 
+  test('AppSettingsModel.fromJson parses camera sidecar fields', () {
+    final m = AppSettingsModel.fromJson({
+      'cameraEnabled': true,
+      'cameraSidecarHost': '172.16.4.20',
+      'cameraSidecarPort': 8791,
+      'cameraSidecarPath': '/',
+    });
+    expect(m.cameraEnabled, isTrue);
+    expect(m.cameraSidecarHost, '172.16.4.20');
+    expect(m.cameraSidecarPort, 8791);
+    expect(m.cameraSidecarPath, '/');
+  });
+
   test('KioskInfoModel.isValid requires id and code', () {
     expect(
       KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'}).isValid,

@@ -9,6 +9,7 @@ import 'package:uvccamera/uvccamera.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/uvc_device_event_hub.dart';
 import '../../utils/logger.dart';
+import 'photo_capture_sidecar_helpers.dart';
 import 'photo_capture_viewmodel.dart';
 
 class PhotoCaptureUvcScreen extends StatefulWidget {
@@ -194,11 +195,15 @@ class _PhotoCaptureUvcScreenState extends State<PhotoCaptureUvcScreen> {
     final ctrl = _controller;
     if (ctrl == null || !ctrl.value.isInitialized) return;
     try {
-      final XFile raw = await ctrl.takePicture();
+      // Prefer Pi gphoto2 stills when sidecar is healthy; keep UVC for preview.
+      final sidecarFile =
+          await tryCaptureFromSidecar(widget.viewModel.localCameraService);
+      final XFile raw = sidecarFile ?? await ctrl.takePicture();
       await widget.viewModel.setCapturedPhotoFromExternalFile(
         rawFile: raw,
-        cameraId:
-            'uvc:${widget.device.vendorId}:${widget.device.productId}:${widget.device.name}',
+        cameraId: sidecarFile != null
+            ? 'sidecar:FZ200D'
+            : 'uvc:${widget.device.vendorId}:${widget.device.productId}:${widget.device.name}',
       );
       // Release UVC resources before returning to the capture screen.
       await ctrl.dispose();

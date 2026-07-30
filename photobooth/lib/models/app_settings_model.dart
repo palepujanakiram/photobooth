@@ -34,6 +34,12 @@ class AppSettingsModel {
   final String? printerPath;
   /// `auto` | `usb` | `wifi` | `network` — DNP print routing (default `auto`).
   final String? printerTransport;
+  /// When true, prefer Pi gphoto2 sidecar stills over device CameraX/UVC.
+  final bool? cameraEnabled;
+  final String? cameraSidecarHost;
+  final int? cameraSidecarPort;
+  /// Base path on the sidecar (usually `/`).
+  final String? cameraSidecarPath;
   final bool? receiptPrinterEnabled;
   final String? receiptPrinterHost;
   final int? receiptPrinterPort;
@@ -89,6 +95,10 @@ class AppSettingsModel {
     this.printerPort,
     this.printerPath,
     this.printerTransport,
+    this.cameraEnabled,
+    this.cameraSidecarHost,
+    this.cameraSidecarPort,
+    this.cameraSidecarPath,
     this.receiptPrinterEnabled,
     this.receiptPrinterHost,
     this.receiptPrinterPort,
@@ -155,6 +165,10 @@ class AppSettingsModel {
       printerPort: JsonParseHelpers.intOrNull(json['printerPort']),
       printerPath: JsonParseHelpers.stringOrNull(json['printerPath']),
       printerTransport: JsonParseHelpers.stringOrNull(json['printerTransport']),
+      cameraEnabled: JsonParseHelpers.boolOrNull(json['cameraEnabled']),
+      cameraSidecarHost: JsonParseHelpers.stringOrNull(json['cameraSidecarHost']),
+      cameraSidecarPort: JsonParseHelpers.intOrNull(json['cameraSidecarPort']),
+      cameraSidecarPath: JsonParseHelpers.stringOrNull(json['cameraSidecarPath']),
       receiptPrinterEnabled:
           JsonParseHelpers.boolOrNull(json['receiptPrinterEnabled']),
       receiptPrinterHost:

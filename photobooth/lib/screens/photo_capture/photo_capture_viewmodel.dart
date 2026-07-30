@@ -11,11 +11,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'photo_model.dart';
 import '../../services/api_service.dart';
+import '../../services/app_settings_manager.dart';
 import '../../services/face_count_service.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/phone_upload_helpers.dart';
 import '../../services/session_manager.dart';
 import '../../utils/app_runtime_config.dart';
+import '../../utils/camera_sidecar_config.dart';
 import '../../utils/classic_af_marker_inject.dart';
 import '../../utils/constants.dart';
 import '../../utils/device_classifier.dart';
@@ -34,18 +36,22 @@ import '../../utils/web_flow_trace.dart';
 import '../../utils/web_upload_error_hint.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/capture_sound_service.dart';
+import '../../services/local_camera_service.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_camera_config.dart';
 import 'photo_capture_normalize_helpers.dart';
 import 'photo_capture_pose_setup_helpers.dart';
 import 'photo_capture_preview_rotation.dart';
 import 'photo_capture_preprocess_helpers.dart';
+import 'photo_capture_sidecar_helpers.dart';
 import 'photo_capture_viewmodel_helpers.dart';
 
 class CaptureViewModel extends ChangeNotifier {
   final ApiService _apiService;
   final SessionManager _sessionManager;
   final KioskManager _kioskManager;
+  final LocalCameraService? _localCameraService;
+  final bool _ownsLocalCameraService;
   final Uuid _uuid = const Uuid();
   static List<CameraDescription>? _cachedAvailableCameras;
 
@@ -362,12 +368,22 @@ class CaptureViewModel extends ChangeNotifier {
     SessionManager? sessionManager,
     KioskManager? kioskManager,
     CaptureSoundService? captureSoundService,
+    LocalCameraService? localCameraService,
+    AppSettingsManager? appSettingsManager,
   })  : _apiService = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager(),
         _kioskManager = kioskManager ?? KioskManager(),
-        _captureSoundService = captureSoundService ?? CaptureSoundService();
+        _captureSoundService = captureSoundService ?? CaptureSoundService(),
+        _localCameraService = localCameraService ??
+            LocalCameraService(
+              config: resolveCameraSidecarConfig(appSettingsManager?.settings),
+            ),
+        _ownsLocalCameraService = localCameraService == null;
 
   final CaptureSoundService _captureSoundService;
+
+  /// Exposed for UVC shutter to prefer Pi sidecar stills when healthy.
+  LocalCameraService? get localCameraService => _localCameraService;
 
   CameraController? get cameraController => _cameraController;
   PhotoModel? get capturedPhoto => _capturedPhoto;
@@ -1838,7 +1854,15 @@ class CaptureViewModel extends ChangeNotifier {
     return false;
   }
 
+  bool _lastRawCaptureFromSidecar = false;
+
   Future<XFile> _obtainRawCaptureFile() async {
+    final sidecarFile = await tryCaptureFromSidecar(_localCameraService);
+    if (sidecarFile != null) {
+      _lastRawCaptureFromSidecar = true;
+      return sidecarFile;
+    }
+    _lastRawCaptureFromSidecar = false;
     return _obtainRawCaptureViaTakePicturePreferred();
   }
 
@@ -1977,13 +2001,15 @@ class CaptureViewModel extends ChangeNotifier {
         AppRuntimeConfig.instance.injectClassicAfMarkers) {
       reviewFile = await injectClassicAfMarkers(savedFile);
     }
+    final sidecarStill = _lastRawCaptureFromSidecar;
     await _assignCapturedPhotoModel(
       reviewFile,
+      cameraIdOverride: sidecarStill ? 'sidecar:FZ200D' : null,
       skipCapturedImagePixelSizeDecode:
           kioskShouldTryUvcBeforeCameraX(_deviceType),
       skipUploadPrep: shouldDeferUploadPrepUntilContinue(
         deviceType: _deviceType,
-        cameraId: _currentCamera?.name,
+        cameraId: sidecarStill ? 'sidecar:FZ200D' : _currentCamera?.name,
       ),
     );
   }
@@ -3245,6 +3271,9 @@ class CaptureViewModel extends ChangeNotifier {
     _stopUploadTimer();
     _releaseUploadPayloadMemory();
     unawaited(_captureSoundService.dispose());
+    if (_ownsLocalCameraService) {
+      _localCameraService?.dispose();
+    }
     unawaited(disposeCamera());
     super.dispose();
   }

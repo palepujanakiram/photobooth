@@ -902,7 +902,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _captureViewModel = CaptureViewModel();
+    _captureViewModel = CaptureViewModel(
+      appSettingsManager: context.read<AppSettingsManager>(),
+    );
     _captureViewModel.addListener(_onCaptureViewModelStateChanged);
     ClassicStripScrubCoordinator.instance.addListener(_onScrubProgressChanged);
     _tryAdoptTermsPrewarmOnInitIfAllowed();
