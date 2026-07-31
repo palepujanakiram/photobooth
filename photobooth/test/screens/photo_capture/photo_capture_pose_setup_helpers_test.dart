@@ -21,10 +21,11 @@ void main() {
     expect(shouldAdoptTermsPrewarmOnPoseInit(null), isTrue);
   });
 
-  test('shouldSkipUvcNormalizeOnKiosk on TV and tablet only', () {
-    expect(shouldSkipUvcNormalizeOnKiosk(AppDeviceType.androidTv), isTrue);
-    expect(shouldSkipUvcNormalizeOnKiosk(AppDeviceType.androidTablet), isTrue);
+  test('shouldSkipUvcNormalizeOnKiosk is never true (BGR fix required)', () {
+    expect(shouldSkipUvcNormalizeOnKiosk(AppDeviceType.androidTv), isFalse);
+    expect(shouldSkipUvcNormalizeOnKiosk(AppDeviceType.androidTablet), isFalse);
     expect(shouldSkipUvcNormalizeOnKiosk(AppDeviceType.androidPhone), isFalse);
+    expect(shouldSkipUvcNormalizeOnKiosk(null), isFalse);
   });
 
   test('shouldSkipTermsCameraPrewarm on kiosk devices only', () {

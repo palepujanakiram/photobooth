@@ -8,6 +8,7 @@ import '../../models/app_settings_model.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
+import '../../utils/printer_endpoint.dart';
 import 'dnp_print_size.dart';
 import 'dnp_print_transport.dart';
 import 'dnp_usb_client.dart';
@@ -70,7 +71,12 @@ class DnpPrintBridge {
       }
     }
 
-    await _printWifi(localPath, size.wifiPrintSize, copies);
+    await _printWifi(
+      localPath,
+      size.wifiPrintSize,
+      copies,
+      settings: settings,
+    );
   }
 
   bool _shouldUseUsb(DnpPrintTransport transport) {
@@ -103,30 +109,51 @@ class DnpPrintBridge {
     );
   }
 
-  Future<void> _printWifi(String filePath, String printSize, int copies) async {
-    if (_wifi.printerBaseUrl == null) {
-      if (_isAndroid()) {
-        final bound = await _prepareWifiNetwork();
-        if (!bound) {
-          throw PrintException(
-            'Could not reach Wi-Fi. Connect this device to the WCM Plus network.',
-          );
-        }
-      }
-      final url = await _wifi.discover();
-      if (url == null) {
-        throw PrintException(
-          'No WCM Plus printer found on Wi-Fi. Check the printer module and network.',
-        );
-      }
-      AppLogger.debug('🖨️ Discovered WCM Plus at $url');
-    }
-
+  Future<void> _printWifi(
+    String filePath,
+    String printSize,
+    int copies, {
+    AppSettingsModel? settings,
+  }) async {
+    await _ensureWifiPrinterReady(settings);
     await _wifi.print(
       jpegFile: File(filePath),
       printSize: printSize,
       copies: copies,
     );
+  }
+
+  /// Prefer admin [AppSettingsModel.printerHost]; else Wi-Fi subnet discovery.
+  Future<void> _ensureWifiPrinterReady(AppSettingsModel? settings) async {
+    final configured = resolvePrinterEndpoint(settings);
+    if (configured.host.isNotEmpty) {
+      _wifi.configureBaseUrl(configured.baseUrl);
+      AppLogger.debug(
+        '🖨️ Using configured printer ${configured.baseUrl}'
+        '${configured.path}',
+      );
+      return;
+    }
+
+    if (_wifi.printerBaseUrl != null) return;
+
+    if (_isAndroid()) {
+      final bound = await _prepareWifiNetwork();
+      if (!bound) {
+        throw PrintException(
+          'Could not reach Wi-Fi. Connect this device to the WCM Plus network, '
+          'or set printerHost in booth settings.',
+        );
+      }
+    }
+    final url = await _wifi.discover();
+    if (url == null) {
+      throw PrintException(
+        'No WCM Plus printer found on Wi-Fi. Set printerHost in booth '
+        'settings, or check the printer module and network.',
+      );
+    }
+    AppLogger.debug('🖨️ Discovered WCM Plus at $url');
   }
 
   Future<String> _resolveLocalPath(XFile imageFile) async {

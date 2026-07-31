@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:photobooth/models/app_settings_model.dart';
 import 'package:photobooth/models/kiosk_device_status.dart';
 import 'package:photobooth/services/dnp/dnp_usb_client.dart';
@@ -38,6 +40,35 @@ void main() {
       );
       expect(snap.dnpPrinter.connected, isTrue);
       expect(snap.dnpPrinter.transport, KioskDeviceTransport.usb);
+    });
+
+    test('wifi DNP probes configured printerHost without discovery', () async {
+      var discoverCalled = false;
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        wifiClient: DnpWifiClient(
+          client: MockClient((request) async {
+            expect(request.url.host, '192.168.0.155');
+            return http.Response('{}', 200);
+          }),
+          discoverFn: ({int parallelism = 20}) async {
+            discoverCalled = true;
+            return null;
+          },
+        ),
+        probeReceiptTcp: (_, __) async => false,
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          printerTransport: 'wifi',
+          printerHost: '192.168.0.155',
+        ),
+      );
+      expect(snap.dnpPrinter.connected, isTrue);
+      expect(snap.dnpPrinter.transport, KioskDeviceTransport.wifi);
+      expect(discoverCalled, isFalse);
     });
 
     test('wifi DNP transport uses WiFi discovery', () async {

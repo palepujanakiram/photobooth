@@ -16,9 +16,12 @@ bool shouldAdoptTermsPrewarmOnPoseInit(AppDeviceType? deviceType) {
   return !kioskShouldTryUvcBeforeCameraX(deviceType);
 }
 
-/// UVC on kiosks already delivers a JPEG from the plugin — skip decode/re-encode.
+/// Whether UVC stills may skip [ImageHelper.normalizeAndSaveCapturedPhoto].
+///
+/// Always false: many UVC/HDMI stacks write BGR-as-RGB JPEGs (greenish-blue
+/// cast). Normalize applies [fixBgrChannelOrder] and must run on kiosks too.
 bool shouldSkipUvcNormalizeOnKiosk(AppDeviceType? deviceType) {
-  return kioskShouldTryUvcBeforeCameraX(deviceType);
+  return false;
 }
 
 /// Terms CameraX prewarm grabs USB before POSE; kiosks open UVC on POSE instead.

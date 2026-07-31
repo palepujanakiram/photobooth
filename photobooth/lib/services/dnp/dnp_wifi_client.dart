@@ -29,8 +29,17 @@ class DnpWifiClient {
 
   void clear() => _printerBaseUrl = null;
 
+  /// Use admin-configured LAN IP (`printerHost`) instead of subnet discovery.
+  void configureBaseUrl(String baseUrl) {
+    final trimmed = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    _printerBaseUrl = trimmed.isEmpty ? null : trimmed;
+  }
+
   @visibleForTesting
-  set printerBaseUrlForTesting(String? url) => _printerBaseUrl = url;
+  set printerBaseUrlForTesting(String? url) => configureBaseUrl(url ?? '');
+
+  /// True when [baseUrl] responds like a WCM Plus / DNP HTTP module.
+  Future<bool> probeBaseUrl(String baseUrl) => _probeWcm(baseUrl);
 
   @visibleForTesting
   Future<String?> discoverOnPrefix(String prefix, {int parallelism = 20}) =>

@@ -7,6 +7,7 @@ import 'package:uvccamera/uvccamera.dart';
 import '../models/app_settings_model.dart';
 import '../models/kiosk_device_status.dart';
 import '../utils/app_strings.dart';
+import '../utils/printer_endpoint.dart';
 import '../utils/uvc_webcam_filter.dart';
 import 'dnp/dnp_print_transport.dart';
 import 'dnp/dnp_usb_client.dart';
@@ -40,7 +41,7 @@ class KioskDeviceStatusService {
   Future<KioskDeviceStatusSnapshot> probe({AppSettingsModel? settings}) async {
     final transport = resolveDnpPrintTransport(settings);
     final results = await Future.wait([
-      _probeDnpPrinter(transport),
+      _probeDnpPrinter(transport, settings),
       _probeReceiptPrinter(settings),
       _probeUsbCamera(),
     ]);
@@ -53,6 +54,7 @@ class KioskDeviceStatusService {
 
   Future<KioskDeviceStatusEntry> _probeDnpPrinter(
     DnpPrintTransport transport,
+    AppSettingsModel? settings,
   ) async {
     if (kIsWeb) {
       return _dnpEntry(connected: false, transport: KioskDeviceTransport.wifi);
@@ -66,7 +68,7 @@ class KioskDeviceStatusService {
           transport: KioskDeviceTransport.usb,
         );
       case DnpPrintTransport.wifi:
-        final wifiOk = await _probeDnpWifi();
+        final wifiOk = await _probeDnpWifi(settings);
         return _dnpEntry(
           connected: wifiOk,
           transport: KioskDeviceTransport.wifi,
@@ -81,7 +83,7 @@ class KioskDeviceStatusService {
             );
           }
         }
-        final wifiOk = await _probeDnpWifi();
+        final wifiOk = await _probeDnpWifi(settings);
         return _dnpEntry(
           connected: wifiOk,
           transport: KioskDeviceTransport.wifi,
@@ -89,9 +91,15 @@ class KioskDeviceStatusService {
     }
   }
 
-  Future<bool> _probeDnpWifi() async {
+  Future<bool> _probeDnpWifi(AppSettingsModel? settings) async {
     if (kIsWeb) return false;
     try {
+      final configured = resolvePrinterEndpoint(settings);
+      if (configured.host.isNotEmpty) {
+        return _wifi.probeBaseUrl(configured.baseUrl).timeout(
+              _wifiDiscoverTimeout,
+            );
+      }
       final cached = _wifi.printerBaseUrl;
       if (cached != null && cached.trim().isNotEmpty) return true;
       final url = await _wifi
