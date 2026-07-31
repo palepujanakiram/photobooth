@@ -14,6 +14,9 @@ enum DnpPrintTransport {
 }
 
 /// Resolves transport from booth settings and compile-time overrides.
+///
+/// When settings omit [AppSettingsModel.printerTransport] (null / empty),
+/// defaults to [DnpPrintTransport.usb] so kiosks do not fall back to WCM Wi-Fi.
 DnpPrintTransport resolveDnpPrintTransport(
   AppSettingsModel? settings, {
   String? transportOverride,
@@ -21,15 +24,15 @@ DnpPrintTransport resolveDnpPrintTransport(
   final override =
       (transportOverride ?? AppConfig.printerTransportOverride).trim().toLowerCase();
   if (override.isNotEmpty) {
-    return _parseTransportToken(override) ?? DnpPrintTransport.auto;
+    return _parseTransportToken(override) ?? DnpPrintTransport.usb;
   }
 
   final configured = settings?.printerTransport?.trim().toLowerCase() ?? '';
   if (configured.isNotEmpty) {
-    return _parseTransportToken(configured) ?? DnpPrintTransport.auto;
+    return _parseTransportToken(configured) ?? DnpPrintTransport.usb;
   }
 
-  return DnpPrintTransport.auto;
+  return DnpPrintTransport.usb;
 }
 
 DnpPrintTransport? _parseTransportToken(String raw) {

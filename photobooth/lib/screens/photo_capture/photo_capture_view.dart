@@ -510,12 +510,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _navigatingAwayFromCapture = true;
     _stopPoseIdleTimer();
     try {
+      // Navigate as soon as encodes are ready — do not block on Gemini scrub
+      // (often 20–40s/shot). In-flight scrubs continue; look screen adopts them.
       final dataUrls = <String>[];
       var allScrubbed = _stripShots.isNotEmpty;
       final coord = ClassicStripScrubCoordinator.instance;
       final List<ClassicShotScrubResult> scrubResults;
       if (coord.shotCount == _stripShots.length && _stripShots.isNotEmpty) {
-        scrubResults = await coord.awaitAll();
+        scrubResults = await coord.awaitEncodedReady();
       } else {
         scrubResults = [
           for (var i = 0; i < _stripShots.length; i++)

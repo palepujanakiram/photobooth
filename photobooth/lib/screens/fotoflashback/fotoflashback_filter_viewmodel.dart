@@ -7,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/classic_strip_scrub_coordinator.dart';
+import '../../utils/classic_strip_scrub_helpers.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/print_orientation.dart';
@@ -306,24 +307,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         }
         _scrubbingIndex = i;
         notifyListeners();
-        final result = await _api.cleanStripOverlays(
-          sessionId: sessionId,
-          images: [_imageDataUrls[i]],
-        );
-        if (result.images.length != 1 || result.images.first.trim().isEmpty) {
-          allClean = false;
-          if (i < _shotCleaned.length) _shotCleaned[i] = false;
-          continue;
-        }
-        _imageDataUrls[i] = result.images.first;
-        final shotClean =
-            !result.skipped &&
-            result.cleanedFlags.length == 1 &&
-            result.cleanedFlags.first;
-        if (i < _shotCleaned.length) _shotCleaned[i] = shotClean;
-        if (!shotClean) allClean = false;
-        _gradedByFilter.clear();
-        notifyListeners();
+        final applied = await _polishUnfinishedShot(sessionId, i);
+        if (!applied) allClean = false;
       }
       _scrubbingIndex = null;
       _previewCleaned = allClean &&
@@ -338,6 +323,56 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _preparingPreview = false;
       notifyListeners();
     }
+  }
+
+  /// Prefer in-flight capture scrub over a second Gemini POST.
+  Future<bool> _polishUnfinishedShot(String sessionId, int i) async {
+    final fromCoord = await _adoptCaptureScrubIfAvailable(i);
+    if (fromCoord != null) {
+      return _applyScrubResult(i, fromCoord);
+    }
+
+    final result = await _api.cleanStripOverlays(
+      sessionId: sessionId,
+      images: [_imageDataUrls[i]],
+    );
+    if (result.images.length != 1 || result.images.first.trim().isEmpty) {
+      if (i < _shotCleaned.length) _shotCleaned[i] = false;
+      return false;
+    }
+    final shotClean =
+        !result.skipped &&
+        result.cleanedFlags.length == 1 &&
+        result.cleanedFlags.first;
+    return _applyScrubResult(
+      i,
+      ClassicShotScrubResult(
+        dataUrl: result.images.first,
+        scrubbed: shotClean,
+      ),
+    );
+  }
+
+  Future<ClassicShotScrubResult?> _adoptCaptureScrubIfAvailable(int i) async {
+    final coord = ClassicStripScrubCoordinator.instance;
+    if (coord.shotCount != _imageDataUrls.length || !coord.hasShot(i)) {
+      return null;
+    }
+    try {
+      final result = await coord.awaitShot(i);
+      if (result.dataUrl.trim().isEmpty) return null;
+      return result;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _applyScrubResult(int i, ClassicShotScrubResult result) {
+    _imageDataUrls[i] = result.dataUrl;
+    if (i < _shotCleaned.length) _shotCleaned[i] = result.scrubbed;
+    _gradedByFilter.clear();
+    notifyListeners();
+    return result.scrubbed;
   }
 
   /// Sharp-grade the four shots for the current look (WYSIWYG Option A).

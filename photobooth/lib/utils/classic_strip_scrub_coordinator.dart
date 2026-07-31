@@ -27,6 +27,8 @@ class _ScrubEntry {
 
   ClassicScrubDotStatus status = ClassicScrubDotStatus.pending;
   ClassicShotScrubResult? result;
+  /// Completes as soon as the data URL is encoded (scrub may still run).
+  final Completer<String> encodedReady = Completer<String>();
   final Future<ClassicShotScrubResult> future;
 }
 
@@ -47,6 +49,9 @@ class ClassicStripScrubCoordinator extends ChangeNotifier {
       _entries.map((e) => e.status).toList(growable: false);
 
   int get shotCount => _entries.length;
+
+  /// Whether [index] is an accepted strip slot (may still be scrubbing).
+  bool hasShot(int index) => index >= 0 && index < _entries.length;
 
   /// Start a new strip (call when opening capture with zero accepted shots).
   void reset() {
@@ -102,6 +107,8 @@ class ClassicStripScrubCoordinator extends ChangeNotifier {
 
       // Encode before retake / remount can invalidate the XFile.
       raw = await encodeShotDataUrl();
+      _completeEncoded(entry, raw);
+
       if (!enableScrub) {
         final result = ClassicShotScrubResult(dataUrl: raw, scrubbed: false);
         entry
@@ -131,6 +138,7 @@ class ClassicStripScrubCoordinator extends ChangeNotifier {
         error: e,
         stackTrace: st,
       );
+      _completeEncoded(entry, raw ?? '');
       final fallback = ClassicShotScrubResult(
         dataUrl: raw ?? '',
         scrubbed: false,
@@ -145,13 +153,48 @@ class ClassicStripScrubCoordinator extends ChangeNotifier {
     }
   }
 
-  /// Await every accepted shot (finish strip). Order matches accept order.
+  static void _completeEncoded(_ScrubEntry entry, String raw) {
+    if (!entry.encodedReady.isCompleted) {
+      entry.encodedReady.complete(raw);
+    }
+  }
+
+  /// Await every accepted shot through Gemini (or fail-open). Prefer
+  /// [awaitEncodedReady] when navigating off capture so scrub can finish on
+  /// the look screen.
   Future<List<ClassicShotScrubResult>> awaitAll() async {
     final out = <ClassicShotScrubResult>[];
     for (final e in List<_ScrubEntry>.from(_entries)) {
       out.add(await e.future);
     }
     return out;
+  }
+
+  /// Await encode for each shot without waiting on Gemini.
+  ///
+  /// If scrub already finished for a shot, returns that result; otherwise
+  /// returns the raw encode with [ClassicShotScrubResult.scrubbed] false.
+  Future<List<ClassicShotScrubResult>> awaitEncodedReady() async {
+    final out = <ClassicShotScrubResult>[];
+    for (final e in List<_ScrubEntry>.from(_entries)) {
+      final encoded = await e.encodedReady.future;
+      final done = e.result;
+      if (done != null) {
+        out.add(done);
+      } else {
+        out.add(ClassicShotScrubResult(dataUrl: encoded, scrubbed: false));
+      }
+    }
+    return out;
+  }
+
+  /// Await full scrub (or fail-open) for one accepted shot. Look screen uses
+  /// this to adopt in-flight capture scrubs instead of starting a second POST.
+  Future<ClassicShotScrubResult> awaitShot(int index) {
+    if (!hasShot(index)) {
+      return Future.error(RangeError.index(index, _entries, 'index'));
+    }
+    return _entries[index].future;
   }
 
   /// Test-only.

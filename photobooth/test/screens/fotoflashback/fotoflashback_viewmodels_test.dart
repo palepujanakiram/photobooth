@@ -19,6 +19,14 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   SharedPreferences.setMockInitialValues({});
 
+  setUp(() {
+    ClassicStripScrubCoordinator.instance.resetForTests();
+  });
+
+  tearDown(() {
+    ClassicStripScrubCoordinator.instance.resetForTests();
+  });
+
   final stripTheme = sampleTheme('strip1').copyWith((p) {
     p.tier = 'photo_strip';
     p.name = 'FotoFlashback';
@@ -84,6 +92,109 @@ void main() {
     expect(vm.hasUnfinishedScrub, isFalse);
     expect(vm.previewCleaned, isTrue);
     expect(vm.canRetryUnfinishedScrub, isFalse);
+  });
+
+  test('FotoFlashbackFilterViewModel adopts in-flight capture scrub', () async {
+    ClassicStripScrubCoordinator.instance.resetForTests();
+    final scrubApi = _CountingScrubFakeApi();
+    final lookApi = _CountingScrubFakeApi();
+    SessionManager().setSessionFromResponse(_sessionJson('sess-adopt-scrub'));
+
+    final urls = [
+      for (var i = 0; i < 4; i++) 'data:image/jpeg;base64,raw$i',
+    ];
+    for (final url in urls) {
+      ClassicStripScrubCoordinator.instance.enqueueShot(
+        encodeShotDataUrl: () async => url,
+        enableScrub: true,
+        apiService: scrubApi,
+      );
+    }
+
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List<String>.from(urls),
+      apiService: lookApi,
+      shotCleaned: const [false, false, false, false],
+    );
+    await vm.loadFilters();
+    await vm.preparePreview();
+
+    expect(lookApi.cleanCalls, 0);
+    expect(scrubApi.cleanCalls, 4);
+    expect(vm.previewCleaned, isTrue);
+    expect(vm.hasUnfinishedScrub, isFalse);
+    expect(
+      vm.imageDataUrls,
+      [
+        for (var i = 0; i < 4; i++) 'data:image/jpeg;base64,raw${i}_clean',
+      ],
+    );
+    ClassicStripScrubCoordinator.instance.resetForTests();
+  });
+
+  test('FotoFlashbackFilterViewModel falls back when scrub returns empty',
+      () async {
+    ClassicStripScrubCoordinator.instance.resetForTests();
+    final api = _EmptyScrubFakeApi();
+    SessionManager().setSessionFromResponse(_sessionJson('sess-empty-scrub'));
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
+      apiService: api,
+      shotCleaned: const [false, false, false, false],
+    );
+    await vm.loadFilters();
+    await vm.preparePreview();
+    expect(vm.previewCleaned, isFalse);
+    expect(vm.hasUnfinishedScrub, isTrue);
+  });
+
+  test('FotoFlashbackFilterViewModel ignores empty coordinator scrub result',
+      () async {
+    ClassicStripScrubCoordinator.instance.resetForTests();
+    final lookApi = _CountingScrubFakeApi();
+    SessionManager().setSessionFromResponse(_sessionJson('sess-empty-coord'));
+    for (var i = 0; i < 4; i++) {
+      ClassicStripScrubCoordinator.instance.enqueueShot(
+        encodeShotDataUrl: () async => '',
+        enableScrub: false,
+      );
+    }
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
+      apiService: lookApi,
+      shotCleaned: const [false, false, false, false],
+    );
+    await vm.loadFilters();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await vm.preparePreview();
+    // Empty coordinator payloads are ignored; look API cleans instead.
+    expect(lookApi.cleanCalls, greaterThan(0));
+    expect(vm.previewCleaned, isTrue);
+  });
+
+  test('FotoFlashbackFilterViewModel preparePreview survives API throw',
+      () async {
+    ClassicStripScrubCoordinator.instance.resetForTests();
+    final api = _ThrowingScrubFakeApi();
+    SessionManager().clearSession();
+    SessionManager().setSessionFromResponse(_sessionJson('sess-throw-scrub'));
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
+      apiService: api,
+      shotCleaned: const [false, false, false, false],
+    );
+    await vm.loadFilters();
+    // Allow the unawaited prepare from loadFilters to finish first.
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(api.cleanCalls, greaterThan(0));
+    expect(vm.previewCleaned, isFalse);
+    expect(vm.isPreparingPreview, isFalse);
+    await vm.preparePreview();
+    expect(vm.previewCleaned, isFalse);
   });
 
   test('FotoFlashbackCaptureViewModel collects four shots', () {
@@ -376,6 +487,45 @@ class _FlakyScrubFakeApi extends _StripFakeApi {
       );
     }
     return super.cleanStripOverlays(sessionId: sessionId, images: images);
+  }
+}
+
+class _CountingScrubFakeApi extends _StripFakeApi {
+  int cleanCalls = 0;
+
+  @override
+  Future<StripOverlayCleanResult> cleanStripOverlays({
+    required String sessionId,
+    required List<String> images,
+  }) async {
+    cleanCalls++;
+    return super.cleanStripOverlays(sessionId: sessionId, images: images);
+  }
+}
+
+class _EmptyScrubFakeApi extends _StripFakeApi {
+  @override
+  Future<StripOverlayCleanResult> cleanStripOverlays({
+    required String sessionId,
+    required List<String> images,
+  }) async {
+    return const StripOverlayCleanResult(
+      images: [''],
+      cleanedFlags: [false],
+    );
+  }
+}
+
+class _ThrowingScrubFakeApi extends _StripFakeApi {
+  int cleanCalls = 0;
+
+  @override
+  Future<StripOverlayCleanResult> cleanStripOverlays({
+    required String sessionId,
+    required List<String> images,
+  }) async {
+    cleanCalls++;
+    throw Exception('scrub boom');
   }
 }
 
