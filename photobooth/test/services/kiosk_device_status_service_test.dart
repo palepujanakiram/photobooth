@@ -33,7 +33,9 @@ void main() {
         probeReceiptTcp: (_, __) async => false,
         probeUvcDevices: () async => false,
       );
-      final snap = await service.probe(settings: AppSettingsModel());
+      final snap = await service.probe(
+        settings: AppSettingsModel(printerTransport: 'auto'),
+      );
       expect(snap.dnpPrinter.connected, isTrue);
       expect(snap.dnpPrinter.transport, KioskDeviceTransport.usb);
     });
@@ -89,7 +91,7 @@ void main() {
       expect(snap.receiptPrinter.transport, KioskDeviceTransport.wifi);
     });
 
-    test('default usb transport reports USB when unset', () async {
+    test('default wifi transport reports WiFi when unset', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
         usbClient: _FakeUsbClient(present: false),
@@ -100,8 +102,8 @@ void main() {
         probeUvcDevices: () async => false,
       );
       final snap = await service.probe(settings: AppSettingsModel());
-      expect(snap.dnpPrinter.connected, isFalse);
-      expect(snap.dnpPrinter.transport, KioskDeviceTransport.usb);
+      expect(snap.dnpPrinter.connected, isTrue);
+      expect(snap.dnpPrinter.transport, KioskDeviceTransport.wifi);
     });
 
     test('auto transport falls back to WiFi when USB absent', () async {

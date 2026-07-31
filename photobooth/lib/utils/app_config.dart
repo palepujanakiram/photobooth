@@ -56,7 +56,7 @@ class AppConfig {
 
   /// Optional override for DNP print routing: `auto`, `usb`, or `wifi`.
   ///
-  /// When unset, booth `/api/settings` `printerTransport` applies (default `usb`).
+  /// When unset, booth `/api/settings` `printerTransport` applies (default `wifi`).
   static const String printerTransportOverride = String.fromEnvironment(
     'PRINTER_TRANSPORT',
     defaultValue: '',

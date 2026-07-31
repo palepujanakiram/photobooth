@@ -86,16 +86,16 @@ void main() {
       );
     });
 
-    test('defaults to usb when unset or unknown', () {
-      expect(resolveDnpPrintTransport(null), DnpPrintTransport.usb);
-      expect(resolveDnpPrintTransport(AppSettingsModel()), DnpPrintTransport.usb);
+    test('defaults to wifi when unset or unknown', () {
+      expect(resolveDnpPrintTransport(null), DnpPrintTransport.wifi);
+      expect(resolveDnpPrintTransport(AppSettingsModel()), DnpPrintTransport.wifi);
       expect(
         resolveDnpPrintTransport(AppSettingsModel(printerTransport: 'unknown')),
-        DnpPrintTransport.usb,
+        DnpPrintTransport.wifi,
       );
       expect(
         resolveDnpPrintTransport(null, transportOverride: 'lan'),
-        DnpPrintTransport.usb,
+        DnpPrintTransport.wifi,
       );
     });
 
