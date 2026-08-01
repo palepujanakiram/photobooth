@@ -103,6 +103,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   bool _isDialogPrinting = false;
   bool _isPrintingReceipt = false;
   bool _postPaymentPrintStarted = false;
+  bool _postPaymentPrintRetryConsumed = false;
   bool _postPaymentReceiptPrintStarted = false;
   PrintProgressSnapshot _printProgress = const PrintProgressSnapshot();
   Timer? _printProgressTicker;
@@ -357,6 +358,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
       AppConstants.kDefaultAdditionalPrintPrice;
 
   bool get isSilentPrinting => _isSilentPrinting;
+  bool get postPaymentPrintStarted => _postPaymentPrintStarted;
   bool get isDialogPrinting => _isDialogPrinting;
   bool get isPrintingReceipt => _isPrintingReceipt;
   bool get isPrinting =>

@@ -101,7 +101,7 @@ Future<bool> staffPaymentsConfirmReceiptPrintDialog(
   return ok;
 }
 
-/// Download image and send to network printer (Sonar S3776 extraction).
+/// Download image and send to the DNP photo printer (USB first, else Wi-Fi discovery).
 Future<void> staffPaymentsRunPrintJob({
   required StaffApiService staffApi,
   required PrintService printService,
@@ -114,6 +114,7 @@ Future<void> staffPaymentsRunPrintJob({
   String? stripCompositeUrl,
   String? single6x4Url,
   int? classicComposeShotCount,
+  bool resetDnpSession = false,
 }) async {
   onState(loading: true, error: null, progressMessage: 'Preparing image...');
   try {
@@ -135,8 +136,10 @@ Future<void> staffPaymentsRunPrintJob({
             sessionPrintSize: printSize,
             classicComposeShotCount: classicComposeShotCount,
           );
-    printService.resetDnpPrintSession();
-    await printService.printImageSilent(
+    if (resetDnpSession) {
+      printService.resetDnpPrintSession();
+    }
+    await printService.printDnpPhoto(
       file,
       settings: settings,
       printSize: resolvedSize,

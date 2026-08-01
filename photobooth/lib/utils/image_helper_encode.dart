@@ -14,11 +14,66 @@ const int kSessionPatchUserImageWebMaxLongEdgePx = 768;
 
 Future<void> yieldToUiForImageEncode() => Future<void>.delayed(Duration.zero);
 
+/// Reuses already-normalized JPEG bytes when they fit session PATCH limits.
+///
+/// Capture-time [ImageHelper.normalizeAndSaveCapturedPhoto] often produces a
+/// JPEG at ≤1024–1920 px; re-decoding and re-encoding on Continue doubles
+/// isolate work and can hang low-RAM kiosks when USB teardown runs in parallel.
+String? tryReuseNormalizedJpegForSessionPatch(Uint8List bytes) {
+  if (bytes.length < 2 || bytes[0] != 0xFF || bytes[1] != 0xD8) {
+    return null;
+  }
+  if (bytes.length > SessionUserImageValidation.maxDecodedPayloadBytes) {
+    return null;
+  }
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null) return null;
+  final w = decoded.width;
+  final h = decoded.height;
+  if (w > kSessionPatchUserImageMaxLongEdgePx ||
+      h > kSessionPatchUserImageMaxLongEdgePx) {
+    return null;
+  }
+  final url = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+  if (url.length > SessionUserImageValidation.maxDataUrlCharacterLength) {
+    return null;
+  }
+  return url;
+}
+
+/// App temp capture from [ImageHelper.normalizeAndSaveCapturedPhoto].
+bool isAppNormalizedCapturePath(String path) {
+  if (path.isEmpty) return false;
+  final lower = path.toLowerCase();
+  return lower.contains('/photos/photo_') && lower.endsWith('.jpg');
+}
+
+/// Trust capture-time normalize output — no decode/resize (kiosk Continue path).
+///
+/// Normalize already capped dimensions and fixed UVC color; re-encoding in a
+/// second [compute] isolate was taking 10–20+ seconds on Android TV kiosks.
+String? tryTrustNormalizedJpegBytesForSessionPatch(Uint8List bytes) {
+  if (bytes.length < 2 || bytes[0] != 0xFF || bytes[1] != 0xD8) {
+    return null;
+  }
+  if (bytes.length > SessionUserImageValidation.maxDecodedPayloadBytes) {
+    return null;
+  }
+  final url = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+  if (url.length > SessionUserImageValidation.maxDataUrlCharacterLength) {
+    return null;
+  }
+  return url;
+}
+
 /// Session PATCH JPEG data URL under size cap (Sonar S3776 extraction).
 String encodeSessionPatchUserImageUrl(
   Uint8List bytes, {
   int maxLongEdgePx = kSessionPatchUserImageMaxLongEdgePx,
 }) {
+  final reused = tryReuseNormalizedJpegForSessionPatch(bytes);
+  if (reused != null) return reused;
+
   final original = img.decodeImage(bytes);
   if (original == null) {
     throw Exception('Failed to decode image for session upload');
@@ -48,6 +103,8 @@ Future<String> encodeSessionPatchUserImageUrlAsync(
   int maxLongEdgePx = kSessionPatchUserImageWebMaxLongEdgePx,
 }) async {
   await yieldToUiForImageEncode();
+  final reused = tryReuseNormalizedJpegForSessionPatch(bytes);
+  if (reused != null) return reused;
   final original = img.decodeImage(bytes);
   if (original == null) {
     throw Exception('Failed to decode image for session upload');

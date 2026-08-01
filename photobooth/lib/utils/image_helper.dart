@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show File;
 
@@ -46,8 +47,20 @@ typedef _NormalizeJpegPathArgs = ({
 });
 
 /// Isolate entry: session PATCH user image encoding.
-String _encodeSessionPatchUserImageUrlIsolate(Uint8List bytes) =>
-    encodeSessionPatchUserImageUrl(bytes);
+String _encodeSessionPatchUserImageUrlIsolate(Uint8List bytes) {
+  final reused = tryReuseNormalizedJpegForSessionPatch(bytes);
+  if (reused != null) return reused;
+  return encodeSessionPatchUserImageUrl(bytes);
+}
+
+/// Isolate entry: read normalized capture from disk, then encode for PATCH.
+String _encodeSessionPatchUserImageUrlFromPathIsolate(String path) {
+  final bytes = File(path).readAsBytesSync();
+  if (bytes.isEmpty) {
+    throw Exception(AppStrings.imageFileEmpty);
+  }
+  return _encodeSessionPatchUserImageUrlIsolate(bytes);
+}
 
 String _extensionFormatLabel(String ext) {
   switch (ext) {
@@ -155,6 +168,22 @@ class ImageHelper {
     final file = FileHelper.createFile(savePath);
     await (file as dynamic).writeAsBytes(normalizedBytes);
     return XFile((file as dynamic).path);
+  }
+
+  /// Lightweight UVC fallback: downscale + BGR channel fix without full normalize.
+  ///
+  /// Used when full [normalizeAndSaveCapturedPhoto] times out or OOMs on kiosks.
+  static Future<XFile> fixUvcBgrAndSave(
+    XFile sourceFile, {
+    int? maxDimension,
+    int? jpegQuality,
+  }) {
+    return normalizeAndSaveCapturedPhoto(
+      sourceFile,
+      fixBgrChannelOrder: true,
+      maxDimension: maxDimension,
+      jpegQuality: jpegQuality,
+    );
   }
 
   /// Copies a capture still into app temp storage without decode/re-encode.
@@ -311,8 +340,50 @@ class ImageHelper {
   /// JPEG quality **85**, size checked against [SessionUserImageValidation] after encode.
   /// Heavy work runs in a [compute] isolate (web + native).
   static Future<String> encodeImageForUpload(XFile imageFile) async {
+    if (!kIsWeb) {
+      final path = imageFile.path;
+      if (path.isNotEmpty && await File(path).exists()) {
+        if (isAppNormalizedCapturePath(path)) {
+          WebFlowTrace.log('ENCODE_IMPL', 'branch trusted_normalized');
+          final bytes = await File(path).readAsBytes().timeout(
+            const Duration(seconds: 8),
+            onTimeout: () => throw TimeoutException(
+              'Reading normalized capture for upload timed out',
+            ),
+          );
+          final trusted = tryTrustNormalizedJpegBytesForSessionPatch(bytes);
+          if (trusted != null) {
+            WebFlowTrace.log(
+              'ENCODE_IMPL',
+              'trusted_normalized_done outLen=${trusted.length}',
+            );
+            SessionUserImageValidation.assertValidForSessionPatch(trusted);
+            return trusted;
+          }
+        }
+        WebFlowTrace.log('ENCODE_IMPL', 'branch path_isolate');
+        final out = await compute(
+          _encodeSessionPatchUserImageUrlFromPathIsolate,
+          path,
+        ).timeout(
+          const Duration(seconds: 20),
+          onTimeout: () => throw TimeoutException(
+            'Encoding photo for upload timed out',
+          ),
+        );
+        WebFlowTrace.log('ENCODE_IMPL', 'path_isolate_done outLen=${out.length}');
+        SessionUserImageValidation.assertValidForSessionPatch(out);
+        return out;
+      }
+    }
+
     WebFlowTrace.log('ENCODE_IMPL', 'readAsBytes_start');
-    final bytes = await imageFile.readAsBytes();
+    final bytes = await imageFile.readAsBytes().timeout(
+      const Duration(seconds: 20),
+      onTimeout: () => throw TimeoutException(
+        'Reading captured photo for upload timed out',
+      ),
+    );
     WebFlowTrace.log('ENCODE_IMPL', 'readAsBytes_done len=${bytes.length}');
     if (bytes.isEmpty) {
       throw Exception(AppStrings.imageFileEmpty);
@@ -324,6 +395,12 @@ class ImageHelper {
     }
 
     if (kIsWeb) {
+      final reused = tryReuseNormalizedJpegForSessionPatch(bytes);
+      if (reused != null) {
+        WebFlowTrace.log('ENCODE_IMPL', 'branch web_reuse_normalized len=${reused.length}');
+        SessionUserImageValidation.assertValidForSessionPatch(reused);
+        return reused;
+      }
       WebFlowTrace.log(
         'ENCODE_IMPL',
         'branch web_async_encode longEdge=$kSessionPatchUserImageWebMaxLongEdgePx',
@@ -335,7 +412,12 @@ class ImageHelper {
     }
 
     WebFlowTrace.log('ENCODE_IMPL', 'branch session_patch_encode longEdge=$kSessionPatchUserImageMaxLongEdgePx');
-    final out = await compute(_encodeSessionPatchUserImageUrlIsolate, bytes);
+    final out = await compute(_encodeSessionPatchUserImageUrlIsolate, bytes).timeout(
+      const Duration(seconds: 45),
+      onTimeout: () => throw TimeoutException(
+        'Encoding photo for upload timed out',
+      ),
+    );
     WebFlowTrace.log('ENCODE_IMPL', 'session_patch_encode_done outLen=${out.length}');
     SessionUserImageValidation.assertValidForSessionPatch(out);
     return out;

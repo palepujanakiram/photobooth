@@ -61,14 +61,27 @@ class DnpPrintBridge {
     final size = DnpPrintSize.fromNetworkPrintSize(networkPrintSize);
     final localPath = await _resolveLocalPath(imageFile);
 
-    if (_shouldUseUsb(transport)) {
-      try {
-        await _printUsb(localPath, size, networkPrintSize, copies);
-        return;
-      } on PlatformException catch (e) {
-        if (!_shouldFallbackToWifi(transport, e)) rethrow;
-        AppLogger.warning('DNP USB print unavailable, trying WCM Plus Wi-Fi: ${e.code}');
+    if (_shouldTryUsbFirst(transport)) {
+      final usbPresent = await _usbDevicePresent();
+      if (!usbPresent) {
+        AppLogger.debug(
+          'DNP USB not detected; discovering printer on Wi-Fi',
+        );
+      } else {
+        try {
+          await _printUsb(localPath, size, networkPrintSize, copies);
+          return;
+        } on PlatformException catch (e) {
+          if (!_shouldFallbackToWifi(transport, e)) rethrow;
+          AppLogger.warning(
+            'DNP USB print unavailable (${e.code}); trying Wi-Fi discovery',
+          );
+          _usbReady = false;
+        }
       }
+    } else if (_shouldUseUsbOnly(transport)) {
+      await _printUsb(localPath, size, networkPrintSize, copies);
+      return;
     }
 
     await _printWifi(
@@ -79,15 +92,30 @@ class DnpPrintBridge {
     );
   }
 
-  bool _shouldUseUsb(DnpPrintTransport transport) {
+  /// True when [DnpPrintTransport.auto] should probe USB before Wi-Fi.
+  bool _shouldTryUsbFirst(DnpPrintTransport transport) =>
+      _isAndroid() && transport == DnpPrintTransport.auto;
+
+  bool _shouldUseUsbOnly(DnpPrintTransport transport) =>
+      _isAndroid() && transport == DnpPrintTransport.usb;
+
+  Future<bool> _usbDevicePresent() async {
     if (!_isAndroid()) return false;
-    return transport == DnpPrintTransport.usb ||
-        transport == DnpPrintTransport.auto;
+    try {
+      return await _usb.probeDevicePresent();
+    } catch (_) {
+      return false;
+    }
   }
 
   bool _shouldFallbackToWifi(DnpPrintTransport transport, PlatformException e) {
     if (transport == DnpPrintTransport.usb) return false;
-    const recoverable = {'NO_PRINTER', 'CONNECT_FAILED', 'PERMISSION_DENIED'};
+    const recoverable = {
+      'NO_PRINTER',
+      'CONNECT_FAILED',
+      'PERMISSION_DENIED',
+      'STATUS_ERROR',
+    };
     return recoverable.contains(e.code);
   }
 
@@ -123,37 +151,49 @@ class DnpPrintBridge {
     );
   }
 
-  /// Prefer admin [AppSettingsModel.printerHost]; else Wi-Fi subnet discovery.
+  /// Subnet discovery first; [AppSettingsModel.printerHost] only when discovery fails.
   Future<void> _ensureWifiPrinterReady(AppSettingsModel? settings) async {
+    if (_wifi.printerBaseUrl != null) return;
+
+    String? discoveredUrl;
+    if (_isAndroid()) {
+      final bound = await _prepareWifiNetwork();
+      if (bound) {
+        discoveredUrl = await _wifi.discover();
+      } else {
+        AppLogger.debug(
+          'Wi-Fi network bind failed; skipping subnet discovery',
+        );
+      }
+    } else {
+      discoveredUrl = await _wifi.discover();
+    }
+
+    if (discoveredUrl != null) {
+      AppLogger.debug('🖨️ Discovered WCM Plus at $discoveredUrl');
+      return;
+    }
+
     final configured = resolvePrinterEndpoint(settings);
     if (configured.host.isNotEmpty) {
       _wifi.configureBaseUrl(configured.baseUrl);
       AppLogger.debug(
-        '🖨️ Using configured printer ${configured.baseUrl}'
-        '${configured.path}',
+        '🖨️ Wi-Fi discovery found no printer; using configured '
+        '${configured.baseUrl}${configured.path}',
       );
       return;
     }
 
-    if (_wifi.printerBaseUrl != null) return;
-
     if (_isAndroid()) {
-      final bound = await _prepareWifiNetwork();
-      if (!bound) {
-        throw PrintException(
-          'Could not reach Wi-Fi. Connect this device to the WCM Plus network, '
-          'or set printerHost in booth settings.',
-        );
-      }
-    }
-    final url = await _wifi.discover();
-    if (url == null) {
       throw PrintException(
-        'No WCM Plus printer found on Wi-Fi. Set printerHost in booth '
-        'settings, or check the printer module and network.',
+        'No DNP printer found on Wi-Fi. Connect this device to the same '
+        'network as the DNP WCM Plus module.',
       );
     }
-    AppLogger.debug('🖨️ Discovered WCM Plus at $url');
+    throw PrintException(
+      'No DNP printer found on Wi-Fi. Check that the WCM Plus module is on '
+      'and this device is on the same network.',
+    );
   }
 
   Future<String> _resolveLocalPath(XFile imageFile) async {

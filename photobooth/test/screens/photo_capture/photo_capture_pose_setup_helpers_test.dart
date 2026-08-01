@@ -7,7 +7,7 @@ void main() {
   test('uvcPoseEntryOpenTimeout is longer on kiosk devices', () {
     expect(
       uvcPoseEntryOpenTimeout(AppDeviceType.androidTv),
-      UvcCaptureConfig.openTimeout + const Duration(seconds: 4),
+      UvcCaptureConfig.openTimeout + const Duration(seconds: 2),
     );
     expect(
       uvcPoseEntryOpenTimeout(AppDeviceType.androidPhone),

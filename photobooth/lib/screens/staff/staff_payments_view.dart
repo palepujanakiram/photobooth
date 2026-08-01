@@ -458,6 +458,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
         single6x4Url: single6x4Url,
         printSize: printSize,
         classicComposeShotCount: classicShotCount,
+        resetDnpSession: i == 0,
         isMounted: () => mounted,
         onState: ({loading, error, progressMessage}) {
           _applyPrintJobState(

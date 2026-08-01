@@ -42,7 +42,7 @@ void main() {
       expect(snap.dnpPrinter.transport, KioskDeviceTransport.usb);
     });
 
-    test('wifi DNP probes configured printerHost without discovery', () async {
+    test('wifi DNP falls back to configured printerHost after discovery', () async {
       var discoverCalled = false;
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
@@ -68,7 +68,7 @@ void main() {
       );
       expect(snap.dnpPrinter.connected, isTrue);
       expect(snap.dnpPrinter.transport, KioskDeviceTransport.wifi);
-      expect(discoverCalled, isFalse);
+      expect(discoverCalled, isTrue);
     });
 
     test('wifi DNP transport uses WiFi discovery', () async {

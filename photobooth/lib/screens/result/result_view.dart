@@ -131,7 +131,7 @@ class _ResultScreenState extends State<ResultScreen> {
     _paymentSuccessNavFallback?.cancel();
     _viewModel?.removeListener(_onViewModelUpdated);
     // QrShareScreen reuses the same ResultViewModel for print/share + WhatsApp status.
-    if (!_didNavigateToThankYou) {
+    if (!_didNavigateToThankYou && !_navigatingToQrShare) {
       _viewModel?.dispose();
     }
     super.dispose();
