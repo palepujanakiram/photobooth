@@ -1076,21 +1076,27 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }),
     );
 
-    await CaptureViewModel.awaitPrewarmIfInFlight(
-      timeout: const Duration(seconds: 8),
-    );
-    if (!mounted) return;
+    var deviceType = _captureViewModel.deviceType ??
+        CaptureViewModel.prewarmedDeviceType;
+    final kioskLikely = kioskShouldTryUvcBeforeCameraX(deviceType);
+
+    if (!kioskLikely) {
+      await CaptureViewModel.awaitPrewarmIfInFlight(
+        timeout: const Duration(seconds: 8),
+      );
+      if (!mounted) return;
+    }
 
     final prewarmedType = CaptureViewModel.prewarmedDeviceType;
     if (prewarmedType != null && _captureViewModel.deviceType == null) {
       _captureViewModel.setDeviceType(prewarmedType);
+      deviceType ??= prewarmedType;
     }
 
-    AppDeviceType? deviceType = _captureViewModel.deviceType;
     if (deviceType == null) {
       try {
         deviceType = await DeviceClassifier.getDeviceType(context).timeout(
-          const Duration(seconds: 5),
+          const Duration(seconds: 3),
         );
         if (mounted) _captureViewModel.setDeviceType(deviceType);
       } catch (_) {
@@ -1158,7 +1164,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   Future<void> _releaseCameraXForUvcSession() async {
     unawaited(CaptureViewModel.disposePrewarm());
-    await _captureViewModel.disposeCamera();
+    if (_captureViewModel.isReady || _captureViewModel.isInitializing) {
+      await _captureViewModel.disposeCamera();
+    }
     _skipUvcForCameraXSession = false;
   }
 
@@ -3184,6 +3192,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     ),
                   if (!_showCaptureFlash &&
                       !hasCapturedPhoto &&
+                      !_isUsingUvc &&
                       (viewModel.isCapturing || _uvcCaptureInFlight))
                     Positioned.fill(
                       child: ColoredBox(

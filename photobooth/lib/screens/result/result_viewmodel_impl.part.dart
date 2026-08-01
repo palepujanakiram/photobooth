@@ -447,12 +447,21 @@ mixin _ResultViewModelImpl on ChangeNotifier {
 
   /// Starts the first post-payment print once (native kiosk with printer enabled).
   Future<void> startPostPaymentPrintIfNeeded() async {
-    if (_r._postPaymentPrintStarted || kIsWeb) return;
+    if (kIsWeb) return;
+    if (_r._postPaymentPrintStarted) {
+      if (!_r._printProgress.isFailed || _r._postPaymentPrintRetryConsumed) {
+        return;
+      }
+      _r._postPaymentPrintRetryConsumed = true;
+      _r._postPaymentPrintStarted = false;
+      _r._printService.resetDnpPrintSession();
+    }
+    if (_r._postPaymentPrintStarted) return;
     if (!_r.shouldShowPrintProgressCard) {
       _r._printProgress = const PrintProgressSnapshot(
         phase: PrintProgressPhase.skipped,
       );
-      notifyListeners();
+      _notifyListenersUnlessGuestQrShare();
       return;
     }
     _r._postPaymentPrintStarted = true;
@@ -462,7 +471,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       totalPages: _r._generatedImages.length,
       percent: 0,
     );
-    notifyListeners();
+    _notifyPrintProgressUi();
     try {
       await silentPrintToNetwork().timeout(const Duration(minutes: 5));
     } on TimeoutException {
@@ -470,7 +479,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       _failPrintProgress(AppStrings.printFailedGeneric);
       _r._errorMessage =
           'Printing is taking longer than expected. Please check the printer connection and try again.';
-      notifyListeners();
+      _notifyListenersUnlessGuestQrShare();
     }
   }
 
@@ -525,8 +534,6 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     if (payload.isApproved) {
       _r._fcmPaymentPushSuccess = true;
       _r._fcmPaymentStatusDetail = _fcmApprovedDetailText(payload);
-      // Suppress DNP print-progress rebuilds on PAY while navigation runs.
-      _r.enterGuestQrShareMode();
       notifyListeners();
 
       // Fire-and-forget: queue receipt + WhatsApp send in parallel with print.
@@ -1057,7 +1064,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     _r._isDownloading = true;
     _r._downloadingForAction = forAction;
     _r._downloadMessage = 'Preparing images...';
-    notifyListeners();
+    _notifyListenersUnlessGuestQrShare();
 
     try {
       for (int i = 0; i < _r._generatedImages.length; i++) {
@@ -1065,13 +1072,13 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         if (!_r._downloadedFiles.containsKey(image.id)) {
           _r._downloadMessage =
               'Downloading image ${i + 1} of ${_r._generatedImages.length}...';
-          notifyListeners();
+          _notifyListenersUnlessGuestQrShare();
 
           final downloaded = await _r._apiService.downloadImageToTemp(
             image.imageUrl,
             onProgress: (message) {
               _r._downloadMessage = message;
-              notifyListeners();
+              _notifyListenersUnlessGuestQrShare();
             },
           );
           _r._downloadedFiles[image.id] = downloaded;
@@ -1080,7 +1087,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
 
       _r._isDownloading = false;
       _r._downloadingForAction = '';
-      notifyListeners();
+      _notifyListenersUnlessGuestQrShare();
       return true;
     } catch (e, st) {
       _r._errorMessage = 'Failed to download images: $e';
@@ -1094,7 +1101,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       );
       _r._isDownloading = false;
       _r._downloadingForAction = '';
-      notifyListeners();
+      _notifyListenersUnlessGuestQrShare();
       return false;
     }
   }
@@ -1126,8 +1133,22 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     _r._printProgressTicker = null;
   }
 
-  /// Print progress is internal on Scan & Share — do not notify every DNP poll.
+  /// Print progress on PAY; on Scan & Share only notify terminal phases so the
+  /// QR idle timer is not reset by DNP USB polling ticks.
   void _notifyPrintProgressUi() {
+    if (_r._guestQrShareActive) {
+      final phase = _r._printProgress.phase;
+      if (phase != PrintProgressPhase.complete &&
+          phase != PrintProgressPhase.failed &&
+          phase != PrintProgressPhase.skipped) {
+        return;
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Suppresses PAY/print/download noise while Scan & Share is visible.
+  void _notifyListenersUnlessGuestQrShare() {
     if (_r._guestQrShareActive) return;
     notifyListeners();
   }
@@ -1214,8 +1235,10 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     _r._isPrintingReceipt = true;
     if (showErrors) {
       _r._errorMessage = null;
+      notifyListeners();
+    } else {
+      _notifyListenersUnlessGuestQrShare();
     }
-    notifyListeners();
 
     try {
       final raw = await _r._apiService.postSessionPrintReceipt(
@@ -1265,7 +1288,13 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       return false;
     } finally {
       _r._isPrintingReceipt = false;
-      if (!_r._disposed) notifyListeners();
+      if (!_r._disposed) {
+        if (showErrors) {
+          notifyListeners();
+        } else {
+          _notifyListenersUnlessGuestQrShare();
+        }
+      }
     }
   }
 
@@ -1335,7 +1364,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     if (files.isEmpty) {
       _failPrintProgress('No images available to print');
       _r._errorMessage = 'No images available to print';
-      notifyListeners();
+      _notifyListenersUnlessGuestQrShare();
       return;
     }
 
@@ -1343,7 +1372,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
 
     _r._isSilentPrinting = true;
     _r._errorMessage = null;
-    notifyListeners();
+    _notifyListenersUnlessGuestQrShare();
 
     try {
       var anyFailed = false;
@@ -1403,7 +1432,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       );
     } finally {
       _r._isSilentPrinting = false;
-      notifyListeners();
+      _notifyListenersUnlessGuestQrShare();
     }
   }
 
@@ -1435,7 +1464,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       sessionOverride: _r._printSizeOverride,
     );
     try {
-      await _r._printService.printImageSilent(
+      await _r._printService.printDnpPhoto(
         file,
         settings: _r._appSettingsManager?.settings,
         printSize: printSize,

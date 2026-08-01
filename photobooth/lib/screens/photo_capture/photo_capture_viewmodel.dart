@@ -1112,6 +1112,27 @@ class CaptureViewModel extends ChangeNotifier {
 
   static const Duration _externalCapturePersistTimeout = Duration(seconds: 12);
 
+  /// UVC stills from the plugin are often BGR-as-RGB; never show raw [rawFile].
+  Future<XFile> _uvcColorCorrectedFallback(XFile rawFile) async {
+    try {
+      return await ImageHelper.fixUvcBgrAndSave(
+        rawFile,
+        maxDimension: UvcCaptureConfig.thermalNormalizeMaxDimension,
+        jpegQuality: UvcCaptureConfig.thermalNormalizeJpegQuality,
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw TimeoutException('UVC color fix timed out'),
+      );
+    } catch (e, st) {
+      AppLogger.error(
+        'UVC BGR fallback failed; using raw still',
+        error: e,
+        stackTrace: st,
+      );
+      return rawFile;
+    }
+  }
+
   Future<XFile> _persistExternalCaptureStill({
     required XFile rawFile,
     required bool isUvc,
@@ -1135,11 +1156,11 @@ class CaptureViewModel extends ChangeNotifier {
         } catch (normalizeError, normalizeSt) {
           if (!isUvc) rethrow;
           AppLogger.error(
-            'UVC normalize failed; using raw still',
+            'UVC normalize failed; retrying BGR fix',
             error: normalizeError,
             stackTrace: normalizeSt,
           );
-          savedFile = rawFile;
+          savedFile = await _uvcColorCorrectedFallback(rawFile);
         }
       }
       if (isUvc) {
@@ -1164,7 +1185,9 @@ class CaptureViewModel extends ChangeNotifier {
       return await persist().timeout(
         _externalCapturePersistTimeout,
         onTimeout: () {
-          if (isUvc) return rawFile;
+          if (isUvc) {
+            throw TimeoutException('UVC persist timed out');
+          }
           throw TimeoutException(
             'External capture persist timed out after '
             '${_externalCapturePersistTimeout.inSeconds}s',
@@ -1173,10 +1196,8 @@ class CaptureViewModel extends ChangeNotifier {
       );
     } on TimeoutException {
       if (isUvc) {
-        AppLogger.error(
-          'UVC capture persist timed out; using raw still',
-        );
-        return rawFile;
+        AppLogger.error('UVC capture persist timed out; retrying BGR fix');
+        return _uvcColorCorrectedFallback(rawFile);
       }
       rethrow;
     }
@@ -1918,8 +1939,26 @@ class CaptureViewModel extends ChangeNotifier {
     WebFlowTrace.log('CAPTURE', 'photoModel_set photoId=$photoId');
     if (!skipUploadPrep) {
       _kickoffUploadPreparation(initialDelay: uploadPrepDelay);
+    } else {
+      unawaited(_scheduleDeferredUploadPrepDuringReview(photoId));
     }
     notifyListeners();
+  }
+
+  /// While the guest reviews the still, warm upload encode after a short delay
+  /// so Continue does not sit on "Processing Your Photo" (kiosk defer path).
+  ///
+  /// Skipped on Android TV: background [compute] during review contends with
+  /// USB/normalize RAM and often leaves a stale prep future on Continue.
+  Future<void> _scheduleDeferredUploadPrepDuringReview(String photoId) async {
+    if (_deviceType == AppDeviceType.androidTv) return;
+    const delay = UvcCaptureConfig.uploadPrepDelay;
+    await Future<void>.delayed(delay);
+    if (_capturedPhoto?.id != photoId || _isUploading) return;
+    if (_preparedUploadBase64 != null && _prepareUploadPhotoId == photoId) {
+      return;
+    }
+    _kickoffUploadPreparation(initialDelay: Duration.zero);
   }
 
   Future<void> _handleCaptureCameraException(
@@ -2739,6 +2778,13 @@ class CaptureViewModel extends ChangeNotifier {
     _errorMessage = null;
     _uploadStatusMessage = 'Preparing photo…';
     _startUploadTimer();
+    // Release audio focus so a delayed shutter cue cannot stall encode/upload.
+    unawaited(_captureSoundService.cancel());
+    // Do not await a slow background prep from review — restart with fast path.
+    if (_preparedUploadBase64 == null && _prepareUploadFuture != null) {
+      _prepareUploadFuture = null;
+    }
+    _kickoffUploadPreparation(initialDelay: Duration.zero);
     notifyListeners();
   }
 
@@ -2780,16 +2826,19 @@ class CaptureViewModel extends ChangeNotifier {
       }
     }();
     _prepareUploadFuture = prep.timeout(
-      const Duration(seconds: 30),
+      _uploadPrepTimeout,
       onTimeout: () {
         _prepareUploadFuture = null;
         throw TimeoutException(
-          'Upload preparation timed out after 30 seconds',
+          'Upload preparation timed out after '
+          '${_uploadPrepTimeout.inSeconds} seconds',
         );
       },
     );
     unawaited(_prepareUploadFuture);
   }
+
+  static const Duration _uploadPrepTimeout = Duration(seconds: 18);
 
   Future<String> _ensureUploadBase64Ready() async {
     final photo = _capturedPhoto;
@@ -2799,20 +2848,41 @@ class CaptureViewModel extends ChangeNotifier {
     if (_preparedUploadBase64 != null && _prepareUploadPhotoId == photo.id) {
       return _preparedUploadBase64!;
     }
-    if (_prepareUploadFuture != null) {
-      return _prepareUploadFuture!;
-    }
-    _prepareUploadFuture = _buildUploadPayload(photo);
-    try {
-      final b64 = await _prepareUploadFuture!;
-      if (_capturedPhoto?.id == photo.id) {
-        _preparedUploadBase64 = b64;
-        _prepareUploadPhotoId = photo.id;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (_prepareUploadFuture == null) {
+        _kickoffUploadPreparation(initialDelay: Duration.zero);
       }
-      return b64;
-    } finally {
-      _prepareUploadFuture = null;
+      final prep = _prepareUploadFuture;
+      if (prep == null) {
+        throw Exception('Upload preparation did not start');
+      }
+      try {
+        final b64 = await prep.timeout(
+          _uploadPrepTimeout,
+          onTimeout: () {
+            _prepareUploadFuture = null;
+            throw TimeoutException(
+              'Photo preparation timed out after '
+              '${_uploadPrepTimeout.inSeconds} seconds',
+            );
+          },
+        );
+        if (_capturedPhoto?.id == photo.id) {
+          _preparedUploadBase64 = b64;
+          _prepareUploadPhotoId = photo.id;
+        }
+        return b64;
+      } on TimeoutException {
+        if (attempt == 1) rethrow;
+        WebFlowTrace.log('UPLOAD_PREP', 'retry_after_timeout attempt=$attempt');
+        _prepareUploadFuture = null;
+      } finally {
+        if (_preparedUploadBase64 == null) {
+          _prepareUploadFuture = null;
+        }
+      }
     }
+    throw StateError('Upload preparation did not complete');
   }
 
   Future<String> _buildUploadPayload(PhotoModel photo) async {
@@ -3005,7 +3075,7 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Called when user taps "Continue" button in Capture Photo screen
   /// Uploads photo, saves client person count, and fires server preprocess in background.
-  Future<bool> uploadPhotoToSession({bool uploadAlreadyStarted = false}) async {
+  Future<bool> uploadPhotoToSession() async {
     if (_capturedPhoto == null) {
       _errorMessage = 'No photo captured. Please capture a photo first.';
       notifyListeners();
@@ -3022,21 +3092,21 @@ class CaptureViewModel extends ChangeNotifier {
     // Phone QR already wrote userImageUrl server-side — skip re-PATCH.
     if (_phoneUploadSyncedToSession &&
         _capturedPhoto!.cameraId == 'phone_qr') {
-      if (!uploadAlreadyStarted) {
-        beginContinueUpload();
-      } else if (!_isUploading) {
-        beginContinueUpload();
-      }
+      beginContinueUpload();
       _uploadStatusMessage = 'Photo ready';
       notifyListeners();
-      await _resolvePersonCountAfterUpload(
-        sessionId: sessionId,
-        clientFaceCount: _preparedClientFaceCount ?? 0,
-      );
-      _isUploading = false;
-      _uploadStatusMessage = null;
-      notifyListeners();
-      return true;
+      try {
+        await _resolvePersonCountAfterUpload(
+          sessionId: sessionId,
+          clientFaceCount: _preparedClientFaceCount ?? 0,
+        );
+        return true;
+      } finally {
+        _stopUploadTimer();
+        _isUploading = false;
+        _uploadStatusMessage = null;
+        notifyListeners();
+      }
     }
 
     final kioskToken = _sessionManager.kioskAuthToken;
@@ -3047,11 +3117,8 @@ class CaptureViewModel extends ChangeNotifier {
       return false;
     }
 
-    if (!uploadAlreadyStarted) {
-      beginContinueUpload();
-    } else if (!_isUploading) {
-      beginContinueUpload();
-    }
+    beginContinueUpload();
+    await Future<void>.delayed(Duration.zero);
 
     final sidShort = sessionId.length <= 8 ? sessionId : '${sessionId.substring(0, 8)}…';
     WebFlowTrace.log('UPLOAD', 'begin sessionId=$sidShort kIsWeb=$kIsWeb');

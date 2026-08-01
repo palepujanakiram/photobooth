@@ -183,16 +183,17 @@ class _QrShareScreenState extends State<QrShareScreen> {
     _timer?.cancel();
     final vm = _viewModel;
     if (!mounted) return;
+    unawaited(
+      vm?.privacyWipeLocal().catchError((Object e, StackTrace st) {
+        AppLogger.debug('Privacy wipe (qr-share) failed: $e\n$st');
+      }),
+    );
+    if (!mounted) return;
     Navigator.pushNamedAndRemoveUntil(
       context,
       AppConstants.kRouteTerms,
       (route) => false,
     );
-    try {
-      await vm?.privacyWipeLocal();
-    } catch (e, st) {
-      AppLogger.debug('Privacy wipe (qr-share) failed: $e\n$st');
-    }
   }
 
   @override

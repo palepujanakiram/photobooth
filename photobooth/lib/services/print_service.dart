@@ -17,6 +17,24 @@ class PrintService {
 
   final DnpPrintBridge _dnpPrintBridge;
 
+  void resetDnpPrintSession() => _dnpPrintBridge.resetSession();
+
+  /// Prints one DNP photo (DS-RX1): **USB when connected**, else **WCM Wi-Fi
+  /// auto-discovery** (no IP required). Shared by guest checkout and staff
+  /// reprints — routing is [resolveDnpPrintTransport] (`auto` by default).
+  Future<void> printDnpPhoto(
+    XFile imageFile, {
+    AppSettingsModel? settings,
+    required String printSize,
+    int quantity = AppConstants.kDefaultPrintCopies,
+  }) =>
+      printImageSilent(
+        imageFile,
+        settings: settings,
+        printSize: printSize,
+        quantity: quantity,
+      );
+
   /// Silent print via DNP USB (Android) or WCM Plus Wi-Fi auto-discovery.
   Future<void> printImageSilent(
     XFile imageFile, {
@@ -39,8 +57,6 @@ class PrintService {
       throw PrintException(e.message);
     }
   }
-
-  void resetDnpPrintSession() => _dnpPrintBridge.resetSession();
 
   /// Prints an image file using the system print dialog
   /// Works with XFile on all platforms (iOS, Android, Web)

@@ -32,7 +32,7 @@ bool shouldSkipTermsCameraPrewarm(AppDeviceType? deviceType) {
 /// UVC open budget on POSE entry — kiosks need the full native initialize window.
 Duration uvcPoseEntryOpenTimeout(AppDeviceType? deviceType) {
   if (kioskShouldTryUvcBeforeCameraX(deviceType)) {
-    return UvcCaptureConfig.openTimeout + const Duration(seconds: 4);
+    return UvcCaptureConfig.openTimeout + const Duration(seconds: 2);
   }
   return UvcCaptureConfig.quickOpenTimeout;
 }

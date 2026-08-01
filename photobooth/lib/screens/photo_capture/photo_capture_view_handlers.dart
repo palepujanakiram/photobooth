@@ -68,21 +68,13 @@ Future<void> handleCapturedPhotoContinue({
   final currentContext = context;
   if (!isMounted() || !currentContext.mounted) return;
 
-  final releaseFuture = releaseCaptureHardware != null
-      ? releaseCaptureHardware()
-      : viewModel.disposeCamera();
-  UvcSessionCoordinator.trackTeardown(releaseFuture);
-  unawaited(
-    releaseFuture.catchError((Object e, StackTrace st) {
-      AppLogger.error(
-        'releaseCaptureHardware failed during continue',
-        error: e,
-        stackTrace: st,
-      );
-    }),
-  );
-
   if (returnPhotoOnly) {
+    final photo = viewModel.capturedPhoto;
+    if (photo == null) return;
+    final releaseFuture = _startCaptureHardwareRelease(
+      viewModel: viewModel,
+      releaseCaptureHardware: releaseCaptureHardware,
+    );
     await _finishReturnPhotoOnly(
       context: currentContext,
       viewModel: viewModel,
@@ -92,13 +84,9 @@ Future<void> handleCapturedPhotoContinue({
     return;
   }
 
-  // Paint "Processing…" before any await — native UVC teardown can block the
-  // platform thread long enough to look like a freeze while still on "Preparing…".
-  viewModel.beginContinueUpload();
-  await Future<void>.delayed(Duration.zero);
-  if (!isMounted() || !currentContext.mounted) return;
-
-  final success = await viewModel.uploadPhotoToSession(uploadAlreadyStarted: true);
+  // Encode + PATCH before native UVC/CameraX teardown. Parallel release used to
+  // block the platform thread during readAsBytes/compute and freeze this loader.
+  final success = await viewModel.uploadPhotoToSession();
   if (!isMounted() || !currentContext.mounted) return;
   if (!success || viewModel.capturedPhoto == null) {
     if (viewModel.hasError && currentContext.mounted) {
@@ -109,6 +97,10 @@ Future<void> handleCapturedPhotoContinue({
     }
     return;
   }
+  final releaseFuture = _startCaptureHardwareRelease(
+    viewModel: viewModel,
+    releaseCaptureHardware: releaseCaptureHardware,
+  );
   try {
     await releaseFuture.timeout(const Duration(seconds: 4));
   } on TimeoutException {
@@ -129,6 +121,26 @@ Future<void> handleCapturedPhotoContinue({
     arguments: ThemeSelectionArgs(photo: photo),
   );
   WebFlowTrace.log('NAV', 'pushReplacementNamed done');
+}
+
+Future<void> _startCaptureHardwareRelease({
+  required CaptureViewModel viewModel,
+  Future<void> Function()? releaseCaptureHardware,
+}) {
+  final releaseFuture = releaseCaptureHardware != null
+      ? releaseCaptureHardware()
+      : viewModel.disposeCamera();
+  UvcSessionCoordinator.trackTeardown(releaseFuture);
+  unawaited(
+    releaseFuture.catchError((Object e, StackTrace st) {
+      AppLogger.error(
+        'releaseCaptureHardware failed during continue',
+        error: e,
+        stackTrace: st,
+      );
+    }),
+  );
+  return releaseFuture;
 }
 
 Future<void> _finishReturnPhotoOnly({
