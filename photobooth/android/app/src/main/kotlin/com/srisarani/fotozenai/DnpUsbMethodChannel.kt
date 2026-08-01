@@ -7,24 +7,22 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.hardware.usb.UsbManager
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import com.srisarani.fotozenai.dnp.DnpImageProcessor
+import com.srisarani.fotozenai.dnp.DnpPrepareBitmapOptions
+import com.srisarani.fotozenai.dnp.DnpPrintProgressEmitter
 import com.srisarani.fotozenai.dnp.DnpPrintSize
 import com.srisarani.fotozenai.dnp.DnpPrinterException
 import com.srisarani.fotozenai.dnp.DnpUsbPrinter
+import com.srisarani.fotozenai.dnp.DnpWifiNetworkBinder
 import com.srisarani.fotozenai.dnp.PrintProgressCallback
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
 
 /** Native DNP DS-RX1(S)HS USB printing for Android kiosk builds. */
 object DnpUsbMethodChannel {
@@ -39,9 +37,8 @@ object DnpUsbMethodChannel {
 
     private var printProgressSink: EventChannel.EventSink? = null
     private var permissionReceiverRegistered = false
-
-    private var connectivityManager: ConnectivityManager? = null
-    private var wifiNetworkCallback: ConnectivityManager.NetworkCallback? = null
+    private var wifiNetworkBinder: DnpWifiNetworkBinder? = null
+    private var printProgressEmitter: DnpPrintProgressEmitter? = null
 
     private val usbPermissionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -60,6 +57,8 @@ object DnpUsbMethodChannel {
         appContext = context.applicationContext
         val usbManager = appContext.getSystemService(Context.USB_SERVICE) as UsbManager
         usbPrinter = DnpUsbPrinter(appContext, usbManager)
+        wifiNetworkBinder = DnpWifiNetworkBinder(appContext, mainHandler)
+        printProgressEmitter = DnpPrintProgressEmitter(mainHandler) { printProgressSink }
 
         EventChannel(messenger, PROGRESS_CHANNEL).setStreamHandler(
             object : EventChannel.StreamHandler {
@@ -116,11 +115,7 @@ object DnpUsbMethodChannel {
             }
             permissionReceiverRegistered = false
         }
-        try {
-            connectivityManager?.bindProcessToNetwork(null)
-            wifiNetworkCallback?.let { connectivityManager?.unregisterNetworkCallback(it) }
-        } catch (_: Exception) {
-        }
+        wifiNetworkBinder?.release()
         usbPrinter.disconnect()
         ioExecutor.shutdownNow()
     }
@@ -207,52 +202,9 @@ object DnpUsbMethodChannel {
     }
 
     private fun prepareWifiNetwork(result: MethodChannel.Result) {
-        bindToWifiNetwork { bound ->
+        wifiNetworkBinder?.bind { bound ->
             mainHandler.post { result.success(bound) }
-        }
-    }
-
-    private fun bindToWifiNetwork(onResult: (Boolean) -> Unit) {
-        val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        connectivityManager = cm
-
-        val bound = cm.boundNetworkForProcess
-        if (bound != null) {
-            val caps = cm.getNetworkCapabilities(bound)
-            if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                onResult(true)
-                return
-            }
-        }
-
-        val request = NetworkRequest.Builder()
-            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
-            .build()
-
-        val resolved = AtomicBoolean(false)
-        val timeout = Runnable {
-            if (resolved.compareAndSet(false, true)) onResult(false)
-        }
-
-        val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                val ok = cm.bindProcessToNetwork(network)
-                if (resolved.compareAndSet(false, true)) {
-                    mainHandler.removeCallbacks(timeout)
-                    mainHandler.post { onResult(ok) }
-                }
-            }
-
-            override fun onUnavailable() {
-                if (resolved.compareAndSet(false, true)) {
-                    mainHandler.removeCallbacks(timeout)
-                    mainHandler.post { onResult(false) }
-                }
-            }
-        }
-        wifiNetworkCallback = callback
-        cm.requestNetwork(request, callback)
-        mainHandler.postDelayed(timeout, 8000)
+        } ?: mainHandler.post { result.success(false) }
     }
 
     private fun startUsbPrint(
@@ -277,13 +229,12 @@ object DnpUsbMethodChannel {
                 val size = networkPrintSize?.let { DnpPrintSize.fromNetworkPrintSize(it) }
                     ?: DnpPrintSize.fromLabel(paperSize)
                 val bitmap = DnpImageProcessor.prepareBitmap(
-                    filePath,
-                    size,
-                    filter = "Off",
-                    brightness = 0,
-                    bordered = false,
-                    memoryEfficient = memoryEfficient,
-                    networkPrintSize = networkPrintSize,
+                    DnpPrepareBitmapOptions(
+                        sourcePath = filePath,
+                        size = size,
+                        memoryEfficient = memoryEfficient,
+                        networkPrintSize = networkPrintSize,
+                    ),
                 )
                 emitPrintProgress(
                     "prepare",
@@ -319,55 +270,8 @@ object DnpUsbMethodChannel {
         }
     }
 
-    private data class PendingProgress(
-        val stage: String,
-        val message: String,
-        val progress: Double?,
-    )
-
-    private var lastEmittedProgressStage: String? = null
-    private var lastProgressEmitMs = 0L
-    private var pendingProgress: PendingProgress? = null
-    private var progressFlushRunnable: Runnable? = null
-
     private fun emitPrintProgress(stage: String, message: String, progress: Double?) {
-        mainHandler.post {
-            val now = System.currentTimeMillis()
-            val stageChanged = stage != lastEmittedProgressStage
-            val terminal = stage == "complete"
-
-            if (stageChanged || terminal || now - lastProgressEmitMs >= 150) {
-                progressFlushRunnable?.let { mainHandler.removeCallbacks(it) }
-                progressFlushRunnable = null
-                pendingProgress = null
-                dispatchPrintProgress(stage, message, progress)
-                return@post
-            }
-
-            pendingProgress = PendingProgress(stage, message, progress)
-            if (progressFlushRunnable != null) return@post
-
-            val delay = (150 - (now - lastProgressEmitMs)).coerceAtLeast(0)
-            progressFlushRunnable = Runnable {
-                progressFlushRunnable = null
-                val pending = pendingProgress ?: return@Runnable
-                pendingProgress = null
-                dispatchPrintProgress(pending.stage, pending.message, pending.progress)
-            }
-            mainHandler.postDelayed(progressFlushRunnable!!, delay.toLong())
-        }
-    }
-
-    private fun dispatchPrintProgress(stage: String, message: String, progress: Double?) {
-        lastEmittedProgressStage = stage
-        lastProgressEmitMs = System.currentTimeMillis()
-        printProgressSink?.success(
-            mapOf(
-                "stage" to stage,
-                "message" to message,
-                "progress" to progress,
-            ),
-        )
+        printProgressEmitter?.emit(stage, message, progress)
     }
 
     private val printProgressReporter: PrintProgressCallback = { stage, message, progress ->

@@ -147,17 +147,18 @@ object ReceiptUsbMethodChannel {
     }
 
     private fun sendEscPosFile(filePath: String, result: MethodChannel.Result) {
+        sendEscPosOnUsb(result) { usbPrinter.writeEscPosFile(filePath) }
+    }
+
+    private fun sendEscPos(bytes: ByteArray, result: MethodChannel.Result) {
+        sendEscPosOnUsb(result) { usbPrinter.writeEscPos(bytes) }
+    }
+
+    private fun sendEscPosOnUsb(result: MethodChannel.Result, write: () -> Unit) {
         ioExecutor.execute {
             try {
-                if (!usbPrinter.isConnected) {
-                    val dev = usbPrinter.findDevice()
-                        ?: throw ReceiptPrinterException("Receipt printer not connected")
-                    if (!usbPrinter.hasPermission(dev)) {
-                        throw ReceiptPrinterException("USB permission not granted")
-                    }
-                    usbPrinter.connect(dev)
-                }
-                usbPrinter.writeEscPosFile(filePath)
+                ensureReceiptPrinterConnected()
+                write()
                 mainHandler.post { result.success(null) }
             } catch (e: ReceiptPrinterException) {
                 mainHandler.post { result.error("PRINT_ERROR", e.message, null) }
@@ -169,27 +170,14 @@ object ReceiptUsbMethodChannel {
         }
     }
 
-    private fun sendEscPos(bytes: ByteArray, result: MethodChannel.Result) {
-        ioExecutor.execute {
-            try {
-                if (!usbPrinter.isConnected) {
-                    val dev = usbPrinter.findDevice()
-                        ?: throw ReceiptPrinterException("Receipt printer not connected")
-                    if (!usbPrinter.hasPermission(dev)) {
-                        throw ReceiptPrinterException("USB permission not granted")
-                    }
-                    usbPrinter.connect(dev)
-                }
-                usbPrinter.writeEscPos(bytes)
-                mainHandler.post { result.success(null) }
-            } catch (e: ReceiptPrinterException) {
-                mainHandler.post { result.error("PRINT_ERROR", e.message, null) }
-            } catch (e: Exception) {
-                mainHandler.post {
-                    result.error("PRINT_ERROR", e.message ?: "Receipt USB print failed", null)
-                }
-            }
+    private fun ensureReceiptPrinterConnected() {
+        if (usbPrinter.isConnected) return
+        val dev = usbPrinter.findDevice()
+            ?: throw ReceiptPrinterException("Receipt printer not connected")
+        if (!usbPrinter.hasPermission(dev)) {
+            throw ReceiptPrinterException("USB permission not granted")
         }
+        usbPrinter.connect(dev)
     }
 
     private fun hasUsbHost(context: Context): Boolean =

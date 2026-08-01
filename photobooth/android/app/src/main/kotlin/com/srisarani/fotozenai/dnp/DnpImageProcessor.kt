@@ -20,24 +20,17 @@ import kotlin.math.min
  */
 object DnpImageProcessor {
 
-    fun prepareBitmap(
-        sourcePath: String,
-        size: DnpPrintSize,
-        filter: String,
-        brightness: Int,
-        bordered: Boolean,
-        memoryEfficient: Boolean = false,
-        networkPrintSize: String? = null,
-    ): Bitmap {
+    fun prepareBitmap(options: DnpPrepareBitmapOptions): Bitmap {
+        val size = options.size
         val targetW = size.width
         val targetH = size.height
-        val maxDecodeSide = if (memoryEfficient) {
+        val maxDecodeSide = if (options.memoryEfficient) {
             max(targetW, targetH) * 2
         } else {
             max(targetW, targetH) * 3
         }
 
-        val source = ImageDecoder.createSource(File(sourcePath))
+        val source = ImageDecoder.createSource(File(options.sourcePath))
         var bmp = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             val srcW = info.size.width
@@ -52,7 +45,14 @@ object DnpImageProcessor {
             }
         }
 
-        if (shouldRotateForPrint(networkPrintSize, bmp.width, bmp.height, targetW, targetH)) {
+        if (shouldRotateForPrint(
+                options.networkPrintSize,
+                bmp.width,
+                bmp.height,
+                targetW,
+                targetH,
+            )
+        ) {
             val matrix = android.graphics.Matrix().apply { postRotate(90f) }
             val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
             bmp.recycle()
@@ -62,7 +62,7 @@ object DnpImageProcessor {
         val srcW = bmp.width.toFloat()
         val srcH = bmp.height.toFloat()
 
-        if (bordered) {
+        if (options.bordered) {
             val insetFraction = 0.06f
             val insetX = (targetW * insetFraction).toInt()
             val insetY = (targetH * insetFraction).toInt()
@@ -80,7 +80,7 @@ object DnpImageProcessor {
             val left = insetX + (areaW - scaledW) / 2f
             val top = insetY + (areaH - scaledH) / 2f
             val paint = Paint(Paint.FILTER_BITMAP_FLAG)
-            buildCombinedColorMatrix(filter, brightness)?.let { matrix ->
+            buildCombinedColorMatrix(options.filter, options.brightness)?.let { matrix ->
                 paint.colorFilter = ColorMatrixColorFilter(matrix)
             }
             c.drawBitmap(scaled, left, top, paint)
@@ -106,7 +106,7 @@ object DnpImageProcessor {
         val c = Canvas(canvas)
         c.drawColor(Color.WHITE)
         val paint = Paint(Paint.FILTER_BITMAP_FLAG)
-        buildCombinedColorMatrix(filter, brightness)?.let { matrix ->
+        buildCombinedColorMatrix(options.filter, options.brightness)?.let { matrix ->
             paint.colorFilter = ColorMatrixColorFilter(matrix)
         }
         c.drawBitmap(
