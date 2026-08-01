@@ -37,5 +37,15 @@ void main() {
       );
       expect(endpoint.isConfigured, isFalse);
     });
+
+    test('invalid port falls back to default', () {
+      final endpoint = resolveReceiptPrinterEndpoint(
+        AppSettingsModel(
+          receiptPrinterHost: '192.168.1.50',
+          receiptPrinterPort: 0,
+        ),
+      );
+      expect(endpoint.port, ReceiptPrinterEndpoint.defaultPort);
+    });
   });
 }

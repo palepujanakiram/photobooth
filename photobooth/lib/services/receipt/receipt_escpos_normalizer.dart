@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
 import 'receipt_printer_profile.dart';
@@ -127,6 +128,9 @@ int _escStarHeightForMode(int mode) {
     _ => 0,
   };
 }
+
+@visibleForTesting
+int escStarHeightForModeForTest(int mode) => _escStarHeightForMode(mode);
 
 int _modeWidthMultiplier(int mode) {
   return switch (mode) {

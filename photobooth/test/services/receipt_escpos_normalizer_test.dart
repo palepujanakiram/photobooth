@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/services/receipt/receipt_escpos_normalizer.dart';
 import 'package:photobooth/services/receipt/receipt_printer_profile.dart';
@@ -44,6 +45,71 @@ void main() {
       final payload = Uint8List.fromList([0x1B, 0x40, 0x48, 0x65, 0x6C, 0x6C, 0x6F]);
       final normalized = ReceiptEscPosNormalizer.normalize(payload);
       expect(normalized, payload);
+    });
+
+    test('returns payload unchanged when empty or target width invalid', () {
+      expect(
+        ReceiptEscPosNormalizer.normalize(Uint8List(0)),
+        Uint8List(0),
+      );
+      final payload = Uint8List.fromList([0x1B, 0x40]);
+      expect(
+        ReceiptEscPosNormalizer.normalize(payload, targetWidthDots: 0),
+        payload,
+      );
+    });
+
+    test('scales ESC * raster segments to target width', () {
+      const sourceWidthBytes = 12;
+      const sourceHeight = 8;
+      final data = Uint8List(sourceWidthBytes * sourceHeight);
+      final payload = Uint8List.fromList([
+        0x1B, 0x2A, 0x00,
+        sourceWidthBytes & 0xFF,
+        (sourceWidthBytes >> 8) & 0xFF,
+        ...data,
+      ]);
+
+      final normalized = ReceiptEscPosNormalizer.normalize(payload);
+      expect(normalized.length, greaterThan(payload.length));
+      expect(normalized[0], 0x1B);
+      expect(normalized[1], 0x2A);
+    });
+
+    test('scales GS v 0 double-width mode raster', () {
+      const sourceWidthBytes = 24;
+      const sourceHeight = 40;
+      final data = Uint8List(sourceWidthBytes * sourceHeight);
+      final payload = Uint8List.fromList([
+        0x1D, 0x76, 0x30, 0x01,
+        sourceWidthBytes & 0xFF,
+        (sourceWidthBytes >> 8) & 0xFF,
+        sourceHeight & 0xFF,
+        (sourceHeight >> 8) & 0xFF,
+        ...data,
+      ]);
+      final normalized = ReceiptEscPosNormalizer.normalize(payload);
+      expect(normalized.length, greaterThan(payload.length));
+    });
+
+    test('leaves GS v 0 raster unchanged when already at target width', () {
+      const sourceWidthBytes = ReceiptPrinterProfile.printWidthDots ~/ 8;
+      const sourceHeight = 40;
+      final data = Uint8List(sourceWidthBytes * sourceHeight);
+      final payload = Uint8List.fromList([
+        0x1D, 0x76, 0x30, 0x00,
+        sourceWidthBytes & 0xFF,
+        (sourceWidthBytes >> 8) & 0xFF,
+        sourceHeight & 0xFF,
+        (sourceHeight >> 8) & 0xFF,
+        ...data,
+      ]);
+      final normalized = ReceiptEscPosNormalizer.normalize(payload);
+      expect(normalized, payload);
+    });
+
+    test('escStarHeightForModeForTest returns zero for unknown modes', () {
+      expect(escStarHeightForModeForTest(0x02), 0);
     });
   });
 }

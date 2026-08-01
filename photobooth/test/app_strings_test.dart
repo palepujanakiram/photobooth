@@ -15,6 +15,13 @@ void main() {
     expect(AppStrings.staffThemeLightLabel, isNotEmpty);
     expect(AppStrings.staffThemeDarkLabel, isNotEmpty);
     expect(AppStrings.staffBackToStartTooltip, isNotEmpty);
+    expect(AppStrings.receiptPrintSuccess, isNotEmpty);
+    expect(AppStrings.receiptPrintNotConfigured, isNotEmpty);
+    expect(AppStrings.receiptPrintFailedGeneric, isNotEmpty);
+    expect(AppStrings.receiptPrintEmptyPayload, isNotEmpty);
+    expect(AppStrings.receiptPrintUnsupportedOnWeb, isNotEmpty);
+    expect(AppStrings.printReceiptButton, isNotEmpty);
+    expect(AppStrings.printingReceiptButton, isNotEmpty);
     expect(AppStrings.staffNoKioskForRegister, isNotEmpty);
     expect(AppStrings.themeSelectionContinue, isNotEmpty);
     expect(AppStrings.themeSelectionContinuing, isNotEmpty);

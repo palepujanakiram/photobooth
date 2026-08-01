@@ -403,6 +403,44 @@ void main() {
       expect(printedWifi, isTrue);
     });
 
+    test('auto transport falls back to Wi-Fi when USB print fails', () async {
+      final usb = _RecordingUsbClient(const MethodChannel('test/usb'))
+        ..connectError = PlatformException(code: 'CONNECT_FAILED');
+      var printedWifi = false;
+      final wifi = DnpWifiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/PrintImage') {
+            printedWifi = true;
+            return http.Response('ok', 200);
+          }
+          return http.Response('', 404);
+        }),
+      );
+      wifi.printerBaseUrlForTesting = 'http://192.168.1.20';
+
+      final bridge = DnpPrintBridge(
+        usbClient: usb,
+        wifiClient: wifi,
+        isAndroid: () => true,
+      );
+
+      final jpeg = File(
+        '${Directory.systemTemp.path}/dnp_usb_fail_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await jpeg.writeAsBytes([0xFF, 0xD8]);
+      addTearDown(() async {
+        if (await jpeg.exists()) await jpeg.delete();
+      });
+
+      await bridge.printImage(
+        imageFile: XFile(jpeg.path),
+        settings: AppSettingsModel(printerTransport: 'auto'),
+        networkPrintSize: 's4x6',
+      );
+      expect(usb.connectCalls, 0);
+      expect(printedWifi, isTrue);
+    });
+
     test('printImage uses wifi when transport is wifi', () async {
       var printed = false;
       final wifi = DnpWifiClient(

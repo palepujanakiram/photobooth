@@ -307,6 +307,130 @@ void main() {
       final snap = await service.probe(settings: AppSettingsModel());
       expect(snap.usbCamera.connected, isFalse);
     });
+
+    test('receipt probe timeout reports disconnected configured printer', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _SlowReceiptBridge(
+          delay: const Duration(seconds: 5),
+        ),
+        wifiDiscoverTimeout: const Duration(milliseconds: 20),
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(receiptPrinterEnabled: true),
+      );
+      expect(snap.receiptPrinter.configured, isTrue);
+      expect(snap.receiptPrinter.connected, isFalse);
+    });
+
+    test('receipt probe errors report disconnected configured printer', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _ErrorReceiptBridge(),
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(receiptPrinterEnabled: true),
+      );
+      expect(snap.receiptPrinter.configured, isTrue);
+      expect(snap.receiptPrinter.connected, isFalse);
+    });
+
+    test('wifi DNP uses cached printer URL without discovery', () async {
+      var discoverCalled = false;
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        wifiClient: DnpWifiClient(
+          discoverFn: ({int parallelism = 20}) async {
+            discoverCalled = true;
+            return null;
+          },
+        )..printerBaseUrlForTesting = 'http://10.0.0.8',
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(printerTransport: 'wifi'),
+      );
+      expect(snap.dnpPrinter.connected, isTrue);
+      expect(discoverCalled, isFalse);
+    });
+
+    test('wifi DNP probes configured host when discovery misses', () async {
+      var probedHost = '';
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        wifiClient: DnpWifiClient(
+          client: MockClient((request) async {
+            probedHost = request.url.host;
+            return http.Response('{}', 200);
+          }),
+          discoverFn: ({int parallelism = 20}) async => null,
+        ),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          printerTransport: 'wifi',
+          printerHost: '192.168.0.200',
+        ),
+      );
+      expect(snap.dnpPrinter.connected, isTrue);
+      expect(probedHost, '192.168.0.200');
+    });
+
+    test('uses default service dependencies when not injected', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => false,
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(receiptPrinterEnabled: false),
+      );
+      expect(snap.receiptPrinter.configured, isFalse);
+    });
+
+    test('wifi DNP probe catches unexpected errors', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        wifiClient: DnpWifiClient(
+          discoverFn: ({int parallelism = 20}) async {
+            throw StateError('boom');
+          },
+        ),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(printerTransport: 'wifi'),
+      );
+      expect(snap.dnpPrinter.connected, isFalse);
+    });
   });
 }
 
@@ -343,4 +467,43 @@ class _FakeReceiptBridge extends ReceiptPrintBridge {
 class _SilentReceiptUsbClient extends ReceiptUsbClient {
   @override
   Future<bool> probeDevicePresent() async => false;
+}
+
+class _SlowReceiptBridge extends ReceiptPrintBridge {
+  _SlowReceiptBridge({required this.delay})
+      : super(
+          isAndroid: () => true,
+          usbClient: _SilentReceiptUsbClient(),
+          wifiClient: ReceiptWifiClient(),
+        );
+
+  final Duration delay;
+
+  @override
+  Future<ReceiptPrinterProbeResult> probe({
+    AppSettingsModel? settings,
+  }) async {
+    await Future<void>.delayed(delay);
+    return const ReceiptPrinterProbeResult(
+      connected: true,
+      transport: ReceiptPrinterTransport.wifi,
+      configured: true,
+    );
+  }
+}
+
+class _ErrorReceiptBridge extends ReceiptPrintBridge {
+  _ErrorReceiptBridge()
+      : super(
+          isAndroid: () => true,
+          usbClient: _SilentReceiptUsbClient(),
+          wifiClient: ReceiptWifiClient(),
+        );
+
+  @override
+  Future<ReceiptPrinterProbeResult> probe({
+    AppSettingsModel? settings,
+  }) async {
+    throw StateError('probe failed');
+  }
 }

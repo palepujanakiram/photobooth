@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -61,16 +62,39 @@ Future<XFile> normalizeExifOrientationForDnpPrint(XFile file) async {
   final bytes = await file.readAsBytes();
   if (bytes.isEmpty) return file;
 
-  final decoded = img.decodeImage(bytes);
+  img.Image? decoded;
+  try {
+    decoded = img.decodeImage(bytes);
+  } catch (_) {
+    return file;
+  }
   if (decoded == null) return file;
 
   final baked = img.bakeOrientation(decoded);
+  return finalizeNormalizedDnpPrint(file, decoded, baked);
+}
+
+@visibleForTesting
+Future<XFile> finalizeNormalizedDnpPrint(
+  XFile file,
+  img.Image decoded,
+  img.Image baked,
+) async {
   if (baked.width == decoded.width &&
       baked.height == decoded.height &&
       !_likelyExifRotated(decoded, baked)) {
     return file;
   }
 
+  return _writeNormalizedDnpPrintFile(baked);
+}
+
+@visibleForTesting
+Future<XFile> writeNormalizedDnpPrintFile(img.Image baked) async {
+  return _writeNormalizedDnpPrintFile(baked);
+}
+
+Future<XFile> _writeNormalizedDnpPrintFile(img.Image baked) async {
   final encoded = Uint8List.fromList(
     img.encodeJpg(baked, quality: kCapturedPhotoJpegQuality),
   );
