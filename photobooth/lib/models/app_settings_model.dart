@@ -32,7 +32,8 @@ class AppSettingsModel {
   final String? printerHost;
   final int? printerPort;
   final String? printerPath;
-  /// `auto` | `usb` | `wifi` — DNP routing (`auto`: USB when connected, else Wi-Fi discovery).
+  /// `auto` | `usb` | `wifi` — DNP routing. Ignored when [printerHost] is set
+  /// (LAN IP wins: Wi-Fi direct, no USB/discovery). Else `auto` = USB then discovery.
   final String? printerTransport;
   /// When true, prefer Pi gphoto2 sidecar stills over device CameraX/UVC.
   final bool? cameraEnabled;

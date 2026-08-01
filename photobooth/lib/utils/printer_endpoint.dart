@@ -46,6 +46,12 @@ bool usesDnpMultipartPrintApi(String apiPath) {
   return apiPath.trim().toLowerCase() == '/api/printimage';
 }
 
+/// True when admin configured a non-empty LAN printer IP/host on the kiosk.
+bool hasConfiguredPrinterHost(AppSettingsModel? settings) {
+  final host = settings?.printerHost?.trim() ?? '';
+  return host.isNotEmpty;
+}
+
 PrinterEndpoint resolvePrinterEndpoint(AppSettingsModel? settings) {
   final hostRaw = settings?.printerHost?.trim();
   final host = (hostRaw != null && hostRaw.isNotEmpty) ? hostRaw : '';
