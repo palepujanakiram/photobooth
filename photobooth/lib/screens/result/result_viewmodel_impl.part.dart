@@ -1272,10 +1272,11 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         return false;
       }
 
-      await _r._receiptPrinterService.sendEscPosBase64(
-        host: result.host!.trim(),
-        port: result.port,
-        payloadBase64: result.payloadBase64!,
+      await _r._receiptPrintBridge.deliverEscPos(
+        bytes: ReceiptPrinterPayload.decodeBase64(result.payloadBase64!),
+        settings: _r._appSettingsManager?.settings,
+        apiHost: result.host,
+        apiPort: result.port,
       );
       return true;
     } catch (e, st) {

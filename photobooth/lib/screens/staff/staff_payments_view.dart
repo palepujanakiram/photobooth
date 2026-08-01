@@ -8,7 +8,7 @@ import '../../models/payment_mode.dart';
 import '../../services/staff_api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/print_service.dart';
-import '../../services/receipt_printer_service.dart';
+import '../../services/receipt/receipt_print_bridge.dart';
 import '../../services/staff_session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
@@ -48,7 +48,7 @@ class StaffPaymentsScreen extends StatefulWidget {
 class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
   final _api = StaffApiService();
   final _printService = PrintService();
-  final _receiptPrinter = ReceiptPrinterService();
+  final _receiptPrintBridge = ReceiptPrintBridge();
 
   bool _loading = false;
   String? _error;
@@ -552,7 +552,7 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
 
     await staffPaymentsRunReceiptPrintJob(
       staffApi: _api,
-      receiptPrinter: _receiptPrinter,
+      receiptPrintBridge: _receiptPrintBridge,
       settings: context.read<AppSettingsManager>().settings,
       sessionId: sessionId,
       isMounted: () => mounted,

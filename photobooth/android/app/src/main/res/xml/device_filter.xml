@@ -6,5 +6,7 @@
     <usb-device class="14" />
     <!-- DNP DS-RX1 / DS-RX1HS dye-sub printer (VID 0x1343, PID 0x0005). -->
     <usb-device vendor-id="4931" product-id="5" />
+    <!-- ESC/POS thermal receipt printers (Posiflow KP 307 UEWB, USB Printer Class). -->
+    <usb-device class="7" />
 </resources>
 

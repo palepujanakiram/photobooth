@@ -145,7 +145,7 @@ object DnpImageProcessor {
         val srcIsLandscape = srcW > srcH
         val targetIsLandscape = targetW > targetH
         return when (networkPrintSize?.trim()?.lowercase()) {
-            "s6x4" -> false
+            "s6x4" -> !srcIsLandscape && targetIsLandscape
             "s6x2_2", "s4x6" -> !srcIsLandscape && targetIsLandscape
             else -> srcIsLandscape != targetIsLandscape
         }

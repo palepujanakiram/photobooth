@@ -102,7 +102,7 @@ void main() {
         imageUrl: 'https://cdn/strip.jpg',
         sessionId: 's1',
       ),
-      isNull,
+      's6x2_2',
     );
     expect(
       StaffPaymentsSessionImages.printSizeForImageUrl(

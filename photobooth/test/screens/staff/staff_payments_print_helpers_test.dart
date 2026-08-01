@@ -16,12 +16,12 @@ void main() {
       );
     });
 
-    test('false when enabled but host empty', () {
+    test('true when enabled even without host (USB/Wi-Fi auto)', () {
       expect(
         staffPaymentsIsReceiptPrinterConfigured(
           AppSettingsModel(receiptPrinterEnabled: true, receiptPrinterHost: '  '),
         ),
-        isFalse,
+        isTrue,
       );
     });
 
@@ -88,7 +88,20 @@ void main() {
       );
     });
 
-    test('null when LAN delivery payload is present', () {
+    test('null when payload present even without host (local discovery)', () {
+      expect(
+        staffPaymentsReceiptDeliverError(
+          const SessionPrintReceiptResult(
+            success: true,
+            printerConfigured: true,
+            payloadBase64: 'YWJj',
+          ),
+        ),
+        isNull,
+      );
+    });
+
+    test('null when LAN delivery payload is present with host', () {
       expect(
         staffPaymentsReceiptDeliverError(
           const SessionPrintReceiptResult(

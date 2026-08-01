@@ -6,6 +6,9 @@ import 'package:photobooth/models/kiosk_device_status.dart';
 import 'package:photobooth/services/dnp/dnp_usb_client.dart';
 import 'package:photobooth/services/dnp/dnp_wifi_client.dart';
 import 'package:photobooth/services/kiosk_device_status_service.dart';
+import 'package:photobooth/services/receipt/receipt_print_bridge.dart';
+import 'package:photobooth/services/receipt/receipt_usb_client.dart';
+import 'package:photobooth/services/receipt/receipt_wifi_client.dart';
 import 'package:photobooth/utils/app_strings.dart';
 
 void main() {
@@ -14,7 +17,13 @@ void main() {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
         usbClient: _FakeUsbClient(present: true),
-        probeReceiptTcp: (_, __) async => false,
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
         probeUvcDevices: () async => false,
       );
       final snap = await service.probe(
@@ -32,7 +41,13 @@ void main() {
         wifiClient: DnpWifiClient(
           discoverFn: ({int parallelism = 20}) async => 'http://10.0.0.9',
         ),
-        probeReceiptTcp: (_, __) async => false,
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
         probeUvcDevices: () async => false,
       );
       final snap = await service.probe(
@@ -57,7 +72,13 @@ void main() {
             return null;
           },
         ),
-        probeReceiptTcp: (_, __) async => false,
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
         probeUvcDevices: () async => false,
       );
       final snap = await service.probe(
@@ -78,7 +99,13 @@ void main() {
         wifiClient: DnpWifiClient(
           discoverFn: ({int parallelism = 20}) async => 'http://10.0.0.9',
         ),
-        probeReceiptTcp: (_, __) async => false,
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
         probeUvcDevices: () async => false,
       );
       final snap = await service.probe(
@@ -92,7 +119,13 @@ void main() {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
         usbClient: _FakeUsbClient(present: false),
-        probeReceiptTcp: (_, __) async => true,
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: true,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: true,
+          ),
+        ),
         probeUvcDevices: () async => false,
       );
       final snap = await service.probe(
@@ -103,19 +136,43 @@ void main() {
       expect(snap.receiptPrinter.transport, KioskDeviceTransport.wifi);
     });
 
-    test('receipt printer reachable over LAN reports WiFi mode', () async {
+    test('receipt printer USB reports connected USB mode', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
         usbClient: _FakeUsbClient(present: false),
-        probeReceiptTcp: (_, __) async => true,
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: true,
+            transport: ReceiptPrinterTransport.usb,
+            configured: true,
+          ),
+        ),
         probeUvcDevices: () async => false,
       );
       final snap = await service.probe(
-        settings: AppSettingsModel(
-          receiptPrinterEnabled: true,
-          receiptPrinterHost: '192.168.1.50',
-          receiptPrinterPort: 9100,
+        settings: AppSettingsModel(receiptPrinterEnabled: true),
+      );
+      expect(snap.receiptPrinter.configured, isTrue);
+      expect(snap.receiptPrinter.connected, isTrue);
+      expect(snap.receiptPrinter.transport, KioskDeviceTransport.usb);
+    });
+
+    test('receipt printer Wi-Fi discovery reports WiFi mode', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: true,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: true,
+            host: '192.168.1.50',
+          ),
         ),
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(receiptPrinterEnabled: true),
       );
       expect(snap.receiptPrinter.configured, isTrue);
       expect(snap.receiptPrinter.connected, isTrue);
@@ -129,7 +186,13 @@ void main() {
         wifiClient: DnpWifiClient(
           discoverFn: ({int parallelism = 20}) async => 'http://10.0.0.9',
         ),
-        probeReceiptTcp: (_, __) async => false,
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
         probeUvcDevices: () async => false,
       );
       final snap = await service.probe(settings: AppSettingsModel());
@@ -144,7 +207,13 @@ void main() {
         wifiClient: DnpWifiClient(
           discoverFn: ({int parallelism = 20}) async => 'http://10.0.0.9',
         ),
-        probeReceiptTcp: (_, __) async => false,
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
         probeUvcDevices: () async => false,
       );
       final snap = await service.probe(
@@ -165,7 +234,13 @@ void main() {
           },
         ),
         wifiDiscoverTimeout: const Duration(milliseconds: 50),
-        probeReceiptTcp: (_, __) async => false,
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
         probeUvcDevices: () async => false,
       );
       final snap = await service.probe(
@@ -175,11 +250,17 @@ void main() {
       expect(snap.dnpPrinter.transport, KioskDeviceTransport.wifi);
     });
 
-    test('receipt printer enabled without host is not configured', () async {
+    test('receipt printer enabled without host is configured', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
         usbClient: _FakeUsbClient(present: false),
-        probeReceiptTcp: (_, __) async => true,
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: true,
+          ),
+        ),
         probeUvcDevices: () async => false,
       );
       final snap = await service.probe(
@@ -188,14 +269,21 @@ void main() {
           receiptPrinterHost: '  ',
         ),
       );
-      expect(snap.receiptPrinter.configured, isFalse);
+      expect(snap.receiptPrinter.configured, isTrue);
+      expect(snap.receiptPrinter.connected, isFalse);
     });
 
     test('USB camera present reports connected USB', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
         usbClient: _FakeUsbClient(present: false),
-        probeReceiptTcp: (_, __) async => false,
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
         probeUvcDevices: () async => true,
       );
       final snap = await service.probe(settings: AppSettingsModel());
@@ -207,7 +295,13 @@ void main() {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
         usbClient: _FakeUsbClient(present: false),
-        probeReceiptTcp: (_, __) async => false,
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
         probeUvcDevices: () async => false,
       );
       final snap = await service.probe(settings: AppSettingsModel());
@@ -226,4 +320,27 @@ class _FakeUsbClient extends DnpUsbClient {
 
   @override
   Future<bool> hasUsbHost() async => present;
+}
+
+class _FakeReceiptBridge extends ReceiptPrintBridge {
+  _FakeReceiptBridge({required this.probeResult})
+      : super(
+          isAndroid: () => true,
+          usbClient: _SilentReceiptUsbClient(),
+          wifiClient: ReceiptWifiClient(),
+          prepareWifiNetwork: () async => true,
+        );
+
+  final ReceiptPrinterProbeResult probeResult;
+
+  @override
+  Future<ReceiptPrinterProbeResult> probe({
+    AppSettingsModel? settings,
+  }) async =>
+      probeResult;
+}
+
+class _SilentReceiptUsbClient extends ReceiptUsbClient {
+  @override
+  Future<bool> probeDevicePresent() async => false;
 }

@@ -52,7 +52,16 @@ void main() {
       expect(result.port, 9100);
     });
 
-    test('skips LAN when server already delivered', () {
+    test('needsLanDelivery true with payload even without host', () {
+      final result = SessionPrintReceiptResult.fromJson({
+        'success': true,
+        'printerConfigured': true,
+        'deliveredByServer': false,
+        'payloadBase64': base64Encode([1, 2, 3]),
+      });
+      expect(result.needsLanDelivery, isTrue);
+      expect(result.host, isNull);
+    });
       final result = SessionPrintReceiptResult.fromJson({
         'success': true,
         'printerConfigured': true,

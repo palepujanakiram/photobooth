@@ -5,6 +5,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:uuid/uuid.dart';
+import 'receipt/receipt_printer_profile.dart';
 import '../models/app_settings_model.dart';
 import '../models/kiosk_frame_model.dart';
 import '../models/kiosk_info_model.dart';
@@ -240,15 +241,19 @@ class ApiService {
   /// Auth: automatic `X-Kiosk-Session-Token` on the shared Dio client.
   Future<Map<String, dynamic>> postSessionPrintReceipt({
     required String sessionId,
+    Map<String, String>? queryParameters,
   }) async {
     final sid = sessionId.trim();
     if (sid.isEmpty) {
       throw ApiException('sessionId is required');
     }
 
+    final params = queryParameters ?? receiptPrintReceiptQueryParams();
+
     try {
       final r = await _dio.post<dynamic>(
         '/api/sessions/$sid/print-receipt',
+        queryParameters: params,
         options: Options(
           responseType: ResponseType.json,
           validateStatus: (c) => c != null && c >= 200 && c < 500,

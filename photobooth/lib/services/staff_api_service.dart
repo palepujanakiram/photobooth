@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:uuid/uuid.dart';
 
+import 'receipt/receipt_printer_profile.dart';
 import '../models/staff_dashboard_models.dart';
 import '../utils/app_strings.dart';
 import '../utils/constants.dart';
@@ -514,6 +515,7 @@ class StaffApiService {
   /// [AppStrings.staffTokenHeader] (same ownership guard as kiosk token).
   Future<Map<String, dynamic>> postSessionPrintReceipt({
     required String sessionId,
+    Map<String, String>? queryParameters,
   }) async {
     final sid = sessionId.trim();
     if (sid.isEmpty) {
@@ -525,9 +527,12 @@ class StaffApiService {
       throw ApiException('Staff session expired. Please log in again.');
     }
 
+    final params = queryParameters ?? receiptPrintReceiptQueryParams();
+
     try {
       final r = await _dio.post<dynamic>(
         '/api/sessions/$sid/print-receipt',
+        queryParameters: params,
         options: Options(
           headers: {AppStrings.staffTokenHeader: token},
           responseType: ResponseType.json,

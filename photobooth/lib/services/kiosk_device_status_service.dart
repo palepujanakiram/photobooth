@@ -12,20 +12,21 @@ import '../utils/uvc_webcam_filter.dart';
 import 'dnp/dnp_print_transport.dart';
 import 'dnp/dnp_usb_client.dart';
 import 'dnp/dnp_wifi_client.dart';
-import 'receipt_printer_payload.dart';
+import 'receipt/receipt_print_bridge.dart';
+import '../utils/receipt_printer_config.dart';
 
 /// Probes booth hardware for the kiosk settings status panel.
 class KioskDeviceStatusService {
   KioskDeviceStatusService({
     DnpUsbClient? usbClient,
     DnpWifiClient? wifiClient,
-    Future<bool> Function(String host, int port)? probeReceiptTcp,
+    ReceiptPrintBridge? receiptBridge,
     Future<bool> Function()? probeUvcDevices,
     bool Function()? isAndroid,
     Duration? wifiDiscoverTimeout,
   })  : _usb = usbClient ?? DnpUsbClient(),
         _wifi = wifiClient ?? DnpWifiClient(),
-        _probeReceiptTcp = probeReceiptTcp ?? _defaultReceiptProbe,
+        _receipt = receiptBridge ?? ReceiptPrintBridge(),
         _probeUvcDevices = probeUvcDevices ?? _defaultUvcProbe,
         _isAndroid = isAndroid ?? (() => !kIsWeb && Platform.isAndroid),
         _wifiDiscoverTimeout =
@@ -33,7 +34,7 @@ class KioskDeviceStatusService {
 
   final DnpUsbClient _usb;
   final DnpWifiClient _wifi;
-  final Future<bool> Function(String host, int port) _probeReceiptTcp;
+  final ReceiptPrintBridge _receipt;
   final Future<bool> Function() _probeUvcDevices;
   final bool Function() _isAndroid;
   final Duration _wifiDiscoverTimeout;
@@ -130,7 +131,7 @@ class KioskDeviceStatusService {
   Future<KioskDeviceStatusEntry> _probeReceiptPrinter(
     AppSettingsModel? settings,
   ) async {
-    if (settings?.receiptPrinterEnabled != true) {
+    if (!isReceiptPrinterEnabled(settings)) {
       return const KioskDeviceStatusEntry(
         deviceName: AppStrings.kioskDeviceReceiptPrinter,
         connected: false,
@@ -138,22 +139,42 @@ class KioskDeviceStatusService {
         transport: KioskDeviceTransport.wifi,
       );
     }
-    final host = settings?.receiptPrinterHost?.trim() ?? '';
-    final port = settings?.receiptPrinterPort ?? 9100;
-    if (host.isEmpty || kIsWeb) {
+    if (kIsWeb) {
       return const KioskDeviceStatusEntry(
         deviceName: AppStrings.kioskDeviceReceiptPrinter,
         connected: false,
-        configured: false,
+        configured: true,
         transport: KioskDeviceTransport.wifi,
       );
     }
-    final reachable = await _probeReceiptTcp(host, port);
-    return KioskDeviceStatusEntry(
-      deviceName: AppStrings.kioskDeviceReceiptPrinter,
-      connected: reachable,
-      transport: KioskDeviceTransport.wifi,
-    );
+
+    try {
+      final probe = await _receipt
+          .probe(settings: settings)
+          .timeout(_wifiDiscoverTimeout);
+      return KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceReceiptPrinter,
+        connected: probe.connected,
+        configured: probe.configured,
+        transport: probe.transport == ReceiptPrinterTransport.usb
+            ? KioskDeviceTransport.usb
+            : KioskDeviceTransport.wifi,
+      );
+    } on TimeoutException {
+      return const KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceReceiptPrinter,
+        connected: false,
+        configured: true,
+        transport: KioskDeviceTransport.wifi,
+      );
+    } catch (_) {
+      return const KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceReceiptPrinter,
+        connected: false,
+        configured: true,
+        transport: KioskDeviceTransport.wifi,
+      );
+    }
   }
 
   Future<KioskDeviceStatusEntry> _probeUsbCamera() async {
@@ -170,21 +191,6 @@ class KioskDeviceStatusService {
       connected: present,
       transport: KioskDeviceTransport.usb,
     );
-  }
-
-  static Future<bool> _defaultReceiptProbe(String host, int port) async {
-    ReceiptPrinterPayload.validateHostPort(host: host, port: port);
-    try {
-      final socket = await Socket.connect(
-        host.trim(),
-        port,
-        timeout: const Duration(seconds: 2),
-      );
-      await socket.close();
-      return true;
-    } catch (_) {
-      return false;
-    }
   }
 
   static Future<bool> _defaultUvcProbe() async {
