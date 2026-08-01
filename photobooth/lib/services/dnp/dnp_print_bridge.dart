@@ -151,37 +151,49 @@ class DnpPrintBridge {
     );
   }
 
-  /// Optional admin [AppSettingsModel.printerHost]; otherwise subnet discovery.
+  /// Subnet discovery first; [AppSettingsModel.printerHost] only when discovery fails.
   Future<void> _ensureWifiPrinterReady(AppSettingsModel? settings) async {
+    if (_wifi.printerBaseUrl != null) return;
+
+    String? discoveredUrl;
+    if (_isAndroid()) {
+      final bound = await _prepareWifiNetwork();
+      if (bound) {
+        discoveredUrl = await _wifi.discover();
+      } else {
+        AppLogger.debug(
+          'Wi-Fi network bind failed; skipping subnet discovery',
+        );
+      }
+    } else {
+      discoveredUrl = await _wifi.discover();
+    }
+
+    if (discoveredUrl != null) {
+      AppLogger.debug('🖨️ Discovered WCM Plus at $discoveredUrl');
+      return;
+    }
+
     final configured = resolvePrinterEndpoint(settings);
     if (configured.host.isNotEmpty) {
       _wifi.configureBaseUrl(configured.baseUrl);
       AppLogger.debug(
-        '🖨️ Using configured printer ${configured.baseUrl}'
-        '${configured.path}',
+        '🖨️ Wi-Fi discovery found no printer; using configured '
+        '${configured.baseUrl}${configured.path}',
       );
       return;
     }
 
-    if (_wifi.printerBaseUrl != null) return;
-
     if (_isAndroid()) {
-      final bound = await _prepareWifiNetwork();
-      if (!bound) {
-        throw PrintException(
-          'Could not reach Wi-Fi. Connect this device to the same network as '
-          'the DNP WCM Plus module.',
-        );
-      }
-    }
-    final url = await _wifi.discover();
-    if (url == null) {
       throw PrintException(
-        'No DNP printer found on Wi-Fi. Check that the WCM Plus module is on '
-        'and this device is on the same network.',
+        'No DNP printer found on Wi-Fi. Connect this device to the same '
+        'network as the DNP WCM Plus module.',
       );
     }
-    AppLogger.debug('🖨️ Discovered WCM Plus at $url');
+    throw PrintException(
+      'No DNP printer found on Wi-Fi. Check that the WCM Plus module is on '
+      'and this device is on the same network.',
+    );
   }
 
   Future<String> _resolveLocalPath(XFile imageFile) async {
