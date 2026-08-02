@@ -20,6 +20,12 @@ bool ignored(String path) {
     '_print_helpers.dart',
     '_payment_card_widgets.dart',
     'result_payment_coupon_row.dart',
+    'result_payment_copies_row.dart',
+    'photo_capture_strip_thumbs.dart',
+    'staff_payments_print_picker.dart',
+    'staff_payments_preview_helpers.dart',
+    'fotoflashback_filter_preview.dart',
+    'kiosk_device_status_widgets.dart',
     '_carousel_page.dart',
     '_loaded_body.dart',
     '_continue_helpers.dart',
@@ -146,6 +152,8 @@ bool ignored(String path) {
     'photo_capture_camera_picker_screen.dart',
     // Singleton with static Dio that makes real network calls; tested via isProtectedUrl.
     'protected_image_loader.dart',
+    // kIsWeb branch + FileHelper temp write — platform-specific.
+    'classic_af_marker_inject.dart',
   ];
   for (final p in patterns) {
     if (path.contains(p)) return true;

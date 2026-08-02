@@ -88,6 +88,56 @@ void main() {
       expect(out.scrubbed, isFalse);
       expect(out.dataUrl, 'data:image/jpeg;base64,shot9_echo');
     });
+
+    test('returns raw when session id missing', () async {
+      SessionManager().clearSession();
+      final out = await scrubClassicShotDataUrl(
+        encodeShotDataUrl: () async => 'data:image/jpeg;base64,raw',
+        enableScrub: true,
+      );
+      expect(out.scrubbed, isFalse);
+      expect(out.dataUrl, 'data:image/jpeg;base64,raw');
+    });
+
+    test('fail-open when scrub API throws', () async {
+      final api = _ThrowingScrubApi();
+      final out = await scrubClassicShotDataUrl(
+        encodeShotDataUrl: () async => 'data:image/jpeg;base64,shot',
+        enableScrub: true,
+        apiService: api,
+      );
+      expect(out.scrubbed, isFalse);
+      expect(out.dataUrl, 'data:image/jpeg;base64,shot');
+    });
+
+    test('enqueue propagates scrub failures without breaking queue', () async {
+      final api = _ThrowingScrubApi();
+      await expectLater(
+        scrubClassicShotDataUrl(
+          encodeShotDataUrl: () async => 'data:image/jpeg;base64,a',
+          enableScrub: true,
+          apiService: api,
+        ),
+        completion(isA<ClassicShotScrubResult>()),
+      );
+      final second = await scrubClassicShotDataUrl(
+        encodeShotDataUrl: () async => 'data:image/jpeg;base64,b',
+        enableScrub: true,
+        apiService: api,
+      );
+      expect(second.dataUrl, contains('b'));
+    });
+
+    test('enqueue error in scrub fn still completes future', () async {
+      await expectLater(
+        ClassicStripScrubGate.enqueue(() async {
+          throw StateError('queue boom');
+        }),
+        throwsStateError,
+      );
+      final ok = await ClassicStripScrubGate.enqueue(() async => 1);
+      expect(ok, 1);
+    });
   });
 
   group('injectClassicAfMarkers', () {
@@ -112,7 +162,27 @@ void main() {
       }
       expect(bright, greaterThan(80));
     });
+
+    test('returns source unchanged when bytes are not an image', () async {
+      final source = XFile.fromData(
+        Uint8List.fromList([1, 2, 3, 4]),
+        mimeType: 'image/jpeg',
+        name: 'bad.jpg',
+      );
+      final out = await injectClassicAfMarkers(source);
+      expect(await out.readAsBytes(), await source.readAsBytes());
+    });
   });
+}
+
+class _ThrowingScrubApi extends FakeApiService {
+  @override
+  Future<StripOverlayCleanResult> cleanStripOverlays({
+    required String sessionId,
+    required List<String> images,
+  }) async {
+    throw Exception('scrub failed');
+  }
 }
 
 class _RecordingScrubApi extends FakeApiService {

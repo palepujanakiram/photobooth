@@ -23,12 +23,14 @@ class KioskDeviceStatusService {
     ReceiptPrintBridge? receiptBridge,
     Future<bool> Function()? probeUvcDevices,
     bool Function()? isAndroid,
+    bool Function()? isWeb,
     Duration? wifiDiscoverTimeout,
   })  : _usb = usbClient ?? DnpUsbClient(),
         _wifi = wifiClient ?? DnpWifiClient(),
         _receipt = receiptBridge ?? ReceiptPrintBridge(),
         _probeUvcDevices = probeUvcDevices ?? _defaultUvcProbe,
         _isAndroid = isAndroid ?? (() => !kIsWeb && Platform.isAndroid),
+        _isWeb = isWeb ?? (() => kIsWeb),
         _wifiDiscoverTimeout =
             wifiDiscoverTimeout ?? const Duration(seconds: 5);
 
@@ -37,6 +39,7 @@ class KioskDeviceStatusService {
   final ReceiptPrintBridge _receipt;
   final Future<bool> Function() _probeUvcDevices;
   final bool Function() _isAndroid;
+  final bool Function() _isWeb;
   final Duration _wifiDiscoverTimeout;
 
   Future<KioskDeviceStatusSnapshot> probe({AppSettingsModel? settings}) async {
@@ -57,7 +60,7 @@ class KioskDeviceStatusService {
     DnpPrintTransport transport,
     AppSettingsModel? settings,
   ) async {
-    if (kIsWeb) {
+    if (_isWeb()) {
       return _dnpEntry(connected: false, transport: KioskDeviceTransport.wifi);
     }
 

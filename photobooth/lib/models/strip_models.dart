@@ -41,6 +41,7 @@ const List<String> kStripSheetLayoutIds = [
   'polaroid',
   'grid_2x2',
   'romantic',
+  'custom_sheet',
 ];
 
 bool isStripSheetLayout(String frameId) =>

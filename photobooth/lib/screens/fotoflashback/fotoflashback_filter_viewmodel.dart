@@ -238,13 +238,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         _selectedFilterId = filters.first.id;
       }
       if (frames.isNotEmpty &&
-          !frames.any((f) => f.id == _selectedFrameId)) {
+          (!frames.any((f) => f.id == _selectedFrameId) ||
+              (isSingleClassic && isStripSheetLayout(_selectedFrameId)))) {
         _selectedFrameId = frames.first.id;
-      }
-      if (isSingleClassic && isStripSheetLayout(_selectedFrameId)) {
-        _selectedFrameId = frames.isNotEmpty
-            ? frames.first.id
-            : kDefaultStripFrameId;
       }
       if (stickers.isNotEmpty &&
           !stickers.any((s) => s.id == _selectedStickerId) &&
@@ -558,6 +554,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _activeScribblePoints = null;
     notifyListeners();
   }
+
+  @visibleForTesting
+  set selectedFrameIdForTests(String frameId) => _selectedFrameId = frameId;
 
   void _commitActiveScribble() {
     final active = _activeScribblePoints;

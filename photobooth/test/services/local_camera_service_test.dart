@@ -100,5 +100,108 @@ void main() {
       await expectLater(service.capture(), throwsStateError);
       service.dispose();
     });
+
+    test('isHealthy returns false on HTTP error', () async {
+      final client = MockClient((request) async {
+        return http.Response('bad', 503);
+      });
+      final service = LocalCameraService(config: config, client: client);
+      expect(await service.isHealthy(), isFalse);
+      service.dispose();
+    });
+
+    test('isHealthy returns false when health request throws', () async {
+      final client = MockClient((request) async {
+        throw Exception('network down');
+      });
+      final service = LocalCameraService(config: config, client: client);
+      expect(await service.isHealthy(), isFalse);
+      service.dispose();
+    });
+
+    test('capture throws when not configured', () async {
+      const disabled = CameraSidecarConfig(
+        enabled: false,
+        baseUrl: 'http://192.168.2.50:8791',
+        token: '',
+      );
+      final service = LocalCameraService(config: disabled);
+      await expectLater(service.capture(), throwsStateError);
+      service.dispose();
+    });
+
+    test('capture throws on HTTP failure and empty body', () async {
+      final client = MockClient((request) async {
+        return http.Response('server error', 500);
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await expectLater(service.capture(), throwsStateError);
+      service.dispose();
+
+      final emptyClient = MockClient((request) async {
+        return http.Response.bytes(<int>[], 200);
+      });
+      final emptyService = LocalCameraService(config: config, client: emptyClient);
+      await expectLater(emptyService.capture(), throwsStateError);
+      emptyService.dispose();
+    });
+
+    test('joins base paths with and without trailing slash', () async {
+      final client = MockClient((request) async {
+        expect(request.url.path, '/booth/health');
+        return http.Response(jsonEncode({'ok': true, 'connected': true}), 200);
+      });
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://192.168.2.50:8791/booth/',
+          token: '',
+        ),
+        client: client,
+      );
+      expect(await service.isHealthy(), isTrue);
+      service.dispose();
+    });
+
+    test('omits token header when blank', () async {
+      final client = MockClient((request) async {
+        expect(request.headers.containsKey('X-Camera-Token'), isFalse);
+        return http.Response(jsonEncode({'ok': true, 'connected': true}), 200);
+      });
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://192.168.2.50:8791',
+          token: '',
+        ),
+        client: client,
+      );
+      expect(await service.isHealthy(), isTrue);
+      service.dispose();
+    });
+
+    test('default constructor uses environment sidecar config', () async {
+      final service = LocalCameraService(
+        client: MockClient((_) async => http.Response('bad', 503)),
+      );
+      expect(await service.isHealthy(), isFalse);
+      service.dispose();
+    });
+
+    test('capture truncates long HTTP error bodies', () async {
+      final client = MockClient((request) async {
+        return http.Response('x' * 300, 500);
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await expectLater(
+        service.capture(),
+        throwsA(isA<StateError>().having(
+          (e) => e.message!.length,
+          'message length',
+          lessThan(300),
+        )),
+      );
+      service.dispose();
+    });
   });
 }

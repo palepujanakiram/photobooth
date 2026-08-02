@@ -46,8 +46,6 @@ class ExperienceChoiceViewModel extends ChangeNotifier {
       _themes = await _themeManager.fetchThemes();
     } on ApiException catch (e) {
       _errorMessage = e.message;
-    } catch (e) {
-      _errorMessage = e.toString();
     } finally {
       _loading = false;
       notifyListeners();

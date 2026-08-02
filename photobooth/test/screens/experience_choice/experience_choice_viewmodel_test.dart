@@ -37,6 +37,57 @@ void main() {
     await vm.load();
     expect(vm.fotoFlashAvailable, isTrue);
     expect(vm.fotoFlashTheme?.id, 'strip');
+    expect(vm.isLoading, isFalse);
+    expect(vm.isStartingFlashback, isFalse);
+  });
+
+  test('load surfaces API and generic errors', () async {
+    final apiErr = _ThemesFakeApi(themes: [strip], loadThrowsApi: true);
+    final vmApi = ExperienceChoiceViewModel(
+      themeManager: ThemeManager.forTesting(apiErr),
+      apiService: apiErr,
+    );
+    await vmApi.load();
+    expect(vmApi.errorMessage, 'themes failed');
+
+    final apiBoom = _ThemesFakeApi(themes: [strip], loadThrowsGeneric: true);
+    final vmBoom = ExperienceChoiceViewModel(
+      themeManager: ThemeManager.forTesting(apiBoom),
+      apiService: apiBoom,
+    );
+    await vmBoom.load();
+    expect(vmBoom.errorMessage, contains('load boom'));
+  });
+
+  test('uses production service defaults when omitted', () {
+    final vm = ExperienceChoiceViewModel();
+    expect(vm.isLoading, isFalse);
+    expect(vm.errorMessage, isNull);
+  });
+
+  test('prepareFotoFlashback fails without session id', () async {
+    final api = _ThemesFakeApi(themes: [strip]);
+    SessionManager().clearSession();
+    final vm = ExperienceChoiceViewModel(
+      themeManager: ThemeManager.forTesting(api),
+      apiService: api,
+    );
+    await vm.load();
+    expect(await vm.prepareFotoFlashback(), isNull);
+    expect(vm.errorMessage, isNotNull);
+    expect(vm.isStartingFlashback, isFalse);
+  });
+
+  test('prepareFotoFlashback surfaces generic errors', () async {
+    final api = _ThemesFakeApi(themes: [strip], patchThrowsGeneric: true);
+    SessionManager().setSessionFromResponse(sessionJson('sess-1'));
+    final vm = ExperienceChoiceViewModel(
+      themeManager: ThemeManager.forTesting(api),
+      apiService: api,
+    );
+    await vm.load();
+    expect(await vm.prepareFotoFlashback(), isNull);
+    expect(vm.errorMessage, isNotEmpty);
   });
 
   test('prepareFotoFlashback updates session theme', () async {
@@ -85,13 +136,23 @@ class _ThemesFakeApi extends FakeApiService {
     required this.themes,
     super.patchThrows,
     super.sessionResponse,
+    this.loadThrowsApi = false,
+    this.loadThrowsGeneric = false,
+    this.patchThrowsGeneric = false,
   });
 
   final List<ThemeModel> themes;
+  final bool loadThrowsApi;
+  final bool loadThrowsGeneric;
+  final bool patchThrowsGeneric;
   String? lastSelectedThemeId;
 
   @override
-  Future<List<ThemeModel>> getThemes() async => themes;
+  Future<List<ThemeModel>> getThemes() async {
+    if (loadThrowsApi) throw ApiException('themes failed');
+    if (loadThrowsGeneric) throw Exception('load boom');
+    return themes;
+  }
 
   @override
   Future<Map<String, dynamic>> updateSession({
@@ -105,6 +166,7 @@ class _ThemesFakeApi extends FakeApiService {
   }) async {
     lastSelectedThemeId = selectedThemeId;
     if (patchThrows) throw ApiException('patch failed');
+    if (patchThrowsGeneric) throw Exception('patch boom');
     return sessionResponse;
   }
 }

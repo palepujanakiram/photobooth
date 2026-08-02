@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -430,6 +431,64 @@ void main() {
         settings: AppSettingsModel(printerTransport: 'wifi'),
       );
       expect(snap.dnpPrinter.connected, isFalse);
+    });
+
+    test('web platform skips DNP hardware probe', () async {
+      final service = KioskDeviceStatusService(
+        isWeb: () => true,
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(printerTransport: 'usb'),
+      );
+      expect(snap.dnpPrinter.connected, isFalse);
+      expect(snap.dnpPrinter.transport, KioskDeviceTransport.wifi);
+    });
+
+    test('default UVC probe detects attached webcam', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      const channel = MethodChannel('uvccamera/native');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'isSupported') return true;
+        if (call.method == 'getDevices') {
+          return {
+            'cam1': {
+              'name': 'Webcam',
+              'deviceClass': 14,
+              'deviceSubclass': 0,
+              'vendorId': 0x046d,
+              'productId': 0x0825,
+            },
+          };
+        }
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+      });
+
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+      );
+      final snap = await service.probe(settings: AppSettingsModel());
+      expect(snap.usbCamera.connected, isTrue);
     });
   });
 }

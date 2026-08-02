@@ -62,5 +62,7 @@ void main() {
     expect(AppStrings.printSelectionTotal(250), 'Total ₹250');
     expect(AppStrings.printSelectionContinue(0), 'Select a photo');
     expect(AppStrings.printSelectionContinue(2), 'Continue (2)');
+    expect(AppStrings.flashbackSinglePrintTitle(true), 'Classic 4×6');
+    expect(AppStrings.flashbackSinglePrintTitle(false), 'Classic 6×4');
   });
 }

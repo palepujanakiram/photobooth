@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/services/receipt/receipt_wifi_client.dart';
@@ -106,6 +108,13 @@ void main() {
 
       final client = ReceiptWifiClient();
       expect(await client.discover(), isNull);
+    });
+
+    test('probeHost returns true when TCP connect succeeds', () async {
+      final server = await ServerSocket.bind('127.0.0.1', 0);
+      addTearDown(() async => server.close());
+      final client = ReceiptWifiClient();
+      expect(await client.probeHost('127.0.0.1', port: server.port), isTrue);
     });
 
     test('probeHost returns false when socket connect fails', () async {

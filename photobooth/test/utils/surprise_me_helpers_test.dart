@@ -5,6 +5,7 @@ import 'package:photobooth/services/kiosk_manager.dart';
 import 'package:photobooth/services/session_manager.dart';
 import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/constants.dart';
+import 'package:photobooth/screens/fotoflashback/surprise_me_upsell_view.dart';
 import 'package:photobooth/utils/surprise_me_helpers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -278,6 +279,68 @@ void main() {
       await tester.tap(find.text(AppStrings.surpriseMeUpsellNo));
       await tester.pumpAndSettle();
       expect(api.declineSurpriseMeCalls, 1);
+    });
+
+    testWidgets('exploreMore returns AI image', (tester) async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-1'));
+      final api = FakeApiService()
+        ..surpriseMeStatus = const SurpriseMeStatus(
+          status: 'ready',
+          showUpsell: true,
+          imageUrl: 'https://example.com/a.jpg',
+          themeName: 'Noir',
+        );
+      SurpriseMeOfferResult? captured;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              return ElevatedButton(
+                onPressed: () async {
+                  captured = await maybeOfferSurpriseMeCopy(
+                    context: context,
+                    enableSurpriseMeAi: true,
+                    additionalPrintPrice: 75,
+                    apiService: api,
+                  );
+                },
+                child: const Text('go'),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.tap(find.text('go'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.surpriseMeUpsellExploreMore));
+      await tester.pumpAndSettle();
+      expect(captured?.choice, SurpriseMeUpsellChoice.exploreMore);
+      expect(captured?.image?.theme.name, 'Noir');
+    });
+
+    testWidgets('fail-open when Navigator is unavailable', (tester) async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-1'));
+      late BuildContext ctx;
+      await tester.pumpWidget(
+        Builder(
+          builder: (context) {
+            ctx = context;
+            return const SizedBox();
+          },
+        ),
+      );
+      final result = await maybeOfferSurpriseMeCopy(
+        context: ctx,
+        enableSurpriseMeAi: true,
+        additionalPrintPrice: 50,
+        apiService: FakeApiService()
+          ..surpriseMeStatus = const SurpriseMeStatus(
+            status: 'ready',
+            showUpsell: true,
+            imageUrl: 'https://example.com/a.jpg',
+          ),
+      );
+      expect(result, isNull);
     });
   });
 }
