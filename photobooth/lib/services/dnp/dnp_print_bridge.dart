@@ -169,9 +169,18 @@ class DnpPrintBridge {
     );
   }
 
-  /// Subnet discovery first; [AppSettingsModel.printerHost] only when discovery fails.
+  /// Prefer kiosk [AppSettingsModel.printerHost]; subnet discovery only when unset.
   Future<void> _ensureWifiPrinterReady(AppSettingsModel? settings) async {
     if (_wifi.printerBaseUrl != null) return;
+
+    final configured = resolvePrinterEndpoint(settings);
+    if (configured.host.isNotEmpty) {
+      _wifi.configureBaseUrl(configured.baseUrl);
+      AppLogger.debug(
+        '🖨️ Using kiosk printer IP ${configured.baseUrl}${configured.path}',
+      );
+      return;
+    }
 
     String? discoveredUrl;
     if (_isAndroid()) {
@@ -192,25 +201,15 @@ class DnpPrintBridge {
       return;
     }
 
-    final configured = resolvePrinterEndpoint(settings);
-    if (configured.host.isNotEmpty) {
-      _wifi.configureBaseUrl(configured.baseUrl);
-      AppLogger.debug(
-        '🖨️ Wi-Fi discovery found no printer; using configured '
-        '${configured.baseUrl}${configured.path}',
-      );
-      return;
-    }
-
     if (_isAndroid()) {
       throw PrintException(
         'No DNP printer found on Wi-Fi. Connect this device to the same '
-        'network as the DNP WCM Plus module.',
+        'network as the DNP WCM Plus module, or set printer IP in kiosk settings.',
       );
     }
     throw PrintException(
       'No DNP printer found on Wi-Fi. Check that the WCM Plus module is on '
-      'and this device is on the same network.',
+      'and this device is on the same network, or set printer IP in kiosk settings.',
     );
   }
 

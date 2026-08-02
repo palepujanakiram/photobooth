@@ -101,7 +101,7 @@ Future<bool> staffPaymentsConfirmReceiptPrintDialog(
   return ok;
 }
 
-/// Download image and send to the DNP photo printer (USB first, else Wi-Fi discovery).
+/// Download image and send to the DNP photo printer (kiosk IP, else USB/discovery).
 Future<void> staffPaymentsRunPrintJob({
   required StaffApiService staffApi,
   required PrintService printService,

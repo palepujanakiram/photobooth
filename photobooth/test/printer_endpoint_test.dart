@@ -49,4 +49,19 @@ void main() {
       expect(endpoint.path, '/api/PrintImage');
     });
   });
+
+  group('hasConfiguredPrinterHost', () {
+    test('is true only for non-empty trimmed host', () {
+      expect(hasConfiguredPrinterHost(null), isFalse);
+      expect(hasConfiguredPrinterHost(AppSettingsModel()), isFalse);
+      expect(
+        hasConfiguredPrinterHost(AppSettingsModel(printerHost: '  ')),
+        isFalse,
+      );
+      expect(
+        hasConfiguredPrinterHost(AppSettingsModel(printerHost: '10.0.0.1')),
+        isTrue,
+      );
+    });
+  });
 }

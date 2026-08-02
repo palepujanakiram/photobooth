@@ -101,18 +101,17 @@ class KioskDeviceStatusService {
       final cached = _wifi.printerBaseUrl;
       if (cached != null && cached.trim().isNotEmpty) return true;
 
-      final url = await _wifi
-          .discover(parallelism: 32)
-          .timeout(_wifiDiscoverTimeout);
-      if (url != null && url.trim().isNotEmpty) return true;
-
       final configured = resolvePrinterEndpoint(settings);
       if (configured.host.isNotEmpty) {
         return _wifi.probeBaseUrl(configured.baseUrl).timeout(
               _wifiDiscoverTimeout,
             );
       }
-      return false;
+
+      final url = await _wifi
+          .discover(parallelism: 32)
+          .timeout(_wifiDiscoverTimeout);
+      return url != null && url.trim().isNotEmpty;
     } on TimeoutException {
       return false;
     } catch (_) {
