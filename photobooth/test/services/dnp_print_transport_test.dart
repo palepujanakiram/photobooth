@@ -898,6 +898,51 @@ void main() {
       );
     });
 
+    test('discovers WCM Plus on Android when Wi-Fi bind succeeds', () async {
+      var printedHost = '';
+      var discoverCalled = false;
+      var prepareCalled = false;
+      final wifi = DnpWifiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/PrintImage') {
+            printedHost = request.url.host;
+            return http.Response('ok', 200);
+          }
+          return http.Response('', 404);
+        }),
+        discoverFn: ({int parallelism = 20}) async {
+          discoverCalled = true;
+          return 'http://192.168.3.20';
+        },
+      );
+      final bridge = DnpPrintBridge(
+        wifiClient: wifi,
+        isAndroid: () => true,
+        prepareWifiNetwork: () async {
+          prepareCalled = true;
+          return true;
+        },
+      );
+      final jpeg = File(
+        '${Directory.systemTemp.path}/dnp_android_discover_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await jpeg.writeAsBytes([0xFF]);
+      addTearDown(() async {
+        if (await jpeg.exists()) await jpeg.delete();
+      });
+
+      await bridge.printImage(
+        imageFile: XFile(jpeg.path),
+        settings: AppSettingsModel(printerTransport: 'wifi'),
+        networkPrintSize: 's4x6',
+      );
+
+      expect(printedHost, '192.168.3.20');
+      expect(discoverCalled, isTrue);
+      expect(prepareCalled, isTrue);
+      expect(wifi.printerBaseUrl, 'http://192.168.3.20');
+    });
+
     test('falls back to configured printerHost when discovery finds nothing', () async {
       var printedHost = '';
       var discoverCalled = false;
