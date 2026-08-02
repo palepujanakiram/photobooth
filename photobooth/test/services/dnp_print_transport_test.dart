@@ -361,7 +361,37 @@ void main() {
         settings: AppSettingsModel(),
         networkPrintSize: 's4x6',
       );
+      expect(usb.connectCalls, 1);
       expect(usb.printCalls, 1);
+    });
+
+    test('auto transport completes USB print when probe finds device', () async {
+      final usb = _RecordingUsbClient(const MethodChannel('test/usb'));
+      final bridge = DnpPrintBridge(
+        usbClient: usb,
+        wifiClient: DnpWifiClient(client: MockClient((_) async => http.Response('', 404))),
+        isAndroid: () => true,
+      );
+
+      final jpeg = File(
+        '${Directory.systemTemp.path}/dnp_auto_usb_ok_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await jpeg.writeAsBytes([0xFF, 0xD8]);
+      addTearDown(() async {
+        if (await jpeg.exists()) await jpeg.delete();
+      });
+
+      await bridge.printImage(
+        imageFile: XFile(jpeg.path),
+        settings: AppSettingsModel(printerTransport: 'auto'),
+        networkPrintSize: AppConstants.kPrintSizePortrait4x6,
+        quantity: 2,
+      );
+
+      expect(usb.connectCalls, 1);
+      expect(usb.printCalls, 1);
+      expect(usb.lastPrintSize, AppConstants.kPrintSizePortrait4x6);
+      expect(usb.lastCopies, 2);
     });
 
     test('auto transport uses Wi-Fi when USB probe finds no device', () async {

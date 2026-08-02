@@ -170,19 +170,26 @@ void main() {
 
   var lf = 0;
   var lh = 0;
-  final gaps = <String>[];
+  final gaps = <({String path, int hit, int total, List<int> lines})>[];
 
   String? current;
   var fileLf = 0;
   var fileLh = 0;
+  final uncoveredLines = <int>[];
 
   void flushFile() {
     if (current == null || ignored(current)) return;
     lf += fileLf;
     lh += fileLh;
     if (fileLh < fileLf) {
-      gaps.add('$current $fileLh/$fileLf');
+      gaps.add((
+        path: current,
+        hit: fileLh,
+        total: fileLf,
+        lines: List<int>.from(uncoveredLines),
+      ));
     }
+    uncoveredLines.clear();
   }
 
   for (final line in lcov.readAsLinesSync()) {
@@ -191,10 +198,18 @@ void main() {
       current = line.substring(3);
       fileLf = 0;
       fileLh = 0;
+      uncoveredLines.clear();
     } else if (line.startsWith('LF:')) {
       fileLf = int.parse(line.substring(3));
     } else if (line.startsWith('LH:')) {
       fileLh = int.parse(line.substring(3));
+    } else if (line.startsWith('DA:')) {
+      final comma = line.indexOf(',', 3);
+      if (comma > 3) {
+        final lineNo = int.parse(line.substring(3, comma));
+        final hits = int.parse(line.substring(comma + 1));
+        if (hits == 0) uncoveredLines.add(lineNo);
+      }
     } else if (line == 'end_of_record') {
       flushFile();
       current = null;
@@ -206,7 +221,10 @@ void main() {
   if (gaps.isNotEmpty) {
     stderr.writeln('Uncovered in-scope files (${gaps.length}):');
     for (final g in gaps.take(30)) {
-      stderr.writeln('  $g');
+      final lineHint = g.lines.isEmpty
+          ? ''
+          : ' (lines: ${g.lines.take(12).join(', ')}${g.lines.length > 12 ? ', …' : ''})';
+      stderr.writeln('  ${g.path} ${g.hit}/${g.total}$lineHint');
     }
     if (gaps.length > 30) {
       stderr.writeln('  ... and ${gaps.length - 30} more');
