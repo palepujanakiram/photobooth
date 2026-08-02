@@ -461,6 +461,234 @@ void main() {
     expect(resetChrome.selectedFrameId, 'noir');
     expect(resetChrome.selectedStickerId, kDefaultStripStickerId);
   });
+
+  test('FotoFlashbackFilterViewModel preview grade and sheet frames', () async {
+    final api = _SheetFramesFakeApi();
+    SessionManager().setSessionFromResponse(_sessionJson('sess-sheet'));
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: api,
+    );
+    await vm.loadFilters();
+    expect(vm.wysiwygLayout.gridTitle, isNotEmpty);
+    expect(vm.frames.map((f) => f.id), contains('grid_2x2'));
+
+    await vm.refreshPreviewGrade();
+    expect(vm.previewImagesAreGraded, isTrue);
+    expect(
+      vm.previewImageDataUrls.every((u) => u.contains('_graded_')),
+      isTrue,
+    );
+
+    vm.selectFrame('grid_2x2');
+    expect(vm.selectedFrame?.id, 'grid_2x2');
+    vm.addSticker('sparkles');
+    expect(vm.stickerPlacements, isNotEmpty);
+    vm.selectFrame('classic');
+    expect(vm.stickerPlacements, isEmpty);
+
+    vm.selectFrame('romantic');
+    vm.addSticker('confetti');
+    vm.selectFrame('polaroid');
+    vm.clearStickers();
+    vm.addSticker('stars');
+    expect(vm.stickerPlacements, hasLength(kStripShotCount));
+  });
+
+  test('FotoFlashbackFilterViewModel draw mode and scrub dots', () async {
+    final api = _StripFakeApi();
+    SessionManager().setSessionFromResponse(_sessionJson('sess-draw'));
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
+      apiService: api,
+      shotCleaned: const [true, false, false, false],
+    );
+    await vm.loadFilters();
+    expect(vm.scrubDotStatuses.first, ClassicScrubDotStatus.cleaned);
+
+    vm.setDrawMode(true);
+    vm.beginScribble(0.15, 0.15);
+    vm.extendScribble(0.25, 0.25);
+    expect(vm.scribbles, hasLength(1));
+    expect(vm.canUndoScribble, isTrue);
+    vm.undoScribble();
+    expect(vm.scribbles, isEmpty);
+
+    vm.beginScribble(0.1, 0.1);
+    vm.extendScribble(0.2, 0.2);
+    vm.setDrawMode(false);
+    expect(vm.drawMode, isFalse);
+    expect(vm.scribbles, hasLength(1));
+
+    vm.setPenColor('#FFFFFF');
+    expect(vm.penColor, '#FFFFFF');
+    vm.setPenColor('invalid');
+    expect(vm.penColor, '#FFFFFF');
+  });
+
+  test('FotoFlashbackFilterViewModel single classic hides sheet frames', () async {
+    final api = _SheetFramesFakeApi();
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const ['data:image/jpeg;base64,/9j/4AAQ'],
+      apiService: api,
+    );
+    await vm.loadFilters();
+    expect(vm.isSingleClassic, isTrue);
+    expect(vm.frames.any((f) => f.id == 'grid_2x2'), isFalse);
+    vm.selectPrintOrientation(PrintOrientation.landscape);
+    expect(vm.printOrientation, PrintOrientation.landscape);
+    vm.selectPrintOrientation(PrintOrientation.landscape);
+    vm.addSticker('flowers');
+    expect(vm.stickerPlacements, hasLength(1));
+  });
+
+  test('FotoFlashbackFilterViewModel refreshPreviewGrade no-ops off strip count',
+      () async {
+    final single = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const ['data:image/jpeg;base64,/9j/4AAQ'],
+      apiService: _StripFakeApi(),
+    );
+    await single.refreshPreviewGrade();
+    expect(single.previewImagesAreGraded, isFalse);
+  });
+
+  test('FotoFlashbackFilterViewModel single classic resets sheet frame on load',
+      () async {
+    final api = _SheetOnlyFakeApi();
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const ['data:image/jpeg;base64,/9j/4AAQ'],
+      apiService: api,
+    );
+    await vm.loadFilters();
+    expect(vm.selectedFrameId, isNot('grid_2x2'));
+    expect(vm.previewImageDataUrls, vm.imageDataUrls);
+    expect(vm.canUndoScribble, isFalse);
+  });
+
+  test('FotoFlashbackFilterViewModel scrub dots show failed after pass', () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-dots'));
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
+      apiService: _EmptyScrubFakeApi(),
+      shotCleaned: const [false, false, false, false],
+    );
+    await vm.loadFilters();
+    await vm.preparePreview();
+    expect(vm.scrubDotStatuses, everyElement(ClassicScrubDotStatus.failed));
+  });
+
+  test('FotoFlashbackFilterViewModel plain sheet spawn fallback', () async {
+    final api = _PlainSheetFakeApi();
+    SessionManager().setSessionFromResponse(_sessionJson('sess-plain'));
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
+      apiService: api,
+    );
+    await vm.loadFilters();
+    vm.selectFrame('custom_sheet');
+    vm.addSticker('hearts');
+    expect(vm.stickerPlacements, hasLength(kStripShotCount));
+  });
+
+  test('FotoFlashbackFilterViewModel defers grade when cache warm', () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-grade-cache'));
+    final api = _CountingGradeFakeApi();
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: api,
+    );
+    await vm.loadFilters();
+    await vm.refreshPreviewGrade();
+    await vm.refreshPreviewGrade();
+    expect(api.gradeCalls, 1);
+  });
+
+  test('FotoFlashbackFilterViewModel compose prepares uncleaned preview', () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-compose-prep'));
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
+      apiService: _StripFakeApi(),
+      shotCleaned: const [false, false, false, false],
+    );
+    await vm.loadFilters();
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    expect(vm.previewCleaned, isTrue);
+  });
+
+  test('FotoFlashbackFilterViewModel single classic clears sheet frame on load',
+      () async {
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const ['data:image/jpeg;base64,/9j/4AAQ'],
+      apiService: _SheetFramesFakeApi(),
+    );
+    vm.selectedFrameIdForTests = 'grid_2x2';
+    await vm.loadFilters();
+    expect(vm.selectedFrameId, 'classic');
+  });
+
+  test('FotoFlashbackFilterViewModel exposes pen width and initial scrub dots',
+      () async {
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
+      apiService: _StripFakeApi(),
+      shotCleaned: const [false, false, false, false],
+    );
+    expect(vm.penWidth, 0.02);
+    expect(vm.scrubDotStatuses, everyElement(ClassicScrubDotStatus.pending));
+  });
+
+  test('FotoFlashbackFilterViewModel reports grading preview state', () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-grading-flag'));
+    final api = _SlowGradeFakeApi();
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: api,
+    );
+    await vm.loadFilters();
+    final gradeFuture = vm.refreshPreviewGrade();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(vm.isGradingPreview, isTrue);
+    await gradeFuture;
+  });
+
+  test('FotoFlashbackFilterViewModel pending scrub dots while preparing', () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-pending-dots'));
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
+      apiService: _SlowScrubFakeApi(),
+      shotCleaned: const [false, false, false, false],
+    );
+    await vm.loadFilters();
+    final prepare = vm.preparePreview();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(vm.scrubDotStatuses[1], ClassicScrubDotStatus.pending);
+    await prepare;
+  });
+
+  test('FotoFlashbackFilterViewModel canUndo with active scribble point', () {
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: _StripFakeApi(),
+    );
+    vm.setDrawMode(true);
+    vm.beginScribble(0.2, 0.2);
+    expect(vm.canUndoScribble, isTrue);
+  });
 }
 
 Map<String, dynamic> _sessionJson(String id) => {
@@ -680,4 +908,128 @@ class _StripFakeApi extends FakeApiService {
   List<StripScribbleStroke>? lastScribbles;
 
   bool? lastCleanOverlays;
+}
+
+class _SlowGradeFakeApi extends _StripFakeApi {
+  @override
+  Future<List<String>> gradeStripPreview({
+    required String sessionId,
+    required List<String> images,
+    String filter = kDefaultStripFilterId,
+  }) async {
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    return super.gradeStripPreview(
+      sessionId: sessionId,
+      images: images,
+      filter: filter,
+    );
+  }
+}
+
+class _CountingGradeFakeApi extends _StripFakeApi {
+  int gradeCalls = 0;
+
+  @override
+  Future<List<String>> gradeStripPreview({
+    required String sessionId,
+    required List<String> images,
+    String filter = kDefaultStripFilterId,
+  }) async {
+    gradeCalls++;
+    return super.gradeStripPreview(
+      sessionId: sessionId,
+      images: images,
+      filter: filter,
+    );
+  }
+}
+
+class _SlowScrubFakeApi extends _StripFakeApi {
+  @override
+  Future<StripOverlayCleanResult> cleanStripOverlays({
+    required String sessionId,
+    required List<String> images,
+  }) async {
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    return super.cleanStripOverlays(sessionId: sessionId, images: images);
+  }
+}
+
+class _PlainSheetFakeApi extends _SheetFramesFakeApi {
+  @override
+  Future<StripFiltersCatalog> fetchStripFilters() async {
+    return StripFiltersCatalog.fromJson({
+      'brand': 'FotoFlashback',
+      'shotCount': 4,
+      'filters': [
+        {
+          'id': 'classic_warm',
+          'name': 'Classic Warm',
+          'description': 'Warm',
+          'cssFilter': 'none',
+        },
+      ],
+      'frames': [
+        {'id': 'custom_sheet', 'name': 'Custom', 'description': 'Custom'},
+      ],
+      'stickers': [
+        {'id': 'hearts', 'name': 'Hearts', 'description': 'Hearts'},
+      ],
+    });
+  }
+}
+
+class _SheetOnlyFakeApi extends _StripFakeApi {
+  @override
+  Future<StripFiltersCatalog> fetchStripFilters() async {
+    return StripFiltersCatalog.fromJson({
+      'brand': 'FotoFlashback',
+      'shotCount': 4,
+      'filters': [
+        {
+          'id': 'classic_warm',
+          'name': 'Classic Warm',
+          'description': 'Warm',
+          'cssFilter': 'none',
+        },
+      ],
+      'frames': [
+        {'id': 'grid_2x2', 'name': 'Grid', 'description': 'Grid'},
+      ],
+    });
+  }
+}
+
+class _SheetFramesFakeApi extends _StripFakeApi {
+  @override
+  Future<StripFiltersCatalog> fetchStripFilters() async {
+    return StripFiltersCatalog.fromJson({
+      'brand': 'FotoFlashback',
+      'shotCount': 4,
+      'features': {'enableOsdScrub': true},
+      'filters': [
+        {
+          'id': 'classic_warm',
+          'name': 'Classic Warm',
+          'description': 'Warm',
+          'cssFilter': 'none',
+        },
+      ],
+      'frames': [
+        {'id': 'classic', 'name': 'Classic', 'description': 'White'},
+        {'id': 'grid_2x2', 'name': 'Grid', 'description': 'Grid'},
+        {'id': 'romantic', 'name': 'Romantic', 'description': 'Romantic'},
+        {'id': 'polaroid', 'name': 'Polaroid', 'description': 'Polaroid'},
+      ],
+      'stickers': [
+        {'id': 'sparkles', 'name': 'Sparkles', 'description': 'Sparkles'},
+        {'id': 'confetti', 'name': 'Confetti', 'description': 'Confetti'},
+        {'id': 'stars', 'name': 'Stars', 'description': 'Stars'},
+        {'id': 'flowers', 'name': 'Flowers', 'description': 'Flowers'},
+      ],
+      'layout': {
+        'grid2x2': {'title': 'Together', 'subtitle': 'Moments'},
+      },
+    });
+  }
 }

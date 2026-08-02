@@ -25,6 +25,17 @@ void main() {
       );
       expect(inputWithWait.isWaitingForPhoneUpload, isTrue);
     });
+
+    test('supports non-const construction', () {
+      final input = CaptureScreenIdleInput(
+        isNavigatingAway: false,
+        isCapturing: false,
+        isUploading: false,
+        isCountingDown: false,
+        appInForeground: true,
+      );
+      expect(input.isWaitingForPhoneUpload, isFalse);
+    });
   });
 
   group('captureScreenIdleTimerShouldRun', () {

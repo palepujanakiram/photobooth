@@ -31,6 +31,13 @@ void main() {
         ),
         throwsA(isA<ArgumentError>()),
       );
+      expect(
+        () => ReceiptPrinterPayload.validateHostPort(
+          host: '192.168.1.1',
+          port: 70000,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
       ReceiptPrinterPayload.validateHostPort(
         host: '192.168.2.43',
         port: 9100,
@@ -45,20 +52,52 @@ void main() {
         'printerConfigured': true,
         'deliveredByServer': false,
         'payloadBase64': base64Encode([1, 2, 3]),
-        'printer': {'host': '192.168.2.43', 'port': 9100, 'protocol': 'escpos-tcp'},
+        'printer': {
+          'host': '192.168.2.43',
+          'port': 9100,
+          'protocol': 'escpos-tcp',
+        },
+        'message': 'ok',
+        'error': null,
+        'receiptId': 'r1',
+        'receiptNumber': '100',
       });
+      expect(result.success, isTrue);
+      expect(result.printerConfigured, isTrue);
       expect(result.needsLanDelivery, isTrue);
       expect(result.host, '192.168.2.43');
       expect(result.port, 9100);
+      expect(result.message, 'ok');
+      expect(result.receiptId, 'r1');
+      expect(result.receiptNumber, '100');
     });
 
-    test('skips LAN when server already delivered', () {
+    test('needsLanDelivery true with payload even without host', () {
+      final result = SessionPrintReceiptResult.fromJson({
+        'success': true,
+        'printerConfigured': true,
+        'deliveredByServer': false,
+        'payloadBase64': base64Encode([1, 2, 3]),
+      });
+      expect(result.needsLanDelivery, isTrue);
+      expect(result.host, isNull);
+    });
+
+    test('needsLanDelivery false when delivered by server', () {
       final result = SessionPrintReceiptResult.fromJson({
         'success': true,
         'printerConfigured': true,
         'deliveredByServer': true,
         'payloadBase64': 'YQ==',
         'printer': {'host': '192.168.2.43', 'port': 9100},
+      });
+      expect(result.needsLanDelivery, isFalse);
+    });
+
+    test('needsLanDelivery false when payload missing', () {
+      final result = SessionPrintReceiptResult.fromJson({
+        'success': true,
+        'deliveredByServer': false,
       });
       expect(result.needsLanDelivery, isFalse);
     });

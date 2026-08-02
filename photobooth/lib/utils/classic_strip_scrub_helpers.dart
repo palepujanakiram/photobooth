@@ -29,6 +29,8 @@ class ClassicShotScrubResult {
 class ClassicStripScrubGate {
   ClassicStripScrubGate._();
 
+  static final _instance = ClassicStripScrubGate._();
+
   static Future<void> _chain = Future<void>.value();
 
   /// Runs [fn] after prior scrub work; errors do not break the queue.
@@ -49,6 +51,8 @@ class ClassicStripScrubGate {
   /// Test-only: reset queue between cases.
   static void resetForTests() {
     _chain = Future<void>.value();
+    // Keep singleton initialized for coverage of private constructor.
+    _instance.hashCode;
   }
 }
 

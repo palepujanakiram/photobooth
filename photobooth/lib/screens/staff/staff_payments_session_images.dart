@@ -170,21 +170,6 @@ abstract final class StaffPaymentsSessionImages {
     );
     if (generatedMatch != null) return generatedMatch;
 
-    final generated =
-        raw['generatedImages'] ?? raw['generated_images'] ?? raw['images'];
-    if (generated is List) {
-      for (final entry in generated) {
-        final url = StaffPaymentsPayloadUtils.imageUrlFromGeneratedEntry(
-          entry,
-          sessionId: sessionId,
-        );
-        if (url != null &&
-            imageUrlsReferToSameDeliverable(url, imageUrl)) {
-          return null;
-        }
-      }
-    }
-
     final printBlock = raw['print'];
     if (printBlock is Map) {
       final fromPrint = StaffPaymentsPayloadUtils.pickString(

@@ -53,8 +53,6 @@ class SessionPrintReceiptResult {
   /// True when the kiosk should open a LAN TCP socket and write [payloadBase64].
   bool get needsLanDelivery {
     if (deliveredByServer) return false;
-    final h = host?.trim() ?? '';
-    final p = payloadBase64?.trim() ?? '';
-    return h.isNotEmpty && p.isNotEmpty;
+    return (payloadBase64?.trim() ?? '').isNotEmpty;
   }
 }

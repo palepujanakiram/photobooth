@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import '../../models/app_settings_model.dart';
 import '../../models/session_print_receipt_result.dart';
 import '../../services/staff_api_service.dart';
+import '../../services/dnp/dnp_print_image_prepare.dart';
 import '../../services/print_service.dart';
-import '../../services/receipt_printer_service.dart';
+import '../../services/receipt/receipt_print_bridge.dart';
+import '../../services/receipt_printer_payload.dart';
+import '../../utils/receipt_printer_config.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/exceptions.dart';
-import '../../utils/print_size_helpers.dart';
 
 /// Staff payment print flow state updates (Sonar S3776 extraction).
 typedef StaffPaymentsPrintStateSink = void Function({
@@ -17,11 +19,9 @@ typedef StaffPaymentsPrintStateSink = void Function({
   String? progressMessage,
 });
 
-/// True when admin enabled a LAN thermal receipt printer with a host.
+/// True when admin enabled the thermal receipt printer (USB/Wi-Fi auto-connect).
 bool staffPaymentsIsReceiptPrinterConfigured(AppSettingsModel? settings) {
-  if (settings?.receiptPrinterEnabled != true) return false;
-  final host = settings?.receiptPrinterHost?.trim() ?? '';
-  return host.isNotEmpty;
+  return isReceiptPrinterEnabled(settings);
 }
 
 /// Validates session, confirms print, and resolves image URL (Sonar S3776).
@@ -127,20 +127,23 @@ Future<void> staffPaymentsRunPrintJob({
     );
 
     onState(progressMessage: 'Sending print job...');
-    final resolvedSize = (printSize != null && printSize.trim().isNotEmpty)
-        ? printSize.trim()
-        : resolveStaffNetworkPrintSize(
-            imageUrl: imageUrl,
-            stripCompositeUrl: stripCompositeUrl,
-            single6x4Url: single6x4Url,
-            sessionPrintSize: printSize,
-            classicComposeShotCount: classicComposeShotCount,
-          );
+    final normalizedFile = await normalizeExifOrientationForDnpPrint(file);
+    final oriented = orientedDimensionsFromBytes(
+      await normalizedFile.readAsBytes(),
+    );
+    final resolvedSize = resolveStaffDnpPrintSize(
+      imageUrl: imageUrl,
+      stripCompositeUrl: stripCompositeUrl,
+      single6x4Url: single6x4Url,
+      sessionPrintSize: printSize,
+      classicComposeShotCount: classicComposeShotCount,
+      orientedDimensions: oriented,
+    );
     if (resetDnpSession) {
       printService.resetDnpPrintSession();
     }
     await printService.printDnpPhoto(
-      file,
+      normalizedFile,
       settings: settings,
       printSize: resolvedSize,
     );
@@ -163,7 +166,7 @@ Future<void> staffPaymentsRunPrintJob({
 /// Fetch ESC/POS from API and deliver to the LAN thermal receipt printer.
 Future<void> staffPaymentsRunReceiptPrintJob({
   required StaffApiService staffApi,
-  required ReceiptPrinterService receiptPrinter,
+  required ReceiptPrintBridge receiptPrintBridge,
   required AppSettingsModel? settings,
   required String sessionId,
   required bool Function() isMounted,
@@ -205,10 +208,11 @@ Future<void> staffPaymentsRunReceiptPrintJob({
     }
 
     onState(progressMessage: 'Sending to receipt printer...');
-    await receiptPrinter.sendEscPosBase64(
-      host: result.host!.trim(),
-      port: result.port,
-      payloadBase64: result.payloadBase64!,
+    await receiptPrintBridge.deliverEscPos(
+      bytes: ReceiptPrinterPayload.decodeBase64(result.payloadBase64!),
+      settings: settings,
+      apiHost: result.host,
+      apiPort: result.port,
     );
     if (!isMounted()) return;
     onSuccess?.call();

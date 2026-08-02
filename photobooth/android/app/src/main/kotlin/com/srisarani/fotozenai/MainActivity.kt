@@ -18,16 +18,19 @@ class MainActivity : FlutterActivity() {
         DisplayMethodChannel.register(flutterEngine, this)
         DeviceMemoryMethodChannel.register(flutterEngine, this)
         DnpUsbMethodChannel.register(flutterEngine, this)
+        ReceiptUsbMethodChannel.register(flutterEngine, this)
         hardwareKeysHandler = HardwareKeysHandler.attach(flutterEngine)
     }
 
     override fun onResume() {
         super.onResume()
         DnpUsbMethodChannel.onResume(this)
+        ReceiptUsbMethodChannel.onResume(this)
     }
 
     override fun onDestroy() {
         DnpUsbMethodChannel.onDestroy()
+        ReceiptUsbMethodChannel.onDestroy()
         super.onDestroy()
     }
 

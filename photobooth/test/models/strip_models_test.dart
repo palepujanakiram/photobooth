@@ -225,6 +225,103 @@ void main() {
     expect(blankComposite.printImageUrl, 'https://example.com/a.jpg');
   });
 
+  test('StripWysiwygLayout.fromJson parses grid and film labels', () {
+    final layout = StripWysiwygLayout.fromJson({
+      'grid2x2': {
+        'title': 'Together Now',
+        'subtitle': 'Best day ever',
+      },
+      'filmstrip': {'label': 'ROLL A'},
+    });
+    expect(layout.gridTitle, 'Together Now');
+    expect(layout.gridSubtitle, 'Best day ever');
+    expect(layout.filmLabel, 'ROLL A');
+  });
+
+  test('StripWysiwygLayout falls back on invalid slot maps', () {
+    final layout = StripWysiwygLayout.fromJson({
+      'romantic': {
+        'slots': [
+          {'left': 0.1, 'top': 0.2, 'width': 0.3, 'height': 0.4},
+          {'left': 0.1, 'top': 0.2, 'width': 0.3, 'height': 0.4},
+          {'left': 0.1, 'top': 0.2, 'width': 0.3, 'height': 0.4},
+          'not-a-map',
+        ],
+      },
+      'polaroid': {
+        'slots': [
+          {'left': 0.1, 'top': 0.2, 'rotDeg': 1},
+          {'left': 0.1, 'top': 0.2, 'rotDeg': 1},
+          {'left': 0.1, 'top': 0.2, 'rotDeg': 1},
+          null,
+        ],
+      },
+    });
+    expect(layout.romanticSlots, StripWysiwygLayout.defaults.romanticSlots);
+    expect(layout.polaroidSlots, StripWysiwygLayout.defaults.polaroidSlots);
+  });
+
+  test('StripFiltersCatalog.fromJson coerces nested Map types', () {
+    final catalog = StripFiltersCatalog.fromJson({
+      'brand': 'FotoFlashback',
+      'shotCount': 4,
+      'filters': [
+        {
+          'id': 'classic_warm',
+          'name': 'Classic Warm',
+          'description': 'Warm',
+          'cssFilter': 'none',
+        },
+      ],
+      'print': {
+        'size': 's6x2_2',
+        'copiesOnSheet': 2,
+        'note': 'Two strips',
+      },
+      'layout': {
+        'grid2x2': {'title': 'Grid title'},
+      },
+      'features': {
+        'enableSurpriseMeAi': true,
+        'enableOsdScrub': true,
+      },
+    });
+    expect(catalog.printNote, 'Two strips');
+    expect(catalog.enableSurpriseMeAi, isTrue);
+    expect(catalog.enableOsdScrub, isTrue);
+    expect(catalog.wysiwyg.gridTitle, 'Grid title');
+  });
+
+  test('StripFiltersCatalog.fromJson coerces loosely typed maps', () {
+    final catalog = StripFiltersCatalog.fromJson({
+      'brand': 'FotoFlashback',
+      'shotCount': 4,
+      'filters': [
+        {
+          'id': 'classic_warm',
+          'name': 'Classic Warm',
+          'description': 'Warm',
+          'cssFilter': 'none',
+        },
+      ],
+      'layout': <Object, Object?>{'grid2x2': <Object, Object?>{'title': 'Loose'}},
+      'features': <Object, Object?>{'enableSurpriseMeAi': true},
+    });
+    expect(catalog.enableSurpriseMeAi, isTrue);
+    expect(catalog.wysiwyg.gridTitle, 'Loose');
+  });
+
+  test('StripComposeResult uses composite when imageUrl blank on single sheet',
+      () {
+    final result = StripComposeResult(
+      imageUrl: '   ',
+      filter: 'clean',
+      stripCompositeUrl: 'https://example.com/composite.jpg',
+      printSize: AppConstants.kPrintSizeLandscape6x4,
+    );
+    expect(result.printImageUrl, 'https://example.com/composite.jpg');
+  });
+
   test('StripFrame parses admin template fields', () {
     final frame = StripFrame.fromJson({
       'id': 'st:abc',

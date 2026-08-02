@@ -13,12 +13,14 @@ import '../../services/file_helper.dart';
 import '../../services/print_service.dart';
 import '../../services/print_file.dart';
 import '../../services/print_service_helpers.dart';
-import '../../services/receipt_printer_service.dart';
+import '../../services/receipt/receipt_print_bridge.dart';
+import '../../services/receipt_printer_payload.dart';
 import '../../services/session_manager.dart';
 import '../../models/session_print_receipt_result.dart';
 import '../../services/share_service.dart';
 import '../../services/kiosk_manager.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/receipt_printer_config.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
@@ -85,7 +87,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   final SessionManager _sessionManager;
   final AppSettingsManager? _appSettingsManager;
   final KioskManager _kioskManager;
-  final ReceiptPrinterService _receiptPrinterService;
+  final ReceiptPrintBridge _receiptPrintBridge;
 
   final CustomerContactCapture _contact;
   SessionDiscount? _appliedDiscount;
@@ -311,7 +313,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
     SessionManager? sessionManager,
     AppSettingsManager? appSettingsManager,
     KioskManager? kioskManager,
-    ReceiptPrinterService? receiptPrinterService,
+    ReceiptPrintBridge? receiptPrintBridge,
     CustomerContactCapture? contact,
     String? customerName,
     String? customerPhone,
@@ -327,8 +329,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
         _sessionManager = sessionManager ?? SessionManager(),
         _appSettingsManager = appSettingsManager,
         _kioskManager = kioskManager ?? KioskManager(),
-        _receiptPrinterService =
-            receiptPrinterService ?? ReceiptPrinterService(),
+        _receiptPrintBridge = receiptPrintBridge ?? ReceiptPrintBridge(),
         _contact = contact ??
             CustomerContactCapture(
               customerName: customerName ?? '',
@@ -365,13 +366,9 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
       _isSilentPrinting || _isDialogPrinting || _isPrintingReceipt;
   PrintProgressSnapshot get printProgress => _printProgress;
 
-  /// True when admin enabled a LAN thermal receipt printer.
-  bool get isReceiptPrinterConfigured {
-    final settings = _appSettingsManager?.settings;
-    if (settings?.receiptPrinterEnabled != true) return false;
-    final host = settings?.receiptPrinterHost?.trim() ?? '';
-    return host.isNotEmpty;
-  }
+  /// True when admin enabled the thermal receipt printer (USB/Wi-Fi auto-connect).
+  bool get isReceiptPrinterConfigured =>
+      isReceiptPrinterEnabled(_appSettingsManager?.settings);
 
   /// True when post-payment silent LAN print should run (native + printer on).
   ///

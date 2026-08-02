@@ -62,5 +62,23 @@ void main() {
       expect(await tryCaptureFromSidecar(service), isNull);
       service.dispose();
     });
+    test('returns null when capture throws', () async {
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/health')) {
+          return http.Response('{"ok":true,"connected":true}', 200);
+        }
+        throw Exception('capture failed');
+      });
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://192.168.2.50:8791',
+          token: 't',
+        ),
+        client: client,
+      );
+      expect(await tryCaptureFromSidecar(service), isNull);
+      service.dispose();
+    });
   });
 }

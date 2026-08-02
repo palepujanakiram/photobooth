@@ -13,6 +13,34 @@ void main() {
     );
   });
 
+  testWidgets('staffPaymentShowImagePreview dedupes imageUrls list',
+      (tester) async {
+    const pngDataUrl =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return ElevatedButton(
+              onPressed: () {
+                staffPaymentShowImagePreview(
+                  context,
+                  imageUrl: pngDataUrl,
+                  imageUrls: ['  ', pngDataUrl, 'https://example.com/other.jpg'],
+                  title: 'Payment',
+                );
+              },
+              child: const Text('preview'),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.tap(find.text('preview'));
+    await tester.pumpAndSettle();
+    expect(find.byType(StaffPaymentImagePreviewScreen), findsOneWidget);
+  });
+
   testWidgets('staffPaymentShowImagePreview opens preview screen', (tester) async {
     const pngDataUrl =
         'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';

@@ -395,7 +395,37 @@ void main() {
         settings: AppSettingsModel(),
         networkPrintSize: 's4x6',
       );
+      expect(usb.connectCalls, 1);
       expect(usb.printCalls, 1);
+    });
+
+    test('auto transport completes USB print when probe finds device', () async {
+      final usb = _RecordingUsbClient(const MethodChannel('test/usb'));
+      final bridge = DnpPrintBridge(
+        usbClient: usb,
+        wifiClient: DnpWifiClient(client: MockClient((_) async => http.Response('', 404))),
+        isAndroid: () => true,
+      );
+
+      final jpeg = File(
+        '${Directory.systemTemp.path}/dnp_auto_usb_ok_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await jpeg.writeAsBytes([0xFF, 0xD8]);
+      addTearDown(() async {
+        if (await jpeg.exists()) await jpeg.delete();
+      });
+
+      await bridge.printImage(
+        imageFile: XFile(jpeg.path),
+        settings: AppSettingsModel(printerTransport: 'auto'),
+        networkPrintSize: AppConstants.kPrintSizePortrait4x6,
+        quantity: 2,
+      );
+
+      expect(usb.connectCalls, 1);
+      expect(usb.printCalls, 1);
+      expect(usb.lastPrintSize, AppConstants.kPrintSizePortrait4x6);
+      expect(usb.lastCopies, 2);
     });
 
     test('auto transport uses Wi-Fi when USB probe finds no device', () async {
@@ -433,6 +463,44 @@ void main() {
         networkPrintSize: 's4x6',
       );
       expect(usb.printCalls, 0);
+      expect(usb.connectCalls, 0);
+      expect(printedWifi, isTrue);
+    });
+
+    test('auto transport falls back to Wi-Fi when USB print fails', () async {
+      final usb = _RecordingUsbClient(const MethodChannel('test/usb'))
+        ..connectError = PlatformException(code: 'CONNECT_FAILED');
+      var printedWifi = false;
+      final wifi = DnpWifiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/PrintImage') {
+            printedWifi = true;
+            return http.Response('ok', 200);
+          }
+          return http.Response('', 404);
+        }),
+      );
+      wifi.printerBaseUrlForTesting = 'http://192.168.1.20';
+
+      final bridge = DnpPrintBridge(
+        usbClient: usb,
+        wifiClient: wifi,
+        isAndroid: () => true,
+      );
+
+      final jpeg = File(
+        '${Directory.systemTemp.path}/dnp_usb_fail_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await jpeg.writeAsBytes([0xFF, 0xD8]);
+      addTearDown(() async {
+        if (await jpeg.exists()) await jpeg.delete();
+      });
+
+      await bridge.printImage(
+        imageFile: XFile(jpeg.path),
+        settings: AppSettingsModel(printerTransport: 'auto'),
+        networkPrintSize: 's4x6',
+      );
       expect(usb.connectCalls, 0);
       expect(printedWifi, isTrue);
     });
@@ -862,6 +930,51 @@ void main() {
         ),
         throwsA(isA<PrintException>()),
       );
+    });
+
+    test('discovers WCM Plus on Android when Wi-Fi bind succeeds', () async {
+      var printedHost = '';
+      var discoverCalled = false;
+      var prepareCalled = false;
+      final wifi = DnpWifiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/PrintImage') {
+            printedHost = request.url.host;
+            return http.Response('ok', 200);
+          }
+          return http.Response('', 404);
+        }),
+        discoverFn: ({int parallelism = 20}) async {
+          discoverCalled = true;
+          return 'http://192.168.3.20';
+        },
+      );
+      final bridge = DnpPrintBridge(
+        wifiClient: wifi,
+        isAndroid: () => true,
+        prepareWifiNetwork: () async {
+          prepareCalled = true;
+          return true;
+        },
+      );
+      final jpeg = File(
+        '${Directory.systemTemp.path}/dnp_android_discover_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await jpeg.writeAsBytes([0xFF]);
+      addTearDown(() async {
+        if (await jpeg.exists()) await jpeg.delete();
+      });
+
+      await bridge.printImage(
+        imageFile: XFile(jpeg.path),
+        settings: AppSettingsModel(printerTransport: 'wifi'),
+        networkPrintSize: 's4x6',
+      );
+
+      expect(printedHost, '192.168.3.20');
+      expect(discoverCalled, isTrue);
+      expect(prepareCalled, isTrue);
+      expect(wifi.printerBaseUrl, 'http://192.168.3.20');
     });
 
     test('uses kiosk printerHost without discovery when host is set', () async {

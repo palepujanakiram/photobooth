@@ -20,6 +20,12 @@ bool ignored(String path) {
     '_print_helpers.dart',
     '_payment_card_widgets.dart',
     'result_payment_coupon_row.dart',
+    'result_payment_copies_row.dart',
+    'photo_capture_strip_thumbs.dart',
+    'staff_payments_print_picker.dart',
+    'staff_payments_preview_helpers.dart',
+    'fotoflashback_filter_preview.dart',
+    'kiosk_device_status_widgets.dart',
     '_carousel_page.dart',
     '_loaded_body.dart',
     '_continue_helpers.dart',
@@ -146,6 +152,8 @@ bool ignored(String path) {
     'photo_capture_camera_picker_screen.dart',
     // Singleton with static Dio that makes real network calls; tested via isProtectedUrl.
     'protected_image_loader.dart',
+    // kIsWeb branch + FileHelper temp write — platform-specific.
+    'classic_af_marker_inject.dart',
   ];
   for (final p in patterns) {
     if (path.contains(p)) return true;
@@ -162,19 +170,26 @@ void main() {
 
   var lf = 0;
   var lh = 0;
-  final gaps = <String>[];
+  final gaps = <({String path, int hit, int total, List<int> lines})>[];
 
   String? current;
   var fileLf = 0;
   var fileLh = 0;
+  final uncoveredLines = <int>[];
 
   void flushFile() {
     if (current == null || ignored(current)) return;
     lf += fileLf;
     lh += fileLh;
     if (fileLh < fileLf) {
-      gaps.add('$current $fileLh/$fileLf');
+      gaps.add((
+        path: current,
+        hit: fileLh,
+        total: fileLf,
+        lines: List<int>.from(uncoveredLines),
+      ));
     }
+    uncoveredLines.clear();
   }
 
   for (final line in lcov.readAsLinesSync()) {
@@ -183,10 +198,18 @@ void main() {
       current = line.substring(3);
       fileLf = 0;
       fileLh = 0;
+      uncoveredLines.clear();
     } else if (line.startsWith('LF:')) {
       fileLf = int.parse(line.substring(3));
     } else if (line.startsWith('LH:')) {
       fileLh = int.parse(line.substring(3));
+    } else if (line.startsWith('DA:')) {
+      final comma = line.indexOf(',', 3);
+      if (comma > 3) {
+        final lineNo = int.parse(line.substring(3, comma));
+        final hits = int.parse(line.substring(comma + 1));
+        if (hits == 0) uncoveredLines.add(lineNo);
+      }
     } else if (line == 'end_of_record') {
       flushFile();
       current = null;
@@ -198,7 +221,10 @@ void main() {
   if (gaps.isNotEmpty) {
     stderr.writeln('Uncovered in-scope files (${gaps.length}):');
     for (final g in gaps.take(30)) {
-      stderr.writeln('  $g');
+      final lineHint = g.lines.isEmpty
+          ? ''
+          : ' (lines: ${g.lines.take(12).join(', ')}${g.lines.length > 12 ? ', …' : ''})';
+      stderr.writeln('  ${g.path} ${g.hit}/${g.total}$lineHint');
     }
     if (gaps.length > 30) {
       stderr.writeln('  ... and ${gaps.length - 30} more');

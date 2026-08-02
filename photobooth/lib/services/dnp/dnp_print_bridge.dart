@@ -67,17 +67,14 @@ class DnpPrintBridge {
         AppLogger.debug(
           'DNP USB not detected; discovering printer on Wi-Fi',
         );
-      } else {
-        try {
-          await _printUsb(localPath, size, networkPrintSize, copies);
-          return;
-        } on PlatformException catch (e) {
-          if (!_shouldFallbackToWifi(transport, e)) rethrow;
-          AppLogger.warning(
-            'DNP USB print unavailable (${e.code}); trying Wi-Fi discovery',
-          );
-          _usbReady = false;
-        }
+      } else if (await _tryUsbPrintWithWifiFallback(
+        transport,
+        localPath,
+        size,
+        networkPrintSize,
+        copies,
+      )) {
+        return;
       }
     } else if (_shouldUseUsbOnly(transport)) {
       await _printUsb(localPath, size, networkPrintSize, copies);
@@ -117,6 +114,27 @@ class DnpPrintBridge {
       'STATUS_ERROR',
     };
     return recoverable.contains(e.code);
+  }
+
+  /// USB print for [DnpPrintTransport.auto]; returns true when the job finished.
+  Future<bool> _tryUsbPrintWithWifiFallback(
+    DnpPrintTransport transport,
+    String localPath,
+    DnpPrintSize size,
+    String networkPrintSize,
+    int copies,
+  ) async {
+    try {
+      await _printUsb(localPath, size, networkPrintSize, copies);
+      return true;
+    } on PlatformException catch (e) {
+      if (!_shouldFallbackToWifi(transport, e)) rethrow;
+      AppLogger.warning(
+        'DNP USB print unavailable (${e.code}); trying Wi-Fi discovery',
+      );
+      _usbReady = false;
+      return false;
+    }
   }
 
   Future<void> _printUsb(

@@ -141,11 +141,7 @@ Future<void> navigateToFlashbackPrintSelection({
     strip,
     if (includeSurprise) surpriseImage.copyWith(isSelected: true),
   ];
-  final resolvedSize = strip.printSize?.trim().isNotEmpty == true
-      ? strip.printSize!.trim()
-      : ((size != null && size.isNotEmpty)
-          ? size
-          : AppConstants.kPrintSizeStripDual2x6);
+  final resolvedSize = strip.printSize!.trim();
   final resolvedRunId =
       (runId != null && runId.isNotEmpty) ? runId : null;
 
