@@ -390,15 +390,17 @@ abstract final class AppStrings {
   static const experienceAiSubtitle = 'AI Photo Experiences';
   static const experienceFotoFlashTitle = 'Classic';
   static const experienceFotoFlashSubtitle =
-      'As-is photos with glitter — pick 4-shot or 1-shot below';
+      'As-is photos with glitter — choose 1-shot or 4-shot below';
   static const experienceFotoFlashUnavailable =
       'Classic isn’t available on this booth yet.';
   static const experienceFotoFlashStartFailed =
       'Couldn’t start Classic. Please try again.';
-  static const experienceClassicShotModeLabel = 'Shots';
+  static const experienceClassicShotModeLabel = 'Start Classic';
   static const experienceClassicFourShot = '4-shot strip';
   static const experienceClassicOneShot = '1-shot';
-  static const experienceClassicOrientationLabel = 'Print';
+  static const experienceClassicStartOneShot = 'Start 1-shot';
+  static const experienceClassicStartFourShot = 'Start 4-shot';
+  static const experienceClassicOrientationLabel = 'Print orientation';
   static const experienceClassicLandscape = 'Landscape 6×4';
   static const experienceClassicPortrait = 'Portrait 4×6';
   static const experienceBackToTerms = 'Back to terms';
@@ -460,6 +462,7 @@ abstract final class AppStrings {
   static const flashbackFilterTitle = 'Pick your look';
   static const flashbackFilterSubtitle =
       'Pick a look & frame. Add stickers, or Scribble to write on your strip';
+  static const flashbackLookLabel = 'Look';
   static const flashbackFrameLabel = 'Frame';
   static const flashbackStickerLabel = 'Stickers';
   static const flashbackScribbleLabel = 'Scribble';
@@ -471,6 +474,8 @@ abstract final class AppStrings {
   static const flashbackComposePayCta = 'Continue to pay';
   static const flashbackComposing = 'Building your strip…';
   static const flashbackPreparingPreview = 'Polishing photos…';
+  static const flashbackFinishEncodeFailed =
+      'Couldn’t prepare your photo. Tap Continue to looks to try again.';
   static const flashbackRetryScrub = 'Retry polish';
   static const flashbackComposeFailed = 'Couldn’t build strip. Please try again.';
   static const flashbackNeedFourShots = 'Take all 4 shots to continue.';

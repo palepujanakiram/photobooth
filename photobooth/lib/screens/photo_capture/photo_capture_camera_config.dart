@@ -16,6 +16,8 @@ bool isExternalCaptureCamera(
 ///
 /// Built-in cameras use [veryHigh] so MacBook / phone stills match the live
 /// feed better. FotoFlashback can request [max] via [preferPrintQuality].
+/// Non-TV USB webcams use [high] so ImageCapture (and stream fallback) stay sharp;
+/// Android TV stays [medium] for RAM.
 ResolutionPreset captureResolutionPreset({
   required AppDeviceType? deviceType,
   required bool isExternal,
@@ -25,7 +27,9 @@ ResolutionPreset captureResolutionPreset({
     return ResolutionPreset.medium;
   }
   if (isExternal) {
-    return ResolutionPreset.medium;
+    return preferPrintQuality
+        ? ResolutionPreset.veryHigh
+        : ResolutionPreset.high;
   }
   if (preferPrintQuality) {
     return ResolutionPreset.max;

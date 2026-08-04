@@ -53,5 +53,5 @@ Uint8List cameraImageToJpegBytes(CameraImage image) {
     }
   }
 
-  return Uint8List.fromList(img.encodeJpg(out, quality: 85));
+  return Uint8List.fromList(img.encodeJpg(out, quality: 92));
 }

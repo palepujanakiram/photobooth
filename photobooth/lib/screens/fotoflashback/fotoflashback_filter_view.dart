@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 import '../../models/strip_models.dart';
 import '../../services/app_settings_manager.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/classic_shot_mode.dart';
+import '../../utils/fotoflashback_navigation.dart';
 import '../../utils/fotoflashback_payment_helpers.dart';
 import '../../utils/payment_workflow_helpers.dart';
 import '../../utils/print_orientation.dart';
@@ -19,7 +21,13 @@ import 'fotoflashback_filter_viewmodel.dart';
 
 /// Pick a FotoFlashback look, then pay (if configured) or compose → Result.
 class FotoFlashbackFilterScreen extends StatefulWidget {
-  const FotoFlashbackFilterScreen({super.key});
+  const FotoFlashbackFilterScreen({
+    super.key,
+    this.filterArgs,
+  });
+
+  /// Prefer this over [ModalRoute] arguments (Android TV named routes drop them).
+  final FlashbackFilterArgs? filterArgs;
 
   @override
   State<FotoFlashbackFilterScreen> createState() =>
@@ -28,17 +36,21 @@ class FotoFlashbackFilterScreen extends StatefulWidget {
 
 class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
   FotoFlashbackFilterViewModel? _viewModel;
+  FlashbackFilterArgs? _args;
   bool _busy = false;
+  bool _navigatingBack = false;
   String? _ctaLabel;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_viewModel != null) return;
-    final args = FlashbackFilterArgs.tryParse(
-      ModalRoute.of(context)?.settings.arguments,
-    );
+    final args = widget.filterArgs ??
+        FlashbackFilterArgs.tryParse(
+          ModalRoute.of(context)?.settings.arguments,
+        );
     if (args == null) return;
+    _args = args;
     _viewModel = FotoFlashbackFilterViewModel(
       theme: args.theme,
       imageDataUrls: args.imageDataUrls,
@@ -62,9 +74,34 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
     });
   }
 
+  Future<void> _goBackToCapture() async {
+    if (_navigatingBack || _busy) return;
+    final args = _args;
+    final vm = _viewModel;
+    if (args == null && vm == null) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    setState(() => _navigatingBack = true);
+    final theme = args?.theme ?? vm!.theme;
+    final mode = args?.resolvedShotMode ??
+        (vm!.isSingleClassic
+            ? ClassicShotMode.single6x4
+            : ClassicShotMode.fourShot);
+    try {
+      await navigateBackToClassicCaptureFromLooks(
+        context: context,
+        theme: theme,
+        shotMode: mode,
+      );
+    } finally {
+      if (mounted) setState(() => _navigatingBack = false);
+    }
+  }
+
   Future<void> _confirmLook() async {
     final vm = _viewModel;
-    if (vm == null || _busy) return;
+    if (vm == null || _busy || _navigatingBack) return;
     setState(() => _busy = true);
     try {
       final timing =
@@ -98,39 +135,47 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
 
     return ChangeNotifierProvider.value(
       value: vm,
-      child: Scaffold(
-        backgroundColor: const Color(0xFF1A1410),
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Navigator.of(context).maybePop(),
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          unawaited(_goBackToCapture());
+        },
+        child: Scaffold(
+          backgroundColor: const Color(0xFF1A1410),
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: (_busy || _navigatingBack)
+                  ? null
+                  : () => unawaited(_goBackToCapture()),
+            ),
+            title: const Text(
+              AppStrings.flashbackFilterTitle,
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+            ),
+            centerTitle: true,
           ),
-          title: const Text(
-            AppStrings.flashbackFilterTitle,
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-          ),
-          centerTitle: true,
-        ),
-        body: SafeArea(
-          child: Consumer<FotoFlashbackFilterViewModel>(
-            builder: (context, viewModel, _) {
-              return CenteredMaxWidth(
-                maxWidth: 760,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
-                  child: Column(
-                    children: [
-                      Text(
-                        AppStrings.flashbackFilterSubtitle,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.amber.shade100.withValues(alpha: 0.8),
-                          letterSpacing: 0.3,
-                          fontSize: 13,
+          body: SafeArea(
+            child: Consumer<FotoFlashbackFilterViewModel>(
+              builder: (context, viewModel, _) {
+                return CenteredMaxWidth(
+                  maxWidth: 760,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
+                    child: Column(
+                      children: [
+                        Text(
+                          AppStrings.flashbackFilterSubtitle,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.amber.shade100.withValues(alpha: 0.8),
+                            letterSpacing: 0.3,
+                            fontSize: 13,
+                          ),
                         ),
-                      ),
                       if (viewModel.isPreparingPreview) ...[
                         const SizedBox(height: 8),
                         Row(
@@ -185,6 +230,29 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           ),
                         ],
                       ],
+                      if (viewModel.isSingleClassic) ...[
+                        const SizedBox(height: 12),
+                        _ChipPickerRow(
+                          label: AppStrings.experienceClassicOrientationLabel,
+                          options: const [
+                            (
+                              id: 'portrait',
+                              name: AppStrings.experienceClassicPortrait,
+                            ),
+                            (
+                              id: 'landscape',
+                              name: AppStrings.experienceClassicLandscape,
+                            ),
+                          ],
+                          selectedId: viewModel.printOrientation.apiValue,
+                          onSelect: (id) {
+                            final next = PrintOrientation.tryParse(id);
+                            if (next != null) {
+                              viewModel.selectPrintOrientation(next);
+                            }
+                          },
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       Expanded(
                         child: _LookPickerBody(
@@ -210,29 +278,6 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           onScribbleEnd: viewModel.endScribble,
                         ),
                       ),
-                      if (viewModel.isSingleClassic) ...[
-                        const SizedBox(height: 10),
-                        _ChipPickerRow(
-                          label: AppStrings.experienceClassicOrientationLabel,
-                          options: const [
-                            (
-                              id: 'landscape',
-                              name: AppStrings.experienceClassicLandscape,
-                            ),
-                            (
-                              id: 'portrait',
-                              name: AppStrings.experienceClassicPortrait,
-                            ),
-                          ],
-                          selectedId: viewModel.printOrientation.apiValue,
-                          onSelect: (id) {
-                            final next = PrintOrientation.tryParse(id);
-                            if (next != null) {
-                              viewModel.selectPrintOrientation(next);
-                            }
-                          },
-                        ),
-                      ],
                       const SizedBox(height: 6),
                       _ChipPickerRow(
                         label: AppStrings.flashbackFrameLabel,
@@ -277,7 +322,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                         ),
-                        onPressed: (viewModel.canCompose && !_busy)
+                        onPressed: (viewModel.canCompose && !_busy && !_navigatingBack)
                             ? () => unawaited(_confirmLook())
                             : null,
                         child: Text(
@@ -296,6 +341,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
               );
             },
           ),
+        ),
         ),
       ),
     );
@@ -418,7 +464,7 @@ class _LookPickerBody extends StatelessWidget {
   }
 }
 
-/// Compact look tiles — always fills height with no scroll (9 fits on kiosk).
+/// Full-width look tiles — equal height, aligned edges (no shrink-wrapped pills).
 class _FilterOptionList extends StatelessWidget {
   const _FilterOptionList({
     required this.filters,
@@ -436,19 +482,37 @@ class _FilterOptionList extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    const gap = 6.0;
+    const gap = 4.0;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < filters.length; i++) ...[
-          if (i > 0) const SizedBox(height: gap),
-          Expanded(
-            child: _FilterTile(
-              filter: filters[i],
-              selected: filters[i].id == selectedId,
-              onTap: () => onSelect(filters[i].id),
-            ),
+        Text(
+          AppStrings.flashbackLookLabel,
+          style: TextStyle(
+            color: Colors.amber.shade100.withValues(alpha: 0.85),
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.2,
           ),
-        ],
+        ),
+        const SizedBox(height: 6),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < filters.length; i++) ...[
+                if (i > 0) const SizedBox(height: gap),
+                Expanded(
+                  child: _FilterTile(
+                    filter: filters[i],
+                    selected: filters[i].id == selectedId,
+                    onTap: () => onSelect(filters[i].id),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -465,46 +529,73 @@ class _FilterTile extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
+  static const Color _unselectedFill = Color(0xFF3A322C);
+  static const Color _unselectedBorder = Color(0x66FFFFFF);
+
   @override
   Widget build(BuildContext context) {
+    final fill = selected ? Colors.amber.shade700 : _unselectedFill;
+    final border = selected ? Colors.amber.shade400 : _unselectedBorder;
+    final titleColor = selected ? Colors.black : Colors.white;
+    final subtitleColor = selected ? Colors.black87 : Colors.white70;
+
     return Material(
-      color: selected ? Colors.amber.shade800 : Colors.white10,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
+      color: fill,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  filter.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: selected ? Colors.black : Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14,
-                    height: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  filter.description,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: selected ? Colors.black87 : Colors.white70,
-                    fontSize: 11,
-                    height: 1.15,
-                  ),
-                ),
-              ],
+        child: SizedBox.expand(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // When polish banner shrinks the panel, drop subtitle first.
+                final showSubtitle = constraints.maxHeight >= 28;
+                return Row(
+                  children: [
+                    if (selected) ...[
+                      Icon(Icons.check, size: 16, color: titleColor),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            filter.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: titleColor,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                              height: 1.05,
+                            ),
+                          ),
+                          if (showSubtitle) ...[
+                            const SizedBox(height: 1),
+                            Text(
+                              filter.description,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: subtitleColor,
+                                fontSize: 11,
+                                height: 1.05,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -526,15 +617,21 @@ class _ChipPickerRow extends StatelessWidget {
   final String selectedId;
   final ValueChanged<String> onSelect;
 
+  /// Wide enough for "Print orientation" on one line (matches Scribble row).
+  static const double labelWidth = 118;
+
   @override
   Widget build(BuildContext context) {
     if (options.isEmpty) return const SizedBox.shrink();
     return Row(
       children: [
         SizedBox(
-          width: 72,
+          width: labelWidth,
           child: Text(
             label,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: Colors.amber.shade100.withValues(alpha: 0.85),
               fontSize: 12,
@@ -590,9 +687,12 @@ class _ScribbleToolbar extends StatelessWidget {
     return Row(
       children: [
         SizedBox(
-          width: 72,
+          width: _ChipPickerRow.labelWidth,
           child: Text(
             AppStrings.flashbackScribbleLabel,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: Colors.amber.shade100.withValues(alpha: 0.85),
               fontSize: 12,

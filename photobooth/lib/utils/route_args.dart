@@ -3,6 +3,7 @@ import '../models/strip_models.dart';
 import '../screens/photo_capture/photo_model.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../screens/photo_generate/photo_generate_viewmodel.dart';
+import 'classic_shot_mode.dart';
 import 'print_orientation.dart';
 import 'route_args_parsing.dart';
 
@@ -49,12 +50,20 @@ class CaptureRouteArgs {
   /// Already-accepted FotoFlashback stills (restored after web camera remount).
   final List<PhotoModel> acceptedStripShots;
 
+  /// Explicit Classic shot mode (survives Map round-trips better than total alone).
+  final ClassicShotMode? classicShotMode;
+
+  /// When true, show live POSE but do not auto-start the countdown (Back from looks).
+  final bool awaitGuestStart;
+
   const CaptureRouteArgs({
     this.returnPhotoOnly = false,
     this.subtitleHint,
     this.multiShotTotal,
     this.flashbackTheme,
     this.acceptedStripShots = const [],
+    this.classicShotMode,
+    this.awaitGuestStart = false,
   });
 
   bool get isFlashbackMultiShot =>
@@ -65,18 +74,29 @@ class CaptureRouteArgs {
 
   /// Four-pose strip (look picker) vs single 6×4 print.
   bool get isFlashbackFourShot =>
-      isFlashbackMultiShot && multiShotTotal! > 1;
+      isFlashbackMultiShot && resolvedShotTotal > 1;
 
   bool get isFlashbackSingle6x4 =>
-      isFlashbackMultiShot && multiShotTotal == 1;
+      isFlashbackMultiShot && resolvedShotTotal == 1;
+
+  /// Prefer [classicShotMode] when present so 1-shot cannot become 4.
+  int get resolvedShotTotal {
+    final mode = classicShotMode;
+    if (mode != null) return mode.shotCount;
+    return multiShotTotal ?? 0;
+  }
 
   static CaptureRouteArgs? tryParse(Object? args) {
     if (args is CaptureRouteArgs) return args;
     if (args is Map) {
+      final mode = _parseClassicShotMode(args['classicShotMode']);
       final totalRaw = args['multiShotTotal'];
-      final total = totalRaw is int
+      var total = totalRaw is int
           ? totalRaw
           : int.tryParse(totalRaw?.toString() ?? '');
+      if (mode != null) {
+        total = mode.shotCount;
+      }
       final rawShots = args['acceptedStripShots'];
       final shots = <PhotoModel>[];
       if (rawShots is List) {
@@ -93,11 +113,33 @@ class CaptureRouteArgs {
                 ? args['flashbackTheme'] as ThemeModel
                 : null,
         acceptedStripShots: shots,
+        classicShotMode: mode,
+        awaitGuestStart: args['awaitGuestStart'] == true,
       );
     }
     return null;
   }
+
+  static ClassicShotMode? _parseClassicShotMode(Object? raw) {
+    if (raw is ClassicShotMode) return raw;
+    final name = raw?.toString();
+    if (name == null || name.isEmpty) return null;
+    for (final mode in ClassicShotMode.values) {
+      if (mode.name == name) return mode;
+    }
+    if (name == '1' || name == 'single' || name == 'single6x4') {
+      return ClassicShotMode.single6x4;
+    }
+    if (name == '4' || name == 'four' || name == 'fourShot') {
+      return ClassicShotMode.fourShot;
+    }
+    return null;
+  }
 }
+
+/// Parses [ClassicShotMode] from route maps / JSON-ish values.
+ClassicShotMode? parseClassicShotModeArg(Object? raw) =>
+    CaptureRouteArgs._parseClassicShotMode(raw);
 
 /// Args for FotoFlashback 4-shot capture.
 class FlashbackCaptureArgs {
@@ -122,13 +164,25 @@ class FlashbackFilterArgs {
   final bool overlayCleanupAlreadyDone;
   /// Per-shot scrub success from capture (parallel to [imageDataUrls]).
   final List<bool> shotCleaned;
+  /// Classic shot mode for Back → POSE (prefer over inferring from URL count).
+  final ClassicShotMode? classicShotMode;
 
   const FlashbackFilterArgs({
     required this.theme,
     required this.imageDataUrls,
     this.overlayCleanupAlreadyDone = false,
     this.shotCleaned = const [],
+    this.classicShotMode,
   });
+
+  /// Mode used when returning from looks to Classic capture.
+  ClassicShotMode get resolvedShotMode {
+    final mode = classicShotMode;
+    if (mode != null) return mode;
+    return imageDataUrls.length == 1
+        ? ClassicShotMode.single6x4
+        : ClassicShotMode.fourShot;
+  }
 
   static FlashbackFilterArgs? tryParse(Object? args) {
     if (args is FlashbackFilterArgs) return args;
@@ -145,6 +199,7 @@ class FlashbackFilterArgs {
         imageDataUrls: urls,
         overlayCleanupAlreadyDone: args['overlayCleanupAlreadyDone'] == true,
         shotCleaned: shotCleaned,
+        classicShotMode: parseClassicShotModeArg(args['classicShotMode']),
       );
     }
     return null;

@@ -29,10 +29,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         _api = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager(),
         _previewCleaned = overlayCleanupAlreadyDone,
-        _printOrientation = printOrientation ??
-            (imageDataUrls.length == 1
-                ? PrintOrientation.landscape
-                : PrintOrientation.portrait),
+        _printOrientation = printOrientation ?? PrintOrientation.portrait,
         _shotCleaned = List<bool>.generate(
           imageDataUrls.length,
           (i) =>
@@ -89,7 +86,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       (_gradedByFilter[_selectedFilterId]?.length ?? 0) ==
       _imageDataUrls.length;
 
-  /// Classic 1-shot landscape 6×4 (vs 4-shot dual strip / sheet).
+  /// Classic 1-shot print (portrait 4×6 by default; guest can switch to 6×4).
   bool get isSingleClassic => _imageDataUrls.length == 1;
 
   bool get _hasComposableShotCount =>

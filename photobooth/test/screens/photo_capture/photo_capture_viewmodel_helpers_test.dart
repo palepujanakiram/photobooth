@@ -64,6 +64,13 @@ void main() {
     );
     expect(
       takePictureTimeoutForDevice(
+        camera: external,
+        deviceType: AppDeviceType.androidPhone,
+      ),
+      const Duration(seconds: 6),
+    );
+    expect(
+      takePictureTimeoutForDevice(
         camera: back,
         deviceType: AppDeviceType.androidPhone,
       ),
@@ -71,13 +78,20 @@ void main() {
     );
   });
 
-  test('preferImmediateStreamFallbackAfterStillFailure mirrors kiosk eligibility', () {
+  test('preferImmediateStreamFallbackAfterStillFailure is TV-only', () {
+    expect(
+      preferImmediateStreamFallbackAfterStillFailure(
+        camera: external,
+        deviceType: AppDeviceType.androidTv,
+      ),
+      isTrue,
+    );
     expect(
       preferImmediateStreamFallbackAfterStillFailure(
         camera: external,
         deviceType: AppDeviceType.androidPhone,
       ),
-      isTrue,
+      isFalse,
     );
     expect(
       preferImmediateStreamFallbackAfterStillFailure(
@@ -86,5 +100,40 @@ void main() {
       ),
       isFalse,
     );
+  });
+
+  test('looksLikeCameraXRecoverableError matches plugin copy', () {
+    expect(
+      looksLikeCameraXRecoverableError(
+        'The camera device has encountered a recoverable error. '
+        'CameraX will attempt to recover from the error.',
+      ),
+      isTrue,
+    );
+    expect(looksLikeCameraXRecoverableError('Camera permission denied'), isFalse);
+  });
+
+  test('shouldSurfaceCameraControllerErrorAsFatal hides recoverable noise', () {
+    expect(
+      shouldSurfaceCameraControllerErrorAsFatal(
+        'The camera device has encountered a recoverable error. '
+        'CameraX will attempt to recover from the error.',
+      ),
+      isFalse,
+    );
+    expect(
+      shouldSurfaceCameraControllerErrorAsFatal('Failed to open camera'),
+      isTrue,
+    );
+    expect(shouldSurfaceCameraControllerErrorAsFatal(null), isTrue);
+  });
+
+  test('isRecoverableTakePictureError covers CameraX and closed-device cases', () {
+    expect(
+      isRecoverableTakePictureError('otherrecoverableerror'.toLowerCase()),
+      isTrue,
+    );
+    expect(isRecoverableTakePictureError('camera is closed'), isTrue);
+    expect(isRecoverableTakePictureError('permission denied'), isFalse);
   });
 }

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/photo_capture/photo_model.dart';
 import 'package:photobooth/screens/photo_generate/photo_generate_viewmodel.dart';
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
+import 'package:photobooth/utils/classic_shot_mode.dart';
 import 'package:photobooth/utils/route_args.dart';
 
 void main() {
@@ -250,6 +251,19 @@ void main() {
       expect(parsed.acceptedStripShots, hasLength(1));
       expect(parsed.acceptedStripShots.first.id, 'p1');
     });
+
+    test('classicShotMode single6x4 forces multiShotTotal to 1', () {
+      final parsed = CaptureRouteArgs.tryParse({
+        'returnPhotoOnly': true,
+        'multiShotTotal': 4,
+        'classicShotMode': 'single6x4',
+        'flashbackTheme': theme,
+      });
+      expect(parsed!.multiShotTotal, 1);
+      expect(parsed.resolvedShotTotal, 1);
+      expect(parsed.isFlashbackSingle6x4, isTrue);
+      expect(parsed.isFlashbackFourShot, isFalse);
+    });
   });
 
   group('FlashbackCaptureArgs.tryParse', () {
@@ -285,6 +299,37 @@ void main() {
         FlashbackFilterArgs.tryParse({'theme': theme, 'images': 'bad'}),
         isNull,
       );
+    });
+
+    test('resolvedShotMode prefers classicShotMode then URL count', () {
+      expect(
+        FlashbackFilterArgs(
+          theme: theme,
+          imageDataUrls: const ['a'],
+          classicShotMode: ClassicShotMode.fourShot,
+        ).resolvedShotMode,
+        ClassicShotMode.fourShot,
+      );
+      expect(
+        FlashbackFilterArgs(
+          theme: theme,
+          imageDataUrls: const ['a'],
+        ).resolvedShotMode,
+        ClassicShotMode.single6x4,
+      );
+      expect(
+        FlashbackFilterArgs(
+          theme: theme,
+          imageDataUrls: const ['a', 'b', 'c', 'd'],
+        ).resolvedShotMode,
+        ClassicShotMode.fourShot,
+      );
+      final parsed = FlashbackFilterArgs.tryParse({
+        'theme': theme,
+        'images': ['x'],
+        'classicShotMode': 'single6x4',
+      });
+      expect(parsed!.classicShotMode, ClassicShotMode.single6x4);
     });
   });
 }

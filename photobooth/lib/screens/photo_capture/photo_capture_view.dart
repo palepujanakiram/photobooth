@@ -37,16 +37,22 @@ import '../../models/strip_models.dart';
 import '../../utils/app_device_type.dart';
 import '../../utils/app_runtime_config.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/capture_session_kind.dart';
+import '../../utils/classic_capture_intent.dart';
+import '../../utils/classic_one_shot_fsm.dart';
+import '../../utils/classic_shot_mode.dart';
+import '../../utils/classic_pose_mode_helpers.dart';
 import '../../utils/classic_strip_scrub_helpers.dart';
 import '../../utils/classic_strip_scrub_coordinator.dart';
 import '../../utils/constants.dart';
-import '../../views/widgets/classic_scrub_progress_dots.dart';
 import '../../utils/device_classifier.dart';
 import '../../utils/image_helper.dart';
+import '../../utils/kiosk_page_route.dart';
 import '../../utils/logger.dart';
 import '../../utils/route_args.dart';
 import '../../utils/surprise_me_helpers.dart';
 import '../../utils/uvc_capture_config.dart';
+import '../fotoflashback/fotoflashback_filter_view.dart';
 import '../theme_selection/theme_model.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
@@ -54,11 +60,23 @@ import '../../services/uvc_device_event_hub.dart';
 import '../../services/uvc_session_coordinator.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/centered_max_width.dart';
+import '../../views/widgets/classic_scrub_progress_dots.dart';
+import '../../views/widgets/flashback_review_hold_banner.dart';
 import 'photo_capture_rotation_screen.dart';
 import '../../services/hardware_key_service.dart';
 
 class PhotoCaptureScreen extends StatefulWidget {
-  const PhotoCaptureScreen({super.key});
+  const PhotoCaptureScreen({
+    super.key,
+    this.sessionKind = CaptureSessionKind.fotoZen,
+    this.captureArgs,
+  });
+
+  /// Immutable POSE flow — set at construction, never re-derived.
+  final CaptureSessionKind sessionKind;
+
+  /// Classic strip theme / remount progress. Ignored for [CaptureSessionKind.fotoZen].
+  final CaptureRouteArgs? captureArgs;
 
   @override
   State<PhotoCaptureScreen> createState() => _PhotoCaptureScreenState();
@@ -157,7 +175,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!mounted) return;
     _syncPoseIdleTimer(_captureViewModel);
     _syncCaptureWatchdog(_captureViewModel);
-    _maybeAdvanceFlashbackAutoChain();
+    // Classic 1-shot is a linear FSM — never drive it from VM notify storms
+    // (UVC normalize / reopen was restarting countdowns forever).
+    if (widget.sessionKind.isClassicFourShot) {
+      _maybeAdvanceFlashbackAutoChain();
+    } else if (widget.sessionKind.isClassicOneShot) {
+      _oneShotOnViewModelTick();
+    }
   }
 
   void _syncCaptureWatchdog(CaptureViewModel viewModel) {
@@ -205,6 +229,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _flashbackReviewTimer = null;
     _flashbackReviewTick?.cancel();
     _flashbackReviewTick = null;
+    _flashbackReviewEndsAt = null;
+    _flashbackReviewPhotoId = null;
     if (_flashbackReviewSecondsLeft != null && mounted) {
       setState(() => _flashbackReviewSecondsLeft = null);
     } else {
@@ -212,17 +238,36 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
   }
 
+  bool get _flashbackReviewHoldActive => flashbackReviewHoldAlreadyScheduled(
+        timerActive: _flashbackReviewTimer?.isActive == true,
+        hasDeadline: _flashbackReviewEndsAt != null,
+      );
+
   void _maybeAdvanceFlashbackAutoChain() {
-    if (!_isFlashbackMultiShot || !mounted) return;
+    if (!mounted) return;
+    // 1-shot never enters this chain — see [_oneShotDispatch].
+    if (!widget.sessionKind.isClassicFourShot) return;
+    // Accept has detached the still but not finished retake/resume yet.
+    if (_flashbackAcceptingShot) return;
+
     final vm = _captureViewModel;
-    final total = _multiShotTotal ?? 0;
+    final total = _classicShotCap;
+    final photo = vm.capturedPhoto;
+
+    // Already counting down for this still — never re-arm (that froze "… 8").
+    if (photo != null &&
+        _flashbackReviewEndsAt != null &&
+        _flashbackReviewPhotoId == photo.id) {
+      return;
+    }
+
     if (shouldScheduleFlashbackAutoAccept(
       isFlashbackMultiShot: true,
       stripFinishing: _stripFinishing,
       navigatingAway: _navigatingAwayFromCapture,
-      hasCapturedPhoto: vm.capturedPhoto != null,
+      hasCapturedPhoto: photo != null,
       isCapturing: vm.isCapturing || _uvcCaptureInFlight,
-      autoAcceptAlreadyScheduled: _flashbackReviewTimer?.isActive == true,
+      autoAcceptAlreadyScheduled: _flashbackReviewHoldActive,
     )) {
       _scheduleFlashbackAutoAccept();
       return;
@@ -231,63 +276,265 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       isFlashbackMultiShot: true,
       stripFinishing: _stripFinishing,
       navigatingAway: _navigatingAwayFromCapture,
-      hasCapturedPhoto: vm.capturedPhoto != null,
+      hasCapturedPhoto: photo != null,
       isCountingDown: vm.isCountingDown || _flashbackCountdownStarting,
       isCapturing: vm.isCapturing || _uvcCaptureInFlight,
       acceptedShotCount: _stripShots.length,
       multiShotTotal: total,
       cameraReadyForCapture: _flashbackCameraReady,
+      awaitGuestStart: _awaitGuestStartClassic,
+      isSingleShot: false,
+      singleShotCapturesStarted: _singleShotCapturesStarted,
     )) {
       unawaited(_startFlashbackAutoCountdown());
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Classic 1-shot linear FSM (USB webcam must not loop)
+  // ---------------------------------------------------------------------------
+
+  ClassicOneShotPhase _oneShotPhase = ClassicOneShotPhase.idle;
+
+  void _oneShotOnViewModelTick() {
+    if (!widget.sessionKind.isClassicOneShot) return;
+    final photo = _captureViewModel.capturedPhoto;
+    if (photo != null &&
+        !_captureViewModel.isCapturing &&
+        !_uvcCaptureInFlight &&
+        (_oneShotPhase == ClassicOneShotPhase.counting ||
+            _oneShotPhase == ClassicOneShotPhase.capturing)) {
+      _oneShotDispatch(ClassicOneShotEvent.stillReady);
+      return;
+    }
+    // Only the initial idle→counting auto-start comes from camera-ready.
+    if (_oneShotPhase == ClassicOneShotPhase.idle &&
+        !_awaitGuestStartClassic &&
+        _flashbackCameraReady &&
+        photo == null &&
+        !_captureViewModel.isCountingDown &&
+        !_flashbackCountdownStarting) {
+      _oneShotDispatch(ClassicOneShotEvent.cameraReady);
+    }
+  }
+
+  void _oneShotDispatch(ClassicOneShotEvent event) {
+    if (!widget.sessionKind.isClassicOneShot || !mounted) return;
+    final next = classicOneShotTransition(phase: _oneShotPhase, event: event);
+    if (next == null) {
+      AppLogger.debug(
+        'Classic 1-shot ignore event=$event phase=$_oneShotPhase',
+      );
+      return;
+    }
+    AppLogger.debug('Classic 1-shot $_oneShotPhase → $next ($event)');
+    _oneShotPhase = next;
+    switch (next) {
+      case ClassicOneShotPhase.counting:
+        unawaited(_oneShotRunCountdownAndCapture());
+      case ClassicOneShotPhase.captured:
+        unawaited(_oneShotAcceptToLooks());
+      case ClassicOneShotPhase.needsGuest:
+        _awaitGuestStartClassic = true;
+        _singleShotCapturesStarted = 0;
+        _flashbackCountdownStarting = false;
+        if (mounted) setState(() {});
+      case ClassicOneShotPhase.idle:
+      case ClassicOneShotPhase.capturing:
+      case ClassicOneShotPhase.finishing:
+      case ClassicOneShotPhase.done:
+        break;
+    }
+  }
+
+  Future<void> _oneShotRunCountdownAndCapture() async {
+    if (!widget.sessionKind.isClassicOneShot) return;
+    if (_oneShotPhase != ClassicOneShotPhase.counting) return;
+    if (_stripShots.isNotEmpty || _captureViewModel.capturedPhoto != null) {
+      _oneShotDispatch(ClassicOneShotEvent.stillReady);
+      return;
+    }
+    _singleShotCapturesStarted = 1;
+    _awaitGuestStartClassic = false;
+    _flashbackCountdownStarting = true;
+    final seconds = captureCountdownSecondsForMode(isFlashbackMultiShot: true);
+    try {
+      if (_isUsingUvc) {
+        await _captureViewModel.captureWithCountdown(
+          () async {
+            if (_oneShotPhase != ClassicOneShotPhase.counting) return;
+            _oneShotDispatch(ClassicOneShotEvent.shutterStarted);
+            await _captureUvc(_captureViewModel, source: 'classic_one_shot');
+          },
+          canStart: () =>
+              mounted &&
+              widget.sessionKind.isClassicOneShot &&
+              (_oneShotPhase == ClassicOneShotPhase.counting ||
+                  _oneShotPhase == ClassicOneShotPhase.capturing) &&
+              _uvcReadyForCapture &&
+              !_uvcCaptureInFlight &&
+              _captureViewModel.capturedPhoto == null &&
+              _stripShots.isEmpty,
+          countdownSeconds: seconds,
+        );
+      } else {
+        _oneShotDispatch(ClassicOneShotEvent.shutterStarted);
+        await _captureViewModel.capturePhotoWithCountdown(
+          countdownSeconds: seconds,
+        );
+      }
+    } finally {
+      _flashbackCountdownStarting = false;
+      if (mounted && widget.sessionKind.isClassicOneShot) {
+        if (_captureViewModel.capturedPhoto != null) {
+          _oneShotDispatch(ClassicOneShotEvent.stillReady);
+        } else if (_oneShotPhase == ClassicOneShotPhase.counting ||
+            _oneShotPhase == ClassicOneShotPhase.capturing) {
+          AppLogger.error(
+            'Classic 1-shot produced no still; phase→needsGuest',
+          );
+          _oneShotDispatch(ClassicOneShotEvent.captureFailed);
+        }
+      }
+    }
+  }
+
+  Future<void> _oneShotAcceptToLooks() async {
+    if (!widget.sessionKind.isClassicOneShot) return;
+    if (_oneShotPhase != ClassicOneShotPhase.captured) return;
+    if (_stripFinishing || _navigatingAwayFromCapture) return;
+    final vm = _captureViewModel;
+    final photo = vm.capturedPhoto;
+    final theme = _flashbackTheme ?? ClassicCaptureIntent.peekTheme();
+    if (photo == null) {
+      _oneShotDispatch(ClassicOneShotEvent.captureFailed);
+      return;
+    }
+    _cancelFlashbackAutoTimers();
+    // Move to finishing immediately so a second stillReady cannot double-accept.
+    _oneShotDispatch(ClassicOneShotEvent.finishStarted);
+    if (_oneShotPhase != ClassicOneShotPhase.finishing) return;
+
+    if (_stripShots.isEmpty) {
+      final scrubEnabled = classicOverlayScrubEnabled(
+        context.read<AppSettingsManager>().settings?.enableOsdScrub,
+      );
+      final Future<ClassicShotScrubResult> scrubFuture;
+      if (scrubEnabled) {
+        scrubFuture = ClassicStripScrubCoordinator.instance.enqueueShot(
+          encodeShotDataUrl: () =>
+              ImageHelper.encodeImageToBase64(photo.imageFile),
+          enableScrub: true,
+        );
+      } else {
+        scrubFuture = ImageHelper.encodeImageToBase64(photo.imageFile).then(
+          (raw) => ClassicShotScrubResult(dataUrl: raw, scrubbed: false),
+        );
+      }
+      setState(() {
+        _stripShots.add(photo);
+        _stripScrubFutures.add(scrubFuture);
+        _multiShotTotal = 1;
+        _subtitleHint = AppStrings.flashbackSingle6x4Title;
+      });
+    }
+    if (theme == null) {
+      AppLogger.error('Classic 1-shot accept missing flashbackTheme');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(AppStrings.flashbackFinishEncodeFailed)),
+        );
+      }
+      _oneShotDispatch(ClassicOneShotEvent.captureFailed);
+      return;
+    }
+    await _finishFlashbackStrip(theme);
+    if (!mounted) return;
+    if (_navigatingAwayFromCapture) {
+      _oneShotDispatch(ClassicOneShotEvent.finished);
+    } else {
+      // Encode/nav failed — guest may retry; never auto-loop.
+      _oneShotDispatch(ClassicOneShotEvent.captureFailed);
+    }
+  }
+
+  /// Guest Capture / shutter for Classic 1-shot only.
+  void _oneShotRequestGuestCapture() {
+    if (!widget.sessionKind.isClassicOneShot) return;
+    _oneShotDispatch(ClassicOneShotEvent.guestCapture);
+  }
+
   void _scheduleFlashbackAutoAccept() {
+    final photo = _captureViewModel.capturedPhoto;
+    if (photo == null) return;
+
+    // One deadline per still — never reset to 8 on parent notify storms.
+    if (_flashbackReviewEndsAt != null &&
+        _flashbackReviewPhotoId == photo.id &&
+        _flashbackReviewTimer?.isActive == true) {
+      return;
+    }
+
     _flashbackReviewTimer?.cancel();
     _flashbackReviewTick?.cancel();
-    final totalMs = AppConstants.kFlashbackShotReviewDuration.inMilliseconds;
-    final totalSecs = (totalMs / 1000).ceil().clamp(1, 60);
-    setState(() => _flashbackReviewSecondsLeft = totalSecs);
-    _flashbackReviewTick = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) {
-        t.cancel();
-        return;
+    _flashbackReviewTick = null;
+
+    final total = _classicShotCap;
+    final hold = total == 1
+        ? const Duration(milliseconds: 600)
+        : AppConstants.kFlashbackShotReviewDuration;
+    final endsAt = DateTime.now().add(hold);
+    _flashbackReviewPhotoId = photo.id;
+    _flashbackReviewEndsAt = endsAt;
+
+    if (mounted) {
+      setState(() {
+        // Kept for legacy null-checks; banner reads [endsAt] directly.
+        _flashbackReviewSecondsLeft =
+            hold > Duration.zero ? hold.inSeconds.clamp(0, 60) : null;
+      });
+    } else {
+      _flashbackReviewSecondsLeft =
+          hold > Duration.zero ? hold.inSeconds.clamp(0, 60) : null;
+    }
+
+    _flashbackReviewTimer = Timer(hold, () {
+      if (!mounted) return;
+      final expectedId = _flashbackReviewPhotoId;
+      _flashbackReviewTimer = null;
+      _flashbackReviewEndsAt = null;
+      _flashbackReviewPhotoId = null;
+      if (_flashbackReviewSecondsLeft != null) {
+        setState(() => _flashbackReviewSecondsLeft = null);
       }
-      final next = (_flashbackReviewSecondsLeft ?? 1) - 1;
-      if (next <= 0) {
-        t.cancel();
-        _flashbackReviewTick = null;
-        setState(() => _flashbackReviewSecondsLeft = 0);
-        return;
-      }
-      setState(() => _flashbackReviewSecondsLeft = next);
+      // Still must match the one we scheduled for (guest may have retaken).
+      final current = _captureViewModel.capturedPhoto;
+      if (current == null || current.id != expectedId) return;
+      unawaited(_acceptFlashbackShot(_captureViewModel));
     });
-    _flashbackReviewTimer = Timer(
-      AppConstants.kFlashbackShotReviewDuration,
-      () {
-        if (!mounted) return;
-        _flashbackReviewTick?.cancel();
-        _flashbackReviewTick = null;
-        unawaited(_acceptFlashbackShot(_captureViewModel));
-      },
-    );
   }
 
   Future<void> _startFlashbackAutoCountdown() async {
+    // Classic 1-shot uses [_oneShotDispatch] only — never share this path.
+    if (!widget.sessionKind.isClassicFourShot) return;
     if (_flashbackCountdownStarting || !mounted) return;
     if (!shouldAutoStartFlashbackCountdown(
-      isFlashbackMultiShot: _isFlashbackMultiShot,
+      isFlashbackMultiShot: true,
       stripFinishing: _stripFinishing,
       navigatingAway: _navigatingAwayFromCapture,
       hasCapturedPhoto: _captureViewModel.capturedPhoto != null,
       isCountingDown: _captureViewModel.isCountingDown,
       isCapturing: _captureViewModel.isCapturing || _uvcCaptureInFlight,
       acceptedShotCount: _stripShots.length,
-      multiShotTotal: _multiShotTotal ?? 0,
+      multiShotTotal: _classicShotCap,
       cameraReadyForCapture: _flashbackCameraReady,
+      awaitGuestStart: _awaitGuestStartClassic,
+      isSingleShot: false,
+      singleShotCapturesStarted: _singleShotCapturesStarted,
     )) {
       return;
     }
+    _awaitGuestStartClassic = false;
     _flashbackCountdownStarting = true;
     final seconds = captureCountdownSecondsForMode(isFlashbackMultiShot: true);
     try {
@@ -390,17 +637,37 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   bool _stripFinishing = false;
   Timer? _flashbackReviewTimer;
   Timer? _flashbackReviewTick;
+  DateTime? _flashbackReviewEndsAt;
+  /// Photo id the current review deadline belongs to (blocks re-arm to "8").
+  String? _flashbackReviewPhotoId;
   int? _flashbackReviewSecondsLeft;
   bool _flashbackCountdownStarting = false;
+  /// True while a Classic still is being committed to the strip (blocks re-accept).
+  bool _flashbackAcceptingShot = false;
+  /// Classic 1-shot: how many auto/manual pose captures were started this visit.
+  int _singleShotCapturesStarted = 0;
+  /// Back from looks: live preview only until guest taps Capture / shutter.
+  bool _awaitGuestStartClassic = false;
 
-  bool get _isFlashbackMultiShot =>
-      _returnPhotoOnly &&
-      _multiShotTotal != null &&
-      _multiShotTotal! >= 1 &&
-      _flashbackTheme != null;
+  /// Classic POSE (1-shot or 4-shot). Prefer this over [_isFlashbackMultiShot].
+  bool get _isClassicPose => widget.sessionKind.isClassic;
 
-  bool get _isFlashbackFourShot =>
-      _isFlashbackMultiShot && _multiShotTotal! > 1;
+  /// Classic 4-shot strip only — never true for 1-shot (avoids remount chain).
+  bool get _isFlashbackMultiShot => widget.sessionKind.isClassicFourShot;
+
+  bool get _isFlashbackFourShot => widget.sessionKind.isClassicFourShot;
+
+  bool get _isFlashbackSingleShot => widget.sessionKind.isClassicOneShot;
+
+  int get _classicShotCap => widget.sessionKind.classicShotCount ?? 0;
+
+  void _syncClassicPoseFieldsFromKind() {
+    final mode = widget.sessionKind.classicShotMode;
+    if (mode == null) return;
+    _returnPhotoOnly = true;
+    _multiShotTotal = mode.shotCount;
+    _subtitleHint = classicPoseSubtitle(mode);
+  }
 
   bool get _flashbackCameraReady => _isUsingUvc
       ? (_uvcReadyForCapture && !_uvcCaptureInFlight)
@@ -411,29 +678,56 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     super.didChangeDependencies();
     if (_prefillApplied) return;
     _prefillApplied = true;
-    final args = ModalRoute.of(context)?.settings.arguments;
+    // FotoZen: never adopt ModalRoute Classic args (Android TV often keeps the
+    // previous `/capture` arguments when the route name matches).
+    if (!widget.sessionKind.isClassic) {
+      ClassicCaptureIntent.clear();
+      return;
+    }
+    _applyClassicCaptureArgs(
+      widget.captureArgs ?? ModalRoute.of(context)?.settings.arguments,
+    );
+  }
+
+  /// Load Classic theme / strip progress. Mode comes only from [sessionKind].
+  void _applyClassicCaptureArgs(Object? args) {
+    if (!widget.sessionKind.isClassic) return;
+
     final captureArgs = CaptureRouteArgs.tryParse(args);
     if (captureArgs != null) {
       _returnPhotoOnly = captureArgs.returnPhotoOnly;
       _subtitleHint = captureArgs.subtitleHint;
-      _multiShotTotal = captureArgs.multiShotTotal;
       _flashbackTheme = captureArgs.flashbackTheme;
+      _awaitGuestStartClassic = captureArgs.awaitGuestStart;
       if (captureArgs.acceptedStripShots.isNotEmpty) {
         _stripShots
           ..clear()
           ..addAll(captureArgs.acceptedStripShots);
-        // Web remount between Classic shots: show "Getting ready…" immediately
-        // instead of flashing Gallery / Phone QR before loadCameras runs.
         _captureViewModel.markAwaitingCameraRemount();
-      } else if (_isFlashbackMultiShot) {
-        // Fresh strip — clear any prior session polish progress.
-        ClassicStripScrubCoordinator.instance.reset();
-      }
-      if (_isFlashbackMultiShot) {
-        _captureViewModel.preferStripPrintQuality = true;
-        _syncFlashbackSubtitle();
       }
     }
+
+    _flashbackTheme ??= ClassicCaptureIntent.peekTheme();
+    _syncClassicPoseFieldsFromKind();
+    _syncFlashbackSubtitle();
+
+    if (widget.sessionKind.isClassicOneShot) {
+      _oneShotPhase = _awaitGuestStartClassic
+          ? ClassicOneShotPhase.needsGuest
+          : ClassicOneShotPhase.idle;
+    }
+
+    if (_stripShots.isEmpty) {
+      ClassicStripScrubCoordinator.instance.reset();
+    }
+
+    _captureViewModel.preferStripPrintQuality = true;
+    AppLogger.debug(
+      'Classic POSE kind=${widget.sessionKind.name} '
+      'multiShotTotal=$_multiShotTotal '
+      'theme=${_flashbackTheme?.id} '
+      'strip=${_stripShots.length} awaitGuest=$_awaitGuestStartClassic',
+    );
     if (args is Map && args['photo'] is PhotoModel) {
       final photo = args['photo'] as PhotoModel;
       _captureViewModel.capturedPhoto = photo;
@@ -441,67 +735,136 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   void _syncFlashbackSubtitle() {
-    final total = _multiShotTotal;
-    if (total == null) return;
-    if (total == 1) {
+    if (_isFlashbackSingleShot) {
+      _multiShotTotal = 1;
       _subtitleHint = AppStrings.flashbackSingle6x4Title;
       return;
     }
+    final total = _classicShotCap;
+    if (total < 1) return;
     final next = (_stripShots.length + 1).clamp(1, total);
     _subtitleHint = AppStrings.flashbackShotProgress(next, total);
   }
 
   Future<void> _acceptFlashbackShot(CaptureViewModel viewModel) async {
     final photo = viewModel.capturedPhoto;
-    final total = _multiShotTotal;
-    final theme = _flashbackTheme;
-    if (photo == null || total == null || theme == null || _stripFinishing) {
+    if (photo == null || _stripFinishing) {
+      _cancelFlashbackAutoTimers();
       return;
     }
-    _cancelFlashbackAutoTimers();
-    final scrubEnabled = classicOverlayScrubEnabled(
-      context.read<AppSettingsManager>().settings?.enableOsdScrub,
-    );
-    // Coordinator encodes immediately + queues Gemini so polish survives web
-    // remounts and runs during poses 2–4 (not only on the look screen).
-    final Future<ClassicShotScrubResult> scrubFuture;
-    if (scrubEnabled) {
-      scrubFuture = ClassicStripScrubCoordinator.instance.enqueueShot(
-        encodeShotDataUrl: () =>
-            ImageHelper.encodeImageToBase64(photo.imageFile),
-        enableScrub: true,
-      );
-    } else {
-      scrubFuture = ImageHelper.encodeImageToBase64(photo.imageFile).then(
-        (raw) => ClassicShotScrubResult(dataUrl: raw, scrubbed: false),
-      );
+
+    // Classic 1-shot: FSM owns accept → looks (no 4-shot remount).
+    if (widget.sessionKind.isClassicOneShot) {
+      if (_oneShotPhase == ClassicOneShotPhase.finishing ||
+          _oneShotPhase == ClassicOneShotPhase.done) {
+        return;
+      }
+      if (_oneShotPhase != ClassicOneShotPhase.captured) {
+        _oneShotPhase = ClassicOneShotPhase.captured;
+      }
+      await _oneShotAcceptToLooks();
+      return;
     }
-    setState(() {
-      _stripShots.add(photo);
-      _stripScrubFutures.add(scrubFuture);
-      _syncFlashbackSubtitle();
-    });
-    // Kick off Surprise Me on the first accepted Classic shot (1- or 4-shot).
-    // Look-picker time covers latency for 1-shot; shots 2–4 cover it for strips.
-    if (_stripShots.length == 1 && _isFlashbackMultiShot) {
-      final enableSurprise = context
-              .read<AppSettingsManager>()
-              .settings
-              ?.enableSurpriseMeAi ==
-          true;
-      unawaited(
-        maybeKickoffSurpriseMeAfterShot1(
-          encodeShotDataUrl: () =>
-              ImageHelper.encodeImageToBase64(photo.imageFile),
-          enableSurpriseMeAi: enableSurprise,
-        ),
-      );
+
+    final theme = _flashbackTheme ?? ClassicCaptureIntent.peekTheme();
+    if (!widget.sessionKind.isClassicFourShot) return;
+    if (theme == null) return;
+    final total = _classicShotCap;
+    if (total <= 0) return;
+
+    // Same still accepted repeatedly → identical strip frames on look screen.
+    if (_flashbackAcceptingShot) {
+      AppLogger.debug('Classic 4-shot accept ignored (already accepting)');
+      return;
     }
+    if (_stripShots.any((p) => p.id == photo.id)) {
+      AppLogger.error(
+        'Classic 4-shot blocked duplicate accept of photo ${photo.id}',
+      );
+      _cancelFlashbackAutoTimers();
+      await _resumeAfterClassicShotAccepted();
+      return;
+    }
+
     if (_stripShots.length >= total) {
       await _finishFlashbackStrip(theme);
       return;
     }
-    await _handleRetake(context);
+
+    _flashbackAcceptingShot = true;
+    _cancelFlashbackAutoTimers();
+
+    try {
+      // Snapshot bytes before clearing VM / reinit (web blob XFiles go stale).
+      final encodedDataUrl = await ImageHelper.encodeImageToBase64(
+        photo.imageFile,
+      );
+      if (!mounted) return;
+      if (encodedDataUrl.trim().isEmpty) {
+        AppLogger.error('Classic 4-shot encode empty for photo ${photo.id}');
+        await _resumeAfterClassicShotAccepted();
+        return;
+      }
+
+      // Detach so notify storms cannot re-accept this still.
+      viewModel.clearCapturedPhoto();
+
+      final scrubEnabled = classicOverlayScrubEnabled(
+        context.read<AppSettingsManager>().settings?.enableOsdScrub,
+      );
+      final scrubFuture = ClassicStripScrubCoordinator.instance.enqueueShot(
+        encodeShotDataUrl: () async => encodedDataUrl,
+        enableScrub: scrubEnabled,
+      );
+      setState(() {
+        _stripShots.add(photo);
+        _stripScrubFutures.add(scrubFuture);
+        _multiShotTotal = total;
+        _syncFlashbackSubtitle();
+      });
+      AppLogger.debug(
+        'Classic 4-shot accept: strip=${_stripShots.length}/$total '
+        'photo=${photo.id}',
+      );
+      if (_stripShots.length == 1 && total > 1) {
+        final enableSurprise = context
+                .read<AppSettingsManager>()
+                .settings
+                ?.enableSurpriseMeAi ==
+            true;
+        unawaited(
+          maybeKickoffSurpriseMeAfterShot1(
+            encodeShotDataUrl: () async => encodedDataUrl,
+            enableSurpriseMeAi: enableSurprise,
+          ),
+        );
+      }
+      if (_stripShots.length >= total) {
+        await _finishFlashbackStrip(theme);
+        return;
+      }
+      await _resumeAfterClassicShotAccepted();
+    } finally {
+      _flashbackAcceptingShot = false;
+      if (mounted) _maybeAdvanceFlashbackAutoChain();
+    }
+  }
+
+  /// Live preview for the next Classic pose (still already cleared from VM).
+  Future<void> _resumeAfterClassicShotAccepted() async {
+    if (!mounted) return;
+    if (_uvcDevice != null) {
+      await _restoreUvcLiveFeedAfterRetake();
+      return;
+    }
+    final ctrl = _captureViewModel.cameraController;
+    final healthy = !kIsWeb &&
+        ctrl != null &&
+        ctrl.value.isInitialized &&
+        !ctrl.value.hasError;
+    await _captureViewModel.resumeLivePreviewAfterRetake(
+      forceReinit: !healthy,
+    );
   }
 
   Future<void> _finishFlashbackStrip(ThemeModel theme) async {
@@ -510,28 +873,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _navigatingAwayFromCapture = true;
     _stopPoseIdleTimer();
     try {
+      if (widget.sessionKind.isClassicOneShot) {
+        await _navigateClassicSingleShotToLooks(theme);
+        return;
+      }
+
       // Navigate as soon as encodes are ready — do not block on Gemini scrub
       // (often 20–40s/shot). In-flight scrubs continue; look screen adopts them.
       final dataUrls = <String>[];
       var allScrubbed = _stripShots.isNotEmpty;
-      final coord = ClassicStripScrubCoordinator.instance;
-      final List<ClassicShotScrubResult> scrubResults;
-      if (coord.shotCount == _stripShots.length && _stripShots.isNotEmpty) {
-        scrubResults = await coord.awaitEncodedReady();
-      } else {
-        scrubResults = [
-          for (var i = 0; i < _stripShots.length; i++)
-            if (i < _stripScrubFutures.length && _stripScrubFutures[i] != null)
-              await _stripScrubFutures[i]!
-            else
-              ClassicShotScrubResult(
-                dataUrl: await ImageHelper.encodeImageToBase64(
-                  _stripShots[i].imageFile,
-                ),
-                scrubbed: false,
-              ),
-        ];
-      }
+      final scrubResults = await _awaitClassicStripEncodeResults();
       for (var i = 0; i < _stripShots.length; i++) {
         final result = i < scrubResults.length ? scrubResults[i] : null;
         if (result != null && result.dataUrl.trim().isNotEmpty) {
@@ -544,15 +895,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           allScrubbed = false;
         }
       }
-      if (!mounted) return;
+      if (!mounted) {
+        _clearStripFinishingFlags();
+        return;
+      }
 
-      final shotOk = dataUrls.length == 1 || dataUrls.length == kStripShotCount;
-      if (!shotOk) {
-        setState(() => _stripFinishing = false);
-        _navigatingAwayFromCapture = false;
+      final shotOk = dataUrls.length == kStripShotCount;
+      if (!shotOk || dataUrls.any((u) => u.trim().isEmpty)) {
+        _clearStripFinishingFlags(notify: true);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text(AppStrings.flashbackFinishEncodeFailed)),
+          );
+        }
         return;
       }
       unawaited(_releaseCaptureHardware());
+      ClassicCaptureIntent.clear();
       final shotCleaned = List<bool>.generate(
         dataUrls.length,
         (i) => i < scrubResults.length && scrubResults[i].scrubbed,
@@ -562,9 +921,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         arguments: FlashbackFilterArgs(
           theme: theme,
           imageDataUrls: dataUrls,
-          // Only skip look-screen polish when every per-shot scrub succeeded.
           overlayCleanupAlreadyDone: allScrubbed,
           shotCleaned: shotCleaned,
+          classicShotMode: ClassicShotMode.fourShot,
         ),
       );
     } catch (e, st) {
@@ -573,11 +932,121 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         error: e,
         stackTrace: st,
       );
+      _clearStripFinishingFlags(notify: true);
       if (mounted) {
-        setState(() => _stripFinishing = false);
-        _navigatingAwayFromCapture = false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(AppStrings.flashbackFinishEncodeFailed)),
+        );
       }
     }
+  }
+
+  /// Classic 1-shot: reuse in-flight encode and open looks — never await Gemini.
+  Future<void> _navigateClassicSingleShotToLooks(ThemeModel theme) async {
+    if (_stripShots.isEmpty) {
+      _clearStripFinishingFlags(notify: true);
+      throw StateError('Classic 1-shot finish with no accepted still');
+    }
+    const encodeTimeout = Duration(seconds: 20);
+    final dataUrl = await _classicSingleShotEncodedDataUrl().timeout(
+      encodeTimeout,
+      onTimeout: () => throw TimeoutException('Classic 1-shot encode timed out'),
+    );
+    if (dataUrl.trim().isEmpty) {
+      _clearStripFinishingFlags(notify: true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(AppStrings.flashbackFinishEncodeFailed)),
+        );
+      }
+      return;
+    }
+    if (!mounted) {
+      _clearStripFinishingFlags();
+      return;
+    }
+
+    final enableSurprise = context
+            .read<AppSettingsManager>()
+            .settings
+            ?.enableSurpriseMeAi ==
+        true;
+    unawaited(
+      maybeKickoffSurpriseMeAfterShot1(
+        encodeShotDataUrl: () async => dataUrl,
+        enableSurpriseMeAi: enableSurprise,
+      ),
+    );
+
+    // Look screen adopts in-flight Gemini polish; do not claim scrub done here.
+    unawaited(_releaseCaptureHardware());
+    ClassicCaptureIntent.clear();
+    final filterArgs = FlashbackFilterArgs(
+      theme: theme,
+      imageDataUrls: [dataUrl],
+      overlayCleanupAlreadyDone: false,
+      shotCleaned: const [false],
+      classicShotMode: ClassicShotMode.single6x4,
+    );
+    // Direct page route (same Android TV fix as Classic POSE entry) — named
+    // `routes:` → const FotoFlashbackFilterScreen() drops typed args.
+    await pushReplacementKioskFade<void, void>(
+      context,
+      FotoFlashbackFilterScreen(filterArgs: filterArgs),
+      settings: RouteSettings(
+        name: AppConstants.kRouteFlashbackFilter,
+        arguments: filterArgs,
+      ),
+    );
+  }
+
+  /// Prefer the encode already started on accept; fall back to a fresh encode.
+  Future<String> _classicSingleShotEncodedDataUrl() async {
+    final coord = ClassicStripScrubCoordinator.instance;
+    if (coord.shotCount >= 1) {
+      final results = await coord.awaitEncodedReady();
+      if (results.isNotEmpty && results.first.dataUrl.trim().isNotEmpty) {
+        return results.first.dataUrl;
+      }
+    }
+    if (_stripScrubFutures.isNotEmpty && _stripScrubFutures.first != null) {
+      final result = await _stripScrubFutures.first!;
+      if (result.dataUrl.trim().isNotEmpty) return result.dataUrl;
+    }
+    return ImageHelper.encodeImageToBase64(_stripShots.first.imageFile);
+  }
+
+  void _clearStripFinishingFlags({bool notify = false}) {
+    _stripFinishing = false;
+    _navigatingAwayFromCapture = false;
+    if (notify && mounted) setState(() {});
+  }
+
+  /// Encode accepted Classic stills for look-picker navigation (4-shot).
+  Future<List<ClassicShotScrubResult>> _awaitClassicStripEncodeResults() async {
+    const encodeTimeout = Duration(seconds: 20);
+    final coord = ClassicStripScrubCoordinator.instance;
+    if (coord.shotCount == _stripShots.length && _stripShots.isNotEmpty) {
+      return coord.awaitEncodedReady().timeout(
+        encodeTimeout,
+        onTimeout: () => throw TimeoutException(
+          'Classic encode timed out after ${encodeTimeout.inSeconds}s',
+        ),
+      );
+    }
+
+    final out = <ClassicShotScrubResult>[];
+    for (var i = 0; i < _stripShots.length; i++) {
+      out.add(
+        ClassicShotScrubResult(
+          dataUrl: await ImageHelper.encodeImageToBase64(
+            _stripShots[i].imageFile,
+          ).timeout(encodeTimeout),
+          scrubbed: false,
+        ),
+      );
+    }
+    return out;
   }
 
   Future<T> _withUvcLock<T>(
@@ -695,7 +1164,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       if (!mounted) return;
       setState(() {});
       _resetUvcIdleSleepTimer();
-      _maybeAdvanceFlashbackAutoChain();
+      // 4-shot only — 1-shot must not auto-fire after USB webcam reopen.
+      if (widget.sessionKind.isClassicFourShot) {
+        _maybeAdvanceFlashbackAutoChain();
+      }
     });
   }
 
@@ -907,6 +1379,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _captureViewModel = CaptureViewModel(
       appSettingsManager: context.read<AppSettingsManager>(),
     );
+    // Mode is widget.sessionKind only — never restore Classic prefs for FotoZen.
+    final ctorArgs = widget.captureArgs;
+    if (widget.sessionKind.isClassic) {
+      _prefillApplied = true;
+      _applyClassicCaptureArgs(ctorArgs);
+    } else {
+      ClassicCaptureIntent.clear();
+    }
     _captureViewModel.addListener(_onCaptureViewModelStateChanged);
     ClassicStripScrubCoordinator.instance.addListener(_onScrubProgressChanged);
     _tryAdoptTermsPrewarmOnInitIfAllowed();
@@ -921,10 +1401,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _notePoseUserActivity();
       if (_captureViewModel.capturedPhoto != null) return;
       if (!UvcHardwareKeyCodes.isShutterKey(e.keyCode)) return;
+      if (_isFlashbackSingleShot) {
+        if (!classicOneShotMayAcceptExternalShutter(_oneShotPhase)) return;
+        _oneShotRequestGuestCapture();
+        return;
+      }
       if (_isFlashbackMultiShot) {
+        if (_captureViewModel.capturedPhoto != null ||
+            _stripShots.length >= (_multiShotTotal ?? 0)) {
+          return;
+        }
         unawaited(_startFlashbackAutoCountdown());
         return;
       }
+      if (_captureViewModel.capturedPhoto != null) return;
       if (_isUsingUvc && _uvcController?.value.isInitialized == true) {
         _triggerUvcCapture(source: 'android_key_${e.keyCode}', externalSignal: true);
         return;
@@ -966,7 +1456,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
     unawaited(_captureViewModel.loadPreviewRotation());
     _syncPoseIdleTimer(_captureViewModel);
-    _maybeAdvanceFlashbackAutoChain();
+    if (widget.sessionKind.isClassicFourShot) {
+      _maybeAdvanceFlashbackAutoChain();
+    } else if (widget.sessionKind.isClassicOneShot) {
+      _oneShotOnViewModelTick();
+    }
   }
 
   void _cancelPoseLoadingWatchdog() {
@@ -1667,11 +2161,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       multiShotTotal: _multiShotTotal,
       flashbackTheme: _flashbackTheme,
       acceptedStripShots: List<PhotoModel>.from(_stripShots),
+      classicShotMode: widget.sessionKind.classicShotMode,
     );
   }
 
   CaptureRouteArgs? get _currentCaptureRouteArgs {
-    if (_isFlashbackMultiShot) return _flashbackRouteArgs();
+    if (_isClassicPose) return _flashbackRouteArgs();
     if (!_returnPhotoOnly &&
         (_subtitleHint == null || _subtitleHint!.isEmpty)) {
       return null;
@@ -1684,7 +2179,35 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   Future<void> _handleRetake(BuildContext context) async {
     _cancelFlashbackAutoTimers();
-    final flashback = _isFlashbackMultiShot;
+    // 1-shot session: never open poses 2–4 via the strip remount chain.
+    if (widget.sessionKind.isClassicOneShot) {
+      if (_stripShots.isNotEmpty ||
+          _oneShotPhase == ClassicOneShotPhase.finishing ||
+          _oneShotPhase == ClassicOneShotPhase.done) {
+        final theme = _flashbackTheme ?? ClassicCaptureIntent.peekTheme();
+        if (theme != null) {
+          await _finishFlashbackStrip(theme);
+        }
+        return;
+      }
+      // Explicit retake of the review still only — user must tap Capture again.
+      _oneShotDispatch(ClassicOneShotEvent.guestRetake);
+      await handleCapturedPhotoRetake(
+        context: context,
+        viewModel: _captureViewModel,
+        isMounted: () => mounted,
+        routeArguments: _currentCaptureRouteArgs,
+        skipWebRouteReplace: true,
+      );
+      if (!mounted) return;
+      if (_uvcDevice != null) {
+        await _restoreUvcLiveFeedAfterRetake();
+      } else {
+        await _captureViewModel.resumeLivePreviewAfterRetake();
+      }
+      return;
+    }
+    final flashback = _isFlashbackFourShot;
     // Web: remount capture route so getUserMedia restarts (same State leaves a
     // black / dead stream after takePicture). Strip progress is carried in args.
     // Native/UVC: stay on this State and force a controller re-init.
@@ -1702,9 +2225,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return;
     }
     if (flashback) {
-      await _captureViewModel.disposeCamera();
-      if (!mounted) return;
-      await _captureViewModel.resumeLivePreviewAfterRetake(forceReinit: true);
+      // Web getUserMedia dies after takePicture — always remount the stream.
+      // Native: only hard-remount when the preview is actually dead.
+      final ctrl = _captureViewModel.cameraController;
+      final healthy = !kIsWeb &&
+          ctrl != null &&
+          ctrl.value.isInitialized &&
+          !ctrl.value.hasError;
+      await _captureViewModel.resumeLivePreviewAfterRetake(
+        forceReinit: !healthy,
+      );
       if (mounted) _maybeAdvanceFlashbackAutoChain();
       return;
     }
@@ -2043,11 +2573,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     return true;
   }
 
-  /// Opens UVC when connected; clears stale route prefill once so POSE always
-  /// gets a live feed after "Start all over again" or similar re-entry.
+  /// Opens UVC when connected; clears stale FotoZen route prefill once so POSE
+  /// always gets a live feed after "Start all over again" or similar re-entry.
+  /// Never discards a Classic review still — USB webcam reconnect churn was
+  /// clearing 1-shot captures and restarting the auto countdown loop.
   Future<bool> _ensureUvcDeviceBound(UvcCameraDevice device) async {
     if (await _bindUvcDevice(device)) return true;
     if (_captureViewModel.capturedPhoto == null) return false;
+    if (widget.sessionKind.isClassic ||
+        _uvcPhase == UvcFeedPhase.reviewing ||
+        _stripShots.isNotEmpty) {
+      return false;
+    }
     _captureViewModel.clearCapturedPhoto();
     return _bindUvcDevice(device);
   }
@@ -2185,6 +2722,17 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }) {
     AppLogger.debug('UVC shutter signal source=$source btn=$button state=$state');
     if (!mounted) return;
+    // Classic 1-shot: external shutter is guest Capture only in idle/needsGuest.
+    if (widget.sessionKind.isClassicOneShot) {
+      if (!classicOneShotMayAcceptExternalShutter(_oneShotPhase)) {
+        AppLogger.debug(
+          'UVC shutter ignored for Classic 1-shot phase=$_oneShotPhase',
+        );
+        return;
+      }
+      _oneShotRequestGuestCapture();
+      return;
+    }
     if (_uvcHoldLiveFeedClosed) {
       return;
     }
@@ -2250,6 +2798,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           );
           if (_shouldIgnorePreviewInterrupt(event.error)) {
             AppLogger.debug('UVC previewInterrupted ignored');
+            return;
+          }
+          // Classic 1-shot: DSLR HDMI pause must not start a 2nd pose.
+          if (widget.sessionKind.isClassicOneShot) {
+            if (!classicOneShotMayAcceptExternalShutter(_oneShotPhase)) {
+              AppLogger.debug(
+                'UVC previewInterrupted ignored for Classic 1-shot '
+                'phase=$_oneShotPhase',
+              );
+              return;
+            }
+            _oneShotRequestGuestCapture();
             return;
           }
           if (!shouldTriggerUvcShutterFromInterrupt(lastCaptureAt: _lastUvcShutterAt)) {
@@ -2472,6 +3032,17 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     CaptureViewModel viewModel, {
     required String source,
   }) async {
+    // Classic 1-shot may only shutter from the FSM countdown path.
+    if (widget.sessionKind.isClassicOneShot &&
+        source != 'classic_one_shot' &&
+        _oneShotPhase != ClassicOneShotPhase.counting &&
+        _oneShotPhase != ClassicOneShotPhase.capturing) {
+      AppLogger.debug(
+        'UVC capture blocked for Classic 1-shot source=$source '
+        'phase=$_oneShotPhase',
+      );
+      return;
+    }
     final device = _uvcDevice;
     if (device == null ||
         _uvcPhase == UvcFeedPhase.capturing ||
@@ -2647,7 +3218,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   ) {
     // Classic strip never offers Gallery / Phone QR mid-session (would break
     // the 4-shot flow and flash wide CTAs during web camera remount).
-    final allowGallery = !_isFlashbackMultiShot &&
+    final allowGallery = !_isClassicPose &&
         context.select<AppSettingsManager, bool>(
           (m) => m.settings?.photoUploadAllowed == true,
         );
@@ -2664,7 +3235,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             Text(
               allowGallery
                   ? AppStrings.captureNoCameraUploadHint
-                  : (_isFlashbackMultiShot
+                  : (_isFlashbackFourShot
                       ? AppStrings.flashbackGettingReadyNextShot
                       : 'Waiting for camera…'),
               style: TextStyle(
@@ -2759,7 +3330,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     CaptureViewModel viewModel,
   ) {
     final appColors = AppColors.of(context);
-    final allowGallery = !_isFlashbackMultiShot &&
+    final allowGallery = !_isClassicPose &&
         context.select<AppSettingsManager, bool>(
           (m) => m.settings?.photoUploadAllowed == true,
         );
@@ -2906,11 +3477,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           previewWidget = _buildUvcPreview(context, viewModel);
         } else if (viewModel.cameraController == null) {
           // Controller briefly null during re-init — never flash Gallery CTAs.
-          previewWidget = midStripRemount || _isFlashbackMultiShot
+          // "Next shot" copy is only for mid-strip 4-shot remounts (not Classic 1-shot).
+          previewWidget = midStripRemount
               ? _buildStartingCameraState(
                   message: AppStrings.flashbackGettingReadyNextShot,
                 )
-              : _buildNoCamerasYetState(context, viewModel);
+              : _buildStartingCameraState(
+                  message: AppStrings.captureStartingPreview,
+                );
         } else {
           previewWidget = _buildCameraPreviewWithRotation(context, viewModel);
         }
@@ -3178,16 +3752,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     ),
                   if (hasCapturedPhoto &&
                       _isFlashbackMultiShot &&
-                      _flashbackReviewSecondsLeft != null &&
+                      _flashbackReviewEndsAt != null &&
                       !_stripFinishing)
                     Positioned(
                       left: 12,
                       right: 12,
                       bottom: 12,
-                      child: _buildFlashbackReviewHoldBanner(
+                      child: FlashbackReviewHoldBanner(
+                        key: ValueKey<String>(
+                          'review-hold-${_flashbackReviewPhotoId ?? _flashbackReviewEndsAt!.millisecondsSinceEpoch}',
+                        ),
+                        endsAt: _flashbackReviewEndsAt!,
                         isLastShot: (_stripShots.length + 1) >=
                             (_multiShotTotal ?? kStripShotCount),
-                        secondsLeft: _flashbackReviewSecondsLeft!,
                       ),
                     ),
                   if (!_showCaptureFlash &&
@@ -3373,13 +3950,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   /// Builds the on-screen capture countdown overlay (e.g. 5, 4, 3…).
   Widget _buildCountdownOverlay(BuildContext context, int countdownValue) {
-    final flashback = _isFlashbackMultiShot;
-    final total = _multiShotTotal ?? kStripShotCount;
+    final flashback = _isClassicPose;
+    final total = _isFlashbackSingleShot ? 1 : (_classicShotCap > 0 ? _classicShotCap : kStripShotCount);
     final shotNumber = (_stripShots.length + 1).clamp(1, total);
     final showAiIntro = !flashback &&
         countdownValue == AppConstants.kCaptureCountdownSeconds;
     final headline = flashback
-        ? AppStrings.flashbackShotProgress(shotNumber, total)
+        ? (_isFlashbackSingleShot
+            ? AppStrings.flashbackSingle6x4Title
+            : AppStrings.flashbackShotProgress(shotNumber, total))
         : (showAiIntro ? AppStrings.captureCountdownIntro : null);
 
     return Container(
@@ -3433,8 +4012,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   /// Retake and Continue buttons in a Row (post-capture).
   Widget _buildCapturedPhotoControlsRow(BuildContext context, CaptureViewModel viewModel) {
-    final multi = _isFlashbackMultiShot;
-    final total = _multiShotTotal ?? kStripShotCount;
+    final multi = _isClassicPose;
+    final total = _isFlashbackSingleShot
+        ? 1
+        : (_classicShotCap > 0 ? _classicShotCap : kStripShotCount);
     final isLastStripShot = multi && (_stripShots.length + 1) >= total;
     final continueLabel = !multi
         ? (viewModel.isPreparingUploadPayload ? 'Preparing…' : 'Continue')
@@ -3455,7 +4036,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     unawaited(_handleRetake(context));
                   },
             child: Text(
-              multi ? AppStrings.flashbackRetakeLast : 'Retake',
+              _isFlashbackFourShot
+                  ? AppStrings.flashbackRetakeLast
+                  : 'Retake',
             ),
           ),
           const SizedBox(height: 12),
@@ -3488,34 +4071,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                 : Text(continueLabel),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildFlashbackReviewHoldBanner({
-    required bool isLastShot,
-    required int secondsLeft,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white24),
-      ),
-      child: Text(
-        AppStrings.flashbackReviewHoldStatus(
-          isLastShot: isLastShot,
-          secondsLeft: secondsLeft,
-        ),
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          height: 1.3,
-        ),
       ),
     );
   }
@@ -3565,11 +4120,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   /// Gallery and Capture buttons in a Row (pre-capture).
   Widget _buildGalleryCaptureButtonsRow(BuildContext context, CaptureViewModel viewModel) {
     final isPhotoUploadAllowed = !_isFlashbackMultiShot &&
+        !_isFlashbackSingleShot &&
         context.select<AppSettingsManager, bool>(
           (settingsManager) =>
               settingsManager.settings?.photoUploadAllowed == true,
         );
-    final flashback = _isFlashbackMultiShot;
+    final flashback = _isFlashbackMultiShot || _isFlashbackSingleShot;
     final countdownSecs = captureCountdownSecondsForMode(
       isFlashbackMultiShot: flashback,
     );
@@ -3646,10 +4202,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     viewModel.isSelectingFromGallery ||
                     viewModel.isCountingDown ||
                     _flashbackCountdownStarting ||
+                    (_isFlashbackSingleShot &&
+                        !classicOneShotMayStartCountdown(_oneShotPhase)) ||
                     (_isUsingUvc && !_uvcReadyForCapture))
                 ? null
                 : () async {
-                    if (flashback) {
+                    if (_isFlashbackSingleShot) {
+                      _oneShotRequestGuestCapture();
+                      return;
+                    }
+                    if (_isFlashbackMultiShot) {
                       await _startFlashbackAutoCountdown();
                       return;
                     }
@@ -3657,7 +4219,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                       await viewModel.captureWithCountdown(
                         () => _captureUvc(viewModel, source: 'ui_button'),
                         canStart: () =>
-                            _uvcReadyForCapture && !_uvcCaptureInFlight,
+                            _uvcReadyForCapture &&
+                            !_uvcCaptureInFlight &&
+                            viewModel.capturedPhoto == null,
                         countdownSeconds: countdownSecs,
                       );
                     } else {

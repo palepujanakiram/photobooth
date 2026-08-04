@@ -82,6 +82,56 @@ void main() {
         isFalse,
       );
     });
+
+    test('Classic 1-shot blocks a second auto pose after one capture started', () {
+      expect(
+        shouldAutoStartFlashbackCountdown(
+          isFlashbackMultiShot: true,
+          stripFinishing: false,
+          navigatingAway: false,
+          hasCapturedPhoto: false,
+          isCountingDown: false,
+          isCapturing: false,
+          acceptedShotCount: 0,
+          multiShotTotal: 1,
+          cameraReadyForCapture: true,
+          isSingleShot: true,
+          singleShotCapturesStarted: 0,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldAutoStartFlashbackCountdown(
+          isFlashbackMultiShot: true,
+          stripFinishing: false,
+          navigatingAway: false,
+          hasCapturedPhoto: false,
+          isCountingDown: false,
+          isCapturing: false,
+          acceptedShotCount: 0,
+          multiShotTotal: 1,
+          cameraReadyForCapture: true,
+          isSingleShot: true,
+          singleShotCapturesStarted: 1,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldAutoStartFlashbackCountdown(
+          isFlashbackMultiShot: true,
+          stripFinishing: false,
+          navigatingAway: false,
+          hasCapturedPhoto: false,
+          isCountingDown: false,
+          isCapturing: false,
+          acceptedShotCount: 0,
+          multiShotTotal: 4,
+          cameraReadyForCapture: true,
+          awaitGuestStart: true,
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('shouldScheduleFlashbackAutoAccept', () {
@@ -107,6 +157,59 @@ void main() {
           autoAcceptAlreadyScheduled: true,
         ),
         isFalse,
+      );
+    });
+  });
+
+  group('flashbackReviewHoldAlreadyScheduled', () {
+    test('true when timer or deadline is set', () {
+      expect(
+        flashbackReviewHoldAlreadyScheduled(
+          timerActive: true,
+          hasDeadline: false,
+        ),
+        isTrue,
+      );
+      expect(
+        flashbackReviewHoldAlreadyScheduled(
+          timerActive: false,
+          hasDeadline: true,
+        ),
+        isTrue,
+      );
+      expect(
+        flashbackReviewHoldAlreadyScheduled(
+          timerActive: false,
+          hasDeadline: false,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('flashbackReviewSecondsRemaining', () {
+    test('floors remaining seconds and never goes negative', () {
+      final now = DateTime.utc(2026, 1, 1, 12, 0, 0);
+      expect(
+        flashbackReviewSecondsRemaining(
+          endsAt: now.add(const Duration(seconds: 8)),
+          now: now,
+        ),
+        8,
+      );
+      expect(
+        flashbackReviewSecondsRemaining(
+          endsAt: now.add(const Duration(milliseconds: 1500)),
+          now: now,
+        ),
+        1,
+      );
+      expect(
+        flashbackReviewSecondsRemaining(
+          endsAt: now.subtract(const Duration(seconds: 2)),
+          now: now,
+        ),
+        0,
       );
     });
   });

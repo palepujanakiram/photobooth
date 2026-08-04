@@ -56,6 +56,8 @@ void main() {
       theme: stripTheme,
       imageDataUrls: ['data:image/jpeg;base64,/9j/4AAQ'],
     );
+    expect(single.printOrientation, PrintOrientation.portrait);
+    single.selectPrintOrientation(PrintOrientation.landscape);
     expect(single.printOrientation, PrintOrientation.landscape);
     single.selectPrintOrientation(PrintOrientation.portrait);
     expect(single.printOrientation, PrintOrientation.portrait);

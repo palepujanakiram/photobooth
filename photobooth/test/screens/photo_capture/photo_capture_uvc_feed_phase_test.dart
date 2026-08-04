@@ -9,13 +9,13 @@ void main() {
     expect(uvcFeedPhaseBlocksLivePreview(UvcFeedPhase.error), isFalse);
   });
 
-  test('uvcMayResumeLiveFeed allows retake and retry paths', () {
+  test('uvcMayResumeLiveFeed allows live/error only (not mid-capture)', () {
     expect(
       uvcMayResumeLiveFeed(
         phase: UvcFeedPhase.reviewing,
         hasCapturedPhoto: false,
       ),
-      isTrue,
+      isFalse,
     );
     expect(
       uvcMayResumeLiveFeed(
@@ -34,6 +34,13 @@ void main() {
     expect(
       uvcMayResumeLiveFeed(
         phase: UvcFeedPhase.capturing,
+        hasCapturedPhoto: false,
+      ),
+      isFalse,
+    );
+    expect(
+      uvcMayResumeLiveFeed(
+        phase: UvcFeedPhase.live,
         hasCapturedPhoto: false,
       ),
       isTrue,

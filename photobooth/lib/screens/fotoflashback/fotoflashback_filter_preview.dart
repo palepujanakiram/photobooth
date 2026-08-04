@@ -950,9 +950,11 @@ class _Single6x4Preview extends StatelessWidget {
   Widget build(BuildContext context) {
     final bytes = _bytesFromDataUrl(imageDataUrl);
     final margin = width * 0.027; // ~48/1800
+    // Cover the print frame (portrait 4×6 or landscape 6×4) — letterboxing
+    // looked like "just whitespace" when toggling orientation.
     final photo = Image.memory(
       bytes,
-      fit: BoxFit.contain,
+      fit: BoxFit.cover,
       width: double.infinity,
       height: double.infinity,
       gaplessPlayback: true,

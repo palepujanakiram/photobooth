@@ -19,7 +19,7 @@ Future<String?> finishClassicSingle6x4({
   required String imageDataUrl,
   ApiService? api,
   SessionManager? sessionManager,
-  PrintOrientation orientation = PrintOrientation.landscape,
+  PrintOrientation orientation = PrintOrientation.portrait,
 }) async {
   final sessionId =
       (sessionManager ?? SessionManager()).sessionId?.trim() ?? '';

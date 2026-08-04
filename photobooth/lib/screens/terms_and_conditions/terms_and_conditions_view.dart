@@ -9,6 +9,7 @@ import 'terms_camera_priming.dart';
 import 'terms_layout_metrics.dart';
 import '../../utils/constants.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/capture_session_kind.dart';
 import '../../utils/camera_permission_helper.dart';
 import '../../utils/platform_capabilities.dart';
 import '../../utils/device_classifier.dart';
@@ -141,10 +142,11 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         await pushReplacementKioskFade<void, void>(
           context,
           PhotoCaptureScreen(
-            key: ValueKey<Object?>(prefill),
+            key: ValueKey<Object?>('ai-pose-${prefill ?? 'fresh'}'),
+            sessionKind: CaptureSessionKind.fotoZen,
           ),
           settings: RouteSettings(
-            name: AppConstants.kRouteCapture,
+            name: '${AppConstants.kRouteCapture}-ai',
             arguments: prefill == null ? null : <String, Object?>{'photo': prefill},
           ),
         );

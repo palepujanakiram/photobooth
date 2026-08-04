@@ -165,6 +165,11 @@ class AppConstants {
   static int get kCameraDisposeToReopenDelayMs =>
       kLowMemoryKioskMode ? 160 : 100;
 
+  /// Longer settle for USB / HDMI / Android TV CameraX reopen (strip remounts).
+  /// Short delays often surface `otherRecoverableError` on the next preview open.
+  static int get kCameraDisposeToReopenDelayExternalMs =>
+      kLowMemoryKioskMode ? 900 : 600;
+
   /// Camera / kiosk (operational — not enforced in code):
   /// - A short RAM spike when opening the camera is normal (native preview buffers).
   /// - Android uses a **vendored** `camera_android_camerax` fork: preview/ImageAnalysis run

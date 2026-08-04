@@ -93,6 +93,8 @@ ImageMetadata? _decodeImageMetadataIsolate(_ImageMetadataIsolateArgs args) {
   );
 }
 
+String _base64EncodeIsolate(Uint8List bytes) => base64Encode(bytes);
+
 /// Helper class for image processing operations
 class ImageHelper {
   /// Returns width, height, format label, and file size for the given image file.
@@ -432,7 +434,10 @@ class ImageHelper {
         throw Exception(AppStrings.imageFileEmpty);
       }
 
-      final base64String = base64Encode(bytes);
+      // Large Classic stills — keep base64 off the UI isolate.
+      final base64String = bytes.length > 256 * 1024
+          ? await compute(_base64EncodeIsolate, bytes)
+          : base64Encode(bytes);
       final extension = imageFile.path.toLowerCase().split('.').last;
       final mimeType = extension == 'png' ? 'image/png' : 'image/jpeg';
 

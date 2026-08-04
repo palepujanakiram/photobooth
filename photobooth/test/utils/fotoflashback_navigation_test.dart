@@ -1,140 +1,95 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/strip_models.dart';
+import 'package:photobooth/utils/capture_session_kind.dart';
+import 'package:photobooth/utils/classic_capture_intent.dart';
 import 'package:photobooth/utils/classic_shot_mode.dart';
-import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/fotoflashback_navigation.dart';
 import 'package:photobooth/utils/route_args.dart';
 
 import '../fixtures/theme_fixtures.dart';
 
 void main() {
-  testWidgets('navigateToFotoFlashbackCapture opens multi-shot POSE', (
-    tester,
-  ) async {
+  tearDown(ClassicCaptureIntent.resetForTests);
+
+  test('buildClassicCaptureRouteArgs defaults to 4-shot strip', () {
     final theme = sampleTheme('strip').copyWith((p) {
       p.tier = 'photo_strip';
     });
-    Object? pushedArgs;
-    String? pushedName;
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) {
-            return TextButton(
-              onPressed: () {
-                navigateToFotoFlashbackCapture(
-                  context: context,
-                  theme: theme,
-                );
-              },
-              child: const Text('go'),
-            );
-          },
-        ),
-        onGenerateRoute: (settings) {
-          pushedName = settings.name;
-          pushedArgs = settings.arguments;
-          return MaterialPageRoute<void>(
-            settings: settings,
-            builder: (_) => const Scaffold(body: Text('capture')),
-          );
-        },
-      ),
+    final args = buildClassicCaptureRouteArgs(
+      theme: theme,
+      shotMode: ClassicShotMode.fourShot,
     );
-
-    await tester.tap(find.text('go'));
-    await tester.pumpAndSettle();
-
-    expect(pushedName, AppConstants.kRouteCapture);
-    expect(pushedArgs, isA<CaptureRouteArgs>());
-    final args = pushedArgs! as CaptureRouteArgs;
     expect(args.isFlashbackMultiShot, isTrue);
     expect(args.isFlashbackFourShot, isTrue);
     expect(args.multiShotTotal, kStripShotCount);
     expect(args.flashbackTheme?.id, 'strip');
+    expect(args.classicShotMode, ClassicShotMode.fourShot);
   });
 
-  testWidgets('navigateToFotoFlashbackCapture supports Classic 1-shot 6×4', (
-    tester,
-  ) async {
+  test('buildClassicCaptureRouteArgs supports Classic 1-shot', () {
     final theme = sampleTheme('strip1').copyWith((p) {
       p.tier = 'photo_strip';
     });
-    Object? pushedArgs;
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) {
-            return TextButton(
-              onPressed: () {
-                navigateToFotoFlashbackCapture(
-                  context: context,
-                  theme: theme,
-                  shotMode: ClassicShotMode.single6x4,
-                );
-              },
-              child: const Text('go'),
-            );
-          },
-        ),
-        onGenerateRoute: (settings) {
-          pushedArgs = settings.arguments;
-          return MaterialPageRoute<void>(
-            settings: settings,
-            builder: (_) => const Scaffold(body: Text('capture')),
-          );
-        },
-      ),
+    final args = buildClassicCaptureRouteArgs(
+      theme: theme,
+      shotMode: ClassicShotMode.single6x4,
     );
-
-    await tester.tap(find.text('go'));
-    await tester.pumpAndSettle();
-
-    final args = pushedArgs! as CaptureRouteArgs;
     expect(args.isFlashbackSingle6x4, isTrue);
     expect(args.isFlashbackFourShot, isFalse);
     expect(args.multiShotTotal, 1);
+    expect(args.classicShotMode, ClassicShotMode.single6x4);
+    expect(args.resolvedShotTotal, 1);
   });
 
-  testWidgets('navigateToFotoFlashbackCapture replace uses pushReplacement', (
-    tester,
-  ) async {
-    final theme = sampleTheme('strip2').copyWith((p) => p.tier = 'photo_strip');
-    String? pushedName;
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) {
-            return TextButton(
-              onPressed: () {
-                navigateToFotoFlashbackCapture(
-                  context: context,
-                  theme: theme,
-                  replace: true,
-                );
-              },
-              child: const Text('replace'),
-            );
-          },
-        ),
-        onGenerateRoute: (settings) {
-          pushedName = settings.name;
-          return MaterialPageRoute<void>(
-            settings: settings,
-            builder: (_) => const Scaffold(body: Text('capture-replace')),
-          );
-        },
-      ),
+  test('ClassicCaptureIntent is armed for Android TV before navigate', () {
+    final theme = sampleTheme('strip2').copyWith((p) {
+      p.tier = 'photo_strip';
+    });
+    ClassicCaptureIntent.beginClassic(
+      mode: ClassicShotMode.single6x4,
+      theme: theme,
     );
+    expect(
+      ClassicCaptureIntent.peekKind()?.name,
+      CaptureSessionKind.classicOneShot.name,
+    );
+    expect(ClassicCaptureIntent.peekTheme()?.id, 'strip2');
+  });
 
-    await tester.tap(find.text('replace'));
-    await tester.pumpAndSettle();
-    expect(pushedName, AppConstants.kRouteCapture);
-    expect(find.text('capture-replace'), findsOneWidget);
-    expect(find.text('replace'), findsNothing);
+  test('FlashbackFilterArgs.resolvedShotMode drives back-to-capture mode', () {
+    final theme = sampleTheme('strip-back').copyWith((p) {
+      p.tier = 'photo_strip';
+    });
+    expect(
+      FlashbackFilterArgs(
+        theme: theme,
+        imageDataUrls: const ['one'],
+        classicShotMode: ClassicShotMode.single6x4,
+      ).resolvedShotMode,
+      ClassicShotMode.single6x4,
+    );
+    final args = buildClassicCaptureRouteArgs(
+      theme: theme,
+      shotMode: ClassicShotMode.single6x4,
+      awaitGuestStart: true,
+    );
+    expect(args.multiShotTotal, 1);
+    expect(args.classicShotMode, ClassicShotMode.single6x4);
+    expect(args.awaitGuestStart, isTrue);
+    expect(args.flashbackTheme?.id, 'strip-back');
+  });
+
+  test('Classic 1-shot route args never imply a 4-shot strip', () {
+    final theme = sampleTheme('strip-one').copyWith((p) {
+      p.tier = 'photo_strip';
+    });
+    final args = buildClassicCaptureRouteArgs(
+      theme: theme,
+      shotMode: ClassicShotMode.single6x4,
+    );
+    expect(args.resolvedShotTotal, 1);
+    expect(args.isFlashbackSingle6x4, isTrue);
+    expect(args.isFlashbackFourShot, isFalse);
+    expect(args.classicShotMode?.shotCount, 1);
   });
 }

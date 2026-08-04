@@ -85,19 +85,24 @@ bool androidStreamFallbackCaptureEligible({
   return isExternal || deviceType == AppDeviceType.androidTv;
 }
 
-/// Kiosk USB / Android TV: skip multi-second takePicture recovery — fall back to
-/// stream grab quickly when still capture fails or times out.
+/// Android TV: skip multi-second takePicture recovery — fall back to stream grab
+/// quickly when still capture fails or times out.
+///
+/// Non-TV USB webcams should retry a real [CameraController.takePicture] first;
+/// stream frames are preview-resolution and look soft/blurry in review.
 bool preferImmediateStreamFallbackAfterStillFailure({
   required CameraDescription? camera,
   required AppDeviceType? deviceType,
 }) {
+  if (deviceType != AppDeviceType.androidTv) return false;
   return androidStreamFallbackCaptureEligible(
     camera: camera,
     deviceType: deviceType,
   );
 }
 
-/// Shorter still timeout on kiosks so stream fallback starts within a few seconds.
+/// Shorter still timeout on Android TV so stream fallback starts within a few seconds.
+/// USB webcam (non-TV): moderate timeout, then hard-reset + takePicture retry.
 Duration takePictureTimeoutForDevice({
   required CameraDescription? camera,
   required AppDeviceType? deviceType,
@@ -108,6 +113,12 @@ Duration takePictureTimeoutForDevice({
     deviceType: deviceType,
   )) {
     return const Duration(seconds: 4);
+  }
+  if (androidStreamFallbackCaptureEligible(
+    camera: camera,
+    deviceType: deviceType,
+  )) {
+    return const Duration(seconds: 6);
   }
   return defaultTimeout;
 }
@@ -202,6 +213,21 @@ bool isRecoverableTakePictureError(String messageLower) {
       messageLower.contains('capture failed');
 }
 
+/// Idle CameraX `otherRecoverableError` / self-heal messages (plugin copy).
+bool looksLikeCameraXRecoverableError(String message) {
+  final m = message.toLowerCase();
+  return m.contains('recoverable error') ||
+      m.contains('otherrecoverableerror') ||
+      m.contains('will attempt to recover') ||
+      m.contains('camera device has encountered a recoverable error');
+}
+
+/// Fatal Retry/Open Settings UI should not show for CameraX self-heal noise.
+bool shouldSurfaceCameraControllerErrorAsFatal(String? description) {
+  if (description == null || description.trim().isEmpty) return true;
+  return !looksLikeCameraXRecoverableError(description);
+}
+
 /// Whether recovery cooldown allows another attempt.
 bool canAttemptCameraRecovery({
   required DateTime? lastRecoveryAt,
@@ -222,9 +248,10 @@ Future<XFile> takePictureWithTimeout(
   );
 }
 
-/// Delay before reopening camera after dispose (Android TV CameraX).
-Future<void> delayBeforeCameraReopen() {
-  return Future.delayed(
-    Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
-  );
+/// Delay before reopening camera after dispose (CameraX / HAL settle).
+Future<void> delayBeforeCameraReopen({bool forExternalCamera = false}) {
+  final ms = forExternalCamera
+      ? AppConstants.kCameraDisposeToReopenDelayExternalMs
+      : AppConstants.kCameraDisposeToReopenDelayMs;
+  return Future.delayed(Duration(milliseconds: ms));
 }

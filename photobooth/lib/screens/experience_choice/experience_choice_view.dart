@@ -5,10 +5,13 @@ import 'package:provider/provider.dart';
 
 import '../../services/kiosk_manager.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/capture_session_kind.dart';
 import '../../utils/classic_shot_mode.dart';
+import '../../utils/classic_capture_intent.dart';
 import '../../utils/constants.dart';
 import '../../utils/fotoflashback_navigation.dart';
 import '../../utils/kiosk_page_route.dart';
+import '../../utils/logger.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/animated_slideshow_background.dart';
@@ -17,7 +20,7 @@ import '../photo_capture/photo_capture_view.dart';
 import 'experience_choice_view_widgets.dart';
 import 'experience_choice_viewmodel.dart';
 
-/// After terms: guest picks FotoZen AI vs Classic 4-shot path.
+/// After terms: guest picks FotoZen AI vs Classic (1-shot or 4-shot).
 class ExperienceChoiceScreen extends StatefulWidget {
   const ExperienceChoiceScreen({
     super.key,
@@ -39,7 +42,6 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
   late final ExperienceChoiceViewModel _viewModel;
   late final KioskManager _kioskManager;
   bool _redirectingToAi = false;
-  ClassicShotMode _classicShotMode = ClassicShotMode.fourShot;
 
   @override
   void initState() {
@@ -66,20 +68,26 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
 
   Future<void> _chooseAi() async {
     if (!mounted) return;
+    // Do not let a stale Classic intent lock AI POSE into strip mode.
+    ClassicCaptureIntent.clear();
     final prefill = widget.capturePrefillPhoto;
     await pushReplacementKioskFade<void, void>(
       context,
       PhotoCaptureScreen(
-        key: ValueKey<Object?>(prefill),
+        key: ValueKey<Object?>('ai-pose-${prefill ?? 'fresh'}'),
+        sessionKind: CaptureSessionKind.fotoZen,
       ),
       settings: RouteSettings(
-        name: AppConstants.kRouteCapture,
+        // Distinct name so Android TV cannot reuse Classic `/capture` args.
+        name: '${AppConstants.kRouteCapture}-ai',
         arguments: prefill == null ? null : <String, Object?>{'photo': prefill},
       ),
     );
   }
 
-  Future<void> _chooseFotoFlash() async {
+  /// [shotMode] comes from the tapped CTA — never a separate selector that can
+  /// desync from the Classic card tap (that was sending guests into 4-shot).
+  Future<void> _chooseFotoFlash(ClassicShotMode shotMode) async {
     final theme = await _viewModel.prepareFotoFlashback();
     if (!mounted) return;
     if (theme == null) {
@@ -89,11 +97,14 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
       );
       return;
     }
+    AppLogger.debug(
+      'Classic start: shotMode=$shotMode shotCount=${shotMode.shotCount}',
+    );
     await navigateToFotoFlashbackCapture(
       context: context,
       theme: theme,
       replace: true,
-      shotMode: _classicShotMode,
+      shotMode: shotMode,
     );
   }
 
@@ -145,13 +156,13 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
                           isLoading: vm.isLoading,
                           fotoFlashAvailable: vm.fotoFlashAvailable,
                           startingFlashback: vm.isStartingFlashback,
-                          classicShotMode: _classicShotMode,
-                          onClassicShotModeChanged: (mode) {
-                            if (mode == null) return;
-                            setState(() => _classicShotMode = mode);
-                          },
                           onAi: () => unawaited(_chooseAi()),
-                          onFotoFlash: () => unawaited(_chooseFotoFlash()),
+                          onFotoFlashOneShot: () => unawaited(
+                            _chooseFotoFlash(ClassicShotMode.single6x4),
+                          ),
+                          onFotoFlashFourShot: () => unawaited(
+                            _chooseFotoFlash(ClassicShotMode.fourShot),
+                          ),
                           onBackToTerms: () {
                             Navigator.of(context).pushReplacementNamed(
                               AppConstants.kRouteTerms,
@@ -177,10 +188,9 @@ class _ExperienceChoicePanel extends StatelessWidget {
     required this.isLoading,
     required this.fotoFlashAvailable,
     required this.startingFlashback,
-    required this.classicShotMode,
-    required this.onClassicShotModeChanged,
     required this.onAi,
-    required this.onFotoFlash,
+    required this.onFotoFlashOneShot,
+    required this.onFotoFlashFourShot,
     required this.onBackToTerms,
   });
 
@@ -188,10 +198,9 @@ class _ExperienceChoicePanel extends StatelessWidget {
   final bool isLoading;
   final bool fotoFlashAvailable;
   final bool startingFlashback;
-  final ClassicShotMode classicShotMode;
-  final ValueChanged<ClassicShotMode?> onClassicShotModeChanged;
   final VoidCallback onAi;
-  final VoidCallback onFotoFlash;
+  final VoidCallback onFotoFlashOneShot;
+  final VoidCallback onFotoFlashFourShot;
   final VoidCallback onBackToTerms;
 
   @override
@@ -263,12 +272,11 @@ class _ExperienceChoicePanel extends StatelessWidget {
               accent: const Color(0xFFD4922A),
               enabled: fotoFlashAvailable && !startingFlashback,
               busy: startingFlashback,
-              onTap: onFotoFlash,
               footer: fotoFlashAvailable
-                  ? _ClassicShotModeDropdown(
-                      value: classicShotMode,
+                  ? _ClassicShotStartButtons(
                       enabled: !startingFlashback,
-                      onChanged: onClassicShotModeChanged,
+                      onOneShot: onFotoFlashOneShot,
+                      onFourShot: onFotoFlashFourShot,
                     )
                   : null,
             ),
@@ -290,101 +298,63 @@ class _ExperienceChoicePanel extends StatelessWidget {
   }
 }
 
-/// Compact shot-count control — default stays 4-shot until opened.
-class _ClassicShotModeDropdown extends StatelessWidget {
-  const _ClassicShotModeDropdown({
-    required this.value,
+/// Two explicit Classic CTAs so 1-shot cannot accidentally launch as 4-shot.
+class _ClassicShotStartButtons extends StatelessWidget {
+  const _ClassicShotStartButtons({
     required this.enabled,
-    required this.onChanged,
+    required this.onOneShot,
+    required this.onFourShot,
   });
 
-  final ClassicShotMode value;
   final bool enabled;
-  final ValueChanged<ClassicShotMode?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return _ClassicOptionDropdown<ClassicShotMode>(
-      label: AppStrings.experienceClassicShotModeLabel,
-      value: value,
-      enabled: enabled,
-      onChanged: onChanged,
-      items: const [
-        DropdownMenuItem(
-          value: ClassicShotMode.fourShot,
-          child: Text(AppStrings.experienceClassicFourShot),
-        ),
-        DropdownMenuItem(
-          value: ClassicShotMode.single6x4,
-          child: Text(AppStrings.experienceClassicOneShot),
-        ),
-      ],
-    );
-  }
-}
-
-class _ClassicOptionDropdown<T> extends StatelessWidget {
-  const _ClassicOptionDropdown({
-    required this.label,
-    required this.value,
-    required this.enabled,
-    required this.onChanged,
-    required this.items,
-  });
-
-  final String label;
-  final T value;
-  final bool enabled;
-  final ValueChanged<T?> onChanged;
-  final List<DropdownMenuItem<T>> items;
+  final VoidCallback onOneShot;
+  final VoidCallback onFourShot;
 
   @override
   Widget build(BuildContext context) {
     final appColors = AppColors.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Row(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            width: 52,
-            child: Text(
-              label,
-              style: TextStyle(
-                color: appColors.secondaryTextColor,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+          Text(
+            AppStrings.experienceClassicShotModeLabel,
+            style: TextStyle(
+              color: appColors.secondaryTextColor,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: appColors.backgroundColor.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: appColors.borderColor),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<T>(
-                    value: value,
-                    isExpanded: true,
-                    isDense: true,
-                    borderRadius: BorderRadius.circular(12),
-                    dropdownColor: appColors.cardBackgroundColor,
-                    style: TextStyle(
-                      color: appColors.textColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    iconEnabledColor: const Color(0xFFD4922A),
-                    items: items,
-                    onChanged: enabled ? onChanged : null,
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: enabled ? onOneShot : null,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: appColors.textColor,
+                    side: BorderSide(color: appColors.borderColor),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    minimumSize: const Size.fromHeight(52),
                   ),
+                  child: const Text(AppStrings.experienceClassicStartOneShot),
                 ),
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton(
+                  onPressed: enabled ? onFourShot : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFD4922A),
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    minimumSize: const Size.fromHeight(52),
+                  ),
+                  child: const Text(AppStrings.experienceClassicStartFourShot),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -398,7 +368,7 @@ class _ExperienceOptionCard extends StatelessWidget {
     required this.subtitle,
     required this.preview,
     required this.accent,
-    required this.onTap,
+    this.onTap,
     this.enabled = true,
     this.busy = false,
     this.footer,
@@ -408,7 +378,7 @@ class _ExperienceOptionCard extends StatelessWidget {
   final String subtitle;
   final Widget preview;
   final Color accent;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool enabled;
   final bool busy;
   final Widget? footer;
@@ -423,81 +393,82 @@ class _ExperienceOptionCard extends StatelessWidget {
         ? appColors.secondaryTextColor.withValues(alpha: 0.7)
         : appColors.secondaryTextColor;
 
+    final header = Row(
+      children: [
+        preview,
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  color: titleColor,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: subtitleColor,
+                  fontSize: 14,
+                  height: 1.3,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (busy) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: accent,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (onTap != null)
+          Icon(
+            Icons.arrow_forward_ios_rounded,
+            size: 18,
+            color: muted ? appColors.secondaryTextColor : accent,
+          ),
+      ],
+    );
+
     return Material(
       color: muted
           ? appColors.backgroundColor.withValues(alpha: 0.55)
           : accent.withValues(alpha: 0.10),
       borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: enabled && !busy ? onTap : null,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: muted ? appColors.borderColor : accent,
-              width: muted ? 1 : 2,
-            ),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: muted ? appColors.borderColor : accent,
+            width: muted ? 1 : 2,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  preview,
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: TextStyle(
-                            color: titleColor,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitle,
-                          style: TextStyle(
-                            color: subtitleColor,
-                            fontSize: 14,
-                            height: 1.3,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (busy) ...[
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.2,
-                              color: accent,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 18,
-                    color: muted ? appColors.secondaryTextColor : accent,
-                  ),
-                ],
-              ),
-              if (footer != null)
-                GestureDetector(
-                  onTap: () {}, // Keep dropdown taps from starting Classic.
-                  behavior: HitTestBehavior.opaque,
-                  child: footer!,
-                ),
-            ],
-          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (onTap != null)
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: enabled && !busy ? onTap : null,
+                child: header,
+              )
+            else
+              header,
+            if (footer != null) footer!,
+          ],
         ),
       ),
     );

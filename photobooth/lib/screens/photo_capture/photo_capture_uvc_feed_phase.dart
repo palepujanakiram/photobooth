@@ -18,14 +18,19 @@ bool uvcFeedPhaseBlocksLivePreview(UvcFeedPhase phase) {
 }
 
 /// Whether [_resumeUvcLiveFeed] may run (retake, retry, reconnect).
+///
+/// Never resume while [UvcFeedPhase.capturing] — USB webcams close the
+/// controller after takePicture before the still is assigned; reconnecting
+/// in that window restarted Classic 1-shot countdowns.
 bool uvcMayResumeLiveFeed({
   required UvcFeedPhase phase,
   required bool hasCapturedPhoto,
 }) {
   if (hasCapturedPhoto) return false;
-  return phase == UvcFeedPhase.live ||
-      phase == UvcFeedPhase.error ||
-      uvcFeedPhaseBlocksLivePreview(phase);
+  if (phase == UvcFeedPhase.capturing || phase == UvcFeedPhase.reviewing) {
+    return false;
+  }
+  return phase == UvcFeedPhase.live || phase == UvcFeedPhase.error;
 }
 
 /// Whether the live UVC feed may auto-open (not asleep, not reviewing).

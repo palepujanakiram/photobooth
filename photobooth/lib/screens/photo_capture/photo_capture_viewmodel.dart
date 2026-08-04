@@ -486,22 +486,24 @@ class CaptureViewModel extends ChangeNotifier {
     if (ctrl == null) return;
     if (ctrl.value.hasError) {
       final desc = ctrl.value.errorDescription;
-      _errorMessage = desc;
-      // CameraX can emit recoverable errors asynchronously (not always through takePicture()).
-      // If we see that state, attempt a controlled re-init so capture can succeed.
-      // IMPORTANT: do not dispose/re-init while a capture or stream fallback is running.
-      if (!_isCapturing &&
-          !_shouldUseStreamOnlyCapture() &&
-          desc != null &&
-          _looksLikeCameraXRecoverableError(desc)) {
-        unawaited(
-          _recoverCamera(
-            reason: 'controller.hasError(recoverable)',
-            details: desc,
-          ).catchError((Object e, StackTrace st) {
-            AppLogger.error('Camera recovery failed', error: e, stackTrace: st);
-          }),
-        );
+      // CameraX USB/webcam often emits otherRecoverableError after strip reopen.
+      // Do not map that to fatal Retry/Open Settings; re-init when idle.
+      if (desc != null && looksLikeCameraXRecoverableError(desc)) {
+        if (!_isCapturing && !_isRecoveringCamera) {
+          unawaited(
+            _recoverCamera(
+              reason: 'controller.hasError(recoverable)',
+              details: desc,
+            ).catchError((Object e, StackTrace st) {
+              AppLogger.error('Camera recovery failed', error: e, stackTrace: st);
+            }),
+          );
+        }
+        notifyListeners();
+        return;
+      }
+      if (shouldSurfaceCameraControllerErrorAsFatal(desc)) {
+        _errorMessage = desc;
       }
     }
     notifyListeners();
@@ -514,14 +516,6 @@ class CaptureViewModel extends ChangeNotifier {
     final isExternal = camera.lensDirection == CameraLensDirection.external ||
         _looksLikeExternalCameraName(camera.name);
     return isExternal || _deviceType == AppDeviceType.androidTv;
-  }
-
-  bool _looksLikeCameraXRecoverableError(String message) {
-    final m = message.toLowerCase();
-    return m.contains('recoverable error') ||
-        m.contains('otherrecoverableerror') ||
-        m.contains('will attempt to recover') ||
-        m.contains('camera device has encountered a recoverable error');
   }
 
   /// Resolution preset currently in use (after init). Null if camera not initialized.
@@ -1842,7 +1836,8 @@ class CaptureViewModel extends ChangeNotifier {
   Future<void> capturePhotoWithCountdown({int? countdownSeconds}) async {
     await captureWithCountdown(
       capturePhoto,
-      canStart: () => isReady,
+      canStart: () =>
+          isReady && capturedPhoto == null && !_isCapturing,
       countdownSeconds: countdownSeconds,
     );
   }
@@ -2054,12 +2049,8 @@ class CaptureViewModel extends ChangeNotifier {
   }
 
   Future<void> _awaitCameraIdleBeforeCapture() async {
-    if (preferImmediateStreamFallbackAfterStillFailure(
-      camera: _currentCamera,
-      deviceType: _deviceType,
-    )) {
-      return;
-    }
+    // Always wait out in-flight recovery — including USB/webcam. Skipping this
+    // raced reopen and forced a slow takePicture timeout → blurry stream grab.
     await waitForInFlightCameraRecovery(
       _cameraRecoveryCompleter,
       timeout: const Duration(seconds: 8),
@@ -2080,6 +2071,7 @@ class CaptureViewModel extends ChangeNotifier {
       'capture_initialized': _cameraController?.value.isInitialized ?? false,
     }));
 
+    if (_isCapturing || _capturedPhoto != null) return;
     if (!await _guardCaptureReady()) return;
 
     _isCapturing = true;
@@ -2257,7 +2249,9 @@ class CaptureViewModel extends ChangeNotifier {
     _lastCameraRecoveryAt = DateTime.now();
     await _logTakePictureRecoveryAttempt(camera.name, e);
     await _hardResetCameraController();
-    await delayBeforeCameraReopen();
+    await delayBeforeCameraReopen(
+      forExternalCamera: _shouldUseStreamOnlyCapture(),
+    );
     await initializeCamera(camera);
     return _takePictureAfterRecovery('takePicture timeout (retry)');
   }
@@ -2265,10 +2259,24 @@ class CaptureViewModel extends ChangeNotifier {
   Future<XFile> _retryTakePictureAfterTimeout(TimeoutException e) async {
     final camera = _currentCamera;
     if (camera == null) throw e;
-    await _recoverCamera(
-      reason: AppStrings.takePictureTimeout,
-      details: e.toString(),
+    if (!_isCapturing) throw e;
+    if (!canAttemptCameraRecovery(
+      lastRecoveryAt: _lastCameraRecoveryAt,
+      cooldown: _cameraRecoveryCooldown,
+    )) {
+      throw e;
+    }
+
+    // Hard-reset inline — [_recoverCamera] no-ops while [_isCapturing].
+    _lastCameraRecoveryAt = DateTime.now();
+    ErrorReportingManager.log(
+      '🔁 takePicture timed out; re-initializing camera and retrying',
     );
+    await _hardResetCameraController();
+    await delayBeforeCameraReopen(
+      forExternalCamera: _shouldUseStreamOnlyCapture(),
+    );
+    await initializeCamera(camera);
     return _takePictureAfterRecovery(
       'takePicture timeout (post-recovery retry)',
     );
@@ -2358,8 +2366,8 @@ class CaptureViewModel extends ChangeNotifier {
           }
         }
 
-        await Future.delayed(
-          Duration(milliseconds: AppConstants.kCameraDisposeToReopenDelayMs),
+        await delayBeforeCameraReopen(
+          forExternalCamera: _shouldUseStreamOnlyCapture(),
         );
         // Already holding [_withCameraLock] — do not call [initializeCamera].
         await _initializeCameraLocked(camera, notifyInitializing: false);
@@ -2663,11 +2671,12 @@ class CaptureViewModel extends ChangeNotifier {
     }
 
     final ctrl = _cameraController;
+    // Do not force remount solely because the camera is USB/external — that
+    // caused Classic between-shot spinners even when preview was still live.
     final needsReinit = forceReinit ||
         ctrl == null ||
         !ctrl.value.isInitialized ||
-        ctrl.value.hasError ||
-        _shouldUseStreamOnlyCapture();
+        ctrl.value.hasError;
 
     if (!needsReinit) {
       notifyListeners();
@@ -2677,7 +2686,9 @@ class CaptureViewModel extends ChangeNotifier {
     try {
       await _hardResetCameraController();
       _cameraGeneration++;
-      await delayBeforeCameraReopen();
+      await delayBeforeCameraReopen(
+        forExternalCamera: _shouldUseStreamOnlyCapture(),
+      );
       await initializeCamera(camera);
     } catch (e, st) {
       AppLogger.error(

@@ -37,7 +37,7 @@ void main() {
     );
   });
 
-  test('captureResolutionPreset prefers medium on TV and external', () {
+  test('captureResolutionPreset prefers high for non-TV external webcams', () {
     expect(
       captureResolutionPreset(
         deviceType: AppDeviceType.androidTv,
@@ -57,7 +57,15 @@ void main() {
         deviceType: AppDeviceType.androidPhone,
         isExternal: true,
       ),
-      ResolutionPreset.medium,
+      ResolutionPreset.high,
+    );
+    expect(
+      captureResolutionPreset(
+        deviceType: AppDeviceType.androidTablet,
+        isExternal: true,
+        preferPrintQuality: true,
+      ),
+      ResolutionPreset.veryHigh,
     );
     expect(
       captureResolutionPreset(
