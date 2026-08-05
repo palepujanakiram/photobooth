@@ -73,6 +73,8 @@ void main() {
         expect(request.method, 'POST');
         expect(request.url.path, '/camera/capture');
         expect(request.url.queryParameters['download'], '1');
+        expect(request.url.queryParameters['maxLongEdge'], '1920');
+        expect(request.url.queryParameters['jpegQuality'], '85');
         expect(request.headers.containsKey('X-Camera-Token'), isFalse);
         return http.Response.bytes(jpeg, 200, headers: {
           'content-type': 'image/jpeg',
@@ -82,6 +84,17 @@ void main() {
       final bytes = await service.capture();
       expect(bytes.first, 0xff);
       expect(bytes.length, jpeg.length);
+      service.dispose();
+    });
+
+    test('capture forwards custom maxLongEdge and jpegQuality', () async {
+      final client = MockClient((request) async {
+        expect(request.url.queryParameters['maxLongEdge'], '1280');
+        expect(request.url.queryParameters['jpegQuality'], '70');
+        return http.Response.bytes([0xff, 0xd8, 0xff, 0xd9], 200);
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await service.capture(maxLongEdge: 1280, jpegQuality: 70);
       service.dispose();
     });
 

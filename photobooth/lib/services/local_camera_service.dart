@@ -6,6 +6,12 @@ import 'package:http/http.dart' as http;
 import '../utils/camera_sidecar_config.dart';
 import '../utils/logger.dart';
 
+/// Long-edge cap requested from Pi on still download (matches kiosk normalize).
+const int kSidecarCaptureMaxLongEdge = 1920;
+
+/// JPEG quality for Pi-resized stills.
+const int kSidecarCaptureJpegQuality = 85;
+
 /// HTTP client for the booth Pi `fotozen-sidecar` (gphoto2 / FZ200D).
 class LocalCameraService {
   LocalCameraService({
@@ -86,14 +92,24 @@ class LocalCameraService {
     return _requireJpegBytes(response, action: 'preview');
   }
 
-  /// Triggers tethered capture and returns JPEG bytes.
-  Future<Uint8List> capture() async {
+  /// Triggers tethered capture and returns a kiosk-sized JPEG from the Pi.
+  ///
+  /// Requests [maxLongEdge] / [jpegQuality] so the sidecar downscales on-device
+  /// (full multi‑MP JPEGs were timing out encode/upload on Android TV).
+  Future<Uint8List> capture({
+    int maxLongEdge = kSidecarCaptureMaxLongEdge,
+    int jpegQuality = kSidecarCaptureJpegQuality,
+  }) async {
     if (!isConfigured) {
       throw StateError('Camera sidecar is not configured');
     }
     final response = await _client
         .post(
-          _uri('/camera/capture', const {'download': '1'}),
+          _uri('/camera/capture', {
+            'download': '1',
+            'maxLongEdge': '$maxLongEdge',
+            'jpegQuality': '$jpegQuality',
+          }),
           headers: _headers,
         )
         .timeout(_captureTimeout);
