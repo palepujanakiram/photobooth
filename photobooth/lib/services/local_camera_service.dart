@@ -42,15 +42,9 @@ class LocalCameraService {
     return '$left$right';
   }
 
-  Map<String, String> get _headers {
-    final headers = <String, String>{
-      'Accept': 'application/json, image/jpeg, */*',
-    };
-    if (_config.token.isNotEmpty) {
-      headers['X-Camera-Token'] = _config.token;
-    }
-    return headers;
-  }
+  Map<String, String> get _headers => const {
+        'Accept': 'application/json, image/jpeg, */*',
+      };
 
   /// True when sidecar reports a connected camera.
   Future<bool> isHealthy() async {

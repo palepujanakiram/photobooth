@@ -21,7 +21,6 @@ void main() {
         const CameraSidecarConfig(
           enabled: true,
           baseUrl: 'http://192.168.2.50:8791',
-          token: 'x',
         ).isConfigured,
         isTrue,
       );
@@ -29,7 +28,6 @@ void main() {
         const CameraSidecarConfig(
           enabled: false,
           baseUrl: 'http://192.168.2.50:8791',
-          token: 'x',
         ).isConfigured,
         isFalse,
       );
@@ -40,13 +38,12 @@ void main() {
     const config = CameraSidecarConfig(
       enabled: true,
       baseUrl: 'http://192.168.2.50:8791',
-      token: 'change-me',
     );
 
     test('isHealthy true when connected', () async {
       final client = MockClient((request) async {
         expect(request.url.path, '/health');
-        expect(request.headers['X-Camera-Token'], 'change-me');
+        expect(request.headers.containsKey('X-Camera-Token'), isFalse);
         return http.Response(
           jsonEncode({'ok': true, 'connected': true}),
           200,
@@ -76,7 +73,7 @@ void main() {
         expect(request.method, 'POST');
         expect(request.url.path, '/camera/capture');
         expect(request.url.queryParameters['download'], '1');
-        expect(request.headers['X-Camera-Token'], 'change-me');
+        expect(request.headers.containsKey('X-Camera-Token'), isFalse);
         return http.Response.bytes(jpeg, 200, headers: {
           'content-type': 'image/jpeg',
         });
@@ -123,7 +120,6 @@ void main() {
       const disabled = CameraSidecarConfig(
         enabled: false,
         baseUrl: 'http://192.168.2.50:8791',
-        token: '',
       );
       final service = LocalCameraService(config: disabled);
       await expectLater(service.capture(), throwsStateError);
@@ -155,24 +151,6 @@ void main() {
         config: const CameraSidecarConfig(
           enabled: true,
           baseUrl: 'http://192.168.2.50:8791/booth/',
-          token: '',
-        ),
-        client: client,
-      );
-      expect(await service.isHealthy(), isTrue);
-      service.dispose();
-    });
-
-    test('omits token header when blank', () async {
-      final client = MockClient((request) async {
-        expect(request.headers.containsKey('X-Camera-Token'), isFalse);
-        return http.Response(jsonEncode({'ok': true, 'connected': true}), 200);
-      });
-      final service = LocalCameraService(
-        config: const CameraSidecarConfig(
-          enabled: true,
-          baseUrl: 'http://192.168.2.50:8791',
-          token: '',
         ),
         client: client,
       );

@@ -6,7 +6,6 @@ void main() {
   const env = CameraSidecarConfig(
     enabled: true,
     baseUrl: 'http://192.168.2.50:8791',
-    token: 'lab-token',
   );
 
   group('CameraSidecarConfig.fromEnvironment', () {
@@ -14,7 +13,6 @@ void main() {
       final cfg = CameraSidecarConfig.fromEnvironment();
       expect(cfg.enabled, isFalse);
       expect(cfg.baseUrl, 'http://192.168.2.50:8791');
-      expect(cfg.token, isEmpty);
     });
   });
 
@@ -62,7 +60,6 @@ void main() {
       final fromEnv = CameraSidecarConfig.fromEnvironment();
       expect(resolved.enabled, fromEnv.enabled);
       expect(resolved.baseUrl, fromEnv.baseUrl);
-      expect(resolved.token, fromEnv.token);
     });
 
     test('falls back when settings omit camera fields', () {
@@ -86,7 +83,6 @@ void main() {
       );
       expect(resolved.enabled, isTrue);
       expect(resolved.baseUrl, 'http://172.16.4.20:8791');
-      expect(resolved.token, 'lab-token');
       expect(resolved.isConfigured, isTrue);
       expect(resolved.livePreviewEnabled, isTrue);
       expect(resolved.shouldShowLivePreview, isTrue);
@@ -126,7 +122,6 @@ void main() {
       );
       expect(resolved.enabled, isFalse);
       expect(resolved.isConfigured, isFalse);
-      expect(resolved.token, 'lab-token');
     });
 
     test('disabled when enabled but host empty', () {

@@ -16,7 +16,6 @@ void main() {
         config: const CameraSidecarConfig(
           enabled: false,
           baseUrl: 'http://192.168.2.50:8791',
-          token: '',
         ),
         client: MockClient((_) async => http.Response('', 500)),
       );
@@ -36,7 +35,6 @@ void main() {
         config: const CameraSidecarConfig(
           enabled: true,
           baseUrl: 'http://192.168.2.50:8791',
-          token: 't',
         ),
         client: client,
       );
@@ -55,7 +53,6 @@ void main() {
         config: const CameraSidecarConfig(
           enabled: true,
           baseUrl: 'http://192.168.2.50:8791',
-          token: 't',
         ),
         client: client,
       );
@@ -73,7 +70,6 @@ void main() {
         config: const CameraSidecarConfig(
           enabled: true,
           baseUrl: 'http://192.168.2.50:8791',
-          token: 't',
         ),
         client: client,
       );

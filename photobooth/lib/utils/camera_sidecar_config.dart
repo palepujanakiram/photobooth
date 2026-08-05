@@ -9,21 +9,16 @@ import '../models/app_settings_model.dart';
 /// ```
 /// --dart-define=CAMERA_SIDECAR_ENABLED=true
 /// --dart-define=CAMERA_SIDECAR_URL=http://192.168.2.50:8791
-/// --dart-define=CAMERA_SIDECAR_TOKEN=change-me
 /// ```
-///
-/// Token is never stored in ZenAI — always from dart-define / local secret.
 class CameraSidecarConfig {
   const CameraSidecarConfig({
     required this.enabled,
     required this.baseUrl,
-    required this.token,
     this.livePreviewEnabled = false,
   });
 
   final bool enabled;
   final String baseUrl;
-  final String token;
 
   /// When true with [isConfigured], pose UI should show Pi `/camera/live`
   /// instead of webcam / HDMI capture card.
@@ -39,7 +34,6 @@ class CameraSidecarConfig {
     return CameraSidecarConfig(
       enabled: _envFlag(cameraSidecarEnabledDefine),
       baseUrl: cameraSidecarUrlDefine.trim().replaceAll(RegExp(r'/$'), ''),
-      token: cameraSidecarTokenDefine.trim(),
       livePreviewEnabled: _envFlag(cameraSidecarLivePreviewDefine),
     );
   }
@@ -60,11 +54,6 @@ class CameraSidecarConfig {
   static const String cameraSidecarUrlDefine = String.fromEnvironment(
     'CAMERA_SIDECAR_URL',
     defaultValue: 'http://192.168.2.50:8791',
-  );
-
-  static const String cameraSidecarTokenDefine = String.fromEnvironment(
-    'CAMERA_SIDECAR_TOKEN',
-    defaultValue: '',
   );
 
   static const String cameraSidecarLivePreviewDefine = String.fromEnvironment(
@@ -113,8 +102,6 @@ bool _settingsProvideCameraConfig(AppSettingsModel settings) {
 }
 
 /// Hybrid resolver: ZenAI kiosk settings win when present; otherwise dart-define.
-///
-/// Token always comes from [environment] / dart-define (not stored in ZenAI).
 CameraSidecarConfig resolveCameraSidecarConfig(
   AppSettingsModel? settings, {
   CameraSidecarConfig? environment,
@@ -141,7 +128,6 @@ CameraSidecarConfig resolveCameraSidecarConfig(
   return CameraSidecarConfig(
     enabled: enabled,
     baseUrl: baseUrl,
-    token: env.token,
     livePreviewEnabled: settings.cameraLivePreviewEnabled == true,
   );
 }
