@@ -75,6 +75,7 @@ void main() {
         expect(request.url.queryParameters['download'], '1');
         expect(request.url.queryParameters['maxLongEdge'], '1920');
         expect(request.url.queryParameters['jpegQuality'], '85');
+        expect(request.url.queryParameters['resumeLiveView'], '1');
         expect(request.headers.containsKey('X-Camera-Token'), isFalse);
         return http.Response.bytes(jpeg, 200, headers: {
           'content-type': 'image/jpeg',
@@ -91,10 +92,21 @@ void main() {
       final client = MockClient((request) async {
         expect(request.url.queryParameters['maxLongEdge'], '1280');
         expect(request.url.queryParameters['jpegQuality'], '70');
+        expect(request.url.queryParameters['resumeLiveView'], '1');
         return http.Response.bytes([0xff, 0xd8, 0xff, 0xd9], 200);
       });
       final service = LocalCameraService(config: config, client: client);
       await service.capture(maxLongEdge: 1280, jpegQuality: 70);
+      service.dispose();
+    });
+
+    test('capture can disable resumeLiveView', () async {
+      final client = MockClient((request) async {
+        expect(request.url.queryParameters['resumeLiveView'], '0');
+        return http.Response.bytes([0xff, 0xd8, 0xff, 0xd9], 200);
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await service.capture(resumeLiveView: false);
       service.dispose();
     });
 

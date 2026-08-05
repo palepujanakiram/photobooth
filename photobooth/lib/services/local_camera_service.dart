@@ -94,11 +94,14 @@ class LocalCameraService {
 
   /// Triggers tethered capture and returns a kiosk-sized JPEG from the Pi.
   ///
-  /// Requests [maxLongEdge] / [jpegQuality] so the sidecar downscales on-device
-  /// (full multi‑MP JPEGs were timing out encode/upload on Android TV).
+  /// Requests [maxLongEdge] / [jpegQuality] so the sidecar downscales on-device.
+  /// When [resumeLiveView] is true (default), the Pi re-enters Canon Live View
+  /// after the still so HDMI capture-card preview recovers without a manual
+  /// LV button press (`fotozen-sidecar` ≥ v1.2.1).
   Future<Uint8List> capture({
     int maxLongEdge = kSidecarCaptureMaxLongEdge,
     int jpegQuality = kSidecarCaptureJpegQuality,
+    bool resumeLiveView = true,
   }) async {
     if (!isConfigured) {
       throw StateError('Camera sidecar is not configured');
@@ -109,6 +112,7 @@ class LocalCameraService {
             'download': '1',
             'maxLongEdge': '$maxLongEdge',
             'jpegQuality': '$jpegQuality',
+            'resumeLiveView': resumeLiveView ? '1' : '0',
           }),
           headers: _headers,
         )
