@@ -2062,7 +2062,7 @@ class CaptureViewModel extends ChangeNotifier {
     WebFlowTrace.log('CAPTURE', 'normalize_start');
     final XFile savedFile;
     if (_lastRawCaptureFromSidecar) {
-      // DSLR JPEGs are multi‑MP; dedicated path avoids 20s normalize timeout.
+      // DSLR JPEGs are multi‑MP — copy only (normalize hangs past overall budget).
       savedFile = await persistSidecarCaptureStill(imageFile);
     } else {
       savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(

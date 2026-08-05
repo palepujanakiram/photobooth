@@ -37,8 +37,8 @@ CaptureRouteArgs buildClassicCaptureRouteArgs({
 Future<void> navigateToFotoFlashbackCapture({
   required BuildContext context,
   required ThemeModel theme,
+  required ClassicShotMode shotMode,
   bool replace = false,
-  ClassicShotMode shotMode = ClassicShotMode.fourShot,
   bool awaitGuestStart = false,
 }) async {
   if (!context.mounted) return;

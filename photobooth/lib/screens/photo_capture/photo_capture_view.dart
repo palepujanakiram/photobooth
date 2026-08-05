@@ -337,10 +337,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       case ClassicOneShotPhase.captured:
         unawaited(_oneShotAcceptToLooks());
       case ClassicOneShotPhase.needsGuest:
-        _awaitGuestStartClassic = true;
-        _singleShotCapturesStarted = 0;
-        _flashbackCountdownStarting = false;
-        if (mounted) setState(() {});
+        _resetClassicOneShotForGuestRetry();
       case ClassicOneShotPhase.idle:
       case ClassicOneShotPhase.capturing:
       case ClassicOneShotPhase.finishing:
@@ -349,12 +346,42 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
   }
 
+  /// After a failed capture/encode, drop partial strip state so Capture takes a
+  /// fresh still. Leaving [_stripShots] or the VM photo made guestCapture jump
+  /// straight back to accept → looks (USB/sidecar encode timeout loop).
+  void _resetClassicOneShotForGuestRetry() {
+    _awaitGuestStartClassic = true;
+    _singleShotCapturesStarted = 0;
+    _flashbackCountdownStarting = false;
+    _stripFinishing = false;
+    _navigatingAwayFromCapture = false;
+    if (_stripShots.isNotEmpty || _stripScrubFutures.isNotEmpty) {
+      _stripShots.clear();
+      _stripScrubFutures.clear();
+      ClassicStripScrubCoordinator.instance.reset();
+    }
+    if (_captureViewModel.capturedPhoto != null) {
+      unawaited(_captureViewModel.clearCapturedPhotoAwaitingSession());
+    }
+    if (mounted) setState(() {});
+  }
+
   Future<void> _oneShotRunCountdownAndCapture() async {
     if (!widget.sessionKind.isClassicOneShot) return;
     if (_oneShotPhase != ClassicOneShotPhase.counting) return;
-    if (_stripShots.isNotEmpty || _captureViewModel.capturedPhoto != null) {
+    // Only short-circuit when this countdown already produced a still — never
+    // when leftover strip/VM state remains from a failed accept.
+    if (_stripShots.isEmpty && _captureViewModel.capturedPhoto != null) {
       _oneShotDispatch(ClassicOneShotEvent.stillReady);
       return;
+    }
+    if (_stripShots.isNotEmpty) {
+      AppLogger.warning(
+        'Classic 1-shot clearing stale strip before retry capture',
+      );
+      _stripShots.clear();
+      _stripScrubFutures.clear();
+      ClassicStripScrubCoordinator.instance.reset();
     }
     _singleShotCapturesStarted = 1;
     _awaitGuestStartClassic = false;

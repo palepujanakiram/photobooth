@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../services/app_settings_manager.dart';
 import '../../utils/constants.dart';
+import '../../utils/classic_shot_mode.dart';
 import '../../utils/fotoflashback_navigation.dart';
 import '../../utils/payment_workflow_helpers.dart';
 import '../../views/widgets/app_snackbar.dart';
@@ -18,9 +19,12 @@ Future<void> themeSelectionNavigateAfterSessionUpdate({
   required ThemeModel selectedTheme,
 }) async {
   if (selectedTheme.isPhotoStrip) {
+    // Strip themes always use the 4-pose Classic flow (explicit — never rely on
+    // a default that could silently turn 1-shot entry points into a loop).
     await navigateToFotoFlashbackCapture(
       context: context,
       theme: selectedTheme,
+      shotMode: ClassicShotMode.fourShot,
     );
     return;
   }

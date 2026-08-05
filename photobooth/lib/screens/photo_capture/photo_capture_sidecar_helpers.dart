@@ -14,9 +14,9 @@ bool isSidecarCameraId(String? cameraId) {
 
 /// Tries FotoZen Pi sidecar still capture; returns null to use CameraX/UVC.
 ///
-/// Writes JPEG bytes to a temp file on native so normalize/copy have a real
+/// Writes JPEG bytes to a temp file on native so review/upload have a real
 /// path (XFile.fromData left path empty and forced a full in-memory decode of
-/// multi‑MP DSLR stills that timed out on Android TV).
+/// multi‑MP DSLR stills that hung the kiosk).
 Future<XFile?> tryCaptureFromSidecar(LocalCameraService? service) async {
   if (service == null || !service.isConfigured) {
     return null;
@@ -64,30 +64,32 @@ Future<XFile?> tryCaptureFromSidecar(LocalCameraService? service) async {
   }
 }
 
-/// Persist a DSLR sidecar JPEG for review without hanging kiosk normalize.
+/// Persist a DSLR sidecar JPEG for review without decode/re-encode.
 ///
-/// Tries a bounded downscale to [kCapturedPhotoMaxDimension]; on timeout or
-/// failure, copies the camera JPEG into the app photos dir as-is.
-Future<XFile> persistSidecarCaptureStill(
-  XFile rawFile, {
-  Duration normalizeTimeout = const Duration(seconds: 45),
-  int maxDimension = kCapturedPhotoMaxDimension,
-  int jpegQuality = kCapturedPhotoJpegQuality,
-}) async {
-  try {
-    return await ImageHelper.normalizeAndSaveCapturedPhoto(
-      rawFile,
-      flipHorizontal: false,
-      maxDimension: maxDimension,
-      jpegQuality: jpegQuality,
-    ).timeout(normalizeTimeout);
-  } catch (e) {
-    AppLogger.warning(
-      'Sidecar normalize failed/timed out; using direct JPEG copy: $e',
-    );
-    if (kIsWeb || rawFile.path.isEmpty) {
-      rethrow;
-    }
-    return ImageHelper.copyCaptureToAppPhotosDir(rawFile);
+/// Full-resolution Canon stills (often 20MP+) hang [compute] normalize on
+/// Android TV past both the 20s normalize and 45s overall capture budgets —
+/// [Future.timeout] cannot cancel an in-flight isolate decode. Copy the camera
+/// JPEG into app storage; upload prep resizes later.
+Future<XFile> persistSidecarCaptureStill(XFile rawFile) async {
+  if (kIsWeb) {
+    return rawFile;
   }
+  if (rawFile.path.isEmpty) {
+    final bytes = await rawFile.readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception('Sidecar capture is empty');
+    }
+    final tempDir = await FileHelper.getTempDirectoryPath();
+    final dir = '$tempDir/sidecar';
+    await FileHelper.ensureDirectory(dir);
+    final path =
+        '$dir/fz200d_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final file = FileHelper.createFile(path);
+    await (file as dynamic).writeAsBytes(bytes, flush: true);
+    return ImageHelper.copyCaptureToAppPhotosDir(
+      XFile(path, mimeType: 'image/jpeg'),
+    );
+  }
+  AppLogger.info('Persisting sidecar still via file copy (skip normalize)');
+  return ImageHelper.copyCaptureToAppPhotosDir(rawFile);
 }

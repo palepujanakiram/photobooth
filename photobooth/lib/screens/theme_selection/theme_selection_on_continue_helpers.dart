@@ -6,6 +6,7 @@ import '../../services/app_settings_manager.dart';
 import '../../services/session_manager.dart';
 import '../../utils/ai_attempts_budget.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/classic_shot_mode.dart';
 import '../../utils/constants.dart';
 import '../../utils/fotoflashback_navigation.dart';
 import '../../utils/session_photo_sync_helpers.dart';
@@ -179,5 +180,6 @@ Future<void> _continueFotoFlashback({
   await navigateToFotoFlashbackCapture(
     context: context,
     theme: selectedTheme,
+    shotMode: ClassicShotMode.fourShot,
   );
 }

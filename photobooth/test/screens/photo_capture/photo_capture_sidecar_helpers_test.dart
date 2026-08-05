@@ -108,7 +108,7 @@ void main() {
   });
 
   group('persistSidecarCaptureStill', () {
-    test('falls back to copy when normalize times out', () async {
+    test('copies JPEG into photos dir without normalize', () async {
       final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(32, 7)]);
       final client = MockClient((request) async {
         if (request.url.path.endsWith('/health')) {
@@ -125,16 +125,27 @@ void main() {
       );
       final raw = await tryCaptureFromSidecar(service);
       expect(raw, isNotNull);
-      final saved = await persistSidecarCaptureStill(
-        raw!,
-        normalizeTimeout: Duration.zero,
-      );
+      final saved = await persistSidecarCaptureStill(raw!);
       expect(saved.path, isNotEmpty);
       expect(await saved.readAsBytes(), jpeg);
       expect(saved.path.contains('photos'), isTrue);
       await ImageHelper.tryDeleteLocalFile(raw.path);
       await ImageHelper.tryDeleteLocalFile(saved.path);
       service.dispose();
+    });
+
+    test('writes empty-path XFile bytes then copies', () async {
+      final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(16, 3)]);
+      final raw = XFile.fromData(
+        jpeg,
+        mimeType: 'image/jpeg',
+        name: 'memory.jpg',
+      );
+      expect(raw.path, isEmpty);
+      final saved = await persistSidecarCaptureStill(raw);
+      expect(saved.path.contains('photos'), isTrue);
+      expect(await saved.readAsBytes(), jpeg);
+      await ImageHelper.tryDeleteLocalFile(saved.path);
     });
   });
 }

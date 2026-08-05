@@ -2,11 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../utils/classic_shot_mode.dart';
 import '../../utils/fotoflashback_navigation.dart';
 import '../../utils/route_args.dart';
 import '../../views/widgets/app_colors.dart';
 
-/// Compatibility route: forwards to multi-shot POSE (same screen for all 4).
+/// Compatibility route: forwards to Classic 4-shot POSE.
 class FotoFlashbackCaptureScreen extends StatefulWidget {
   const FotoFlashbackCaptureScreen({super.key});
 
@@ -29,6 +30,7 @@ class _FotoFlashbackCaptureScreenState extends State<FotoFlashbackCaptureScreen>
         navigateToFotoFlashbackCapture(
           context: context,
           theme: args.theme,
+          shotMode: ClassicShotMode.fourShot,
           replace: true,
         ),
       );
