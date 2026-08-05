@@ -80,6 +80,7 @@ void main() {
           cameraSidecarHost: ' 172.16.4.20 ',
           cameraSidecarPort: 8791,
           cameraSidecarPath: '/',
+          cameraLivePreviewEnabled: true,
         ),
         environment: env,
       );
@@ -87,6 +88,31 @@ void main() {
       expect(resolved.baseUrl, 'http://172.16.4.20:8791');
       expect(resolved.token, 'lab-token');
       expect(resolved.isConfigured, isTrue);
+      expect(resolved.livePreviewEnabled, isTrue);
+      expect(resolved.shouldShowLivePreview, isTrue);
+    });
+
+    test('live preview off by default when settings omit the flag', () {
+      final resolved = resolveCameraSidecarConfig(
+        AppSettingsModel(
+          cameraEnabled: true,
+          cameraSidecarHost: '172.16.4.20',
+          cameraSidecarPort: 8791,
+        ),
+        environment: env,
+      );
+      expect(resolved.livePreviewEnabled, isFalse);
+      expect(resolved.shouldShowLivePreview, isFalse);
+    });
+
+    test('live preview alone counts as settings-present', () {
+      final resolved = resolveCameraSidecarConfig(
+        AppSettingsModel(cameraLivePreviewEnabled: true),
+        environment: env,
+      );
+      expect(resolved.enabled, isFalse);
+      expect(resolved.livePreviewEnabled, isTrue);
+      expect(resolved.shouldShowLivePreview, isFalse);
     });
 
     test('disabled when cameraEnabled false even with host', () {

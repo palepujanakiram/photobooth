@@ -18,20 +18,29 @@ class CameraSidecarConfig {
     required this.enabled,
     required this.baseUrl,
     required this.token,
+    this.livePreviewEnabled = false,
   });
 
   final bool enabled;
   final String baseUrl;
   final String token;
 
+  /// When true with [isConfigured], pose UI should show Pi `/camera/live`
+  /// instead of webcam / HDMI capture card.
+  final bool livePreviewEnabled;
+
   bool get isConfigured =>
       enabled && baseUrl.trim().isNotEmpty;
+
+  /// Live MJPEG preview is requested and sidecar is configured.
+  bool get shouldShowLivePreview => isConfigured && livePreviewEnabled;
 
   static CameraSidecarConfig fromEnvironment() {
     return CameraSidecarConfig(
       enabled: _envFlag(cameraSidecarEnabledDefine),
       baseUrl: cameraSidecarUrlDefine.trim().replaceAll(RegExp(r'/$'), ''),
       token: cameraSidecarTokenDefine.trim(),
+      livePreviewEnabled: _envFlag(cameraSidecarLivePreviewDefine),
     );
   }
 
@@ -55,6 +64,11 @@ class CameraSidecarConfig {
 
   static const String cameraSidecarTokenDefine = String.fromEnvironment(
     'CAMERA_SIDECAR_TOKEN',
+    defaultValue: '',
+  );
+
+  static const String cameraSidecarLivePreviewDefine = String.fromEnvironment(
+    'CAMERA_SIDECAR_LIVE_PREVIEW',
     defaultValue: '',
   );
 }
@@ -94,7 +108,8 @@ bool _settingsProvideCameraConfig(AppSettingsModel settings) {
   return settings.cameraEnabled != null ||
       (settings.cameraSidecarHost?.trim().isNotEmpty ?? false) ||
       settings.cameraSidecarPort != null ||
-      settings.cameraSidecarPath != null;
+      settings.cameraSidecarPath != null ||
+      settings.cameraLivePreviewEnabled != null;
 }
 
 /// Hybrid resolver: ZenAI kiosk settings win when present; otherwise dart-define.
@@ -127,5 +142,6 @@ CameraSidecarConfig resolveCameraSidecarConfig(
     enabled: enabled,
     baseUrl: baseUrl,
     token: env.token,
+    livePreviewEnabled: settings.cameraLivePreviewEnabled == true,
   );
 }

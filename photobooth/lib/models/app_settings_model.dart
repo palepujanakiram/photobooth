@@ -41,6 +41,9 @@ class AppSettingsModel {
   final int? cameraSidecarPort;
   /// Base path on the sidecar (usually `/`).
   final String? cameraSidecarPath;
+  /// When true with [cameraEnabled], pose screen uses Pi `/camera/live` MJPEG
+  /// instead of webcam / HDMI capture card.
+  final bool? cameraLivePreviewEnabled;
   final bool? receiptPrinterEnabled;
   final String? receiptPrinterHost;
   final int? receiptPrinterPort;
@@ -100,6 +103,7 @@ class AppSettingsModel {
     this.cameraSidecarHost,
     this.cameraSidecarPort,
     this.cameraSidecarPath,
+    this.cameraLivePreviewEnabled,
     this.receiptPrinterEnabled,
     this.receiptPrinterHost,
     this.receiptPrinterPort,
@@ -170,6 +174,8 @@ class AppSettingsModel {
       cameraSidecarHost: JsonParseHelpers.stringOrNull(json['cameraSidecarHost']),
       cameraSidecarPort: JsonParseHelpers.intOrNull(json['cameraSidecarPort']),
       cameraSidecarPath: JsonParseHelpers.stringOrNull(json['cameraSidecarPath']),
+      cameraLivePreviewEnabled:
+          JsonParseHelpers.boolOrNull(json['cameraLivePreviewEnabled']),
       receiptPrinterEnabled:
           JsonParseHelpers.boolOrNull(json['receiptPrinterEnabled']),
       receiptPrinterHost:
