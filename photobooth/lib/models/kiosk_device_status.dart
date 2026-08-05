@@ -2,6 +2,7 @@
 enum KioskDeviceTransport {
   usb,
   wifi,
+  lan,
 }
 
 /// One hardware row on the kiosk settings screen.
@@ -21,15 +22,17 @@ class KioskDeviceStatusEntry {
   final KioskDeviceTransport? transport;
 }
 
-/// Snapshot of DNP, receipt, and USB camera connectivity.
+/// Snapshot of DNP, receipt, USB camera, and Pi DSLR sidecar connectivity.
 class KioskDeviceStatusSnapshot {
   const KioskDeviceStatusSnapshot({
     required this.dnpPrinter,
     required this.receiptPrinter,
     required this.usbCamera,
+    required this.dslrSidecar,
   });
 
   final KioskDeviceStatusEntry dnpPrinter;
   final KioskDeviceStatusEntry receiptPrinter;
   final KioskDeviceStatusEntry usbCamera;
+  final KioskDeviceStatusEntry dslrSidecar;
 }

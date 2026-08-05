@@ -85,6 +85,44 @@ void main() {
       service.dispose();
     });
 
+    test('fetchPreviewJpeg posts download=1 and returns bytes', () async {
+      final jpeg = <int>[0xff, 0xd8, 0xff, 0xd9, ...List.filled(40, 2)];
+      final client = MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/camera/preview');
+        expect(request.url.queryParameters['download'], '1');
+        return http.Response.bytes(jpeg, 200);
+      });
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://192.168.2.50:8791',
+          livePreviewEnabled: true,
+        ),
+        client: client,
+      );
+      expect(service.shouldShowLivePreview, isTrue);
+      expect(service.livePreviewUrl, 'http://192.168.2.50:8791/camera/live');
+      expect(
+        service.previewFrameUrl,
+        'http://192.168.2.50:8791/camera/preview?download=1',
+      );
+      final bytes = await service.fetchPreviewJpeg();
+      expect(bytes.length, jpeg.length);
+      service.dispose();
+    });
+
+    test('fetchPreviewJpeg throws when not configured', () async {
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: false,
+          baseUrl: 'http://192.168.2.50:8791',
+        ),
+      );
+      await expectLater(service.fetchPreviewJpeg(), throwsStateError);
+      service.dispose();
+    });
+
     test('capture throws when sidecar returns JSON error body', () async {
       final client = MockClient((request) async {
         return http.Response(

@@ -136,7 +136,15 @@ void main() {
       );
     });
 
-    test('external shutter ignored while counting/capturing', () {
+    test('external shutter only from idle (not needsGuest retries)', () {
+      expect(
+        classicOneShotMayAcceptExternalShutter(ClassicOneShotPhase.idle),
+        isTrue,
+      );
+      expect(
+        classicOneShotMayAcceptExternalShutter(ClassicOneShotPhase.needsGuest),
+        isFalse,
+      );
       expect(
         classicOneShotMayAcceptExternalShutter(ClassicOneShotPhase.counting),
         isFalse,

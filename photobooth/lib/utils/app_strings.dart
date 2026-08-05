@@ -167,6 +167,13 @@ abstract final class AppStrings {
 
   static const captureStartingPreview = 'Starting camera…';
 
+  /// Pose UI while waiting for the first Pi DSLR live-view frame.
+  static const sidecarLivePreviewConnecting = 'Connecting to DSLR…';
+
+  /// Pose UI when Pi live preview cannot load (still may capture if healthy).
+  static const sidecarLivePreviewUnavailable =
+      'DSLR live preview unavailable. Check the Pi camera link.';
+
   /// Shown on POSE when no camera is available but Gallery / Phone QR is enabled.
   static const captureNoCameraUploadHint =
       'No camera detected. Upload a photo from Gallery or Phone QR, or retry '
@@ -585,10 +592,12 @@ abstract final class AppStrings {
   static const kioskDeviceDnpPrinter = 'DNP Printer';
   static const kioskDeviceReceiptPrinter = 'Receipt Printer';
   static const kioskDeviceUsbCamera = 'USB Camera';
+  static const kioskDeviceDslrSidecar = 'DSLR Camera';
   static const kioskDeviceConnected = 'Connected';
   static const kioskDeviceNotConnected = 'Not connected';
   static const kioskDeviceNotConfigured = 'Not configured';
   static const kioskDeviceTransportUsb = 'USB';
   static const kioskDeviceTransportWifi = 'WiFi';
+  static const kioskDeviceTransportLan = 'LAN';
   static const kioskDeviceTransportUnknown = '—';
 }

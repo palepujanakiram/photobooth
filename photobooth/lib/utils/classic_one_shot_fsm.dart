@@ -51,15 +51,19 @@ enum ClassicOneShotEvent {
   guestRetake,
 }
 
-/// Whether [phase] may begin a countdown (auto or guest).
+/// Whether [phase] may begin a countdown (auto or guest UI Capture).
 bool classicOneShotMayStartCountdown(ClassicOneShotPhase phase) {
   return phase == ClassicOneShotPhase.idle ||
       phase == ClassicOneShotPhase.needsGuest;
 }
 
-/// Whether UVC button / preview-interrupt may act as guest Capture.
+/// Whether UVC button / Android key may act as guest Capture.
+///
+/// Only [ClassicOneShotPhase.idle] — after a failed attempt ([needsGuest]),
+/// retries require an explicit on-screen Capture so HDMI interrupt storms
+/// cannot auto-loop.
 bool classicOneShotMayAcceptExternalShutter(ClassicOneShotPhase phase) {
-  return classicOneShotMayStartCountdown(phase);
+  return phase == ClassicOneShotPhase.idle;
 }
 
 /// Whether VM/UVC listeners may drive any capture work.

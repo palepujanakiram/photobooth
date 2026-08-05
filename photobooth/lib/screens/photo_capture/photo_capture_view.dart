@@ -62,6 +62,7 @@ import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/centered_max_width.dart';
 import '../../views/widgets/classic_scrub_progress_dots.dart';
 import '../../views/widgets/flashback_review_hold_banner.dart';
+import '../../views/widgets/sidecar_live_preview.dart';
 import 'photo_capture_rotation_screen.dart';
 import '../../services/hardware_key_service.dart';
 
@@ -648,6 +649,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   int _singleShotCapturesStarted = 0;
   /// Back from looks: live preview only until guest taps Capture / shutter.
   bool _awaitGuestStartClassic = false;
+  /// FotoZen: after first countdown/shutter starts, ignore TV keys / UVC button
+  /// until Retake — prevents HDMI capture-card double-fires.
+  bool _fotoZenCaptureLocked = false;
 
   /// Classic POSE (1-shot or 4-shot). Prefer this over [_isFlashbackMultiShot].
   bool get _isClassicPose => widget.sessionKind.isClassic;
@@ -669,9 +673,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _subtitleHint = classicPoseSubtitle(mode);
   }
 
-  bool get _flashbackCameraReady => _isUsingUvc
-      ? (_uvcReadyForCapture && !_uvcCaptureInFlight)
-      : _captureViewModel.isReady;
+  bool get _flashbackCameraReady {
+    if (_captureViewModel.usesSidecarLivePreview) {
+      return _captureViewModel.isReady;
+    }
+    return _isUsingUvc
+        ? (_uvcReadyForCapture && !_uvcCaptureInFlight)
+        : _captureViewModel.isReady;
+  }
 
   @override
   void didChangeDependencies() {
@@ -1400,9 +1409,17 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       if (!e.isActionDown) return;
       _notePoseUserActivity();
       if (_captureViewModel.capturedPhoto != null) return;
+      if (_captureViewModel.isCountingDown ||
+          _captureViewModel.isCapturing ||
+          _uvcCaptureInFlight ||
+          _flashbackCountdownStarting) {
+        return;
+      }
       if (!UvcHardwareKeyCodes.isShutterKey(e.keyCode)) return;
       if (_isFlashbackSingleShot) {
         if (!classicOneShotMayAcceptExternalShutter(_oneShotPhase)) return;
+        _lastUvcShutterAt = DateTime.now();
+        _armUvcShutterGrace();
         _oneShotRequestGuestCapture();
         return;
       }
@@ -1414,13 +1431,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         unawaited(_startFlashbackAutoCountdown());
         return;
       }
+      // FotoZen: TV remote DPAD/ENTER often also activates the Capture button —
+      // ignore keys once a capture session has started.
+      if (_fotoZenCaptureLocked) return;
       if (_captureViewModel.capturedPhoto != null) return;
       if (_isUsingUvc && _uvcController?.value.isInitialized == true) {
-        _triggerUvcCapture(source: 'android_key_${e.keyCode}', externalSignal: true);
+        _triggerUvcCapture(
+          source: 'android_key_${e.keyCode}',
+          externalSignal: true,
+        );
         return;
       }
       if (e.keyCode == UvcHardwareKeyCodes.volumeUp ||
           e.keyCode == UvcHardwareKeyCodes.volumeDown) {
+        _fotoZenCaptureLocked = true;
         await _captureViewModel.capturePhotoWithCountdown();
       }
     });
@@ -1569,6 +1593,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         if (mounted) _hardwareKeysEnabled = true;
       }),
     );
+
+    if (_captureViewModel.usesSidecarLivePreview) {
+      AppLogger.info('POSE using Pi DSLR sidecar live preview');
+      await _captureViewModel.prepareSidecarLivePreview();
+      if (!mounted) return;
+      await _finishPrewarmPoseSetup();
+      return;
+    }
 
     var deviceType = _captureViewModel.deviceType ??
         CaptureViewModel.prewarmedDeviceType;
@@ -2179,6 +2211,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   Future<void> _handleRetake(BuildContext context) async {
     _cancelFlashbackAutoTimers();
+    _fotoZenCaptureLocked = false;
     // 1-shot session: never open poses 2–4 via the strip remount chain.
     if (widget.sessionKind.isClassicOneShot) {
       if (_stripShots.isNotEmpty ||
@@ -2722,7 +2755,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }) {
     AppLogger.debug('UVC shutter signal source=$source btn=$button state=$state');
     if (!mounted) return;
-    // Classic 1-shot: external shutter is guest Capture only in idle/needsGuest.
+    if (_captureViewModel.isCountingDown ||
+        _captureViewModel.isCapturing ||
+        _uvcCaptureInFlight) {
+      return;
+    }
+    // Classic 1-shot: external shutter only from idle (not needsGuest retries).
     if (widget.sessionKind.isClassicOneShot) {
       if (!classicOneShotMayAcceptExternalShutter(_oneShotPhase)) {
         AppLogger.debug(
@@ -2730,7 +2768,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         );
         return;
       }
+      _lastUvcShutterAt = DateTime.now();
+      _armUvcShutterGrace();
       _oneShotRequestGuestCapture();
+      return;
+    }
+    if (!widget.sessionKind.isClassic && _fotoZenCaptureLocked) {
+      AppLogger.debug('UVC shutter ignored: FotoZen capture already locked');
       return;
     }
     if (_uvcHoldLiveFeedClosed) {
@@ -2756,6 +2800,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _uvcReconnectTimer?.cancel();
     _cancelUvcIdleSleepTimer();
     _uvcFeedAsleep = false;
+    if (!widget.sessionKind.isClassic) {
+      _fotoZenCaptureLocked = true;
+    }
     unawaited(_captureUvc(_captureViewModel, source: source));
   }
 
@@ -2800,26 +2847,31 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             AppLogger.debug('UVC previewInterrupted ignored');
             return;
           }
-          // Classic 1-shot: DSLR HDMI pause must not start a 2nd pose.
+          // Capture cards pause HDMI often; never treat as shutter (see
+          // shouldTreatUvcPreviewInterruptAsShutter). Body shutter uses uvc_button.
+          if (!shouldTreatUvcPreviewInterruptAsShutter()) {
+            AppLogger.debug(
+              'UVC previewInterrupted ignored (not a shutter signal)',
+            );
+            return;
+          }
           if (widget.sessionKind.isClassicOneShot) {
             if (!classicOneShotMayAcceptExternalShutter(_oneShotPhase)) {
-              AppLogger.debug(
-                'UVC previewInterrupted ignored for Classic 1-shot '
-                'phase=$_oneShotPhase',
-              );
               return;
             }
+            _lastUvcShutterAt = DateTime.now();
+            _armUvcShutterGrace();
             _oneShotRequestGuestCapture();
             return;
           }
-          if (!shouldTriggerUvcShutterFromInterrupt(lastCaptureAt: _lastUvcShutterAt)) {
-            AppLogger.debug('UVC previewInterrupted debounced');
+          if (!shouldTriggerUvcShutterFromInterrupt(
+            lastCaptureAt: _lastUvcShutterAt,
+          )) {
             return;
           }
           _lastUvcShutterAt = DateTime.now();
           _armUvcShutterGrace();
           _uvcReconnectTimer?.cancel();
-          // DSLR clean-HDMI: body shutter pauses the feed — capture like UI button.
           unawaited(_captureUvc(
             _captureViewModel,
             source: 'preview_interrupt',
@@ -3032,6 +3084,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     CaptureViewModel viewModel, {
     required String source,
   }) async {
+    // HDMI capture-card pauses must never start a still.
+    if (source == 'preview_interrupt' &&
+        !shouldTreatUvcPreviewInterruptAsShutter()) {
+      AppLogger.debug('UVC capture blocked: preview_interrupt is not a shutter');
+      return;
+    }
     // Classic 1-shot may only shutter from the FSM countdown path.
     if (widget.sessionKind.isClassicOneShot &&
         source != 'classic_one_shot' &&
@@ -3399,6 +3457,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       camerasEmpty: viewModel.availableCameras.isEmpty,
       isReady: viewModel.isReady,
       cameraSetupStalled: setupStalled,
+      usesSidecarLivePreview: viewModel.usesSidecarLivePreview,
     );
   }
 
@@ -3446,6 +3505,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       isUsingUvc: _isUsingUvc,
       hasCapturedPhoto: viewModel.capturedPhoto != null,
       isSelectingFromGallery: viewModel.isSelectingFromGallery,
+      usesSidecarLivePreview: viewModel.usesSidecarLivePreview,
     );
 
     final midStripRemount =
@@ -3473,6 +3533,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         } else if (hasCapturedPhoto) {
           // Review still — never mount CameraPreview without a controller.
           previewWidget = const SizedBox.shrink();
+        } else if (viewModel.usesSidecarLivePreview &&
+            viewModel.localCameraService != null) {
+          previewWidget = SidecarLivePreview(
+            service: viewModel.localCameraService!,
+            paused: viewModel.isCapturing || _uvcCaptureInFlight,
+            onFirstFrame: viewModel.markSidecarPreviewReady,
+          );
         } else if (_isUsingUvc) {
           previewWidget = _buildUvcPreview(context, viewModel);
         } else if (viewModel.cameraController == null) {
@@ -4216,6 +4283,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                       return;
                     }
                     if (_isUsingUvc) {
+                      _fotoZenCaptureLocked = true;
                       await viewModel.captureWithCountdown(
                         () => _captureUvc(viewModel, source: 'ui_button'),
                         canStart: () =>
@@ -4225,6 +4293,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                         countdownSeconds: countdownSecs,
                       );
                     } else {
+                      _fotoZenCaptureLocked = true;
                       await viewModel.capturePhotoWithCountdown(
                         countdownSeconds: countdownSecs,
                       );

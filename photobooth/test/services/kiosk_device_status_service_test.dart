@@ -11,6 +11,7 @@ import 'package:photobooth/services/receipt/receipt_print_bridge.dart';
 import 'package:photobooth/services/receipt/receipt_usb_client.dart';
 import 'package:photobooth/services/receipt/receipt_wifi_client.dart';
 import 'package:photobooth/utils/app_strings.dart';
+import 'package:photobooth/utils/camera_sidecar_config.dart';
 
 void main() {
   group('KioskDeviceStatusService', () {
@@ -286,6 +287,7 @@ void main() {
           ),
         ),
         probeUvcDevices: () async => true,
+        probeDslrSidecar: (_) async => false,
       );
       final snap = await service.probe(settings: AppSettingsModel());
       expect(snap.usbCamera.connected, isTrue);
@@ -304,9 +306,134 @@ void main() {
           ),
         ),
         probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async => false,
       );
       final snap = await service.probe(settings: AppSettingsModel());
       expect(snap.usbCamera.connected, isFalse);
+    });
+
+    test('DSLR sidecar not configured when camera disabled in settings', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async => true,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: false,
+          cameraSidecarHost: '172.16.4.128',
+          cameraSidecarPort: 8791,
+        ),
+      );
+      expect(snap.dslrSidecar.configured, isFalse);
+      expect(snap.dslrSidecar.connected, isFalse);
+      expect(snap.dslrSidecar.deviceName, AppStrings.kioskDeviceDslrSidecar);
+      expect(snap.dslrSidecar.transport, KioskDeviceTransport.lan);
+    });
+
+    test('DSLR sidecar connected when Pi health succeeds', () async {
+      CameraSidecarConfig? seen;
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (config) async {
+          seen = config;
+          return true;
+        },
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: true,
+          cameraSidecarHost: '172.16.4.128',
+          cameraSidecarPort: 8791,
+        ),
+      );
+      expect(snap.dslrSidecar.configured, isTrue);
+      expect(snap.dslrSidecar.connected, isTrue);
+      expect(snap.dslrSidecar.transport, KioskDeviceTransport.lan);
+      expect(seen?.baseUrl, 'http://172.16.4.128:8791');
+      expect(seen?.isConfigured, isTrue);
+    });
+
+    test('DSLR sidecar not connected when Pi health fails', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: true,
+          cameraSidecarHost: '172.16.4.128',
+          cameraSidecarPort: 8791,
+        ),
+      );
+      expect(snap.dslrSidecar.configured, isTrue);
+      expect(snap.dslrSidecar.connected, isFalse);
+    });
+
+    test('DSLR sidecar probe timeout reports not connected', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return true;
+        },
+        wifiDiscoverTimeout: const Duration(milliseconds: 10),
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: true,
+          cameraSidecarHost: '172.16.4.128',
+          cameraSidecarPort: 8791,
+        ),
+      );
+      expect(snap.dslrSidecar.configured, isTrue);
+      expect(snap.dslrSidecar.connected, isFalse);
+    });
+
+    test('default DSLR probe returns false when sidecar disabled', () async {
+      final ok =
+          await KioskDeviceStatusService.defaultDslrSidecarProbeForTesting(
+        const CameraSidecarConfig(
+          enabled: false,
+          baseUrl: 'http://172.16.4.128:8791',
+        ),
+      );
+      expect(ok, isFalse);
     });
 
     test('receipt probe timeout reports disconnected configured printer', () async {

@@ -112,4 +112,8 @@ void main() {
       isTrue,
     );
   });
+
+  test('previewInterrupted is never treated as shutter on capture cards', () {
+    expect(shouldTreatUvcPreviewInterruptAsShutter(), isFalse);
+  });
 }

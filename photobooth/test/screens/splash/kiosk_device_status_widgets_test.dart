@@ -58,4 +58,45 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('KioskDeviceStatusPanel shows DSLR LAN row', (tester) async {
+    const snapshot = KioskDeviceStatusSnapshot(
+      dnpPrinter: KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceDnpPrinter,
+        connected: true,
+        transport: KioskDeviceTransport.usb,
+      ),
+      receiptPrinter: KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceReceiptPrinter,
+        connected: false,
+        configured: false,
+        transport: KioskDeviceTransport.wifi,
+      ),
+      usbCamera: KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceUsbCamera,
+        connected: false,
+        transport: KioskDeviceTransport.usb,
+      ),
+      dslrSidecar: KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceDslrSidecar,
+        connected: true,
+        transport: KioskDeviceTransport.lan,
+      ),
+    );
+    await tester.pumpWidget(
+      CupertinoApp(
+        home: Builder(
+          builder: (context) {
+            return KioskDeviceStatusPanel(
+              appColors: AppColors.of(context),
+              loading: false,
+              snapshot: snapshot,
+            );
+          },
+        ),
+      ),
+    );
+    expect(find.textContaining(AppStrings.kioskDeviceDslrSidecar), findsOneWidget);
+    expect(find.textContaining(AppStrings.kioskDeviceTransportLan), findsOneWidget);
+  });
 }

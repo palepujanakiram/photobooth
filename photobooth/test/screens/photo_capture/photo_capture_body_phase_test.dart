@@ -135,6 +135,27 @@ void main() {
       expect(_starting(isReady: false), isTrue);
       expect(_starting(isReady: true), isFalse);
     });
+
+    test('sidecar live preview is not stuck in starting spinner', () {
+      expect(
+        isCapturePreviewStarting(
+          hasCapturedPhoto: false,
+          isDesktopCaptureMode: false,
+          isLoadingCameras: false,
+          isInitializing: false,
+          isCapturing: false,
+          isUsingUvc: false,
+          uvcHoldLivePreviewClosed: false,
+          uvcInitializing: false,
+          uvcOpeningController: false,
+          uvcControllerReady: false,
+          camerasEmpty: true,
+          isReady: false,
+          usesSidecarLivePreview: true,
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('resolveCaptureBodyPhase', () {
@@ -161,6 +182,20 @@ void main() {
           hasCapturedPhoto: false,
         ),
         CaptureBodyPhase.noCameras,
+      );
+    });
+
+    test('sidecar live preview stays live even with empty camera list', () {
+      expect(
+        resolveCaptureBodyPhase(
+          isPreviewStarting: false,
+          camerasEmpty: true,
+          hasError: false,
+          isUsingUvc: false,
+          hasCapturedPhoto: false,
+          usesSidecarLivePreview: true,
+        ),
+        CaptureBodyPhase.live,
       );
     });
 

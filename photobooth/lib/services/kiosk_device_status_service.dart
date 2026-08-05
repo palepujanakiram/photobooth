@@ -1,19 +1,21 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:uvccamera/uvccamera.dart';
 
 import '../models/app_settings_model.dart';
 import '../models/kiosk_device_status.dart';
 import '../utils/app_strings.dart';
+import '../utils/camera_sidecar_config.dart';
 import '../utils/printer_endpoint.dart';
+import '../utils/receipt_printer_config.dart';
 import '../utils/uvc_webcam_filter.dart';
 import 'dnp/dnp_print_transport.dart';
 import 'dnp/dnp_usb_client.dart';
 import 'dnp/dnp_wifi_client.dart';
+import 'local_camera_service.dart';
 import 'receipt/receipt_print_bridge.dart';
-import '../utils/receipt_printer_config.dart';
 
 /// Probes booth hardware for the kiosk settings status panel.
 class KioskDeviceStatusService {
@@ -22,6 +24,7 @@ class KioskDeviceStatusService {
     DnpWifiClient? wifiClient,
     ReceiptPrintBridge? receiptBridge,
     Future<bool> Function()? probeUvcDevices,
+    Future<bool> Function(CameraSidecarConfig config)? probeDslrSidecar,
     bool Function()? isAndroid,
     bool Function()? isWeb,
     Duration? wifiDiscoverTimeout,
@@ -29,6 +32,7 @@ class KioskDeviceStatusService {
         _wifi = wifiClient ?? DnpWifiClient(),
         _receipt = receiptBridge ?? ReceiptPrintBridge(),
         _probeUvcDevices = probeUvcDevices ?? _defaultUvcProbe,
+        _probeDslrSidecar = probeDslrSidecar ?? _defaultDslrSidecarProbe,
         _isAndroid = isAndroid ?? (() => !kIsWeb && Platform.isAndroid),
         _isWeb = isWeb ?? (() => kIsWeb),
         _wifiDiscoverTimeout =
@@ -38,6 +42,7 @@ class KioskDeviceStatusService {
   final DnpWifiClient _wifi;
   final ReceiptPrintBridge _receipt;
   final Future<bool> Function() _probeUvcDevices;
+  final Future<bool> Function(CameraSidecarConfig config) _probeDslrSidecar;
   final bool Function() _isAndroid;
   final bool Function() _isWeb;
   final Duration _wifiDiscoverTimeout;
@@ -48,11 +53,13 @@ class KioskDeviceStatusService {
       _probeDnpPrinter(transport, settings),
       _probeReceiptPrinter(settings),
       _probeUsbCamera(),
+      _probeDslrCamera(settings),
     ]);
     return KioskDeviceStatusSnapshot(
       dnpPrinter: results[0],
       receiptPrinter: results[1],
       usbCamera: results[2],
+      dslrSidecar: results[3],
     );
   }
 
@@ -195,6 +202,45 @@ class KioskDeviceStatusService {
     );
   }
 
+  Future<KioskDeviceStatusEntry> _probeDslrCamera(
+    AppSettingsModel? settings,
+  ) async {
+    final config = resolveCameraSidecarConfig(settings);
+    if (!config.isConfigured) {
+      return const KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceDslrSidecar,
+        connected: false,
+        configured: false,
+        transport: KioskDeviceTransport.lan,
+      );
+    }
+    try {
+      final connected = await _probeDslrSidecar(config).timeout(
+        _wifiDiscoverTimeout,
+      );
+      return KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceDslrSidecar,
+        connected: connected,
+        configured: true,
+        transport: KioskDeviceTransport.lan,
+      );
+    } on TimeoutException {
+      return const KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceDslrSidecar,
+        connected: false,
+        configured: true,
+        transport: KioskDeviceTransport.lan,
+      );
+    } catch (_) {
+      return const KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceDslrSidecar,
+        connected: false,
+        configured: true,
+        transport: KioskDeviceTransport.lan,
+      );
+    }
+  }
+
   static Future<bool> _defaultUvcProbe() async {
     try {
       if (!await UvcCamera.isSupported()) return false;
@@ -202,6 +248,21 @@ class KioskDeviceStatusService {
       return hasUvcWebcamDevices(devices);
     } catch (_) {
       return false;
+    }
+  }
+
+  @visibleForTesting
+  static Future<bool> defaultDslrSidecarProbeForTesting(
+    CameraSidecarConfig config,
+  ) =>
+      _defaultDslrSidecarProbe(config);
+
+  static Future<bool> _defaultDslrSidecarProbe(CameraSidecarConfig config) async {
+    final service = LocalCameraService(config: config);
+    try {
+      return await service.isHealthy();
+    } finally {
+      service.dispose();
     }
   }
 }

@@ -25,6 +25,13 @@ class LocalCameraService {
 
   bool get isConfigured => _config.isConfigured;
 
+  /// ZenAI `cameraLivePreviewEnabled` and sidecar host are both set.
+  bool get shouldShowLivePreview => _config.shouldShowLivePreview;
+
+  String get livePreviewUrl => _config.livePreviewUrl;
+
+  String get previewFrameUrl => _config.previewFrameUrl;
+
   Uri _uri(String path, [Map<String, String>? query]) {
     final base = Uri.parse(_config.baseUrl);
     return base.replace(
@@ -63,6 +70,22 @@ class LocalCameraService {
     }
   }
 
+  /// Single gphoto2 live-view JPEG for pose UI polling.
+  Future<Uint8List> fetchPreviewJpeg({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    if (!isConfigured) {
+      throw StateError('Camera sidecar is not configured');
+    }
+    final response = await _client
+        .post(
+          _uri('/camera/preview', const {'download': '1'}),
+          headers: _headers,
+        )
+        .timeout(timeout);
+    return _requireJpegBytes(response, action: 'preview');
+  }
+
   /// Triggers tethered capture and returns JPEG bytes.
   Future<Uint8List> capture() async {
     if (!isConfigured) {
@@ -74,26 +97,29 @@ class LocalCameraService {
           headers: _headers,
         )
         .timeout(_captureTimeout);
+    return _requireJpegBytes(response, action: 'capture');
+  }
 
+  Uint8List _requireJpegBytes(http.Response response, {required String action}) {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final preview = response.body.length > 240
           ? response.body.substring(0, 240)
           : response.body;
       throw StateError(
-        'Camera sidecar capture failed (${response.statusCode}): $preview',
+        'Camera sidecar $action failed (${response.statusCode}): $preview',
       );
     }
 
     final bytes = response.bodyBytes;
     if (bytes.isEmpty) {
-      throw StateError('Camera sidecar returned empty capture');
+      throw StateError('Camera sidecar returned empty $action');
     }
     // Error JSON sometimes returned with wrong content-type.
     if (bytes.length < 512 &&
         bytes.length >= 2 &&
         bytes[0] == 0x7b /* { */) {
       final asText = utf8.decode(bytes, allowMalformed: true);
-      throw StateError('Camera sidecar capture error: $asText');
+      throw StateError('Camera sidecar $action error: $asText');
     }
     return Uint8List.fromList(bytes);
   }

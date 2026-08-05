@@ -25,6 +25,10 @@ void main() {
     expect(AppStrings.staffNoKioskForRegister, isNotEmpty);
     expect(AppStrings.themeSelectionContinue, isNotEmpty);
     expect(AppStrings.themeSelectionContinuing, isNotEmpty);
+    expect(AppStrings.sidecarLivePreviewConnecting, isNotEmpty);
+    expect(AppStrings.sidecarLivePreviewUnavailable, isNotEmpty);
+    expect(AppStrings.kioskDeviceDslrSidecar, isNotEmpty);
+    expect(AppStrings.kioskDeviceTransportLan, isNotEmpty);
   });
 
   test('interpolated string methods return expected values', () {

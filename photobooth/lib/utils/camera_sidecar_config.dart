@@ -30,6 +30,34 @@ class CameraSidecarConfig {
   /// Live MJPEG preview is requested and sidecar is configured.
   bool get shouldShowLivePreview => isConfigured && livePreviewEnabled;
 
+  /// `GET /camera/live` multipart MJPEG URL (Pi gphoto2 live view).
+  String get livePreviewUrl {
+    if (!isConfigured) return '';
+    final base = Uri.parse(baseUrl.trim());
+    final path = _joinPath(base.path, '/camera/live');
+    return base.replace(path: path).toString();
+  }
+
+  /// `POST /camera/preview?download=1` single-frame URL used by the pose poller.
+  String get previewFrameUrl {
+    if (!isConfigured) return '';
+    final base = Uri.parse(baseUrl.trim());
+    final path = _joinPath(base.path, '/camera/preview');
+    return base.replace(
+      path: path,
+      queryParameters: const {'download': '1'},
+    ).toString();
+  }
+
+  static String _joinPath(String basePath, String path) {
+    final left = basePath.endsWith('/')
+        ? basePath.substring(0, basePath.length - 1)
+        : basePath;
+    final right = path.startsWith('/') ? path : '/$path';
+    if (left.isEmpty || left == '/') return right;
+    return '$left$right';
+  }
+
   static CameraSidecarConfig fromEnvironment() {
     return CameraSidecarConfig(
       enabled: _envFlag(cameraSidecarEnabledDefine),

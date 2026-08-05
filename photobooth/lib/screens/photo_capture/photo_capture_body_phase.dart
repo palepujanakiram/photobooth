@@ -15,11 +15,13 @@ bool isCapturePreviewStarting({
   required bool camerasEmpty,
   required bool isReady,
   bool cameraSetupStalled = false,
+  bool usesSidecarLivePreview = false,
 }) {
   if (hasCapturedPhoto) return false;
   if (isCapturing) return false;
   if (uvcHoldLivePreviewClosed) return false;
   if (cameraSetupStalled) return false;
+  if (usesSidecarLivePreview) return false;
   if (isDesktopCaptureMode) return isLoadingCameras;
   if (isLoadingCameras || isInitializing) return true;
   if (isUsingUvc) {
@@ -46,6 +48,7 @@ CaptureBodyPhase resolveCaptureBodyPhase({
   required bool isUsingUvc,
   required bool hasCapturedPhoto,
   bool isSelectingFromGallery = false,
+  bool usesSidecarLivePreview = false,
 }) {
   if (isPreviewStarting) return CaptureBodyPhase.starting;
   // Gallery / phone upload review must not fall back to the empty-camera screen.
@@ -53,8 +56,12 @@ CaptureBodyPhase resolveCaptureBodyPhase({
     return CaptureBodyPhase.live;
   }
   // Prefer upload / retry UI over fatal error when no camera was enumerated.
-  if (camerasEmpty && !isUsingUvc) return CaptureBodyPhase.noCameras;
-  if (hasError && !isUsingUvc) return CaptureBodyPhase.error;
+  if (camerasEmpty && !isUsingUvc && !usesSidecarLivePreview) {
+    return CaptureBodyPhase.noCameras;
+  }
+  if (hasError && !isUsingUvc && !usesSidecarLivePreview) {
+    return CaptureBodyPhase.error;
+  }
   return CaptureBodyPhase.live;
 }
 

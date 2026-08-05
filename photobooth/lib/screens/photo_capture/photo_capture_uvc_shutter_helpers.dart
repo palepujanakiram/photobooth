@@ -94,3 +94,12 @@ bool shouldIgnoreUvcPreviewInterrupt({
   final lower = reason?.toLowerCase() ?? '';
   return lower.contains('surface');
 }
+
+/// Whether a UVC `previewInterrupted` event may start a still capture.
+///
+/// Always false: USB HDMI capture cards emit frequent pause/glitch interrupts that
+/// are not shutter presses. Real body shutters use [uvc_button] / UI Capture.
+/// Treating interrupts as shutter caused Classic 1-shot and FotoZen multi-capture
+/// loops on Android TV kiosks.
+bool shouldTreatUvcPreviewInterruptAsShutter() => false;
+

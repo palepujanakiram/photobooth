@@ -385,6 +385,37 @@ class CaptureViewModel extends ChangeNotifier {
   /// Exposed for UVC shutter to prefer Pi sidecar stills when healthy.
   LocalCameraService? get localCameraService => _localCameraService;
 
+  /// ZenAI enabled Pi `/camera/live` (or polled preview) for pose UI.
+  bool get usesSidecarLivePreview =>
+      _localCameraService?.shouldShowLivePreview == true;
+
+  bool _sidecarPreviewReady = false;
+
+  /// First live frame arrived (or health probe succeeded).
+  bool get sidecarPreviewReady => _sidecarPreviewReady;
+
+  void markSidecarPreviewReady() {
+    if (_sidecarPreviewReady) return;
+    _sidecarPreviewReady = true;
+    _isLoadingCameras = false;
+    _isInitializing = false;
+    notifyListeners();
+  }
+
+  /// Skip CameraX/UVC open; arm capture once the Pi reports connected.
+  Future<void> prepareSidecarLivePreview() async {
+    _isLoadingCameras = false;
+    _isInitializing = false;
+    _sidecarPreviewReady = false;
+    notifyListeners();
+    final service = _localCameraService;
+    if (service == null || !service.shouldShowLivePreview) return;
+    final healthy = await service.isHealthy();
+    if (healthy) {
+      markSidecarPreviewReady();
+    }
+  }
+
   CameraController? get cameraController => _cameraController;
   PhotoModel? get capturedPhoto => _capturedPhoto;
   Size? get capturedImagePixelSize => _capturedImagePixelSize;
@@ -779,6 +810,7 @@ class CaptureViewModel extends ChangeNotifier {
   bool get isDesktopCaptureMode => usesDesktopPhotoPicker;
 
   bool get isReady {
+    if (usesSidecarLivePreview) return _sidecarPreviewReady;
     if (isDesktopCaptureMode) return !_isLoadingCameras;
     return _cameraController != null &&
         _cameraController!.value.isInitialized;
@@ -1851,6 +1883,10 @@ class CaptureViewModel extends ChangeNotifier {
   }
 
   Future<bool> _guardCaptureReady() async {
+    if (usesSidecarLivePreview &&
+        _localCameraService?.isConfigured == true) {
+      return true;
+    }
     if (isReady) return true;
     var debugInfo = 'Camera not ready.\n\nDebug Info:\n';
     debugInfo += '- Controller Exists: ${_cameraController != null}\n';

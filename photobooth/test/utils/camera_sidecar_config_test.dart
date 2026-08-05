@@ -16,6 +16,34 @@ void main() {
     });
   });
 
+  group('CameraSidecarConfig live preview URLs', () {
+    test('live preview URLs empty when not configured', () {
+      const cfg = CameraSidecarConfig(enabled: false, baseUrl: '');
+      expect(cfg.livePreviewUrl, isEmpty);
+      expect(cfg.previewFrameUrl, isEmpty);
+    });
+
+    test('live preview URLs join path prefixes', () {
+      const withSlash = CameraSidecarConfig(
+        enabled: true,
+        baseUrl: 'http://10.0.0.1:8791/booth/',
+        livePreviewEnabled: true,
+      );
+      expect(withSlash.livePreviewUrl, 'http://10.0.0.1:8791/booth/camera/live');
+      expect(
+        withSlash.previewFrameUrl,
+        'http://10.0.0.1:8791/booth/camera/preview?download=1',
+      );
+
+      const withPrefix = CameraSidecarConfig(
+        enabled: true,
+        baseUrl: 'http://10.0.0.1:8791/booth',
+        livePreviewEnabled: true,
+      );
+      expect(withPrefix.livePreviewUrl, 'http://10.0.0.1:8791/booth/camera/live');
+    });
+  });
+
   group('resolveCameraSidecarPath', () {
     test('empty or slash becomes root', () {
       expect(resolveCameraSidecarPath(null), '/');
@@ -86,6 +114,11 @@ void main() {
       expect(resolved.isConfigured, isTrue);
       expect(resolved.livePreviewEnabled, isTrue);
       expect(resolved.shouldShowLivePreview, isTrue);
+      expect(resolved.livePreviewUrl, 'http://172.16.4.20:8791/camera/live');
+      expect(
+        resolved.previewFrameUrl,
+        'http://172.16.4.20:8791/camera/preview?download=1',
+      );
     });
 
     test('live preview off by default when settings omit the flag', () {
