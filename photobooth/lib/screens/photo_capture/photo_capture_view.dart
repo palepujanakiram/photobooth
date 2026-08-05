@@ -19,6 +19,7 @@ import 'photo_capture_uvc_reconnect_helpers.dart';
 import 'photo_capture_uvc_raster_capture.dart';
 import 'photo_capture_uvc_take_picture_helpers.dart';
 import 'photo_capture_uvc_shutter_helpers.dart';
+import 'photo_capture_sidecar_helpers.dart';
 import 'photo_capture_desktop_body.dart';
 import 'photo_capture_body_phase.dart';
 import 'photo_capture_view_aspect.dart';
@@ -3114,6 +3115,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         'uvc:${device.vendorId}:${device.productId}:${device.name}';
     XFile? capturedFile;
     var captureFailed = false;
+    var fromSidecar = false;
 
     await _withUvcLock(() async {
       final ctrl = _uvcController;
@@ -3178,7 +3180,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           await Future<void>.delayed(UvcCaptureConfig.preCaptureSettleDelay);
         }
         await Future<void>.delayed(Duration.zero);
-        capturedFile = await _obtainUvcStillFile(ctrl, source: source);
+        final sidecar =
+            await tryCaptureFromSidecar(_captureViewModel.localCameraService);
+        if (sidecar != null) {
+          fromSidecar = true;
+          capturedFile = sidecar;
+          AppLogger.info('UVC pose shutter used Pi sidecar still');
+        } else {
+          capturedFile = await _obtainUvcStillFile(ctrl, source: source);
+        }
         if (mounted) setState(() => _showCaptureFlash = false);
 
         if (!UvcCaptureConfig.keepControllerOpenDuringReview) {
@@ -3225,7 +3235,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     try {
       await viewModel.setCapturedPhotoFromExternalFile(
         rawFile: capturedFile!,
-        cameraId: cameraId,
+        cameraId: fromSidecar ? 'sidecar:FZ200D' : cameraId,
         force: true,
       );
       if (!mounted) return;

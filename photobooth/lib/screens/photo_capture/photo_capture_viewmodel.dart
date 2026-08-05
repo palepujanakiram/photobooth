@@ -1093,6 +1093,7 @@ class CaptureViewModel extends ChangeNotifier {
   }) async {
     if (!force && (_isCapturing || _isUploading)) return;
     final isUvc = cameraId.startsWith('uvc:');
+    final isSidecar = isSidecarCameraId(cameraId);
     _isCapturing = true;
     _errorMessage = null;
     notifyListeners();
@@ -1101,15 +1102,20 @@ class CaptureViewModel extends ChangeNotifier {
     await Future<void>.delayed(Duration.zero);
 
     try {
-      final savedFile = await _persistExternalCaptureStill(
-        rawFile: rawFile,
-        isUvc: isUvc,
-        cameraId: cameraId,
-      );
+      final XFile savedFile;
+      if (isSidecar) {
+        savedFile = await persistSidecarCaptureStill(rawFile);
+      } else {
+        savedFile = await _persistExternalCaptureStill(
+          rawFile: rawFile,
+          isUvc: isUvc,
+          cameraId: cameraId,
+        );
+      }
       await _assignCapturedPhotoModel(
         savedFile,
         cameraIdOverride: cameraId,
-        skipCapturedImagePixelSizeDecode: isUvc,
+        skipCapturedImagePixelSizeDecode: isUvc || isSidecar,
         uploadPrepDelay: isUvc
             ? UvcCaptureConfig.uploadPrepDelay
             : const Duration(milliseconds: 48),
@@ -2054,17 +2060,23 @@ class CaptureViewModel extends ChangeNotifier {
     final isFrontCamera =
         _currentCamera?.lensDirection == CameraLensDirection.front;
     WebFlowTrace.log('CAPTURE', 'normalize_start');
-    final savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
-      imageFile,
-      flipHorizontal: isFrontCamera,
-      maxDimension: _normalizeMaxDimensionForCapture(isUvc: false),
-      jpegQuality: _normalizeJpegQualityForCapture(isUvc: false),
-    ).timeout(
-      _captureNormalizeTimeout,
-      onTimeout: () => throw TimeoutException(
-        'Capture normalize timed out after ${_captureNormalizeTimeout.inSeconds}s',
-      ),
-    );
+    final XFile savedFile;
+    if (_lastRawCaptureFromSidecar) {
+      // DSLR JPEGs are multi‑MP; dedicated path avoids 20s normalize timeout.
+      savedFile = await persistSidecarCaptureStill(imageFile);
+    } else {
+      savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
+        imageFile,
+        flipHorizontal: isFrontCamera,
+        maxDimension: _normalizeMaxDimensionForCapture(isUvc: false),
+        jpegQuality: _normalizeJpegQualityForCapture(isUvc: false),
+      ).timeout(
+        _captureNormalizeTimeout,
+        onTimeout: () => throw TimeoutException(
+          'Capture normalize timed out after ${_captureNormalizeTimeout.inSeconds}s',
+        ),
+      );
+    }
     WebFlowTrace.log('CAPTURE', 'normalize_done');
     var reviewFile = savedFile;
     if (preferStripPrintQuality &&
@@ -2076,7 +2088,7 @@ class CaptureViewModel extends ChangeNotifier {
       reviewFile,
       cameraIdOverride: sidecarStill ? 'sidecar:FZ200D' : null,
       skipCapturedImagePixelSizeDecode:
-          kioskShouldTryUvcBeforeCameraX(_deviceType),
+          kioskShouldTryUvcBeforeCameraX(_deviceType) || sidecarStill,
       skipUploadPrep: shouldDeferUploadPrepUntilContinue(
         deviceType: _deviceType,
         cameraId: sidecarStill ? 'sidecar:FZ200D' : _currentCamera?.name,
