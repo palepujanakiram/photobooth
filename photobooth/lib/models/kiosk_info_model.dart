@@ -46,9 +46,10 @@ class KioskInfoModel {
       return null;
     }
 
-    final rawClassic = json['classicPhotosEnabled'];
+    final rawClassic =
+        json['classicPhotosEnabled'] ?? json['classic_photos_enabled'];
     // Missing/null → enabled (legacy kiosks / older API builds).
-    final classicEnabled = rawClassic != false;
+    final classicEnabled = _parseClassicPhotosEnabled(rawClassic);
 
     return KioskInfoModel(
       id: (json['id'] ?? '').toString(),
@@ -62,6 +63,21 @@ class KioskInfoModel {
       additionalPrintPrice: parsePrice(json['additionalPrintPrice']),
       regenerationPrice: parsePrice(json['regenerationPrice']),
     );
+  }
+
+  /// Accepts bool, 0/1, and common string flags from admin/API payloads.
+  static bool _parseClassicPhotosEnabled(dynamic raw) {
+    if (raw == null) return true;
+    if (raw is bool) return raw;
+    if (raw is num) return raw != 0;
+    if (raw is String) {
+      final v = raw.trim().toLowerCase();
+      if (v.isEmpty) return true;
+      if (v == 'false' || v == '0' || v == 'no' || v == 'off') return false;
+      if (v == 'true' || v == '1' || v == 'yes' || v == 'on') return true;
+    }
+    // Unknown shape — prefer enabling Classic over silently hiding it.
+    return raw != false;
   }
 
   bool get isValid => id.trim().isNotEmpty && code.trim().isNotEmpty;

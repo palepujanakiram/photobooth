@@ -247,6 +247,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     setState(() => _busy = true);
     await _kiosk.clearKioskCode();
     await _kiosk.clearPaymentEnabledOverride();
+    await _kiosk.clearClassicPhotosEnabled();
     await endPhotoboothCustomerSessionLogged('splash: kiosk disconnect');
     if (!mounted) return;
     setState(() {

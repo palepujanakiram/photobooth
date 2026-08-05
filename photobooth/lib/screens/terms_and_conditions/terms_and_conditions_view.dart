@@ -21,7 +21,9 @@ import '../photo_capture/photo_capture_viewmodel.dart';
 import '../splash/bootstrap_route_args.dart';
 import '../webview/webview_screen.dart';
 import '../../services/app_settings_manager.dart';
+import '../../services/api_service.dart';
 import '../../services/kiosk_manager.dart';
+import '../../utils/classic_photos_enabled_sync.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/app_colors.dart';
@@ -127,7 +129,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     if (success && mounted) {
       // Keep camera prewarm alive for the AI capture path.
       _navigatingToCapture = true;
-      final classicEnabled = await KioskManager().isClassicPhotosEnabled();
+      // Re-fetch kiosk flag — splash-only cache stays stale on long-running TVs
+      // after Classic is enabled in admin.
+      final classicEnabled = await syncClassicPhotosEnabled(
+        api: ApiService(),
+        kiosk: KioskManager(),
+      );
       if (!mounted) return;
       if (classicEnabled) {
         await pushReplacementKioskFade<void, void>(

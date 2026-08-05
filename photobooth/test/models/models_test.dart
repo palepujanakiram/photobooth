@@ -109,6 +109,22 @@ void main() {
       }).classicPhotosEnabled,
       isTrue,
     );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'classic_photos_enabled': true,
+      }).classicPhotosEnabled,
+      isTrue,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'classicPhotosEnabled': 'false',
+      }).classicPhotosEnabled,
+      isFalse,
+    );
   });
 
   test('KioskFrameModel.fromJson', () {
