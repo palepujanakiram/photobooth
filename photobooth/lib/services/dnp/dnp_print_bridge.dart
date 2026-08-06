@@ -61,24 +61,71 @@ class DnpPrintBridge {
     final size = DnpPrintSize.fromNetworkPrintSize(networkPrintSize);
     final localPath = await _resolveLocalPath(imageFile);
 
-    if (_shouldTryUsbFirst(transport)) {
-      final usbPresent = await _usbDevicePresent();
-      if (!usbPresent) {
-        AppLogger.debug(
-          'DNP USB not detected; discovering printer on Wi-Fi',
-        );
-      } else if (await _tryUsbPrintWithWifiFallback(
-        transport,
+    if (transport == DnpPrintTransport.usb) {
+      if (!_isAndroid()) {
+        throw PrintException('DNP USB print is only supported on Android');
+      }
+      await _printUsb(localPath, size, networkPrintSize, copies);
+      return;
+    }
+
+    if (transport == DnpPrintTransport.wifi) {
+      await _printWifi(
         localPath,
-        size,
-        networkPrintSize,
+        size.wifiPrintSize,
         copies,
+        settings: settings,
+      );
+      return;
+    }
+
+    await _printAuto(
+      localPath: localPath,
+      size: size,
+      networkPrintSize: networkPrintSize,
+      copies: copies,
+      settings: settings,
+    );
+  }
+
+  /// Auto hunt: kiosk printer IP (if set) → USB → Wi‑Fi discovery.
+  Future<void> _printAuto({
+    required String localPath,
+    required DnpPrintSize size,
+    required String networkPrintSize,
+    required int copies,
+    required AppSettingsModel? settings,
+  }) async {
+    if (hasConfiguredPrinterHost(settings)) {
+      if (await _tryWifiPrint(
+        localPath,
+        size.wifiPrintSize,
+        copies,
+        settings: settings,
+        allowConfiguredHost: true,
       )) {
         return;
       }
-    } else if (_shouldUseUsbOnly(transport)) {
-      await _printUsb(localPath, size, networkPrintSize, copies);
-      return;
+      AppLogger.warning(
+        'DNP kiosk printer IP failed; trying USB / Wi-Fi discovery',
+      );
+      _wifi.clear();
+    }
+
+    if (_isAndroid()) {
+      final usbPresent = await _usbDevicePresent();
+      if (usbPresent &&
+          await _tryUsbPrintWithFallback(
+            localPath,
+            size,
+            networkPrintSize,
+            copies,
+          )) {
+        return;
+      }
+      if (!usbPresent) {
+        AppLogger.debug('DNP USB not detected; trying Wi-Fi discovery');
+      }
     }
 
     await _printWifi(
@@ -86,15 +133,9 @@ class DnpPrintBridge {
       size.wifiPrintSize,
       copies,
       settings: settings,
+      allowConfiguredHost: false,
     );
   }
-
-  /// True when [DnpPrintTransport.auto] should probe USB before Wi-Fi.
-  bool _shouldTryUsbFirst(DnpPrintTransport transport) =>
-      _isAndroid() && transport == DnpPrintTransport.auto;
-
-  bool _shouldUseUsbOnly(DnpPrintTransport transport) =>
-      _isAndroid() && transport == DnpPrintTransport.usb;
 
   Future<bool> _usbDevicePresent() async {
     if (!_isAndroid()) return false;
@@ -105,8 +146,7 @@ class DnpPrintBridge {
     }
   }
 
-  bool _shouldFallbackToWifi(DnpPrintTransport transport, PlatformException e) {
-    if (transport == DnpPrintTransport.usb) return false;
+  bool _isRecoverableUsbError(PlatformException e) {
     const recoverable = {
       'NO_PRINTER',
       'CONNECT_FAILED',
@@ -116,9 +156,9 @@ class DnpPrintBridge {
     return recoverable.contains(e.code);
   }
 
-  /// USB print for [DnpPrintTransport.auto]; returns true when the job finished.
-  Future<bool> _tryUsbPrintWithWifiFallback(
-    DnpPrintTransport transport,
+  /// Returns true when USB print finished; false when recoverable and caller
+  /// should continue the hunt.
+  Future<bool> _tryUsbPrintWithFallback(
     String localPath,
     DnpPrintSize size,
     String networkPrintSize,
@@ -128,9 +168,9 @@ class DnpPrintBridge {
       await _printUsb(localPath, size, networkPrintSize, copies);
       return true;
     } on PlatformException catch (e) {
-      if (!_shouldFallbackToWifi(transport, e)) rethrow;
+      if (!_isRecoverableUsbError(e)) rethrow;
       AppLogger.warning(
-        'DNP USB print unavailable (${e.code}); trying Wi-Fi discovery',
+        'DNP USB print unavailable (${e.code}); continuing hunt',
       );
       _usbReady = false;
       return false;
@@ -155,13 +195,41 @@ class DnpPrintBridge {
     );
   }
 
+  /// Returns true when Wi‑Fi print finished; false on failure so hunt can continue.
+  Future<bool> _tryWifiPrint(
+    String filePath,
+    String printSize,
+    int copies, {
+    AppSettingsModel? settings,
+    bool allowConfiguredHost = true,
+  }) async {
+    try {
+      await _printWifi(
+        filePath,
+        printSize,
+        copies,
+        settings: settings,
+        allowConfiguredHost: allowConfiguredHost,
+      );
+      return true;
+    } catch (e) {
+      AppLogger.warning('DNP Wi-Fi print attempt failed: $e');
+      _wifi.clear();
+      return false;
+    }
+  }
+
   Future<void> _printWifi(
     String filePath,
     String printSize,
     int copies, {
     AppSettingsModel? settings,
+    bool allowConfiguredHost = true,
   }) async {
-    await _ensureWifiPrinterReady(settings);
+    await _ensureWifiPrinterReady(
+      settings,
+      allowConfiguredHost: allowConfiguredHost,
+    );
     await _wifi.print(
       jpegFile: File(filePath),
       printSize: printSize,
@@ -169,17 +237,22 @@ class DnpPrintBridge {
     );
   }
 
-  /// Prefer kiosk [AppSettingsModel.printerHost]; subnet discovery only when unset.
-  Future<void> _ensureWifiPrinterReady(AppSettingsModel? settings) async {
+  /// Prefer kiosk [AppSettingsModel.printerHost] when allowed; else discover.
+  Future<void> _ensureWifiPrinterReady(
+    AppSettingsModel? settings, {
+    bool allowConfiguredHost = true,
+  }) async {
     if (_wifi.printerBaseUrl != null) return;
 
-    final configured = resolvePrinterEndpoint(settings);
-    if (configured.host.isNotEmpty) {
-      _wifi.configureBaseUrl(configured.baseUrl);
-      AppLogger.debug(
-        '🖨️ Using kiosk printer IP ${configured.baseUrl}${configured.path}',
-      );
-      return;
+    if (allowConfiguredHost) {
+      final configured = resolvePrinterEndpoint(settings);
+      if (configured.host.isNotEmpty) {
+        _wifi.configureBaseUrl(configured.baseUrl);
+        AppLogger.debug(
+          '🖨️ Using kiosk printer IP ${configured.baseUrl}${configured.path}',
+        );
+        return;
+      }
     }
 
     String? discoveredUrl;

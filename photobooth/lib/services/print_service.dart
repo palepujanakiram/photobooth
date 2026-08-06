@@ -19,10 +19,9 @@ class PrintService {
 
   void resetDnpPrintSession() => _dnpPrintBridge.resetSession();
 
-  /// Prints one DNP photo (DS-RX1). When kiosk `printerHost` is set, prints
-  /// straight to that LAN IP (no USB auto, no subnet discovery). Otherwise:
-  /// USB when connected, else WCM Wi-Fi discovery. Shared by guest checkout
-  /// and staff reprints — see [resolveDnpPrintTransport].
+  /// Prints one DNP photo (DS-RX1) using kiosk [AppSettingsModel.printerTransport]
+  /// hunt order (`auto`: IP → USB → discovery). Shared by guest checkout and
+  /// staff reprints — see [resolveDnpPrintTransport].
   Future<void> printDnpPhoto(
     XFile imageFile, {
     AppSettingsModel? settings,
@@ -36,7 +35,7 @@ class PrintService {
         quantity: quantity,
       );
 
-  /// Silent print via kiosk printer IP, DNP USB, or WCM Wi-Fi discovery.
+  /// Silent print via DNP USB / Wi‑Fi per kiosk connection mode.
   Future<void> printImageSilent(
     XFile imageFile, {
     AppSettingsModel? settings,

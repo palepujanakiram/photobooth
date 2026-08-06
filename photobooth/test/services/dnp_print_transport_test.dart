@@ -107,12 +107,12 @@ void main() {
       );
     });
 
-    test('kiosk printerHost forces wifi over auto/usb settings', () {
+    test('admin printerTransport wins over printerHost alone', () {
       expect(
         resolveDnpPrintTransport(
           AppSettingsModel(printerHost: '192.168.0.155'),
         ),
-        DnpPrintTransport.wifi,
+        DnpPrintTransport.auto,
       );
       expect(
         resolveDnpPrintTransport(
@@ -121,13 +121,22 @@ void main() {
             printerTransport: 'auto',
           ),
         ),
-        DnpPrintTransport.wifi,
+        DnpPrintTransport.auto,
       );
       expect(
         resolveDnpPrintTransport(
           AppSettingsModel(
             printerHost: '192.168.0.155',
             printerTransport: 'usb',
+          ),
+        ),
+        DnpPrintTransport.usb,
+      );
+      expect(
+        resolveDnpPrintTransport(
+          AppSettingsModel(
+            printerHost: '192.168.0.155',
+            printerTransport: 'wifi',
           ),
         ),
         DnpPrintTransport.wifi,
@@ -141,7 +150,7 @@ void main() {
       );
       expect(
         resolveDnpPrintTransport(
-          AppSettingsModel(printerHost: '192.168.0.155'),
+          AppSettingsModel(printerTransport: 'wifi'),
           transportOverride: 'usb',
         ),
         DnpPrintTransport.usb,
@@ -977,7 +986,8 @@ void main() {
       expect(wifi.printerBaseUrl, 'http://192.168.3.20');
     });
 
-    test('uses kiosk printerHost without discovery when host is set', () async {
+    test('auto prefers kiosk printerHost over USB when host is set', () async {
+      final usb = _RecordingUsbClient(const MethodChannel('test/usb_auto_ip'));
       var printedHost = '';
       var discoverCalled = false;
       var prepareCalled = false;
@@ -995,6 +1005,7 @@ void main() {
         },
       );
       final bridge = DnpPrintBridge(
+        usbClient: usb,
         wifiClient: wifi,
         isAndroid: () => true,
         prepareWifiNetwork: () async {
@@ -1021,13 +1032,14 @@ void main() {
         networkPrintSize: 's4x6',
       );
 
+      expect(usb.printCalls, 0);
       expect(printedHost, '192.168.0.155');
       expect(discoverCalled, isFalse);
       expect(prepareCalled, isFalse);
       expect(wifi.printerBaseUrl, 'http://192.168.0.155');
     });
 
-    test('skips USB auto when kiosk printerHost is configured', () async {
+    test('wifi mode skips USB even when USB device is present', () async {
       final usb = _RecordingUsbClient(const MethodChannel('test/usb_host_ip'));
       var printedHost = '';
       final wifi = DnpWifiClient(
@@ -1055,13 +1067,54 @@ void main() {
 
       await bridge.printImage(
         imageFile: XFile(jpeg.path),
-        settings: AppSettingsModel(printerHost: '192.168.0.155'),
+        settings: AppSettingsModel(
+          printerTransport: 'wifi',
+          printerHost: '192.168.0.155',
+        ),
         networkPrintSize: 's4x6',
       );
 
       expect(usb.printCalls, 0);
       expect(usb.connectCalls, 0);
       expect(printedHost, '192.168.0.155');
+    });
+
+    test('auto falls back to USB when kiosk printerHost print fails', () async {
+      final usb = _RecordingUsbClient(const MethodChannel('test/usb_auto_fallback'));
+      var wifiAttempts = 0;
+      final wifi = DnpWifiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/PrintImage') {
+            wifiAttempts++;
+            return http.Response('down', 500);
+          }
+          return http.Response('', 404);
+        }),
+      );
+      final bridge = DnpPrintBridge(
+        usbClient: usb,
+        wifiClient: wifi,
+        isAndroid: () => true,
+      );
+      final jpeg = File(
+        '${Directory.systemTemp.path}/dnp_auto_ip_fail_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await jpeg.writeAsBytes([0xFF]);
+      addTearDown(() async {
+        if (await jpeg.exists()) await jpeg.delete();
+      });
+
+      await bridge.printImage(
+        imageFile: XFile(jpeg.path),
+        settings: AppSettingsModel(
+          printerTransport: 'auto',
+          printerHost: '192.168.0.155',
+        ),
+        networkPrintSize: 's4x6',
+      );
+
+      expect(wifiAttempts, 1);
+      expect(usb.printCalls, 1);
     });
 
     test('discovers WCM Plus on first wifi print when base URL unset', () async {
