@@ -142,3 +142,19 @@ Widget buildRotatedCoverPreview({
     ),
   );
 }
+
+/// Quarter-turns to bake into a still so pixels match the upright live feed.
+///
+/// [liveFeedQuarterTurns] is what [RotatedBox] applies to HDMI/UVC (or manual
+/// preview rotate). [hdmiSidecarExtraQuarterTurns] is optional (usually 0) when
+/// pose is HDMI/UVC but the still comes from Pi gphoto.
+int liveFeedSyncedCaptureQuarterTurns({
+  required int liveFeedQuarterTurns,
+  required int hdmiSidecarExtraQuarterTurns,
+  required bool applyHdmiSidecarExtra,
+}) {
+  final live = ((liveFeedQuarterTurns % 4) + 4) % 4;
+  if (!applyHdmiSidecarExtra) return live;
+  final extra = ((hdmiSidecarExtraQuarterTurns % 4) + 4) % 4;
+  return (live + extra) % 4;
+}

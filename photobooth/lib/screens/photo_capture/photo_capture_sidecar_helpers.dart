@@ -64,13 +64,13 @@ Future<XFile?> tryCaptureFromSidecar(LocalCameraService? service) async {
   }
 }
 
-/// Persist a DSLR sidecar JPEG for review with EXIF (+ optional preview turns).
+/// Persist a DSLR sidecar JPEG for review with EXIF (+ live-feed sync turns).
 ///
 /// Full-resolution Canon stills (often 20MP+) hang [compute] normalize on
 /// Android TV past both the 20s normalize and 45s overall capture budgets —
 /// [Future.timeout] cannot cancel an in-flight isolate decode. Sidecar already
-/// downscales (~1920 long edge), so a light EXIF bake + matching the HDMI
-/// [RotatedBox] quarter-turns is safe and keeps strip/print upright.
+/// downscales (~1920 long edge), so a light EXIF bake + matching the live feed
+/// ([liveFeedSyncedCaptureQuarterTurns]) is safe and keeps strip/print upright.
 Future<XFile> persistSidecarCaptureStill(
   XFile rawFile, {
   int bakeQuarterTurns = 0,

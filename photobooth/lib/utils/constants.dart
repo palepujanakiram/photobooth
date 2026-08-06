@@ -232,6 +232,15 @@ class AppConstants {
   /// Default preview rotation when no value is saved. One of 0, 90, 180, 270.
   static const int kCameraPreviewRotationDefault = 0;
 
+  /// Extra clockwise quarter-turns baked into Pi sidecar stills when pose uses
+  /// HDMI/UVC (not Pi MJPEG). Default 0 — keep capture orientation as delivered;
+  /// raise only if a booth’s USB stills disagree with an upright HDMI feed.
+  static const String kSidecarHdmiStillExtraQuarterTurnsKey =
+      'sidecar_hdmi_still_extra_quarter_turns';
+
+  /// No extra bake by default (still matches sidecar/gphoto pixels as captured).
+  static const int kSidecarHdmiStillExtraQuarterTurnsDefault = 0;
+
   // Camera capture countdown (in seconds) — AI / single-shot POSE.
   static const int kCaptureCountdownSeconds = 5;
 

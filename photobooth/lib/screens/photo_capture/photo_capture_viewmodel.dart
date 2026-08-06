@@ -358,6 +358,10 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Camera preview rotation in degrees (0, 90, 180, 270). Persisted in SharedPreferences.
   int _previewRotationDegrees = AppConstants.kCameraPreviewRotationDefault;
+  /// Extra CW quarter-turns for Pi stills vs upright HDMI (see constants).
+  int _sidecarHdmiStillExtraQuarterTurns =
+      AppConstants.kSidecarHdmiStillExtraQuarterTurnsDefault;
+
   bool _isPreviewRotationConfiguredByUser = false;
 
   /// Display rotation from Android WindowManager (0–3: ROTATION_0, 90, 180, 270). Used for preview correction and capture lock.
@@ -606,6 +610,23 @@ class CaptureViewModel extends ChangeNotifier {
   int get uvcPreviewEffectiveQuarterTurns =>
       (uvcPreviewAutoQuarterTurns + (_previewRotationDegrees ~/ 90) % 4) % 4;
 
+  /// Extra CW quarter-turns for HDMI+sidecar still sync (booth-tunable).
+  int get sidecarHdmiStillExtraQuarterTurns =>
+      _sidecarHdmiStillExtraQuarterTurns;
+
+  /// Bake turns so the saved still matches the upright live feed on screen.
+  ///
+  /// Includes [uvcPreviewEffectiveQuarterTurns]. Optional
+  /// [sidecarHdmiStillExtraQuarterTurns] (default 0) only when the still is from
+  /// the Pi while pose uses HDMI/UVC — leave at 0 to keep capture as delivered.
+  int bakeQuarterTurnsMatchingLiveFeed({required bool fromSidecar}) {
+    return liveFeedSyncedCaptureQuarterTurns(
+      liveFeedQuarterTurns: uvcPreviewEffectiveQuarterTurns,
+      hdmiSidecarExtraQuarterTurns: _sidecarHdmiStillExtraQuarterTurns,
+      applyHdmiSidecarExtra: fromSidecar && !usesSidecarLivePreview,
+    );
+  }
+
   Size? uvcPreviewDisplaySizeForCard({
     required double frameWidth,
     required double frameHeight,
@@ -746,6 +767,16 @@ class CaptureViewModel extends ChangeNotifier {
           AppConstants.kCameraPreviewRotationMigrationVersion,
         );
       }
+      final savedExtra = prefs.getInt(
+        AppConstants.kSidecarHdmiStillExtraQuarterTurnsKey,
+      );
+      if (savedExtra != null && savedExtra >= 0 && savedExtra <= 3) {
+        _sidecarHdmiStillExtraQuarterTurns = savedExtra;
+      } else {
+        // Unset → capture as delivered (no sticky default write).
+        _sidecarHdmiStillExtraQuarterTurns =
+            AppConstants.kSidecarHdmiStillExtraQuarterTurnsDefault;
+      }
       notifyListeners();
     } catch (e, st) {
       AppLogger.error(
@@ -763,6 +794,35 @@ class CaptureViewModel extends ChangeNotifier {
         fatal: false,
       );
     }
+  }
+
+  /// Booth offset for Pi stills vs upright HDMI (0–3 quarter-turns CW).
+  Future<void> setSidecarHdmiStillExtraQuarterTurns(int quarterTurns) async {
+    final turns = ((quarterTurns % 4) + 4) % 4;
+    _sidecarHdmiStillExtraQuarterTurns = turns;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        AppConstants.kSidecarHdmiStillExtraQuarterTurnsKey,
+        turns,
+      );
+    } catch (e, st) {
+      AppLogger.error(
+        'Failed to persist sidecar HDMI still offset',
+        error: e,
+        stackTrace: st,
+      );
+      unawaited(
+        ErrorReportingManager.recordError(
+          e,
+          st,
+          reason: 'setSidecarHdmiStillExtraQuarterTurns failed',
+          extraInfo: {'quarterTurns': turns},
+          fatal: false,
+        ),
+      );
+    }
+    notifyListeners();
   }
 
   /// Saves and applies preview rotation (0, 90, 180, 270). Persists across sessions.
@@ -1104,10 +1164,10 @@ class CaptureViewModel extends ChangeNotifier {
     try {
       final XFile savedFile;
       if (isSidecar) {
-        // Match HDMI/UVC RotatedBox so strip/print match the upright pose feed.
+        // Keep still pixels in sync with the upright live feed on screen.
         savedFile = await persistSidecarCaptureStill(
           rawFile,
-          bakeQuarterTurns: uvcPreviewEffectiveQuarterTurns,
+          bakeQuarterTurns: bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
         );
       } else {
         savedFile = await _persistExternalCaptureStill(
@@ -1177,10 +1237,10 @@ class CaptureViewModel extends ChangeNotifier {
     Future<XFile> persist() async {
       XFile savedFile;
       if (isUvc && shouldSkipUvcNormalizeOnKiosk(_deviceType)) {
-        // Still bake EXIF + preview turns — raw copy left strip/print sideways.
+        // Still bake EXIF + live-feed turns — raw copy left strip/print sideways.
         savedFile = await ImageHelper.bakeExifAndQuarterTurns(
           rawFile,
-          quarterTurns: uvcPreviewEffectiveQuarterTurns,
+          quarterTurns: bakeQuarterTurnsMatchingLiveFeed(fromSidecar: false),
         );
       } else {
         final maxDimension = _normalizeMaxDimensionForCapture(isUvc: isUvc);
@@ -1192,7 +1252,9 @@ class CaptureViewModel extends ChangeNotifier {
             fixBgrChannelOrder: isUvc,
             maxDimension: maxDimension,
             jpegQuality: jpegQuality,
-            quarterTurns: isUvc ? uvcPreviewEffectiveQuarterTurns : 0,
+            quarterTurns: isUvc
+                ? bakeQuarterTurnsMatchingLiveFeed(fromSidecar: false)
+                : 0,
           );
         } catch (normalizeError, normalizeSt) {
           if (!isUvc) rethrow;
@@ -2071,10 +2133,10 @@ class CaptureViewModel extends ChangeNotifier {
     WebFlowTrace.log('CAPTURE', 'normalize_start');
     final XFile savedFile;
     if (_lastRawCaptureFromSidecar) {
-      // Sidecar already ~1920px — light EXIF + preview-turn bake (not full normalize).
+      // Sidecar already ~1920px — light EXIF + live-feed sync bake.
       savedFile = await persistSidecarCaptureStill(
         imageFile,
-        bakeQuarterTurns: uvcPreviewEffectiveQuarterTurns,
+        bakeQuarterTurns: bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
       );
     } else {
       savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(

@@ -57,6 +57,60 @@ void main() {
     });
   });
 
+  group('liveFeedSyncedCaptureQuarterTurns', () {
+    test('matches live feed turns when HDMI sidecar extra is off', () {
+      expect(
+        liveFeedSyncedCaptureQuarterTurns(
+          liveFeedQuarterTurns: 1,
+          hdmiSidecarExtraQuarterTurns: 1,
+          applyHdmiSidecarExtra: false,
+        ),
+        1,
+      );
+    });
+
+    test('default extra 0 keeps capture orientation as delivered', () {
+      expect(
+        liveFeedSyncedCaptureQuarterTurns(
+          liveFeedQuarterTurns: 0,
+          hdmiSidecarExtraQuarterTurns: 0,
+          applyHdmiSidecarExtra: true,
+        ),
+        0,
+      );
+    });
+
+    test('optional HDMI sidecar extra adds to live turns when enabled', () {
+      expect(
+        liveFeedSyncedCaptureQuarterTurns(
+          liveFeedQuarterTurns: 0,
+          hdmiSidecarExtraQuarterTurns: 1,
+          applyHdmiSidecarExtra: true,
+        ),
+        1,
+      );
+      expect(
+        liveFeedSyncedCaptureQuarterTurns(
+          liveFeedQuarterTurns: 1,
+          hdmiSidecarExtraQuarterTurns: 1,
+          applyHdmiSidecarExtra: true,
+        ),
+        2,
+      );
+    });
+
+    test('normalizes negative and large turn values', () {
+      expect(
+        liveFeedSyncedCaptureQuarterTurns(
+          liveFeedQuarterTurns: -1,
+          hdmiSidecarExtraQuarterTurns: 5,
+          applyHdmiSidecarExtra: true,
+        ),
+        0, // (-1%4→3) + (5%4→1) = 4 → 0
+      );
+    });
+  });
+
   test('previewDisplayDimensions null previewSize odd turns returns (1, ratio)',
       () {
     final (w, h) = previewDisplayDimensions(
