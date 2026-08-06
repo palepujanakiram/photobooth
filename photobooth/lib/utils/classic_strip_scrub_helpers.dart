@@ -60,24 +60,31 @@ class ClassicStripScrubGate {
 ///
 /// Kick off as soon as a shot is accepted so Gemini latency hides under the
 /// next pose / countdown. Scrubs are **serialized** via [ClassicStripScrubGate].
+///
+/// When [isCancelled] returns true (e.g. Retake last), the gate slot is released
+/// without calling Gemini so later shots are not starved.
 Future<ClassicShotScrubResult> scrubClassicShotDataUrl({
   required Future<String> Function() encodeShotDataUrl,
   required bool enableScrub,
   ApiService? apiService,
   SessionManager? sessionManager,
+  bool Function()? isCancelled,
 }) async {
   final raw = await encodeShotDataUrl();
-  if (!enableScrub) {
+  if (!enableScrub || isCancelled?.call() == true) {
     return ClassicShotScrubResult(dataUrl: raw, scrubbed: false);
   }
 
-  return ClassicStripScrubGate.enqueue(
-    () => _scrubEncodedShot(
+  return ClassicStripScrubGate.enqueue(() async {
+    if (isCancelled?.call() == true) {
+      return ClassicShotScrubResult(dataUrl: raw, scrubbed: false);
+    }
+    return _scrubEncodedShot(
       raw: raw,
       apiService: apiService,
       sessionManager: sessionManager,
-    ),
-  );
+    );
+  });
 }
 
 Future<ClassicShotScrubResult> _scrubEncodedShot({

@@ -49,11 +49,11 @@ void main() {
       containsAll([
         'hearts',
         'sparkles',
-        'confetti',
         'stars',
         'flowers',
       ]),
     );
+    expect(kPlaceableStripStickerIds, isNot(contains('confetti')));
     expect(kPlaceableStripStickerIds, isNot(contains('bows')));
     expect(kPlaceableStripStickerIds, isNot(contains('butterflies')));
     expect(kPlaceableStripStickerIds, isNot(contains('petals')));

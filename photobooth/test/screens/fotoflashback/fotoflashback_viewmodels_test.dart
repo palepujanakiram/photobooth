@@ -135,6 +135,86 @@ void main() {
     ClassicStripScrubCoordinator.instance.resetForTests();
   });
 
+  test(
+    'FotoFlashbackFilterViewModel re-posts when capture scrub failed',
+    () async {
+      ClassicStripScrubCoordinator.instance.resetForTests();
+      final scrubApi = _FailingScrubFakeApi();
+      final lookApi = _CountingScrubFakeApi();
+      SessionManager().setSessionFromResponse(
+        _sessionJson('sess-fail-adopt-repost'),
+      );
+
+      final urls = [
+        for (var i = 0; i < 4; i++) 'data:image/jpeg;base64,raw$i',
+      ];
+      for (final url in urls) {
+        ClassicStripScrubCoordinator.instance.enqueueShot(
+          encodeShotDataUrl: () async => url,
+          enableScrub: true,
+          apiService: scrubApi,
+        );
+      }
+      await ClassicStripScrubCoordinator.instance.awaitAll();
+
+      final vm = FotoFlashbackFilterViewModel(
+        theme: stripTheme,
+        imageDataUrls: List<String>.from(urls),
+        apiService: lookApi,
+        shotCleaned: const [false, false, false, false],
+      );
+      await vm.loadFilters();
+      await vm.preparePreview();
+
+      // Failed capture results must not block look-screen re-clean.
+      expect(lookApi.cleanCalls, 4);
+      expect(vm.previewCleaned, isTrue);
+      expect(vm.hasUnfinishedScrub, isFalse);
+      ClassicStripScrubCoordinator.instance.resetForTests();
+    },
+  );
+
+  test(
+    'FotoFlashbackFilterViewModel refresh re-scrubs after failed adopt',
+    () async {
+      ClassicStripScrubCoordinator.instance.resetForTests();
+      final scrubApi = _FailingScrubFakeApi();
+      final lookApi = _FlakyScrubFakeApi();
+      SessionManager().setSessionFromResponse(
+        _sessionJson('sess-refresh-failed'),
+      );
+
+      final urls = [
+        for (var i = 0; i < 4; i++) 'data:image/jpeg;base64,raw$i',
+      ];
+      for (final url in urls) {
+        ClassicStripScrubCoordinator.instance.enqueueShot(
+          encodeShotDataUrl: () async => url,
+          enableScrub: true,
+          apiService: scrubApi,
+        );
+      }
+      await ClassicStripScrubCoordinator.instance.awaitAll();
+
+      final vm = FotoFlashbackFilterViewModel(
+        theme: stripTheme,
+        imageDataUrls: List<String>.from(urls),
+        apiService: lookApi,
+        shotCleaned: const [false, false, false, false],
+      );
+      await vm.loadFilters();
+      await vm.preparePreview();
+      expect(vm.hasUnfinishedScrub, isTrue);
+      expect(vm.canRetryUnfinishedScrub, isTrue);
+
+      lookApi.succeedRemaining = true;
+      await vm.retryUnfinishedScrub();
+      expect(vm.hasUnfinishedScrub, isFalse);
+      expect(vm.previewCleaned, isTrue);
+      ClassicStripScrubCoordinator.instance.resetForTests();
+    },
+  );
+
   test('FotoFlashbackFilterViewModel falls back when scrub returns empty',
       () async {
     ClassicStripScrubCoordinator.instance.resetForTests();
@@ -353,10 +433,10 @@ void main() {
     expect(vm.isPreparingPreview, isFalse);
     vm.addSticker('sparkles');
     expect(vm.stickerPlacements, hasLength(kStripShotCount));
-    vm.addSticker('confetti');
+    vm.addSticker('flowers');
     expect(vm.stickerPlacements, hasLength(kStripShotCount * 2));
     expect(
-      vm.stickerPlacements.where((p) => p.type == 'confetti'),
+      vm.stickerPlacements.where((p) => p.type == 'flowers'),
       hasLength(kStripShotCount),
     );
     final id = vm.stickerPlacements.first.id;
@@ -491,7 +571,7 @@ void main() {
     expect(vm.stickerPlacements, isEmpty);
 
     vm.selectFrame('romantic');
-    vm.addSticker('confetti');
+    vm.addSticker('flowers');
     vm.selectFrame('polaroid');
     vm.clearStickers();
     vm.addSticker('stars');
@@ -717,6 +797,19 @@ class _FlakyScrubFakeApi extends _StripFakeApi {
       );
     }
     return super.cleanStripOverlays(sessionId: sessionId, images: images);
+  }
+}
+
+class _FailingScrubFakeApi extends _StripFakeApi {
+  @override
+  Future<StripOverlayCleanResult> cleanStripOverlays({
+    required String sessionId,
+    required List<String> images,
+  }) async {
+    return StripOverlayCleanResult(
+      images: List<String>.from(images),
+      cleanedFlags: List<bool>.filled(images.length, false),
+    );
   }
 }
 
@@ -1025,7 +1118,6 @@ class _SheetFramesFakeApi extends _StripFakeApi {
       ],
       'stickers': [
         {'id': 'sparkles', 'name': 'Sparkles', 'description': 'Sparkles'},
-        {'id': 'confetti', 'name': 'Confetti', 'description': 'Confetti'},
         {'id': 'stars', 'name': 'Stars', 'description': 'Stars'},
         {'id': 'flowers', 'name': 'Flowers', 'description': 'Flowers'},
       ],

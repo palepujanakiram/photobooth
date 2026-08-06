@@ -483,7 +483,9 @@ abstract final class AppStrings {
   static const flashbackPreparingPreview = 'Polishing photos…';
   static const flashbackFinishEncodeFailed =
       'Couldn’t prepare your photo. Tap Continue to looks to try again.';
-  static const flashbackRetryScrub = 'Retry polish';
+  static const flashbackRetryScrub = 'Refresh polish';
+  static const flashbackRetryScrubHint =
+      'Some photos still show camera overlays. Tap Refresh polish to re-scrub.';
   static const flashbackComposeFailed = 'Couldn’t build strip. Please try again.';
   static const flashbackNeedFourShots = 'Take all 4 shots to continue.';
   static const surpriseMeUpsellTitle = 'Surprise AI look';

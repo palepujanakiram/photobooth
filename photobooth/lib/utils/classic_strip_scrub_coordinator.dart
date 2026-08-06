@@ -27,6 +27,8 @@ class _ScrubEntry {
 
   ClassicScrubDotStatus status = ClassicScrubDotStatus.pending;
   ClassicShotScrubResult? result;
+  /// True after [ClassicStripScrubCoordinator.dropLast] — skip Gemini.
+  bool abandoned = false;
   /// Completes as soon as the data URL is encoded (scrub may still run).
   final Completer<String> encodedReady = Completer<String>();
   final Future<ClassicShotScrubResult> future;
@@ -60,10 +62,26 @@ class ClassicStripScrubCoordinator extends ChangeNotifier {
   }
 
   /// Drop last accepted shot (Retake last) and abandon its scrub future.
+  ///
+  /// Marks the entry abandoned so any in-flight / queued Gemini call is skipped
+  /// when it reaches the serial gate (avoids starving shots 2–4 after retakes).
   void dropLast() {
     if (_entries.isEmpty) return;
-    _entries.removeLast();
+    _entries.removeLast().abandoned = true;
     notifyListeners();
+  }
+
+  /// Forget failed capture scrubs so the look screen can re-POST those shots.
+  ///
+  /// Successful ([ClassicScrubDotStatus.cleaned]) slots are kept for adopt.
+  void releaseFailedShots() {
+    var changed = false;
+    for (final e in _entries) {
+      if (e.status != ClassicScrubDotStatus.failed) continue;
+      e.abandoned = true;
+      changed = true;
+    }
+    if (changed) notifyListeners();
   }
 
   /// Encode immediately, then queue Gemini scrub. Safe to call before retake.
@@ -109,6 +127,12 @@ class ClassicStripScrubCoordinator extends ChangeNotifier {
       raw = await encodeShotDataUrl();
       _completeEncoded(entry, raw);
 
+      if (entry.abandoned) {
+        final result = ClassicShotScrubResult(dataUrl: raw, scrubbed: false);
+        completer.complete(result);
+        return;
+      }
+
       if (!enableScrub) {
         final result = ClassicShotScrubResult(dataUrl: raw, scrubbed: false);
         entry
@@ -124,7 +148,12 @@ class ClassicStripScrubCoordinator extends ChangeNotifier {
         enableScrub: true,
         apiService: apiService,
         sessionManager: sessionManager,
+        isCancelled: () => entry.abandoned,
       );
+      if (entry.abandoned) {
+        completer.complete(result);
+        return;
+      }
       entry
         ..result = result
         ..status = result.scrubbed
@@ -190,6 +219,18 @@ class ClassicStripScrubCoordinator extends ChangeNotifier {
 
   /// Await full scrub (or fail-open) for one accepted shot. Look screen uses
   /// this to adopt in-flight capture scrubs instead of starting a second POST.
+  ///
+  /// Returns null when the slot was abandoned (retake) or released after failure.
+  Future<ClassicShotScrubResult?> awaitShotForAdopt(int index) async {
+    if (!hasShot(index)) return null;
+    final entry = _entries[index];
+    if (entry.abandoned) return null;
+    final result = await entry.future;
+    if (entry.abandoned) return null;
+    return result;
+  }
+
+  /// Await full scrub (or fail-open) for one accepted shot.
   Future<ClassicShotScrubResult> awaitShot(int index) {
     if (!hasShot(index)) {
       return Future.error(RangeError.index(index, _entries, 'index'));

@@ -209,10 +209,32 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           statuses: viewModel.scrubDotStatuses,
                         ),
                         if (viewModel.canRetryUnfinishedScrub) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            AppStrings.flashbackRetryScrubHint,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.amber.shade100
+                                  .withValues(alpha: 0.75),
+                              fontSize: 12,
+                              height: 1.35,
+                            ),
+                          ),
                           const SizedBox(height: 8),
-                          TextButton.icon(
+                          OutlinedButton.icon(
                             onPressed: () => unawaited(
                               viewModel.retryUnfinishedScrub(),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.amber.shade100,
+                              side: BorderSide(
+                                color: Colors.amber.shade200
+                                    .withValues(alpha: 0.7),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
                             ),
                             icon: Icon(
                               Icons.refresh,
@@ -223,7 +245,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                               AppStrings.flashbackRetryScrub,
                               style: TextStyle(
                                 color: Colors.amber.shade100,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w700,
                                 fontSize: 13,
                               ),
                             ),

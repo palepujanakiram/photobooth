@@ -283,6 +283,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _previewCleaned = false;
     _scrubPassCompleted = false;
     _gradedByFilter.clear();
+    // Drop failed capture results so Refresh re-POSTs instead of re-adopting.
+    ClassicStripScrubCoordinator.instance.releaseFailedShots();
     notifyListeners();
     await preparePreview();
     unawaited(refreshPreviewGrade());
@@ -318,7 +320,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     }
   }
 
-  /// Prefer in-flight capture scrub over a second Gemini POST.
+  /// Prefer successful in-flight capture scrub over a second Gemini POST.
+  /// Failed capture scrubs are ignored so look/Refresh can re-POST.
   Future<bool> _polishUnfinishedShot(String sessionId, int i) async {
     final fromCoord = await _adoptCaptureScrubIfAvailable(i);
     if (fromCoord != null) {
@@ -352,8 +355,11 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       return null;
     }
     try {
-      final result = await coord.awaitShot(i);
+      final result = await coord.awaitShotForAdopt(i);
+      if (result == null) return null;
       if (result.dataUrl.trim().isEmpty) return null;
+      // Fail-open capture results must not block look-screen re-clean.
+      if (!result.scrubbed) return null;
       return result;
     } catch (_) {
       return null;
@@ -638,7 +644,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   (double, double) _spawnPointForSingle(String type, int wave) {
     final waveNudge = (wave % 3) * 0.05;
     final preferLeft = switch (type) {
-      'sparkles' || 'confetti' || 'flowers' => true,
+      'sparkles' || 'flowers' => true,
       'stars' => false,
       _ => wave.isEven,
     };
@@ -656,7 +662,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     final cellCenterY = (cell + 0.5) / kStripShotCount;
     final waveNudge = (wave % 3) * 0.04;
     final preferLeft = switch (type) {
-      'sparkles' || 'confetti' || 'flowers' => cell.isEven,
+      'sparkles' || 'flowers' => cell.isEven,
       'stars' => !cell.isEven,
       _ => !cell.isEven, // hearts
     };
@@ -664,7 +670,6 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     final x = baseX + (preferLeft ? waveNudge : -waveNudge);
     final yNudge = switch (type) {
       'sparkles' => -0.06,
-      'confetti' => -0.02,
       'stars' || 'flowers' => 0.02,
       _ => 0.04,
     };
@@ -677,7 +682,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     final layout = wysiwygLayout;
     final waveNudge = (wave % 3) * 0.02;
     final preferRight = switch (type) {
-      'sparkles' || 'confetti' || 'flowers' => cell.isEven,
+      'sparkles' || 'flowers' => cell.isEven,
       _ => !cell.isEven,
     };
     final fx = preferRight ? 0.72 : 0.28;

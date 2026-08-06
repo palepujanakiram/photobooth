@@ -49,17 +49,20 @@ class KioskDeviceStatusService {
 
   Future<KioskDeviceStatusSnapshot> probe({AppSettingsModel? settings}) async {
     final transport = resolveDnpPrintTransport(settings);
-    final results = await Future.wait([
-      _probeDnpPrinter(transport, settings),
-      _probeReceiptPrinter(settings),
-      _probeUsbCamera(),
-      _probeDslrCamera(settings),
-    ]);
+    // Receipt + DSLR are LAN HTTP/TCP and can run together.
+    // DNP USB + UVC both touch Android USB host — never run them in parallel
+    // (Android TV / capture-card boxes can hard-freeze the USB stack; Dart
+    // .timeout does not cancel the native call).
+    final receiptFuture = _probeReceiptPrinter(settings);
+    final dslrFuture = _probeDslrCamera(settings);
+    final dnp = await _probeDnpPrinter(transport, settings);
+    final usbCamera = await _probeUsbCamera();
+    final networked = await Future.wait([receiptFuture, dslrFuture]);
     return KioskDeviceStatusSnapshot(
-      dnpPrinter: results[0],
-      receiptPrinter: results[1],
-      usbCamera: results[2],
-      dslrSidecar: results[3],
+      dnpPrinter: dnp,
+      receiptPrinter: networked[0],
+      usbCamera: usbCamera,
+      dslrSidecar: networked[1],
     );
   }
 

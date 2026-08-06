@@ -541,12 +541,8 @@ double _glyphSize(
   double stripWidth,
   StripWysiwygLayout layout,
 ) {
-  final ratio = switch (p.type) {
-    'confetti' => layout.stickerLargeRatio,
-    _ => layout.stickerBaseRatio,
-  };
   // Match zenai placementGlyphSize — min only, no preview max clamp.
-  final size = stripWidth * ratio * p.scale;
+  final size = stripWidth * layout.stickerBaseRatio * p.scale;
   return size < layout.stickerMinPx ? layout.stickerMinPx : size;
 }
 
@@ -555,64 +551,6 @@ Widget _glyph(StripStickerPlacement p, double size) {
     case 'sparkles':
       // Drawn path — ✦ often missing on Flutter web fonts.
       return _SparkleGlyph(size: size, color: const Color(0xFFFFD54A));
-    case 'confetti':
-      return SizedBox(
-        width: size,
-        height: size,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned(
-              left: size * 0.05,
-              top: size * 0.15,
-              child: Transform.rotate(
-                angle: -0.35,
-                child: Container(
-                  width: size * 0.35,
-                  height: size * 0.2,
-                  color: const Color(0xFFFF6B8A),
-                ),
-              ),
-            ),
-            Positioned(
-              right: size * 0.05,
-              top: size * 0.05,
-              child: Transform.rotate(
-                angle: 0.4,
-                child: Container(
-                  width: size * 0.3,
-                  height: size * 0.18,
-                  color: const Color(0xFFFFD166),
-                ),
-              ),
-            ),
-            Positioned(
-              left: size * 0.2,
-              bottom: size * 0.1,
-              child: Container(
-                width: size * 0.22,
-                height: size * 0.22,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF6EC6FF),
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-            Positioned(
-              right: size * 0.12,
-              bottom: size * 0.2,
-              child: Transform.rotate(
-                angle: -0.5,
-                child: Container(
-                  width: size * 0.28,
-                  height: size * 0.18,
-                  color: const Color(0xFFB388FF),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
     case 'stars':
       return Text(
         '★',
@@ -697,17 +635,6 @@ List<Widget> _stickerOverlays(String stickerId, double width, double height) {
             const Color(0xFFFFC107)),
         _stickerSparkle(width * 0.18, height * 0.85, width * 0.1,
             const Color(0xFFFFD54A)),
-      ];
-    case 'confetti':
-      return [
-        _stickerSparkle(width * 0.15, height * 0.08, width * 0.1,
-            const Color(0xFFFF6B8A)),
-        _stickerText('●', width * 0.75, height * 0.35, width * 0.08,
-            const Color(0xFFFFD166)),
-        _stickerText('■', width * 0.2, height * 0.6, width * 0.08,
-            const Color(0xFF6EC6FF)),
-        _stickerText('●', width * 0.78, height * 0.82, width * 0.07,
-            const Color(0xFFB388FF)),
       ];
     case 'stars':
       return [

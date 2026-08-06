@@ -153,8 +153,8 @@ void main() {
                 y: 0.3,
               ),
               StripStickerPlacement(
-                id: 'c1',
-                type: 'confetti',
+                id: 'f1',
+                type: 'flowers',
                 x: 0.5,
                 y: 0.7,
               ),

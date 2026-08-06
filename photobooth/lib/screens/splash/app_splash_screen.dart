@@ -141,8 +141,8 @@ class _AppSplashScreenState extends State<AppSplashScreen>
   }
 
   Future<void> _bootstrapDeviceStatus() async {
-    await _refreshDeviceStatus();
-    if (!mounted) return;
+    // One pass only — a second probe while native USB from the first is still
+    // winding down has frozen Android TV USB (DNP + UVC).
     await _refreshDeviceStatus(forceSettingsRefresh: true);
   }
 
@@ -159,8 +159,6 @@ class _AppSplashScreenState extends State<AppSplashScreen>
         _codeController.text = (code ?? '').trim();
       });
       if ((code ?? '').trim().isNotEmpty) {
-        // Fast probe with cache, then settings refresh + second probe so a slow
-        // `/api/settings` cannot leave the panel spinning forever.
         unawaited(_bootstrapDeviceStatus());
       }
       return;
@@ -177,7 +175,10 @@ class _AppSplashScreenState extends State<AppSplashScreen>
         await endPhotoboothCustomerSessionLogged(
           'splash: web kiosk code from URL',
         );
-        await _refreshSettingsForBoundKiosk();
+        await _refreshSettingsForBoundKiosk().timeout(
+          const Duration(seconds: 12),
+          onTimeout: () {},
+        );
       }
     }
 
@@ -216,7 +217,10 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     await _kiosk.setKioskCode(code);
     await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
     await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
-    await _refreshSettingsForBoundKiosk();
+    await _refreshSettingsForBoundKiosk().timeout(
+      const Duration(seconds: 12),
+      onTimeout: () {},
+    );
     final urls = await _loadThemeBackgroundUrls();
     if (!mounted) return;
     setState(() => _busy = false);
@@ -261,7 +265,10 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
     await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
     await endPhotoboothCustomerSessionLogged('splash: kiosk code submitted');
-    await _refreshSettingsForBoundKiosk();
+    await _refreshSettingsForBoundKiosk().timeout(
+      const Duration(seconds: 12),
+      onTimeout: () {},
+    );
     final urls = await _loadThemeBackgroundUrls();
     if (!mounted) return;
     setState(() => _busy = false);

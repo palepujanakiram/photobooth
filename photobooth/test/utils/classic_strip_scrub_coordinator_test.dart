@@ -162,6 +162,68 @@ void main() {
     coord.dropLast();
     expect(coord.shotCount, 0);
   });
+
+  test('dropLast skips queued Gemini for abandoned shot', () async {
+    final api = _SlowScrubApi(delay: const Duration(milliseconds: 80));
+    final coord = ClassicStripScrubCoordinator.instance;
+    final encodeGate = Completer<void>();
+
+    final first = coord.enqueueShot(
+      encodeShotDataUrl: () async {
+        await encodeGate.future;
+        return 'data:image/jpeg;base64,shot1';
+      },
+      enableScrub: true,
+      apiService: api,
+    );
+    final second = coord.enqueueShot(
+      encodeShotDataUrl: () async {
+        await encodeGate.future;
+        return 'data:image/jpeg;base64,shot2';
+      },
+      enableScrub: true,
+      apiService: api,
+    );
+
+    encodeGate.complete();
+    await coord.awaitEncodedReady();
+    coord.dropLast();
+    expect(coord.shotCount, 1);
+
+    final kept = await first;
+    final dropped = await second;
+    expect(kept.scrubbed, isTrue);
+    expect(dropped.scrubbed, isFalse);
+    // Only the kept shot should have billed a clean call.
+    expect(api.cleanCalls, 1);
+  });
+
+  test('releaseFailedShots lets adopt skip failed slots', () async {
+    final coord = ClassicStripScrubCoordinator.instance;
+    final result = await coord.enqueueShot(
+      encodeShotDataUrl: () async => throw Exception('encode boom'),
+      enableScrub: true,
+      apiService: _SlowScrubApi(),
+    );
+    expect(result.scrubbed, isFalse);
+    expect(coord.statuses, [ClassicScrubDotStatus.failed]);
+
+    coord.releaseFailedShots();
+    expect(await coord.awaitShotForAdopt(0), isNull);
+  });
+
+  test('awaitShotForAdopt returns successful scrub', () async {
+    final api = _SlowScrubApi(delay: Duration.zero);
+    final coord = ClassicStripScrubCoordinator.instance;
+    await coord.enqueueShot(
+      encodeShotDataUrl: () async => 'data:image/jpeg;base64,shot1',
+      enableScrub: true,
+      apiService: api,
+    );
+    final adopted = await coord.awaitShotForAdopt(0);
+    expect(adopted?.scrubbed, isTrue);
+    expect(adopted?.dataUrl, 'data:image/jpeg;base64,clean1');
+  });
 }
 
 class _SlowScrubApi extends FakeApiService {
@@ -170,6 +232,7 @@ class _SlowScrubApi extends FakeApiService {
   final Duration delay;
   int _inFlight = 0;
   int maxInFlight = 0;
+  int cleanCalls = 0;
 
   @override
   Future<StripOverlayCleanResult> cleanStripOverlays({
@@ -178,6 +241,7 @@ class _SlowScrubApi extends FakeApiService {
   }) async {
     final id = images.first.contains('shot1') ? 1 : 2;
     _inFlight++;
+    cleanCalls++;
     if (_inFlight > maxInFlight) maxInFlight = _inFlight;
     try {
       if (delay > Duration.zero) {

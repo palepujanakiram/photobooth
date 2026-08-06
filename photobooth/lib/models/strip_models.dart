@@ -54,7 +54,6 @@ const List<String> kStripStickerIds = [
   'none',
   'hearts',
   'sparkles',
-  'confetti',
   'stars',
   'flowers',
 ];
@@ -63,7 +62,6 @@ const List<String> kStripStickerIds = [
 const List<String> kPlaceableStripStickerIds = [
   'hearts',
   'sparkles',
-  'confetti',
   'stars',
   'flowers',
 ];
