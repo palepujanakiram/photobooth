@@ -146,15 +146,20 @@ Widget buildRotatedCoverPreview({
 /// Quarter-turns to bake into a still so pixels match the upright live feed.
 ///
 /// [liveFeedQuarterTurns] is what [RotatedBox] applies to HDMI/UVC (or manual
-/// preview rotate). [hdmiSidecarExtraQuarterTurns] is optional (usually 0) when
-/// pose is HDMI/UVC but the still comes from Pi gphoto.
+/// preview rotate). When that is non-zero, use it alone — staff already aligned
+/// capture to the pose feed.
+///
+/// When live turns are 0 but pose is HDMI/UVC and the still is from Pi gphoto,
+/// apply [hdmiSidecarExtraQuarterTurns]. FOTO’s Canon USB JPEG is often 90° off
+/// an already-upright HDMI Live View; adding live+extra would double-rotate
+/// when staff also set preview 90°.
 int liveFeedSyncedCaptureQuarterTurns({
   required int liveFeedQuarterTurns,
   required int hdmiSidecarExtraQuarterTurns,
   required bool applyHdmiSidecarExtra,
 }) {
   final live = ((liveFeedQuarterTurns % 4) + 4) % 4;
-  if (!applyHdmiSidecarExtra) return live;
-  final extra = ((hdmiSidecarExtraQuarterTurns % 4) + 4) % 4;
-  return (live + extra) % 4;
+  if (live != 0) return live;
+  if (!applyHdmiSidecarExtra) return 0;
+  return ((hdmiSidecarExtraQuarterTurns % 4) + 4) % 4;
 }

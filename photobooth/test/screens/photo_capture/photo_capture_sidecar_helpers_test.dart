@@ -39,6 +39,59 @@ void main() {
     });
   });
 
+  group('ensureCanonLiveViewForHdmiPose', () {
+    test('no-ops when service null or not configured', () async {
+      await ensureCanonLiveViewForHdmiPose(null);
+      final disabled = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: false,
+          baseUrl: 'http://192.168.2.50:8791',
+        ),
+        client: MockClient((_) async => http.Response('', 500)),
+      );
+      await ensureCanonLiveViewForHdmiPose(disabled);
+      disabled.dispose();
+    });
+
+    test('calls ensureLiveView when configured', () async {
+      var hit = false;
+      final client = MockClient((request) async {
+        expect(request.url.path, '/camera/live-view');
+        hit = true;
+        return http.Response(
+          '{"ok":true,"enabled":true,"woke":false}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://192.168.2.50:8791',
+        ),
+        client: client,
+      );
+      await ensureCanonLiveViewForHdmiPose(service);
+      expect(hit, isTrue);
+      service.dispose();
+    });
+
+    test('swallows ensureLiveView failures', () async {
+      final client = MockClient((request) async {
+        return http.Response('{"ok":false}', 502);
+      });
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://192.168.2.50:8791',
+        ),
+        client: client,
+      );
+      await ensureCanonLiveViewForHdmiPose(service);
+      service.dispose();
+    });
+  });
+
   group('tryCaptureFromSidecar', () {
     test('returns null when service null or not configured', () async {
       expect(await tryCaptureFromSidecar(null), isNull);

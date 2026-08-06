@@ -120,6 +120,38 @@ class LocalCameraService {
     return _requireJpegBytes(response, action: 'capture');
   }
 
+  /// Arms Canon Live View over USB so HDMI → capture card is not blank.
+  ///
+  /// Call before opening UVC pose and again before reopening after a still
+  /// (`fotozen-sidecar` ≥ v1.2.2). Best-effort — returns `enabled: false` when
+  /// viewfinder configs fail.
+  Future<({bool enabled, bool woke})> ensureLiveView({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    if (!isConfigured) {
+      throw StateError('Camera sidecar is not configured');
+    }
+    final response = await _client
+        .post(_uri('/camera/live-view'), headers: _headers)
+        .timeout(timeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final preview = response.body.length > 240
+          ? response.body.substring(0, 240)
+          : response.body;
+      throw StateError(
+        'Camera sidecar live-view failed (${response.statusCode}): $preview',
+      );
+    }
+    final body = jsonDecode(response.body);
+    if (body is! Map<String, dynamic>) {
+      throw StateError('Camera sidecar live-view returned invalid JSON');
+    }
+    return (
+      enabled: body['enabled'] == true,
+      woke: body['woke'] == true,
+    );
+  }
+
   Uint8List _requireJpegBytes(http.Response response, {required String action}) {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final preview = response.body.length > 240

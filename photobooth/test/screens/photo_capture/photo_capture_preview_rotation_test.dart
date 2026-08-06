@@ -69,7 +69,7 @@ void main() {
       );
     });
 
-    test('default extra 0 keeps capture orientation as delivered', () {
+    test('extra 0 with live 0 keeps capture as delivered', () {
       expect(
         liveFeedSyncedCaptureQuarterTurns(
           liveFeedQuarterTurns: 0,
@@ -80,7 +80,7 @@ void main() {
       );
     });
 
-    test('optional HDMI sidecar extra adds to live turns when enabled', () {
+    test('HDMI sidecar extra applies only when live turns are 0', () {
       expect(
         liveFeedSyncedCaptureQuarterTurns(
           liveFeedQuarterTurns: 0,
@@ -89,13 +89,14 @@ void main() {
         ),
         1,
       );
+      // Staff preview 90° already syncs still — do not add extra (would be 180°).
       expect(
         liveFeedSyncedCaptureQuarterTurns(
           liveFeedQuarterTurns: 1,
           hdmiSidecarExtraQuarterTurns: 1,
           applyHdmiSidecarExtra: true,
         ),
-        2,
+        1,
       );
     });
 
@@ -106,7 +107,15 @@ void main() {
           hdmiSidecarExtraQuarterTurns: 5,
           applyHdmiSidecarExtra: true,
         ),
-        0, // (-1%4→3) + (5%4→1) = 4 → 0
+        3, // live (-1%4→3) wins; extra ignored
+      );
+      expect(
+        liveFeedSyncedCaptureQuarterTurns(
+          liveFeedQuarterTurns: 0,
+          hdmiSidecarExtraQuarterTurns: 5,
+          applyHdmiSidecarExtra: true,
+        ),
+        1, // 5%4→1
       );
     });
   });

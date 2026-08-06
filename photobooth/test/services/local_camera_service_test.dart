@@ -148,6 +148,35 @@ void main() {
       service.dispose();
     });
 
+    test('ensureLiveView posts /camera/live-view and parses flags', () async {
+      final client = MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/camera/live-view');
+        return http.Response(
+          jsonEncode({'ok': true, 'enabled': true, 'woke': true}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      final service = LocalCameraService(config: config, client: client);
+      final result = await service.ensureLiveView();
+      expect(result.enabled, isTrue);
+      expect(result.woke, isTrue);
+      service.dispose();
+    });
+
+    test('ensureLiveView throws when sidecar returns error status', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode({'ok': false, 'error': 'NO_CAMERA'}),
+          404,
+        );
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await expectLater(service.ensureLiveView(), throwsStateError);
+      service.dispose();
+    });
+
     test('capture throws when sidecar returns JSON error body', () async {
       final client = MockClient((request) async {
         return http.Response(

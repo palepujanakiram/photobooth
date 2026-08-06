@@ -43,6 +43,25 @@ void main() {
     );
   });
 
+  test('HDMI+sidecar bakes +90° when live preview rotation is 0', () async {
+    final viewModel = CaptureViewModel();
+    addTearDown(viewModel.dispose);
+
+    await viewModel.loadPreviewRotation();
+    expect(viewModel.previewRotationDegrees, 0);
+    expect(viewModel.sidecarHdmiStillExtraQuarterTurns, 1);
+    expect(
+      viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
+      1,
+      reason: 'Canon USB still vs upright HDMI needs booth +90° CW',
+    );
+    expect(
+      viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: false),
+      0,
+      reason: 'UVC stills already match the HDMI pose feed',
+    );
+  });
+
   test('lockCaptureCardAspectRatio clamps external preview aspect', () {
     final viewModel = CaptureViewModel();
     addTearDown(viewModel.dispose);

@@ -616,9 +616,9 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Bake turns so the saved still matches the upright live feed on screen.
   ///
-  /// Includes [uvcPreviewEffectiveQuarterTurns]. Optional
-  /// [sidecarHdmiStillExtraQuarterTurns] (default 0) only when the still is from
-  /// the Pi while pose uses HDMI/UVC — leave at 0 to keep capture as delivered.
+  /// Prefers [uvcPreviewEffectiveQuarterTurns] when non-zero. Otherwise applies
+  /// [sidecarHdmiStillExtraQuarterTurns] (FOTO default +90°) for Pi stills while
+  /// pose uses HDMI/UVC — Canon USB is often 90° off upright HDMI.
   int bakeQuarterTurnsMatchingLiveFeed({required bool fromSidecar}) {
     final turns = liveFeedSyncedCaptureQuarterTurns(
       liveFeedQuarterTurns: uvcPreviewEffectiveQuarterTurns,
@@ -627,6 +627,7 @@ class CaptureViewModel extends ChangeNotifier {
     );
     AppLogger.info(
       'Capture orientation sync: livePreview=${previewRotationDegrees}° '
+      'hdmiExtra=$_sidecarHdmiStillExtraQuarterTurns '
       'bakeQuarterTurns=$turns fromSidecar=$fromSidecar '
       'userConfigured=$_isPreviewRotationConfiguredByUser',
     );
@@ -784,7 +785,7 @@ class CaptureViewModel extends ChangeNotifier {
       if (savedExtra != null && savedExtra >= 0 && savedExtra <= 3) {
         _sidecarHdmiStillExtraQuarterTurns = savedExtra;
       } else {
-        // Unset → capture as delivered (no sticky default write).
+        // Unset → FOTO HDMI/sidecar +90° default (no sticky write).
         _sidecarHdmiStillExtraQuarterTurns =
             AppConstants.kSidecarHdmiStillExtraQuarterTurnsDefault;
       }

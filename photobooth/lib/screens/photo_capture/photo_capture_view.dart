@@ -2372,7 +2372,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _uvcPhase = UvcFeedPhase.live;
     _extendUvcDisconnectIgnore(UvcCaptureConfig.reconnectIgnoreDisconnectPeriod);
 
-    if (!mounted) return;
+    // Still capture / idle often exits Canon LV; re-arm before HDMI reopen.
+    await ensureCanonLiveViewForHdmiPose(_captureViewModel.localCameraService);
+    if (!mounted || _uvcDevice == null) {
+      _uvcReconnectInFlight = false;
+      return;
+    }
+
     setState(() {
       _uvcError = null;
       _uvcInitializing = true;
@@ -2621,6 +2627,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return false;
     }
 
+    await ensureCanonLiveViewForHdmiPose(_captureViewModel.localCameraService);
+    if (!mounted) return false;
     await _openUvcController();
     if (!mounted) return false;
     if (_uvcController?.value.isInitialized != true) {

@@ -12,6 +12,22 @@ bool isSidecarCameraId(String? cameraId) {
   return id.startsWith('sidecar:');
 }
 
+/// Best-effort: arm Canon Live View for HDMI/UVC pose (no still).
+///
+/// Pose uses the capture card; LV must be on over USB or HDMI stays blank
+/// until someone presses Q on the body. Safe no-op when sidecar is unset.
+Future<void> ensureCanonLiveViewForHdmiPose(LocalCameraService? service) async {
+  if (service == null || !service.isConfigured) return;
+  try {
+    final result = await service.ensureLiveView();
+    AppLogger.info(
+      'Canon LV ensure: enabled=${result.enabled} woke=${result.woke}',
+    );
+  } catch (e) {
+    AppLogger.warning('Canon LV ensure failed (HDMI may stay blank): $e');
+  }
+}
+
 /// Tries FotoZen Pi sidecar still capture; returns null to use CameraX/UVC.
 ///
 /// Writes JPEG bytes to a temp file on native so review/upload have a real
