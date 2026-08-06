@@ -73,7 +73,7 @@ class KioskDeviceStatusService {
 
     switch (transport) {
       case DnpPrintTransport.usb:
-        final usbPresent = _isAndroid() && await _usb.probeDevicePresent();
+        final usbPresent = _isAndroid() && await _usbDevicePresent();
         return _dnpEntry(
           connected: usbPresent,
           transport: KioskDeviceTransport.usb,
@@ -86,7 +86,7 @@ class KioskDeviceStatusService {
         );
       case DnpPrintTransport.auto:
         if (_isAndroid()) {
-          final usbPresent = await _usb.probeDevicePresent();
+          final usbPresent = await _usbDevicePresent();
           if (usbPresent) {
             return _dnpEntry(
               connected: true,
@@ -99,6 +99,16 @@ class KioskDeviceStatusService {
           connected: wifiOk,
           transport: KioskDeviceTransport.wifi,
         );
+    }
+  }
+
+  Future<bool> _usbDevicePresent() async {
+    try {
+      return await _usb.probeDevicePresent().timeout(_wifiDiscoverTimeout);
+    } on TimeoutException {
+      return false;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -194,12 +204,26 @@ class KioskDeviceStatusService {
         transport: KioskDeviceTransport.usb,
       );
     }
-    final present = await _probeUvcDevices();
-    return KioskDeviceStatusEntry(
-      deviceName: AppStrings.kioskDeviceUsbCamera,
-      connected: present,
-      transport: KioskDeviceTransport.usb,
-    );
+    try {
+      final present = await _probeUvcDevices().timeout(_wifiDiscoverTimeout);
+      return KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceUsbCamera,
+        connected: present,
+        transport: KioskDeviceTransport.usb,
+      );
+    } on TimeoutException {
+      return const KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceUsbCamera,
+        connected: false,
+        transport: KioskDeviceTransport.usb,
+      );
+    } catch (_) {
+      return const KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceUsbCamera,
+        connected: false,
+        transport: KioskDeviceTransport.usb,
+      );
+    }
   }
 
   Future<KioskDeviceStatusEntry> _probeDslrCamera(

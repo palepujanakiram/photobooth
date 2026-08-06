@@ -16,6 +16,7 @@ import '../../services/customer_session_lifecycle.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/kiosk_device_status_service.dart';
 import '../../utils/constants.dart';
+import '../../utils/logger.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/animated_slideshow_background.dart'
     show kSlideshowAssetPaths;
@@ -95,16 +96,54 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     }
   }
 
-  Future<void> _refreshDeviceStatus() async {
+  /// Re-probe DNP / receipt / USB / DSLR. When [forceSettingsRefresh] is true
+  /// (manual Refresh / manage open), reload `/api/settings` first so transport
+  /// / host changes from ZenAI apply before probing.
+  Future<void> _refreshDeviceStatus({
+    bool forceSettingsRefresh = false,
+  }) async {
     if (!mounted || !widget.args.manageKiosk) return;
     setState(() => _deviceStatusLoading = true);
-    final settings = context.read<AppSettingsManager>().settings;
-    final snapshot = await _deviceStatusService.probe(settings: settings);
+    try {
+      if (forceSettingsRefresh) {
+        await _refreshSettingsForBoundKiosk().timeout(
+          const Duration(seconds: 8),
+        );
+        if (!mounted) return;
+      }
+      final settings = context.read<AppSettingsManager>().settings;
+      final snapshot = await _deviceStatusService
+          .probe(settings: settings)
+          .timeout(const Duration(seconds: 12));
+      if (!mounted) return;
+      setState(() => _deviceStatus = snapshot);
+    } on TimeoutException catch (e, st) {
+      AppLogger.warning(
+        'Kiosk device status refresh timed out',
+        error: e,
+        stackTrace: st,
+      );
+    } catch (e, st) {
+      AppLogger.warning(
+        'Kiosk device status refresh failed',
+        error: e,
+        stackTrace: st,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _deviceStatusLoading = false);
+      }
+    }
+  }
+
+  Future<void> _onRefreshDeviceStatusPressed() async {
+    await _refreshDeviceStatus(forceSettingsRefresh: true);
+  }
+
+  Future<void> _bootstrapDeviceStatus() async {
+    await _refreshDeviceStatus();
     if (!mounted) return;
-    setState(() {
-      _deviceStatus = snapshot;
-      _deviceStatusLoading = false;
-    });
+    await _refreshDeviceStatus(forceSettingsRefresh: true);
   }
 
   Future<void> _bootstrap() async {
@@ -120,7 +159,9 @@ class _AppSplashScreenState extends State<AppSplashScreen>
         _codeController.text = (code ?? '').trim();
       });
       if ((code ?? '').trim().isNotEmpty) {
-        unawaited(_refreshDeviceStatus());
+        // Fast probe with cache, then settings refresh + second probe so a slow
+        // `/api/settings` cannot leave the panel spinning forever.
+        unawaited(_bootstrapDeviceStatus());
       }
       return;
     }
@@ -579,6 +620,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
                         .pushNamed(AppConstants.kRouteStaffLogin),
                     deviceStatusLoading: _deviceStatusLoading,
                     deviceStatus: _deviceStatus,
+                    onRefreshDeviceStatus: _onRefreshDeviceStatusPressed,
                   ),
                 ),
                 appSplashVersionFooter(versionFooter, appColors),

@@ -11,11 +11,13 @@ class KioskDeviceStatusPanel extends StatelessWidget {
     required this.appColors,
     required this.loading,
     this.snapshot,
+    this.onRefresh,
   });
 
   final AppColors appColors;
   final bool loading;
   final KioskDeviceStatusSnapshot? snapshot;
+  final VoidCallback? onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -23,6 +25,11 @@ class KioskDeviceStatusPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 20),
+        _KioskDeviceStatusHeader(
+          appColors: appColors,
+          loading: loading,
+          onRefresh: onRefresh,
+        ),
         if (loading)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
@@ -31,6 +38,7 @@ class KioskDeviceStatusPanel extends StatelessWidget {
             ),
           )
         else if (snapshot != null) ...[
+          const SizedBox(height: 10),
           KioskDeviceStatusRow(entry: snapshot!.dnpPrinter, appColors: appColors),
           const SizedBox(height: 8),
           KioskDeviceStatusRow(
@@ -45,6 +53,64 @@ class KioskDeviceStatusPanel extends StatelessWidget {
             appColors: appColors,
           ),
         ],
+      ],
+    );
+  }
+}
+
+class _KioskDeviceStatusHeader extends StatelessWidget {
+  const _KioskDeviceStatusHeader({
+    required this.appColors,
+    required this.loading,
+    this.onRefresh,
+  });
+
+  final AppColors appColors;
+  final bool loading;
+  final VoidCallback? onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            AppStrings.kioskDeviceStatusHeading,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: appColors.secondaryTextColor,
+            ),
+          ),
+        ),
+        CupertinoButton(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          minimumSize: Size.zero,
+          onPressed: loading ? null : onRefresh,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                CupertinoIcons.refresh,
+                size: 16,
+                color: loading
+                    ? appColors.secondaryTextColor.withValues(alpha: 0.45)
+                    : CupertinoColors.activeBlue.resolveFrom(context),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                AppStrings.kioskDeviceStatusRefresh,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: loading
+                      ? appColors.secondaryTextColor.withValues(alpha: 0.45)
+                      : CupertinoColors.activeBlue.resolveFrom(context),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

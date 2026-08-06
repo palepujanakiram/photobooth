@@ -83,6 +83,7 @@ void main() {
         transport: KioskDeviceTransport.lan,
       ),
     );
+    var refreshTaps = 0;
     await tester.pumpWidget(
       CupertinoApp(
         home: Builder(
@@ -91,6 +92,7 @@ void main() {
               appColors: AppColors.of(context),
               loading: false,
               snapshot: snapshot,
+              onRefresh: () => refreshTaps++,
             );
           },
         ),
@@ -98,5 +100,33 @@ void main() {
     );
     expect(find.textContaining(AppStrings.kioskDeviceDslrSidecar), findsOneWidget);
     expect(find.textContaining(AppStrings.kioskDeviceTransportLan), findsOneWidget);
+    expect(find.text(AppStrings.kioskDeviceStatusHeading), findsOneWidget);
+    expect(find.text(AppStrings.kioskDeviceStatusRefresh), findsOneWidget);
+    await tester.tap(find.text(AppStrings.kioskDeviceStatusRefresh));
+    await tester.pump();
+    expect(refreshTaps, 1);
+  });
+
+  testWidgets('KioskDeviceStatusPanel disables refresh while loading', (
+    tester,
+  ) async {
+    var refreshTaps = 0;
+    await tester.pumpWidget(
+      CupertinoApp(
+        home: Builder(
+          builder: (context) {
+            return KioskDeviceStatusPanel(
+              appColors: AppColors.of(context),
+              loading: true,
+              onRefresh: () => refreshTaps++,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.tap(find.text(AppStrings.kioskDeviceStatusRefresh));
+    await tester.pump();
+    expect(refreshTaps, 0);
+    expect(find.byType(CupertinoActivityIndicator), findsOneWidget);
   });
 }

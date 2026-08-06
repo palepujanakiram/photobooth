@@ -600,4 +600,6 @@ abstract final class AppStrings {
   static const kioskDeviceTransportWifi = 'WiFi';
   static const kioskDeviceTransportLan = 'LAN';
   static const kioskDeviceTransportUnknown = '—';
+  static const kioskDeviceStatusHeading = 'Device status';
+  static const kioskDeviceStatusRefresh = 'Refresh';
 }

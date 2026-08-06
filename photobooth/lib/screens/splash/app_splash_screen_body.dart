@@ -30,6 +30,7 @@ class AppSplashScreenBody extends StatelessWidget {
     required this.onStaffLogin,
     this.deviceStatusLoading = false,
     this.deviceStatus,
+    this.onRefreshDeviceStatus,
   });
 
   final SplashRouteArgs args;
@@ -51,6 +52,7 @@ class AppSplashScreenBody extends StatelessWidget {
   final VoidCallback onStaffLogin;
   final bool deviceStatusLoading;
   final KioskDeviceStatusSnapshot? deviceStatus;
+  final VoidCallback? onRefreshDeviceStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -106,6 +108,7 @@ class AppSplashScreenBody extends StatelessWidget {
                                   onDisconnect: onDisconnect,
                                   deviceStatusLoading: deviceStatusLoading,
                                   deviceStatus: deviceStatus,
+                                  onRefreshDeviceStatus: onRefreshDeviceStatus,
                                 ),
                               if (showForm)
                                 _AppSplashKioskForm(
@@ -201,6 +204,7 @@ class _AppSplashManageSummary extends StatelessWidget {
     required this.onDisconnect,
     this.deviceStatusLoading = false,
     this.deviceStatus,
+    this.onRefreshDeviceStatus,
   });
 
   final AppColors appColors;
@@ -210,6 +214,7 @@ class _AppSplashManageSummary extends StatelessWidget {
   final VoidCallback onDisconnect;
   final bool deviceStatusLoading;
   final KioskDeviceStatusSnapshot? deviceStatus;
+  final VoidCallback? onRefreshDeviceStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -278,6 +283,7 @@ class _AppSplashManageSummary extends StatelessWidget {
           appColors: appColors,
           loading: deviceStatusLoading,
           snapshot: deviceStatus,
+          onRefresh: busy ? null : onRefreshDeviceStatus,
         ),
       ],
     );
