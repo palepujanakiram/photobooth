@@ -5,10 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:image/image.dart' as img;
 import 'package:photobooth/screens/photo_capture/photo_capture_sidecar_helpers.dart';
 import 'package:photobooth/services/local_camera_service.dart';
 import 'package:photobooth/utils/camera_sidecar_config.dart';
 import 'package:photobooth/utils/image_helper.dart';
+
+import '../../helpers/tiny_jpeg.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -108,8 +111,8 @@ void main() {
   });
 
   group('persistSidecarCaptureStill', () {
-    test('copies JPEG into photos dir without normalize', () async {
-      final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(32, 7)]);
+    test('bakes EXIF into photos dir without full normalize', () async {
+      final jpeg = kTinyJpegBytes;
       final client = MockClient((request) async {
         if (request.url.path.endsWith('/health')) {
           return http.Response('{"ok":true,"connected":true}', 200);
@@ -127,15 +130,15 @@ void main() {
       expect(raw, isNotNull);
       final saved = await persistSidecarCaptureStill(raw!);
       expect(saved.path, isNotEmpty);
-      expect(await saved.readAsBytes(), jpeg);
       expect(saved.path.contains('photos'), isTrue);
+      expect(await saved.readAsBytes(), isNotEmpty);
       await ImageHelper.tryDeleteLocalFile(raw.path);
       await ImageHelper.tryDeleteLocalFile(saved.path);
       service.dispose();
     });
 
-    test('writes empty-path XFile bytes then copies', () async {
-      final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(16, 3)]);
+    test('writes empty-path XFile then bakes to photos dir', () async {
+      final jpeg = kTinyJpegBytes;
       final raw = XFile.fromData(
         jpeg,
         mimeType: 'image/jpeg',
@@ -144,7 +147,29 @@ void main() {
       expect(raw.path, isEmpty);
       final saved = await persistSidecarCaptureStill(raw);
       expect(saved.path.contains('photos'), isTrue);
-      expect(await saved.readAsBytes(), jpeg);
+      expect(await saved.readAsBytes(), isNotEmpty);
+      await ImageHelper.tryDeleteLocalFile(saved.path);
+    });
+
+    test('applies bakeQuarterTurns clockwise', () async {
+      final landscape = img.Image(width: 40, height: 20);
+      img.fill(landscape, color: img.ColorRgb8(10, 10, 10));
+      for (var y = 0; y < 20; y++) {
+        for (var x = 0; x < 8; x++) {
+          landscape.setPixelRgb(x, y, 255, 0, 0);
+        }
+      }
+      final jpeg = Uint8List.fromList(img.encodeJpg(landscape, quality: 90));
+      final raw = XFile.fromData(jpeg, mimeType: 'image/jpeg', name: 'l.jpg');
+      final saved = await persistSidecarCaptureStill(
+        raw,
+        bakeQuarterTurns: 1,
+      );
+      final baked = img.decodeImage(await saved.readAsBytes());
+      expect(baked, isNotNull);
+      // 90° CW: 40×20 → 20×40
+      expect(baked!.width, 20);
+      expect(baked.height, 40);
       await ImageHelper.tryDeleteLocalFile(saved.path);
     });
   });

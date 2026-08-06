@@ -34,6 +34,7 @@ typedef _NormalizeJpegArgs = ({
   Uint8List bytes,
   bool flipHorizontal,
   bool fixBgrChannelOrder,
+  int quarterTurns,
   int maxDimension,
   int jpegQuality,
 });
@@ -42,7 +43,20 @@ typedef _NormalizeJpegPathArgs = ({
   String path,
   bool flipHorizontal,
   bool fixBgrChannelOrder,
+  int quarterTurns,
   int maxDimension,
+  int jpegQuality,
+});
+
+typedef _BakeExifTurnsArgs = ({
+  Uint8List bytes,
+  int quarterTurns,
+  int jpegQuality,
+});
+
+typedef _BakeExifTurnsPathArgs = ({
+  String path,
+  int quarterTurns,
   int jpegQuality,
 });
 
@@ -131,6 +145,8 @@ class ImageHelper {
     bool flipHorizontal = false,
     /// Some Android UVC plugins save stills with R/B swapped (blue skin tones).
     bool fixBgrChannelOrder = false,
+    /// Clockwise quarter-turns to match live [RotatedBox] preview (UVC/HDMI).
+    int quarterTurns = 0,
     int? maxDimension,
     int? jpegQuality,
   }) async {
@@ -140,6 +156,7 @@ class ImageHelper {
       return sourceFile;
     }
     final path = sourceFile.path;
+    final turns = ((quarterTurns % 4) + 4) % 4;
     final normalizedBytes = path.isNotEmpty
         ? await compute(
             _normalizeToStandardJpegBytesFromPath,
@@ -147,6 +164,7 @@ class ImageHelper {
               path: path,
               flipHorizontal: flipHorizontal,
               fixBgrChannelOrder: fixBgrChannelOrder,
+              quarterTurns: turns,
               maxDimension: maxDimension ?? kCapturedPhotoMaxDimension,
               jpegQuality: jpegQuality ?? kCapturedPhotoJpegQuality,
             ),
@@ -157,6 +175,7 @@ class ImageHelper {
               bytes: await sourceFile.readAsBytes(),
               flipHorizontal: flipHorizontal,
               fixBgrChannelOrder: fixBgrChannelOrder,
+              quarterTurns: turns,
               maxDimension: maxDimension ?? kCapturedPhotoMaxDimension,
               jpegQuality: jpegQuality ?? kCapturedPhotoJpegQuality,
             ),
@@ -212,6 +231,78 @@ class ImageHelper {
     return XFile(savePath);
   }
 
+  /// Bake EXIF orientation and optional clockwise quarter-turns into pixels.
+  ///
+  /// Used for Pi sidecar / HDMI kiosk stills that skip full normalize (too
+  /// heavy on Android TV) but still need print/compose to match the upright
+  /// live preview ([RotatedBox] quarter-turns are display-only otherwise).
+  static Future<XFile> bakeExifAndQuarterTurns(
+    XFile sourceFile, {
+    int quarterTurns = 0,
+    int jpegQuality = kCapturedPhotoJpegQuality,
+  }) async {
+    if (kIsWeb) return sourceFile;
+    final turns = ((quarterTurns % 4) + 4) % 4;
+    final quality = jpegQuality.clamp(1, 100);
+    final path = sourceFile.path;
+    final Uint8List bakedBytes = path.isNotEmpty
+        ? await compute(
+            _bakeExifAndQuarterTurnsFromPath,
+            (
+              path: path,
+              quarterTurns: turns,
+              jpegQuality: quality,
+            ),
+          )
+        : await compute(
+            _bakeExifAndQuarterTurnsBytes,
+            (
+              bytes: await sourceFile.readAsBytes(),
+              quarterTurns: turns,
+              jpegQuality: quality,
+            ),
+          );
+    final tempDir = await FileHelper.getTempDirectoryPath();
+    const photosSubdir = 'photos';
+    final photosDir = '$tempDir/$photosSubdir';
+    await FileHelper.ensureDirectory(photosDir);
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final savePath = '$photosDir/photo_$timestamp.jpg';
+    final file = FileHelper.createFile(savePath);
+    await (file as dynamic).writeAsBytes(bakedBytes);
+    return XFile((file as dynamic).path);
+  }
+
+  static Uint8List _bakeExifAndQuarterTurnsFromPath(
+    _BakeExifTurnsPathArgs args,
+  ) {
+    final bytes = File(args.path).readAsBytesSync();
+    if (bytes.isEmpty) {
+      throw Exception('Captured image is empty');
+    }
+    return _bakeExifAndQuarterTurnsBytes((
+      bytes: bytes,
+      quarterTurns: args.quarterTurns,
+      jpegQuality: args.jpegQuality,
+    ));
+  }
+
+  /// Top-level for [compute]: EXIF bake + clockwise quarter-turns.
+  static Uint8List _bakeExifAndQuarterTurnsBytes(_BakeExifTurnsArgs args) {
+    final originalImage = img.decodeImage(args.bytes);
+    if (originalImage == null) {
+      throw Exception('Failed to decode captured image');
+    }
+    var work = img.bakeOrientation(originalImage);
+    final turns = ((args.quarterTurns % 4) + 4) % 4;
+    if (turns != 0) {
+      work = img.copyRotate(work, angle: turns * 90);
+    }
+    return Uint8List.fromList(
+      img.encodeJpg(work, quality: args.jpegQuality),
+    );
+  }
+
   /// Deletes a temp capture file after normalization to free disk/RAM on kiosks.
   static Future<void> tryDeleteLocalFile(String? path) async {
     if (kIsWeb || path == null || path.isEmpty) return;
@@ -237,6 +328,7 @@ class ImageHelper {
       bytes: bytes,
       flipHorizontal: args.flipHorizontal,
       fixBgrChannelOrder: args.fixBgrChannelOrder,
+      quarterTurns: args.quarterTurns,
       maxDimension: args.maxDimension,
       jpegQuality: args.jpegQuality,
     ));
@@ -250,6 +342,10 @@ class ImageHelper {
     }
     // Apply EXIF orientation so saved photos are upright everywhere.
     var normalized = img.bakeOrientation(originalImage);
+    final turns = ((args.quarterTurns % 4) + 4) % 4;
+    if (turns != 0) {
+      normalized = img.copyRotate(normalized, angle: turns * 90);
+    }
     final maxDim = args.maxDimension;
 
     // Downscale before channel fix / flip to cap peak RAM in the isolate (UVC

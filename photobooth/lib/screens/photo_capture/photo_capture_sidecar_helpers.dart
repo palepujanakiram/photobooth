@@ -64,16 +64,21 @@ Future<XFile?> tryCaptureFromSidecar(LocalCameraService? service) async {
   }
 }
 
-/// Persist a DSLR sidecar JPEG for review without decode/re-encode.
+/// Persist a DSLR sidecar JPEG for review with EXIF (+ optional preview turns).
 ///
 /// Full-resolution Canon stills (often 20MP+) hang [compute] normalize on
 /// Android TV past both the 20s normalize and 45s overall capture budgets —
-/// [Future.timeout] cannot cancel an in-flight isolate decode. Copy the camera
-/// JPEG into app storage; upload prep resizes later.
-Future<XFile> persistSidecarCaptureStill(XFile rawFile) async {
+/// [Future.timeout] cannot cancel an in-flight isolate decode. Sidecar already
+/// downscales (~1920 long edge), so a light EXIF bake + matching the HDMI
+/// [RotatedBox] quarter-turns is safe and keeps strip/print upright.
+Future<XFile> persistSidecarCaptureStill(
+  XFile rawFile, {
+  int bakeQuarterTurns = 0,
+}) async {
   if (kIsWeb) {
     return rawFile;
   }
+  XFile source = rawFile;
   if (rawFile.path.isEmpty) {
     final bytes = await rawFile.readAsBytes();
     if (bytes.isEmpty) {
@@ -86,10 +91,17 @@ Future<XFile> persistSidecarCaptureStill(XFile rawFile) async {
         '$dir/fz200d_${DateTime.now().millisecondsSinceEpoch}.jpg';
     final file = FileHelper.createFile(path);
     await (file as dynamic).writeAsBytes(bytes, flush: true);
-    return ImageHelper.copyCaptureToAppPhotosDir(
-      XFile(path, mimeType: 'image/jpeg'),
-    );
+    source = XFile(path, mimeType: 'image/jpeg');
   }
-  AppLogger.info('Persisting sidecar still via file copy (skip normalize)');
-  return ImageHelper.copyCaptureToAppPhotosDir(rawFile);
+  final turns = ((bakeQuarterTurns % 4) + 4) % 4;
+  AppLogger.info(
+    turns == 0
+        ? 'Persisting sidecar still with EXIF bake (skip full normalize)'
+        : 'Persisting sidecar still with EXIF bake + ${turns * 90}° '
+            '(skip full normalize)',
+  );
+  return ImageHelper.bakeExifAndQuarterTurns(
+    source,
+    quarterTurns: turns,
+  );
 }

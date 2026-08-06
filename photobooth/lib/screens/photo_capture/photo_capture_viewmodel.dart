@@ -1104,7 +1104,11 @@ class CaptureViewModel extends ChangeNotifier {
     try {
       final XFile savedFile;
       if (isSidecar) {
-        savedFile = await persistSidecarCaptureStill(rawFile);
+        // Match HDMI/UVC RotatedBox so strip/print match the upright pose feed.
+        savedFile = await persistSidecarCaptureStill(
+          rawFile,
+          bakeQuarterTurns: uvcPreviewEffectiveQuarterTurns,
+        );
       } else {
         savedFile = await _persistExternalCaptureStill(
           rawFile: rawFile,
@@ -1173,7 +1177,11 @@ class CaptureViewModel extends ChangeNotifier {
     Future<XFile> persist() async {
       XFile savedFile;
       if (isUvc && shouldSkipUvcNormalizeOnKiosk(_deviceType)) {
-        savedFile = await ImageHelper.copyCaptureToAppPhotosDir(rawFile);
+        // Still bake EXIF + preview turns — raw copy left strip/print sideways.
+        savedFile = await ImageHelper.bakeExifAndQuarterTurns(
+          rawFile,
+          quarterTurns: uvcPreviewEffectiveQuarterTurns,
+        );
       } else {
         final maxDimension = _normalizeMaxDimensionForCapture(isUvc: isUvc);
         final jpegQuality = _normalizeJpegQualityForCapture(isUvc: isUvc);
@@ -1184,6 +1192,7 @@ class CaptureViewModel extends ChangeNotifier {
             fixBgrChannelOrder: isUvc,
             maxDimension: maxDimension,
             jpegQuality: jpegQuality,
+            quarterTurns: isUvc ? uvcPreviewEffectiveQuarterTurns : 0,
           );
         } catch (normalizeError, normalizeSt) {
           if (!isUvc) rethrow;
@@ -2062,8 +2071,11 @@ class CaptureViewModel extends ChangeNotifier {
     WebFlowTrace.log('CAPTURE', 'normalize_start');
     final XFile savedFile;
     if (_lastRawCaptureFromSidecar) {
-      // DSLR JPEGs are multi‑MP — copy only (normalize hangs past overall budget).
-      savedFile = await persistSidecarCaptureStill(imageFile);
+      // Sidecar already ~1920px — light EXIF + preview-turn bake (not full normalize).
+      savedFile = await persistSidecarCaptureStill(
+        imageFile,
+        bakeQuarterTurns: uvcPreviewEffectiveQuarterTurns,
+      );
     } else {
       savedFile = await ImageHelper.normalizeAndSaveCapturedPhoto(
         imageFile,
