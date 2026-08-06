@@ -620,11 +620,17 @@ class CaptureViewModel extends ChangeNotifier {
   /// [sidecarHdmiStillExtraQuarterTurns] (default 0) only when the still is from
   /// the Pi while pose uses HDMI/UVC — leave at 0 to keep capture as delivered.
   int bakeQuarterTurnsMatchingLiveFeed({required bool fromSidecar}) {
-    return liveFeedSyncedCaptureQuarterTurns(
+    final turns = liveFeedSyncedCaptureQuarterTurns(
       liveFeedQuarterTurns: uvcPreviewEffectiveQuarterTurns,
       hdmiSidecarExtraQuarterTurns: _sidecarHdmiStillExtraQuarterTurns,
       applyHdmiSidecarExtra: fromSidecar && !usesSidecarLivePreview,
     );
+    AppLogger.info(
+      'Capture orientation sync: livePreview=${previewRotationDegrees}° '
+      'bakeQuarterTurns=$turns fromSidecar=$fromSidecar '
+      'userConfigured=$_isPreviewRotationConfiguredByUser',
+    );
+    return turns;
   }
 
   Size? uvcPreviewDisplaySizeForCard({
