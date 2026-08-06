@@ -675,8 +675,13 @@ class CaptureViewModel extends ChangeNotifier {
     _lockedCaptureCardAspectRatio = aspectRatio.clamp(0.35, 2.85);
   }
 
-  /// Resets manual preview rotation when switching to USB/UVC (built-in values are often wrong).
+  /// Clears auto/default preview rotation when switching to USB/UVC.
+  ///
+  /// Staff-chosen rotation (capture screen → 90° on a portrait-mounted TV) is
+  /// kept so live [RotatedBox] and [bakeQuarterTurnsMatchingLiveFeed] stay in
+  /// sync. Only clears values that were not explicitly configured by the user.
   void applyDefaultPreviewRotationForUvc() {
+    if (_isPreviewRotationConfiguredByUser) return;
     if (_previewRotationDegrees == 0) return;
     _previewRotationDegrees = 0;
     notifyListeners();

@@ -3,14 +3,44 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/photo_capture/photo_capture_view_aspect.dart';
 import 'package:photobooth/screens/photo_capture/photo_capture_viewmodel.dart';
 import 'package:photobooth/utils/constants.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  test('applyDefaultPreviewRotationForUvc clears manual rotation', () {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  test('applyDefaultPreviewRotationForUvc is no-op when rotation is 0', () {
     final viewModel = CaptureViewModel();
     addTearDown(viewModel.dispose);
 
     viewModel.applyDefaultPreviewRotationForUvc();
     expect(viewModel.previewRotationDegrees, 0);
+  });
+
+  test('applyDefaultPreviewRotationForUvc keeps staff 90° for portrait TV',
+      () async {
+    final viewModel = CaptureViewModel();
+    addTearDown(viewModel.dispose);
+
+    await viewModel.setPreviewRotation(90);
+    expect(viewModel.previewRotationDegrees, 90);
+    expect(viewModel.uvcPreviewEffectiveQuarterTurns, 1);
+    expect(
+      viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
+      1,
+      reason: 'sidecar still must bake the same 90° as live RotatedBox',
+    );
+
+    // UVC rebind must not wipe staff portrait-TV rotation.
+    viewModel.applyDefaultPreviewRotationForUvc();
+    expect(viewModel.previewRotationDegrees, 90);
+    expect(
+      viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
+      1,
+    );
   });
 
   test('lockCaptureCardAspectRatio clamps external preview aspect', () {
