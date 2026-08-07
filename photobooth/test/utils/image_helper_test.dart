@@ -24,6 +24,7 @@ void main() {
       },
     );
   });
+
   test('strip capture jpeg quality is higher than default stills', () {
     expect(kStripCapturedPhotoJpegQuality, greaterThan(kCapturedPhotoJpegQuality));
     expect(kStripCapturedPhotoJpegQuality, 97);
@@ -51,7 +52,7 @@ void main() {
     expect(url, startsWith('data:image/jpeg;base64,'));
   });
 
-  test('bakeExifAndQuarterTurns rotates clockwise quarter turns', () async {
+  test('bakeExifAndQuarterTurns rotates sensor pixels clockwise', () async {
     final landscape = img.Image(width: 30, height: 10);
     img.fill(landscape, color: img.ColorRgb8(0, 0, 0));
     final jpeg = Uint8List.fromList(img.encodeJpg(landscape, quality: 90));
@@ -65,29 +66,17 @@ void main() {
     expect(meta.height, 30);
   });
 
-  test('bake with live turns skips EXIF so Canon is not double-rotated', () async {
-    // 40×20 with EXIF orientation 6 → decoder yields 20×40. Live turns=1 matches
-    // EXIF; remaining=0 so dims stay 20×40 (old path added +90° → 40×20 sideways).
+  test('bake with live turns rotates EXIF-tagged JPEG sensor buffer once', () async {
+    // File is 40×20 with EXIF 6. Normal decode would yield 20×40 already.
+    // Live RotatedBox applies +90° to raw HDMI (= sensor) pixels → 20×40.
+    // Baking must clear EXIF before rotate so we do not double-transform.
     final landscape = img.Image(width: 40, height: 20);
     img.fill(landscape, color: img.ColorRgb8(10, 20, 30));
     landscape.exif.imageIfd.orientation = 6;
     final jpeg = Uint8List.fromList(img.encodeJpg(landscape, quality: 90));
+
     final saved = await ImageHelper.bakeExifAndQuarterTurns(
       XFile.fromData(jpeg, mimeType: 'image/jpeg', name: 'exif6.jpg'),
-      quarterTurns: 1,
-    );
-    final meta = await ImageHelper.getImageMetadata(saved);
-    expect(meta, isNotNull);
-    expect(meta!.width, 20, reason: 'EXIF 6 already supplies the live 90°');
-    expect(meta.height, 40);
-  });
-
-  test('bake with live turns rotates when JPEG has no EXIF orientation', () async {
-    final landscape = img.Image(width: 40, height: 20);
-    img.fill(landscape, color: img.ColorRgb8(10, 20, 30));
-    final jpeg = Uint8List.fromList(img.encodeJpg(landscape, quality: 90));
-    final saved = await ImageHelper.bakeExifAndQuarterTurns(
-      XFile.fromData(jpeg, mimeType: 'image/jpeg', name: 'no-exif.jpg'),
       quarterTurns: 1,
     );
     final meta = await ImageHelper.getImageMetadata(saved);
@@ -96,7 +85,7 @@ void main() {
     expect(meta.height, 40);
   });
 
-  test('bake with zero turns still applies EXIF orientation', () async {
+  test('bake with zero turns applies EXIF orientation into pixels', () async {
     final landscape = img.Image(width: 40, height: 20);
     img.fill(landscape, color: img.ColorRgb8(1, 2, 3));
     landscape.exif.imageIfd.orientation = 6;
@@ -109,5 +98,20 @@ void main() {
     expect(meta, isNotNull);
     expect(meta!.width, 20);
     expect(meta.height, 40);
+  });
+
+  test('bake with live 180° on EXIF-6 sensor buffer yields landscape again', () async {
+    final landscape = img.Image(width: 40, height: 20);
+    img.fill(landscape, color: img.ColorRgb8(5, 6, 7));
+    landscape.exif.imageIfd.orientation = 6;
+    final jpeg = Uint8List.fromList(img.encodeJpg(landscape, quality: 90));
+    final saved = await ImageHelper.bakeExifAndQuarterTurns(
+      XFile.fromData(jpeg, mimeType: 'image/jpeg', name: 'exif6-180.jpg'),
+      quarterTurns: 2,
+    );
+    final meta = await ImageHelper.getImageMetadata(saved);
+    expect(meta, isNotNull);
+    expect(meta!.width, 40);
+    expect(meta.height, 20);
   });
 }

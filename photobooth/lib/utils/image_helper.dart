@@ -231,16 +231,18 @@ class ImageHelper {
     return XFile(savePath);
   }
 
-  /// Bake EXIF orientation and/or clockwise quarter-turns into pixels.
+  /// Bake still pixels so look/print match the upright live HDMI/UVC preview.
   ///
-  /// Used for Pi sidecar / HDMI kiosk stills that skip full normalize (too
-  /// heavy on Android TV) but still need print/compose to match the upright
-  /// live preview ([RotatedBox] quarter-turns are display-only otherwise).
+  /// Live preview uses [RotatedBox] on the **raw** capture-card frames (no EXIF).
+  /// Canon JPEGs often carry an EXIF orientation tag; the `image` package applies
+  /// that tag during decode. Combining “decode (EXIF applied)” + “live quarter
+  /// turns” double-rotates and leaves Classic look sideways while pose looks fine.
   ///
-  /// When [quarterTurns] is non-zero, only the turns **not already implied by
-  /// EXIF** are applied. JPEG decode bakes EXIF first; adding the full live
-  /// [RotatedBox] amount on top double-rotated Canon stills (pose upright,
-  /// Classic look sideways).
+  /// This path therefore:
+  /// 1. Decodes the JPEG **without** applying EXIF (sensor / file pixel buffer)
+  /// 2. Rotates that buffer clockwise by [quarterTurns] (same as [RotatedBox])
+  /// 3. When [quarterTurns] is 0, applies EXIF-equivalent quarter-turns instead
+  /// 4. Re-encodes with no orientation tag so [Image.memory] shows upright pixels
   static Future<XFile> bakeExifAndQuarterTurns(
     XFile sourceFile, {
     int quarterTurns = 0,
@@ -292,45 +294,57 @@ class ImageHelper {
     ));
   }
 
-  /// Top-level for [compute]: upright pixels for look/print.
-  ///
-  /// [decodeImage] / JPEG decode already applies EXIF orientation. Live
-  /// [RotatedBox] turns are relative to the raw HDMI feed (no EXIF). Apply only
-  /// the **remaining** quarter-turns after EXIF so Canon tagged JPEGs are not
-  /// double-rotated (pose upright, look sideways).
+  /// Top-level for [compute]: sensor pixels → live-feed (or EXIF) quarter-turns.
   static Uint8List _bakeExifAndQuarterTurnsBytes(_BakeExifTurnsArgs args) {
-    final turns = ((args.quarterTurns % 4) + 4) % 4;
-    int orientation = 1;
-    img.Image? work;
-    try {
-      final jpeg = img.JpegData()..read(args.bytes);
-      orientation = jpeg.exif.imageIfd.hasOrientation
-          ? (jpeg.exif.imageIfd.orientation ?? 1)
-          : 1;
-      work = jpeg.getImage();
-    } catch (_) {
-      work = null;
-    }
-    work ??= img.decodeImage(args.bytes);
-    if (work == null) {
-      throw Exception('Failed to decode captured image');
-    }
-    if (turns != 0) {
-      final exifTurns = _exifOrientationQuarterTurns(orientation);
-      final remaining = (turns - exifTurns + 4) % 4;
-      if (remaining != 0) {
-        work = img.copyRotate(work, angle: remaining * 90);
-      }
-    } else {
-      work = img.bakeOrientation(work);
+    final requestedTurns = ((args.quarterTurns % 4) + 4) % 4;
+    final orientation = _peekJpegExifOrientation(args.bytes);
+    var work = _decodeJpegSensorPixels(args.bytes);
+
+    // Live RotatedBox turns are authoritative. Otherwise bake EXIF into pixels.
+    final applyTurns = requestedTurns != 0
+        ? requestedTurns
+        : _exifOrientationQuarterTurns(orientation);
+    if (applyTurns != 0) {
+      work = img.copyRotate(work, angle: applyTurns * 90);
     }
     return Uint8List.fromList(
       img.encodeJpg(work, quality: args.jpegQuality),
     );
   }
 
-  /// Maps common EXIF orientation values to clockwise quarter-turns baked by
-  /// the JPEG decoder (flips approximated as rotate-only for booth stills).
+  /// EXIF orientation tag without applying it (1 when absent / unreadable).
+  static int _peekJpegExifOrientation(Uint8List bytes) {
+    try {
+      final jpeg = img.JpegData()..read(bytes);
+      if (jpeg.exif.imageIfd.hasOrientation) {
+        return jpeg.exif.imageIfd.orientation ?? 1;
+      }
+    } catch (_) {
+      // Fall through.
+    }
+    return 1;
+  }
+
+  /// JPEG pixel buffer with EXIF orientation ignored (same space as HDMI frames).
+  static img.Image _decodeJpegSensorPixels(Uint8List bytes) {
+    try {
+      final jpeg = img.JpegData()..read(bytes);
+      if (jpeg.exif.imageIfd.hasOrientation) {
+        jpeg.exif.imageIfd.orientation = null;
+      }
+      final image = jpeg.getImage();
+      if (image.width > 0 && image.height > 0) return image;
+    } catch (_) {
+      // Fall through to generic decode.
+    }
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      throw Exception('Failed to decode captured image');
+    }
+    return decoded;
+  }
+
+  /// Maps EXIF orientation to clockwise quarter-turns (booth stills; flips≈rotate).
   static int _exifOrientationQuarterTurns(int orientation) {
     return switch (orientation) {
       3 || 4 => 2,
@@ -373,15 +387,19 @@ class ImageHelper {
 
   /// Top-level/static for compute(): decode, resize to standard max, encode JPEG. No file I/O.
   static Uint8List _normalizeToStandardJpegBytes(_NormalizeJpegArgs args) {
-    final originalImage = img.decodeImage(args.bytes);
-    if (originalImage == null) {
-      throw Exception('Failed to decode captured image');
-    }
-    // Apply EXIF orientation so saved photos are upright everywhere.
-    var normalized = img.bakeOrientation(originalImage);
     final turns = ((args.quarterTurns % 4) + 4) % 4;
+    late img.Image normalized;
     if (turns != 0) {
+      // Same rule as [bakeExifAndQuarterTurns]: rotate sensor pixels so UVC
+      // stills match live [RotatedBox] (do not EXIF-bake then rotate again).
+      normalized = _decodeJpegSensorPixels(args.bytes);
       normalized = img.copyRotate(normalized, angle: turns * 90);
+    } else {
+      final originalImage = img.decodeImage(args.bytes);
+      if (originalImage == null) {
+        throw Exception('Failed to decode captured image');
+      }
+      normalized = img.bakeOrientation(originalImage);
     }
     final maxDim = args.maxDimension;
 
