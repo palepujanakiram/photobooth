@@ -146,8 +146,9 @@ Widget buildRotatedCoverPreview({
 /// Quarter-turns to bake into a still so pixels match the upright live feed.
 ///
 /// Returns the same clockwise quarter-turns as live [RotatedBox] when that is
-/// non-zero. When live is unrotated (0) but pose is HDMI/UVC and the still is
-/// from Pi gphoto, returns [hdmiSidecarExtraQuarterTurns] (FOTO default +90°).
+/// non-zero. When live is unrotated (0) but pose uses HDMI/UVC (not Pi MJPEG),
+/// returns [hdmiSidecarExtraQuarterTurns] (FOTO default +90°) for Pi **or**
+/// UVC stills — capture-card pose never leaves stills unrotated by default.
 int liveFeedSyncedCaptureQuarterTurns({
   required int liveFeedQuarterTurns,
   required int hdmiSidecarExtraQuarterTurns,

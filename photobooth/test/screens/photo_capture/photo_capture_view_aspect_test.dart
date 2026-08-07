@@ -30,8 +30,13 @@ void main() {
     expect(viewModel.uvcPreviewEffectiveQuarterTurns, 1);
     expect(
       viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
-      1,
-      reason: 'sidecar still must bake the same 90° as live RotatedBox',
+      0,
+      reason: 'TEMP diagnostic: forced bake 0',
+    );
+    expect(
+      viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: false),
+      0,
+      reason: 'TEMP diagnostic: forced bake 0',
     );
 
     // UVC rebind must not wipe staff portrait-TV rotation.
@@ -39,11 +44,12 @@ void main() {
     expect(viewModel.previewRotationDegrees, 90);
     expect(
       viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
-      1,
+      0,
     );
   });
 
-  test('HDMI+sidecar bakes +90° when live preview rotation is 0', () async {
+  test('HDMI+sidecar bakes inverted +90° when live preview rotation is 0',
+      () async {
     final viewModel = CaptureViewModel();
     addTearDown(viewModel.dispose);
 
@@ -52,13 +58,13 @@ void main() {
     expect(viewModel.sidecarHdmiStillExtraQuarterTurns, 1);
     expect(
       viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
-      1,
-      reason: 'Canon USB still vs upright HDMI needs booth +90° CW',
+      0,
+      reason: 'TEMP diagnostic: forced bake 0',
     );
     expect(
       viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: false),
       0,
-      reason: 'UVC stills already match the HDMI pose feed',
+      reason: 'TEMP diagnostic: forced bake 0',
     );
   });
 

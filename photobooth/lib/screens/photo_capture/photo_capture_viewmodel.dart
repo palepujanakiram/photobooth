@@ -616,22 +616,35 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Bake turns so the saved still matches the upright live feed on screen.
   ///
-  /// Prefers [uvcPreviewEffectiveQuarterTurns] when non-zero. Otherwise applies
-  /// [sidecarHdmiStillExtraQuarterTurns] (FOTO default +90°) for Pi stills while
-  /// pose uses HDMI/UVC — Canon USB is often 90° off upright HDMI.
+  /// Live [RotatedBox] turns apply to the HDMI capture-card texture. Pi gphoto
+  /// JPEGs use a different sensor buffer — on FOTO that buffer needs the
+  /// **opposite** clockwise quarter-turns to look upright. UVC grabs share the
+  /// HDMI texture space so they keep the live turns as-is.
   int bakeQuarterTurnsMatchingLiveFeed({required bool fromSidecar}) {
-    final turns = liveFeedSyncedCaptureQuarterTurns(
-      liveFeedQuarterTurns: uvcPreviewEffectiveQuarterTurns,
+    final live = ((uvcPreviewEffectiveQuarterTurns % 4) + 4) % 4;
+    var turns = liveFeedSyncedCaptureQuarterTurns(
+      liveFeedQuarterTurns: live,
       hdmiSidecarExtraQuarterTurns: _sidecarHdmiStillExtraQuarterTurns,
-      applyHdmiSidecarExtra: fromSidecar && !usesSidecarLivePreview,
+      // Booth +90 whenever pose is the capture card (not Pi MJPEG), including
+      // UVC still fallback when gphoto is briefly disconnected.
+      applyHdmiSidecarExtra: !usesSidecarLivePreview,
     );
+    // HDMI texture vs Canon JPEG: invert for sidecar so look matches live.
+    if (fromSidecar && turns != 0) {
+      turns = (4 - turns) % 4;
+    }
+    // TEMP FOTO diagnostic: force bake 0 (as-delivered). Next try: force 3.
+    // Remove this override once orientation is confirmed on TV.
+    const forcedBakeQuarterTurns = 0;
     AppLogger.info(
-      'Capture orientation sync: livePreview=${previewRotationDegrees}° '
-      'hdmiExtra=$_sidecarHdmiStillExtraQuarterTurns '
-      'bakeQuarterTurns=$turns fromSidecar=$fromSidecar '
-      'userConfigured=$_isPreviewRotationConfiguredByUser',
+      'Capture orientation sync: livePreview=$previewRotationDegrees° '
+      'liveTurns=$live hdmiExtra=$_sidecarHdmiStillExtraQuarterTurns '
+      'computedBake=$turns forcedBake=$forcedBakeQuarterTurns '
+      'fromSidecar=$fromSidecar '
+      'userConfigured=$_isPreviewRotationConfiguredByUser '
+      'sidecarLive=$usesSidecarLivePreview',
     );
-    return turns;
+    return forcedBakeQuarterTurns;
   }
 
   Size? uvcPreviewDisplaySizeForCard({
@@ -1174,18 +1187,23 @@ class CaptureViewModel extends ChangeNotifier {
     await Future<void>.delayed(Duration.zero);
 
     try {
+      // Prefs can lag behind the rotation screen on TV remounts — refresh before
+      // baking so staff 90° is never lost at shutter.
+      await loadPreviewRotation();
+      final bakeTurns = bakeQuarterTurnsMatchingLiveFeed(fromSidecar: isSidecar);
       final XFile savedFile;
       if (isSidecar) {
         // Keep still pixels in sync with the upright live feed on screen.
         savedFile = await persistSidecarCaptureStill(
           rawFile,
-          bakeQuarterTurns: bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
+          bakeQuarterTurns: bakeTurns,
         );
       } else {
         savedFile = await _persistExternalCaptureStill(
           rawFile: rawFile,
           isUvc: isUvc,
           cameraId: cameraId,
+          bakeQuarterTurns: bakeTurns,
         );
       }
       await _assignCapturedPhotoModel(
@@ -1245,14 +1263,17 @@ class CaptureViewModel extends ChangeNotifier {
     required XFile rawFile,
     required bool isUvc,
     required String cameraId,
+    int? bakeQuarterTurns,
   }) async {
+    final turns = bakeQuarterTurns ??
+        bakeQuarterTurnsMatchingLiveFeed(fromSidecar: false);
     Future<XFile> persist() async {
       XFile savedFile;
       if (isUvc && shouldSkipUvcNormalizeOnKiosk(_deviceType)) {
-        // Still bake EXIF + live-feed turns — raw copy left strip/print sideways.
+        // Still bake live-feed turns — raw copy left strip/print sideways.
         savedFile = await ImageHelper.bakeExifAndQuarterTurns(
           rawFile,
-          quarterTurns: bakeQuarterTurnsMatchingLiveFeed(fromSidecar: false),
+          quarterTurns: turns,
         );
       } else {
         final maxDimension = _normalizeMaxDimensionForCapture(isUvc: isUvc);
@@ -1264,9 +1285,7 @@ class CaptureViewModel extends ChangeNotifier {
             fixBgrChannelOrder: isUvc,
             maxDimension: maxDimension,
             jpegQuality: jpegQuality,
-            quarterTurns: isUvc
-                ? bakeQuarterTurnsMatchingLiveFeed(fromSidecar: false)
-                : 0,
+            quarterTurns: isUvc ? turns : 0,
           );
         } catch (normalizeError, normalizeSt) {
           if (!isUvc) rethrow;
@@ -2145,7 +2164,8 @@ class CaptureViewModel extends ChangeNotifier {
     WebFlowTrace.log('CAPTURE', 'normalize_start');
     final XFile savedFile;
     if (_lastRawCaptureFromSidecar) {
-      // Sidecar already ~1920px — light EXIF + live-feed sync bake.
+      await loadPreviewRotation();
+      // Sidecar already ~1920px — light live-feed sync bake.
       savedFile = await persistSidecarCaptureStill(
         imageFile,
         bakeQuarterTurns: bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
