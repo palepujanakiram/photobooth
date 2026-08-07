@@ -54,12 +54,12 @@ void main() {
     });
 
     test('calls ensureLiveView when configured', () async {
-      var hit = false;
+      var hits = 0;
       final client = MockClient((request) async {
         expect(request.url.path, '/camera/live-view');
-        hit = true;
+        hits++;
         return http.Response(
-          '{"ok":true,"enabled":true,"woke":false}',
+          '{"ok":true,"enabled":true,"woke":true,"holding":true}',
           200,
           headers: {'content-type': 'application/json'},
         );
@@ -71,8 +71,39 @@ void main() {
         ),
         client: client,
       );
-      await ensureCanonLiveViewForHdmiPose(service);
-      expect(hit, isTrue);
+      final ok = await ensureCanonLiveViewForHdmiPose(service);
+      expect(ok, isTrue);
+      expect(hits, 1);
+      service.dispose();
+    });
+
+    test('retries until enabled or holding', () async {
+      var hits = 0;
+      final client = MockClient((request) async {
+        hits++;
+        if (hits < 2) {
+          return http.Response(
+            '{"ok":true,"enabled":false,"woke":false,"holding":false}',
+            502,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response(
+          '{"ok":true,"enabled":false,"woke":true,"holding":true}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://192.168.2.50:8791',
+        ),
+        client: client,
+      );
+      final ok = await ensureCanonLiveViewForHdmiPose(service);
+      expect(ok, isTrue);
+      expect(hits, 2);
       service.dispose();
     });
 
@@ -87,7 +118,8 @@ void main() {
         ),
         client: client,
       );
-      await ensureCanonLiveViewForHdmiPose(service);
+      final ok = await ensureCanonLiveViewForHdmiPose(service);
+      expect(ok, isFalse);
       service.dispose();
     });
   });
@@ -183,7 +215,11 @@ void main() {
       expect(raw, isNotNull);
       final saved = await persistSidecarCaptureStill(raw!);
       expect(saved.path, isNotEmpty);
-      expect(saved.path.contains('photos'), isTrue);
+      // EXIF≤1 stills keep the sidecar temp path; tagged ones go under photos/.
+      expect(
+        saved.path.contains('sidecar') || saved.path.contains('photos'),
+        isTrue,
+      );
       expect(await saved.readAsBytes(), isNotEmpty);
       await ImageHelper.tryDeleteLocalFile(raw.path);
       await ImageHelper.tryDeleteLocalFile(saved.path);
@@ -199,7 +235,11 @@ void main() {
       );
       expect(raw.path, isEmpty);
       final saved = await persistSidecarCaptureStill(raw);
-      expect(saved.path.contains('photos'), isTrue);
+      expect(saved.path, isNotEmpty);
+      expect(
+        saved.path.contains('sidecar') || saved.path.contains('photos'),
+        isTrue,
+      );
       expect(await saved.readAsBytes(), isNotEmpty);
       await ImageHelper.tryDeleteLocalFile(saved.path);
     });

@@ -123,10 +123,10 @@ class LocalCameraService {
   /// Arms Canon Live View over USB so HDMI → capture card is not blank.
   ///
   /// Call before opening UVC pose and again before reopening after a still
-  /// (`fotozen-sidecar` ≥ v1.2.2). Best-effort — returns `enabled: false` when
-  /// viewfinder configs fail.
-  Future<({bool enabled, bool woke})> ensureLiveView({
-    Duration timeout = const Duration(seconds: 12),
+  /// (`fotozen-sidecar` ≥ v1.2.3 holds LV with a capture-movie session).
+  /// Best-effort — `holding` means the Pi kept the PTP session open.
+  Future<({bool enabled, bool woke, bool holding})> ensureLiveView({
+    Duration timeout = const Duration(seconds: 20),
   }) async {
     if (!isConfigured) {
       throw StateError('Camera sidecar is not configured');
@@ -134,22 +134,32 @@ class LocalCameraService {
     final response = await _client
         .post(_uri('/camera/live-view'), headers: _headers)
         .timeout(timeout);
+    final body = _decodeLiveViewBody(response);
+    final enabled = body['enabled'] == true;
+    final woke = body['woke'] == true;
+    final holding = body['holding'] == true;
+    // 502 with holding=false is a hard failure; 200 or any enabled/holding ok.
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      final preview = response.body.length > 240
-          ? response.body.substring(0, 240)
-          : response.body;
-      throw StateError(
-        'Camera sidecar live-view failed (${response.statusCode}): $preview',
-      );
+      if (!enabled && !holding) {
+        final preview = response.body.length > 240
+            ? response.body.substring(0, 240)
+            : response.body;
+        throw StateError(
+          'Camera sidecar live-view failed (${response.statusCode}): $preview',
+        );
+      }
     }
-    final body = jsonDecode(response.body);
-    if (body is! Map<String, dynamic>) {
-      throw StateError('Camera sidecar live-view returned invalid JSON');
+    return (enabled: enabled, woke: woke, holding: holding);
+  }
+
+  Map<String, dynamic> _decodeLiveViewBody(http.Response response) {
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map<String, dynamic>) return body;
+    } catch (_) {
+      // fall through
     }
-    return (
-      enabled: body['enabled'] == true,
-      woke: body['woke'] == true,
-    );
+    throw StateError('Camera sidecar live-view returned invalid JSON');
   }
 
   Uint8List _requireJpegBytes(http.Response response, {required String action}) {

@@ -129,11 +129,11 @@ class UvcCaptureConfig {
 
   /// Ignore preview-interrupt shutter signals right after the feed reconnects.
   /// Also used to mask HDMI frames while Canon leaves the status LCD for LV.
-  static const Duration previewWarmupPeriod = Duration(milliseconds: 2000);
+  static const Duration previewWarmupPeriod = Duration(milliseconds: 2800);
 
   /// Pause after Pi arms Canon Live View so HDMI switches off the body status
   /// screen before we show UVC frames.
-  static const Duration canonLvHdmiSettleDelay = Duration(milliseconds: 700);
+  static const Duration canonLvHdmiSettleDelay = Duration(milliseconds: 1200);
 
   /// Ignore USB disconnect/reconnect churn while the DSLR shutter pauses HDMI.
   static const Duration shutterGracePeriod = Duration(seconds: 4);

@@ -153,7 +153,12 @@ void main() {
         expect(request.method, 'POST');
         expect(request.url.path, '/camera/live-view');
         return http.Response(
-          jsonEncode({'ok': true, 'enabled': true, 'woke': true}),
+          jsonEncode({
+            'ok': true,
+            'enabled': true,
+            'woke': true,
+            'holding': true,
+          }),
           200,
           headers: {'content-type': 'application/json'},
         );
@@ -162,6 +167,27 @@ void main() {
       final result = await service.ensureLiveView();
       expect(result.enabled, isTrue);
       expect(result.woke, isTrue);
+      expect(result.holding, isTrue);
+      service.dispose();
+    });
+
+    test('ensureLiveView accepts holding when enabled is false', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'ok': true,
+            'enabled': false,
+            'woke': true,
+            'holding': true,
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      final service = LocalCameraService(config: config, client: client);
+      final result = await service.ensureLiveView();
+      expect(result.enabled, isFalse);
+      expect(result.holding, isTrue);
       service.dispose();
     });
 

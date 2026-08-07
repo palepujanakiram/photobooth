@@ -14,18 +14,35 @@ bool isSidecarCameraId(String? cameraId) {
 
 /// Best-effort: arm Canon Live View for HDMI/UVC pose (no still).
 ///
-/// Pose uses the capture card; LV must be on over USB or HDMI stays blank
-/// until someone presses Q on the body. Safe no-op when sidecar is unset.
-Future<void> ensureCanonLiveViewForHdmiPose(LocalCameraService? service) async {
-  if (service == null || !service.isConfigured) return;
-  try {
-    final result = await service.ensureLiveView();
-    AppLogger.info(
-      'Canon LV ensure: enabled=${result.enabled} woke=${result.woke}',
-    );
-  } catch (e) {
-    AppLogger.warning('Canon LV ensure failed (HDMI may stay blank): $e');
+/// Pose uses the capture card; LV must stay on over USB or HDMI falls back to
+/// the body status / Q menu. Sidecar ≥ v1.2.3 holds LV with a capture-movie
+/// session. Retries a few times when the first arm fails. Safe no-op when
+/// sidecar is unset.
+Future<bool> ensureCanonLiveViewForHdmiPose(LocalCameraService? service) async {
+  if (service == null || !service.isConfigured) return false;
+  const attempts = 3;
+  for (var i = 0; i < attempts; i++) {
+    try {
+      final result = await service.ensureLiveView();
+      AppLogger.info(
+        'Canon LV ensure attempt ${i + 1}/$attempts: '
+        'enabled=${result.enabled} woke=${result.woke} '
+        'holding=${result.holding}',
+      );
+      if (result.enabled || result.holding) return true;
+    } catch (e) {
+      AppLogger.warning(
+        'Canon LV ensure attempt ${i + 1}/$attempts failed: $e',
+      );
+    }
+    if (i < attempts - 1) {
+      await Future<void>.delayed(Duration(milliseconds: 400 * (i + 1)));
+    }
   }
+  AppLogger.warning(
+    'Canon LV ensure exhausted — HDMI may show body status until Q / LV',
+  );
+  return false;
 }
 
 /// Tries FotoZen Pi sidecar still capture; returns null to use CameraX/UVC.

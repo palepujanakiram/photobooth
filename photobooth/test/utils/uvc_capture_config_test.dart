@@ -23,10 +23,10 @@ void main() {
     expect(UvcCaptureConfig.captureFlashDuration, const Duration(milliseconds: 120));
     expect(UvcCaptureConfig.uiCaptureCooldown, const Duration(milliseconds: 600));
     expect(UvcCaptureConfig.keepControllerOpenDuringReview, isFalse);
-    expect(UvcCaptureConfig.previewWarmupPeriod, const Duration(milliseconds: 2000));
+    expect(UvcCaptureConfig.previewWarmupPeriod, const Duration(milliseconds: 2800));
     expect(
       UvcCaptureConfig.canonLvHdmiSettleDelay,
-      const Duration(milliseconds: 700),
+      const Duration(milliseconds: 1200),
     );
     expect(UvcCaptureConfig.shutterGracePeriod, const Duration(seconds: 4));
     expect(UvcCaptureConfig.takePictureTimeout, const Duration(seconds: 10));

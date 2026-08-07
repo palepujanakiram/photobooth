@@ -295,7 +295,7 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final wysiwyg = layout ?? StripWysiwygLayout.defaults;
     final images =
-        imageDataUrls.take(kStripShotCount).map(_bytesFromDataUrl).toList();
+        imageDataUrls.take(kStripShotCount).map(_tryBytesFromDataUrl).toList();
     final chrome = StripChromeLook.forFrame(
       frameId,
       borderRatio: wysiwyg.borderRatio,
@@ -306,20 +306,18 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
     // Filmstrip print uses contain so faces aren't cropped into the rails.
     final photoFit =
         chrome.showFilmstripSprockets ? BoxFit.contain : BoxFit.cover;
+    final cacheW = width.isFinite && width > 0 ? (width * 2).round() : 900;
     final photoColumn = Column(
       children: [
         for (var i = 0; i < kStripShotCount; i++)
           Expanded(
-            child: images.length > i
+            child: images.length > i && images[i] != null
                 ? ColoredBox(
                     color: Colors.black,
-                    child: Image.memory(
-                      images[i],
+                    child: _lookPreviewPhoto(
+                      bytes: images[i]!,
                       fit: photoFit,
-                      width: double.infinity,
-                      height: double.infinity,
-                      gaplessPlayback: true,
-                      filterQuality: FilterQuality.high,
+                      cacheWidth: cacheW,
                     ),
                   )
                 : const ColoredBox(color: Colors.black12),
@@ -834,6 +832,65 @@ Uint8List _bytesFromDataUrl(String dataUrl) {
   return base64Decode(b64);
 }
 
+/// Safe decode for look-screen thumbs — empty/corrupt → null (show placeholder).
+Uint8List? _tryBytesFromDataUrl(String dataUrl) {
+  final trimmed = dataUrl.trim();
+  if (trimmed.isEmpty) return null;
+  try {
+    final bytes = _bytesFromDataUrl(trimmed);
+    return bytes.isEmpty ? null : bytes;
+  } catch (_) {
+    return null;
+  }
+}
+
+Widget _lookPreviewPhoto({
+  required Uint8List bytes,
+  required BoxFit fit,
+  int? cacheWidth,
+}) {
+  return Image.memory(
+    bytes,
+    fit: fit,
+    width: double.infinity,
+    height: double.infinity,
+    gaplessPlayback: true,
+    filterQuality: FilterQuality.high,
+    cacheWidth: cacheWidth,
+    frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+      if (wasSynchronouslyLoaded || frame != null) return child;
+      return const ColoredBox(
+        color: Color(0xFF1A1A1A),
+        child: Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: Colors.white70,
+            ),
+          ),
+        ),
+      );
+    },
+    errorBuilder: (_, __, ___) => const ColoredBox(
+      color: Color(0xFF1A1A1A),
+      child: Center(
+        child: Icon(Icons.broken_image_outlined, color: Colors.white54, size: 40),
+      ),
+    ),
+  );
+}
+
+Widget _lookPreviewMissingPhoto() {
+  return const ColoredBox(
+    color: Color(0xFF1A1A1A),
+    child: Center(
+      child: Icon(Icons.photo_outlined, color: Colors.white54, size: 40),
+    ),
+  );
+}
+
 /// Classic 1-shot preview (matches zenai composeSingle6x4 cover fill).
 class _Single6x4Preview extends StatelessWidget {
   const _Single6x4Preview({
@@ -875,19 +932,19 @@ class _Single6x4Preview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bytes = _bytesFromDataUrl(imageDataUrl);
+    final bytes = _tryBytesFromDataUrl(imageDataUrl);
     final margin = width * 0.027; // ~48/1800
     // Cover the print frame (portrait 4×6 or landscape 6×4) — letterboxing
     // looked like "just whitespace" when toggling orientation.
-    final photo = Image.memory(
-      bytes,
-      fit: BoxFit.cover,
-      width: double.infinity,
-      height: double.infinity,
-      gaplessPlayback: true,
-      filterQuality: FilterQuality.high,
-    );
-    final photoLayer = imagesAreGraded
+    final cacheW = width.isFinite && width > 0 ? (width * 2).round() : 900;
+    final photo = bytes == null
+        ? _lookPreviewMissingPhoto()
+        : _lookPreviewPhoto(
+            bytes: bytes,
+            fit: BoxFit.cover,
+            cacheWidth: cacheW,
+          );
+    final photoLayer = bytes == null || imagesAreGraded
         ? photo
         : ColorFiltered(
             colorFilter: stripPreviewColorFilter(filterId),
@@ -905,7 +962,8 @@ class _Single6x4Preview extends StatelessWidget {
           Padding(
             padding: EdgeInsets.all(margin),
             child: ColoredBox(
-              color: _matte,
+              // Dark well so a slow decode never reads as an empty white card.
+              color: const Color(0xFF121212),
               child: photoLayer,
             ),
           ),

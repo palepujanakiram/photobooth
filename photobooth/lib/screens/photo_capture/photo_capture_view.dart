@@ -3264,6 +3264,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           fromSidecar = true;
           capturedFile = sidecar;
           AppLogger.info('UVC pose shutter used Pi sidecar still');
+          // Pi stops the LV keeper during capture; re-arm so HDMI is not the
+          // body status LCD under the Saving overlay / next pose.
+          await ensureCanonLiveViewForHdmiPose(
+            _captureViewModel.localCameraService,
+          );
         } else {
           capturedFile = await _obtainUvcStillFile(ctrl, source: source);
         }
