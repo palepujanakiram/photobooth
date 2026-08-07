@@ -239,7 +239,8 @@ class _SlowScrubApi extends FakeApiService {
     required String sessionId,
     required List<String> images,
   }) async {
-    final id = images.first.contains('shot1') ? 1 : 2;
+    final match = RegExp(r'shot(\d+)').firstMatch(images.first);
+    final id = match != null ? match.group(1)! : 'x';
     _inFlight++;
     cleanCalls++;
     if (_inFlight > maxInFlight) maxInFlight = _inFlight;

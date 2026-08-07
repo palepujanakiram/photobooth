@@ -556,6 +556,8 @@ void main() {
     expect(vm.wysiwygLayout.gridTitle, isNotEmpty);
     expect(vm.frames.map((f) => f.id), contains('grid_2x2'));
 
+    // Polish clears grade cache; wait for it then grade polished thumbs.
+    await vm.preparePreview();
     await vm.refreshPreviewGrade();
     expect(vm.previewImagesAreGraded, isTrue);
     expect(
@@ -743,6 +745,9 @@ void main() {
     final gradeFuture = vm.refreshPreviewGrade();
     await Future<void>.delayed(const Duration(milliseconds: 10));
     expect(vm.isGradingPreview, isTrue);
+    // Grade no longer counts as "Polishing photos…".
+    expect(vm.isPreparingPreview, isFalse);
+    expect(vm.canCompose, isTrue);
     await gradeFuture;
   });
 

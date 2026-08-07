@@ -12,6 +12,7 @@ import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/print_size_helpers.dart';
+import '../../utils/strip_preview_grade_compress.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
 
@@ -161,7 +162,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _scribbles.isNotEmpty || (_activeScribblePoints?.isNotEmpty ?? false);
 
   bool get isLoading => _loading;
-  bool get isPreparingPreview => _preparingPreview || _gradingPreview;
+  /// True only while Gemini AF polish is still running (not during grade).
+  bool get isPreparingPreview => _preparingPreview;
   bool get previewCleaned => _previewCleaned;
 
   /// Progress dots for Classic AF polish (capture + look-screen remainder).
@@ -195,7 +197,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   StripComposeResult? get composeResult => _composeResult;
 
-  /// Look picker stays interactive while polish runs in the background.
+  /// Look picker + Continue stay interactive while polish/grade run in background.
   bool get canCompose =>
       _hasComposableShotCount && !_composing && !_loading;
 
@@ -217,8 +219,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       notifyListeners();
     }
     if (classicOverlayCleanupEnabled && !_previewCleaned) {
-      // Polish first (serialized per shot), then grade — avoids freezing dirty AF
-      // thumbs under the look while Gemini is still running.
+      // Grade immediately on current thumbs (compressed) so Continue / look
+      // preview are not blocked on the last-shot Gemini polish. Re-grade after
+      // polish so WYSIWYG matches cleaned plates.
+      unawaited(refreshPreviewGrade());
       unawaited(preparePreview().then((_) {
         unawaited(refreshPreviewGrade());
       }));
@@ -388,9 +392,14 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _gradingPreview = true;
     notifyListeners();
     try {
+      // Shrink uploads — full Canon plates dominated look-screen wait on Wi‑Fi.
+      final gradeInputs = await compressDataUrlsForStripPreviewGrade(
+        List<String>.from(_imageDataUrls),
+      );
+      if (seq != _gradeSeq) return;
       final graded = await _api.gradeStripPreview(
         sessionId: sessionId,
-        images: _imageDataUrls,
+        images: gradeInputs,
         filter: filterId,
       );
       if (seq != _gradeSeq) return;

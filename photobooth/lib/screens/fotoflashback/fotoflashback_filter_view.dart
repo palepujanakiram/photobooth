@@ -201,6 +201,17 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                             ),
                           ],
                         ),
+                      ] else if (viewModel.isGradingPreview) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          AppStrings.flashbackGradingPreview,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.amber.shade100.withValues(alpha: 0.7),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ],
                       if (viewModel.classicOverlayCleanupEnabled &&
                           viewModel.scrubDotStatuses.isNotEmpty) ...[

@@ -24,8 +24,12 @@ class ClassicShotScrubResult {
   final bool scrubbed;
 }
 
-/// Serializes Classic Gemini scrub calls so concurrent accepts do not race the
-/// image API (parallel cleans often succeed only for the first shot).
+/// Serializes Classic Gemini scrub calls from the booth client.
+///
+/// Pose-time overlap / concurrency is handled **server-side**
+/// (`STRIP_AF_CLEAN_CONCURRENCY`) when a request carries multiple images
+/// (compose / web batch). Keep this gate serial until booth APKs can ship a
+/// client-side concurrency change safely.
 class ClassicStripScrubGate {
   ClassicStripScrubGate._();
 

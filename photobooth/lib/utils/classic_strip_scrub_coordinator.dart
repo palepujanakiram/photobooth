@@ -39,6 +39,8 @@ class _ScrubEntry {
 /// Web used to [pushReplacementNamed] between shots, wiping State futures and
 /// deferring all polish to the look screen. This coordinator keeps the queue
 /// and progress dots alive across that (and works when remount is skipped).
+///
+/// Client scrub POSTs stay serial; server applies downscale + batch concurrency.
 class ClassicStripScrubCoordinator extends ChangeNotifier {
   ClassicStripScrubCoordinator._();
 

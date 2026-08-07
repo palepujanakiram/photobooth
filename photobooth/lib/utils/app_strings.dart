@@ -481,6 +481,7 @@ abstract final class AppStrings {
   static const flashbackComposePayCta = 'Continue to pay';
   static const flashbackComposing = 'Building your strip…';
   static const flashbackPreparingPreview = 'Polishing photos…';
+  static const flashbackGradingPreview = 'Updating look preview…';
   static const flashbackFinishEncodeFailed =
       'Couldn’t prepare your photo. Tap Continue to looks to try again.';
   static const flashbackRetryScrub = 'Refresh polish';
