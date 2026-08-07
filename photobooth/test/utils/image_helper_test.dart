@@ -64,4 +64,50 @@ void main() {
     expect(meta!.width, 10);
     expect(meta.height, 30);
   });
+
+  test('bake with live turns skips EXIF so Canon is not double-rotated', () async {
+    // 40×20 with EXIF orientation 6 → decoder yields 20×40. Live turns=1 matches
+    // EXIF; remaining=0 so dims stay 20×40 (old path added +90° → 40×20 sideways).
+    final landscape = img.Image(width: 40, height: 20);
+    img.fill(landscape, color: img.ColorRgb8(10, 20, 30));
+    landscape.exif.imageIfd.orientation = 6;
+    final jpeg = Uint8List.fromList(img.encodeJpg(landscape, quality: 90));
+    final saved = await ImageHelper.bakeExifAndQuarterTurns(
+      XFile.fromData(jpeg, mimeType: 'image/jpeg', name: 'exif6.jpg'),
+      quarterTurns: 1,
+    );
+    final meta = await ImageHelper.getImageMetadata(saved);
+    expect(meta, isNotNull);
+    expect(meta!.width, 20, reason: 'EXIF 6 already supplies the live 90°');
+    expect(meta.height, 40);
+  });
+
+  test('bake with live turns rotates when JPEG has no EXIF orientation', () async {
+    final landscape = img.Image(width: 40, height: 20);
+    img.fill(landscape, color: img.ColorRgb8(10, 20, 30));
+    final jpeg = Uint8List.fromList(img.encodeJpg(landscape, quality: 90));
+    final saved = await ImageHelper.bakeExifAndQuarterTurns(
+      XFile.fromData(jpeg, mimeType: 'image/jpeg', name: 'no-exif.jpg'),
+      quarterTurns: 1,
+    );
+    final meta = await ImageHelper.getImageMetadata(saved);
+    expect(meta, isNotNull);
+    expect(meta!.width, 20);
+    expect(meta.height, 40);
+  });
+
+  test('bake with zero turns still applies EXIF orientation', () async {
+    final landscape = img.Image(width: 40, height: 20);
+    img.fill(landscape, color: img.ColorRgb8(1, 2, 3));
+    landscape.exif.imageIfd.orientation = 6;
+    final jpeg = Uint8List.fromList(img.encodeJpg(landscape, quality: 90));
+    final saved = await ImageHelper.bakeExifAndQuarterTurns(
+      XFile.fromData(jpeg, mimeType: 'image/jpeg', name: 'exif-only.jpg'),
+      quarterTurns: 0,
+    );
+    final meta = await ImageHelper.getImageMetadata(saved);
+    expect(meta, isNotNull);
+    expect(meta!.width, 20);
+    expect(meta.height, 40);
+  });
 }

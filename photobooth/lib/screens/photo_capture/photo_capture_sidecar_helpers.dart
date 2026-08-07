@@ -80,13 +80,16 @@ Future<XFile?> tryCaptureFromSidecar(LocalCameraService? service) async {
   }
 }
 
-/// Persist a DSLR sidecar JPEG for review with EXIF (+ live-feed sync turns).
+/// Persist a DSLR sidecar JPEG for review with EXIF and/or live-feed sync turns.
 ///
 /// Full-resolution Canon stills (often 20MP+) hang [compute] normalize on
 /// Android TV past both the 20s normalize and 45s overall capture budgets —
 /// [Future.timeout] cannot cancel an in-flight isolate decode. Sidecar already
-/// downscales (~1920 long edge), so a light EXIF bake + matching the live feed
+/// downscales (~1920 long edge), so a light bake matching the live feed
 /// ([liveFeedSyncedCaptureQuarterTurns]) is safe and keeps strip/print upright.
+///
+/// When [bakeQuarterTurns] ≠ 0, applies only turns not already covered by EXIF
+/// so HDMI [RotatedBox] and tagged Canon JPEGs stay in sync (no double-rotate).
 Future<XFile> persistSidecarCaptureStill(
   XFile rawFile, {
   int bakeQuarterTurns = 0,
@@ -113,8 +116,8 @@ Future<XFile> persistSidecarCaptureStill(
   AppLogger.info(
     turns == 0
         ? 'Persisting sidecar still with EXIF bake (skip full normalize)'
-        : 'Persisting sidecar still with EXIF bake + ${turns * 90}° '
-            '(skip full normalize)',
+        : 'Persisting sidecar still with live-feed sync '
+            '(${turns * 90}° requested; EXIF-aware; skip full normalize)',
   );
   return ImageHelper.bakeExifAndQuarterTurns(
     source,
