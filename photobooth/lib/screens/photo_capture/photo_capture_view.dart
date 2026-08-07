@@ -2374,6 +2374,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
     // Still capture / idle often exits Canon LV; re-arm before HDMI reopen.
     await ensureCanonLiveViewForHdmiPose(_captureViewModel.localCameraService);
+    await Future<void>.delayed(UvcCaptureConfig.canonLvHdmiSettleDelay);
     if (!mounted || _uvcDevice == null) {
       _uvcReconnectInFlight = false;
       return;
@@ -2628,6 +2629,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     await ensureCanonLiveViewForHdmiPose(_captureViewModel.localCameraService);
+    await Future<void>.delayed(UvcCaptureConfig.canonLvHdmiSettleDelay);
     if (!mounted) return false;
     await _openUvcController();
     if (!mounted) return false;
@@ -2980,28 +2982,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
-  /// Keep the last live frame under a dim spinner so shutter → review isn't a
-  /// hard cut to black (HDMI/UVC pose + Pi still).
-  Widget _withUvcSavingOverlay(Widget child) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        child,
-        const ColoredBox(color: Color(0x99000000)),
-        const Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: Colors.white),
-              SizedBox(height: 12),
-              Text(
-                'Saving photo…',
-                style: TextStyle(color: Colors.white70),
-              ),
-            ],
-          ),
+  /// Opaque card while HDMI may still show the Canon body status LCD (ISO / Q).
+  Widget _uvcStartingLiveViewCard() {
+    return const ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.white),
+            SizedBox(height: 12),
+            Text(
+              AppStrings.captureStartingPreview,
+              style: TextStyle(color: Colors.white70),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -3011,6 +3008,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     final saving = _isUvcSavingStill(viewModel);
+    // Full black during shutter — dim-over-live showed Canon's HDMI status LCD
+    // (P / ISO / Q) after gphoto drops Live View for the still.
+    if (saving) {
+      return _uvcSavingPhotoCard();
+    }
+    // First HDMI frames after open are often the body info screen until LV
+    // settles — mask until warmup ends.
+    if (_uvcPreviewWarmupActive && viewModel.capturedPhoto == null) {
+      return _uvcStartingLiveViewCard();
+    }
 
     if (_uvcFeedAsleep) {
       return GestureDetector(
@@ -3147,7 +3154,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             ),
           ),
         );
-        return saving ? _withUvcSavingOverlay(live) : live;
+        return live;
       },
     );
   }

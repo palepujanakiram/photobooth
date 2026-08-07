@@ -616,15 +616,13 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Quarter-turns to bake into capture stills.
   ///
-  /// FOTO lock: **3** (270° CW = 90° CCW). Live [RotatedBox] stays display-only;
-  /// Canon/gphoto stills are consistently 90° CW (head to the right) vs upright
-  /// look/print — bake 0 left them sideways. Applied via Skia (not Dart JPEG
-  /// decode) to avoid green-static corruption.
+  /// FOTO lock: **4** (≡ 0 mod 4 — no geometric rotate; EXIF-only bake path).
+  /// Tuned empirically (0 → 3 → -1 → 2 → 4).
   int bakeQuarterTurnsMatchingLiveFeed({required bool fromSidecar}) {
-    const forcedBakeQuarterTurns = 3;
+    const forcedBakeQuarterTurns = 4; // 360° ≡ 0 extra CW turns
     AppLogger.info(
       'Capture orientation sync: bakeQuarterTurns=$forcedBakeQuarterTurns '
-      '(locked 270° CW) '
+      '(locked 360°≡0; EXIF-only) '
       'livePreview=$previewRotationDegrees° '
       'liveTurns=$uvcPreviewEffectiveQuarterTurns '
       'fromSidecar=$fromSidecar '

@@ -30,13 +30,13 @@ void main() {
     expect(viewModel.uvcPreviewEffectiveQuarterTurns, 1);
     expect(
       viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
-      3,
-      reason: 'FOTO bake locked to 270° CW (fix head-to-the-right stills)',
+      4,
+      reason: 'FOTO bake locked to 4 (≡0; EXIF-only)',
     );
     expect(
       viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: false),
-      3,
-      reason: 'FOTO bake locked to 270° CW',
+      4,
+      reason: 'FOTO bake locked to 4 (≡0; EXIF-only)',
     );
 
     // UVC rebind must not wipe staff portrait-TV rotation.
@@ -44,12 +44,11 @@ void main() {
     expect(viewModel.previewRotationDegrees, 90);
     expect(
       viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
-      3,
+      4,
     );
   });
 
-  test('HDMI+sidecar bake stays locked to 3 when live preview rotation is 0',
-      () async {
+  test('HDMI+sidecar bake stays locked to 4 when live preview is 0', () async {
     final viewModel = CaptureViewModel();
     addTearDown(viewModel.dispose);
 
@@ -58,13 +57,13 @@ void main() {
     expect(viewModel.sidecarHdmiStillExtraQuarterTurns, 0);
     expect(
       viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
-      3,
-      reason: 'FOTO bake locked to 270° CW',
+      4,
+      reason: 'FOTO bake locked to 4 (≡0; EXIF-only)',
     );
     expect(
       viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: false),
-      3,
-      reason: 'FOTO bake locked to 270° CW',
+      4,
+      reason: 'FOTO bake locked to 4 (≡0; EXIF-only)',
     );
   });
 

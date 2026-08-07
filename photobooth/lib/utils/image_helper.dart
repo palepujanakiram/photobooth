@@ -229,17 +229,18 @@ class ImageHelper {
   /// Bake still pixels so look/print match the upright live HDMI/UVC preview.
   ///
   /// When [quarterTurns] is 0: EXIF-only bake via Skia (no extra rotate).
-  /// When [quarterTurns] is non-zero (FOTO lock **3**): Skia decode then rotate
-  /// clockwise — avoids Dart `image` JPEG decode (Canon → green static).
+  /// When non-zero: Skia decode then rotate — negative = CCW / left
+  /// (FOTO lock **-1** = 90° towards the left).
   static Future<XFile> bakeExifAndQuarterTurns(
     XFile sourceFile, {
     int quarterTurns = 0,
     int jpegQuality = kCapturedPhotoJpegQuality,
   }) async {
     if (kIsWeb) return sourceFile;
-    final turns = ((quarterTurns % 4) + 4) % 4;
+    // Preserve sign: -1 = 90° CCW (left). Only |turns|%4==0 means "no rotate".
+    final turnsMod = ((quarterTurns % 4) + 4) % 4;
     final quality = jpegQuality.clamp(1, 100);
-    if (turns == 0) {
+    if (turnsMod == 0) {
       return _bakeExifOrientationOnly(sourceFile, jpegQuality: quality);
     }
     final path = sourceFile.path;
@@ -250,19 +251,19 @@ class ImageHelper {
       throw Exception('Captured image is empty');
     }
     try {
+      // Pass signed turns (-1 → angle -90) so "left" is not mapped to +270 CW.
       final bakedBytes = await _bakeSkiaQuarterTurns(
         bytes,
-        quarterTurns: turns,
+        quarterTurns: quarterTurns,
         jpegQuality: quality,
       );
       return _writeBakedJpegBytes(bakedBytes);
     } catch (_) {
-      // Last resort: legacy sensor-path rotate (may speck on some Canons).
       final bakedBytes = await compute(
         _bakeExifAndQuarterTurnsBytes,
         (
           bytes: bytes,
-          quarterTurns: turns,
+          quarterTurns: quarterTurns,
           jpegQuality: quality,
         ),
       );
@@ -270,7 +271,7 @@ class ImageHelper {
     }
   }
 
-  /// Skia decode (EXIF applied) → optional CW quarter-turns → JPEG.
+  /// Skia decode → signed quarter-turns (negative = CCW / left) → JPEG.
   static Future<Uint8List> _bakeSkiaQuarterTurns(
     Uint8List bytes, {
     required int quarterTurns,
@@ -379,9 +380,9 @@ class ImageHelper {
       numChannels: 4,
       order: img.ChannelOrder.rgba,
     );
-    final turns = ((args.quarterTurns % 4) + 4) % 4;
-    if (turns != 0) {
-      image = img.copyRotate(image, angle: turns * 90);
+    // Negative quarterTurns = CCW (e.g. -1 → -90° = 90° left).
+    if (args.quarterTurns != 0) {
+      image = img.copyRotate(image, angle: args.quarterTurns * 90);
     }
     return Uint8List.fromList(
       img.encodeJpg(image, quality: args.jpegQuality),
@@ -402,10 +403,9 @@ class ImageHelper {
 
   /// Top-level for [compute]: sensor pixels → live-feed quarter-turns (fallback).
   static Uint8List _bakeExifAndQuarterTurnsBytes(_BakeExifTurnsArgs args) {
-    final applyTurns = ((args.quarterTurns % 4) + 4) % 4;
     var work = _decodeJpegSensorPixels(args.bytes);
-    if (applyTurns != 0) {
-      work = img.copyRotate(work, angle: applyTurns * 90);
+    if (args.quarterTurns != 0) {
+      work = img.copyRotate(work, angle: args.quarterTurns * 90);
     }
     return Uint8List.fromList(
       img.encodeJpg(work, quality: args.jpegQuality),

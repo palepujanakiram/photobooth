@@ -83,6 +83,21 @@ void main() {
     expect(meta.height, 20);
   });
 
+  test('bake quarterTurns -1 rotates 90° CCW (left)', () async {
+    final landscape = img.Image(width: 40, height: 20);
+    img.fill(landscape, color: img.ColorRgb8(8, 9, 10));
+    final jpeg = Uint8List.fromList(img.encodeJpg(landscape, quality: 90));
+    final saved = await ImageHelper.bakeExifAndQuarterTurns(
+      XFile.fromData(jpeg, mimeType: 'image/jpeg', name: 'force-left.jpg'),
+      quarterTurns: -1,
+    );
+    final meta = await ImageHelper.getImageMetadata(saved);
+    expect(meta, isNotNull);
+    // 90° CCW on 40×20 → 20×40
+    expect(meta!.width, 20);
+    expect(meta.height, 40);
+  });
+
   test('bake with zero turns applies EXIF orientation into pixels', () async {
     final landscape = img.Image(width: 40, height: 20);
     img.fill(landscape, color: img.ColorRgb8(1, 2, 3));
