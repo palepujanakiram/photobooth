@@ -2957,17 +2957,38 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
-  Widget _buildUvcPreview(BuildContext context, CaptureViewModel viewModel) {
-    if (viewModel.isSelectingFromGallery) {
-      return buildGallerySelectionPlaceholder();
-    }
+  bool _isUvcSavingStill(CaptureViewModel viewModel) =>
+      (viewModel.isCapturing || _uvcCaptureInFlight) &&
+      viewModel.capturedPhoto == null;
 
-    // Spinner while grabbing still or normalizing (matches in-app Capture UX).
-    if ((viewModel.isCapturing || _uvcCaptureInFlight) &&
-        viewModel.capturedPhoto == null) {
-      return const ColoredBox(
-        color: Colors.black,
-        child: Center(
+  Widget _uvcSavingPhotoCard() {
+    return const ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.white),
+            SizedBox(height: 12),
+            Text(
+              'Saving photo…',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Keep the last live frame under a dim spinner so shutter → review isn't a
+  /// hard cut to black (HDMI/UVC pose + Pi still).
+  Widget _withUvcSavingOverlay(Widget child) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        const ColoredBox(color: Color(0x99000000)),
+        const Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -2980,8 +3001,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             ],
           ),
         ),
-      );
+      ],
+    );
+  }
+
+  Widget _buildUvcPreview(BuildContext context, CaptureViewModel viewModel) {
+    if (viewModel.isSelectingFromGallery) {
+      return buildGallerySelectionPlaceholder();
     }
+
+    final saving = _isUvcSavingStill(viewModel);
 
     if (_uvcFeedAsleep) {
       return GestureDetector(
@@ -3054,44 +3083,50 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       );
     }
     if (ctrl == null || !ctrl.value.isInitialized) {
-      return const ColoredBox(
-        color: Colors.black,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: Colors.white),
-              SizedBox(height: 12),
-              Text(
-                'Connecting USB camera…',
-                style: TextStyle(color: Colors.white70),
+      // Prefer "Saving…" over "Connecting…" while a still is in flight and the
+      // controller was already closed for review.
+      return saving
+          ? _uvcSavingPhotoCard()
+          : const ColoredBox(
+              color: Colors.black,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 12),
+                    Text(
+                      'Connecting USB camera…',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
-        ),
-      );
+            );
     }
 
     return ValueListenableBuilder<UvcCameraControllerState>(
       valueListenable: ctrl,
       builder: (context, state, _) {
         if (!state.isInitialized) {
-          return const ColoredBox(
-            color: Colors.black,
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(color: Colors.white),
-                  SizedBox(height: 12),
-                  Text(
-                    'Connecting USB camera…',
-                    style: TextStyle(color: Colors.white70),
+          return saving
+              ? _uvcSavingPhotoCard()
+              : const ColoredBox(
+                  color: Colors.black,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(color: Colors.white),
+                        SizedBox(height: 12),
+                        Text(
+                          'Connecting USB camera…',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
-            ),
-          );
+                );
         }
 
         final previewMode = state.previewMode;
@@ -3100,7 +3135,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         final baseAspect = frameWidth / frameHeight;
         final effectiveTurns = viewModel.uvcPreviewEffectiveQuarterTurns;
 
-        return KeyedSubtree(
+        final live = KeyedSubtree(
           key: ValueKey<int>(_uvcPreviewGeneration),
           child: RepaintBoundary(
             key: _uvcPreviewBoundaryKey,
@@ -3112,6 +3147,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             ),
           ),
         );
+        return saving ? _withUvcSavingOverlay(live) : live;
       },
     );
   }
@@ -3226,7 +3262,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         }
         if (mounted) setState(() => _showCaptureFlash = false);
 
-        if (!UvcCaptureConfig.keepControllerOpenDuringReview) {
+        // Pi sidecar stills: keep UVC live under the Saving overlay until the
+        // review JPEG is assigned — closing first caused a long blank gap
+        // (dispose + 750ms delay + Connecting flash).
+        if (!UvcCaptureConfig.keepControllerOpenDuringReview && !fromSidecar) {
           _detachUvcHardwareListeners();
           await _closeUvcControllerUnlocked();
           await Future<void>.delayed(UvcCaptureConfig.postDisposeDelay);
@@ -3254,7 +3293,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           _detachUvcHardwareListeners();
           await _closeUvcControllerUnlocked();
         }
-        _clearUvcTransientCaptureUi();
+        // Hold Saving UI until setCapturedPhotoFromExternalFile finishes when
+        // we have a still — clearing here flashed blank Connecting in between.
+        if (capturedFile == null || captureFailed) {
+          _clearUvcTransientCaptureUi();
+        }
         if (mounted) setState(() {});
       }
     });
@@ -3299,6 +3342,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       setState(() {
         _uvcError = 'USB camera capture failed: $e';
       });
+    } finally {
+      if (!UvcCaptureConfig.keepControllerOpenDuringReview && fromSidecar) {
+        _detachUvcHardwareListeners();
+        await _closeUvcControllerUnlocked();
+      }
+      _clearUvcTransientCaptureUi();
+      if (mounted) setState(() {});
     }
   }
 

@@ -1172,13 +1172,11 @@ class CaptureViewModel extends ChangeNotifier {
     await Future<void>.delayed(Duration.zero);
 
     try {
-      // Prefs can lag behind the rotation screen on TV remounts — refresh before
-      // baking so staff 90° is never lost at shutter.
-      await loadPreviewRotation();
+      // Bake is locked to 0 (as-delivered) — skip prefs reload so review isn't
+      // held on a blank "Saving…" card waiting for SharedPreferences.
       final bakeTurns = bakeQuarterTurnsMatchingLiveFeed(fromSidecar: isSidecar);
       final XFile savedFile;
       if (isSidecar) {
-        // Keep still pixels in sync with the upright live feed on screen.
         savedFile = await persistSidecarCaptureStill(
           rawFile,
           bakeQuarterTurns: bakeTurns,
@@ -2149,8 +2147,7 @@ class CaptureViewModel extends ChangeNotifier {
     WebFlowTrace.log('CAPTURE', 'normalize_start');
     final XFile savedFile;
     if (_lastRawCaptureFromSidecar) {
-      await loadPreviewRotation();
-      // Sidecar already ~1920px — light live-feed sync bake.
+      // Sidecar already ~1920px; bake locked to 0 — persist is as-delivered.
       savedFile = await persistSidecarCaptureStill(
         imageFile,
         bakeQuarterTurns: bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),

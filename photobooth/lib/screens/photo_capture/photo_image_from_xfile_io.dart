@@ -47,6 +47,15 @@ Widget imageFromXFileSized(
       alignment: alignment,
       gaplessPlayback: true,
       filterQuality: FilterQuality.none,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) return child;
+        return const ColoredBox(
+          color: Colors.black,
+          child: Center(
+            child: CircularProgressIndicator(color: Colors.white70),
+          ),
+        );
+      },
     );
   }
 
@@ -66,6 +75,19 @@ Widget imageFromXFileSized(
         filterQuality: FilterQuality.medium,
         cacheWidth: cw,
         cacheHeight: ch,
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+          if (wasSynchronouslyLoaded || frame != null) return child;
+          return SizedBox(
+            width: width,
+            height: height,
+            child: const ColoredBox(
+              color: Colors.black,
+              child: Center(
+                child: CircularProgressIndicator(color: Colors.white70),
+              ),
+            ),
+          );
+        },
       );
     },
   );
