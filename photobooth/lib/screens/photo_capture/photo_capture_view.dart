@@ -119,6 +119,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Future<void> _captureInitOp = Future<void>.value();
   bool _skipUvcForCameraXSession = false;
   DateTime? _uvcPreviewReadyAt;
+  /// Last Canon LV ensure reported an active Pi hold (shorten HDMI mask).
+  bool _canonLvHolding = false;
+  Duration _uvcPreviewWarmupPeriod = UvcCaptureConfig.previewWarmupPeriod;
   int _uvcPreviewGeneration = 0;
   DateTime? _uvcLastUiCaptureEndedAt;
   Future<void> _uvcOp = Future<void>.value();
@@ -1195,9 +1198,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _uvcController?.value.isInitialized == true;
 
   void _armUvcPreviewWarmup() {
+    _uvcPreviewWarmupPeriod = _canonLvHolding
+        ? UvcCaptureConfig.previewWarmupPeriodWhenLvHeld
+        : UvcCaptureConfig.previewWarmupPeriod;
     _uvcPreviewReadyAt = DateTime.now();
     _uvcWarmupTimer?.cancel();
-    _uvcWarmupTimer = Timer(UvcCaptureConfig.previewWarmupPeriod, () {
+    _uvcWarmupTimer = Timer(_uvcPreviewWarmupPeriod, () {
       if (!mounted) return;
       setState(() {});
       _resetUvcIdleSleepTimer();
@@ -1220,8 +1226,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   bool get _uvcPreviewWarmupActive {
     final readyAt = _uvcPreviewReadyAt;
     if (readyAt == null) return false;
-    return DateTime.now().difference(readyAt) <
-        UvcCaptureConfig.previewWarmupPeriod;
+    return DateTime.now().difference(readyAt) < _uvcPreviewWarmupPeriod;
+  }
+
+  Future<bool> _armCanonLiveViewForPose() async {
+    final result = await ensureCanonLiveViewForHdmiPose(
+      _captureViewModel.localCameraService,
+    );
+    _canonLvHolding = result.holding;
+    final settle = result.holding
+        ? UvcCaptureConfig.canonLvHdmiSettleDelayWhenHeld
+        : UvcCaptureConfig.canonLvHdmiSettleDelay;
+    await Future<void>.delayed(settle);
+    return result.ok;
   }
 
   void _clearUvcTransientCaptureUi() {
@@ -1230,9 +1247,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _syncCaptureWatchdog(_captureViewModel);
   }
 
-  Future<void> _pulseCaptureFlash() async {
+  Future<void> _pulseCaptureFlash({bool playSound = true}) async {
     if (!mounted) return;
-    unawaited(_captureViewModel.playCaptureShutterSound());
+    if (playSound) {
+      unawaited(_captureViewModel.playCaptureShutterSound());
+    }
     setState(() => _showCaptureFlash = true);
     await Future<void>.delayed(UvcCaptureConfig.captureFlashDuration);
     if (!mounted) return;
@@ -2373,8 +2392,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _extendUvcDisconnectIgnore(UvcCaptureConfig.reconnectIgnoreDisconnectPeriod);
 
     // Still capture / idle often exits Canon LV; re-arm before HDMI reopen.
-    await ensureCanonLiveViewForHdmiPose(_captureViewModel.localCameraService);
-    await Future<void>.delayed(UvcCaptureConfig.canonLvHdmiSettleDelay);
+    await _armCanonLiveViewForPose();
     if (!mounted || _uvcDevice == null) {
       _uvcReconnectInFlight = false;
       return;
@@ -2524,13 +2542,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           _scheduleUvcReconnect('attached');
         }
       case UvcCameraDeviceEventType.connected:
+        // Do not open UVC here — that races Canon LV arm and shows blank HDMI.
+        // Route through reconnect so LV is ensured first.
         if (_uvcMayAutoOpenLiveFeed &&
             _uvcController == null &&
             !_uvcBlocksConcurrentAutoOpen) {
-          _safeUnawaited(
-            _openUvcController(),
-            label: 'UVC open failed (device connected event)',
-          );
+          _scheduleUvcReconnect('connected');
         }
       case UvcCameraDeviceEventType.disconnected:
       case UvcCameraDeviceEventType.detached:
@@ -2628,8 +2645,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return false;
     }
 
-    await ensureCanonLiveViewForHdmiPose(_captureViewModel.localCameraService);
-    await Future<void>.delayed(UvcCaptureConfig.canonLvHdmiSettleDelay);
+    await _armCanonLiveViewForPose();
     if (!mounted) return false;
     await _openUvcController();
     if (!mounted) return false;
@@ -3240,7 +3256,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
       try {
         AppLogger.debug('UVC capture start source=$source');
-        await _pulseCaptureFlash();
+        // DSLR body already clicks on sidecar still — skip synthetic shutter SFX.
+        final preferSidecar =
+            _captureViewModel.localCameraService?.isConfigured == true;
+        await _pulseCaptureFlash(playSound: !preferSidecar);
         final previewMode = ctrl.value.previewMode;
         if (previewMode != null) {
           final displaySize = viewModel.uvcPreviewDisplaySizeForCard(
@@ -3258,17 +3277,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           await Future<void>.delayed(UvcCaptureConfig.preCaptureSettleDelay);
         }
         await Future<void>.delayed(Duration.zero);
-        final sidecar =
-            await tryCaptureFromSidecar(_captureViewModel.localCameraService);
+        // Classic 1-shot leaves for looks — no next HDMI pose, so skip LV re-arm
+        // (avoids stacked mirror clicks under Saving…).
+        final resumeLvAfterStill = !widget.sessionKind.isClassicOneShot;
+        final sidecar = await tryCaptureFromSidecar(
+          _captureViewModel.localCameraService,
+          resumeLiveView: resumeLvAfterStill,
+        );
         if (sidecar != null) {
           fromSidecar = true;
           capturedFile = sidecar;
           AppLogger.info('UVC pose shutter used Pi sidecar still');
-          // Pi stops the LV keeper during capture; re-arm so HDMI is not the
-          // body status LCD under the Saving overlay / next pose.
-          await ensureCanonLiveViewForHdmiPose(
-            _captureViewModel.localCameraService,
-          );
+          // Sidecar already restarted the LV keeper when resumeLiveView=true.
+          // A second Flutter ensure would stop/start it again (extra clicks).
         } else {
           capturedFile = await _obtainUvcStillFile(ctrl, source: source);
         }

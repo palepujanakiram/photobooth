@@ -15,12 +15,18 @@ bool isSidecarCameraId(String? cameraId) {
 /// Best-effort: arm Canon Live View for HDMI/UVC pose (no still).
 ///
 /// Pose uses the capture card; LV must stay on over USB or HDMI falls back to
-/// the body status / Q menu. Sidecar ≥ v1.2.3 holds LV with a capture-movie
-/// session. Retries a few times when the first arm fails. Safe no-op when
-/// sidecar is unset.
-Future<bool> ensureCanonLiveViewForHdmiPose(LocalCameraService? service) async {
-  if (service == null || !service.isConfigured) return false;
-  const attempts = 3;
+/// the body status / Q menu. Sidecar ≥ v1.2.4 holds LV with a capture-movie
+/// session and skips capture-preview wakes (those click the mirror). Safe no-op
+/// when sidecar is unset.
+///
+/// Returns whether LV is enabled and/or held (for shorter HDMI settle/warmup).
+Future<({bool ok, bool holding})> ensureCanonLiveViewForHdmiPose(
+  LocalCameraService? service,
+) async {
+  if (service == null || !service.isConfigured) {
+    return (ok: false, holding: false);
+  }
+  const attempts = 2;
   for (var i = 0; i < attempts; i++) {
     try {
       final result = await service.ensureLiveView();
@@ -29,28 +35,36 @@ Future<bool> ensureCanonLiveViewForHdmiPose(LocalCameraService? service) async {
         'enabled=${result.enabled} woke=${result.woke} '
         'holding=${result.holding}',
       );
-      if (result.enabled || result.holding) return true;
+      if (result.enabled || result.holding) {
+        return (ok: true, holding: result.holding || result.enabled);
+      }
     } catch (e) {
       AppLogger.warning(
         'Canon LV ensure attempt ${i + 1}/$attempts failed: $e',
       );
     }
     if (i < attempts - 1) {
-      await Future<void>.delayed(Duration(milliseconds: 400 * (i + 1)));
+      await Future<void>.delayed(Duration(milliseconds: 350 * (i + 1)));
     }
   }
   AppLogger.warning(
     'Canon LV ensure exhausted — HDMI may show body status until Q / LV',
   );
-  return false;
+  return (ok: false, holding: false);
 }
 
 /// Tries FotoZen Pi sidecar still capture; returns null to use CameraX/UVC.
 ///
+/// When [resumeLiveView] is false (Classic 1-shot → looks), the Pi skips
+/// re-arming LV/keeper after the still — fewer mirror clicks and faster handoff.
+///
 /// Writes JPEG bytes to a temp file on native so review/upload have a real
 /// path (XFile.fromData left path empty and forced a full in-memory decode of
 /// multi‑MP DSLR stills that hung the kiosk).
-Future<XFile?> tryCaptureFromSidecar(LocalCameraService? service) async {
+Future<XFile?> tryCaptureFromSidecar(
+  LocalCameraService? service, {
+  bool resumeLiveView = true,
+}) async {
   if (service == null || !service.isConfigured) {
     return null;
   }
@@ -60,11 +74,12 @@ Future<XFile?> tryCaptureFromSidecar(LocalCameraService? service) async {
       AppLogger.info('Camera sidecar not healthy; using local camera');
       return null;
     }
-    final bytes = await service.capture();
+    final bytes = await service.capture(resumeLiveView: resumeLiveView);
     if (bytes.isEmpty) return null;
     final name = 'fz200d_${DateTime.now().millisecondsSinceEpoch}.jpg';
     AppLogger.info(
-      'Captured still from camera sidecar ($name, ${bytes.length} bytes)',
+      'Captured still from camera sidecar ($name, ${bytes.length} bytes, '
+      'resumeLV=$resumeLiveView)',
     );
     if (kIsWeb) {
       return XFile.fromData(

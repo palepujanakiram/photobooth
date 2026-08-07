@@ -2141,7 +2141,10 @@ class CaptureViewModel extends ChangeNotifier {
     WebFlowTrace.reset(label: 'capture');
     WebFlowTrace.log('CAPTURE', 'shutter_begin kIsWeb=$kIsWeb isReady=$isReady');
     final imageFile = await _obtainRawCaptureFile();
-    unawaited(playCaptureShutterSound());
+    // Sidecar still already clicks the body — skip the synthetic SFX.
+    if (!_lastRawCaptureFromSidecar) {
+      unawaited(playCaptureShutterSound());
+    }
     final isFrontCamera =
         _currentCamera?.lensDirection == CameraLensDirection.front;
     WebFlowTrace.log('CAPTURE', 'normalize_start');

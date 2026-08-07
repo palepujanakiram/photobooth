@@ -41,7 +41,10 @@ void main() {
 
   group('ensureCanonLiveViewForHdmiPose', () {
     test('no-ops when service null or not configured', () async {
-      await ensureCanonLiveViewForHdmiPose(null);
+      expect(
+        await ensureCanonLiveViewForHdmiPose(null),
+        (ok: false, holding: false),
+      );
       final disabled = LocalCameraService(
         config: const CameraSidecarConfig(
           enabled: false,
@@ -49,7 +52,10 @@ void main() {
         ),
         client: MockClient((_) async => http.Response('', 500)),
       );
-      await ensureCanonLiveViewForHdmiPose(disabled);
+      expect(
+        await ensureCanonLiveViewForHdmiPose(disabled),
+        (ok: false, holding: false),
+      );
       disabled.dispose();
     });
 
@@ -59,7 +65,7 @@ void main() {
         expect(request.url.path, '/camera/live-view');
         hits++;
         return http.Response(
-          '{"ok":true,"enabled":true,"woke":true,"holding":true}',
+          '{"ok":true,"enabled":true,"woke":false,"holding":true}',
           200,
           headers: {'content-type': 'application/json'},
         );
@@ -71,8 +77,9 @@ void main() {
         ),
         client: client,
       );
-      final ok = await ensureCanonLiveViewForHdmiPose(service);
-      expect(ok, isTrue);
+      final result = await ensureCanonLiveViewForHdmiPose(service);
+      expect(result.ok, isTrue);
+      expect(result.holding, isTrue);
       expect(hits, 1);
       service.dispose();
     });
@@ -89,7 +96,7 @@ void main() {
           );
         }
         return http.Response(
-          '{"ok":true,"enabled":false,"woke":true,"holding":true}',
+          '{"ok":true,"enabled":false,"woke":false,"holding":true}',
           200,
           headers: {'content-type': 'application/json'},
         );
@@ -101,8 +108,9 @@ void main() {
         ),
         client: client,
       );
-      final ok = await ensureCanonLiveViewForHdmiPose(service);
-      expect(ok, isTrue);
+      final result = await ensureCanonLiveViewForHdmiPose(service);
+      expect(result.ok, isTrue);
+      expect(result.holding, isTrue);
       expect(hits, 2);
       service.dispose();
     });
@@ -118,8 +126,9 @@ void main() {
         ),
         client: client,
       );
-      final ok = await ensureCanonLiveViewForHdmiPose(service);
-      expect(ok, isFalse);
+      final result = await ensureCanonLiveViewForHdmiPose(service);
+      expect(result.ok, isFalse);
+      expect(result.holding, isFalse);
       service.dispose();
     });
   });
@@ -144,6 +153,7 @@ void main() {
         if (request.url.path.endsWith('/health')) {
           return http.Response('{"ok":true,"connected":true}', 200);
         }
+        expect(request.url.queryParameters['resumeLiveView'], '1');
         return http.Response.bytes(jpeg, 200);
       });
       final service = LocalCameraService(
@@ -158,6 +168,27 @@ void main() {
       expect(file!.path, isNotEmpty);
       expect(await file.readAsBytes(), jpeg);
       expect(file.mimeType, 'image/jpeg');
+      service.dispose();
+    });
+
+    test('passes resumeLiveView=0 for classic 1-shot handoff', () async {
+      final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(64, 2)]);
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/health')) {
+          return http.Response('{"ok":true,"connected":true}', 200);
+        }
+        expect(request.url.queryParameters['resumeLiveView'], '0');
+        return http.Response.bytes(jpeg, 200);
+      });
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://192.168.2.50:8791',
+        ),
+        client: client,
+      );
+      final file = await tryCaptureFromSidecar(service, resumeLiveView: false);
+      expect(file, isNotNull);
       service.dispose();
     });
 
@@ -215,7 +246,6 @@ void main() {
       expect(raw, isNotNull);
       final saved = await persistSidecarCaptureStill(raw!);
       expect(saved.path, isNotEmpty);
-      // EXIF≤1 stills keep the sidecar temp path; tagged ones go under photos/.
       expect(
         saved.path.contains('sidecar') || saved.path.contains('photos'),
         isTrue,
