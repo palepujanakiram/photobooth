@@ -115,7 +115,7 @@ Future<XFile> persistSidecarCaptureStill(
   final turns = ((bakeQuarterTurns % 4) + 4) % 4;
   AppLogger.info(
     turns == 0
-        ? 'Persisting sidecar still (EXIF→pixels if tagged; skip full normalize)'
+        ? 'Persisting sidecar still as-delivered (no JPEG re-encode)'
         : 'Persisting sidecar still: bake ${turns * 90}° on sensor pixels '
             '(match live RotatedBox; skip full normalize)',
   );
