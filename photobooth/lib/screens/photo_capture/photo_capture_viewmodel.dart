@@ -614,37 +614,22 @@ class CaptureViewModel extends ChangeNotifier {
   int get sidecarHdmiStillExtraQuarterTurns =>
       _sidecarHdmiStillExtraQuarterTurns;
 
-  /// Bake turns so the saved still matches the upright live feed on screen.
+  /// Quarter-turns to bake into capture stills.
   ///
-  /// Live [RotatedBox] turns apply to the HDMI capture-card texture. Pi gphoto
-  /// JPEGs use a different sensor buffer — on FOTO that buffer needs the
-  /// **opposite** clockwise quarter-turns to look upright. UVC grabs share the
-  /// HDMI texture space so they keep the live turns as-is.
+  /// Locked to **0** (as delivered from Pi gphoto / UVC). Live [RotatedBox] is
+  /// display-only on the portrait TV — baking live turns made look/print wrong
+  /// on FOTO. EXIF-into-pixels still runs inside [ImageHelper.bakeExifAndQuarterTurns]
+  /// when turns are 0.
   int bakeQuarterTurnsMatchingLiveFeed({required bool fromSidecar}) {
-    final live = ((uvcPreviewEffectiveQuarterTurns % 4) + 4) % 4;
-    var turns = liveFeedSyncedCaptureQuarterTurns(
-      liveFeedQuarterTurns: live,
-      hdmiSidecarExtraQuarterTurns: _sidecarHdmiStillExtraQuarterTurns,
-      // Booth +90 whenever pose is the capture card (not Pi MJPEG), including
-      // UVC still fallback when gphoto is briefly disconnected.
-      applyHdmiSidecarExtra: !usesSidecarLivePreview,
-    );
-    // HDMI texture vs Canon JPEG: invert for sidecar so look matches live.
-    if (fromSidecar && turns != 0) {
-      turns = (4 - turns) % 4;
-    }
-    // TEMP FOTO diagnostic: force bake 0 (as-delivered). Next try: force 3.
-    // Remove this override once orientation is confirmed on TV.
-    const forcedBakeQuarterTurns = 0;
     AppLogger.info(
-      'Capture orientation sync: livePreview=$previewRotationDegrees° '
-      'liveTurns=$live hdmiExtra=$_sidecarHdmiStillExtraQuarterTurns '
-      'computedBake=$turns forcedBake=$forcedBakeQuarterTurns '
+      'Capture orientation sync: bakeQuarterTurns=0 (locked as-delivered) '
+      'livePreview=$previewRotationDegrees° '
+      'liveTurns=$uvcPreviewEffectiveQuarterTurns '
       'fromSidecar=$fromSidecar '
       'userConfigured=$_isPreviewRotationConfiguredByUser '
       'sidecarLive=$usesSidecarLivePreview',
     );
-    return forcedBakeQuarterTurns;
+    return 0;
   }
 
   Size? uvcPreviewDisplaySizeForCard({

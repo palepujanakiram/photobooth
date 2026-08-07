@@ -834,7 +834,7 @@ Uint8List _bytesFromDataUrl(String dataUrl) {
   return base64Decode(b64);
 }
 
-/// Landscape Classic 1-shot preview (matches zenai composeSingle6x4).
+/// Classic 1-shot preview (matches zenai composeSingle6x4 cover fill).
 class _Single6x4Preview extends StatelessWidget {
   const _Single6x4Preview({
     required this.imageDataUrl,

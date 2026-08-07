@@ -233,14 +233,16 @@ class AppConstants {
   static const int kCameraPreviewRotationDefault = 0;
 
   /// Extra clockwise quarter-turns baked into Pi sidecar stills when pose uses
-  /// HDMI/UVC (not Pi MJPEG) and live preview rotation is 0. FOTO Canon USB
-  /// stills are typically 90° CW off an already-upright HDMI feed.
-  /// Key `_v2` ignores older prefs that sticky-wrote `0` and blocked the fix.
+  /// HDMI/UVC (not Pi MJPEG) and live preview rotation is 0.
+  /// Key `_v2` ignores older prefs that sticky-wrote a different value.
+  ///
+  /// Locked to **0** on FOTO: Canon stills print correctly as delivered; live
+  /// [RotatedBox] stays display-only. Staff can still tune via prefs if needed.
   static const String kSidecarHdmiStillExtraQuarterTurnsKey =
       'sidecar_hdmi_still_extra_quarter_turns_v2';
 
-  /// FOTO HDMI+sidecar booth: +90° CW when live preview rotation is unset/0.
-  static const int kSidecarHdmiStillExtraQuarterTurnsDefault = 1;
+  /// No extra bake by default (capture as delivered). See bake lock above.
+  static const int kSidecarHdmiStillExtraQuarterTurnsDefault = 0;
 
   // Camera capture countdown (in seconds) — AI / single-shot POSE.
   static const int kCaptureCountdownSeconds = 5;

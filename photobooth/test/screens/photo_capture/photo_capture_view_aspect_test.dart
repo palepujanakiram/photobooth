@@ -31,12 +31,12 @@ void main() {
     expect(
       viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
       0,
-      reason: 'TEMP diagnostic: forced bake 0',
+      reason: 'FOTO bake locked to as-delivered (0)',
     );
     expect(
       viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: false),
       0,
-      reason: 'TEMP diagnostic: forced bake 0',
+      reason: 'FOTO bake locked to as-delivered (0)',
     );
 
     // UVC rebind must not wipe staff portrait-TV rotation.
@@ -48,23 +48,22 @@ void main() {
     );
   });
 
-  test('HDMI+sidecar bakes inverted +90° when live preview rotation is 0',
-      () async {
+  test('HDMI+sidecar bake stays 0 when live preview rotation is 0', () async {
     final viewModel = CaptureViewModel();
     addTearDown(viewModel.dispose);
 
     await viewModel.loadPreviewRotation();
     expect(viewModel.previewRotationDegrees, 0);
-    expect(viewModel.sidecarHdmiStillExtraQuarterTurns, 1);
+    expect(viewModel.sidecarHdmiStillExtraQuarterTurns, 0);
     expect(
       viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: true),
       0,
-      reason: 'TEMP diagnostic: forced bake 0',
+      reason: 'FOTO bake locked to as-delivered (0)',
     );
     expect(
       viewModel.bakeQuarterTurnsMatchingLiveFeed(fromSidecar: false),
       0,
-      reason: 'TEMP diagnostic: forced bake 0',
+      reason: 'FOTO bake locked to as-delivered (0)',
     );
   });
 
