@@ -19,6 +19,11 @@ void main() {
       isAppNormalizedCapturePath('/data/user/0/app/cache/photos/photo_123.jpg'),
       isTrue,
     );
+    expect(
+      isAppNormalizedCapturePath('/data/user/0/app/cache/sidecar/fz200d_1.jpg'),
+      isTrue,
+      reason: 'Pi sidecar JPEGs must skip Dart image re-decode',
+    );
     expect(isAppNormalizedCapturePath('/tmp/tiny.jpg'), isFalse);
   });
 

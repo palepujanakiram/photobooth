@@ -66,10 +66,8 @@ void main() {
     expect(meta.height, 30);
   });
 
-  test('bake with live turns rotates EXIF-tagged JPEG sensor buffer once', () async {
-    // File is 40×20 with EXIF 6. Normal decode would yield 20×40 already.
-    // Live RotatedBox applies +90° to raw HDMI (= sensor) pixels → 20×40.
-    // Baking must clear EXIF before rotate so we do not double-transform.
+  test('bake with live turns applies Skia EXIF then clockwise turns', () async {
+    // 40×20 + EXIF 6 → Skia yields 20×40; +90° CW → 40×20.
     final landscape = img.Image(width: 40, height: 20);
     img.fill(landscape, color: img.ColorRgb8(10, 20, 30));
     landscape.exif.imageIfd.orientation = 6;
@@ -81,8 +79,8 @@ void main() {
     );
     final meta = await ImageHelper.getImageMetadata(saved);
     expect(meta, isNotNull);
-    expect(meta!.width, 20);
-    expect(meta.height, 40);
+    expect(meta!.width, 40);
+    expect(meta.height, 20);
   });
 
   test('bake with zero turns applies EXIF orientation into pixels', () async {
@@ -116,7 +114,8 @@ void main() {
     expect(identical(saved, source), isTrue);
   });
 
-  test('bake with live 180° on EXIF-6 sensor buffer yields landscape again', () async {
+  test('bake with live 180° on EXIF-6 keeps Skia-upright portrait', () async {
+    // Skia applies EXIF 6 → 20×40; +180° stays 20×40.
     final landscape = img.Image(width: 40, height: 20);
     img.fill(landscape, color: img.ColorRgb8(5, 6, 7));
     landscape.exif.imageIfd.orientation = 6;
@@ -127,7 +126,21 @@ void main() {
     );
     final meta = await ImageHelper.getImageMetadata(saved);
     expect(meta, isNotNull);
-    expect(meta!.width, 40);
-    expect(meta.height, 20);
+    expect(meta!.width, 20);
+    expect(meta.height, 40);
+  });
+
+  test('bake quarterTurns 3 rotates untagged landscape to portrait', () async {
+    final landscape = img.Image(width: 40, height: 20);
+    img.fill(landscape, color: img.ColorRgb8(8, 9, 10));
+    final jpeg = Uint8List.fromList(img.encodeJpg(landscape, quality: 90));
+    final saved = await ImageHelper.bakeExifAndQuarterTurns(
+      XFile.fromData(jpeg, mimeType: 'image/jpeg', name: 'force3.jpg'),
+      quarterTurns: 3,
+    );
+    final meta = await ImageHelper.getImageMetadata(saved);
+    expect(meta, isNotNull);
+    expect(meta!.width, 20);
+    expect(meta.height, 40);
   });
 }

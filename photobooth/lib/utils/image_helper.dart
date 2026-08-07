@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show File;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
@@ -50,12 +51,6 @@ typedef _NormalizeJpegPathArgs = ({
 
 typedef _BakeExifTurnsArgs = ({
   Uint8List bytes,
-  int quarterTurns,
-  int jpegQuality,
-});
-
-typedef _BakeExifTurnsPathArgs = ({
-  String path,
   int quarterTurns,
   int jpegQuality,
 });
@@ -233,15 +228,9 @@ class ImageHelper {
 
   /// Bake still pixels so look/print match the upright live HDMI/UVC preview.
   ///
-  /// Live preview uses [RotatedBox] on the **raw** capture-card frames (no EXIF).
-  /// FOTO locks **live** bake turns to 0 (as-delivered vs RotatedBox). Canon
-  /// JPEGs still often carry an EXIF Orientation tag — that must be baked into
-  /// pixels so Flutter [Image.file] and zenai compose agree. Skipping that
-  /// re-encode (quality experiment) left look/print sideways again.
-  ///
-  /// When [quarterTurns] is 0: EXIF-only bake via [img.bakeOrientation] (no live
-  /// turns). When Orientation is already 1, returns [sourceFile] unchanged.
-  /// When [quarterTurns] is non-zero: sensor decode (ignore EXIF) + rotate.
+  /// When [quarterTurns] is 0: EXIF-only bake via Skia (no extra rotate).
+  /// When [quarterTurns] is non-zero (FOTO lock **3**): Skia decode then rotate
+  /// clockwise — avoids Dart `image` JPEG decode (Canon → green static).
   static Future<XFile> bakeExifAndQuarterTurns(
     XFile sourceFile, {
     int quarterTurns = 0,
@@ -254,27 +243,68 @@ class ImageHelper {
       return _bakeExifOrientationOnly(sourceFile, jpegQuality: quality);
     }
     final path = sourceFile.path;
-    final Uint8List bakedBytes = path.isNotEmpty
-        ? await compute(
-            _bakeExifAndQuarterTurnsFromPath,
-            (
-              path: path,
-              quarterTurns: turns,
-              jpegQuality: quality,
-            ),
-          )
-        : await compute(
-            _bakeExifAndQuarterTurnsBytes,
-            (
-              bytes: await sourceFile.readAsBytes(),
-              quarterTurns: turns,
-              jpegQuality: quality,
-            ),
-          );
-    return _writeBakedJpegBytes(bakedBytes);
+    final bytes = path.isNotEmpty
+        ? await File(path).readAsBytes()
+        : await sourceFile.readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception('Captured image is empty');
+    }
+    try {
+      final bakedBytes = await _bakeSkiaQuarterTurns(
+        bytes,
+        quarterTurns: turns,
+        jpegQuality: quality,
+      );
+      return _writeBakedJpegBytes(bakedBytes);
+    } catch (_) {
+      // Last resort: legacy sensor-path rotate (may speck on some Canons).
+      final bakedBytes = await compute(
+        _bakeExifAndQuarterTurnsBytes,
+        (
+          bytes: bytes,
+          quarterTurns: turns,
+          jpegQuality: quality,
+        ),
+      );
+      return _writeBakedJpegBytes(bakedBytes);
+    }
+  }
+
+  /// Skia decode (EXIF applied) → optional CW quarter-turns → JPEG.
+  static Future<Uint8List> _bakeSkiaQuarterTurns(
+    Uint8List bytes, {
+    required int quarterTurns,
+    required int jpegQuality,
+  }) async {
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    try {
+      final bd = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (bd == null) {
+        throw Exception('Skia bake produced empty pixels');
+      }
+      final rgba = bd.buffer.asUint8List(bd.offsetInBytes, bd.lengthInBytes);
+      return compute(
+        _encodeRgbaToJpegIsolate,
+        (
+          rgba: rgba,
+          width: image.width,
+          height: image.height,
+          jpegQuality: jpegQuality,
+          quarterTurns: quarterTurns,
+        ),
+      );
+    } finally {
+      image.dispose();
+    }
   }
 
   /// EXIF Orientation → pixels when live bake turns are locked to 0.
+  ///
+  /// Uses Skia ([ui.instantiateImageCodec]) to decode — Dart `image` JPEG
+  /// decode corrupts many Canon/gphoto stills into green static that then gets
+  /// trusted as `/photos/photo_*.jpg` and uploaded as the YOU image.
   static Future<XFile> _bakeExifOrientationOnly(
     XFile sourceFile, {
     required int jpegQuality,
@@ -290,11 +320,72 @@ class ImageHelper {
     if (_peekJpegExifOrientation(bytes) <= 1) {
       return sourceFile;
     }
-    final bakedBytes = await compute(
-      _bakeExifOrientationOnlyBytes,
-      (bytes: bytes, jpegQuality: jpegQuality),
+    try {
+      final bakedBytes = await _bakeExifOrientationWithSkia(
+        bytes,
+        jpegQuality: jpegQuality,
+      );
+      return _writeBakedJpegBytes(bakedBytes);
+    } catch (_) {
+      // Prefer original bytes over dart-image re-encode (green static).
+      return sourceFile;
+    }
+  }
+
+  static Future<Uint8List> _bakeExifOrientationWithSkia(
+    Uint8List bytes, {
+    required int jpegQuality,
+  }) async {
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    try {
+      final bd = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (bd == null) {
+        throw Exception('Skia EXIF bake produced empty pixels');
+      }
+      final rgba = bd.buffer.asUint8List(bd.offsetInBytes, bd.lengthInBytes);
+      return compute(
+        _encodeRgbaToJpegIsolate,
+        (
+          rgba: rgba,
+          width: image.width,
+          height: image.height,
+          jpegQuality: jpegQuality,
+          quarterTurns: 0,
+        ),
+      );
+    } finally {
+      image.dispose();
+    }
+  }
+
+  /// Top-level for [compute]: RGBA (Skia) → optional CW turns → JPEG.
+  static Uint8List _encodeRgbaToJpegIsolate(
+    ({
+      Uint8List rgba,
+      int width,
+      int height,
+      int jpegQuality,
+      int quarterTurns,
+    }) args,
+  ) {
+    var image = img.Image.fromBytes(
+      width: args.width,
+      height: args.height,
+      bytes: args.rgba.buffer,
+      bytesOffset: args.rgba.offsetInBytes,
+      rowStride: args.width * 4,
+      numChannels: 4,
+      order: img.ChannelOrder.rgba,
     );
-    return _writeBakedJpegBytes(bakedBytes);
+    final turns = ((args.quarterTurns % 4) + 4) % 4;
+    if (turns != 0) {
+      image = img.copyRotate(image, angle: turns * 90);
+    }
+    return Uint8List.fromList(
+      img.encodeJpg(image, quality: args.jpegQuality),
+    );
   }
 
   static Future<XFile> _writeBakedJpegBytes(Uint8List bakedBytes) async {
@@ -309,35 +400,7 @@ class ImageHelper {
     return XFile((file as dynamic).path);
   }
 
-  static Uint8List _bakeExifOrientationOnlyBytes(
-    ({Uint8List bytes, int jpegQuality}) args,
-  ) {
-    final decoded = img.decodeImage(args.bytes);
-    if (decoded == null) {
-      throw Exception('Failed to decode captured image');
-    }
-    // Same path as normalize — avoid JpegData.getImage() (colored speckles).
-    final baked = img.bakeOrientation(decoded);
-    return Uint8List.fromList(
-      img.encodeJpg(baked, quality: args.jpegQuality),
-    );
-  }
-
-  static Uint8List _bakeExifAndQuarterTurnsFromPath(
-    _BakeExifTurnsPathArgs args,
-  ) {
-    final bytes = File(args.path).readAsBytesSync();
-    if (bytes.isEmpty) {
-      throw Exception('Captured image is empty');
-    }
-    return _bakeExifAndQuarterTurnsBytes((
-      bytes: bytes,
-      quarterTurns: args.quarterTurns,
-      jpegQuality: args.jpegQuality,
-    ));
-  }
-
-  /// Top-level for [compute]: sensor pixels → live-feed quarter-turns.
+  /// Top-level for [compute]: sensor pixels → live-feed quarter-turns (fallback).
   static Uint8List _bakeExifAndQuarterTurnsBytes(_BakeExifTurnsArgs args) {
     final applyTurns = ((args.quarterTurns % 4) + 4) % 4;
     var work = _decodeJpegSensorPixels(args.bytes);

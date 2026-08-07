@@ -616,19 +616,22 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Quarter-turns to bake into capture stills.
   ///
-  /// Locked to **0** vs live [RotatedBox] (as-delivered; no extra +90°).
-  /// Canon EXIF Orientation is still baked into pixels inside
-  /// [ImageHelper.bakeExifAndQuarterTurns] so look/print stay upright.
+  /// FOTO lock: **3** (270° CW = 90° CCW). Live [RotatedBox] stays display-only;
+  /// Canon/gphoto stills are consistently 90° CW (head to the right) vs upright
+  /// look/print — bake 0 left them sideways. Applied via Skia (not Dart JPEG
+  /// decode) to avoid green-static corruption.
   int bakeQuarterTurnsMatchingLiveFeed({required bool fromSidecar}) {
+    const forcedBakeQuarterTurns = 3;
     AppLogger.info(
-      'Capture orientation sync: bakeQuarterTurns=0 (locked; EXIF-only bake) '
+      'Capture orientation sync: bakeQuarterTurns=$forcedBakeQuarterTurns '
+      '(locked 270° CW) '
       'livePreview=$previewRotationDegrees° '
       'liveTurns=$uvcPreviewEffectiveQuarterTurns '
       'fromSidecar=$fromSidecar '
       'userConfigured=$_isPreviewRotationConfiguredByUser '
       'sidecarLive=$usesSidecarLivePreview',
     );
-    return 0;
+    return forcedBakeQuarterTurns;
   }
 
   Size? uvcPreviewDisplaySizeForCard({

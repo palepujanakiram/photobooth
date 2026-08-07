@@ -41,11 +41,14 @@ String? tryReuseNormalizedJpegForSessionPatch(Uint8List bytes) {
   return url;
 }
 
-/// App temp capture from [ImageHelper.normalizeAndSaveCapturedPhoto].
+/// App temp capture from [ImageHelper.normalizeAndSaveCapturedPhoto] or Pi sidecar.
 bool isAppNormalizedCapturePath(String path) {
   if (path.isEmpty) return false;
   final lower = path.toLowerCase();
-  return lower.contains('/photos/photo_') && lower.endsWith('.jpg');
+  if (!lower.endsWith('.jpg') && !lower.endsWith('.jpeg')) return false;
+  // Sidecar stills are already ~1920 JPEG from gphoto — never re-decode with
+  // Dart `image` (corrupts Canon → green static on YOU / Gemini input).
+  return lower.contains('/photos/photo_') || lower.contains('/sidecar/');
 }
 
 /// Trust capture-time normalize output — no decode/resize (kiosk Continue path).
