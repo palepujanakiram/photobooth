@@ -616,13 +616,12 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Quarter-turns to bake into capture stills.
   ///
-  /// Locked to **0** (as delivered from Pi gphoto / UVC). Live [RotatedBox] is
-  /// display-only on the portrait TV — baking live turns made look/print wrong
-  /// on FOTO. With turns 0, [ImageHelper.bakeExifAndQuarterTurns] also skips
-  /// re-encode so Canon JPEG quality is preserved.
+  /// Locked to **0** vs live [RotatedBox] (as-delivered; no extra +90°).
+  /// Canon EXIF Orientation is still baked into pixels inside
+  /// [ImageHelper.bakeExifAndQuarterTurns] so look/print stay upright.
   int bakeQuarterTurnsMatchingLiveFeed({required bool fromSidecar}) {
     AppLogger.info(
-      'Capture orientation sync: bakeQuarterTurns=0 (locked as-delivered) '
+      'Capture orientation sync: bakeQuarterTurns=0 (locked; EXIF-only bake) '
       'livePreview=$previewRotationDegrees° '
       'liveTurns=$uvcPreviewEffectiveQuarterTurns '
       'fromSidecar=$fromSidecar '

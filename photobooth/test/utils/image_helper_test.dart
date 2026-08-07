@@ -85,23 +85,35 @@ void main() {
     expect(meta.height, 40);
   });
 
-  test('bake with zero turns returns source unchanged (no re-encode)', () async {
+  test('bake with zero turns applies EXIF orientation into pixels', () async {
     final landscape = img.Image(width: 40, height: 20);
     img.fill(landscape, color: img.ColorRgb8(1, 2, 3));
     landscape.exif.imageIfd.orientation = 6;
     final jpeg = Uint8List.fromList(img.encodeJpg(landscape, quality: 90));
+    final saved = await ImageHelper.bakeExifAndQuarterTurns(
+      XFile.fromData(jpeg, mimeType: 'image/jpeg', name: 'exif-only.jpg'),
+      quarterTurns: 0,
+    );
+    final meta = await ImageHelper.getImageMetadata(saved);
+    expect(meta, isNotNull);
+    expect(meta!.width, 20);
+    expect(meta.height, 40);
+  });
+
+  test('bake with zero turns skips re-encode when Orientation is 1', () async {
+    final landscape = img.Image(width: 40, height: 20);
+    img.fill(landscape, color: img.ColorRgb8(1, 2, 3));
+    final jpeg = Uint8List.fromList(img.encodeJpg(landscape, quality: 90));
     final source = XFile.fromData(
       jpeg,
       mimeType: 'image/jpeg',
-      name: 'exif-only.jpg',
+      name: 'upright.jpg',
     );
     final saved = await ImageHelper.bakeExifAndQuarterTurns(
       source,
       quarterTurns: 0,
     );
     expect(identical(saved, source), isTrue);
-    final savedBytes = await saved.readAsBytes();
-    expect(savedBytes, jpeg);
   });
 
   test('bake with live 180° on EXIF-6 sensor buffer yields landscape again', () async {

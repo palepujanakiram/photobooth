@@ -115,12 +115,14 @@ Future<XFile> persistSidecarCaptureStill(
   final turns = ((bakeQuarterTurns % 4) + 4) % 4;
   AppLogger.info(
     turns == 0
-        ? 'Persisting sidecar still as-delivered (no JPEG re-encode)'
+        ? 'Persisting sidecar still (EXIF→pixels if tagged; no live RotatedBox bake)'
         : 'Persisting sidecar still: bake ${turns * 90}° on sensor pixels '
             '(match live RotatedBox; skip full normalize)',
   );
   return ImageHelper.bakeExifAndQuarterTurns(
     source,
     quarterTurns: turns,
+    // High quality for EXIF-only bake — avoid crushing Pi ~1920 Canon stills.
+    jpegQuality: 95,
   );
 }

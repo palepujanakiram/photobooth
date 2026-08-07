@@ -234,14 +234,14 @@ class ImageHelper {
   /// Bake still pixels so look/print match the upright live HDMI/UVC preview.
   ///
   /// Live preview uses [RotatedBox] on the **raw** capture-card frames (no EXIF).
-  /// When [quarterTurns] is non-zero:
-  /// 1. Decodes JPEG **without** applying EXIF (sensor / file pixel buffer)
-  /// 2. Rotates that buffer clockwise by [quarterTurns] (same as [RotatedBox])
-  /// 3. Re-encodes so [Image.memory] shows upright pixels
+  /// FOTO locks **live** bake turns to 0 (as-delivered vs RotatedBox). Canon
+  /// JPEGs still often carry an EXIF Orientation tag — that must be baked into
+  /// pixels so Flutter [Image.file] and zenai compose agree. Skipping that
+  /// re-encode (quality experiment) left look/print sideways again.
   ///
-  /// When [quarterTurns] is 0 (FOTO locked as-delivered), returns [sourceFile]
-  /// unchanged — Dart `image` JPEG round-trips crush Canon quality into colored
-  /// speckles (“dots”).
+  /// When [quarterTurns] is 0: EXIF-only bake via [img.bakeOrientation] (no live
+  /// turns). When Orientation is already 1, returns [sourceFile] unchanged.
+  /// When [quarterTurns] is non-zero: sensor decode (ignore EXIF) + rotate.
   static Future<XFile> bakeExifAndQuarterTurns(
     XFile sourceFile, {
     int quarterTurns = 0,
@@ -249,8 +249,10 @@ class ImageHelper {
   }) async {
     if (kIsWeb) return sourceFile;
     final turns = ((quarterTurns % 4) + 4) % 4;
-    if (turns == 0) return sourceFile;
     final quality = jpegQuality.clamp(1, 100);
+    if (turns == 0) {
+      return _bakeExifOrientationOnly(sourceFile, jpegQuality: quality);
+    }
     final path = sourceFile.path;
     final Uint8List bakedBytes = path.isNotEmpty
         ? await compute(
@@ -269,6 +271,33 @@ class ImageHelper {
               jpegQuality: quality,
             ),
           );
+    return _writeBakedJpegBytes(bakedBytes);
+  }
+
+  /// EXIF Orientation → pixels when live bake turns are locked to 0.
+  static Future<XFile> _bakeExifOrientationOnly(
+    XFile sourceFile, {
+    required int jpegQuality,
+  }) async {
+    final path = sourceFile.path;
+    final bytes = path.isNotEmpty
+        ? await File(path).readAsBytes()
+        : await sourceFile.readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception('Captured image is empty');
+    }
+    // Already upright for tag-less consumers — keep original Canon bytes.
+    if (_peekJpegExifOrientation(bytes) <= 1) {
+      return sourceFile;
+    }
+    final bakedBytes = await compute(
+      _bakeExifOrientationOnlyBytes,
+      (bytes: bytes, jpegQuality: jpegQuality),
+    );
+    return _writeBakedJpegBytes(bakedBytes);
+  }
+
+  static Future<XFile> _writeBakedJpegBytes(Uint8List bakedBytes) async {
     final tempDir = await FileHelper.getTempDirectoryPath();
     const photosSubdir = 'photos';
     final photosDir = '$tempDir/$photosSubdir';
@@ -278,6 +307,20 @@ class ImageHelper {
     final file = FileHelper.createFile(savePath);
     await (file as dynamic).writeAsBytes(bakedBytes);
     return XFile((file as dynamic).path);
+  }
+
+  static Uint8List _bakeExifOrientationOnlyBytes(
+    ({Uint8List bytes, int jpegQuality}) args,
+  ) {
+    final decoded = img.decodeImage(args.bytes);
+    if (decoded == null) {
+      throw Exception('Failed to decode captured image');
+    }
+    // Same path as normalize — avoid JpegData.getImage() (colored speckles).
+    final baked = img.bakeOrientation(decoded);
+    return Uint8List.fromList(
+      img.encodeJpg(baked, quality: args.jpegQuality),
+    );
   }
 
   static Uint8List _bakeExifAndQuarterTurnsFromPath(
@@ -295,8 +338,6 @@ class ImageHelper {
   }
 
   /// Top-level for [compute]: sensor pixels → live-feed quarter-turns.
-  ///
-  /// Caller must pass non-zero [args.quarterTurns] (zero short-circuits above).
   static Uint8List _bakeExifAndQuarterTurnsBytes(_BakeExifTurnsArgs args) {
     final applyTurns = ((args.quarterTurns % 4) + 4) % 4;
     var work = _decodeJpegSensorPixels(args.bytes);
@@ -306,6 +347,19 @@ class ImageHelper {
     return Uint8List.fromList(
       img.encodeJpg(work, quality: args.jpegQuality),
     );
+  }
+
+  /// EXIF orientation tag without applying it (1 when absent / unreadable).
+  static int _peekJpegExifOrientation(Uint8List bytes) {
+    try {
+      final jpeg = img.JpegData()..read(bytes);
+      if (jpeg.exif.imageIfd.hasOrientation) {
+        return jpeg.exif.imageIfd.orientation ?? 1;
+      }
+    } catch (_) {
+      // Fall through.
+    }
+    return 1;
   }
 
   /// JPEG pixel buffer with EXIF orientation ignored (same space as HDMI frames).
