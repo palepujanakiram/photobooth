@@ -409,6 +409,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                   _oneShotPhase == ClassicOneShotPhase.capturing) &&
               _uvcReadyForCapture &&
               !_uvcCaptureInFlight &&
+              _flashbackCameraReady &&
               _captureViewModel.capturedPhoto == null &&
               _stripShots.isEmpty,
           countdownSeconds: seconds,
@@ -596,6 +597,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               mounted &&
               _uvcReadyForCapture &&
               !_uvcCaptureInFlight &&
+              _flashbackCameraReady &&
               _captureViewModel.capturedPhoto == null,
           countdownSeconds: seconds,
           onCountdownFinished: _armUvcHdmiStillMask,
@@ -3309,6 +3311,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         return;
       }
 
+      // Sidecar still + HDMI pose: never shoot while Canon LV is not held —
+      // that races ensureLiveView and causes PTP Timeout on the Pi.
+      final sidecarConfigured =
+          _captureViewModel.localCameraService?.isConfigured == true;
+      if (sidecarConfigured && !_canonLvHolding) {
+        AppLogger.warning(
+          '[HDMI_POSE] UVC capture blocked source=$source — Canon LV not holding',
+        );
+        unawaited(
+          _captureViewModel.localCameraService?.postClientEvent(
+            'capture_blocked_no_lv',
+            {'source': source},
+          ),
+        );
+        return;
+      }
+
       if (isUvcShutterCaptureSource(source)) {
         final now = DateTime.now();
         if (_lastUvcShutterAt != null &&
@@ -4494,6 +4513,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                         canStart: () =>
                             _uvcReadyForCapture &&
                             !_uvcCaptureInFlight &&
+                            _flashbackCameraReady &&
                             viewModel.capturedPhoto == null,
                         countdownSeconds: countdownSecs,
                         onCountdownFinished: _armUvcHdmiStillMask,

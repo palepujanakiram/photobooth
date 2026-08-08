@@ -126,7 +126,7 @@ class LocalCameraService {
   /// (`fotozen-sidecar` ≥ v1.2.3 holds LV with a capture-movie session).
   /// Best-effort — `holding` means the Pi kept the PTP session open.
   Future<({bool enabled, bool woke, bool holding})> ensureLiveView({
-    Duration timeout = const Duration(seconds: 20),
+    Duration timeout = const Duration(seconds: 12),
   }) async {
     if (!isConfigured) {
       throw StateError('Camera sidecar is not configured');
