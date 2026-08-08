@@ -732,7 +732,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return _captureViewModel.isReady;
     }
     if (!_isUsingUvc) return _captureViewModel.isReady;
-    return uvcHdmiPoseReadyForCountdown(
+    final ready = uvcHdmiPoseReadyForCountdown(
       uvcControllerReady: _uvcReadyForCapture,
       captureInFlight: _uvcCaptureInFlight || _uvcHdmiStillMaskArmed,
       previewWarmupActive: _uvcPreviewWarmupActive,
@@ -740,11 +740,41 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           _captureViewModel.localCameraService?.isConfigured == true,
       canonLvHolding: _canonLvHolding,
     );
+    // Throttle — this getter is polled from the VM tick.
+    final now = DateTime.now();
+    if (_lastHdmiPoseReadyLogAt == null ||
+        now.difference(_lastHdmiPoseReadyLogAt!) >
+            const Duration(seconds: 2)) {
+      _lastHdmiPoseReadyLogAt = now;
+      AppLogger.info(
+        '[HDMI_POSE] ready=$ready uvc=$_uvcReadyForCapture '
+        'warmup=$_uvcPreviewWarmupActive lvHold=$_canonLvHolding '
+        'sidecar=${_captureViewModel.localCameraService?.isConfigured == true} '
+        'inFlight=$_uvcCaptureInFlight mask=$_uvcHdmiStillMaskArmed',
+      );
+      unawaited(
+        _captureViewModel.localCameraService?.postClientEvent('pose_ready', {
+          'ready': ready,
+          'uvc': _uvcReadyForCapture,
+          'warmup': _uvcPreviewWarmupActive,
+          'lvHold': _canonLvHolding,
+          'inFlight': _uvcCaptureInFlight,
+          'mask': _uvcHdmiStillMaskArmed,
+        }),
+      );
+    }
+    return ready;
   }
+
+  DateTime? _lastHdmiPoseReadyLogAt;
 
   void _armUvcHdmiStillMask() {
     if (_uvcHdmiStillMaskArmed) return;
     _uvcHdmiStillMaskArmed = true;
+    AppLogger.info('[HDMI_POSE] HDMI still mask armed');
+    unawaited(
+      _captureViewModel.localCameraService?.postClientEvent('hdmi_mask_armed'),
+    );
     if (mounted) setState(() {});
   }
 

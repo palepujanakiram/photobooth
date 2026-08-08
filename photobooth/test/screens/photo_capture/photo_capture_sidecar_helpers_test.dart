@@ -60,10 +60,13 @@ void main() {
     });
 
     test('calls ensureLiveView when configured', () async {
-      var hits = 0;
+      var liveViewHits = 0;
       final client = MockClient((request) async {
+        if (request.url.path.endsWith('/camera/client-log')) {
+          return http.Response('', 204);
+        }
         expect(request.url.path, '/camera/live-view');
-        hits++;
+        liveViewHits++;
         return http.Response(
           '{"ok":true,"enabled":true,"woke":false,"holding":true}',
           200,
@@ -80,15 +83,18 @@ void main() {
       final result = await ensureCanonLiveViewForHdmiPose(service);
       expect(result.ok, isTrue);
       expect(result.holding, isTrue);
-      expect(hits, 1);
+      expect(liveViewHits, 1);
       service.dispose();
     });
 
     test('retries until enabled or holding', () async {
-      var hits = 0;
+      var liveViewHits = 0;
       final client = MockClient((request) async {
-        hits++;
-        if (hits < 2) {
+        if (request.url.path.endsWith('/camera/client-log')) {
+          return http.Response('', 204);
+        }
+        liveViewHits++;
+        if (liveViewHits < 2) {
           return http.Response(
             '{"ok":true,"enabled":false,"woke":false,"holding":false}',
             502,
@@ -111,12 +117,15 @@ void main() {
       final result = await ensureCanonLiveViewForHdmiPose(service);
       expect(result.ok, isTrue);
       expect(result.holding, isTrue);
-      expect(hits, 2);
+      expect(liveViewHits, 2);
       service.dispose();
     });
 
     test('swallows ensureLiveView failures', () async {
       final client = MockClient((request) async {
+        if (request.url.path.endsWith('/camera/client-log')) {
+          return http.Response('', 204);
+        }
         return http.Response('{"ok":false}', 502);
       });
       final service = LocalCameraService(
@@ -150,6 +159,9 @@ void main() {
     test('returns path-backed XFile when healthy and capture succeeds', () async {
       final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(64, 2)]);
       final client = MockClient((request) async {
+        if (request.url.path.endsWith('/camera/client-log')) {
+          return http.Response('', 204);
+        }
         if (request.url.path.endsWith('/health')) {
           return http.Response('{"ok":true,"connected":true}', 200);
         }
@@ -174,6 +186,9 @@ void main() {
     test('passes resumeLiveView=0 for classic 1-shot handoff', () async {
       final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(64, 2)]);
       final client = MockClient((request) async {
+        if (request.url.path.endsWith('/camera/client-log')) {
+          return http.Response('', 204);
+        }
         if (request.url.path.endsWith('/health')) {
           return http.Response('{"ok":true,"connected":true}', 200);
         }
@@ -194,6 +209,9 @@ void main() {
 
     test('returns null when unhealthy', () async {
       final client = MockClient((request) async {
+        if (request.url.path.endsWith('/camera/client-log')) {
+          return http.Response('', 204);
+        }
         return http.Response('{"ok":true,"connected":false}', 200);
       });
       final service = LocalCameraService(
@@ -209,6 +227,9 @@ void main() {
 
     test('returns null when capture throws', () async {
       final client = MockClient((request) async {
+        if (request.url.path.endsWith('/camera/client-log')) {
+          return http.Response('', 204);
+        }
         if (request.url.path.endsWith('/health')) {
           return http.Response('{"ok":true,"connected":true}', 200);
         }

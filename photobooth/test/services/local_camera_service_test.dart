@@ -276,6 +276,22 @@ void main() {
       service.dispose();
     });
 
+    test('postClientEvent posts JSON breadcrumb and never throws', () async {
+      http.Request? seen;
+      final client = MockClient((request) async {
+        seen = request;
+        return http.Response('', 204);
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await service.postClientEvent('pose_ready', {'ready': true});
+      expect(seen?.url.path, '/camera/client-log');
+      expect(seen?.method, 'POST');
+      final body = jsonDecode(seen!.body) as Map<String, dynamic>;
+      expect(body['type'], 'pose_ready');
+      expect(body['detail'], {'ready': true});
+      service.dispose();
+    });
+
     test('default constructor uses environment sidecar config', () async {
       final service = LocalCameraService(
         client: MockClient((_) async => http.Response('bad', 503)),

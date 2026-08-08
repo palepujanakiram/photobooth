@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
@@ -24,6 +26,7 @@ Future<({bool ok, bool holding})> ensureCanonLiveViewForHdmiPose(
   LocalCameraService? service,
 ) async {
   if (service == null || !service.isConfigured) {
+    AppLogger.info('[HDMI_POSE] LV ensure skipped — sidecar not configured');
     return (ok: false, holding: false);
   }
   const attempts = 2;
@@ -31,16 +34,30 @@ Future<({bool ok, bool holding})> ensureCanonLiveViewForHdmiPose(
     try {
       final result = await service.ensureLiveView();
       AppLogger.info(
-        'Canon LV ensure attempt ${i + 1}/$attempts: '
+        '[HDMI_POSE] Canon LV ensure attempt ${i + 1}/$attempts: '
         'enabled=${result.enabled} woke=${result.woke} '
         'holding=${result.holding}',
+      );
+      unawaited(
+        service.postClientEvent('lv_ensure', {
+          'attempt': i + 1,
+          'enabled': result.enabled,
+          'woke': result.woke,
+          'holding': result.holding,
+        }),
       );
       if (result.enabled || result.holding) {
         return (ok: true, holding: result.holding || result.enabled);
       }
     } catch (e) {
       AppLogger.warning(
-        'Canon LV ensure attempt ${i + 1}/$attempts failed: $e',
+        '[HDMI_POSE] Canon LV ensure attempt ${i + 1}/$attempts failed: $e',
+      );
+      unawaited(
+        service.postClientEvent('lv_ensure_error', {
+          'attempt': i + 1,
+          'error': '$e',
+        }),
       );
     }
     if (i < attempts - 1) {
@@ -48,8 +65,9 @@ Future<({bool ok, bool holding})> ensureCanonLiveViewForHdmiPose(
     }
   }
   AppLogger.warning(
-    'Canon LV ensure exhausted — HDMI may show body status until Q / LV',
+    '[HDMI_POSE] Canon LV ensure exhausted — HDMI may show body status until Q / LV',
   );
+  unawaited(service.postClientEvent('lv_ensure_exhausted'));
   return (ok: false, holding: false);
 }
 
@@ -71,15 +89,33 @@ Future<XFile?> tryCaptureFromSidecar(
   try {
     final healthy = await service.isHealthy();
     if (!healthy) {
-      AppLogger.info('Camera sidecar not healthy; using local camera');
+      AppLogger.info('[HDMI_POSE] Camera sidecar not healthy; using local camera');
+      unawaited(service.postClientEvent('capture_skip_unhealthy'));
       return null;
     }
+    AppLogger.info(
+      '[HDMI_POSE] Sidecar still begin resumeLV=$resumeLiveView',
+    );
+    unawaited(
+      service.postClientEvent('capture_begin', {
+        'resumeLiveView': resumeLiveView,
+      }),
+    );
+    final t0 = DateTime.now();
     final bytes = await service.capture(resumeLiveView: resumeLiveView);
     if (bytes.isEmpty) return null;
     final name = 'fz200d_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final ms = DateTime.now().difference(t0).inMilliseconds;
     AppLogger.info(
-      'Captured still from camera sidecar ($name, ${bytes.length} bytes, '
-      'resumeLV=$resumeLiveView)',
+      '[HDMI_POSE] Sidecar still ok ($name, ${bytes.length} bytes, '
+      'resumeLV=$resumeLiveView, ${ms}ms)',
+    );
+    unawaited(
+      service.postClientEvent('capture_ok', {
+        'bytes': bytes.length,
+        'resumeLiveView': resumeLiveView,
+        'ms': ms,
+      }),
     );
     if (kIsWeb) {
       return XFile.fromData(
@@ -107,7 +143,10 @@ Future<XFile?> tryCaptureFromSidecar(
       );
     }
   } catch (e) {
-    AppLogger.warning('Camera sidecar capture failed; falling back: $e');
+    AppLogger.warning('[HDMI_POSE] Camera sidecar capture failed; falling back: $e');
+    unawaited(
+      service.postClientEvent('capture_error', {'error': '$e'}),
+    );
     return null;
   }
 }

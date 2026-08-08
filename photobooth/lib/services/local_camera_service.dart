@@ -152,6 +152,31 @@ class LocalCameraService {
     return (enabled: enabled, woke: woke, holding: holding);
   }
 
+  /// Best-effort booth breadcrumb → Pi `POST /camera/client-log` (never throws).
+  Future<void> postClientEvent(
+    String type, [
+    Map<String, Object?>? detail,
+  ]) async {
+    if (!isConfigured) return;
+    try {
+      await _client
+          .post(
+            _uri('/camera/client-log'),
+            headers: {
+              ..._headers,
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'type': type,
+              if (detail != null) 'detail': detail,
+            }),
+          )
+          .timeout(const Duration(milliseconds: 800));
+    } catch (e) {
+      AppLogger.debug('Camera sidecar client-log failed: $e');
+    }
+  }
+
   Map<String, dynamic> _decodeLiveViewBody(http.Response response) {
     try {
       final body = jsonDecode(response.body);
