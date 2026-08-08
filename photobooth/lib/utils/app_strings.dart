@@ -167,6 +167,9 @@ abstract final class AppStrings {
 
   static const captureStartingPreview = 'Starting camera…';
 
+  /// HDMI/UVC still in flight — hides Canon status LCD on the capture card.
+  static const captureCapturingPhoto = 'Capturing…';
+
   /// Pose UI while waiting for the first Pi DSLR live-view frame.
   static const sidecarLivePreviewConnecting = 'Connecting to DSLR…';
 

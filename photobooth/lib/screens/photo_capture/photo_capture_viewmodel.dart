@@ -1914,10 +1914,14 @@ class CaptureViewModel extends ChangeNotifier {
   /// [countdownSeconds] defaults to [AppConstants.kCaptureCountdownSeconds]
   /// (AI). Classic FotoFlashback passes
   /// [AppConstants.kFlashbackCaptureCountdownSeconds].
+  ///
+  /// [onCountdownFinished] runs as soon as the timer clears (before the short
+  /// settle delay) so HDMI pose can mask the Canon status LCD before shutter.
   Future<void> captureWithCountdown(
     Future<void> Function() captureAction, {
     required bool Function() canStart,
     int? countdownSeconds,
+    void Function()? onCountdownFinished,
   }) async {
     if (!canStart() || _isCapturing || _countdownValue != null) {
       return;
@@ -1943,9 +1947,13 @@ class CaptureViewModel extends ChangeNotifier {
 
       if (generation != _countdownGeneration || !canStart()) return;
       _countdownValue = null;
+      onCountdownFinished?.call();
       notifyListeners();
       await Future<void>.delayed(const Duration(milliseconds: 120));
-      if (generation != _countdownGeneration || !canStart()) return;
+      if (generation != _countdownGeneration || !canStart()) {
+        // HDMI mask may have been armed — caller clears on next idle/retry.
+        return;
+      }
       await captureAction();
     } finally {
       if (generation == _countdownGeneration) {

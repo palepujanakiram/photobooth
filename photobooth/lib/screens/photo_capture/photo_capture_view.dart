@@ -19,6 +19,7 @@ import 'photo_capture_uvc_reconnect_helpers.dart';
 import 'photo_capture_uvc_raster_capture.dart';
 import 'photo_capture_uvc_take_picture_helpers.dart';
 import 'photo_capture_uvc_shutter_helpers.dart';
+import 'photo_capture_hdmi_pose_helpers.dart';
 import 'photo_capture_sidecar_helpers.dart';
 import 'photo_capture_desktop_body.dart';
 import 'photo_capture_body_phase.dart';
@@ -101,6 +102,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   DateTime? _lastUvcShutterAt;
   bool _uvcShutterKeysEnabled = false;
   bool _uvcCaptureInFlight = false;
+  /// Opaque HDMI mask from countdown end through still assign (status LCD).
+  bool _uvcHdmiStillMaskArmed = false;
   UvcFeedPhase _uvcPhase = UvcFeedPhase.live;
   final GlobalKey _uvcPreviewBoundaryKey = GlobalKey();
   bool _uvcOpeningController = false;
@@ -358,6 +361,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _flashbackCountdownStarting = false;
     _stripFinishing = false;
     _navigatingAwayFromCapture = false;
+    _uvcHdmiStillMaskArmed = false;
     if (_stripShots.isNotEmpty || _stripScrubFutures.isNotEmpty) {
       _stripShots.clear();
       _stripScrubFutures.clear();
@@ -408,6 +412,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               _captureViewModel.capturedPhoto == null &&
               _stripShots.isEmpty,
           countdownSeconds: seconds,
+          onCountdownFinished: _armUvcHdmiStillMask,
         );
       } else {
         _oneShotDispatch(ClassicOneShotEvent.shutterStarted);
@@ -417,6 +422,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }
     } finally {
       _flashbackCountdownStarting = false;
+      // Countdown may have armed the HDMI mask then aborted before shutter.
+      if (_captureViewModel.capturedPhoto == null && !_uvcCaptureInFlight) {
+        _uvcHdmiStillMaskArmed = false;
+      }
       if (mounted && widget.sessionKind.isClassicOneShot) {
         if (_captureViewModel.capturedPhoto != null) {
           _oneShotDispatch(ClassicOneShotEvent.stillReady);
@@ -493,6 +502,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   /// Guest Capture / shutter for Classic 1-shot only.
   void _oneShotRequestGuestCapture() {
     if (!widget.sessionKind.isClassicOneShot) return;
+    // If auto-start was blocked (no LV hold), try arming again before counting.
+    if (!_canonLvHolding &&
+        _captureViewModel.localCameraService?.isConfigured == true) {
+      unawaited(() async {
+        await _armCanonLiveViewForPose();
+        if (!mounted) return;
+        _oneShotDispatch(ClassicOneShotEvent.guestCapture);
+      }());
+      return;
+    }
     _oneShotDispatch(ClassicOneShotEvent.guestCapture);
   }
 
@@ -579,6 +598,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               !_uvcCaptureInFlight &&
               _captureViewModel.capturedPhoto == null,
           countdownSeconds: seconds,
+          onCountdownFinished: _armUvcHdmiStillMask,
         );
       } else {
         await _captureViewModel.capturePhotoWithCountdown(
@@ -587,6 +607,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }
     } finally {
       _flashbackCountdownStarting = false;
+      if (_captureViewModel.capturedPhoto == null && !_uvcCaptureInFlight) {
+        _uvcHdmiStillMaskArmed = false;
+      }
       if (mounted) _maybeAdvanceFlashbackAutoChain();
     }
   }
@@ -708,9 +731,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (_captureViewModel.usesSidecarLivePreview) {
       return _captureViewModel.isReady;
     }
-    return _isUsingUvc
-        ? (_uvcReadyForCapture && !_uvcCaptureInFlight)
-        : _captureViewModel.isReady;
+    if (!_isUsingUvc) return _captureViewModel.isReady;
+    return uvcHdmiPoseReadyForCountdown(
+      uvcControllerReady: _uvcReadyForCapture,
+      captureInFlight: _uvcCaptureInFlight || _uvcHdmiStillMaskArmed,
+      previewWarmupActive: _uvcPreviewWarmupActive,
+      sidecarConfigured:
+          _captureViewModel.localCameraService?.isConfigured == true,
+      canonLvHolding: _canonLvHolding,
+    );
+  }
+
+  void _armUvcHdmiStillMask() {
+    if (_uvcHdmiStillMaskArmed) return;
+    _uvcHdmiStillMaskArmed = true;
+    if (mounted) setState(() {});
   }
 
   @override
@@ -1244,6 +1279,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void _clearUvcTransientCaptureUi() {
     _showCaptureFlash = false;
     _uvcCaptureInFlight = false;
+    _uvcHdmiStillMaskArmed = false;
     _syncCaptureWatchdog(_captureViewModel);
   }
 
@@ -2976,8 +3012,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   bool _isUvcSavingStill(CaptureViewModel viewModel) =>
-      (viewModel.isCapturing || _uvcCaptureInFlight) &&
-      viewModel.capturedPhoto == null;
+      uvcShouldMaskHdmiDuringStill(
+        hasCapturedPhoto: viewModel.capturedPhoto != null,
+        isCapturing: viewModel.isCapturing,
+        captureInFlight: _uvcCaptureInFlight,
+        hdmiStillMaskArmed: _uvcHdmiStillMaskArmed,
+        isCountingDown: viewModel.isCountingDown,
+        countdownValue: viewModel.countdownValue,
+      );
 
   Widget _uvcSavingPhotoCard() {
     return const ColoredBox(
@@ -2989,7 +3031,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             CircularProgressIndicator(color: Colors.white),
             SizedBox(height: 12),
             Text(
-              'Saving photo…',
+              AppStrings.captureCapturingPhoto,
               style: TextStyle(color: Colors.white70),
             ),
           ],
@@ -3256,10 +3298,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
       try {
         AppLogger.debug('UVC capture start source=$source');
-        // DSLR body already clicks on sidecar still — skip synthetic shutter SFX.
+        // DSLR body already clicks on sidecar still — skip synthetic flash/SFX
+        // so the booth does not stack white flash + mirror clicks + LCD flap.
         final preferSidecar =
             _captureViewModel.localCameraService?.isConfigured == true;
-        await _pulseCaptureFlash(playSound: !preferSidecar);
+        if (preferSidecar) {
+          _armUvcHdmiStillMask();
+        } else {
+          await _pulseCaptureFlash(playSound: true);
+        }
         final previewMode = ctrl.value.previewMode;
         if (previewMode != null) {
           final displaySize = viewModel.uvcPreviewDisplaySizeForCard(
@@ -4419,6 +4466,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                             !_uvcCaptureInFlight &&
                             viewModel.capturedPhoto == null,
                         countdownSeconds: countdownSecs,
+                        onCountdownFinished: _armUvcHdmiStillMask,
                       );
                     } else {
                       _fotoZenCaptureLocked = true;
@@ -4429,8 +4477,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                   },
             icon: const Icon(CupertinoIcons.camera, size: 20),
             label: Text(
-              (viewModel.isCapturing || _uvcCaptureInFlight)
-                  ? 'Capturing…'
+              (viewModel.isCapturing ||
+                      _uvcCaptureInFlight ||
+                      _uvcHdmiStillMaskArmed)
+                  ? AppStrings.captureCapturingPhoto
                   : (flashback
                       ? AppStrings.flashbackTakeShot
                       : 'Capture'),
