@@ -193,12 +193,23 @@ class _StaffPaymentImagePreviewScreenState
     );
   }
 
+  void _goToPage(int index) {
+    if (index < 0 || index >= widget.imageUrls.length) return;
+    if (index == _pageIndex) return;
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasCaption = (widget.title?.isNotEmpty ?? false) ||
         (widget.subtitle?.isNotEmpty ?? false);
     final hasRun = _runId != null && _runId!.isNotEmpty;
     final multi = widget.imageUrls.length > 1;
+    final pageCount = widget.imageUrls.length;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -209,11 +220,11 @@ class _StaffPaymentImagePreviewScreenState
             Positioned.fill(
               child: PageView.builder(
                 controller: _pageController,
-                itemCount: widget.imageUrls.length,
+                itemCount: pageCount,
                 onPageChanged: (i) {
                   setState(() => _pageIndex = i);
                   unawaited(_loadPage(i));
-                  if (i + 1 < widget.imageUrls.length) {
+                  if (i + 1 < pageCount) {
                     unawaited(_loadPage(i + 1));
                   }
                 },
@@ -224,86 +235,57 @@ class _StaffPaymentImagePreviewScreenState
               top: 0,
               left: 0,
               right: 0,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.72),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    IconButton(
-                      icon: const Icon(CupertinoIcons.xmark, color: Colors.white),
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      tooltip: 'Close',
-                    ),
-                    if (hasCaption)
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 14, right: 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (widget.title?.isNotEmpty ?? false)
-                                Text(
-                                  widget.title!,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              if (widget.subtitle?.isNotEmpty ?? false) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  widget.subtitle!,
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.72),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                              if (multi) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${AppStrings.staffPrintPhotoN(_pageIndex + 1)} / ${widget.imageUrls.length}',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.72),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      )
-                    else
-                      const Spacer(),
-                    if (hasRun)
-                      TextButton(
-                        onPressed: _openTransformationDetails,
-                        child: Text(
-                          AppStrings.beholdTransformationDetailsLink,
-                          style: TextStyle(
-                            color: Colors.amber.shade200,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
+              child: _StaffPaymentPreviewTopBar(
+                hasCaption: hasCaption,
+                hasRun: hasRun,
+                multi: multi,
+                title: widget.title,
+                subtitle: widget.subtitle,
+                pageIndex: _pageIndex,
+                pageCount: pageCount,
+                onClose: () => Navigator.of(context).maybePop(),
+                onOpenDetails:
+                    hasRun ? _openTransformationDetails : null,
               ),
             ),
+            if (multi) ...[
+              Positioned(
+                left: 4,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: _StaffPaymentPreviewNavButton(
+                    icon: CupertinoIcons.chevron_left,
+                    tooltip: AppStrings.staffPreviewPreviousPhoto,
+                    enabled: _pageIndex > 0,
+                    onPressed: () => _goToPage(_pageIndex - 1),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 4,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: _StaffPaymentPreviewNavButton(
+                    icon: CupertinoIcons.chevron_right,
+                    tooltip: AppStrings.staffPreviewNextPhoto,
+                    enabled: _pageIndex < pageCount - 1,
+                    onPressed: () => _goToPage(_pageIndex + 1),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 16,
+                child: _StaffPaymentPreviewPageDots(
+                  pageIndex: _pageIndex,
+                  pageCount: pageCount,
+                  onSelect: _goToPage,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -333,7 +315,9 @@ class _StaffPaymentImagePreviewScreenState
         ),
       );
     }
+    // Fresh viewer per page so pinch-zoom does not stick across photos.
     return InteractiveViewer(
+      key: ValueKey<int>(index),
       minScale: 0.85,
       maxScale: 4,
       child: Center(
@@ -347,6 +331,190 @@ class _StaffPaymentImagePreviewScreenState
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Top chrome for [StaffPaymentImagePreviewScreen] (keeps build under S3776).
+class _StaffPaymentPreviewTopBar extends StatelessWidget {
+  const _StaffPaymentPreviewTopBar({
+    required this.hasCaption,
+    required this.hasRun,
+    required this.multi,
+    required this.title,
+    required this.subtitle,
+    required this.pageIndex,
+    required this.pageCount,
+    required this.onClose,
+    this.onOpenDetails,
+  });
+
+  final bool hasCaption;
+  final bool hasRun;
+  final bool multi;
+  final String? title;
+  final String? subtitle;
+  final int pageIndex;
+  final int pageCount;
+  final VoidCallback onClose;
+  final VoidCallback? onOpenDetails;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withValues(alpha: 0.72),
+            Colors.transparent,
+          ],
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          IconButton(
+            icon: const Icon(CupertinoIcons.xmark, color: Colors.white),
+            onPressed: onClose,
+            tooltip: 'Close',
+          ),
+          if (hasCaption)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 14, right: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (title?.isNotEmpty ?? false)
+                      Text(
+                        title!,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    if (subtitle?.isNotEmpty ?? false) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                    if (multi) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        '${AppStrings.staffPrintPhotoN(pageIndex + 1)} / $pageCount',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            )
+          else
+            const Spacer(),
+          if (hasRun && onOpenDetails != null)
+            TextButton(
+              onPressed: onOpenDetails,
+              child: Text(
+                AppStrings.beholdTransformationDetailsLink,
+                style: TextStyle(
+                  color: Colors.amber.shade200,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Large hit-target chevron so phones can change pages without relying on swipe.
+class _StaffPaymentPreviewNavButton extends StatelessWidget {
+  const _StaffPaymentPreviewNavButton({
+    required this.icon,
+    required this.tooltip,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: enabled ? 0.45 : 0.2),
+      shape: const CircleBorder(),
+      child: IconButton(
+        iconSize: 28,
+        padding: const EdgeInsets.all(12),
+        tooltip: tooltip,
+        onPressed: enabled ? onPressed : null,
+        icon: Icon(
+          icon,
+          color: enabled ? Colors.white : Colors.white38,
+        ),
+      ),
+    );
+  }
+}
+
+/// Tappable page dots under multi-photo staff preview.
+class _StaffPaymentPreviewPageDots extends StatelessWidget {
+  const _StaffPaymentPreviewPageDots({
+    required this.pageIndex,
+    required this.pageCount,
+    required this.onSelect,
+  });
+
+  final int pageIndex;
+  final int pageCount;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < pageCount; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () => onSelect(i),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: i == pageIndex ? 10 : 8,
+                height: i == pageIndex ? 10 : 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: i == pageIndex
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.35),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

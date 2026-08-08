@@ -540,6 +540,8 @@ abstract final class AppStrings {
   static const staffPrintPhotosTitle = 'Print photos';
   static const staffPrintPhotoLabel = 'Photo';
   static String staffPrintPhotoN(int n) => 'Photo $n';
+  static const staffPreviewPreviousPhoto = 'Previous photo';
+  static const staffPreviewNextPhoto = 'Next photo';
   static const staffPrintAll = 'Print all';
   static const staffPrintSelected = 'Print selected';
   static const staffPrintSelectHint =

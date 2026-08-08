@@ -150,6 +150,52 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byIcon(CupertinoIcons.exclamationmark_triangle), findsOneWidget);
   });
+
+  testWidgets('multi-photo preview shows nav controls and advances pages',
+      (tester) async {
+    const pngDataUrl =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: StaffPaymentImagePreviewScreen(
+          imageUrls: [pngDataUrl, pngDataUrl],
+          title: 'Payment',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Next photo'), findsOneWidget);
+    expect(find.byTooltip('Previous photo'), findsOneWidget);
+    expect(find.text('Photo 1 / 2'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Next photo'));
+    await tester.pumpAndSettle();
+    expect(find.text('Photo 2 / 2'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Previous photo'));
+    await tester.pumpAndSettle();
+    expect(find.text('Photo 1 / 2'), findsOneWidget);
+  });
+
+  testWidgets('single-photo preview hides multi-photo nav controls',
+      (tester) async {
+    const pngDataUrl =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: StaffPaymentImagePreviewScreen(
+          imageUrls: [pngDataUrl],
+          title: 'Payment',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Next photo'), findsNothing);
+    expect(find.byTooltip('Previous photo'), findsNothing);
+    expect(find.textContaining('Photo 1 /'), findsNothing);
+  });
 }
 
 class _FakeBuildContext implements BuildContext {
