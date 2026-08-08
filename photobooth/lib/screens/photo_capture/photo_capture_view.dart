@@ -3386,6 +3386,28 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           AppLogger.info('UVC pose shutter used Pi sidecar still');
           // Sidecar already restarted the LV keeper when resumeLiveView=true.
           // A second Flutter ensure would stop/start it again (extra clicks).
+        } else if (preferSidecar) {
+          // Never grab a blank HDMI/UVC frame when the Pi DSLR path is configured —
+          // that is what advanced the booth with a black still after PTP Timeout.
+          captureFailed = true;
+          AppLogger.error(
+            '[HDMI_POSE] Sidecar still failed; refusing blank UVC fallback '
+            'source=$source',
+          );
+          unawaited(
+            _captureViewModel.localCameraService?.postClientEvent(
+              'capture_refused_uvc_fallback',
+              {'source': source},
+            ),
+          );
+          if (mounted) {
+            _uvcPhase = UvcFeedPhase.error;
+            setState(() {
+              _uvcError =
+                  'Camera capture failed. Check the DSLR USB link, then tap Retry.';
+            });
+          }
+          return;
         } else {
           capturedFile = await _obtainUvcStillFile(ctrl, source: source);
         }
