@@ -128,6 +128,26 @@ class LocalCameraService {
     return _requireJpegBytes(response, action: 'capture');
   }
 
+  /// Exit movie LV during the countdown so [capture] can shutter at timer zero.
+  ///
+  /// Requires fotozen-sidecar ≥ 1.2.19 (`POST /camera/prepare-still`).
+  Future<void> prepareStill({
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    if (!isConfigured) {
+      throw StateError('Camera sidecar is not configured');
+    }
+    final response = await _client
+        .post(_uri('/camera/prepare-still'), headers: _headers)
+        .timeout(timeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError(
+        'Camera sidecar prepare-still failed '
+        '(${response.statusCode}): ${response.body}',
+      );
+    }
+  }
+
   /// Arms Canon Live View over USB so HDMI → capture card is not blank.
   ///
   /// Call before opening UVC pose and again before reopening after a still

@@ -250,6 +250,10 @@ class AppConstants {
   /// FotoFlashback Classic 4-shot booth: longer pose window between snaps.
   static const int kFlashbackCaptureCountdownSeconds = 10;
 
+  /// Classic + Pi DSLR: begin movie-LV teardown when the countdown reaches this
+  /// second so the real shutter can fire as the timer hits zero (~3–4s prep).
+  static const int kFlashbackSidecarStillPrepareAtSecond = 5;
+
   /// Brief hold on the just-taken Classic shot before auto-continuing.
   /// Tap Retake during this window (or Retake last on the next countdown).
   static const Duration kFlashbackShotReviewDuration = Duration(seconds: 8);

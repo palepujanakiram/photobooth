@@ -395,10 +395,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _flashbackCountdownStarting = true;
     final seconds = captureCountdownSecondsForMode(isFlashbackMultiShot: true);
     try {
+      Future<void>? sidecarPrepare;
       if (_isUsingUvc) {
         await _captureViewModel.captureWithCountdown(
           () async {
             if (_oneShotPhase != ClassicOneShotPhase.counting) return;
+            await _awaitSidecarStillPrepare(sidecarPrepare);
+            if (_oneShotPhase != ClassicOneShotPhase.counting &&
+                _oneShotPhase != ClassicOneShotPhase.capturing) {
+              return;
+            }
             _oneShotDispatch(ClassicOneShotEvent.shutterStarted);
             await _captureUvc(_captureViewModel, source: 'classic_one_shot');
           },
@@ -413,12 +419,35 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               _captureViewModel.capturedPhoto == null &&
               _stripShots.isEmpty,
           countdownSeconds: seconds,
+          onCountdownStep: (step) {
+            sidecarPrepare ??= _maybeStartSidecarStillPrepare(step);
+          },
           onCountdownFinished: _armUvcHdmiStillMask,
         );
       } else {
-        _oneShotDispatch(ClassicOneShotEvent.shutterStarted);
-        await _captureViewModel.capturePhotoWithCountdown(
+        await _captureViewModel.captureWithCountdown(
+          () async {
+            await _awaitSidecarStillPrepare(sidecarPrepare);
+            if (_oneShotPhase != ClassicOneShotPhase.counting &&
+                _oneShotPhase != ClassicOneShotPhase.capturing) {
+              return;
+            }
+            _oneShotDispatch(ClassicOneShotEvent.shutterStarted);
+            await _captureViewModel.capturePhoto();
+          },
+          canStart: () =>
+              mounted &&
+              widget.sessionKind.isClassicOneShot &&
+              (_oneShotPhase == ClassicOneShotPhase.counting ||
+                  _oneShotPhase == ClassicOneShotPhase.capturing) &&
+              _flashbackCameraReady &&
+              _captureViewModel.capturedPhoto == null &&
+              _stripShots.isEmpty,
           countdownSeconds: seconds,
+          onCountdownStep: (step) {
+            sidecarPrepare ??= _maybeStartSidecarStillPrepare(step);
+          },
+          onCountdownFinished: _armUvcHdmiStillMask,
         );
       }
     } finally {
@@ -592,9 +621,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _flashbackCountdownStarting = true;
     final seconds = captureCountdownSecondsForMode(isFlashbackMultiShot: true);
     try {
+      Future<void>? sidecarPrepare;
       if (_isUsingUvc) {
         await _captureViewModel.captureWithCountdown(
-          () => _captureUvc(_captureViewModel, source: 'flashback_auto'),
+          () async {
+            await _awaitSidecarStillPrepare(sidecarPrepare);
+            await _captureUvc(_captureViewModel, source: 'flashback_auto');
+          },
           canStart: () =>
               mounted &&
               _uvcReadyForCapture &&
@@ -602,11 +635,26 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               _flashbackCameraReady &&
               _captureViewModel.capturedPhoto == null,
           countdownSeconds: seconds,
+          onCountdownStep: (step) {
+            sidecarPrepare ??= _maybeStartSidecarStillPrepare(step);
+          },
           onCountdownFinished: _armUvcHdmiStillMask,
         );
       } else {
-        await _captureViewModel.capturePhotoWithCountdown(
+        await _captureViewModel.captureWithCountdown(
+          () async {
+            await _awaitSidecarStillPrepare(sidecarPrepare);
+            await _captureViewModel.capturePhoto();
+          },
+          canStart: () =>
+              mounted &&
+              _flashbackCameraReady &&
+              _captureViewModel.capturedPhoto == null,
           countdownSeconds: seconds,
+          onCountdownStep: (step) {
+            sidecarPrepare ??= _maybeStartSidecarStillPrepare(step);
+          },
+          onCountdownFinished: _armUvcHdmiStillMask,
         );
       }
     } finally {
@@ -784,6 +832,43 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _captureViewModel.localCameraService?.postClientEvent('hdmi_mask_armed'),
     );
     if (mounted) setState(() {});
+  }
+
+  /// Starts Pi movie-LV teardown at [kFlashbackSidecarStillPrepareAtSecond]
+  /// so the real shutter can land when the 10s timer hits zero.
+  Future<void>? _maybeStartSidecarStillPrepare(int countdownStep) {
+    final service = _captureViewModel.localCameraService;
+    if (service == null || !service.isConfigured) return null;
+    if (countdownStep != AppConstants.kFlashbackSidecarStillPrepareAtSecond) {
+      return null;
+    }
+    _armUvcHdmiStillMask();
+    AppLogger.info(
+      '[HDMI_POSE] Sidecar still prepare at countdown=$countdownStep',
+    );
+    unawaited(service.postClientEvent('prepare_still_begin', {
+      'countdownStep': countdownStep,
+    }));
+    return () async {
+      try {
+        await service.prepareStill();
+        unawaited(service.postClientEvent('prepare_still_ok'));
+      } catch (e) {
+        AppLogger.warning('[HDMI_POSE] Sidecar still prepare failed: $e');
+        unawaited(
+          service.postClientEvent('prepare_still_error', {'error': '$e'}),
+        );
+      }
+    }();
+  }
+
+  Future<void> _awaitSidecarStillPrepare(Future<void>? prepare) async {
+    if (prepare == null) return;
+    try {
+      await prepare.timeout(const Duration(seconds: 20));
+    } catch (e) {
+      AppLogger.warning('[HDMI_POSE] Sidecar still prepare wait: $e');
+    }
   }
 
   @override
@@ -3823,11 +3908,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           previewWidget = const SizedBox.shrink();
         } else if (viewModel.usesSidecarLivePreview &&
             viewModel.localCameraService != null) {
-          previewWidget = SidecarLivePreview(
-            service: viewModel.localCameraService!,
-            paused: viewModel.isCapturing || _uvcCaptureInFlight,
-            onFirstFrame: viewModel.markSidecarPreviewReady,
-          );
+          previewWidget = _isUvcSavingStill(viewModel)
+              ? _uvcSavingPhotoCard(
+                  message: captureStillInProgressLabel(usesSidecarDslr: true),
+                )
+              : SidecarLivePreview(
+                  service: viewModel.localCameraService!,
+                  paused: viewModel.isCapturing || _uvcCaptureInFlight,
+                  onFirstFrame: viewModel.markSidecarPreviewReady,
+                );
         } else if (_isUsingUvc) {
           previewWidget = _buildUvcPreview(context, viewModel);
         } else if (viewModel.cameraController == null) {
@@ -4572,14 +4661,22 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     }
                     if (_isUsingUvc) {
                       _fotoZenCaptureLocked = true;
+                      Future<void>? sidecarPrepare;
                       await viewModel.captureWithCountdown(
-                        () => _captureUvc(viewModel, source: 'ui_button'),
+                        () async {
+                          await _awaitSidecarStillPrepare(sidecarPrepare);
+                          await _captureUvc(viewModel, source: 'ui_button');
+                        },
                         canStart: () =>
                             _uvcReadyForCapture &&
                             !_uvcCaptureInFlight &&
                             _flashbackCameraReady &&
                             viewModel.capturedPhoto == null,
                         countdownSeconds: countdownSecs,
+                        onCountdownStep: (step) {
+                          sidecarPrepare ??=
+                              _maybeStartSidecarStillPrepare(step);
+                        },
                         onCountdownFinished: _armUvcHdmiStillMask,
                       );
                     } else {

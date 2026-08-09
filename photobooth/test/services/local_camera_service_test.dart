@@ -53,6 +53,20 @@ void main() {
       service.dispose();
     });
 
+    test('prepareStill posts /camera/prepare-still', () async {
+      final client = MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/camera/prepare-still');
+        return http.Response(
+          jsonEncode({'ok': true, 'prepared': true, 'ms': 12}),
+          200,
+        );
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await service.prepareStill();
+      service.dispose();
+    });
+
     test('isHealthy true when connected', () async {
       final client = MockClient((request) async {
         expect(request.url.path, '/health');

@@ -26,4 +26,17 @@ void main() {
       vm.dispose();
     },
   );
+
+  test('captureWithCountdown invokes onCountdownStep each second', () async {
+    final vm = CaptureViewModel();
+    final steps = <int>[];
+    await vm.captureWithCountdown(
+      () async {},
+      canStart: () => true,
+      countdownSeconds: 3,
+      onCountdownStep: steps.add,
+    );
+    expect(steps, [3, 2, 1]);
+    vm.dispose();
+  });
 }

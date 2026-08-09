@@ -1927,11 +1927,15 @@ class CaptureViewModel extends ChangeNotifier {
   ///
   /// [onCountdownFinished] runs as soon as the timer clears (before the short
   /// settle delay) so HDMI pose can mask the Canon status LCD before shutter.
+  ///
+  /// [onCountdownStep] is invoked each second with the displayed value (10…1)
+  /// so Classic can start Pi still-prep while guests still see the countdown.
   Future<void> captureWithCountdown(
     Future<void> Function() captureAction, {
     required bool Function() canStart,
     int? countdownSeconds,
     void Function()? onCountdownFinished,
+    void Function(int step)? onCountdownStep,
   }) async {
     if (!canStart() || _isCapturing || _countdownValue != null) {
       return;
@@ -1950,6 +1954,7 @@ class CaptureViewModel extends ChangeNotifier {
         if (generation != _countdownGeneration || !canStart()) return;
         _countdownValue = step;
         notifyListeners();
+        onCountdownStep?.call(step);
         if (step > 1) {
           await Future<void>.delayed(const Duration(seconds: 1));
         }
