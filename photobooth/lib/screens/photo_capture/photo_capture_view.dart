@@ -286,10 +286,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       navigatingAway: _navigatingAwayFromCapture,
       hasCapturedPhoto: photo != null,
       isCountingDown: vm.isCountingDown || _flashbackCountdownStarting,
-      isCapturing: vm.isCapturing || _uvcCaptureInFlight,
-      acceptedShotCount: _stripShots.length,
-      multiShotTotal: total,
-      cameraReadyForCapture: _flashbackCameraReady,
+      isCapturing: vm.isCapturing || _uvcCaptureInFlight || _uvcHdmiStillMaskArmed,
       awaitGuestStart: _awaitGuestStartClassic,
       isSingleShot: false,
       singleShotCapturesStarted: _singleShotCapturesStarted,
@@ -576,10 +573,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       navigatingAway: _navigatingAwayFromCapture,
       hasCapturedPhoto: _captureViewModel.capturedPhoto != null,
       isCountingDown: _captureViewModel.isCountingDown,
-      isCapturing: _captureViewModel.isCapturing || _uvcCaptureInFlight,
-      acceptedShotCount: _stripShots.length,
-      multiShotTotal: _classicShotCap,
-      cameraReadyForCapture: _flashbackCameraReady,
+      isCapturing: _captureViewModel.isCapturing ||
+          _uvcCaptureInFlight ||
+          _uvcHdmiStillMaskArmed,
       awaitGuestStart: _awaitGuestStartClassic,
       isSingleShot: false,
       singleShotCapturesStarted: _singleShotCapturesStarted,
@@ -734,9 +730,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return _captureViewModel.isReady;
     }
     if (!_isUsingUvc) return _captureViewModel.isReady;
+    // Do NOT fold [_uvcHdmiStillMaskArmed] into captureInFlight here.
+    // Mask is armed from onCountdownFinished *before* the shutter canStart
+    // re-check; treating it as in-flight aborted every still (hdmi_mask_armed
+    // with no capture_begin on the Pi).
     final ready = uvcHdmiPoseReadyForCountdown(
       uvcControllerReady: _uvcReadyForCapture,
-      captureInFlight: _uvcCaptureInFlight || _uvcHdmiStillMaskArmed,
+      captureInFlight: _uvcCaptureInFlight,
       previewWarmupActive: _uvcPreviewWarmupActive,
       sidecarConfigured:
           _captureViewModel.localCameraService?.isConfigured == true,

@@ -1960,8 +1960,10 @@ class CaptureViewModel extends ChangeNotifier {
       onCountdownFinished?.call();
       notifyListeners();
       await Future<void>.delayed(const Duration(milliseconds: 120));
-      if (generation != _countdownGeneration || !canStart()) {
-        // HDMI mask may have been armed — caller clears on next idle/retry.
+      // Do not re-check [canStart] after [onCountdownFinished] — HDMI pose arms
+      // the still mask there, and callers often treat "masked" as not ready,
+      // which aborted the shutter before POST /camera/capture.
+      if (generation != _countdownGeneration) {
         return;
       }
       await captureAction();

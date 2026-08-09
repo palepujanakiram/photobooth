@@ -74,6 +74,21 @@ void main() {
         isTrue,
       );
     });
+
+    test('in-flight still blocks countdown; mask alone is a separate concern', () {
+      // Callers must not pass hdmiStillMaskArmed as captureInFlight — that
+      // aborted shutter after onCountdownFinished armed the mask.
+      expect(
+        uvcHdmiPoseReadyForCountdown(
+          uvcControllerReady: true,
+          captureInFlight: false,
+          previewWarmupActive: false,
+          sidecarConfigured: true,
+          canonLvHolding: true,
+        ),
+        isTrue,
+      );
+    });
   });
 
   group('uvcShouldMaskHdmiDuringStill', () {

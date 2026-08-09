@@ -6,6 +6,10 @@
 library;
 
 /// Whether HDMI/UVC Classic may auto-start the pose countdown.
+///
+/// Do not pass [hdmiStillMaskArmed] as [captureInFlight]: the mask is armed
+/// from countdown finished *before* shutter, and folding it into readiness
+/// aborts the still (`hdmi_mask_armed` with no Pi `capture_begin`).
 bool uvcHdmiPoseReadyForCountdown({
   required bool uvcControllerReady,
   required bool captureInFlight,
