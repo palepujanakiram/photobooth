@@ -558,12 +558,16 @@ void main() {
     expect(vm.wysiwygLayout.gridTitle, isNotEmpty);
     expect(vm.frames.map((f) => f.id), contains('grid_2x2'));
 
-    // Look browser stays on Flutter ColorFilters (server grades wash looks).
+    // Look browser stays on Flutter ColorFilters until print twin warms.
     await vm.preparePreview();
     await vm.refreshPreviewGrade();
     expect(vm.previewImagesAreGraded, isFalse);
     expect(vm.previewImageDataUrls, vm.imageDataUrls);
-    expect(vm.lookComposePreviewUrl, isNull);
+    expect(vm.isRefreshingLookPreview, isFalse);
+
+    await vm.refreshComposePreview();
+    expect(vm.lookComposePreviewUrl, 'https://example.com/strip.jpg');
+    expect(vm.isWarmingPrintPreview, isFalse);
 
     vm.selectFrame('grid_2x2');
     expect(vm.selectedFrame?.id, 'grid_2x2');

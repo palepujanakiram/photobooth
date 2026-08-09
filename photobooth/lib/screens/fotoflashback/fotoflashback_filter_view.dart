@@ -203,14 +203,15 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                             ),
                           ],
                         ),
-                      ] else if (viewModel.isRefreshingLookPreview) ...[
+                      ] else if (viewModel.isWarmingPrintPreview &&
+                          viewModel.lookComposePreviewUrl == null) ...[
                         const SizedBox(height: 8),
                         Text(
-                          AppStrings.flashbackGradingPreview,
+                          AppStrings.flashbackWarmingPrintPreview,
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: Colors.amber.shade100.withValues(alpha: 0.7),
-                            fontSize: 12,
+                            color: Colors.amber.shade100.withValues(alpha: 0.55),
+                            fontSize: 11,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -295,8 +296,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           imagesAreGraded: viewModel.previewImagesAreGraded,
                           serverComposePreviewUrl:
                               viewModel.lookComposePreviewUrl,
-                          isRefreshingComposePreview:
-                              viewModel.isRefreshingLookPreview,
+                          isRefreshingComposePreview: false,
                           layout: viewModel.wysiwygLayout,
                           filterId: viewModel.selectedFilterId,
                           frameId: viewModel.selectedFrameId,

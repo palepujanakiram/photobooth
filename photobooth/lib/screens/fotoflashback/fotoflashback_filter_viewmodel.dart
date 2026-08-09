@@ -60,6 +60,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   bool _preparingPreview = false;
   bool _previewCleaned = false;
   bool _gradingPreview = false;
+  bool _warmingPrintPreview = false;
   bool _composing = false;
   String? _errorMessage;
   StripComposeResult? _composeResult;
@@ -71,6 +72,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   String? _composePreviewFingerprint;
   StripComposeResult? _composePreview;
   final Map<String, List<String>> _gradedByFilter = {};
+  /// Print-sized Flutter-baked JPEGs keyed by filter id (invalidated with shots).
+  final Map<String, List<String>> _bakedByFilter = {};
+  String? _bakedShotsKey;
   final List<bool> _shotCleaned;
   int? _scrubbingIndex;
   /// True after at least one look-screen scrub pass finished (success or fail).
@@ -79,23 +83,29 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   /// Raw captures (for compose). Prefer [previewImageDataUrls] for the look UI.
   List<String> get imageDataUrls => List<String>.unmodifiable(_imageDataUrls);
 
-  /// Look browser always uses capture bytes + Flutter ColorFilters. Print /
-  /// compose bakes the same matrices client-side and sends filter `clean` so
-  /// server Sharp grades do not wash Classic Warm toward B&W.
+  /// Instant browse: capture bytes + Flutter ColorFilters (same matrices as print).
   List<String> get previewImageDataUrls => imageDataUrls;
 
-  /// Always false — look UI never swaps to server-graded thumbs.
+  /// Always false — Flutter ColorFilter until [lookComposePreviewUrl] is ready.
   bool get previewImagesAreGraded => false;
 
-  /// Never swap the look UI to the server compose JPEG (washed grades).
-  /// Compose still runs in the background via [_scheduleComposePreview].
-  String? get lookComposePreviewUrl => null;
+  /// Exact print JPEG once background warm finishes (Flutter-baked + compose).
+  /// Null while warming → UI keeps instant ColorFilter (same matrices).
+  String? get lookComposePreviewUrl {
+    final url = _composePreview?.printImageUrl.trim() ?? '';
+    if (url.isEmpty) return null;
+    if (_composePreviewFingerprint != _lookComposeFingerprint()) return null;
+    return url;
+  }
 
-  bool get isRefreshingComposePreview =>
-      isSingleClassic && _gradingPreview;
+  bool get isRefreshingComposePreview => false;
 
-  /// Spinner overlay while Classic 1-shot compose warms (Flutter filter stays).
-  bool get isRefreshingLookPreview => _gradingPreview;
+  /// Browse stays interactive — print warm is silent in the background.
+  bool get isRefreshingLookPreview => false;
+
+  /// Soft status: print twin is still warming (no dim overlay).
+  bool get isWarmingPrintPreview =>
+      _hasComposableShotCount && _warmingPrintPreview;
 
   /// Classic 1-shot print (portrait 4×6 by default; guest can switch to 6×4).
   bool get isSingleClassic => _imageDataUrls.length == 1;
@@ -294,6 +304,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _previewCleaned = false;
     _scrubPassCompleted = false;
     _gradedByFilter.clear();
+    _bakedByFilter.clear();
+    _bakedShotsKey = null;
     // Drop failed capture results so Refresh re-POSTs instead of re-adopting.
     ClassicStripScrubCoordinator.instance.releaseFailedShots();
     notifyListeners();
@@ -380,6 +392,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _imageDataUrls[i] = result.dataUrl;
     if (i < _shotCleaned.length) _shotCleaned[i] = result.scrubbed;
     _gradedByFilter.clear();
+    _bakedByFilter.clear();
+    _bakedShotsKey = null;
     notifyListeners();
     return result.scrubbed;
   }
@@ -688,17 +702,19 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   }
 
   void _scheduleComposePreview() {
-    if (!isSingleClassic) return;
+    if (!_hasComposableShotCount) return;
     _composePreviewDebounce?.cancel();
-    _composePreviewDebounce = Timer(const Duration(milliseconds: 450), () {
+    // Short debounce: browse is already instant via ColorFilter; this only
+    // warms the exact print twin in the background.
+    _composePreviewDebounce = Timer(const Duration(milliseconds: 280), () {
       unawaited(refreshComposePreview());
     });
   }
 
-  /// Classic 1-shot: warm print JPEG in the background (Flutter look baked
-  /// into pixels; server compose uses identity filter so grades are not washed).
+  /// Background: bake print-sized Flutter look + compose so Continue / Your
+  /// prints / DNP reuse the same JPEG. Does not block the look browser.
   Future<void> refreshComposePreview() async {
-    if (!isSingleClassic || _composing) return;
+    if (!_hasComposableShotCount || _composing) return;
     final sessionId = _sessionManager.sessionId?.trim() ?? '';
     if (sessionId.isEmpty) return;
 
@@ -709,7 +725,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     }
 
     final seq = ++_composePreviewSeq;
-    _gradingPreview = true;
+    _warmingPrintPreview = true;
     notifyListeners();
     try {
       _commitActiveScribble();
@@ -720,22 +736,41 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _composePreviewFingerprint = fingerprint;
       _composeResult = result;
     } catch (_) {
-      // Keep Flutter ColorFilter / frame chrome until Continue compose.
+      // Keep Flutter ColorFilter chrome until Continue compose.
     } finally {
       if (seq == _composePreviewSeq) {
-        _gradingPreview = false;
+        _warmingPrintPreview = false;
         notifyListeners();
       }
     }
   }
 
-  Future<StripComposeResult> _requestComposeStrip(String sessionId) async {
-    // Bake Flutter ColorFilter matrices into the JPEGs, then ask the server
-    // for identity grade + frame/layout only — Sharp grades wash Classic Warm.
-    final images = await bakeStripLookMatricesOntoDataUrls(
+  String _shotsBakeCacheKey() => [
+        for (final url in _imageDataUrls) '${url.length}:${url.hashCode}',
+      ].join(',');
+
+  Future<List<String>> _bakedImagesForSelectedLook() async {
+    final shotsKey = _shotsBakeCacheKey();
+    if (_bakedShotsKey != shotsKey) {
+      _bakedByFilter.clear();
+      _bakedShotsKey = shotsKey;
+    }
+    final cached = _bakedByFilter[_selectedFilterId];
+    if (cached != null && cached.length == _imageDataUrls.length) {
+      return cached;
+    }
+    final baked = await bakeStripLookMatricesOntoDataUrls(
       dataUrls: _imageDataUrls,
       filterId: _selectedFilterId,
     );
+    _bakedByFilter[_selectedFilterId] = baked;
+    return baked;
+  }
+
+  Future<StripComposeResult> _requestComposeStrip(String sessionId) async {
+    // Print-sized Flutter bake (cached per look) + identity server grade so
+    // Sharp does not wash Classic Warm. Frame/stickers/layout still server-side.
+    final images = await _bakedImagesForSelectedLook();
     return _api.composeStrip(
       sessionId: sessionId,
       images: images,

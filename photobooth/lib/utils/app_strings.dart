@@ -494,6 +494,7 @@ abstract final class AppStrings {
   static const flashbackComposing = 'Building your strip…';
   static const flashbackPreparingPreview = 'Polishing photos…';
   static const flashbackGradingPreview = 'Refreshing preview…';
+  static const flashbackWarmingPrintPreview = 'Preparing print match…';
   static const flashbackFinishEncodeFailed =
       'Couldn’t prepare your photo. Tap Continue to looks to try again.';
   static const flashbackRetryScrub = 'Refresh polish';
