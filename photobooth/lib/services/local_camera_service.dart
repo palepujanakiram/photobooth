@@ -31,8 +31,16 @@ class LocalCameraService {
 
   bool get isConfigured => _config.isConfigured;
 
-  /// ZenAI `cameraLivePreviewEnabled` and sidecar host are both set.
-  bool get shouldShowLivePreview => _config.shouldShowLivePreview;
+  bool _forceLivePreview = false;
+
+  /// ZenAI `cameraLivePreviewEnabled`, or Classic booth forcing USB MJPEG pose.
+  bool get shouldShowLivePreview =>
+      _config.shouldShowLivePreview || _forceLivePreview;
+
+  /// Classic HDMI→UVC is often blank on FZ200D; force Pi USB MJPEG pose UI.
+  void setForceLivePreview(bool enabled) {
+    _forceLivePreview = enabled;
+  }
 
   String get livePreviewUrl => _config.livePreviewUrl;
 

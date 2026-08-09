@@ -1723,6 +1723,28 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return;
     }
 
+    // Classic + Pi sidecar: prefer USB MJPEG from the LV keeper. HDMI→capture
+    // card stays blank on FZ200D even while movie LV holds (Starting camera…).
+    if (widget.sessionKind.isClassic &&
+        _captureViewModel.localCameraService?.isConfigured == true) {
+      AppLogger.info(
+        'POSE Classic: forcing Pi USB live preview (skip HDMI/UVC)',
+      );
+      _captureViewModel.localCameraService?.setForceLivePreview(true);
+      await _armCanonLiveViewForPose();
+      if (!mounted) return;
+      await _captureViewModel.prepareSidecarLivePreview();
+      if (!mounted) return;
+      unawaited(
+        _captureViewModel.localCameraService?.postClientEvent(
+          'pose_sidecar_preview',
+          {'forced': true},
+        ),
+      );
+      await _finishPrewarmPoseSetup();
+      return;
+    }
+
     var deviceType = _captureViewModel.deviceType ??
         CaptureViewModel.prewarmedDeviceType;
     final kioskLikely = kioskShouldTryUvcBeforeCameraX(deviceType);

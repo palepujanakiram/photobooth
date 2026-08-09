@@ -40,7 +40,19 @@ void main() {
       baseUrl: 'http://192.168.2.50:8791',
     );
 
-    test('isHealthy true when connected', () async {
+    test('setForceLivePreview enables shouldShowLivePreview', () {
+      final service = LocalCameraService(
+        config: config,
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      expect(service.shouldShowLivePreview, isFalse);
+      service.setForceLivePreview(true);
+      expect(service.shouldShowLivePreview, isTrue);
+      service.setForceLivePreview(false);
+      expect(service.shouldShowLivePreview, isFalse);
+      service.dispose();
+    });
+
       final client = MockClient((request) async {
         expect(request.url.path, '/health');
         expect(request.headers.containsKey('X-Camera-Token'), isFalse);
