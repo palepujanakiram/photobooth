@@ -53,6 +53,7 @@ void main() {
       service.dispose();
     });
 
+    test('isHealthy true when connected', () async {
       final client = MockClient((request) async {
         expect(request.url.path, '/health');
         expect(request.headers.containsKey('X-Camera-Token'), isFalse);
