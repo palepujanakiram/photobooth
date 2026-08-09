@@ -287,6 +287,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       hasCapturedPhoto: photo != null,
       isCountingDown: vm.isCountingDown || _flashbackCountdownStarting,
       isCapturing: vm.isCapturing || _uvcCaptureInFlight || _uvcHdmiStillMaskArmed,
+      acceptedShotCount: _stripShots.length,
+      multiShotTotal: total,
+      cameraReadyForCapture: _flashbackCameraReady,
       awaitGuestStart: _awaitGuestStartClassic,
       isSingleShot: false,
       singleShotCapturesStarted: _singleShotCapturesStarted,
@@ -576,6 +579,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       isCapturing: _captureViewModel.isCapturing ||
           _uvcCaptureInFlight ||
           _uvcHdmiStillMaskArmed,
+      acceptedShotCount: _stripShots.length,
+      multiShotTotal: _classicShotCap,
+      cameraReadyForCapture: _flashbackCameraReady,
       awaitGuestStart: _awaitGuestStartClassic,
       isSingleShot: false,
       singleShotCapturesStarted: _singleShotCapturesStarted,
