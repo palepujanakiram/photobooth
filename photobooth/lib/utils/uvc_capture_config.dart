@@ -133,16 +133,17 @@ class UvcCaptureConfig {
   static const Duration previewWarmupPeriod = Duration(milliseconds: 1200);
 
   /// Faster unmask when [ensureCanonLiveViewForHdmiPose] reports holding.
+  /// Still long enough for Canon HDMI to leave the body status LCD.
   static const Duration previewWarmupPeriodWhenLvHeld =
-      Duration(milliseconds: 450);
+      Duration(milliseconds: 1200);
 
   /// Pause after Pi arms Canon Live View so HDMI switches off the body status
   /// screen before we show UVC frames.
-  static const Duration canonLvHdmiSettleDelay = Duration(milliseconds: 500);
+  static const Duration canonLvHdmiSettleDelay = Duration(milliseconds: 800);
 
-  /// Shorter settle when LV keeper is already holding.
+  /// Settle when LV keeper is already holding (HDMI still needs a beat).
   static const Duration canonLvHdmiSettleDelayWhenHeld =
-      Duration(milliseconds: 250);
+      Duration(milliseconds: 600);
 
   /// Ignore USB disconnect/reconnect churn while the DSLR shutter pauses HDMI.
   static const Duration shutterGracePeriod = Duration(seconds: 4);

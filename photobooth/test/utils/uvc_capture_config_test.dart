@@ -26,15 +26,15 @@ void main() {
     expect(UvcCaptureConfig.previewWarmupPeriod, const Duration(milliseconds: 1200));
     expect(
       UvcCaptureConfig.previewWarmupPeriodWhenLvHeld,
-      const Duration(milliseconds: 450),
+      const Duration(milliseconds: 1200),
     );
     expect(
       UvcCaptureConfig.canonLvHdmiSettleDelay,
-      const Duration(milliseconds: 500),
+      const Duration(milliseconds: 800),
     );
     expect(
       UvcCaptureConfig.canonLvHdmiSettleDelayWhenHeld,
-      const Duration(milliseconds: 250),
+      const Duration(milliseconds: 600),
     );
     expect(UvcCaptureConfig.shutterGracePeriod, const Duration(seconds: 4));
     expect(UvcCaptureConfig.takePictureTimeout, const Duration(seconds: 10));
