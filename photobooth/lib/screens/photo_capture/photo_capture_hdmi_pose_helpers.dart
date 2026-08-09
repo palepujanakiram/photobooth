@@ -5,6 +5,8 @@
 /// LCD; the preview must stay masked while gphoto drops LV for the still.
 library;
 
+import '../../utils/app_strings.dart';
+
 /// Whether HDMI/UVC Classic may auto-start the pose countdown.
 ///
 /// Do not pass [hdmiStillMaskArmed] as [captureInFlight]: the mask is armed
@@ -43,4 +45,15 @@ bool uvcShouldMaskHdmiDuringStill({
     return true;
   }
   return false;
+}
+
+/// Guest-facing copy while the pose preview is masked for a still.
+///
+/// Sidecar Classic: LV/movie exit clicks before the real shutter — say
+/// "Hold still…" so guests do not move on the first slap. Plain UVC/CameraX
+/// can keep "Capturing…".
+String captureStillInProgressLabel({required bool usesSidecarDslr}) {
+  return usesSidecarDslr
+      ? AppStrings.captureHoldStillForPhoto
+      : AppStrings.captureCapturingPhoto;
 }

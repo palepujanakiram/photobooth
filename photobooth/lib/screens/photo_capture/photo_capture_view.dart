@@ -3081,18 +3081,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         countdownValue: viewModel.countdownValue,
       );
 
-  Widget _uvcSavingPhotoCard() {
-    return const ColoredBox(
+  Widget _uvcSavingPhotoCard({String message = AppStrings.captureCapturingPhoto}) {
+    return ColoredBox(
       color: Colors.black,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: Colors.white),
-            SizedBox(height: 12),
+            const CircularProgressIndicator(color: Colors.white),
+            const SizedBox(height: 12),
             Text(
-              AppStrings.captureCapturingPhoto,
-              style: TextStyle(color: Colors.white70),
+              message,
+              style: const TextStyle(color: Colors.white70),
             ),
           ],
         ),
@@ -3129,7 +3129,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     // Full black during shutter — dim-over-live showed Canon's HDMI status LCD
     // (P / ISO / Q) after gphoto drops Live View for the still.
     if (saving) {
-      return _uvcSavingPhotoCard();
+      final usesSidecar =
+          viewModel.localCameraService?.isConfigured == true;
+      return _uvcSavingPhotoCard(
+        message: captureStillInProgressLabel(usesSidecarDslr: usesSidecar),
+      );
     }
     // First HDMI frames after open are often the body info screen until LV
     // settles — mask until warmup ends.
@@ -4590,7 +4594,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               (viewModel.isCapturing ||
                       _uvcCaptureInFlight ||
                       _uvcHdmiStillMaskArmed)
-                  ? AppStrings.captureCapturingPhoto
+                  ? captureStillInProgressLabel(
+                      usesSidecarDslr:
+                          viewModel.localCameraService?.isConfigured == true,
+                    )
                   : (flashback
                       ? AppStrings.flashbackTakeShot
                       : 'Capture'),

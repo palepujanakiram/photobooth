@@ -170,4 +170,20 @@ void main() {
       );
     });
   });
+
+  group('captureStillInProgressLabel', () {
+    test('sidecar DSLR asks guests to hold still through LV teardown clicks', () {
+      expect(
+        captureStillInProgressLabel(usesSidecarDslr: true),
+        'Hold still…',
+      );
+    });
+
+    test('plain UVC keeps Capturing copy', () {
+      expect(
+        captureStillInProgressLabel(usesSidecarDslr: false),
+        'Capturing…',
+      );
+    });
+  });
 }
