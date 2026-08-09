@@ -5,11 +5,12 @@ import 'package:image/image.dart' as img;
 
 /// Long-edge cap for Classic look-picker grade uploads.
 ///
-/// Server grades at 1600; we send smaller thumbs so booth Wi‑Fi does not sit
-/// ~15s uploading four full-res Canon plates before `preview-grade` starts.
-const int kStripPreviewGradeUploadMaxEdge = 960;
+/// Server grades around 1600; we used to send 960/q80 thumbs for Wi‑Fi speed,
+/// which made "Pick your look" look soft vs the DSLR plate. 1600/q90 stays
+/// under full Canon size while matching on-screen tablet strip cells.
+const int kStripPreviewGradeUploadMaxEdge = 1600;
 
-const int kStripPreviewGradeUploadJpegQuality = 80;
+const int kStripPreviewGradeUploadJpegQuality = 90;
 
 /// Downscale strip shot data URLs before POST `/strip/preview-grade`.
 ///
@@ -48,13 +49,13 @@ String _compressOneStripPreviewGradeDataUrl(String dataUrl) {
         work = img.copyResize(
           decoded,
           width: maxEdge,
-          interpolation: img.Interpolation.linear,
+          interpolation: img.Interpolation.average,
         );
       } else {
         work = img.copyResize(
           decoded,
           height: maxEdge,
-          interpolation: img.Interpolation.linear,
+          interpolation: img.Interpolation.average,
         );
       }
     }

@@ -392,7 +392,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _gradingPreview = true;
     notifyListeners();
     try {
-      // Shrink uploads — full Canon plates dominated look-screen wait on Wi‑Fi.
+      // Cap uploads below full Canon plates, but high enough for sharp tablet
+      // look-picker cells (see [kStripPreviewGradeUploadMaxEdge]).
       final gradeInputs = await compressDataUrlsForStripPreviewGrade(
         List<String>.from(_imageDataUrls),
       );

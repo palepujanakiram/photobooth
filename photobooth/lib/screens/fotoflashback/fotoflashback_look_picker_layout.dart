@@ -1,3 +1,7 @@
+import 'dart:math' as math;
+
+import 'package:flutter/widgets.dart';
+
 import '../../utils/constants.dart';
 
 /// Phone look-picker content width (historical compose column).
@@ -18,4 +22,21 @@ double flashbackLookPickerMaxContentWidth(double shortestSide) {
     return kFlashbackLookPickerMaxWidthTablet;
   }
   return kFlashbackLookPickerMaxWidthPhone;
+}
+
+/// Decode width for [Image.memory] on the look-picker strip / 6×4 preview.
+///
+/// Uses device pixel ratio so tablet/TV strips stay sharp; clamps so we do not
+/// decode full Canon plates into GPU memory for a small on-screen cell.
+int flashbackLookPreviewCacheWidth({
+  required double layoutWidth,
+  required double devicePixelRatio,
+}) {
+  if (!layoutWidth.isFinite || layoutWidth <= 0) return 1600;
+  final dpr = devicePixelRatio.isFinite && devicePixelRatio > 0
+      ? devicePixelRatio
+      : 2.0;
+  // Slight oversample (1.25×) so cover-crop + chrome still look crisp.
+  final target = (layoutWidth * dpr * 1.25).round();
+  return math.max(960, math.min(2400, target));
 }

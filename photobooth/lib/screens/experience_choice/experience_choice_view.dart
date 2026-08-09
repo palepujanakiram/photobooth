@@ -266,11 +266,11 @@ class _ExperienceChoicePanel extends StatelessWidget {
                   : AppStrings.experienceFotoFlashUnavailable,
               preview: ExperienceClassicThumb(
                 accent: const Color(0xFFD4922A),
-                muted: !fotoFlashAvailable,
-                busy: startingFlashback,
+                muted: !fotoFlashAvailable || startingFlashback,
               ),
               accent: const Color(0xFFD4922A),
               enabled: fotoFlashAvailable && !startingFlashback,
+              // Single spinner next to the title (not also on the strip thumb).
               busy: startingFlashback,
               footer: fotoFlashAvailable
                   ? _ClassicShotStartButtons(

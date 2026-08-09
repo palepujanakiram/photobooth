@@ -3166,15 +3166,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         countdownValue: viewModel.countdownValue,
       );
 
-  Widget _uvcSavingPhotoCard({String message = AppStrings.captureCapturingPhoto}) {
+  Widget _uvcSavingPhotoCard({
+    String message = AppStrings.captureCapturingPhoto,
+    bool showSpinner = true,
+  }) {
     return ColoredBox(
       color: Colors.black,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(color: Colors.white),
-            const SizedBox(height: 12),
+            if (showSpinner) ...[
+              const CircularProgressIndicator(color: Colors.white),
+              const SizedBox(height: 12),
+            ],
             Text(
               message,
               style: const TextStyle(color: Colors.white70),
@@ -3218,6 +3223,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           viewModel.localCameraService?.isConfigured == true;
       return _uvcSavingPhotoCard(
         message: captureStillInProgressLabel(usesSidecarDslr: usesSidecar),
+        showSpinner: !viewModel.isCountingDown,
       );
     }
     // First HDMI frames after open are often the body info screen until LV
@@ -3911,6 +3917,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           previewWidget = _isUvcSavingStill(viewModel)
               ? _uvcSavingPhotoCard(
                   message: captureStillInProgressLabel(usesSidecarDslr: true),
+                  // Countdown overlay already owns the center; avoid a second spinner.
+                  showSpinner: !viewModel.isCountingDown,
                 )
               : SidecarLivePreview(
                   service: viewModel.localCameraService!,
@@ -4211,9 +4219,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                             (_multiShotTotal ?? kStripShotCount),
                       ),
                     ),
+                  // Sidecar Classic already swaps the preview for Hold still
+                  // (spinner + copy). Do not stack a second capturing spinner.
                   if (!_showCaptureFlash &&
                       !hasCapturedPhoto &&
                       !_isUsingUvc &&
+                      !_isUvcSavingStill(viewModel) &&
                       (viewModel.isCapturing || _uvcCaptureInFlight))
                     Positioned.fill(
                       child: ColoredBox(

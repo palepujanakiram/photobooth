@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../models/strip_models.dart';
+import 'fotoflashback_look_picker_layout.dart';
 import 'fotoflashback_sheet_layout_view_widgets.dart';
 import 'fotoflashback_strip_chrome_view_widgets.dart';
 
@@ -306,7 +307,10 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
     // Filmstrip print uses contain so faces aren't cropped into the rails.
     final photoFit =
         chrome.showFilmstripSprockets ? BoxFit.contain : BoxFit.cover;
-    final cacheW = width.isFinite && width > 0 ? (width * 2).round() : 900;
+    final cacheW = flashbackLookPreviewCacheWidth(
+      layoutWidth: width,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+    );
     final photoColumn = Column(
       children: [
         for (var i = 0; i < kStripShotCount; i++)
@@ -936,7 +940,10 @@ class _Single6x4Preview extends StatelessWidget {
     final margin = width * 0.027; // ~48/1800
     // Cover the print frame (portrait 4×6 or landscape 6×4) — letterboxing
     // looked like "just whitespace" when toggling orientation.
-    final cacheW = width.isFinite && width > 0 ? (width * 2).round() : 900;
+    final cacheW = flashbackLookPreviewCacheWidth(
+      layoutWidth: width,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+    );
     final photo = bytes == null
         ? _lookPreviewMissingPhoto()
         : _lookPreviewPhoto(

@@ -75,14 +75,12 @@ class ExperienceClassicThumb extends StatelessWidget {
     this.width = 92,
     this.height = 118,
     this.muted = false,
-    this.busy = false,
     required this.accent,
   });
 
   final double width;
   final double height;
   final bool muted;
-  final bool busy;
   final Color accent;
 
   @override
@@ -105,23 +103,9 @@ class ExperienceClassicThumb extends StatelessWidget {
                   alignment: Alignment.topCenter,
                   errorBuilder: (_, __, ___) => _ClassicStripFallback(
                     accent: accent,
-                    busy: busy,
                   ),
                 ),
               ),
-              if (busy)
-                Container(
-                  color: Colors.black38,
-                  alignment: Alignment.center,
-                  child: const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
               const Positioned(
                 left: 6,
                 right: 6,
@@ -204,28 +188,12 @@ class _PreviewBadge extends StatelessWidget {
 
 /// Drawn strip if the classic PNG fails to load.
 class _ClassicStripFallback extends StatelessWidget {
-  const _ClassicStripFallback({required this.accent, required this.busy});
+  const _ClassicStripFallback({required this.accent});
 
   final Color accent;
-  final bool busy;
 
   @override
   Widget build(BuildContext context) {
-    if (busy) {
-      return ColoredBox(
-        color: accent.withValues(alpha: 0.35),
-        child: const Center(
-          child: SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.5,
-              color: Colors.white,
-            ),
-          ),
-        ),
-      );
-    }
     return ColoredBox(
       color: const Color(0xFFF7F2EA),
       child: Padding(

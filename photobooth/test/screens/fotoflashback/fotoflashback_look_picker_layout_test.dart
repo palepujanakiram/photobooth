@@ -20,4 +20,38 @@ void main() {
       expect(flashbackLookPickerMaxContentWidth(800), 1200);
     });
   });
+
+  group('flashbackLookPreviewCacheWidth', () {
+    test('oversamples by device pixel ratio for sharp tablet strips', () {
+      expect(
+        flashbackLookPreviewCacheWidth(layoutWidth: 400, devicePixelRatio: 2),
+        1000,
+      );
+      expect(
+        flashbackLookPreviewCacheWidth(layoutWidth: 500, devicePixelRatio: 2.5),
+        1563,
+      );
+    });
+
+    test('clamps decode size for memory safety', () {
+      expect(
+        flashbackLookPreviewCacheWidth(layoutWidth: 80, devicePixelRatio: 1),
+        960,
+      );
+      expect(
+        flashbackLookPreviewCacheWidth(layoutWidth: 2000, devicePixelRatio: 3),
+        2400,
+      );
+    });
+
+    test('falls back when layout width is invalid', () {
+      expect(
+        flashbackLookPreviewCacheWidth(
+          layoutWidth: double.nan,
+          devicePixelRatio: 2,
+        ),
+        1600,
+      );
+    });
+  });
 }
