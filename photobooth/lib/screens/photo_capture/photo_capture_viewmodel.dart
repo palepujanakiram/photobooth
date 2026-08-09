@@ -2020,7 +2020,10 @@ class CaptureViewModel extends ChangeNotifier {
   bool _lastRawCaptureFromSidecar = false;
 
   Future<XFile> _obtainRawCaptureFile() async {
-    final sidecarFile = await tryCaptureFromSidecar(_localCameraService);
+    final sidecarFile = await tryCaptureFromSidecar(
+      _localCameraService,
+      preferStripPrintQuality: preferStripPrintQuality,
+    );
     if (sidecarFile != null) {
       _lastRawCaptureFromSidecar = true;
       return sidecarFile;

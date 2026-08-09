@@ -76,12 +76,16 @@ Future<({bool ok, bool holding})> ensureCanonLiveViewForHdmiPose(
 /// When [resumeLiveView] is false (Classic 1-shot → looks), the Pi skips
 /// re-arming LV/keeper after the still — fewer mirror clicks and faster handoff.
 ///
+/// When [preferStripPrintQuality] is true (Classic), request a larger long-edge
+/// / higher JPEG quality from the Pi so print/look previews are less soft.
+///
 /// Writes JPEG bytes to a temp file on native so review/upload have a real
 /// path (XFile.fromData left path empty and forced a full in-memory decode of
 /// multi‑MP DSLR stills that hung the kiosk).
 Future<XFile?> tryCaptureFromSidecar(
   LocalCameraService? service, {
   bool resumeLiveView = true,
+  bool preferStripPrintQuality = false,
 }) async {
   if (service == null || !service.isConfigured) {
     return null;
@@ -96,17 +100,31 @@ Future<XFile?> tryCaptureFromSidecar(
       );
       unawaited(service.postClientEvent('capture_health_soft_fail'));
     }
+    final maxLongEdge = preferStripPrintQuality
+        ? kStripCapturedPhotoMaxDimension
+        : kSidecarCaptureMaxLongEdge;
+    final jpegQuality = preferStripPrintQuality
+        ? kStripCapturedPhotoJpegQuality
+        : kSidecarCaptureJpegQuality;
     AppLogger.info(
-      '[HDMI_POSE] Sidecar still begin resumeLV=$resumeLiveView',
+      '[HDMI_POSE] Sidecar still begin resumeLV=$resumeLiveView '
+      'stripQ=$preferStripPrintQuality maxEdge=$maxLongEdge q=$jpegQuality',
     );
     unawaited(
       service.postClientEvent('capture_begin', {
         'resumeLiveView': resumeLiveView,
         'healthy': healthy,
+        'preferStripPrintQuality': preferStripPrintQuality,
+        'maxLongEdge': maxLongEdge,
+        'jpegQuality': jpegQuality,
       }),
     );
     final t0 = DateTime.now();
-    final bytes = await service.capture(resumeLiveView: resumeLiveView);
+    final bytes = await service.capture(
+      resumeLiveView: resumeLiveView,
+      maxLongEdge: maxLongEdge,
+      jpegQuality: jpegQuality,
+    );
     if (bytes.isEmpty) return null;
     final name = 'fz200d_${DateTime.now().millisecondsSinceEpoch}.jpg';
     final ms = DateTime.now().difference(t0).inMilliseconds;

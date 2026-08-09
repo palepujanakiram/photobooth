@@ -18,6 +18,7 @@ import '../../views/widgets/centered_max_width.dart';
 import '../../views/widgets/classic_scrub_progress_dots.dart';
 import 'fotoflashback_filter_preview.dart';
 import 'fotoflashback_filter_viewmodel.dart';
+import 'fotoflashback_look_picker_layout.dart';
 
 /// Pick a FotoFlashback look, then pay (if configured) or compose → Result.
 class FotoFlashbackFilterScreen extends StatefulWidget {
@@ -161,8 +162,9 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
           body: SafeArea(
             child: Consumer<FotoFlashbackFilterViewModel>(
               builder: (context, viewModel, _) {
+                final shortestSide = MediaQuery.sizeOf(context).shortestSide;
                 return CenteredMaxWidth(
-                  maxWidth: 760,
+                  maxWidth: flashbackLookPickerMaxContentWidth(shortestSide),
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
                     child: Column(

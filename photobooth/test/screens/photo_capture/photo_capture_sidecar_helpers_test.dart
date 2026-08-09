@@ -207,6 +207,34 @@ void main() {
       service.dispose();
     });
 
+    test('requests strip print long-edge and quality when preferred', () async {
+      final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(64, 2)]);
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/camera/client-log')) {
+          return http.Response('', 204);
+        }
+        if (request.url.path.endsWith('/health')) {
+          return http.Response('{"ok":true,"connected":true}', 200);
+        }
+        expect(request.url.queryParameters['maxLongEdge'], '3840');
+        expect(request.url.queryParameters['jpegQuality'], '97');
+        return http.Response.bytes(jpeg, 200);
+      });
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://192.168.2.50:8791',
+        ),
+        client: client,
+      );
+      final file = await tryCaptureFromSidecar(
+        service,
+        preferStripPrintQuality: true,
+      );
+      expect(file, isNotNull);
+      service.dispose();
+    });
+
     test('attempts capture even when health soft-fails', () async {
       final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(64, 2)]);
       final client = MockClient((request) async {

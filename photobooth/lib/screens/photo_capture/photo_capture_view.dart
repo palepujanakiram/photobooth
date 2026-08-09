@@ -3407,6 +3407,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         final sidecar = await tryCaptureFromSidecar(
           _captureViewModel.localCameraService,
           resumeLiveView: resumeLvAfterStill,
+          preferStripPrintQuality: _captureViewModel.preferStripPrintQuality,
         );
         if (sidecar != null) {
           fromSidecar = true;
