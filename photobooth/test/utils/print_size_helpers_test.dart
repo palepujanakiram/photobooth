@@ -6,6 +6,24 @@ import 'package:photobooth/utils/print_orientation.dart';
 import 'package:photobooth/utils/print_size_helpers.dart';
 
 void main() {
+  group('printSelectionThumbAspectRatio', () {
+    test('matches Classic sheet deliverables', () {
+      expect(
+        printSelectionThumbAspectRatio(AppConstants.kPrintSizePortrait4x6),
+        closeTo(4 / 6, 0.001),
+      );
+      expect(
+        printSelectionThumbAspectRatio(AppConstants.kPrintSizeLandscape6x4),
+        closeTo(6 / 4, 0.001),
+      );
+      expect(
+        printSelectionThumbAspectRatio(AppConstants.kPrintSizeStripDual2x6),
+        closeTo(4 / 6, 0.001),
+      );
+      expect(printSelectionThumbAspectRatio(null), closeTo(4 / 6, 0.001));
+    });
+  });
+
   group('resolveNetworkPrintSizeForImage', () {
     test('prefers fixed strip printSize over orientation', () {
       expect(

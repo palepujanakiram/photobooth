@@ -64,6 +64,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   Future<void>? _prepareFuture;
   int _placementSeq = 0;
   int _gradeSeq = 0;
+  int _composePreviewSeq = 0;
+  Timer? _composePreviewDebounce;
+  String? _composePreviewFingerprint;
+  StripComposeResult? _composePreview;
   final Map<String, List<String>> _gradedByFilter = {};
   final List<bool> _shotCleaned;
   int? _scrubbingIndex;
@@ -86,6 +90,20 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   bool get previewImagesAreGraded =>
       (_gradedByFilter[_selectedFilterId]?.length ?? 0) ==
       _imageDataUrls.length;
+
+  /// Server-composed Classic 1-shot JPEG (Sharp filter + frame burned in).
+  /// Same artifact Your prints / DNP use when the fingerprint still matches.
+  /// Hidden while scribbling so guests can draw on the live Flutter canvas.
+  String? get lookComposePreviewUrl {
+    if (!isSingleClassic || _drawMode) return null;
+    final url = _composePreview?.printImageUrl.trim() ?? '';
+    if (url.isEmpty) return null;
+    if (_composePreviewFingerprint != _lookComposeFingerprint()) return null;
+    return url;
+  }
+
+  bool get isRefreshingComposePreview =>
+      isSingleClassic && _gradingPreview && lookComposePreviewUrl == null;
 
   /// Classic 1-shot print (portrait 4×6 by default; guest can switch to 6×4).
   bool get isSingleClassic => _imageDataUrls.length == 1;
@@ -124,7 +142,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     if (!isSingleClassic) return;
     if (_printOrientation == orientation) return;
     _printOrientation = orientation;
+    _sessionManager.setPrintOrientation(orientation);
     notifyListeners();
+    _scheduleComposePreview();
   }
 
   StripFrame? get selectedFrame {
@@ -225,10 +245,12 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       unawaited(refreshPreviewGrade());
       unawaited(preparePreview().then((_) {
         unawaited(refreshPreviewGrade());
+        _scheduleComposePreview();
       }));
     } else {
       unawaited(refreshPreviewGrade());
     }
+    _scheduleComposePreview();
   }
 
   Future<void> _loadCatalog() async {
@@ -422,6 +444,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _selectedFilterId = filterId;
     notifyListeners();
     unawaited(refreshPreviewGrade());
+    _scheduleComposePreview();
   }
 
   void selectFrame(String frameId) {
@@ -439,6 +462,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _drawMode = false;
     }
     notifyListeners();
+    _scheduleComposePreview();
   }
 
   /// Tap a sticker chip: `none` clears; placeable types add one per photo cell.
@@ -478,6 +502,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     }
     _selectedStickerId = type;
     notifyListeners();
+    _scheduleComposePreview();
   }
 
   void moveSticker(String id, double x, double y) {
@@ -489,6 +514,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     if (cur.x == nx && cur.y == ny) return;
     _placements[i] = cur.copyWith(x: nx, y: ny);
     notifyListeners();
+    _scheduleComposePreview();
   }
 
   void removeSticker(String id) {
@@ -498,6 +524,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _selectedStickerId =
         _placements.isEmpty ? kDefaultStripStickerId : _placements.last.type;
     notifyListeners();
+    _scheduleComposePreview();
   }
 
   void clearStickers() {
@@ -507,12 +534,14 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _placements.clear();
     _selectedStickerId = kDefaultStripStickerId;
     notifyListeners();
+    _scheduleComposePreview();
   }
 
   void setDrawMode(bool enabled) {
     if (_drawMode == enabled) return;
     if (!enabled) {
       _commitActiveScribble();
+      _scheduleComposePreview();
     }
     _drawMode = enabled;
     notifyListeners();
@@ -548,6 +577,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   void endScribble() {
     _commitActiveScribble();
     notifyListeners();
+    _scheduleComposePreview();
   }
 
   void undoScribble() {
@@ -559,6 +589,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     if (_scribbles.isEmpty) return;
     _scribbles.removeLast();
     notifyListeners();
+    _scheduleComposePreview();
   }
 
   void clearScribbles() {
@@ -566,6 +597,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _scribbles.clear();
     _activeScribblePoints = null;
     notifyListeners();
+    _scheduleComposePreview();
   }
 
   @visibleForTesting
@@ -610,22 +642,19 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         await preparePreview();
       }
       _commitActiveScribble();
+      _sessionManager.setPrintOrientation(_printOrientation);
 
-      final result = await _api.composeStrip(
-        sessionId: sessionId,
-        images: _imageDataUrls,
-        filter: _selectedFilterId,
-        frame: _selectedFrameId,
-        sticker: kDefaultStripStickerId,
-        stickerPlacements: _placements,
-        scribbles: _scribbles,
-        // Clean at compose only if look polish did not finish — skip entirely
-        // when admin scrub is OFF (server also gates on enableOsdScrub).
-        cleanOverlays:
-            classicOverlayCleanupEnabled && !_previewCleaned,
-        orientation: _printOrientation,
-      );
+      final fingerprint = _lookComposeFingerprint();
+      final reuse = isSingleClassic &&
+          _composePreview != null &&
+          _composePreviewFingerprint == fingerprint &&
+          (_composePreview!.printImageUrl.trim().isNotEmpty);
+      final result = reuse
+          ? _composePreview!
+          : await _requestComposeStrip(sessionId);
       _composeResult = result;
+      _composePreview = result;
+      _composePreviewFingerprint = fingerprint;
       final printSize = resolveClassicComposePrintSize(
         imageCount: _imageDataUrls.length,
         apiPrintSize: result.printSize,
@@ -648,6 +677,90 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _composing = false;
       notifyListeners();
     }
+  }
+
+  String _lookComposeFingerprint() {
+    final shots = [
+      for (final url in _imageDataUrls) '${url.length}:${url.hashCode}',
+    ].join(',');
+    final placements = [
+      for (final p in _placements) '${p.type}:${p.x.toStringAsFixed(3)}:${p.y.toStringAsFixed(3)}',
+    ].join('|');
+    final scribbles = [
+      for (final s in _scribbles)
+        '${s.color}:${s.width}:${s.points.length}',
+    ].join('|');
+    return [
+      _selectedFilterId,
+      _selectedFrameId,
+      _printOrientation.apiValue,
+      shots,
+      placements,
+      scribbles,
+      '$_previewCleaned',
+    ].join('::');
+  }
+
+  void _scheduleComposePreview() {
+    if (!isSingleClassic) return;
+    _composePreviewDebounce?.cancel();
+    _composePreviewDebounce = Timer(const Duration(milliseconds: 450), () {
+      unawaited(refreshComposePreview());
+    });
+  }
+
+  /// Classic 1-shot: compose the real print JPEG so Pick your look matches
+  /// Your prints / DNP (filter + frame burned in — not ColorFilter chrome).
+  Future<void> refreshComposePreview() async {
+    if (!isSingleClassic || _composing) return;
+    final sessionId = _sessionManager.sessionId?.trim() ?? '';
+    if (sessionId.isEmpty) return;
+
+    final fingerprint = _lookComposeFingerprint();
+    if (_composePreviewFingerprint == fingerprint &&
+        (_composePreview?.printImageUrl.trim().isNotEmpty ?? false)) {
+      return;
+    }
+
+    final seq = ++_composePreviewSeq;
+    _gradingPreview = true;
+    notifyListeners();
+    try {
+      _commitActiveScribble();
+      _sessionManager.setPrintOrientation(_printOrientation);
+      final result = await _requestComposeStrip(sessionId);
+      if (seq != _composePreviewSeq) return;
+      _composePreview = result;
+      _composePreviewFingerprint = fingerprint;
+      _composeResult = result;
+    } catch (_) {
+      // Keep Flutter ColorFilter / frame chrome until Continue compose.
+    } finally {
+      if (seq == _composePreviewSeq) {
+        _gradingPreview = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<StripComposeResult> _requestComposeStrip(String sessionId) {
+    return _api.composeStrip(
+      sessionId: sessionId,
+      images: _imageDataUrls,
+      filter: _selectedFilterId,
+      frame: _selectedFrameId,
+      sticker: kDefaultStripStickerId,
+      stickerPlacements: _placements,
+      scribbles: _scribbles,
+      cleanOverlays: classicOverlayCleanupEnabled && !_previewCleaned,
+      orientation: _printOrientation,
+    );
+  }
+
+  @override
+  void dispose() {
+    _composePreviewDebounce?.cancel();
+    super.dispose();
   }
 
   /// Normalized center for Classic 1-shot landscape 6×4.

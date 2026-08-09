@@ -293,6 +293,10 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                         child: _LookPickerBody(
                           imageDataUrls: viewModel.previewImageDataUrls,
                           imagesAreGraded: viewModel.previewImagesAreGraded,
+                          serverComposePreviewUrl:
+                              viewModel.lookComposePreviewUrl,
+                          isRefreshingComposePreview:
+                              viewModel.isRefreshingComposePreview,
                           layout: viewModel.wysiwygLayout,
                           filterId: viewModel.selectedFilterId,
                           frameId: viewModel.selectedFrameId,
@@ -388,6 +392,8 @@ class _LookPickerBody extends StatelessWidget {
   const _LookPickerBody({
     required this.imageDataUrls,
     required this.imagesAreGraded,
+    this.serverComposePreviewUrl,
+    this.isRefreshingComposePreview = false,
     required this.layout,
     required this.filterId,
     required this.frameId,
@@ -410,6 +416,8 @@ class _LookPickerBody extends StatelessWidget {
 
   final List<String> imageDataUrls;
   final bool imagesAreGraded;
+  final String? serverComposePreviewUrl;
+  final bool isRefreshingComposePreview;
   final StripWysiwygLayout layout;
   final String filterId;
   final String frameId;
@@ -462,6 +470,8 @@ class _LookPickerBody extends StatelessWidget {
               FotoFlashbackStripPreview(
                 imageDataUrls: imageDataUrls,
                 imagesAreGraded: imagesAreGraded,
+                serverComposePreviewUrl: serverComposePreviewUrl,
+                isRefreshingComposePreview: isRefreshingComposePreview,
                 layout: layout,
                 filterId: filterId,
                 frameId: frameId,

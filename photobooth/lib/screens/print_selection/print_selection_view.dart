@@ -152,21 +152,36 @@ class _PrintSelectionScreenState extends State<PrintSelectionScreen> {
                     ),
                     const SizedBox(height: 16),
                     Expanded(
-                      child: GridView.builder(
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          childAspectRatio: 0.72,
-                        ),
-                        itemCount: vm.images.length,
-                        itemBuilder: (context, index) {
-                          final image = vm.images[index];
+                      child: Builder(
+                        builder: (context) {
+                          final count = vm.images.length;
+                          final crossAxisCount = count == 1 ? 1 : 2;
+                          // One Classic sheet: size the tile to the print aspect
+                          // so contain shows the full finalized frame.
+                          final soleAspect = count == 1
+                              ? printSelectionThumbAspectRatio(
+                                  vm.images.first.printSize ??
+                                      vm.stripPrintSize,
+                                )
+                              : null;
+                          return GridView.builder(
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: crossAxisCount,
+                              mainAxisSpacing: 12,
+                              crossAxisSpacing: 12,
+                              childAspectRatio: soleAspect ?? 0.72,
+                            ),
+                            itemCount: count,
+                            itemBuilder: (context, index) {
+                              final image = vm.images[index];
                           return _PrintSelectionTile(
                             image: image,
                             isStrip: vm.isStripImage(image),
+                            isClassicSheet: vm.isClassicSingleSheet(image),
                             onTap: () => vm.toggleSelected(image.id),
+                          );
+                            },
                           );
                         },
                       ),
@@ -202,11 +217,13 @@ class _PrintSelectionTile extends StatelessWidget {
   const _PrintSelectionTile({
     required this.image,
     required this.isStrip,
+    required this.isClassicSheet,
     required this.onTap,
   });
 
   final GeneratedImage image;
   final bool isStrip;
+  final bool isClassicSheet;
   final VoidCallback onTap;
 
   @override
@@ -215,9 +232,11 @@ class _PrintSelectionTile extends StatelessWidget {
     final selected = image.isSelected;
     final label = isStrip
         ? AppStrings.printSelectionStripLabel
-        : (image.theme.name.trim().isEmpty
-            ? AppStrings.printSelectionAiLabel
-            : image.theme.name);
+        : (isClassicSheet
+            ? AppStrings.printSelectionClassicLabel
+            : (image.theme.name.trim().isEmpty
+                ? AppStrings.printSelectionAiLabel
+                : image.theme.name));
     return Material(
       color: colors.cardBackgroundColor,
       borderRadius: BorderRadius.circular(12),
@@ -239,9 +258,15 @@ class _PrintSelectionTile extends StatelessWidget {
                 child: ClipRRect(
                   borderRadius:
                       const BorderRadius.vertical(top: Radius.circular(11)),
-                  child: CachedNetworkImage(
-                    imageUrl: image.imageUrl,
-                    fit: BoxFit.cover,
+                  child: ColoredBox(
+                    color: colors.backgroundColor,
+                    child: CachedNetworkImage(
+                      imageUrl: image.imageUrl,
+                      // Full print — cover was cropping 4×6 differently than
+                      // the look-picker preview the guest just approved.
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.medium,
+                    ),
                   ),
                 ),
               ),

@@ -509,6 +509,7 @@ abstract final class AppStrings {
   static const printSelectionSubtitle =
       'Choose which photos to print. Your strip stays available.';
   static const printSelectionStripLabel = 'Photo strip';
+  static const printSelectionClassicLabel = 'Classic print';
   static const printSelectionAiLabel = 'AI photo';
   static String printSelectionTotal(int amount) => 'Total ₹$amount';
   static String printSelectionContinue(int count) =>

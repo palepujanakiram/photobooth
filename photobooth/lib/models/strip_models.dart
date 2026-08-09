@@ -752,10 +752,15 @@ class StripComposeResult {
     required int composeImageCount,
     String? apiPrintSize,
   }) {
+    final fromApi = apiPrintSize?.trim() ?? '';
     if (composeImageCount == 1) {
+      if (fromApi == AppConstants.kPrintSizePortrait4x6 ||
+          fromApi == AppConstants.kPrintSizeLandscape6x4) {
+        return fromApi;
+      }
+      // Legacy servers omitted printSize for 1-shot (always landscape 6×4).
       return AppConstants.kPrintSizeLandscape6x4;
     }
-    final fromApi = apiPrintSize?.trim() ?? '';
     if (fromApi.isNotEmpty) return fromApi;
     return AppConstants.kPrintSizeStripDual2x6;
   }

@@ -189,6 +189,23 @@ void main() {
     expect(result.imageUrl, 'https://example.com/single6x4.jpg');
   });
 
+  test('StripComposeResult single shot keeps API portrait s4x6', () {
+    final result = StripComposeResult.fromJson(
+      {
+        'imageUrl': 'https://example.com/single4x6.jpg',
+        'stripCompositeUrl': 'https://example.com/dual-strip.jpg',
+        'filter': 'classic_warm',
+        'printSize': 's4x6',
+        'copiesOnSheet': 1,
+        'width': 1200,
+        'height': 1800,
+      },
+      composeImageCount: 1,
+    );
+    expect(result.printSize, AppConstants.kPrintSizePortrait4x6);
+    expect(result.printImageUrl, 'https://example.com/single4x6.jpg');
+  });
+
   test('StripComposeResult portrait s4x6 uses imageUrl not composite', () {
     final result = StripComposeResult.fromJson({
       'imageUrl': 'https://example.com/a.jpg',

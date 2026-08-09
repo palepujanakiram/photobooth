@@ -2,6 +2,25 @@ import '../screens/photo_generate/photo_generate_viewmodel.dart';
 import 'constants.dart';
 import 'print_orientation.dart';
 
+/// Width ÷ height for Classic / AI thumbs on the print-selection hub.
+///
+/// Must match the deliverable so [BoxFit.contain] shows the full print the
+/// guest finalized (cover + a fixed 0.72 tile was cropping heads off 4×6).
+double printSelectionThumbAspectRatio(String? printSize) {
+  final size = printSize?.trim().toLowerCase() ?? '';
+  if (size == AppConstants.kPrintSizeLandscape6x4) {
+    return 6 / 4;
+  }
+  if (size == AppConstants.kPrintSizePortrait4x6) {
+    return 4 / 6;
+  }
+  if (size == AppConstants.kPrintSizeStripDual2x6) {
+    // Dual 2×6 sheet is a 4×6 page.
+    return 4 / 6;
+  }
+  return 4 / 6;
+}
+
 /// True when [printSize] is the Classic dual-strip cutter token.
 bool isStripDualPrintSize(String? printSize) {
   final size = printSize?.trim() ?? '';

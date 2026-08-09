@@ -97,7 +97,14 @@ void main() {
     vm.dispose();
   });
 
-  test('isStripImage matches custom stripPrintSize; empty selection totals 0', () {
+  test('isStripImage is only dual-strip; classic sheet has its own label', () {
+    final classic = GeneratedImage(
+      id: 'c',
+      imageUrl: 'https://example.com/c.jpg',
+      theme: sampleTheme('c'),
+      isSelected: true,
+      printSize: AppConstants.kPrintSizePortrait4x6,
+    );
     final custom = GeneratedImage(
       id: 's',
       imageUrl: 'https://example.com/s.jpg',
@@ -106,10 +113,27 @@ void main() {
       printSize: 'custom_strip',
     );
     final vm = PrintSelectionViewModel(
-      images: [custom],
-      stripPrintSize: 'custom_strip',
+      images: [classic, custom],
+      stripPrintSize: AppConstants.kPrintSizePortrait4x6,
     );
-    expect(vm.isStripImage(custom), isTrue);
+    expect(vm.isStripImage(classic), isFalse);
+    expect(vm.isClassicSingleSheet(classic), isTrue);
+    expect(vm.isClassicDeliverable(classic), isTrue);
+    expect(vm.isStripImage(custom), isFalse);
+    vm.toggleSelected('c');
+    expect(vm.selectedCount, 1, reason: 'classic sheet cannot be sole deselection');
+    vm.dispose();
+  });
+
+  test('empty selection totals 0', () {
+    final custom = GeneratedImage(
+      id: 's',
+      imageUrl: 'https://example.com/s.jpg',
+      theme: sampleTheme('s'),
+      isSelected: false,
+      printSize: 'custom_strip',
+    );
+    final vm = PrintSelectionViewModel(images: [custom]);
     expect(vm.selectedTotalPrice, 0);
     expect(vm.canContinue, isFalse);
     vm.dispose();

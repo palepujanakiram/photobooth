@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../models/strip_models.dart';
+import '../../views/widgets/cached_network_image.dart';
 import 'fotoflashback_look_picker_layout.dart';
 import 'fotoflashback_sheet_layout_view_widgets.dart';
 import 'fotoflashback_strip_chrome_view_widgets.dart';
@@ -27,6 +28,8 @@ class FotoFlashbackStripPreview extends StatelessWidget {
     this.scribbles = const [],
     this.drawMode = false,
     this.imagesAreGraded = false,
+    this.serverComposePreviewUrl,
+    this.isRefreshingComposePreview = false,
     this.layout,
     this.onMovePlacement,
     this.onRemovePlacement,
@@ -47,6 +50,11 @@ class FotoFlashbackStripPreview extends StatelessWidget {
 
   /// When true, [imageDataUrls] are already Sharp-graded — skip ColorFilter.
   final bool imagesAreGraded;
+
+  /// Classic 1-shot: server compose JPEG (filter + frame burned in). When set,
+  /// this is the same artifact as Your prints / DNP — skip Flutter chrome.
+  final String? serverComposePreviewUrl;
+  final bool isRefreshingComposePreview;
 
   /// Shared print geometry from `GET /api/strip/filters` → `layout`.
   final StripWysiwygLayout? layout;
@@ -96,6 +104,40 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wysiwyg = layout ?? StripWysiwygLayout.defaults;
+    final composeUrl = serverComposePreviewUrl?.trim() ?? '';
+    if (imageDataUrls.length == 1 && composeUrl.isNotEmpty) {
+      return SizedBox(
+        width: width,
+        height: height,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ColoredBox(
+              color: const Color(0xFF121212),
+              child: CachedNetworkImage(
+                imageUrl: composeUrl,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
+              ),
+            ),
+            if (isRefreshingComposePreview)
+              const ColoredBox(
+                color: Color(0x66000000),
+                child: Center(
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
     if (imageDataUrls.length == 1) {
       return _Single6x4Preview(
         imageDataUrl: imageDataUrls.first,

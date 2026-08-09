@@ -55,17 +55,28 @@ class PrintSelectionViewModel extends ChangeNotifier {
 
   bool isStripImage(GeneratedImage image) {
     final size = image.printSize?.trim() ?? '';
-    if (size == AppConstants.kPrintSizeStripDual2x6) return true;
-    final stripSize = stripPrintSize?.trim() ?? '';
-    return stripSize.isNotEmpty && size == stripSize;
+    return size == AppConstants.kPrintSizeStripDual2x6;
   }
+
+  /// Classic 1-shot 4×6 / 6×4 sheet (not a dual strip).
+  bool isClassicSingleSheet(GeneratedImage image) {
+    final size = image.printSize?.trim() ?? '';
+    return size == AppConstants.kPrintSizePortrait4x6 ||
+        size == AppConstants.kPrintSizeLandscape6x4;
+  }
+
+  /// Primary Classic deliverable — stays selected when it is the only sheet.
+  bool isClassicDeliverable(GeneratedImage image) =>
+      isStripImage(image) || isClassicSingleSheet(image);
 
   void toggleSelected(String id) {
     final i = _images.indexWhere((e) => e.id == id);
     if (i < 0) return;
     final img = _images[i];
-    // Strip stays selected when it is the Classic deliverable.
-    if (isStripImage(img) && img.isSelected && selectedCount <= 1) return;
+    // Classic deliverable stays selected when it is the only sheet.
+    if (isClassicDeliverable(img) && img.isSelected && selectedCount <= 1) {
+      return;
+    }
     _images[i] = img.copyWith(isSelected: !img.isSelected);
     _syncCoordinator();
     notifyListeners();
