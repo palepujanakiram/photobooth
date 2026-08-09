@@ -3462,11 +3462,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     try {
-      await viewModel.setCapturedPhotoFromExternalFile(
-        rawFile: capturedFile!,
-        cameraId: fromSidecar ? 'sidecar:FZ200D' : cameraId,
-        force: true,
-      );
+      await viewModel
+          .setCapturedPhotoFromExternalFile(
+            rawFile: capturedFile!,
+            cameraId: fromSidecar ? 'sidecar:FZ200D' : cameraId,
+            force: true,
+          )
+          .timeout(
+            const Duration(seconds: 20),
+            onTimeout: () {
+              throw TimeoutException(
+                'Saving photo timed out after sidecar/UVC still',
+              );
+            },
+          );
       if (!mounted) return;
       if (viewModel.capturedPhoto == null) {
         _uvcPhase = UvcFeedPhase.error;

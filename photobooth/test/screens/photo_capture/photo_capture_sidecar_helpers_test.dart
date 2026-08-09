@@ -207,12 +207,16 @@ void main() {
       service.dispose();
     });
 
-    test('returns null when unhealthy', () async {
+    test('attempts capture even when health soft-fails', () async {
+      final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(64, 2)]);
       final client = MockClient((request) async {
         if (request.url.path.endsWith('/camera/client-log')) {
           return http.Response('', 204);
         }
-        return http.Response('{"ok":true,"connected":false}', 200);
+        if (request.url.path.endsWith('/health')) {
+          return http.Response('{"ok":true,"connected":false}', 200);
+        }
+        return http.Response.bytes(jpeg, 200);
       });
       final service = LocalCameraService(
         config: const CameraSidecarConfig(
@@ -221,7 +225,9 @@ void main() {
         ),
         client: client,
       );
-      expect(await tryCaptureFromSidecar(service), isNull);
+      final file = await tryCaptureFromSidecar(service);
+      expect(file, isNotNull);
+      expect(await file!.readAsBytes(), jpeg);
       service.dispose();
     });
 

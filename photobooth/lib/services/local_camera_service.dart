@@ -21,7 +21,7 @@ class LocalCameraService {
     Duration? captureTimeout,
   })  : _config = config ?? CameraSidecarConfig.fromEnvironment(),
         _client = client ?? http.Client(),
-        _healthTimeout = healthTimeout ?? const Duration(seconds: 2),
+        _healthTimeout = healthTimeout ?? const Duration(seconds: 5),
         _captureTimeout = captureTimeout ?? const Duration(seconds: 60);
 
   final CameraSidecarConfig _config;

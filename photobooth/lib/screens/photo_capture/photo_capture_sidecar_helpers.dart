@@ -87,11 +87,14 @@ Future<XFile?> tryCaptureFromSidecar(
     return null;
   }
   try {
+    // Do not hard-skip on a flaky 2s health probe — Android TV often hits
+    // SocketException while the Pi is fine; always attempt the still.
     final healthy = await service.isHealthy();
     if (!healthy) {
-      AppLogger.info('[HDMI_POSE] Camera sidecar not healthy; using local camera');
-      unawaited(service.postClientEvent('capture_skip_unhealthy'));
-      return null;
+      AppLogger.warning(
+        '[HDMI_POSE] Sidecar health soft-fail; attempting capture anyway',
+      );
+      unawaited(service.postClientEvent('capture_health_soft_fail'));
     }
     AppLogger.info(
       '[HDMI_POSE] Sidecar still begin resumeLV=$resumeLiveView',
@@ -99,6 +102,7 @@ Future<XFile?> tryCaptureFromSidecar(
     unawaited(
       service.postClientEvent('capture_begin', {
         'resumeLiveView': resumeLiveView,
+        'healthy': healthy,
       }),
     );
     final t0 = DateTime.now();

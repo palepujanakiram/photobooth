@@ -1177,9 +1177,19 @@ class CaptureViewModel extends ChangeNotifier {
       final bakeTurns = bakeQuarterTurnsMatchingLiveFeed(fromSidecar: isSidecar);
       final XFile savedFile;
       if (isSidecar) {
+        // Bound bake — full Canon stills (or hung Skia) used to leave Saving… forever.
         savedFile = await persistSidecarCaptureStill(
           rawFile,
           bakeQuarterTurns: bakeTurns,
+        ).timeout(
+          _externalCapturePersistTimeout,
+          onTimeout: () {
+            AppLogger.error(
+              'Sidecar persist timed out after '
+              '${_externalCapturePersistTimeout.inSeconds}s; using raw still',
+            );
+            return rawFile;
+          },
         );
       } else {
         savedFile = await _persistExternalCaptureStill(
