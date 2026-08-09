@@ -1800,22 +1800,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }),
     );
 
-    if (_captureViewModel.usesSidecarLivePreview) {
-      AppLogger.info('POSE using Pi DSLR sidecar live preview');
-      await _captureViewModel.prepareSidecarLivePreview();
-      if (!mounted) return;
-      await _finishPrewarmPoseSetup();
-      return;
-    }
-
-    // Classic + Pi sidecar: prefer USB MJPEG from the LV keeper. HDMI→capture
-    // card stays blank on FZ200D even while movie LV holds (Starting camera…).
-    if (widget.sessionKind.isClassic &&
-        _captureViewModel.localCameraService?.isConfigured == true) {
-      AppLogger.info(
-        'POSE Classic: forcing Pi USB live preview (skip HDMI/UVC)',
-      );
-      _captureViewModel.localCameraService?.setForceLivePreview(true);
+    if (_captureViewModel.usesSidecarLivePreview ||
+        shouldForceSidecarLivePreview(
+          sidecarConfigured:
+              _captureViewModel.localCameraService?.isConfigured == true,
+        )) {
+      final forced = !_captureViewModel.usesSidecarLivePreview;
+      if (forced) {
+        AppLogger.info(
+          'POSE: forcing Pi USB live preview (skip HDMI/UVC) '
+          'kind=${widget.sessionKind.name}',
+        );
+        _captureViewModel.localCameraService?.setForceLivePreview(true);
+      } else {
+        AppLogger.info('POSE using Pi DSLR sidecar live preview');
+      }
       await _armCanonLiveViewForPose();
       if (!mounted) return;
       await _captureViewModel.prepareSidecarLivePreview();
@@ -1823,7 +1822,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       unawaited(
         _captureViewModel.localCameraService?.postClientEvent(
           'pose_sidecar_preview',
-          {'forced': true},
+          {
+            'forced': forced,
+            'sessionKind': widget.sessionKind.name,
+          },
         ),
       );
       await _finishPrewarmPoseSetup();
@@ -3653,12 +3655,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     BuildContext context,
     CaptureViewModel viewModel,
   ) {
-    // Classic strip never offers Gallery / Phone QR mid-session (would break
-    // the 4-shot flow and flash wide CTAs during web camera remount).
-    final allowGallery = !_isClassicPose &&
-        context.select<AppSettingsManager, bool>(
-          (m) => m.settings?.photoUploadAllowed == true,
-        );
+    final allowGallery = capturePhotoUploadActionsAllowed(
+      photoUploadAllowed: context.select<AppSettingsManager, bool>(
+        (m) => m.settings?.photoUploadAllowed == true,
+      ),
+      classicFourShotInProgress:
+          _isFlashbackFourShot && _stripShots.isNotEmpty,
+    );
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -3767,10 +3770,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     CaptureViewModel viewModel,
   ) {
     final appColors = AppColors.of(context);
-    final allowGallery = !_isClassicPose &&
-        context.select<AppSettingsManager, bool>(
-          (m) => m.settings?.photoUploadAllowed == true,
-        );
+    final allowGallery = capturePhotoUploadActionsAllowed(
+      photoUploadAllowed: context.select<AppSettingsManager, bool>(
+        (m) => m.settings?.photoUploadAllowed == true,
+      ),
+      classicFourShotInProgress:
+          _isFlashbackFourShot && _stripShots.isNotEmpty,
+    );
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -3846,8 +3852,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   ) {
     if (viewModel.isDesktopCaptureMode) {
       if (viewModel.capturedPhoto == null) {
-        final allowGallery = context.select<AppSettingsManager, bool>(
-          (m) => m.settings?.photoUploadAllowed == true,
+        final allowGallery = capturePhotoUploadActionsAllowed(
+          photoUploadAllowed: context.select<AppSettingsManager, bool>(
+            (m) => m.settings?.photoUploadAllowed == true,
+          ),
+          classicFourShotInProgress:
+              _isFlashbackFourShot && _stripShots.isNotEmpty,
         );
         return PhotoCaptureDesktopBody(
           viewModel: viewModel,
@@ -4114,6 +4124,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           constraints,
           uvcPreviewDisplaySize:
               _isUsingUvc ? _uvcPreviewDisplaySize(viewModel) : null,
+          // Match Classic: Pi MJPEG sits in the portrait theme slot, not HDMI
+          // landscape frame sizing.
+          preferThemeSlotAspect: viewModel.usesSidecarLivePreview,
         );
 
         final (widthCapFrac, heightCapFrac) = capturePreviewCardSizeFractions(
@@ -4574,12 +4587,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   /// Gallery and Capture buttons in a Row (pre-capture).
   Widget _buildGalleryCaptureButtonsRow(BuildContext context, CaptureViewModel viewModel) {
-    final isPhotoUploadAllowed = !_isFlashbackMultiShot &&
-        !_isFlashbackSingleShot &&
-        context.select<AppSettingsManager, bool>(
-          (settingsManager) =>
-              settingsManager.settings?.photoUploadAllowed == true,
-        );
+    final isPhotoUploadAllowed = capturePhotoUploadActionsAllowed(
+      photoUploadAllowed: context.select<AppSettingsManager, bool>(
+        (settingsManager) =>
+            settingsManager.settings?.photoUploadAllowed == true,
+      ),
+      classicFourShotInProgress:
+          _isFlashbackFourShot && _stripShots.isNotEmpty,
+    );
     final flashback = _isFlashbackMultiShot || _isFlashbackSingleShot;
     final countdownSecs = captureCountdownSecondsForMode(
       isFlashbackMultiShot: flashback,

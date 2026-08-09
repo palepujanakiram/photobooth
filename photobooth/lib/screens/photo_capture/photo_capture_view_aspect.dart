@@ -47,10 +47,19 @@ double captureCardAspectRatioForCaptured({
   required CaptureViewModel viewModel,
   required double fallbackAspect,
   required BoxConstraints layoutConstraints,
+  bool preferThemeSlotAspect = false,
 }) {
   final locked = viewModel.lockedCaptureCardAspectRatio;
   if (locked != null && locked > 0) {
     return locked.clamp(0.35, 2.85);
+  }
+  // Pi USB MJPEG / theme-slot pose: keep the Classic portrait card on review
+  // instead of flipping to landscape from person-count heuristics.
+  if (preferThemeSlotAspect) {
+    if (captureCardIsPhonePortrait(context)) {
+      return captureCardViewportSlotAspect(layoutConstraints, fallbackAspect);
+    }
+    return fallbackAspect;
   }
   final decodedAspect = captureCardDecodedImageAspect(
     viewModel.capturedImagePixelSize,
@@ -77,7 +86,16 @@ double captureCardAspectRatioForLivePreview({
   required double fallbackAspect,
   required BoxConstraints layoutConstraints,
   Size? uvcPreviewDisplaySize,
+  bool preferThemeSlotAspect = false,
 }) {
+  // Sidecar Classic/AI pose uses the portrait theme slot (cover-crop the feed),
+  // not the landscape HDMI/UVC buffer aspect.
+  if (preferThemeSlotAspect) {
+    if (captureCardIsPhonePortrait(context)) {
+      return captureCardViewportSlotAspect(layoutConstraints, fallbackAspect);
+    }
+    return fallbackAspect;
+  }
   if (uvcPreviewDisplaySize != null && uvcPreviewDisplaySize.height > 0) {
     return (uvcPreviewDisplaySize.width / uvcPreviewDisplaySize.height)
         .clamp(0.35, 2.85);
@@ -105,6 +123,7 @@ double captureCardAspectRatio(
   double fallbackAspect,
   BoxConstraints layoutConstraints, {
   Size? uvcPreviewDisplaySize,
+  bool preferThemeSlotAspect = false,
 }) {
   if (hasCapturedPhoto) {
     return captureCardAspectRatioForCaptured(
@@ -112,6 +131,7 @@ double captureCardAspectRatio(
       viewModel: viewModel,
       fallbackAspect: fallbackAspect,
       layoutConstraints: layoutConstraints,
+      preferThemeSlotAspect: preferThemeSlotAspect,
     );
   }
   return captureCardAspectRatioForLivePreview(
@@ -120,5 +140,6 @@ double captureCardAspectRatio(
     fallbackAspect: fallbackAspect,
     layoutConstraints: layoutConstraints,
     uvcPreviewDisplaySize: uvcPreviewDisplaySize,
+    preferThemeSlotAspect: preferThemeSlotAspect,
   );
 }

@@ -2,6 +2,28 @@ import '../../utils/app_device_type.dart';
 import '../../utils/constants.dart';
 import '../../utils/uvc_capture_config.dart';
 
+/// Prefer Pi USB MJPEG over HDMI→UVC when the sidecar is configured.
+///
+/// HDMI capture cards often stay blank on Canon Live View (e.g. FZ200D) even
+/// while the Pi LV keeper is healthy — Classic already forced this; FotoZen AI
+/// must do the same on the same booth.
+bool shouldForceSidecarLivePreview({required bool sidecarConfigured}) {
+  return sidecarConfigured;
+}
+
+/// Gallery / Phone QR on POSE — same [photoUploadAllowed] gate for AI + Classic.
+///
+/// Mid Classic 4-shot strip still hides uploads so a gallery pick cannot break
+/// strip indexing / remount.
+bool capturePhotoUploadActionsAllowed({
+  required bool photoUploadAllowed,
+  required bool classicFourShotInProgress,
+}) {
+  if (!photoUploadAllowed) return false;
+  if (classicFourShotInProgress) return false;
+  return true;
+}
+
 /// Kiosk tablets/TVs: try the UVC plugin before CameraX for USB webcams.
 ///
 /// CameraX external cameras on Android TV often hang on [takePicture] / stream

@@ -43,6 +43,35 @@ void main() {
     expect(kioskShouldTryUvcBeforeCameraX(null), isFalse);
   });
 
+  test('shouldForceSidecarLivePreview whenever sidecar is configured', () {
+    expect(shouldForceSidecarLivePreview(sidecarConfigured: true), isTrue);
+    expect(shouldForceSidecarLivePreview(sidecarConfigured: false), isFalse);
+  });
+
+  test('capturePhotoUploadActionsAllowed matches settings with strip guard', () {
+    expect(
+      capturePhotoUploadActionsAllowed(
+        photoUploadAllowed: true,
+        classicFourShotInProgress: false,
+      ),
+      isTrue,
+    );
+    expect(
+      capturePhotoUploadActionsAllowed(
+        photoUploadAllowed: false,
+        classicFourShotInProgress: false,
+      ),
+      isFalse,
+    );
+    expect(
+      capturePhotoUploadActionsAllowed(
+        photoUploadAllowed: true,
+        classicFourShotInProgress: true,
+      ),
+      isFalse,
+    );
+  });
+
   test('shouldDeferUploadPrepUntilContinue on TV and UVC ids', () {
     expect(
       shouldDeferUploadPrepUntilContinue(

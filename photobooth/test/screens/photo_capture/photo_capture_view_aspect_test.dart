@@ -156,6 +156,49 @@ void main() {
     expect(captureCardAspectRatioFromPersonCount(null), isNull);
   });
 
+  testWidgets(
+    'preferThemeSlotAspect keeps landscape kiosk on portrait theme slot',
+    (WidgetTester tester) async {
+      final viewModel = CaptureViewModel();
+      addTearDown(viewModel.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(size: Size(1280, 800)),
+            child: Builder(
+              builder: (context) {
+                const constraints =
+                    BoxConstraints(maxWidth: 600, maxHeight: 700);
+                final fallback =
+                    AppConstants.themeCardSlotAspectRatio(context);
+                expect(fallback, lessThan(1.0));
+                final live = captureCardAspectRatioForLivePreview(
+                  context: context,
+                  viewModel: viewModel,
+                  fallbackAspect: fallback,
+                  layoutConstraints: constraints,
+                  uvcPreviewDisplaySize: const Size(1920, 1080),
+                  preferThemeSlotAspect: true,
+                );
+                expect(live, closeTo(fallback, 0.001));
+                final captured = captureCardAspectRatioForCaptured(
+                  context: context,
+                  viewModel: viewModel,
+                  fallbackAspect: fallback,
+                  layoutConstraints: constraints,
+                  preferThemeSlotAspect: true,
+                );
+                expect(captured, closeTo(fallback, 0.001));
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
   testWidgets('captureCardAspectRatioForCaptured uses decoded image aspect', (
     WidgetTester tester,
   ) async {
