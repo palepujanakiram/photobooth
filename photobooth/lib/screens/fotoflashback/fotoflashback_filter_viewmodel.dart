@@ -12,6 +12,8 @@ import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/print_size_helpers.dart';
+import '../../utils/strip_look_color_matrices.dart';
+import '../../utils/strip_look_matrix_bake.dart';
 import '../../utils/strip_preview_grade_compress.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
@@ -77,33 +79,23 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   /// Raw captures (for compose). Prefer [previewImageDataUrls] for the look UI.
   List<String> get imageDataUrls => List<String>.unmodifiable(_imageDataUrls);
 
-  /// Sharp-graded thumbs for the selected look when available (Option A).
-  List<String> get previewImageDataUrls {
-    final graded = _gradedByFilter[_selectedFilterId];
-    final expected = _imageDataUrls.length;
-    if (graded != null && graded.length == expected) {
-      return List<String>.unmodifiable(graded);
-    }
-    return imageDataUrls;
-  }
+  /// Look browser always uses capture bytes + Flutter ColorFilters. Print /
+  /// compose bakes the same matrices client-side and sends filter `clean` so
+  /// server Sharp grades do not wash Classic Warm toward B&W.
+  List<String> get previewImageDataUrls => imageDataUrls;
 
-  bool get previewImagesAreGraded =>
-      (_gradedByFilter[_selectedFilterId]?.length ?? 0) ==
-      _imageDataUrls.length;
+  /// Always false — look UI never swaps to server-graded thumbs.
+  bool get previewImagesAreGraded => false;
 
-  /// Server-composed Classic 1-shot JPEG (Sharp filter + frame burned in).
-  /// Same artifact Your prints / DNP use when the fingerprint still matches.
-  /// Hidden while scribbling so guests can draw on the live Flutter canvas.
-  String? get lookComposePreviewUrl {
-    if (!isSingleClassic || _drawMode) return null;
-    final url = _composePreview?.printImageUrl.trim() ?? '';
-    if (url.isEmpty) return null;
-    if (_composePreviewFingerprint != _lookComposeFingerprint()) return null;
-    return url;
-  }
+  /// Never swap the look UI to the server compose JPEG (washed grades).
+  /// Compose still runs in the background via [_scheduleComposePreview].
+  String? get lookComposePreviewUrl => null;
 
   bool get isRefreshingComposePreview =>
-      isSingleClassic && _gradingPreview && lookComposePreviewUrl == null;
+      isSingleClassic && _gradingPreview;
+
+  /// Spinner overlay while Classic 1-shot compose warms (Flutter filter stays).
+  bool get isRefreshingLookPreview => _gradingPreview;
 
   /// Classic 1-shot print (portrait 4×6 by default; guest can switch to 6×4).
   bool get isSingleClassic => _imageDataUrls.length == 1;
@@ -239,16 +231,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       notifyListeners();
     }
     if (classicOverlayCleanupEnabled && !_previewCleaned) {
-      // Grade immediately on current thumbs (compressed) so Continue / look
-      // preview are not blocked on the last-shot Gemini polish. Re-grade after
-      // polish so WYSIWYG matches cleaned plates.
-      unawaited(refreshPreviewGrade());
       unawaited(preparePreview().then((_) {
-        unawaited(refreshPreviewGrade());
         _scheduleComposePreview();
       }));
-    } else {
-      unawaited(refreshPreviewGrade());
     }
     _scheduleComposePreview();
   }
@@ -313,7 +298,6 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     ClassicStripScrubCoordinator.instance.releaseFailedShots();
     notifyListeners();
     await preparePreview();
-    unawaited(refreshPreviewGrade());
   }
 
   Future<void> _runPreparePreview(String sessionId) async {
@@ -400,7 +384,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     return result.scrubbed;
   }
 
-  /// Sharp-grade the four shots for the current look (WYSIWYG Option A).
+  /// Optional Sharp grade cache (look UI no longer displays these thumbs —
+  /// Flutter ColorFilters browse instead). Kept for Continue-path experiments
+  /// and unit coverage of the grade API.
   Future<void> refreshPreviewGrade() async {
     if (_imageDataUrls.length != kStripShotCount) return;
     final filterId = _selectedFilterId;
@@ -443,7 +429,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     if (filterId == _selectedFilterId) return;
     _selectedFilterId = filterId;
     notifyListeners();
-    unawaited(refreshPreviewGrade());
+    // Instant Flutter ColorFilter browse; compose warms for Continue / print.
     _scheduleComposePreview();
   }
 
@@ -661,7 +647,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         orientation: _printOrientation,
       );
       return GeneratedImage(
-        id: 'strip_${result.filter}_${DateTime.now().millisecondsSinceEpoch}',
+        id: 'strip_${_selectedFilterId}_${DateTime.now().millisecondsSinceEpoch}',
         imageUrl: result.printImageUrl,
         theme: theme,
         isSelected: true,
@@ -709,8 +695,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     });
   }
 
-  /// Classic 1-shot: compose the real print JPEG so Pick your look matches
-  /// Your prints / DNP (filter + frame burned in — not ColorFilter chrome).
+  /// Classic 1-shot: warm print JPEG in the background (Flutter look baked
+  /// into pixels; server compose uses identity filter so grades are not washed).
   Future<void> refreshComposePreview() async {
     if (!isSingleClassic || _composing) return;
     final sessionId = _sessionManager.sessionId?.trim() ?? '';
@@ -743,11 +729,17 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     }
   }
 
-  Future<StripComposeResult> _requestComposeStrip(String sessionId) {
+  Future<StripComposeResult> _requestComposeStrip(String sessionId) async {
+    // Bake Flutter ColorFilter matrices into the JPEGs, then ask the server
+    // for identity grade + frame/layout only — Sharp grades wash Classic Warm.
+    final images = await bakeStripLookMatricesOntoDataUrls(
+      dataUrls: _imageDataUrls,
+      filterId: _selectedFilterId,
+    );
     return _api.composeStrip(
       sessionId: sessionId,
-      images: _imageDataUrls,
-      filter: _selectedFilterId,
+      images: images,
+      filter: kStripComposePreBakedFilterId,
       frame: _selectedFrameId,
       sticker: kDefaultStripStickerId,
       stickerPlacements: _placements,

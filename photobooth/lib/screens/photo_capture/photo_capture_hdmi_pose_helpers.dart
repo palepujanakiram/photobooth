@@ -49,11 +49,16 @@ bool uvcShouldMaskHdmiDuringStill({
 
 /// Guest-facing copy while the pose preview is masked for a still.
 ///
-/// Sidecar Classic: LV/movie exit clicks before the real shutter — say
-/// "Hold still…" so guests do not move on the first slap. Plain UVC/CameraX
-/// can keep "Capturing…".
-String captureStillInProgressLabel({required bool usesSidecarDslr}) {
-  return usesSidecarDslr
-      ? AppStrings.captureHoldStillForPhoto
-      : AppStrings.captureCapturingPhoto;
+/// Sidecar Classic fires LV/movie exit clicks before the real shutter — phase
+/// the copy so the first slap is "Setting up camera…" and the shutter is
+/// "Say cheese!". Plain UVC/CameraX keeps "Capturing…".
+String captureStillInProgressLabel({
+  required bool usesSidecarDslr,
+  bool preparingCamera = false,
+  bool isCapturing = false,
+}) {
+  if (!usesSidecarDslr) return AppStrings.captureCapturingPhoto;
+  if (isCapturing) return AppStrings.captureSayCheese;
+  if (preparingCamera) return AppStrings.captureSettingUpCamera;
+  return AppStrings.captureSayCheese;
 }

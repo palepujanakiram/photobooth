@@ -172,10 +172,30 @@ void main() {
   });
 
   group('captureStillInProgressLabel', () {
-    test('sidecar DSLR asks guests to hold still through LV teardown clicks', () {
+    test('sidecar prepare phase asks guests to wait for camera setup', () {
+      expect(
+        captureStillInProgressLabel(
+          usesSidecarDslr: true,
+          preparingCamera: true,
+        ),
+        'Setting up camera…',
+      );
+    });
+
+    test('sidecar shutter phase prompts Say cheese', () {
+      expect(
+        captureStillInProgressLabel(
+          usesSidecarDslr: true,
+          isCapturing: true,
+        ),
+        'Say cheese!',
+      );
+    });
+
+    test('sidecar default (armed but not phased) still prompts Say cheese', () {
       expect(
         captureStillInProgressLabel(usesSidecarDslr: true),
-        'Hold still…',
+        'Say cheese!',
       );
     });
 

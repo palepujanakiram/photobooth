@@ -203,7 +203,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                             ),
                           ],
                         ),
-                      ] else if (viewModel.isGradingPreview) ...[
+                      ] else if (viewModel.isRefreshingLookPreview) ...[
                         const SizedBox(height: 8),
                         Text(
                           AppStrings.flashbackGradingPreview,
@@ -296,7 +296,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           serverComposePreviewUrl:
                               viewModel.lookComposePreviewUrl,
                           isRefreshingComposePreview:
-                              viewModel.isRefreshingComposePreview,
+                              viewModel.isRefreshingLookPreview,
                           layout: viewModel.wysiwygLayout,
                           filterId: viewModel.selectedFilterId,
                           frameId: viewModel.selectedFrameId,

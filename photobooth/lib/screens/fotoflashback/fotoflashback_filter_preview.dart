@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../models/strip_models.dart';
+import '../../utils/strip_look_color_matrices.dart';
 import '../../views/widgets/cached_network_image.dart';
 import 'fotoflashback_look_picker_layout.dart';
 import 'fotoflashback_sheet_layout_view_widgets.dart';
@@ -120,40 +121,37 @@ class FotoFlashbackStripPreview extends StatelessWidget {
                 filterQuality: FilterQuality.high,
               ),
             ),
-            if (isRefreshingComposePreview)
-              const ColoredBox(
-                color: Color(0x66000000),
-                child: Center(
-                  child: SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: Colors.white70,
-                    ),
-                  ),
-                ),
-              ),
+            if (isRefreshingComposePreview) _lookPreviewBusyOverlay(),
           ],
         ),
       );
     }
     if (imageDataUrls.length == 1) {
-      return _Single6x4Preview(
-        imageDataUrl: imageDataUrls.first,
-        filterId: filterId,
-        frameId: frameId,
-        imagesAreGraded: imagesAreGraded,
-        placements: placements,
-        scribbles: scribbles,
-        drawMode: drawMode,
+      return SizedBox(
         width: width,
         height: height,
-        onMovePlacement: onMovePlacement,
-        onRemovePlacement: onRemovePlacement,
-        onScribbleStart: onScribbleStart,
-        onScribbleUpdate: onScribbleUpdate,
-        onScribbleEnd: onScribbleEnd,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _Single6x4Preview(
+              imageDataUrl: imageDataUrls.first,
+              filterId: filterId,
+              frameId: frameId,
+              imagesAreGraded: imagesAreGraded,
+              placements: placements,
+              scribbles: scribbles,
+              drawMode: drawMode,
+              width: width,
+              height: height,
+              onMovePlacement: onMovePlacement,
+              onRemovePlacement: onRemovePlacement,
+              onScribbleStart: onScribbleStart,
+              onScribbleUpdate: onScribbleUpdate,
+              onScribbleEnd: onScribbleEnd,
+            ),
+            if (isRefreshingComposePreview) _lookPreviewBusyOverlay(),
+          ],
+        ),
       );
     }
     if (isStripSheetLayout(frameId)) {
@@ -222,6 +220,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
                   onPanCancel: onScribbleEnd,
                 ),
               ),
+            if (isRefreshingComposePreview) _lookPreviewBusyOverlay(),
           ],
         ),
       );
@@ -285,10 +284,27 @@ class FotoFlashbackStripPreview extends StatelessWidget {
               ),
             ),
           ),
+          if (isRefreshingComposePreview) _lookPreviewBusyOverlay(),
         ],
       ),
     );
   }
+}
+
+Widget _lookPreviewBusyOverlay() {
+  return const ColoredBox(
+    color: Color(0x66000000),
+    child: Center(
+      child: SizedBox(
+        width: 28,
+        height: 28,
+        child: CircularProgressIndicator(
+          strokeWidth: 2.5,
+          color: Colors.white70,
+        ),
+      ),
+    ),
+  );
 }
 
 class _FotoFlashbackSingleStrip extends StatelessWidget {
@@ -802,74 +818,9 @@ class _SparklePainter extends CustomPainter {
   }
 }
 
-/// Approximate zenai Sharp grades for live Flutter preview.
+/// Flutter ColorFilter matrices for live look preview (same bake as print).
 ColorFilter stripPreviewColorFilter(String filterId) {
-  switch (filterId) {
-    case 'classic_warm':
-      return const ColorFilter.matrix(<double>[
-        1.05, 0.05, 0, 0, 8,
-        0.02, 0.95, 0, 0, 4,
-        0, 0.02, 0.88, 0, 0,
-        0, 0, 0, 1, 0,
-      ]);
-    case 'peach_glow':
-      return const ColorFilter.matrix(<double>[
-        1.1, 0.08, 0.04, 0, 14,
-        0.06, 0.98, 0.04, 0, 8,
-        0.04, 0.06, 0.9, 0, 6,
-        0, 0, 0, 1, 0,
-      ]);
-    case 'soft_film':
-      return const ColorFilter.matrix(<double>[
-        0.95, 0.05, 0, 0, 10,
-        0.05, 0.95, 0, 0, 10,
-        0, 0.05, 0.95, 0, 10,
-        0, 0, 0, 1, 0,
-      ]);
-    case 'candy_pop':
-      return const ColorFilter.matrix(<double>[
-        1.15, 0.05, 0, 0, 0,
-        0, 1.05, 0.05, 0, 0,
-        0.05, 0, 1.2, 0, 0,
-        0, 0, 0, 1, 0,
-      ]);
-    case 'golden_hour':
-      return const ColorFilter.matrix(<double>[
-        1.14, 0.1, 0.02, 0, 12,
-        0.06, 0.96, 0.02, 0, 6,
-        0, 0.04, 0.78, 0, 0,
-        0, 0, 0, 1, 0,
-      ]);
-    case 'cool_mint':
-      return const ColorFilter.matrix(<double>[
-        0.88, 0.04, 0.06, 0, 2,
-        0.04, 1.06, 0.08, 0, 6,
-        0.06, 0.1, 1.12, 0, 8,
-        0, 0, 0, 1, 0,
-      ]);
-    case 'gloss_pop':
-      return const ColorFilter.matrix(<double>[
-        1.2, 0.02, 0.06, 0, -6,
-        0, 1.12, 0.08, 0, -4,
-        0.08, 0, 1.24, 0, -2,
-        0, 0, 0, 1, 0,
-      ]);
-    case 'mono':
-      return const ColorFilter.matrix(<double>[
-        0.2126, 0.7152, 0.0722, 0, 0,
-        0.2126, 0.7152, 0.0722, 0, 0,
-        0.2126, 0.7152, 0.0722, 0, 0,
-        0, 0, 0, 1, 0,
-      ]);
-    case 'clean':
-    default:
-      return const ColorFilter.matrix(<double>[
-        1, 0, 0, 0, 0,
-        0, 1, 0, 0, 0,
-        0, 0, 1, 0, 0,
-        0, 0, 0, 1, 0,
-      ]);
-  }
+  return ColorFilter.matrix(stripLookColorMatrixValues(filterId));
 }
 
 Uint8List _bytesFromDataUrl(String dataUrl) {

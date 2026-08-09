@@ -318,6 +318,7 @@ void main() {
     await tester.pumpAndSettle();
     final args = capturedArgs as PrintSelectionArgs;
     expect(args.stripPrintSize, AppConstants.kPrintSizePortrait4x6);
+    expect(args.canEditLook, isTrue);
   });
 
   testWidgets('composeFlashbackAfterPrePay composes and navigates', (tester) async {

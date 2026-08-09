@@ -170,8 +170,13 @@ abstract final class AppStrings {
   /// HDMI/UVC still in flight — hides Canon status LCD on the capture card.
   static const captureCapturingPhoto = 'Capturing…';
 
-  /// Classic Pi DSLR: LV teardown clicks before the real still — tell guests
-  /// not to move on the first mirror slap.
+  /// Sidecar prepare (LV/movie exit clicks) before the real shutter.
+  static const captureSettingUpCamera = 'Setting up camera…';
+
+  /// Real shutter / download — guest-facing prompt.
+  static const captureSayCheese = 'Say cheese!';
+
+  /// Legacy generic still-in-progress copy.
   static const captureHoldStillForPhoto = 'Hold still…';
 
   /// Pose UI while waiting for the first Pi DSLR live-view frame.
@@ -488,7 +493,7 @@ abstract final class AppStrings {
   static const flashbackComposePayCta = 'Continue to pay';
   static const flashbackComposing = 'Building your strip…';
   static const flashbackPreparingPreview = 'Polishing photos…';
-  static const flashbackGradingPreview = 'Updating look preview…';
+  static const flashbackGradingPreview = 'Refreshing preview…';
   static const flashbackFinishEncodeFailed =
       'Couldn’t prepare your photo. Tap Continue to looks to try again.';
   static const flashbackRetryScrub = 'Refresh polish';
@@ -511,6 +516,7 @@ abstract final class AppStrings {
   static const printSelectionStripLabel = 'Photo strip';
   static const printSelectionClassicLabel = 'Classic print';
   static const printSelectionAiLabel = 'AI photo';
+  static const printSelectionEditLook = 'Edit look';
   static String printSelectionTotal(int amount) => 'Total ₹$amount';
   static String printSelectionContinue(int count) =>
       count <= 0 ? 'Select a photo' : 'Continue ($count)';

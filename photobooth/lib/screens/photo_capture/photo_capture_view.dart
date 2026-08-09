@@ -3168,6 +3168,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         countdownValue: viewModel.countdownValue,
       );
 
+  /// Sidecar prepare clicks vs real shutter — phased guest copy.
+  String _stillInProgressLabel(CaptureViewModel viewModel) {
+    final usesSidecar =
+        viewModel.localCameraService?.isConfigured == true;
+    final capturing = viewModel.isCapturing || _uvcCaptureInFlight;
+    return captureStillInProgressLabel(
+      usesSidecarDslr: usesSidecar,
+      preparingCamera: _uvcHdmiStillMaskArmed && !capturing,
+      isCapturing: capturing,
+    );
+  }
+
   Widget _uvcSavingPhotoCard({
     String message = AppStrings.captureCapturingPhoto,
     bool showSpinner = true,
@@ -3221,10 +3233,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     // Full black during shutter — dim-over-live showed Canon's HDMI status LCD
     // (P / ISO / Q) after gphoto drops Live View for the still.
     if (saving) {
-      final usesSidecar =
-          viewModel.localCameraService?.isConfigured == true;
       return _uvcSavingPhotoCard(
-        message: captureStillInProgressLabel(usesSidecarDslr: usesSidecar),
+        message: _stillInProgressLabel(viewModel),
         showSpinner: !viewModel.isCountingDown,
       );
     }
@@ -3926,7 +3936,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             viewModel.localCameraService != null) {
           previewWidget = _isUvcSavingStill(viewModel)
               ? _uvcSavingPhotoCard(
-                  message: captureStillInProgressLabel(usesSidecarDslr: true),
+                  message: _stillInProgressLabel(viewModel),
                   // Countdown overlay already owns the center; avoid a second spinner.
                   showSpinner: !viewModel.isCountingDown,
                 )
@@ -4232,7 +4242,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                             (_multiShotTotal ?? kStripShotCount),
                       ),
                     ),
-                  // Sidecar Classic already swaps the preview for Hold still
+                  // Sidecar Classic already swaps the preview for Setting up /
+                  // Say cheese — avoid a second dim overlay on live HDMI.
                   // (spinner + copy). Do not stack a second capturing spinner.
                   if (!_showCaptureFlash &&
                       !hasCapturedPhoto &&
@@ -4717,10 +4728,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               (viewModel.isCapturing ||
                       _uvcCaptureInFlight ||
                       _uvcHdmiStillMaskArmed)
-                  ? captureStillInProgressLabel(
-                      usesSidecarDslr:
-                          viewModel.localCameraService?.isConfigured == true,
-                    )
+                  ? _stillInProgressLabel(viewModel)
                   : (flashback
                       ? AppStrings.flashbackTakeShot
                       : 'Capture'),

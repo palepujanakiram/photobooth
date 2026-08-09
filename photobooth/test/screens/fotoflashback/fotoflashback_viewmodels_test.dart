@@ -10,6 +10,7 @@ import 'package:photobooth/services/session_manager.dart';
 import 'package:photobooth/utils/classic_strip_scrub_coordinator.dart';
 import 'package:photobooth/utils/exceptions.dart';
 import 'package:photobooth/utils/print_orientation.dart';
+import 'package:photobooth/utils/strip_look_color_matrices.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../fakes/fake_api_service.dart';
@@ -372,6 +373,7 @@ void main() {
     expect(image.isSelected, isTrue);
     expect(vm.composeResult, isNotNull);
     expect(api.composeCalls, 1);
+    expect(api.lastComposeFilter, kStripComposePreBakedFilterId);
     expect(api.lastCleanOverlays, isFalse);
     expect(api.lastFrame, 'noir');
     expect(api.lastSticker, kDefaultStripStickerId);
@@ -556,14 +558,12 @@ void main() {
     expect(vm.wysiwygLayout.gridTitle, isNotEmpty);
     expect(vm.frames.map((f) => f.id), contains('grid_2x2'));
 
-    // Polish clears grade cache; wait for it then grade polished thumbs.
+    // Look browser stays on Flutter ColorFilters (server grades wash looks).
     await vm.preparePreview();
     await vm.refreshPreviewGrade();
-    expect(vm.previewImagesAreGraded, isTrue);
-    expect(
-      vm.previewImageDataUrls.every((u) => u.contains('_graded_')),
-      isTrue,
-    );
+    expect(vm.previewImagesAreGraded, isFalse);
+    expect(vm.previewImageDataUrls, vm.imageDataUrls);
+    expect(vm.lookComposePreviewUrl, isNull);
 
     vm.selectFrame('grid_2x2');
     expect(vm.selectedFrame?.id, 'grid_2x2');
@@ -876,6 +876,13 @@ class _StripFakeApi extends FakeApiService {
   final bool altChromeOnly;
   final bool enableOsdScrub;
   int composeCalls = 0;
+  String? lastComposeFilter;
+  List<String>? lastComposeImages;
+  String? lastFrame;
+  String? lastSticker;
+  List<StripStickerPlacement>? lastPlacements;
+  List<StripScribbleStroke>? lastScribbles;
+  bool? lastCleanOverlays;
 
   @override
   Future<StripFiltersCatalog> fetchStripFilters() async {
@@ -983,6 +990,8 @@ class _StripFakeApi extends FakeApiService {
     PrintOrientation? orientation,
   }) async {
     composeCalls++;
+    lastComposeFilter = filter;
+    lastComposeImages = List<String>.from(images);
     lastCleanOverlays = cleanOverlays;
     lastFrame = frame;
     lastSticker = sticker;
@@ -1001,13 +1010,6 @@ class _StripFakeApi extends FakeApiService {
       sticker: sticker,
     );
   }
-
-  String? lastFrame;
-  String? lastSticker;
-  List<StripStickerPlacement>? lastPlacements;
-  List<StripScribbleStroke>? lastScribbles;
-
-  bool? lastCleanOverlays;
 }
 
 class _SlowGradeFakeApi extends _StripFakeApi {

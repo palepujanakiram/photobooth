@@ -10,6 +10,8 @@ import '../utils/exceptions.dart';
 import '../utils/print_orientation.dart';
 import '../utils/print_size_helpers.dart';
 import '../utils/fotoflashback_payment_helpers.dart';
+import '../utils/strip_look_color_matrices.dart';
+import '../utils/strip_look_matrix_bake.dart';
 import '../utils/logger.dart';
 
 /// Compose one Classic still as 6×4 / 4×6 and open print selection.
@@ -20,6 +22,7 @@ Future<String?> finishClassicSingle6x4({
   ApiService? api,
   SessionManager? sessionManager,
   PrintOrientation orientation = PrintOrientation.portrait,
+  String filterId = kDefaultStripFilterId,
 }) async {
   final sessionId =
       (sessionManager ?? SessionManager()).sessionId?.trim() ?? '';
@@ -28,10 +31,14 @@ Future<String?> finishClassicSingle6x4({
   }
 
   try {
+    final images = await bakeStripLookMatricesOntoDataUrls(
+      dataUrls: [imageDataUrl],
+      filterId: filterId,
+    );
     final result = await (api ?? ApiService()).composeStrip(
       sessionId: sessionId,
-      images: [imageDataUrl],
-      filter: kDefaultStripFilterId,
+      images: images,
+      filter: kStripComposePreBakedFilterId,
       frame: kDefaultStripFrameId,
       orientation: orientation,
     );

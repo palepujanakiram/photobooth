@@ -274,10 +274,14 @@ class PrintSelectionArgs {
   final String? stripPrintSize;
   final String? transformationRunId;
 
+  /// When true, Back returns to Pick your look so guests can change the compose.
+  final bool canEditLook;
+
   const PrintSelectionArgs({
     required this.generatedImages,
     this.stripPrintSize,
     this.transformationRunId,
+    this.canEditLook = false,
   });
 
   static PrintSelectionArgs? tryParse(Object? args) {
@@ -296,6 +300,7 @@ class PrintSelectionArgs {
             : null,
         transformationRunId:
             (rawRunId != null && rawRunId.isNotEmpty) ? rawRunId : null,
+        canEditLook: args['canEditLook'] == true,
       );
     }
     return null;

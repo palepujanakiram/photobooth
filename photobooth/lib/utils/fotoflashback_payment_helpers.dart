@@ -156,17 +156,15 @@ Future<void> navigateToFlashbackPrintSelection({
     coordinator.markExploreMore();
   }
 
-  await Navigator.of(context).pushNamedAndRemoveUntil(
+  // Push (do not removeUntil) so Back returns to Pick your look with state
+  // intact — guests can change filter/frame before finalizing checkout.
+  await Navigator.of(context).pushNamed(
     AppConstants.kRoutePrintSelection,
-    (route) =>
-        route.settings.name == AppConstants.kRouteExperienceChoice ||
-        route.settings.name == AppConstants.kRouteTerms ||
-        route.settings.name == AppConstants.kRouteHome ||
-        route.isFirst,
     arguments: PrintSelectionArgs(
       generatedImages: images,
       stripPrintSize: resolvedSize,
       transformationRunId: resolvedRunId,
+      canEditLook: true,
     ),
   );
 }

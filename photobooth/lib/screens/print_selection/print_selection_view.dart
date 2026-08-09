@@ -27,6 +27,7 @@ class PrintSelectionScreen extends StatefulWidget {
 class _PrintSelectionScreenState extends State<PrintSelectionScreen> {
   PrintSelectionViewModel? _viewModel;
   bool _exploreLaunchScheduled = false;
+  bool _canEditLook = false;
 
   @override
   void didChangeDependencies() {
@@ -37,6 +38,8 @@ class _PrintSelectionScreenState extends State<PrintSelectionScreen> {
     final coordinator = PrintSelectionCoordinator.instance;
     final images = args?.generatedImages ??
         List<GeneratedImage>.from(coordinator.images);
+    _canEditLook = args?.canEditLook == true ||
+        (coordinator.fromClassicStrip && Navigator.of(context).canPop());
     _viewModel = PrintSelectionViewModel(
       images: images,
       stripPrintSize: args?.stripPrintSize ?? coordinator.stripPrintSize,
@@ -61,6 +64,14 @@ class _PrintSelectionScreenState extends State<PrintSelectionScreen> {
     super.dispose();
   }
 
+  void _editLook() {
+    if (!mounted) return;
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      return;
+    }
+  }
+
   Future<void> _startExploreMoreAi() async {
     final coordinator = PrintSelectionCoordinator.instance;
     coordinator.markExploreMore();
@@ -81,10 +92,15 @@ class _PrintSelectionScreenState extends State<PrintSelectionScreen> {
     if (!mounted) return;
     PrintSelectionCoordinator.instance.awaitingExploreMoreReturn = false;
     final runId = vm.transformationRunId?.trim();
-    // Per-image printSize is authoritative (strip s6x2_2, AI s4x6/s6x4). Do not pass
-    // a session-wide strip override — Result used that as fallback for AI pages.
-    await Navigator.of(context).pushNamed(
+    // Finalize: drop Pick your look + this hub so checkout cannot bounce back
+    // into an unfinalized edit session.
+    await Navigator.of(context).pushNamedAndRemoveUntil(
       AppConstants.kRouteResult,
+      (route) =>
+          route.settings.name == AppConstants.kRouteExperienceChoice ||
+          route.settings.name == AppConstants.kRouteTerms ||
+          route.settings.name == AppConstants.kRouteHome ||
+          route.isFirst,
       arguments: ResultArgs(
         generatedImages: selected,
         printOrientation: orientation,
@@ -121,10 +137,44 @@ class _PrintSelectionScreenState extends State<PrintSelectionScreen> {
       return const Scaffold(body: SizedBox.shrink());
     }
     final colors = AppColors.of(context);
+    final canEditLook = _canEditLook && Navigator.of(context).canPop();
     return ChangeNotifierProvider.value(
       value: vm,
       child: Scaffold(
         backgroundColor: colors.backgroundColor,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: canEditLook
+              ? IconButton(
+                  icon: Icon(Icons.arrow_back, color: colors.textColor),
+                  tooltip: AppStrings.printSelectionEditLook,
+                  onPressed: _editLook,
+                )
+              : null,
+          automaticallyImplyLeading: false,
+          title: Text(
+            AppStrings.printSelectionTitle,
+            style: TextStyle(
+              color: colors.textColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          centerTitle: true,
+          actions: [
+            if (canEditLook)
+              TextButton(
+                onPressed: _editLook,
+                child: Text(
+                  AppStrings.printSelectionEditLook,
+                  style: TextStyle(
+                    color: colors.primaryColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+          ],
+        ),
         body: SafeArea(
           child: Consumer<PrintSelectionViewModel>(
             builder: (context, vm, _) {
@@ -134,15 +184,6 @@ class _PrintSelectionScreenState extends State<PrintSelectionScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      AppStrings.printSelectionTitle,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            color: colors.textColor,
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
                     Text(
                       AppStrings.printSelectionSubtitle,
                       textAlign: TextAlign.center,
