@@ -34,6 +34,7 @@ void main() {
 
     test('returns noneFound when enumeration finds no openable camera', () async {
       var prewarmStarted = false;
+      var uvcProbed = false;
       final result = await runTermsCameraPriming(
         ensurePermission: () async => true,
         preloadCameras: () async {},
@@ -41,15 +42,53 @@ void main() {
         startPrewarm: (_) async => prewarmStarted = true,
         hasOpenableCamera: (_) => false,
         isCameraPlatform: true,
+        probeAttachedUvc: () async {
+          uvcProbed = true;
+          return false;
+        },
       );
 
       expect(result.phase, TermsCameraPrimingPhase.noneFound);
       expect(prewarmStarted, isFalse);
+      expect(uvcProbed, isTrue);
       expect(result.allowsContinue, isFalse);
+    });
+
+    test('returns ready when CameraX is empty but UVC is attached', () async {
+      var prewarmStarted = false;
+      final result = await runTermsCameraPriming(
+        ensurePermission: () async => true,
+        preloadCameras: () async {},
+        classifyDevice: () async => AppDeviceType.androidTv,
+        startPrewarm: (_) async => prewarmStarted = true,
+        hasOpenableCamera: (_) => false,
+        isCameraPlatform: true,
+        probeAttachedUvc: () async => true,
+      );
+
+      expect(result.phase, TermsCameraPrimingPhase.ready);
+      expect(prewarmStarted, isFalse);
+      expect(result.allowsContinue, isTrue);
+    });
+
+    test('returns ready when CameraX preload throws but UVC is attached',
+        () async {
+      final result = await runTermsCameraPriming(
+        ensurePermission: () async => true,
+        preloadCameras: () async => throw StateError('enumerate failed'),
+        classifyDevice: () async => AppDeviceType.androidTv,
+        startPrewarm: (_) async {},
+        hasOpenableCamera: (_) => false,
+        isCameraPlatform: true,
+        probeAttachedUvc: () async => true,
+      );
+
+      expect(result.phase, TermsCameraPrimingPhase.ready);
     });
 
     test('starts prewarm and returns ready when a camera is available', () async {
       AppDeviceType? prewarmType;
+      var uvcProbed = false;
       final result = await runTermsCameraPriming(
         ensurePermission: () async => true,
         preloadCameras: () async {},
@@ -57,10 +96,15 @@ void main() {
         startPrewarm: (deviceType) async => prewarmType = deviceType,
         hasOpenableCamera: (_) => true,
         isCameraPlatform: true,
+        probeAttachedUvc: () async {
+          uvcProbed = true;
+          return false;
+        },
       );
 
       expect(result.phase, TermsCameraPrimingPhase.ready);
       expect(prewarmType, AppDeviceType.androidTv);
+      expect(uvcProbed, isFalse);
       expect(result.allowsContinue, isTrue);
     });
 
@@ -77,7 +121,7 @@ void main() {
       expect(result.phase, TermsCameraPrimingPhase.ready);
     });
 
-    test('returns failed when preloadCameras throws', () async {
+    test('returns failed when preloadCameras throws and no UVC', () async {
       final result = await runTermsCameraPriming(
         ensurePermission: () async => true,
         preloadCameras: () async => throw StateError('enumerate failed'),
@@ -85,10 +129,37 @@ void main() {
         startPrewarm: (_) async {},
         hasOpenableCamera: (_) => true,
         isCameraPlatform: true,
+        probeAttachedUvc: () async => false,
       );
 
       expect(result.phase, TermsCameraPrimingPhase.failed);
       expect(result.allowsContinue, isFalse);
+    });
+  });
+
+  group('termsHasUsableCaptureSource', () {
+    test('accepts CameraX or UVC', () {
+      expect(
+        termsHasUsableCaptureSource(
+          hasOpenableCameraX: true,
+          hasAttachedUvc: false,
+        ),
+        isTrue,
+      );
+      expect(
+        termsHasUsableCaptureSource(
+          hasOpenableCameraX: false,
+          hasAttachedUvc: true,
+        ),
+        isTrue,
+      );
+      expect(
+        termsHasUsableCaptureSource(
+          hasOpenableCameraX: false,
+          hasAttachedUvc: false,
+        ),
+        isFalse,
+      );
     });
   });
 

@@ -17,6 +17,7 @@ import '../../utils/kiosk_page_route.dart';
 import '../experience_choice/experience_choice_view.dart';
 import '../photo_capture/photo_capture_view.dart';
 import '../photo_capture/photo_capture_pose_setup_helpers.dart';
+import '../photo_capture/photo_capture_uvc_device_helpers.dart';
 import '../photo_capture/photo_capture_viewmodel.dart';
 import '../splash/bootstrap_route_args.dart';
 import '../webview/webview_screen.dart';
@@ -92,6 +93,8 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       hasOpenableCamera: (deviceType) =>
           CaptureViewModel.hasOpenableCaptureCamera(deviceType: deviceType),
       isCameraPlatform: supportsTermsCameraPriming,
+      // HDMI capture cards rarely appear in CameraX on Android TV — UVC counts.
+      probeAttachedUvc: hasAttachedUvcDevices,
     );
 
     if (!mounted) return;
