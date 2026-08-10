@@ -4,15 +4,16 @@ import 'dart:async';
 class ClassicStripAcceptPlan {
   const ClassicStripAcceptPlan({
     required this.resumePreviewBeforeHeavyWork,
-    required this.kickSurpriseMeAfterResume,
+    required this.scheduleSurpriseMeOnNextCountdown,
     required this.finishStrip,
   });
 
   /// True when more poses remain — remount must win over Gemini / Surprise Me.
   final bool resumePreviewBeforeHeavyWork;
 
-  /// Kick Surprise Me only after shot 1 and only once preview is healthy again.
-  final bool kickSurpriseMeAfterResume;
+  /// After shot 1: kick Surprise Me when shot 2 countdown actually starts
+  /// (not immediately after accept / remount), so LV warm-up is not contended.
+  final bool scheduleSurpriseMeOnNextCountdown;
 
   /// Last shot — navigate to looks (no remount).
   final bool finishStrip;
@@ -26,7 +27,7 @@ ClassicStripAcceptPlan planClassicStripAccept({
   final more = acceptedCountAfterAdd > 0 && acceptedCountAfterAdd < total;
   return ClassicStripAcceptPlan(
     resumePreviewBeforeHeavyWork: more,
-    kickSurpriseMeAfterResume: more && acceptedCountAfterAdd == 1,
+    scheduleSurpriseMeOnNextCountdown: more && acceptedCountAfterAdd == 1,
     finishStrip: acceptedCountAfterAdd >= total && total > 0,
   );
 }

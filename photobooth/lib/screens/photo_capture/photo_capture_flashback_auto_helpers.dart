@@ -58,8 +58,69 @@ int flashbackReviewSecondsRemaining({
 }
 
 /// Pose countdown length for the active capture mode.
-int captureCountdownSecondsForMode({required bool isFlashbackMultiShot}) {
-  return isFlashbackMultiShot
-      ? AppConstants.kFlashbackCaptureCountdownSeconds
-      : AppConstants.kCaptureCountdownSeconds;
+///
+/// Classic 4-shot: shot 1 uses the full window; shots 2–4 use the shorter
+/// follow-on timer ([acceptedShotCount] ≥ 1).
+int captureCountdownSecondsForMode({
+  required bool isFlashbackMultiShot,
+  int acceptedShotCount = 0,
+}) {
+  if (!isFlashbackMultiShot) return AppConstants.kCaptureCountdownSeconds;
+  if (acceptedShotCount >= 1) {
+    return AppConstants.kFlashbackFollowOnCountdownSeconds;
+  }
+  return AppConstants.kFlashbackCaptureCountdownSeconds;
+}
+
+/// Countdown step at which Classic + Pi should start [prepareStill].
+int flashbackSidecarStillPrepareAtSecond({required int acceptedShotCount}) {
+  if (acceptedShotCount >= 1) {
+    return AppConstants.kFlashbackFollowOnStillPrepareAtSecond;
+  }
+  return AppConstants.kFlashbackSidecarStillPrepareAtSecond;
+}
+
+/// Review-hold length before auto-accept for the still just taken.
+///
+/// [acceptedShotCountBeforeThis] is strip length *before* accepting this still
+/// (0 while reviewing shot 1).
+Duration flashbackShotReviewHoldDuration({
+  required int acceptedShotCountBeforeThis,
+  required int total,
+}) {
+  if (total == 1) return const Duration(milliseconds: 600);
+  if (acceptedShotCountBeforeThis >= 1) {
+    return AppConstants.kFlashbackFollowOnShotReviewDuration;
+  }
+  return AppConstants.kFlashbackShotReviewDuration;
+}
+
+/// Mid-strip status while waiting for LV / HDMI warmup (not counting down).
+bool shouldShowClassicBetweenShotReadyBanner({
+  required bool isFourShot,
+  required int acceptedCount,
+  required int total,
+  required bool hasCapturedPhoto,
+  required bool isCountingDown,
+  required bool isCapturing,
+  required bool cameraReadyForCapture,
+  required bool acceptingShot,
+}) {
+  if (!isFourShot || hasCapturedPhoto || isCountingDown || isCapturing) {
+    return false;
+  }
+  if (acceptedCount <= 0 || acceptedCount >= total || total <= 0) return false;
+  return acceptingShot || !cameraReadyForCapture;
+}
+
+/// Soft-fail when mask/prep is stuck with no shutter after countdown ends.
+bool shouldSoftFailHdmiMaskStall({
+  required bool maskArmedOrPrep,
+  required bool captureInFlight,
+  required bool isCapturing,
+  required bool isCountingDown,
+}) {
+  if (!maskArmedOrPrep || captureInFlight || isCapturing) return false;
+  if (isCountingDown) return false;
+  return true;
 }

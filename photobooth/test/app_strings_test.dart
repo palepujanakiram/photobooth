@@ -63,6 +63,11 @@ void main() {
       AppStrings.flashbackReviewHoldStatus(isLastShot: false, secondsLeft: 0),
       AppStrings.flashbackGettingReadyNextShot,
     );
+    expect(
+      AppStrings.flashbackGetReadyForShot(2, 4),
+      'Get ready — Shot 2 of 4',
+    );
+    expect(AppStrings.captureMaskStallRetry, contains('Tap Capture'));
     expect(AppStrings.printSelectionTotal(250), 'Total ₹250');
     expect(AppStrings.printSelectionContinue(0), 'Select a photo');
     expect(AppStrings.printSelectionContinue(2), 'Continue (2)');

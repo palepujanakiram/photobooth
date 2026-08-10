@@ -137,6 +137,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Timer? _poseIdleTimer;
   Timer? _poseLoadingWatchdog;
   Timer? _captureWatchdog;
+  Timer? _maskStallSoftFailTimer;
+  /// Classic 4-shot: Surprise Me deferred until shot 2 countdown starts.
+  bool _surpriseMeKickoffPending = false;
   bool _navigatingAwayFromCapture = false;
   bool _appInForeground = true;
 
@@ -244,6 +247,57 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           'Capture took too long. Tap Capture to retry or use Gallery.';
     });
     if (mounted) _maybeAdvanceFlashbackAutoChain();
+  }
+
+  void _armMaskStallSoftFailTimer() {
+    _maskStallSoftFailTimer?.cancel();
+    _maskStallSoftFailTimer = Timer(
+      AppConstants.kFlashbackMaskStallSoftFail,
+      _onMaskStallSoftFail,
+    );
+  }
+
+  void _cancelMaskStallSoftFailTimer() {
+    _maskStallSoftFailTimer?.cancel();
+    _maskStallSoftFailTimer = null;
+  }
+
+  void _onMaskStallSoftFail() {
+    _maskStallSoftFailTimer = null;
+    if (!mounted) return;
+    final maskOrPrep = _uvcHdmiStillMaskArmed || _sidecarStillPrepStarted;
+    if (!shouldSoftFailHdmiMaskStall(
+      maskArmedOrPrep: maskOrPrep,
+      captureInFlight: _uvcCaptureInFlight,
+      isCapturing: _captureViewModel.isCapturing,
+      isCountingDown: _captureViewModel.isCountingDown,
+    )) {
+      // Still ticking the pose countdown — check again shortly.
+      if (maskOrPrep &&
+          !_uvcCaptureInFlight &&
+          !_captureViewModel.isCapturing) {
+        _maskStallSoftFailTimer = Timer(
+          const Duration(seconds: 2),
+          _onMaskStallSoftFail,
+        );
+      }
+      return;
+    }
+    AppLogger.error('[HDMI_POSE] Mask stall soft-fail — clearing mask');
+    unawaited(
+      _captureViewModel.localCameraService?.postClientEvent(
+        'hdmi_mask_soft_fail',
+      ),
+    );
+    _captureViewModel.cancelCountdown();
+    _flashbackCountdownStarting = false;
+    _clearUvcTransientCaptureUi();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text(AppStrings.captureMaskStallRetry)),
+    );
+    setState(() {});
+    _maybeAdvanceFlashbackAutoChain();
   }
 
   void _onScrubProgressChanged() {
@@ -380,6 +434,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _stripFinishing = false;
     _navigatingAwayFromCapture = false;
     _uvcHdmiStillMaskArmed = false;
+    _sidecarStillPrepStarted = false;
+    _cancelMaskStallSoftFailTimer();
     if (_stripShots.isNotEmpty || _stripScrubFutures.isNotEmpty) {
       _stripShots.clear();
       _stripScrubFutures.clear();
@@ -471,6 +527,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       if (_captureViewModel.capturedPhoto == null && !_uvcCaptureInFlight) {
         _uvcHdmiStillMaskArmed = false;
         _sidecarStillPrepStarted = false;
+        _cancelMaskStallSoftFailTimer();
       }
       if (mounted && widget.sessionKind.isClassicOneShot) {
         if (_captureViewModel.capturedPhoto != null) {
@@ -577,9 +634,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _flashbackReviewTick = null;
 
     final total = _classicShotCap;
-    final hold = total == 1
-        ? const Duration(milliseconds: 600)
-        : AppConstants.kFlashbackShotReviewDuration;
+    final hold = flashbackShotReviewHoldDuration(
+      acceptedShotCountBeforeThis: _stripShots.length,
+      total: total,
+    );
     final endsAt = DateTime.now().add(hold);
     _flashbackReviewPhotoId = photo.id;
     _flashbackReviewEndsAt = endsAt;
@@ -635,7 +693,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
     _awaitGuestStartClassic = false;
     _flashbackCountdownStarting = true;
-    final seconds = captureCountdownSecondsForMode(isFlashbackMultiShot: true);
+    _maybeKickSurpriseMeOnShot2Countdown();
+    final seconds = captureCountdownSecondsForMode(
+      isFlashbackMultiShot: true,
+      acceptedShotCount: _stripShots.length,
+    );
     try {
       Future<void>? sidecarPrepare;
       if (_isUsingUvc) {
@@ -676,9 +738,32 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       if (_captureViewModel.capturedPhoto == null && !_uvcCaptureInFlight) {
         _uvcHdmiStillMaskArmed = false;
         _sidecarStillPrepStarted = false;
+        _cancelMaskStallSoftFailTimer();
       }
       if (mounted) _maybeAdvanceFlashbackAutoChain();
     }
+  }
+
+  /// Surprise Me after shot 1 accept waits until shot 2 countdown begins.
+  void _maybeKickSurpriseMeOnShot2Countdown() {
+    if (!_surpriseMeKickoffPending || _stripShots.isEmpty) return;
+    _surpriseMeKickoffPending = false;
+    final photo = _stripShots.first;
+    final enableSurprise =
+        context.read<AppSettingsManager>().settings?.enableSurpriseMeAi == true;
+    unawaited(
+      maybeKickoffSurpriseMeAfterShot1(
+        encodeShotDataUrl: () async {
+          final encoded =
+              await ClassicStripScrubCoordinator.instance.awaitEncodedReady();
+          if (encoded.isNotEmpty && encoded.first.dataUrl.trim().isNotEmpty) {
+            return encoded.first.dataUrl;
+          }
+          return ImageHelper.encodeImageToBase64(photo.imageFile);
+        },
+        enableSurpriseMeAi: enableSurprise,
+      ),
+    );
   }
 
   void _dropLastStripShot() {
@@ -688,6 +773,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _stripScrubFutures.removeLast();
     }
     ClassicStripScrubCoordinator.instance.dropLast();
+    if (_stripShots.isEmpty) {
+      _surpriseMeKickoffPending = false;
+    }
     _syncFlashbackSubtitle();
   }
 
@@ -868,15 +956,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _captureViewModel.localCameraService?.postClientEvent('hdmi_mask_armed'),
     );
     _syncCaptureWatchdog(_captureViewModel);
+    if (!_uvcCaptureInFlight) {
+      _armMaskStallSoftFailTimer();
+    }
     if (mounted) setState(() {});
   }
 
-  /// Starts Pi movie-LV teardown at [kFlashbackSidecarStillPrepareAtSecond]
-  /// so the real shutter can land when the 10s timer hits zero.
+  /// Starts Pi movie-LV teardown at the prepare-at second for this strip pose
+  /// so the real shutter can land when the timer hits zero.
   Future<void>? _maybeStartSidecarStillPrepare(int countdownStep) {
     final service = _captureViewModel.localCameraService;
     if (service == null || !service.isConfigured) return null;
-    if (countdownStep != AppConstants.kFlashbackSidecarStillPrepareAtSecond) {
+    final prepareAt = flashbackSidecarStillPrepareAtSecond(
+      acceptedShotCount: _stripShots.length,
+    );
+    if (countdownStep != prepareAt) {
       return null;
     }
     _sidecarStillPrepStarted = true;
@@ -1082,30 +1176,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         return;
       }
 
-      final enableSurprise = plan.kickSurpriseMeAfterResume &&
-          context.read<AppSettingsManager>().settings?.enableSurpriseMeAi ==
-              true;
+      final enableSurprisePending = context
+              .read<AppSettingsManager>()
+              .settings
+              ?.enableSurpriseMeAi ==
+          true;
 
-      // Remount / reuse live feed BEFORE encode + Gemini + Surprise Me.
+      // Remount / reuse live feed BEFORE encode + Gemini. Surprise Me waits
+      // until shot 2 countdown starts so LV warm-up is not contended.
       await _resumeAfterClassicShotAccepted();
       completePoseReadyGate(poseReady);
 
-      if (plan.kickSurpriseMeAfterResume) {
-        unawaited(
-          maybeKickoffSurpriseMeAfterShot1(
-            encodeShotDataUrl: () async {
-              await poseReady.future;
-              final encoded = await ClassicStripScrubCoordinator.instance
-                  .awaitEncodedReady();
-              if (encoded.isNotEmpty &&
-                  encoded.first.dataUrl.trim().isNotEmpty) {
-                return encoded.first.dataUrl;
-              }
-              return ImageHelper.encodeImageToBase64(photo.imageFile);
-            },
-            enableSurpriseMeAi: enableSurprise,
-          ),
-        );
+      if (plan.scheduleSurpriseMeOnNextCountdown && enableSurprisePending) {
+        _surpriseMeKickoffPending = true;
       }
     } finally {
       _flashbackAcceptingShot = false;
@@ -1473,6 +1556,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _uvcCaptureInFlight = false;
     _uvcHdmiStillMaskArmed = false;
     _sidecarStillPrepStarted = false;
+    _cancelMaskStallSoftFailTimer();
     _syncCaptureWatchdog(_captureViewModel);
   }
 
@@ -2319,6 +2403,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _stopPoseIdleTimer();
     _cancelPoseLoadingWatchdog();
     _cancelCaptureWatchdog();
+    _cancelMaskStallSoftFailTimer();
     _cancelFlashbackAutoTimers();
     _uvcReconnectTimer?.cancel();
     _uvcReconnectTimer = null;
@@ -3283,18 +3368,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   /// Opaque card while HDMI may still show the Canon body status LCD (ISO / Q).
-  Widget _uvcStartingLiveViewCard() {
-    return const ColoredBox(
+  Widget _uvcStartingLiveViewCard({String? message}) {
+    return ColoredBox(
       color: Colors.black,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: Colors.white),
-            SizedBox(height: 12),
+            const CircularProgressIndicator(color: Colors.white),
+            const SizedBox(height: 12),
             Text(
-              AppStrings.captureStartingPreview,
-              style: TextStyle(color: Colors.white70),
+              message ?? AppStrings.captureStartingPreview,
+              style: const TextStyle(color: Colors.white70),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -3319,7 +3405,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     // First HDMI frames after open are often the body info screen until LV
     // settles — mask until warmup ends.
     if (_uvcPreviewWarmupActive && viewModel.capturedPhoto == null) {
-      return _uvcStartingLiveViewCard();
+      final midStrip = _isFlashbackFourShot && _stripShots.isNotEmpty;
+      return _uvcStartingLiveViewCard(
+        message: midStrip ? _classicMidStripReadyMessage() : null,
+      );
     }
 
     if (_uvcFeedAsleep) {
@@ -3559,6 +3648,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
       _uvcPhase = UvcFeedPhase.capturing;
       _uvcCaptureInFlight = true;
+      _cancelMaskStallSoftFailTimer();
       _uvcReconnectTimer?.cancel();
       _cancelUvcIdleSleepTimer();
       if (mounted) setState(() {});
@@ -3774,9 +3864,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             Text(
               allowGallery
                   ? AppStrings.captureNoCameraUploadHint
-                  : (_isFlashbackFourShot
-                      ? AppStrings.flashbackGettingReadyNextShot
-                      : 'Waiting for camera…'),
+                  : _noCamerasWaitingMessage(),
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.85),
                 fontSize: 15,
@@ -3845,6 +3933,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
+  String _noCamerasWaitingMessage() {
+    if (!_isFlashbackFourShot) return 'Waiting for camera…';
+    if (_stripShots.isEmpty) return AppStrings.flashbackGettingReadyNextShot;
+    final total = _classicShotCap > 0 ? _classicShotCap : 1;
+    final next = (_stripShots.length + 1).clamp(1, total);
+    return AppStrings.flashbackGetReadyForShot(next, total);
+  }
+
+  String _classicMidStripReadyMessage() {
+    final total = _classicShotCap;
+    if (total <= 0) return AppStrings.flashbackGettingReadyNextShot;
+    final next = (_stripShots.length + 1).clamp(1, total);
+    return AppStrings.flashbackGetReadyForShot(next, total);
+  }
+
   Widget _buildStartingCameraState({String message = AppStrings.captureStartingPreview}) {
     return Center(
       child: Column(
@@ -3860,6 +3963,28 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildClassicBetweenShotReadyBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Text(
+        _classicMidStripReadyMessage(),
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          height: 1.3,
+        ),
       ),
     );
   }
@@ -4003,7 +4128,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     switch (phase) {
       case CaptureBodyPhase.starting:
         final startingMessage = midStripRemount
-            ? AppStrings.flashbackGettingReadyNextShot
+            ? _classicMidStripReadyMessage()
             : AppStrings.captureStartingPreview;
         phaseKey = 'starting-$startingMessage';
         body = _buildStartingCameraState(message: startingMessage);
@@ -4038,10 +4163,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           previewWidget = _buildUvcPreview(context, viewModel);
         } else if (viewModel.cameraController == null) {
           // Controller briefly null during re-init — never flash Gallery CTAs.
-          // "Next shot" copy is only for mid-strip 4-shot remounts (not Classic 1-shot).
+          // "Get ready" copy is only for mid-strip 4-shot remounts (not Classic 1-shot).
           previewWidget = midStripRemount
               ? _buildStartingCameraState(
-                  message: AppStrings.flashbackGettingReadyNextShot,
+                  message: _classicMidStripReadyMessage(),
                 )
               : _buildStartingCameraState(
                   message: AppStrings.captureStartingPreview,
@@ -4313,6 +4438,25 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                   if (viewModel.isCountingDown)
                     Positioned.fill(
                       child: _buildCountdownOverlay(context, viewModel.countdownValue!),
+                    ),
+                  if (!hasCapturedPhoto &&
+                      shouldShowClassicBetweenShotReadyBanner(
+                        isFourShot: _isFlashbackFourShot,
+                        acceptedCount: _stripShots.length,
+                        total: _classicShotCap,
+                        hasCapturedPhoto: hasCapturedPhoto,
+                        isCountingDown: viewModel.isCountingDown,
+                        isCapturing: viewModel.isCapturing ||
+                            _uvcCaptureInFlight ||
+                            _uvcHdmiStillMaskArmed,
+                        cameraReadyForCapture: _flashbackCameraReady,
+                        acceptingShot: _flashbackAcceptingShot,
+                      ))
+                    Positioned(
+                      left: 12,
+                      right: 12,
+                      bottom: 12,
+                      child: _buildClassicBetweenShotReadyBanner(),
                     ),
                   if (hasCapturedPhoto &&
                       _isFlashbackMultiShot &&
@@ -4698,6 +4842,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final flashback = _isFlashbackMultiShot || _isFlashbackSingleShot;
     final countdownSecs = captureCountdownSecondsForMode(
       isFlashbackMultiShot: flashback,
+      acceptedShotCount: _isFlashbackFourShot ? _stripShots.length : 0,
     );
 
     return SizedBox(

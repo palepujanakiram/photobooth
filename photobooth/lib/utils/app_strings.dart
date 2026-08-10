@@ -464,6 +464,14 @@ abstract final class AppStrings {
   /// Shown during the inter-shot hold while the guest reviews the still.
   static const flashbackGettingReadyNextShot = 'Getting ready for the next shot…';
 
+  /// Mid-strip while LV / HDMI warmup settles before the next countdown.
+  static String flashbackGetReadyForShot(int current, int total) =>
+      'Get ready — Shot $current of $total';
+
+  /// HDMI mask armed but shutter never began — soft-fail snackbar.
+  static const captureMaskStallRetry =
+      'Camera took too long. Tap Capture to try again.';
+
   /// Inter-shot hold on the final Classic still before looks.
   static const flashbackReviewLastShot = 'Looking good! Continuing soon…';
 

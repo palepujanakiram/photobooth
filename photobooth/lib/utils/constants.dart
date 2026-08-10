@@ -250,13 +250,27 @@ class AppConstants {
   /// FotoFlashback Classic 4-shot booth: longer pose window between snaps.
   static const int kFlashbackCaptureCountdownSeconds = 10;
 
+  /// Classic 4-shot shots 2–4: shorter pose window (shot 1 keeps 10s).
+  static const int kFlashbackFollowOnCountdownSeconds = 7;
+
   /// Classic + Pi DSLR: begin movie-LV teardown when the countdown reaches this
   /// second so the real shutter can fire as the timer hits zero (~3–4s prep).
   static const int kFlashbackSidecarStillPrepareAtSecond = 5;
 
+  /// Classic 4-shot shots 2–4: start prepareStill earlier in the shorter timer.
+  static const int kFlashbackFollowOnStillPrepareAtSecond = 3;
+
   /// Brief hold on the just-taken Classic shot before auto-continuing.
   /// Tap Retake during this window (or Retake last on the next countdown).
   static const Duration kFlashbackShotReviewDuration = Duration(seconds: 8);
+
+  /// Classic 4-shot reviews after shot 1: shorter hold before the next pose.
+  static const Duration kFlashbackFollowOnShotReviewDuration =
+      Duration(seconds: 5);
+
+  /// If HDMI still-mask is armed but shutter never starts, recover quickly
+  /// instead of waiting for the long capture watchdog (~35s).
+  static const Duration kFlashbackMaskStallSoftFail = Duration(seconds: 4);
 
   /// POSE screen: return to Terms after this much user inactivity (live feed or review).
   static const Duration kCaptureScreenIdleResetDuration = Duration(minutes: 3);

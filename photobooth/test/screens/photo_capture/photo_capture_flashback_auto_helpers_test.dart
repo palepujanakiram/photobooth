@@ -4,16 +4,171 @@ import 'package:photobooth/utils/constants.dart';
 
 void main() {
   group('captureCountdownSecondsForMode', () {
-    test('Classic uses 10s; AI uses 5s', () {
+    test('Classic shot 1 uses 10s; follow-on uses 7s; AI uses 5s', () {
       expect(
         captureCountdownSecondsForMode(isFlashbackMultiShot: true),
         AppConstants.kFlashbackCaptureCountdownSeconds,
+      );
+      expect(
+        captureCountdownSecondsForMode(
+          isFlashbackMultiShot: true,
+          acceptedShotCount: 1,
+        ),
+        AppConstants.kFlashbackFollowOnCountdownSeconds,
       );
       expect(
         captureCountdownSecondsForMode(isFlashbackMultiShot: false),
         AppConstants.kCaptureCountdownSeconds,
       );
       expect(AppConstants.kFlashbackCaptureCountdownSeconds, 10);
+      expect(AppConstants.kFlashbackFollowOnCountdownSeconds, 7);
+    });
+  });
+
+  group('flashbackSidecarStillPrepareAtSecond', () {
+    test('shot 1 prepares at 5; follow-on at 3', () {
+      expect(
+        flashbackSidecarStillPrepareAtSecond(acceptedShotCount: 0),
+        AppConstants.kFlashbackSidecarStillPrepareAtSecond,
+      );
+      expect(
+        flashbackSidecarStillPrepareAtSecond(acceptedShotCount: 2),
+        AppConstants.kFlashbackFollowOnStillPrepareAtSecond,
+      );
+      expect(AppConstants.kFlashbackSidecarStillPrepareAtSecond, 5);
+      expect(AppConstants.kFlashbackFollowOnStillPrepareAtSecond, 3);
+    });
+  });
+
+  group('flashbackShotReviewHoldDuration', () {
+    test('1-shot is brief; shot 1 review 8s; later reviews 5s', () {
+      expect(
+        flashbackShotReviewHoldDuration(
+          acceptedShotCountBeforeThis: 0,
+          total: 1,
+        ),
+        const Duration(milliseconds: 600),
+      );
+      expect(
+        flashbackShotReviewHoldDuration(
+          acceptedShotCountBeforeThis: 0,
+          total: 4,
+        ),
+        AppConstants.kFlashbackShotReviewDuration,
+      );
+      expect(
+        flashbackShotReviewHoldDuration(
+          acceptedShotCountBeforeThis: 1,
+          total: 4,
+        ),
+        AppConstants.kFlashbackFollowOnShotReviewDuration,
+      );
+      expect(AppConstants.kFlashbackShotReviewDuration.inSeconds, 8);
+      expect(AppConstants.kFlashbackFollowOnShotReviewDuration.inSeconds, 5);
+    });
+  });
+
+  group('shouldShowClassicBetweenShotReadyBanner', () {
+    test('shows mid-strip while camera not ready', () {
+      expect(
+        shouldShowClassicBetweenShotReadyBanner(
+          isFourShot: true,
+          acceptedCount: 1,
+          total: 4,
+          hasCapturedPhoto: false,
+          isCountingDown: false,
+          isCapturing: false,
+          cameraReadyForCapture: false,
+          acceptingShot: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('hides during countdown, review, or when ready', () {
+      expect(
+        shouldShowClassicBetweenShotReadyBanner(
+          isFourShot: true,
+          acceptedCount: 1,
+          total: 4,
+          hasCapturedPhoto: false,
+          isCountingDown: true,
+          isCapturing: false,
+          cameraReadyForCapture: false,
+          acceptingShot: false,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldShowClassicBetweenShotReadyBanner(
+          isFourShot: true,
+          acceptedCount: 1,
+          total: 4,
+          hasCapturedPhoto: false,
+          isCountingDown: false,
+          isCapturing: false,
+          cameraReadyForCapture: true,
+          acceptingShot: false,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldShowClassicBetweenShotReadyBanner(
+          isFourShot: true,
+          acceptedCount: 0,
+          total: 4,
+          hasCapturedPhoto: false,
+          isCountingDown: false,
+          isCapturing: false,
+          cameraReadyForCapture: false,
+          acceptingShot: true,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('shouldSoftFailHdmiMaskStall', () {
+    test('true when mask stuck after countdown', () {
+      expect(
+        shouldSoftFailHdmiMaskStall(
+          maskArmedOrPrep: true,
+          captureInFlight: false,
+          isCapturing: false,
+          isCountingDown: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('false while counting or shutter in flight', () {
+      expect(
+        shouldSoftFailHdmiMaskStall(
+          maskArmedOrPrep: true,
+          captureInFlight: false,
+          isCapturing: false,
+          isCountingDown: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldSoftFailHdmiMaskStall(
+          maskArmedOrPrep: true,
+          captureInFlight: true,
+          isCapturing: false,
+          isCountingDown: false,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldSoftFailHdmiMaskStall(
+          maskArmedOrPrep: false,
+          captureInFlight: false,
+          isCapturing: false,
+          isCountingDown: false,
+        ),
+        isFalse,
+      );
     });
   });
 
