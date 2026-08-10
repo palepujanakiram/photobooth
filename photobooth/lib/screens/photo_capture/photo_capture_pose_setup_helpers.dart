@@ -13,13 +13,15 @@ bool shouldForceSidecarLivePreview({required bool sidecarConfigured}) {
 
 /// Whether POSE should show Pi MJPEG instead of opening CameraX/UVC.
 ///
-/// Classic (1-shot + 4-shot) always uses HDMI/UVC + Canon LV hold.
+/// Classic (1-shot + 4-shot) prefers HDMI/UVC + Canon LV hold. When HDMI open
+/// fails, [classicSidecarFallback] may temporarily use Pi `/camera/live`.
 bool shouldUseSidecarPosePreview({
   required bool classicSession,
   required bool sidecarLivePreviewEnabled,
   required bool sidecarConfigured,
+  bool classicSidecarFallback = false,
 }) {
-  if (classicSession) return false;
+  if (classicSession) return classicSidecarFallback;
   if (sidecarLivePreviewEnabled) return true;
   return shouldForceSidecarLivePreview(sidecarConfigured: sidecarConfigured);
 }

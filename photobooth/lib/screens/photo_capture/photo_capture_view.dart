@@ -125,6 +125,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Timer? _uvcEntryProbeTimer;
   Future<void> _captureInitOp = Future<void>.value();
   bool _skipUvcForCameraXSession = false;
+  /// Classic: temporarily use Pi MJPEG when HDMI/UVC will not open.
+  bool _classicSidecarPreviewFallback = false;
+  /// UVC/HDMI or Pi still expected — do not show CameraX "no camera" UI.
+  bool _expectExternalCaptureSource = false;
   DateTime? _uvcPreviewReadyAt;
   /// Last Canon LV ensure reported an active Pi hold (shorten HDMI mask).
   bool _canonLvHolding = false;
@@ -879,12 +883,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         classicFourShotSession: _isFlashbackFourShot,
       );
 
-  /// Classic always uses HDMI/UVC; AI may use Pi MJPEG when admin enables it.
+  /// Classic prefers HDMI/UVC; fallback uses Pi MJPEG when HDMI open fails.
   bool get _useSidecarPosePreview => shouldUseSidecarPosePreview(
         classicSession: widget.sessionKind.isClassic,
         sidecarLivePreviewEnabled: _captureViewModel.usesSidecarLivePreview,
         sidecarConfigured:
             _captureViewModel.localCameraService?.isConfigured == true,
+        classicSidecarFallback: _classicSidecarPreviewFallback,
       );
 
   bool get _isFlashbackSingleShot => widget.sessionKind.isClassicOneShot;
@@ -2069,13 +2074,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         );
         if (!mounted) return;
         if (uvcReady) {
+          _expectExternalCaptureSource = true;
+          _classicSidecarPreviewFallback = false;
           await _finishPrewarmPoseSetup();
           return;
         }
         await _clearUvcBinding();
-        // CameraX fallback below — do not retry UVC in the same POSE visit.
+        // Classic / HDMI booth: do NOT abandon UVC for empty CameraX — that
+        // shows "No camera detected" while Terms/Settings still see the DSLR.
+        if (await _recoverClassicPoseAfterUvcOpenFailed()) {
+          return;
+        }
+        // Non-Classic kiosk: CameraX fallback below.
         _skipUvcForCameraXSession = true;
       } else {
+        _expectExternalCaptureSource = true;
         await _finishPrewarmPoseSetup();
         return;
       }
@@ -2116,6 +2129,59 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       await _captureViewModel.disposeCamera();
     }
     _skipUvcForCameraXSession = false;
+  }
+
+  /// After HDMI/UVC open fails on Classic: keep probing UVC and/or use Pi live.
+  ///
+  /// Returns true when POSE setup should stop (do not fall through to empty
+  /// CameraX → "No camera detected").
+  Future<bool> _recoverClassicPoseAfterUvcOpenFailed() async {
+    final classic = widget.sessionKind.isClassic;
+    final sidecar = _captureViewModel.localCameraService;
+    final sidecarConfigured = sidecar?.isConfigured == true;
+    final uvcAttached = await hasAttachedUvcDevices();
+    if (!mounted) return true;
+
+    if (!classic && !uvcAttached && !sidecarConfigured) {
+      return false;
+    }
+
+    _expectExternalCaptureSource = true;
+    _skipUvcForCameraXSession = false;
+
+    if (classic && sidecarConfigured) {
+      try {
+        final healthy = await sidecar!.isHealthy().timeout(
+          const Duration(seconds: 3),
+          onTimeout: () => false,
+        );
+        if (healthy && mounted) {
+          AppLogger.info(
+            'POSE Classic: UVC open failed — using Pi live preview fallback '
+            '(HDMI will keep probing)',
+          );
+          _classicSidecarPreviewFallback = true;
+          sidecar.setForceLivePreview(true);
+          await _armCanonLiveViewForPose();
+          if (!mounted) return true;
+          await _captureViewModel.prepareSidecarLivePreview();
+          if (!mounted) return true;
+          unawaited(
+            sidecar.postClientEvent('pose_classic_sidecar_fallback', {
+              'uvcAttached': uvcAttached,
+            }),
+          );
+        }
+      } on Object catch (e) {
+        AppLogger.warning('POSE Classic sidecar fallback health check: $e');
+      }
+    }
+
+    if (uvcAttached || classic) {
+      _startUvcEntryProbe();
+    }
+    await _finishPrewarmPoseSetup();
+    return true;
   }
 
   /// Common function to reset and initialize cameras
@@ -2220,11 +2286,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             ?.photoUploadAllowed ==
         true;
     final camerasEmpty = _captureViewModel.availableCameras.isEmpty;
+    final forceUvcRetry = widget.sessionKind.isClassic ||
+        _expectExternalCaptureSource ||
+        (_captureViewModel.localCameraService?.isConfigured == true);
     final skipUvcProbe = !shouldProbeUvcAfterNoCameraX(
       photoUploadAllowed: uploadAllowed,
       camerasEmpty: camerasEmpty,
       uvcFeedHealthy: _uvcFeedIsHealthy,
       cameraReady: _captureViewModel.isReady,
+      forceUvcRetry: forceUvcRetry,
     );
 
     if (skipUvcProbe) {
@@ -2237,6 +2307,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         !_captureViewModel.isInitializing &&
         !_skipUvcForCameraXSession &&
         defaultTargetPlatform == TargetPlatform.android) {
+      _expectExternalCaptureSource = true;
       _startUvcEntryProbe();
     } else {
       _stopUvcEntryProbe();
@@ -2330,6 +2401,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!mounted || _uvcFeedIsHealthy) return;
     final ok = await _tryInitializeUvc();
     if (!mounted || !ok) return;
+    _classicSidecarPreviewFallback = false;
+    _captureViewModel.localCameraService?.setForceLivePreview(false);
+    _expectExternalCaptureSource = true;
     _stopUvcEntryProbe();
     setState(() {});
   }
@@ -2422,10 +2496,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   Future<void> _reportCaptureScreenNoCameraIfNeeded() async {
     if (!mounted || _isUsingUvc) return;
+    if (_expectExternalCaptureSource || _useSidecarPosePreview) return;
     final vm = _captureViewModel;
     if (vm.isLoadingCameras || vm.isInitializing) return;
     if (vm.availableCameras.isNotEmpty) return;
     if (vm.hasError) return;
+    if (vm.localCameraService?.isConfigured == true) return;
 
     await vm.reportCameraNotFound(
       reason: 'No camera available on capture screen',
@@ -4108,6 +4184,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       isReady: viewModel.isReady,
       cameraSetupStalled: setupStalled,
       usesSidecarLivePreview: _useSidecarPosePreview,
+      expectExternalCaptureSource: _expectExternalCaptureSource ||
+          widget.sessionKind.isClassic ||
+          (_captureViewModel.localCameraService?.isConfigured == true),
     );
   }
 
@@ -4160,6 +4239,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       hasCapturedPhoto: viewModel.capturedPhoto != null,
       isSelectingFromGallery: viewModel.isSelectingFromGallery,
       usesSidecarLivePreview: _useSidecarPosePreview,
+      expectExternalCaptureSource: _expectExternalCaptureSource ||
+          widget.sessionKind.isClassic ||
+          (viewModel.localCameraService?.isConfigured == true),
     );
 
     final midStripRemount =

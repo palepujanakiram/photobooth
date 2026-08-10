@@ -136,6 +136,28 @@ void main() {
       expect(_starting(isReady: true), isFalse);
     });
 
+    test('stays starting while expecting external capture with empty CameraX',
+        () {
+      expect(
+        isCapturePreviewStarting(
+          hasCapturedPhoto: false,
+          isDesktopCaptureMode: false,
+          isLoadingCameras: false,
+          isInitializing: false,
+          isCapturing: false,
+          isUsingUvc: false,
+          uvcHoldLivePreviewClosed: false,
+          uvcInitializing: false,
+          uvcOpeningController: false,
+          uvcControllerReady: false,
+          camerasEmpty: true,
+          isReady: false,
+          expectExternalCaptureSource: true,
+        ),
+        isTrue,
+      );
+    });
+
     test('sidecar live preview is not stuck in starting spinner', () {
       expect(
         isCapturePreviewStarting(
@@ -182,6 +204,20 @@ void main() {
           hasCapturedPhoto: false,
         ),
         CaptureBodyPhase.noCameras,
+      );
+    });
+
+    test('external capture source avoids noCameras when CameraX empty', () {
+      expect(
+        resolveCaptureBodyPhase(
+          isPreviewStarting: false,
+          camerasEmpty: true,
+          hasError: false,
+          isUsingUvc: false,
+          hasCapturedPhoto: false,
+          expectExternalCaptureSource: true,
+        ),
+        CaptureBodyPhase.live,
       );
     });
 
@@ -272,6 +308,19 @@ void main() {
           cameraReady: true,
         ),
         isFalse,
+      );
+    });
+
+    test('forceUvcRetry keeps probing when upload is allowed', () {
+      expect(
+        shouldProbeUvcAfterNoCameraX(
+          photoUploadAllowed: true,
+          camerasEmpty: true,
+          uvcFeedHealthy: false,
+          cameraReady: false,
+          forceUvcRetry: true,
+        ),
+        isTrue,
       );
     });
 

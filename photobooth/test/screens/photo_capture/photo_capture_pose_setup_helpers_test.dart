@@ -60,6 +60,15 @@ void main() {
     );
     expect(
       shouldUseSidecarPosePreview(
+        classicSession: true,
+        sidecarLivePreviewEnabled: false,
+        sidecarConfigured: true,
+        classicSidecarFallback: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldUseSidecarPosePreview(
         classicSession: false,
         sidecarLivePreviewEnabled: true,
         sidecarConfigured: true,

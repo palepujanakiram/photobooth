@@ -16,6 +16,7 @@ bool isCapturePreviewStarting({
   required bool isReady,
   bool cameraSetupStalled = false,
   bool usesSidecarLivePreview = false,
+  bool expectExternalCaptureSource = false,
 }) {
   if (hasCapturedPhoto) return false;
   if (isCapturing) return false;
@@ -28,6 +29,8 @@ bool isCapturePreviewStarting({
     if (uvcInitializing || uvcOpeningController) return true;
     return !uvcControllerReady;
   }
+  // USB/HDMI or Pi still expected — keep starting UI while probes retry.
+  if (expectExternalCaptureSource && camerasEmpty) return true;
   // Enumeration finished with nothing — show no-camera / upload UI, not spinner.
   if (camerasEmpty) return false;
   return !isReady;
@@ -49,17 +52,25 @@ CaptureBodyPhase resolveCaptureBodyPhase({
   required bool hasCapturedPhoto,
   bool isSelectingFromGallery = false,
   bool usesSidecarLivePreview = false,
+  bool expectExternalCaptureSource = false,
 }) {
   if (isPreviewStarting) return CaptureBodyPhase.starting;
   // Gallery / phone upload review must not fall back to the empty-camera screen.
   if (hasCapturedPhoto || isSelectingFromGallery) {
     return CaptureBodyPhase.live;
   }
-  // Prefer upload / retry UI over fatal error when no camera was enumerated.
-  if (camerasEmpty && !isUsingUvc && !usesSidecarLivePreview) {
+  // Prefer upload / retry UI over fatal error when no camera was enumerated —
+  // unless UVC/HDMI or Pi sidecar is still expected (Classic booth).
+  if (camerasEmpty &&
+      !isUsingUvc &&
+      !usesSidecarLivePreview &&
+      !expectExternalCaptureSource) {
     return CaptureBodyPhase.noCameras;
   }
-  if (hasError && !isUsingUvc && !usesSidecarLivePreview) {
+  if (hasError &&
+      !isUsingUvc &&
+      !usesSidecarLivePreview &&
+      !expectExternalCaptureSource) {
     return CaptureBodyPhase.error;
   }
   return CaptureBodyPhase.live;
@@ -71,8 +82,11 @@ bool shouldProbeUvcAfterNoCameraX({
   required bool camerasEmpty,
   required bool uvcFeedHealthy,
   required bool cameraReady,
+  bool forceUvcRetry = false,
 }) {
   if (uvcFeedHealthy || cameraReady) return false;
+  // Classic / HDMI booths: keep probing even when Gallery upload is enabled.
+  if (forceUvcRetry && camerasEmpty) return true;
   // Upload path is available — do not keep opening UVC in the background.
   if (photoUploadAllowed && camerasEmpty) return false;
   return camerasEmpty;

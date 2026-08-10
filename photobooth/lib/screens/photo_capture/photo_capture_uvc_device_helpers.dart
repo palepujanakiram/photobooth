@@ -34,7 +34,10 @@ Future<bool> hasAttachedUvcDevices() async {
   if (defaultTargetPlatform != TargetPlatform.android) return false;
   try {
     if (!await UvcCamera.isSupported()) return false;
-    if (!await ensureAndroidCameraPermissionForUvc()) return false;
+    // Request if needed — Terms may call this immediately after the first grant.
+    if (!await ensureAndroidCameraPermissionForUvc(requestIfNeeded: true)) {
+      return false;
+    }
     final devices = await UvcCamera.getDevices();
     return hasUvcWebcamDevices(devices);
   } catch (_) {

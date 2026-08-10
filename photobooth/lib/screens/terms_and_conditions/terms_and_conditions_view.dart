@@ -24,6 +24,8 @@ import '../webview/webview_screen.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/api_service.dart';
 import '../../services/kiosk_manager.dart';
+import '../../services/local_camera_service.dart';
+import '../../utils/camera_sidecar_config.dart';
 import '../../utils/classic_photos_enabled_sync.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
@@ -95,10 +97,29 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       isCameraPlatform: supportsTermsCameraPriming,
       // HDMI capture cards rarely appear in CameraX on Android TV — UVC counts.
       probeAttachedUvc: hasAttachedUvcDevices,
+      // Pi DSLR booth: healthy sidecar is enough to Continue (POSE opens HDMI).
+      probeSidecarHealthy: _probeSidecarHealthyForTerms,
     );
 
     if (!mounted) return;
     setState(() => _cameraPrimingPhase = result.phase);
+  }
+
+  Future<bool> _probeSidecarHealthyForTerms() async {
+    if (!mounted) return false;
+    final settings = context.read<AppSettingsManager>().settings;
+    final service = LocalCameraService(
+      config: resolveCameraSidecarConfig(settings),
+    );
+    if (!service.isConfigured) return false;
+    try {
+      return await service.isHealthy().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => false,
+      );
+    } on Object {
+      return false;
+    }
   }
 
   Future<void> _retryCameraPriming() async {

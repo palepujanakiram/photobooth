@@ -51,6 +51,14 @@ void main() {
     deviceSubclass: 0,
   );
 
+  const vendorSpecificCaptureCard = UvcCameraDevice(
+    name: 'HDMI Capture',
+    vendorId: 0x534d,
+    productId: 0x2109,
+    deviceClass: 255,
+    deviceSubclass: 0,
+  );
+
   test('isUvcWebcamDevice excludes DNP printer on USB', () {
     expect(isUvcWebcamDevice(dnpPrinter), isFalse);
   });
@@ -59,6 +67,10 @@ void main() {
     expect(isUvcWebcamDevice(uvcWebcam), isTrue);
     expect(isUvcWebcamDevice(legacyVideoClass), isTrue);
     expect(isUvcWebcamDevice(compositeWebcam), isTrue);
+  });
+
+  test('isUvcWebcamDevice accepts vendor-specific HDMI capture cards', () {
+    expect(isUvcWebcamDevice(vendorSpecificCaptureCard), isTrue);
   });
 
   test('isUvcWebcamDevice excludes printer and hub classes', () {

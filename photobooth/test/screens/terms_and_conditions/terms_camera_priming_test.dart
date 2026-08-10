@@ -121,6 +121,27 @@ void main() {
       expect(result.phase, TermsCameraPrimingPhase.ready);
     });
 
+    test('returns ready when CameraX is empty but sidecar is healthy', () async {
+      var sidecarProbed = false;
+      final result = await runTermsCameraPriming(
+        ensurePermission: () async => true,
+        preloadCameras: () async {},
+        classifyDevice: () async => AppDeviceType.androidTv,
+        startPrewarm: (_) async {},
+        hasOpenableCamera: (_) => false,
+        isCameraPlatform: true,
+        probeAttachedUvc: () async => false,
+        probeSidecarHealthy: () async {
+          sidecarProbed = true;
+          return true;
+        },
+      );
+
+      expect(result.phase, TermsCameraPrimingPhase.ready);
+      expect(sidecarProbed, isTrue);
+      expect(result.allowsContinue, isTrue);
+    });
+
     test('returns failed when preloadCameras throws and no UVC', () async {
       final result = await runTermsCameraPriming(
         ensurePermission: () async => true,
@@ -130,6 +151,7 @@ void main() {
         hasOpenableCamera: (_) => true,
         isCameraPlatform: true,
         probeAttachedUvc: () async => false,
+        probeSidecarHealthy: () async => false,
       );
 
       expect(result.phase, TermsCameraPrimingPhase.failed);
@@ -138,7 +160,7 @@ void main() {
   });
 
   group('termsHasUsableCaptureSource', () {
-    test('accepts CameraX or UVC', () {
+    test('accepts CameraX, UVC, or sidecar', () {
       expect(
         termsHasUsableCaptureSource(
           hasOpenableCameraX: true,
@@ -150,6 +172,14 @@ void main() {
         termsHasUsableCaptureSource(
           hasOpenableCameraX: false,
           hasAttachedUvc: true,
+        ),
+        isTrue,
+      );
+      expect(
+        termsHasUsableCaptureSource(
+          hasOpenableCameraX: false,
+          hasAttachedUvc: false,
+          hasSidecarCamera: true,
         ),
         isTrue,
       );

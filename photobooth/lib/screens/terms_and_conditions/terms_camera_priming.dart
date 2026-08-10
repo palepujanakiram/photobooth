@@ -52,20 +52,22 @@ bool termsCameraPrimingAllowsContinue({
 
 /// True when Terms may treat the booth as camera-ready.
 ///
-/// CameraX enumeration is preferred; UVC/HDMI capture cards often never appear
-/// in [availableCameras] on Android TV — an attached UVC webcam still counts.
+/// CameraX enumeration is preferred; UVC/HDMI capture cards and a healthy Pi
+/// DSLR sidecar also count (Android TV often omits capture cards from
+/// [availableCameras]).
 bool termsHasUsableCaptureSource({
   required bool hasOpenableCameraX,
   required bool hasAttachedUvc,
+  bool hasSidecarCamera = false,
 }) {
-  return hasOpenableCameraX || hasAttachedUvc;
+  return hasOpenableCameraX || hasAttachedUvc || hasSidecarCamera;
 }
 
 /// Permission, enumeration, and optional prewarm kick-off for Terms idle time.
 ///
-/// [probeAttachedUvc] is optional; when CameraX finds nothing (or enumeration
-/// throws), a successful UVC probe still returns [TermsCameraPrimingPhase.ready]
-/// so Classic HDMI booths are not blocked on Terms.
+/// [probeAttachedUvc] / [probeSidecarHealthy] are optional fallbacks when
+/// CameraX finds nothing (or enumeration throws), so Classic HDMI + Pi booths
+/// are not blocked on Terms.
 Future<TermsCameraPrimingResult> runTermsCameraPriming({
   required Future<bool> Function() ensurePermission,
   required Future<void> Function() preloadCameras,
@@ -74,6 +76,7 @@ Future<TermsCameraPrimingResult> runTermsCameraPriming({
   required bool Function(AppDeviceType? deviceType) hasOpenableCamera,
   required bool isCameraPlatform,
   Future<bool> Function()? probeAttachedUvc,
+  Future<bool> Function()? probeSidecarHealthy,
 }) async {
   if (!isCameraPlatform) {
     return const TermsCameraPrimingResult(TermsCameraPrimingPhase.skipped);
@@ -89,8 +92,10 @@ Future<TermsCameraPrimingResult> runTermsCameraPriming({
   try {
     await preloadCameras();
   } on Object {
-    final uvcOk = await _probeUvcOrFalse(probeAttachedUvc);
-    if (uvcOk) {
+    if (await _fallbackCaptureReady(
+      probeAttachedUvc: probeAttachedUvc,
+      probeSidecarHealthy: probeSidecarHealthy,
+    )) {
       return const TermsCameraPrimingResult(TermsCameraPrimingPhase.ready);
     }
     return const TermsCameraPrimingResult(TermsCameraPrimingPhase.failed);
@@ -104,29 +109,46 @@ Future<TermsCameraPrimingResult> runTermsCameraPriming({
       // POSE will classify again if this fails.
     }
     final cameraXOk = hasOpenableCamera(deviceType);
+    var uvcOk = false;
+    var sidecarOk = false;
+    if (!cameraXOk) {
+      uvcOk = await _probeOrFalse(probeAttachedUvc);
+      if (!uvcOk) {
+        sidecarOk = await _probeOrFalse(probeSidecarHealthy);
+      }
+    }
     if (!termsHasUsableCaptureSource(
       hasOpenableCameraX: cameraXOk,
-      hasAttachedUvc: cameraXOk
-          ? false
-          : await _probeUvcOrFalse(probeAttachedUvc),
+      hasAttachedUvc: uvcOk,
+      hasSidecarCamera: sidecarOk,
     )) {
       return const TermsCameraPrimingResult(TermsCameraPrimingPhase.noneFound);
     }
-    // Skip CameraX prewarm when only UVC is available — POSE opens UVC.
+    // Skip CameraX prewarm when only UVC/sidecar is available — POSE opens them.
     if (cameraXOk) {
       await startPrewarm(deviceType);
     }
     return const TermsCameraPrimingResult(TermsCameraPrimingPhase.ready);
   } on Object {
-    final uvcOk = await _probeUvcOrFalse(probeAttachedUvc);
-    if (uvcOk) {
+    if (await _fallbackCaptureReady(
+      probeAttachedUvc: probeAttachedUvc,
+      probeSidecarHealthy: probeSidecarHealthy,
+    )) {
       return const TermsCameraPrimingResult(TermsCameraPrimingPhase.ready);
     }
     return const TermsCameraPrimingResult(TermsCameraPrimingPhase.failed);
   }
 }
 
-Future<bool> _probeUvcOrFalse(Future<bool> Function()? probe) async {
+Future<bool> _fallbackCaptureReady({
+  Future<bool> Function()? probeAttachedUvc,
+  Future<bool> Function()? probeSidecarHealthy,
+}) async {
+  if (await _probeOrFalse(probeAttachedUvc)) return true;
+  return _probeOrFalse(probeSidecarHealthy);
+}
+
+Future<bool> _probeOrFalse(Future<bool> Function()? probe) async {
   if (probe == null) return false;
   try {
     return await probe();
