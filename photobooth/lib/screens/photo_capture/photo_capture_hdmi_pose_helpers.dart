@@ -62,3 +62,36 @@ String captureStillInProgressLabel({
   if (preparingCamera) return AppStrings.captureSettingUpCamera;
   return AppStrings.captureSayCheese;
 }
+
+/// Whether countdown [canStart] may stay true after sidecar prepare-still.
+///
+/// [prepareStill] intentionally drops Canon LV. Requiring [canonLvHolding]
+/// (via full pose-ready) after that aborts the shutter and leaves the UI on
+/// "Setting up camera…" forever.
+bool uvcHdmiPoseCountdownCanContinue({
+  required bool uvcControllerReady,
+  required bool captureInFlight,
+  required bool hasCapturedPhoto,
+  required bool poseReadyForCountdown,
+  required bool sidecarStillPrepStarted,
+}) {
+  if (!uvcControllerReady || captureInFlight || hasCapturedPhoto) {
+    return false;
+  }
+  if (sidecarStillPrepStarted) return true;
+  return poseReadyForCountdown;
+}
+
+/// Whether a sidecar still may fire right now.
+///
+/// Before prepare-still: LV must be held. After prepare / mask arm: LV is
+/// expected to be down — blocking on [canonLvHolding] deadlocks shot 2+.
+bool uvcHdmiPoseMayFireSidecarStill({
+  required bool sidecarConfigured,
+  required bool canonLvHolding,
+  required bool sidecarStillPrepStarted,
+}) {
+  if (!sidecarConfigured) return true;
+  if (sidecarStillPrepStarted) return true;
+  return canonLvHolding;
+}

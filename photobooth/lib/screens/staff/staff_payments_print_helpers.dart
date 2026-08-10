@@ -127,9 +127,10 @@ Future<void> staffPaymentsRunPrintJob({
     );
 
     onState(progressMessage: 'Sending print job...');
-    final normalizedFile = await normalizeExifOrientationForDnpPrint(file);
+    // Infer size from EXIF-baked pixels; PrintService letterboxes onto paper.
+    final orientedFile = await normalizeExifOrientationForDnpPrint(file);
     final oriented = orientedDimensionsFromBytes(
-      await normalizedFile.readAsBytes(),
+      await orientedFile.readAsBytes(),
     );
     final resolvedSize = resolveStaffDnpPrintSize(
       imageUrl: imageUrl,
@@ -143,7 +144,7 @@ Future<void> staffPaymentsRunPrintJob({
       printService.resetDnpPrintSession();
     }
     await printService.printDnpPhoto(
-      normalizedFile,
+      orientedFile,
       settings: settings,
       printSize: resolvedSize,
     );

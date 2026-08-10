@@ -122,10 +122,7 @@ class ClassicStripScrubCoordinator extends ChangeNotifier {
   }) async {
     String? raw;
     try {
-      entry.status = ClassicScrubDotStatus.scrubbing;
-      notifyListeners();
-
-      // Encode before retake / remount can invalidate the XFile.
+      // Stay pending until encode actually starts (encode may wait for pose resume).
       raw = await encodeShotDataUrl();
       _completeEncoded(entry, raw);
 
@@ -144,6 +141,9 @@ class ClassicStripScrubCoordinator extends ChangeNotifier {
         completer.complete(result);
         return;
       }
+
+      entry.status = ClassicScrubDotStatus.scrubbing;
+      notifyListeners();
 
       final result = await scrubClassicShotDataUrl(
         encodeShotDataUrl: () async => raw!,

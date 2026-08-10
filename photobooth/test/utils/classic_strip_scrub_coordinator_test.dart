@@ -41,6 +41,9 @@ void main() {
       enableScrub: true,
       apiService: api,
     );
+    // Encode is pending until the lazy encode future runs; scrubbing starts after.
+    expect(coord.statuses, [ClassicScrubDotStatus.pending]);
+    await Future<void>.delayed(Duration.zero);
     expect(coord.statuses, [ClassicScrubDotStatus.scrubbing]);
 
     final f2 = coord.enqueueShot(

@@ -9,6 +9,7 @@ import '../utils/constants.dart';
 import '../utils/exceptions.dart';
 import '../utils/logger.dart';
 import 'dnp/dnp_print_bridge.dart';
+import 'dnp/dnp_print_image_prepare.dart';
 import 'error_reporting/error_reporting_manager.dart';
 
 class PrintService {
@@ -43,8 +44,12 @@ class PrintService {
     int quantity = AppConstants.kDefaultPrintCopies,
   }) async {
     try {
+      final prepared = await prepareImageForDnpPrint(
+        imageFile,
+        networkPrintSize: printSize,
+      );
       await _dnpPrintBridge.printImage(
-        imageFile: imageFile,
+        imageFile: prepared,
         settings: settings,
         networkPrintSize: printSize,
         quantity: quantity,

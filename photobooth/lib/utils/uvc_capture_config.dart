@@ -123,9 +123,22 @@ class UvcCaptureConfig {
 
   /// When true, keep the UVC session open while reviewing a still (retake reuses it).
   ///
-  /// Always false on production kiosks: closing the native feed during review
-  /// cuts CPU/heat and avoids Android PlatformView overlaying the captured still.
+  /// Default false on production 1-shot kiosks: closing the native feed during
+  /// review cuts CPU/heat. Classic 4-shot uses [shouldKeepUvcControllerOpen]
+  /// instead so shot 2+ does not pay full dispose + Canon LV re-arm.
   static const bool keepControllerOpenDuringReview = false;
+
+  /// Classic 4-shot: keep UVC open across reviews (preview is [SizedBox.shrink]
+  /// while a still is shown, so PlatformView does not overlay the JPEG).
+  static const bool keepControllerOpenForClassicFourShot = true;
+
+  /// Whether capture/resume should leave the UVC controller initialized.
+  static bool shouldKeepUvcControllerOpen({
+    required bool classicFourShotSession,
+  }) {
+    if (keepControllerOpenDuringReview) return true;
+    return classicFourShotSession && keepControllerOpenForClassicFourShot;
+  }
 
   /// Ignore preview-interrupt shutter signals right after the feed reconnects.
   /// Also used to mask HDMI frames while Canon leaves the status LCD for LV.

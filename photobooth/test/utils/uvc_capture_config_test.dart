@@ -23,6 +23,19 @@ void main() {
     expect(UvcCaptureConfig.captureFlashDuration, const Duration(milliseconds: 120));
     expect(UvcCaptureConfig.uiCaptureCooldown, const Duration(milliseconds: 600));
     expect(UvcCaptureConfig.keepControllerOpenDuringReview, isFalse);
+    expect(UvcCaptureConfig.keepControllerOpenForClassicFourShot, isTrue);
+    expect(
+      UvcCaptureConfig.shouldKeepUvcControllerOpen(
+        classicFourShotSession: true,
+      ),
+      isTrue,
+    );
+    expect(
+      UvcCaptureConfig.shouldKeepUvcControllerOpen(
+        classicFourShotSession: false,
+      ),
+      isFalse,
+    );
     expect(UvcCaptureConfig.previewWarmupPeriod, const Duration(milliseconds: 1200));
     expect(
       UvcCaptureConfig.previewWarmupPeriodWhenLvHeld,

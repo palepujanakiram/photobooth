@@ -206,4 +206,66 @@ void main() {
       );
     });
   });
+
+  group('uvcHdmiPoseCountdownCanContinue', () {
+    test('requires pose-ready before prepare-still', () {
+      expect(
+        uvcHdmiPoseCountdownCanContinue(
+          uvcControllerReady: true,
+          captureInFlight: false,
+          hasCapturedPhoto: false,
+          poseReadyForCountdown: false,
+          sidecarStillPrepStarted: false,
+        ),
+        isFalse,
+      );
+      expect(
+        uvcHdmiPoseCountdownCanContinue(
+          uvcControllerReady: true,
+          captureInFlight: false,
+          hasCapturedPhoto: false,
+          poseReadyForCountdown: true,
+          sidecarStillPrepStarted: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('stays true after prepare-still even when LV pose-ready is false', () {
+      expect(
+        uvcHdmiPoseCountdownCanContinue(
+          uvcControllerReady: true,
+          captureInFlight: false,
+          hasCapturedPhoto: false,
+          poseReadyForCountdown: false,
+          sidecarStillPrepStarted: true,
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('uvcHdmiPoseMayFireSidecarStill', () {
+    test('blocks pre-prep shutter without LV hold', () {
+      expect(
+        uvcHdmiPoseMayFireSidecarStill(
+          sidecarConfigured: true,
+          canonLvHolding: false,
+          sidecarStillPrepStarted: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('allows shutter after prepare-still without LV hold', () {
+      expect(
+        uvcHdmiPoseMayFireSidecarStill(
+          sidecarConfigured: true,
+          canonLvHolding: false,
+          sidecarStillPrepStarted: true,
+        ),
+        isTrue,
+      );
+    });
+  });
 }

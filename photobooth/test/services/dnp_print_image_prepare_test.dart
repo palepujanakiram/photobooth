@@ -67,6 +67,40 @@ void main() {
     });
   });
 
+  group('letterboxImageToAspect', () {
+    test('pads square into 4×6 without cropping width', () {
+      final square = img.Image(width: 100, height: 100);
+      img.fill(square, color: img.ColorRgb8(200, 100, 50));
+      final out = letterboxImageToAspect(square, 4 / 6);
+      expect(out, isNotNull);
+      expect(out!.width, 100);
+      expect(out.height, closeTo(150, 1));
+      // Top letterbox is black; mid content stays orange.
+      expect(out.getPixel(50, 0).r, lessThan(20));
+      expect(out.getPixel(50, out.height ~/ 2).r, greaterThan(150));
+    });
+
+    test('no-ops when aspect already matches', () {
+      final portrait = img.Image(width: 100, height: 150);
+      expect(letterboxImageToAspect(portrait, 4 / 6), isNull);
+    });
+
+    test('networkPrintSizeAspectRatio maps paper tokens only', () {
+      expect(
+        networkPrintSizeAspectRatio(AppConstants.kPrintSizePortrait4x6),
+        closeTo(4 / 6, 1e-9),
+      );
+      expect(
+        networkPrintSizeAspectRatio(AppConstants.kPrintSizeLandscape6x4),
+        closeTo(6 / 4, 1e-9),
+      );
+      expect(
+        networkPrintSizeAspectRatio(AppConstants.kPrintSizeStripDual2x6),
+        isNull,
+      );
+    });
+  });
+
   group('orientedDimensionsFromBytes', () {
     test('returns null for invalid bytes', () {
       expect(orientedDimensionsFromBytes(Uint8List.fromList([0, 1, 2])), isNull);
