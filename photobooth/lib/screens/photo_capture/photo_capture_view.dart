@@ -358,7 +358,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       navigatingAway: _navigatingAwayFromCapture,
       hasCapturedPhoto: photo != null,
       isCountingDown: vm.isCountingDown || _flashbackCountdownStarting,
-      isCapturing: vm.isCapturing || _uvcCaptureInFlight || _uvcHdmiStillMaskArmed,
+      isCapturing: vm.isCapturing ||
+          _uvcCaptureInFlight ||
+          _uvcHdmiStillMaskArmed ||
+          _sidecarStillPrepStarted,
       acceptedShotCount: _stripShots.length,
       multiShotTotal: total,
       cameraReadyForCapture: _flashbackCameraReady,
@@ -681,7 +684,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       isCountingDown: _captureViewModel.isCountingDown,
       isCapturing: _captureViewModel.isCapturing ||
           _uvcCaptureInFlight ||
-          _uvcHdmiStillMaskArmed,
+          _uvcHdmiStillMaskArmed ||
+          _sidecarStillPrepStarted,
       acceptedShotCount: _stripShots.length,
       multiShotTotal: _classicShotCap,
       cameraReadyForCapture: _flashbackCameraReady,
@@ -875,6 +879,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         classicFourShotSession: _isFlashbackFourShot,
       );
 
+  /// Classic always uses HDMI/UVC; AI may use Pi MJPEG when admin enables it.
+  bool get _useSidecarPosePreview => shouldUseSidecarPosePreview(
+        classicSession: widget.sessionKind.isClassic,
+        sidecarLivePreviewEnabled: _captureViewModel.usesSidecarLivePreview,
+        sidecarConfigured:
+            _captureViewModel.localCameraService?.isConfigured == true,
+      );
+
   bool get _isFlashbackSingleShot => widget.sessionKind.isClassicOneShot;
 
   int get _classicShotCap => widget.sessionKind.classicShotCount ?? 0;
@@ -888,7 +900,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   bool get _flashbackCameraReady {
-    if (_captureViewModel.usesSidecarLivePreview) {
+    if (_useSidecarPosePreview) {
       return _captureViewModel.isReady;
     }
     if (!_isUsingUvc) return _captureViewModel.isReady;
@@ -946,11 +958,31 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   DateTime? _lastHdmiPoseReadyLogAt;
 
   void _armUvcHdmiStillMask() {
+    final sidecarConfigured =
+        _captureViewModel.localCameraService?.isConfigured == true;
+    // Sidecar DSLR: keep HDMI live — do not swap to a black "Setting up camera"
+    // card. Track prep for shutter gates / soft-fail only.
+    if (sidecarConfigured) {
+      if (_sidecarStillPrepStarted && _maskStallSoftFailTimer?.isActive == true) {
+        return;
+      }
+      _sidecarStillPrepStarted = true;
+      AppLogger.info('[HDMI_POSE] Sidecar still prep armed (HDMI stays live)');
+      unawaited(
+        _captureViewModel.localCameraService?.postClientEvent(
+          'hdmi_mask_armed',
+          {'keepHdmiLive': true},
+        ),
+      );
+      _syncCaptureWatchdog(_captureViewModel);
+      if (!_uvcCaptureInFlight) {
+        _armMaskStallSoftFailTimer();
+      }
+      if (mounted) setState(() {});
+      return;
+    }
     if (_uvcHdmiStillMaskArmed) return;
     _uvcHdmiStillMaskArmed = true;
-    if (_captureViewModel.localCameraService?.isConfigured == true) {
-      _sidecarStillPrepStarted = true;
-    }
     AppLogger.info('[HDMI_POSE] HDMI still mask armed');
     unawaited(
       _captureViewModel.localCameraService?.postClientEvent('hdmi_mask_armed'),
@@ -962,18 +994,22 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (mounted) setState(() {});
   }
 
-  /// Starts Pi movie-LV teardown at the prepare-at second for this strip pose
-  /// so the real shutter can land when the timer hits zero.
+  /// Starts Pi movie-LV teardown so the real shutter can land at timer zero.
   Future<void>? _maybeStartSidecarStillPrepare(int countdownStep) {
     final service = _captureViewModel.localCameraService;
     if (service == null || !service.isConfigured) return null;
+    final countdownSeconds = captureCountdownSecondsForMode(
+      isFlashbackMultiShot: _isFlashbackFourShot || _isFlashbackSingleShot,
+      acceptedShotCount: _stripShots.length,
+    );
     final prepareAt = flashbackSidecarStillPrepareAtSecond(
       acceptedShotCount: _stripShots.length,
+      countdownSeconds: countdownSeconds,
     );
     if (countdownStep != prepareAt) {
       return null;
     }
-    _sidecarStillPrepStarted = true;
+    if (_sidecarStillPrepStarted) return null;
     _armUvcHdmiStillMask();
     AppLogger.info(
       '[HDMI_POSE] Sidecar still prepare at countdown=$countdownStep',
@@ -983,7 +1019,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }));
     return () async {
       try {
-        await service.prepareStill();
+        await service.prepareStill(
+          timeout: AppConstants.kFlashbackSidecarStillPrepareWait +
+              const Duration(seconds: 2),
+        );
         unawaited(service.postClientEvent('prepare_still_ok'));
       } catch (e) {
         AppLogger.warning('[HDMI_POSE] Sidecar still prepare failed: $e');
@@ -997,8 +1036,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Future<void> _awaitSidecarStillPrepare(Future<void>? prepare) async {
     if (prepare == null) return;
     try {
-      await prepare.timeout(const Duration(seconds: 20));
+      await prepare.timeout(AppConstants.kFlashbackSidecarStillPrepareWait);
     } catch (e) {
+      // Fire shutter anyway — Pi capture will finish LV exit on the USB queue.
       AppLogger.warning('[HDMI_POSE] Sidecar still prepare wait: $e');
     }
   }
@@ -1954,11 +1994,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }),
     );
 
-    if (_captureViewModel.usesSidecarLivePreview ||
-        shouldForceSidecarLivePreview(
-          sidecarConfigured:
-              _captureViewModel.localCameraService?.isConfigured == true,
-        )) {
+    if (_useSidecarPosePreview) {
       final forced = !_captureViewModel.usesSidecarLivePreview;
       if (forced) {
         AppLogger.info(
@@ -1985,6 +2021,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       await _finishPrewarmPoseSetup();
       return;
     }
+
+    // Classic (+ AI without Pi live preview): HDMI/UVC pose, sidecar stills.
 
     var deviceType = _captureViewModel.deviceType ??
         CaptureViewModel.prewarmedDeviceType;
@@ -3329,6 +3367,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         hdmiStillMaskArmed: _uvcHdmiStillMaskArmed,
         isCountingDown: viewModel.isCountingDown,
         countdownValue: viewModel.countdownValue,
+        // Pi DSLR still: keep HDMI/UVC live; shutter runs in the background.
+        keepHdmiLiveForSidecarStill:
+            viewModel.localCameraService?.isConfigured == true,
       );
 
   /// Sidecar prepare clicks vs real shutter — phased guest copy.
@@ -3394,8 +3435,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     final saving = _isUvcSavingStill(viewModel);
-    // Full black during shutter — dim-over-live showed Canon's HDMI status LCD
-    // (P / ISO / Q) after gphoto drops Live View for the still.
+    // Plain UVC stills: full black while shutter/download runs (HDMI may flash
+    // Canon status LCD). Sidecar DSLR: keep HDMI live — still is background.
     if (saving) {
       return _uvcSavingPhotoCard(
         message: _stillInProgressLabel(viewModel),
@@ -4066,7 +4107,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       camerasEmpty: viewModel.availableCameras.isEmpty,
       isReady: viewModel.isReady,
       cameraSetupStalled: setupStalled,
-      usesSidecarLivePreview: viewModel.usesSidecarLivePreview,
+      usesSidecarLivePreview: _useSidecarPosePreview,
     );
   }
 
@@ -4118,7 +4159,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       isUsingUvc: _isUsingUvc,
       hasCapturedPhoto: viewModel.capturedPhoto != null,
       isSelectingFromGallery: viewModel.isSelectingFromGallery,
-      usesSidecarLivePreview: viewModel.usesSidecarLivePreview,
+      usesSidecarLivePreview: _useSidecarPosePreview,
     );
 
     final midStripRemount =
@@ -4146,7 +4187,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         } else if (hasCapturedPhoto) {
           // Review still — never mount CameraPreview without a controller.
           previewWidget = const SizedBox.shrink();
-        } else if (viewModel.usesSidecarLivePreview &&
+        } else if (_useSidecarPosePreview &&
             viewModel.localCameraService != null) {
           previewWidget = _isUvcSavingStill(viewModel)
               ? _uvcSavingPhotoCard(
@@ -4350,7 +4391,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               _isUsingUvc ? _uvcPreviewDisplaySize(viewModel) : null,
           // Match Classic: Pi MJPEG sits in the portrait theme slot, not HDMI
           // landscape frame sizing.
-          preferThemeSlotAspect: viewModel.usesSidecarLivePreview,
+          preferThemeSlotAspect: _useSidecarPosePreview,
         );
 
         final (widthCapFrac, heightCapFrac) = capturePreviewCardSizeFractions(
@@ -4475,9 +4516,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                             (_multiShotTotal ?? kStripShotCount),
                       ),
                     ),
-                  // Sidecar Classic already swaps the preview for Setting up /
-                  // Say cheese — avoid a second dim overlay on live HDMI.
-                  // (spinner + copy). Do not stack a second capturing spinner.
+                  // Plain UVC/CameraX stills may dim the preview. Sidecar DSLR
+                  // keeps HDMI live (mask helper returns false) so no overlay.
                   if (!_showCaptureFlash &&
                       !hasCapturedPhoto &&
                       !_isUsingUvc &&

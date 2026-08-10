@@ -43,9 +43,37 @@ void main() {
     expect(kioskShouldTryUvcBeforeCameraX(null), isFalse);
   });
 
-  test('shouldForceSidecarLivePreview whenever sidecar is configured', () {
-    expect(shouldForceSidecarLivePreview(sidecarConfigured: true), isTrue);
+  test('shouldForceSidecarLivePreview is off (HDMI pose preferred)', () {
+    expect(shouldForceSidecarLivePreview(sidecarConfigured: true), isFalse);
     expect(shouldForceSidecarLivePreview(sidecarConfigured: false), isFalse);
+  });
+
+  test('shouldUseSidecarPosePreview skips Classic; AI may use admin live preview',
+      () {
+    expect(
+      shouldUseSidecarPosePreview(
+        classicSession: true,
+        sidecarLivePreviewEnabled: true,
+        sidecarConfigured: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldUseSidecarPosePreview(
+        classicSession: false,
+        sidecarLivePreviewEnabled: true,
+        sidecarConfigured: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldUseSidecarPosePreview(
+        classicSession: false,
+        sidecarLivePreviewEnabled: false,
+        sidecarConfigured: true,
+      ),
+      isFalse,
+    );
   });
 
   test('capturePhotoUploadActionsAllowed matches settings with strip guard', () {

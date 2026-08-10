@@ -169,6 +169,33 @@ void main() {
         isFalse,
       );
     });
+
+    test('keeps HDMI live when sidecar DSLR owns the still', () {
+      expect(
+        uvcShouldMaskHdmiDuringStill(
+          hasCapturedPhoto: false,
+          isCapturing: true,
+          captureInFlight: true,
+          hdmiStillMaskArmed: true,
+          isCountingDown: false,
+          countdownValue: null,
+          keepHdmiLiveForSidecarStill: true,
+        ),
+        isFalse,
+      );
+      expect(
+        uvcShouldMaskHdmiDuringStill(
+          hasCapturedPhoto: false,
+          isCapturing: false,
+          captureInFlight: false,
+          hdmiStillMaskArmed: true,
+          isCountingDown: true,
+          countdownValue: 1,
+          keepHdmiLiveForSidecarStill: true,
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('captureStillInProgressLabel', () {

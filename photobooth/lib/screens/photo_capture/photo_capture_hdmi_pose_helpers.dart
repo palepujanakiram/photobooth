@@ -29,8 +29,13 @@ bool uvcHdmiPoseReadyForCountdown({
 
 /// Whether the UVC preview card should hide HDMI (Canon status / Q menu).
 ///
-/// Masks during the last countdown tick, the post-countdown shutter arm gap,
-/// and the full still download — when LV drops, HDMI often shows Quick Control.
+/// For plain UVC/CameraX stills, masks during the last countdown tick, the
+/// post-countdown shutter arm gap, and the full still download — when LV
+/// drops, HDMI often shows Quick Control.
+///
+/// When [keepHdmiLiveForSidecarStill] is true (Pi DSLR owns the still), leave
+/// HDMI/UVC live so guests never see a black "Setting up camera…" card while
+/// prepareStill / capture runs in the background.
 bool uvcShouldMaskHdmiDuringStill({
   required bool hasCapturedPhoto,
   required bool isCapturing,
@@ -38,8 +43,10 @@ bool uvcShouldMaskHdmiDuringStill({
   required bool hdmiStillMaskArmed,
   required bool isCountingDown,
   int? countdownValue,
+  bool keepHdmiLiveForSidecarStill = false,
 }) {
   if (hasCapturedPhoto) return false;
+  if (keepHdmiLiveForSidecarStill) return false;
   if (isCapturing || captureInFlight || hdmiStillMaskArmed) return true;
   if (isCountingDown && countdownValue != null && countdownValue <= 1) {
     return true;

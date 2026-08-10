@@ -133,8 +133,9 @@ class AppConstants {
   static const String kPrintSizeStripDual2x6 = 's6x2_2';
 
   /// When true, Classic may polish shots (AF/HUD + OSD) when admin
-  /// `enableOsdScrub` is also on. Build-time kill-switch.
-  static const bool kEnableStripOverlayCleanup = true;
+  /// `enableOsdScrub` ("Classic — Scrub camera overlays") is also on.
+  /// Build-time kill-switch — off for this booth build (skip Gemini scrub latency).
+  static const bool kEnableStripOverlayCleanup = false;
 
   /// BEHOLD single-result hero: width cap on landscape / desktop (wider than capture kiosk).
   static const double kBeholdResultCardMaxWidthFractionLandscape = 0.52;
@@ -247,26 +248,33 @@ class AppConstants {
   // Camera capture countdown (in seconds) — AI / single-shot POSE.
   static const int kCaptureCountdownSeconds = 5;
 
-  /// FotoFlashback Classic 4-shot booth: longer pose window between snaps.
-  static const int kFlashbackCaptureCountdownSeconds = 10;
+  /// FotoFlashback Classic 4-shot booth: pose window for shot 1.
+  static const int kFlashbackCaptureCountdownSeconds = 8;
 
-  /// Classic 4-shot shots 2–4: shorter pose window (shot 1 keeps 10s).
-  static const int kFlashbackFollowOnCountdownSeconds = 7;
+  /// Classic 4-shot shots 2–4: shorter pose window (shot 1 keeps 8s).
+  static const int kFlashbackFollowOnCountdownSeconds = 5;
 
   /// Classic + Pi DSLR: begin movie-LV teardown when the countdown reaches this
   /// second so the real shutter can fire as the timer hits zero (~3–4s prep).
   static const int kFlashbackSidecarStillPrepareAtSecond = 5;
 
-  /// Classic 4-shot shots 2–4: start prepareStill earlier in the shorter timer.
-  static const int kFlashbackFollowOnStillPrepareAtSecond = 3;
+  /// Classic 4-shot shots 2–4: start prepareStill when the countdown begins
+  /// (pass [countdownSeconds] into [flashbackSidecarStillPrepareAtSecond]).
+  /// Kept as documentation of the intent; the helper uses the live countdown.
+  static const int kFlashbackFollowOnStillPrepareAtSecond = 5;
+
+  /// Max wait for Pi [prepareStill] before firing the shutter anyway.
+  /// Capture will finish LV exit on the USB queue if prepare is still running.
+  static const Duration kFlashbackSidecarStillPrepareWait =
+      Duration(seconds: 4);
 
   /// Brief hold on the just-taken Classic shot before auto-continuing.
   /// Tap Retake during this window (or Retake last on the next countdown).
-  static const Duration kFlashbackShotReviewDuration = Duration(seconds: 8);
+  static const Duration kFlashbackShotReviewDuration = Duration(seconds: 5);
 
   /// Classic 4-shot reviews after shot 1: shorter hold before the next pose.
   static const Duration kFlashbackFollowOnShotReviewDuration =
-      Duration(seconds: 5);
+      Duration(seconds: 3);
 
   /// If HDMI still-mask is armed but shutter never starts, recover quickly
   /// instead of waiting for the long capture watchdog (~35s).

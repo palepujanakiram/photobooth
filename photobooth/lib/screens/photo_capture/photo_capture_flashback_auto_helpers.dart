@@ -73,9 +73,17 @@ int captureCountdownSecondsForMode({
 }
 
 /// Countdown step at which Classic + Pi should start [prepareStill].
-int flashbackSidecarStillPrepareAtSecond({required int acceptedShotCount}) {
+///
+/// Shot 1: mid-countdown ([kFlashbackSidecarStillPrepareAtSecond]).
+/// Shots 2–4: as soon as the countdown starts ([countdownSeconds]) so LV exit
+/// has the full pose window and the shutter is not blocked after zero.
+int flashbackSidecarStillPrepareAtSecond({
+  required int acceptedShotCount,
+  int? countdownSeconds,
+}) {
   if (acceptedShotCount >= 1) {
-    return AppConstants.kFlashbackFollowOnStillPrepareAtSecond;
+    return countdownSeconds ??
+        AppConstants.kFlashbackFollowOnCountdownSeconds;
   }
   return AppConstants.kFlashbackSidecarStillPrepareAtSecond;
 }

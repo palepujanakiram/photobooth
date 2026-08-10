@@ -7,6 +7,7 @@ import 'package:photobooth/models/strip_models.dart';
 import 'package:photobooth/services/session_manager.dart';
 import 'package:photobooth/utils/classic_af_marker_inject.dart';
 import 'package:photobooth/utils/classic_strip_scrub_helpers.dart';
+import 'package:photobooth/utils/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../fakes/fake_api_service.dart';
@@ -36,16 +37,11 @@ void main() {
   });
 
   group('classicOverlayScrubEnabled', () {
-    test('defaults ON when admin flag is null', () {
-      expect(classicOverlayScrubEnabled(null), isTrue);
-    });
-
-    test('respects explicit OFF', () {
+    test('build kill-switch forces OFF regardless of admin flag', () {
+      expect(AppConstants.kEnableStripOverlayCleanup, isFalse);
+      expect(classicOverlayScrubEnabled(null), isFalse);
       expect(classicOverlayScrubEnabled(false), isFalse);
-    });
-
-    test('respects explicit ON', () {
-      expect(classicOverlayScrubEnabled(true), isTrue);
+      expect(classicOverlayScrubEnabled(true), isFalse);
     });
   });
 

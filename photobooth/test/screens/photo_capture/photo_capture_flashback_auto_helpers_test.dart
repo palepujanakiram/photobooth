@@ -4,7 +4,7 @@ import 'package:photobooth/utils/constants.dart';
 
 void main() {
   group('captureCountdownSecondsForMode', () {
-    test('Classic shot 1 uses 10s; follow-on uses 7s; AI uses 5s', () {
+    test('Classic shot 1 uses 8s; follow-on uses 5s; AI uses 5s', () {
       expect(
         captureCountdownSecondsForMode(isFlashbackMultiShot: true),
         AppConstants.kFlashbackCaptureCountdownSeconds,
@@ -20,28 +20,35 @@ void main() {
         captureCountdownSecondsForMode(isFlashbackMultiShot: false),
         AppConstants.kCaptureCountdownSeconds,
       );
-      expect(AppConstants.kFlashbackCaptureCountdownSeconds, 10);
-      expect(AppConstants.kFlashbackFollowOnCountdownSeconds, 7);
+      expect(AppConstants.kFlashbackCaptureCountdownSeconds, 8);
+      expect(AppConstants.kFlashbackFollowOnCountdownSeconds, 5);
     });
   });
 
   group('flashbackSidecarStillPrepareAtSecond', () {
-    test('shot 1 prepares at 5; follow-on at 3', () {
+    test('shot 1 prepares mid-countdown; follow-on at countdown start', () {
       expect(
         flashbackSidecarStillPrepareAtSecond(acceptedShotCount: 0),
         AppConstants.kFlashbackSidecarStillPrepareAtSecond,
       );
       expect(
-        flashbackSidecarStillPrepareAtSecond(acceptedShotCount: 2),
-        AppConstants.kFlashbackFollowOnStillPrepareAtSecond,
+        flashbackSidecarStillPrepareAtSecond(
+          acceptedShotCount: 2,
+          countdownSeconds: 5,
+        ),
+        5,
+      );
+      expect(
+        flashbackSidecarStillPrepareAtSecond(acceptedShotCount: 1),
+        AppConstants.kFlashbackFollowOnCountdownSeconds,
       );
       expect(AppConstants.kFlashbackSidecarStillPrepareAtSecond, 5);
-      expect(AppConstants.kFlashbackFollowOnStillPrepareAtSecond, 3);
+      expect(AppConstants.kFlashbackSidecarStillPrepareWait.inSeconds, 4);
     });
   });
 
   group('flashbackShotReviewHoldDuration', () {
-    test('1-shot is brief; shot 1 review 8s; later reviews 5s', () {
+    test('1-shot is brief; shot 1 review 5s; later reviews 3s', () {
       expect(
         flashbackShotReviewHoldDuration(
           acceptedShotCountBeforeThis: 0,
@@ -63,8 +70,8 @@ void main() {
         ),
         AppConstants.kFlashbackFollowOnShotReviewDuration,
       );
-      expect(AppConstants.kFlashbackShotReviewDuration.inSeconds, 8);
-      expect(AppConstants.kFlashbackFollowOnShotReviewDuration.inSeconds, 5);
+      expect(AppConstants.kFlashbackShotReviewDuration.inSeconds, 5);
+      expect(AppConstants.kFlashbackFollowOnShotReviewDuration.inSeconds, 3);
     });
   });
 

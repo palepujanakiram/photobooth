@@ -2,13 +2,26 @@ import '../../utils/app_device_type.dart';
 import '../../utils/constants.dart';
 import '../../utils/uvc_capture_config.dart';
 
-/// Prefer Pi USB MJPEG over HDMI→UVC when the sidecar is configured.
+/// Prefer Pi USB MJPEG over HDMI→UVC for pose preview.
 ///
-/// HDMI capture cards often stay blank on Canon Live View (e.g. FZ200D) even
-/// while the Pi LV keeper is healthy — Classic already forced this; FotoZen AI
-/// must do the same on the same booth.
+/// Classic booths keep HDMI→UVC for the live feed and use the Pi only for
+/// stills — forcing `/camera/live` blanked Classic 1-shot when MJPEG was down.
+/// AI FotoZen may still opt in via admin `cameraLivePreviewEnabled`.
 bool shouldForceSidecarLivePreview({required bool sidecarConfigured}) {
-  return sidecarConfigured;
+  return false;
+}
+
+/// Whether POSE should show Pi MJPEG instead of opening CameraX/UVC.
+///
+/// Classic (1-shot + 4-shot) always uses HDMI/UVC + Canon LV hold.
+bool shouldUseSidecarPosePreview({
+  required bool classicSession,
+  required bool sidecarLivePreviewEnabled,
+  required bool sidecarConfigured,
+}) {
+  if (classicSession) return false;
+  if (sidecarLivePreviewEnabled) return true;
+  return shouldForceSidecarLivePreview(sidecarConfigured: sidecarConfigured);
 }
 
 /// Gallery / Phone QR on POSE — same [photoUploadAllowed] gate for AI + Classic.
