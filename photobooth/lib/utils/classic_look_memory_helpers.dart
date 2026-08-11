@@ -15,6 +15,23 @@ bool shouldDeferClassicComposePreviewWarm({
   return false;
 }
 
+/// True when Continue should skip local Flutter look-bake and let the server
+/// Sharp pipeline apply the selected filter id.
+///
+/// Same trigger as [shouldDeferClassicComposePreviewWarm]: 4-shot / huge
+/// payloads. Sequential print-size bake on Mini PC / web often OOMs or hangs
+/// before `/strip/compose` is ever POSTed ("Couldn't build strip" with no
+/// server log).
+bool shouldSkipClassicClientLookBake({
+  required List<String> imageDataUrls,
+  int largePayloadChars = 700000,
+}) {
+  return shouldDeferClassicComposePreviewWarm(
+    imageDataUrls: imageDataUrls,
+    largePayloadChars: largePayloadChars,
+  );
+}
+
 /// Long-edge cap for look bake uploads — tighter when payloads are heavy.
 ///
 /// Compact 1400 keeps DNP 4×6 acceptable while cutting Continue bake/upload time

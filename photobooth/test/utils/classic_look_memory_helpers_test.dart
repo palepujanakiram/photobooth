@@ -31,6 +31,26 @@ void main() {
     });
   });
 
+  group('shouldSkipClassicClientLookBake', () {
+    test('skips bake for 4-shot strips', () {
+      expect(
+        shouldSkipClassicClientLookBake(
+          imageDataUrls: List.filled(4, 'data:image/jpeg;base64,abc'),
+        ),
+        isTrue,
+      );
+    });
+
+    test('keeps bake for small 1-shot payloads', () {
+      expect(
+        shouldSkipClassicClientLookBake(
+          imageDataUrls: ['data:image/jpeg;base64,tiny'],
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('classicLookBakeMaxEdge', () {
     test('uses compact edge for 4-shot', () {
       expect(

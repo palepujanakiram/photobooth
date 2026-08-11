@@ -381,7 +381,7 @@ void main() {
     expect(image.isSelected, isTrue);
     expect(vm.composeResult, isNotNull);
     expect(api.composeCalls, 1);
-    expect(api.lastComposeFilter, kStripComposePreBakedFilterId);
+    expect(api.lastComposeFilter, 'mono');
     expect(api.lastCleanOverlays, isFalse);
     expect(api.lastFrame, 'noir');
     expect(api.lastSticker, kDefaultStripStickerId);

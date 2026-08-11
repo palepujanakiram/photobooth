@@ -797,7 +797,12 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     } on ApiException catch (e) {
       _errorMessage = e.message;
       return null;
-    } catch (_) {
+    } catch (e, st) {
+      AppLogger.error(
+        'Classic compose failed',
+        error: e,
+        stackTrace: st,
+      );
       _errorMessage = AppStrings.flashbackComposeFailed;
       return null;
     } finally {
@@ -917,13 +922,28 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   }
 
   Future<StripComposeResult> _requestComposeStrip(String sessionId) async {
-    // Print-sized Flutter bake (cached per look) + identity server grade so
-    // Sharp does not wash Classic Warm. Frame/stickers/layout still server-side.
-    final images = await _bakedImagesForSelectedLook();
+    // 4-shot / huge payloads: skip Flutter print-size bake (OOM / hang before
+    // POST). Server Sharp applies the selected look. Small 1-shot still bakes
+    // Flutter matrices so Classic Warm is not washed by Sharp.
+    final skipBake =
+        shouldSkipClassicClientLookBake(imageDataUrls: _imageDataUrls);
+    final images = skipBake
+        ? List<String>.from(_imageDataUrls)
+        : await _bakedImagesForSelectedLook();
+    final filter =
+        skipBake ? _selectedFilterId : kStripComposePreBakedFilterId;
+    CaptureFlowLog.event(
+      'classic.compose_request',
+      fields: {
+        'shots': images.length,
+        'filter': filter,
+        'skip_bake': skipBake,
+      },
+    );
     return _api.composeStrip(
       sessionId: sessionId,
       images: images,
-      filter: kStripComposePreBakedFilterId,
+      filter: filter,
       frame: _selectedFrameId,
       sticker: kDefaultStripStickerId,
       stickerPlacements: _placements,
