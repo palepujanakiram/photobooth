@@ -39,6 +39,16 @@ class DnpUsbClient {
     await _channel.invokeMethod<void>('requestPermission');
   }
 
+  /// Releases the native USB claim (no-op when not connected / non-Android).
+  Future<void> disconnect() async {
+    if (kIsWeb || !_isAndroid()) return;
+    try {
+      await _channel.invokeMethod<void>('disconnect');
+    } catch (_) {
+      // Best-effort — next [ensureConnected] reclaims anyway.
+    }
+  }
+
   Future<void> print({
     required String filePath,
     required String paperSize,

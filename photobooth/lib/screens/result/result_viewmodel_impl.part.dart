@@ -454,7 +454,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       }
       _r._postPaymentPrintRetryConsumed = true;
       _r._postPaymentPrintStarted = false;
-      _r._printService.resetDnpPrintSession();
+      await _r._printService.resetDnpPrintSession();
     }
     if (_r._postPaymentPrintStarted) return;
     if (!_r.shouldShowPrintProgressCard) {
@@ -1327,7 +1327,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       return;
     }
 
-    _r._printService.resetDnpPrintSession();
+    await _r._printService.resetDnpPrintSession();
 
     if (_r._downloadedFilesList.length != _r._generatedImages.length) {
       if (kIsWeb) {

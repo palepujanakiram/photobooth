@@ -57,9 +57,9 @@ class DnpUsbPrinter(
             throw DnpPrinterException("USB permission not granted")
         }
 
-        if (isConnected && device?.deviceId == dev.deviceId) {
-            return displayName
-        }
+        // Always reclaim the interface. After guest checkout the native claim is
+        // often left open; Staff reprints hours later would otherwise no-op on a
+        // stale pipe and fail with "USB write failed at offset 0".
         disconnect()
 
         val (intf, inEp, outEp) = locateEndpoints(dev)

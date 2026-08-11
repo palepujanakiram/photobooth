@@ -18,7 +18,7 @@ class PrintService {
 
   final DnpPrintBridge _dnpPrintBridge;
 
-  void resetDnpPrintSession() => _dnpPrintBridge.resetSession();
+  Future<void> resetDnpPrintSession() => _dnpPrintBridge.resetSession();
 
   /// Prints one DNP photo (DS-RX1) using kiosk [AppSettingsModel.printerTransport]
   /// hunt order (`auto`: IP → USB → discovery). Shared by guest checkout and

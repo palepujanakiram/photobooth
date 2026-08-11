@@ -38,9 +38,12 @@ class DnpPrintBridge {
 
   bool _usbReady = false;
 
-  void resetSession() {
+  /// Clears Wi‑Fi discovery cache and drops the native USB claim so the next
+  /// print re-opens a fresh pipe (Staff reprint after guest checkout).
+  Future<void> resetSession() async {
     _usbReady = false;
     _wifi.clear();
+    await _usb.disconnect();
   }
 
   Future<void> printImage({
@@ -187,12 +190,35 @@ class DnpPrintBridge {
       await _usb.ensureConnected();
       _usbReady = true;
     }
-    await _usb.print(
-      filePath: filePath,
-      paperSize: size.usbLabel,
-      printSize: networkPrintSize,
-      copies: copies,
-    );
+    try {
+      await _usb.print(
+        filePath: filePath,
+        paperSize: size.usbLabel,
+        printSize: networkPrintSize,
+        copies: copies,
+      );
+    } on PlatformException catch (e) {
+      if (!_isStaleUsbWriteError(e)) rethrow;
+      AppLogger.warning(
+        'DNP USB write failed on stale claim; reclaiming and retrying once',
+      );
+      await _usb.disconnect();
+      _usbReady = false;
+      await _usb.ensureConnected();
+      _usbReady = true;
+      await _usb.print(
+        filePath: filePath,
+        paperSize: size.usbLabel,
+        printSize: networkPrintSize,
+        copies: copies,
+      );
+    }
+  }
+
+  bool _isStaleUsbWriteError(PlatformException e) {
+    if (e.code != 'PRINT_ERROR') return false;
+    final msg = (e.message ?? '').toLowerCase();
+    return msg.contains('usb write failed');
   }
 
   /// Returns true when Wi‑Fi print finished; false on failure so hunt can continue.

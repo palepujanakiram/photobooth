@@ -141,7 +141,7 @@ Future<void> staffPaymentsRunPrintJob({
       orientedDimensions: oriented,
     );
     if (resetDnpSession) {
-      printService.resetDnpPrintSession();
+      await printService.resetDnpPrintSession();
     }
     await printService.printDnpPhoto(
       orientedFile,

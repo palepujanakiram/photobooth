@@ -19,6 +19,7 @@ class _RecordingUsbClient extends DnpUsbClient {
 
   final MethodChannel channel;
   int connectCalls = 0;
+  int disconnectCalls = 0;
   int printCalls = 0;
   String? lastPaperSize;
   String? lastPrintSize;
@@ -26,6 +27,8 @@ class _RecordingUsbClient extends DnpUsbClient {
   bool probePresent = true;
   PlatformException? connectError;
   PlatformException? printError;
+  /// Fail this many [print] calls, then succeed (stale-write retry tests).
+  int printFailuresBeforeSuccess = 0;
 
   @override
   Future<bool> probeDevicePresent() async => probePresent;
@@ -37,12 +40,24 @@ class _RecordingUsbClient extends DnpUsbClient {
   }
 
   @override
+  Future<void> disconnect() async {
+    disconnectCalls++;
+  }
+
+  @override
   Future<void> print({
     required String filePath,
     required String paperSize,
     required String printSize,
     required int copies,
   }) async {
+    if (printFailuresBeforeSuccess > 0) {
+      printFailuresBeforeSuccess--;
+      throw PlatformException(
+        code: 'PRINT_ERROR',
+        message: 'USB write failed at offset 0',
+      );
+    }
     if (printError != null) throw printError!;
     printCalls++;
     lastPaperSize = paperSize;
@@ -196,22 +211,23 @@ void main() {
       expect(await client.hasUsbHost(), isTrue);
     });
 
-    test('ensureConnected and print invoke native methods', () async {
+    test('ensureConnected, disconnect and print invoke native methods', () async {
       final calls = <String>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
         calls.add(call.method);
         return null;
       });
-      final client = DnpUsbClient(channel: channel);
+      final client = DnpUsbClient(channel: channel, isAndroid: () => true);
       await client.ensureConnected();
+      await client.disconnect();
       await client.print(
         filePath: '/tmp/a.jpg',
         paperSize: '4x6',
         printSize: 's4x6',
         copies: 2,
       );
-      expect(calls, ['requestPermission', 'print']);
+      expect(calls, ['requestPermission', 'disconnect', 'print']);
     });
   });
 
@@ -375,12 +391,41 @@ void main() {
   });
 
   group('DnpPrintBridge', () {
-    test('resetSession clears wifi discovery', () {
+    test('resetSession clears wifi discovery and disconnects USB', () async {
+      final usb = _RecordingUsbClient(const MethodChannel('test/usb_reset'));
       final wifi = DnpWifiClient(client: MockClient((_) async => http.Response('', 404)));
       wifi.printerBaseUrlForTesting = 'http://10.0.0.1';
-      final bridge = DnpPrintBridge(wifiClient: wifi);
-      bridge.resetSession();
+      final bridge = DnpPrintBridge(usbClient: usb, wifiClient: wifi);
+      await bridge.resetSession();
       expect(wifi.printerBaseUrl, isNull);
+      expect(usb.disconnectCalls, 1);
+    });
+
+    test('USB print retries once after stale write failure', () async {
+      final usb = _RecordingUsbClient(const MethodChannel('test/usb_retry'))
+        ..printFailuresBeforeSuccess = 1;
+      final bridge = DnpPrintBridge(
+        usbClient: usb,
+        wifiClient: DnpWifiClient(client: MockClient((_) async => http.Response('', 404))),
+        isAndroid: () => true,
+      );
+
+      final jpeg = File(
+        '${Directory.systemTemp.path}/dnp_usb_retry_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await jpeg.writeAsBytes([0xFF, 0xD8]);
+      addTearDown(() async {
+        if (await jpeg.exists()) await jpeg.delete();
+      });
+
+      await bridge.printImage(
+        imageFile: XFile(jpeg.path),
+        settings: AppSettingsModel(printerTransport: 'usb'),
+        networkPrintSize: 's4x6',
+      );
+      expect(usb.connectCalls, 2);
+      expect(usb.disconnectCalls, 1);
+      expect(usb.printCalls, 1);
     });
 
     test('printImage uses USB on Android when transport is unset (auto default)', () async {

@@ -78,6 +78,7 @@ object DnpUsbMethodChannel {
                 "probeDevice" -> result.success(usbPrinter.findDevice() != null)
                 "prepareWifiNetwork" -> prepareWifiNetwork(result)
                 "requestPermission" -> requestUsbPermission(result)
+                "disconnect" -> disconnectUsb(result)
                 "getPrinterStatus" -> getPrinterStatus(result)
                 "print" -> {
                     val filePath = call.argument<String>("filePath")
@@ -171,6 +172,19 @@ object DnpUsbMethodChannel {
             onGranted(true)
         } else {
             usbPrinter.requestPermission(dev, ::onGranted)
+        }
+    }
+
+    private fun disconnectUsb(result: MethodChannel.Result) {
+        ioExecutor.execute {
+            try {
+                usbPrinter.disconnect()
+                mainHandler.post { result.success(null) }
+            } catch (e: Exception) {
+                mainHandler.post {
+                    result.error("DISCONNECT_FAILED", e.message ?: "USB disconnect failed", null)
+                }
+            }
         }
     }
 
