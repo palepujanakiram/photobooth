@@ -134,9 +134,8 @@ class AppConstants {
 
   /// When true, Classic may polish shots (AF/HUD + OSD) when admin
   /// `enableOsdScrub` ("Classic — Scrub camera overlays") is also on.
-  /// Build-time kill-switch — off for this booth build (skip Gemini scrub
-  /// latency / Mini PC memory pressure regardless of admin setting).
-  static const bool kEnableStripOverlayCleanup = false;
+  /// Build-time gate — leave on so the booth follows the admin setting.
+  static const bool kEnableStripOverlayCleanup = true;
 
   /// BEHOLD single-result hero: width cap on landscape / desktop (wider than capture kiosk).
   static const double kBeholdResultCardMaxWidthFractionLandscape = 0.52;
