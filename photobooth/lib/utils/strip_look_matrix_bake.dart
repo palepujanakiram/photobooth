@@ -14,16 +14,21 @@ const int kStripLookBakeMaxEdge = 2400;
 /// JPEG quality for look-baked compose uploads (print path).
 const int kStripLookBakeJpegQuality = 92;
 
+/// Slightly lower quality for compact/TV bake — faster encode + smaller upload.
+const int kStripLookBakeJpegQualityCompact = 85;
+
 class _StripLookBakeArgs {
   const _StripLookBakeArgs({
     required this.dataUrls,
     required this.filterId,
     required this.maxEdge,
+    this.jpegQuality = kStripLookBakeJpegQuality,
   });
 
   final List<String> dataUrls;
   final String filterId;
   final int maxEdge;
+  final int jpegQuality;
 }
 
 /// Resizes to [maxEdge] and bakes Flutter look ColorFilter matrices into JPEG
@@ -31,21 +36,47 @@ class _StripLookBakeArgs {
 /// are skipped via [kStripComposePreBakedFilterId]).
 ///
 /// Fail-open: undecodable slots keep the original URL.
+///
+/// When [sequential] is true, each shot is baked in its own isolate job so peak
+/// RAM stays lower on 4GB Android TV (at a small wall-clock cost).
 Future<List<String>> bakeStripLookMatricesOntoDataUrls({
   required List<String> dataUrls,
   required String filterId,
   int maxEdge = kStripLookBakeMaxEdge,
+  bool sequential = false,
+  int? jpegQuality,
 }) async {
   if (dataUrls.isEmpty) return dataUrls;
-  // Always downscale (+ matrix when needed) — smaller uploads, faster compose.
-  return compute(
-    _bakeStripLookMatricesIsolate,
-    _StripLookBakeArgs(
-      dataUrls: List<String>.from(dataUrls),
-      filterId: filterId,
-      maxEdge: maxEdge < 1 ? kStripLookBakeMaxEdge : maxEdge,
-    ),
-  );
+  final edge = maxEdge < 1 ? kStripLookBakeMaxEdge : maxEdge;
+  final quality = jpegQuality ??
+      (edge <= 1600
+          ? kStripLookBakeJpegQualityCompact
+          : kStripLookBakeJpegQuality);
+  if (!sequential || dataUrls.length == 1) {
+    return compute(
+      _bakeStripLookMatricesIsolate,
+      _StripLookBakeArgs(
+        dataUrls: List<String>.from(dataUrls),
+        filterId: filterId,
+        maxEdge: edge,
+        jpegQuality: quality,
+      ),
+    );
+  }
+  final out = <String>[];
+  for (final url in dataUrls) {
+    final baked = await compute(
+      _bakeStripLookMatricesIsolate,
+      _StripLookBakeArgs(
+        dataUrls: [url],
+        filterId: filterId,
+        maxEdge: edge,
+        jpegQuality: quality,
+      ),
+    );
+    out.add(baked.first);
+  }
+  return out;
 }
 
 List<String> _bakeStripLookMatricesIsolate(_StripLookBakeArgs args) {
@@ -58,6 +89,7 @@ List<String> _bakeStripLookMatricesIsolate(_StripLookBakeArgs args) {
         url,
         matrix,
         maxEdge: args.maxEdge,
+        jpegQuality: args.jpegQuality,
       ),
   ];
 }
@@ -67,6 +99,7 @@ String bakeOneStripLookMatrixDataUrlForTest(
   String dataUrl,
   List<double>? matrix, {
   int maxEdge = kStripLookBakeMaxEdge,
+  int jpegQuality = kStripLookBakeJpegQuality,
 }) {
   final trimmed = dataUrl.trim();
   final match = RegExp(r'^data:([^;]+);base64,(.+)$').firstMatch(trimmed);
@@ -102,7 +135,8 @@ String bakeOneStripLookMatrixDataUrlForTest(
       _applyColorMatrixInPlace(work, matrix);
     }
 
-    final encoded = img.encodeJpg(work, quality: kStripLookBakeJpegQuality);
+    final q = jpegQuality.clamp(40, 97);
+    final encoded = img.encodeJpg(work, quality: q);
     return 'data:image/jpeg;base64,${base64Encode(encoded)}';
   } catch (_) {
     return dataUrl;

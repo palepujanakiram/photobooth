@@ -73,6 +73,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   String? _errorMessage;
   StripComposeResult? _composeResult;
   Future<void>? _prepareFuture;
+  Future<void>? _composeWarmInFlight;
+  String? _composeWarmFingerprint;
   int _placementSeq = 0;
   int _gradeSeq = 0;
   int _composePreviewSeq = 0;
@@ -159,7 +161,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _printOrientation = orientation;
     _sessionManager.setPrintOrientation(orientation);
     notifyListeners();
-    _scheduleComposePreview();
+    _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
   StripFrame? get selectedFrame {
@@ -270,10 +272,14 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     if (gen != _catalogLoadGen) return;
     if (classicOverlayCleanupEnabled && !_previewCleaned) {
       unawaited(preparePreview().then((_) {
-        _scheduleComposePreview();
+        _scheduleComposePreview(allowLargePayloadWarm: true);
       }));
     }
-    _scheduleComposePreview();
+    // Delayed idle warm so Continue can reuse compose without baking on entry.
+    _scheduleComposePreview(
+      allowLargePayloadWarm: true,
+      delay: const Duration(milliseconds: 1200),
+    );
   }
 
   void _applyFallbackCatalog(String message) {
@@ -510,7 +516,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _selectedFilterId = filterId;
     notifyListeners();
     // Instant Flutter ColorFilter browse; compose warms for Continue / print.
-    _scheduleComposePreview();
+    _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
   void selectFrame(String frameId) {
@@ -528,7 +534,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _drawMode = false;
     }
     notifyListeners();
-    _scheduleComposePreview();
+    _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
   /// Tap a sticker chip: `none` clears; placeable types add one per photo cell.
@@ -568,7 +574,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     }
     _selectedStickerId = type;
     notifyListeners();
-    _scheduleComposePreview();
+    _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
   void moveSticker(String id, double x, double y) {
@@ -580,7 +586,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     if (cur.x == nx && cur.y == ny) return;
     _placements[i] = cur.copyWith(x: nx, y: ny);
     notifyListeners();
-    _scheduleComposePreview();
+    _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
   void removeSticker(String id) {
@@ -590,7 +596,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _selectedStickerId =
         _placements.isEmpty ? kDefaultStripStickerId : _placements.last.type;
     notifyListeners();
-    _scheduleComposePreview();
+    _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
   void clearStickers() {
@@ -600,14 +606,14 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _placements.clear();
     _selectedStickerId = kDefaultStripStickerId;
     notifyListeners();
-    _scheduleComposePreview();
+    _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
   void setDrawMode(bool enabled) {
     if (_drawMode == enabled) return;
     if (!enabled) {
       _commitActiveScribble();
-      _scheduleComposePreview();
+      _scheduleComposePreview(allowLargePayloadWarm: true);
     }
     _drawMode = enabled;
     notifyListeners();
@@ -643,7 +649,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   void endScribble() {
     _commitActiveScribble();
     notifyListeners();
-    _scheduleComposePreview();
+    _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
   void undoScribble() {
@@ -655,7 +661,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     if (_scribbles.isEmpty) return;
     _scribbles.removeLast();
     notifyListeners();
-    _scheduleComposePreview();
+    _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
   void clearScribbles() {
@@ -663,7 +669,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _scribbles.clear();
     _activeScribblePoints = null;
     notifyListeners();
-    _scheduleComposePreview();
+    _scheduleComposePreview(allowLargePayloadWarm: true);
   }
 
   @visibleForTesting
@@ -699,20 +705,35 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       return null;
     }
 
+    _composePreviewDebounce?.cancel();
+    if (classicOverlayCleanupEnabled) {
+      // Finish background polish if still running so print matches preview.
+      await preparePreview();
+    }
+    _commitActiveScribble();
+    _sessionManager.setPrintOrientation(_printOrientation);
+
+    final fingerprint = _lookComposeFingerprint();
+    final alreadyReady = _composePreview != null &&
+        _composePreviewFingerprint == fingerprint &&
+        (_composePreview!.printImageUrl.trim().isNotEmpty);
+    if (!alreadyReady) {
+      // Start / join idle warm before flipping [_composing] (warm bails if composing).
+      var warm = _composeWarmInFlight;
+      if (warm == null || _composeWarmFingerprint != fingerprint) {
+        unawaited(refreshComposePreview());
+        warm = _composeWarmInFlight;
+      }
+      if (warm != null && _composeWarmFingerprint == fingerprint) {
+        await warm;
+      }
+    }
+
     _composing = true;
     _errorMessage = null;
     notifyListeners();
     try {
-      if (classicOverlayCleanupEnabled) {
-        // Finish background polish if still running so print matches preview.
-        await preparePreview();
-      }
-      _commitActiveScribble();
-      _sessionManager.setPrintOrientation(_printOrientation);
-
-      final fingerprint = _lookComposeFingerprint();
-      final reuse = isSingleClassic &&
-          _composePreview != null &&
+      final reuse = _composePreview != null &&
           _composePreviewFingerprint == fingerprint &&
           (_composePreview!.printImageUrl.trim().isNotEmpty);
       final result = reuse
@@ -767,17 +788,23 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     ].join('::');
   }
 
-  void _scheduleComposePreview() {
+  void _scheduleComposePreview({
+    bool allowLargePayloadWarm = false,
+    Duration? delay,
+  }) {
     if (!_hasComposableShotCount) return;
-    // Skip background print-twin warm for large Classic payloads — bake+compose
-    // in compute() has LMK-killed 4GB Android TV right after looks appear.
-    if (shouldDeferClassicComposePreviewWarm(imageDataUrls: _imageDataUrls)) {
+    // Skip *immediate* warm for large payloads on cold load — use delayed /
+    // look-select warm instead so Continue is not always a cold bake.
+    if (!allowLargePayloadWarm &&
+        shouldDeferClassicComposePreviewWarm(imageDataUrls: _imageDataUrls)) {
       return;
     }
     _composePreviewDebounce?.cancel();
-    // Short debounce: browse is already instant via ColorFilter; this only
-    // warms the exact print twin in the background.
-    _composePreviewDebounce = Timer(const Duration(milliseconds: 280), () {
+    final wait = delay ??
+        (allowLargePayloadWarm
+            ? const Duration(milliseconds: 700)
+            : const Duration(milliseconds: 280));
+    _composePreviewDebounce = Timer(wait, () {
       unawaited(refreshComposePreview());
     });
   }
@@ -798,6 +825,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     final seq = ++_composePreviewSeq;
     _warmingPrintPreview = true;
     notifyListeners();
+    final done = Completer<void>();
+    _composeWarmInFlight = done.future;
+    _composeWarmFingerprint = fingerprint;
     try {
       _commitActiveScribble();
       _sessionManager.setPrintOrientation(_printOrientation);
@@ -809,6 +839,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     } catch (_) {
       // Keep Flutter ColorFilter chrome until Continue compose.
     } finally {
+      if (!done.isCompleted) done.complete();
+      if (identical(_composeWarmInFlight, done.future)) {
+        _composeWarmInFlight = null;
+      }
       if (seq == _composePreviewSeq) {
         _warmingPrintPreview = false;
         notifyListeners();
@@ -834,6 +868,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       dataUrls: _imageDataUrls,
       filterId: _selectedFilterId,
       maxEdge: classicLookBakeMaxEdge(imageDataUrls: _imageDataUrls),
+      sequential: shouldBakeClassicLooksSequentially(
+        imageDataUrls: _imageDataUrls,
+      ),
     );
     _bakedByFilter[_selectedFilterId] = baked;
     return baked;

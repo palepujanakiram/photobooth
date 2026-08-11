@@ -37,7 +37,7 @@ void main() {
         classicLookBakeMaxEdge(
           imageDataUrls: List.filled(4, 'data:image/jpeg;base64,abc'),
         ),
-        1600,
+        1400,
       );
     });
 
@@ -45,6 +45,17 @@ void main() {
       expect(
         classicLookBakeMaxEdge(imageDataUrls: ['data:image/jpeg;base64,tiny']),
         2400,
+      );
+    });
+  });
+
+  group('shouldBakeClassicLooksSequentially', () {
+    test('is true for multi-shot strips', () {
+      expect(
+        shouldBakeClassicLooksSequentially(
+          imageDataUrls: List.filled(4, 'data:image/jpeg;base64,abc'),
+        ),
+        isTrue,
       );
     });
   });
