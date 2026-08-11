@@ -37,11 +37,12 @@ void main() {
   });
 
   group('classicOverlayScrubEnabled', () {
-    test('build kill-switch forces OFF regardless of admin flag', () {
-      expect(AppConstants.kEnableStripOverlayCleanup, isFalse);
-      expect(classicOverlayScrubEnabled(null), isFalse);
+    test('honours admin enableOsdScrub when build gate is on', () {
+      expect(AppConstants.kEnableStripOverlayCleanup, isTrue);
+      // Unset defaults to ON (matches server `enableOsdScrub !== false`).
+      expect(classicOverlayScrubEnabled(null), isTrue);
       expect(classicOverlayScrubEnabled(false), isFalse);
-      expect(classicOverlayScrubEnabled(true), isFalse);
+      expect(classicOverlayScrubEnabled(true), isTrue);
     });
   });
 

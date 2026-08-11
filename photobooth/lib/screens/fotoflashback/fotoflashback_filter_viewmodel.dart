@@ -6,10 +6,12 @@ import '../../models/strip_models.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/capture_flow_log.dart';
 import '../../utils/classic_strip_scrub_coordinator.dart';
 import '../../utils/classic_strip_scrub_helpers.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/logger.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/print_size_helpers.dart';
 import '../../utils/strip_look_color_matrices.dart';
@@ -315,6 +317,13 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   Future<void> _runPreparePreview(String sessionId) async {
     _preparingPreview = true;
     notifyListeners();
+    CaptureFlowLog.event(
+      'classic.scrub_start',
+      fields: {
+        'session': sessionId,
+        'shots': _imageDataUrls.length,
+      },
+    );
     try {
       // Only re-clean shots that did not finish during capture.
       var allClean = true;
@@ -331,8 +340,20 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _previewCleaned = allClean &&
           _shotCleaned.length == _imageDataUrls.length &&
           _shotCleaned.every((c) => c);
-    } catch (_) {
+      CaptureFlowLog.event(
+        'classic.scrub_done',
+        fields: {
+          'session': sessionId,
+          'all_clean': _previewCleaned,
+        },
+      );
+    } catch (e) {
       // Preview still usable with originals; compose will clean again.
+      CaptureFlowLog.event(
+        'classic.scrub_fail_open',
+        fields: {'session': sessionId, 'error': '$e'},
+        level: LogLevel.warning,
+      );
       _previewCleaned = false;
       _scrubbingIndex = null;
     } finally {

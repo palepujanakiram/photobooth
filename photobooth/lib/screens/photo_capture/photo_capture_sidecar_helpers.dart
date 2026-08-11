@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../../services/file_helper.dart';
 import '../../services/local_camera_service.dart';
+import '../../utils/capture_flow_log.dart';
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
 
@@ -13,6 +14,15 @@ bool isSidecarCameraId(String? cameraId) {
   final id = cameraId?.trim() ?? '';
   return id.startsWith('sidecar:');
 }
+
+/// Classic HDMI booths use Pi for the still; CameraX is often uninitialized.
+///
+/// Falling through to [CameraController.takePicture] yields `cameraNotReady`
+/// and leaves the strip UI stuck after a sidecar miss / dropped JPEG.
+bool shouldRefuseCameraxFallbackWhenSidecarMisses({
+  required bool sidecarConfigured,
+}) =>
+    sidecarConfigured;
 
 /// Best-effort: arm Canon Live View for HDMI/UVC pose (no still).
 ///
@@ -110,6 +120,16 @@ Future<XFile?> tryCaptureFromSidecar(
       '[HDMI_POSE] Sidecar still begin resumeLV=$resumeLiveView '
       'stripQ=$preferStripPrintQuality maxEdge=$maxLongEdge q=$jpegQuality',
     );
+    CaptureFlowLog.event(
+      'capture.sidecar_begin',
+      fields: {
+        'resume_lv': resumeLiveView,
+        'strip_q': preferStripPrintQuality,
+        'max_edge': maxLongEdge,
+        'q': jpegQuality,
+        'healthy': healthy,
+      },
+    );
     unawaited(
       service.postClientEvent('capture_begin', {
         'resumeLiveView': resumeLiveView,
@@ -125,12 +145,22 @@ Future<XFile?> tryCaptureFromSidecar(
       maxLongEdge: maxLongEdge,
       jpegQuality: jpegQuality,
     );
-    if (bytes.isEmpty) return null;
+    if (bytes.isEmpty) {
+      CaptureFlowLog.event(
+        'capture.sidecar_empty',
+        level: LogLevel.warning,
+      );
+      return null;
+    }
     final name = 'fz200d_${DateTime.now().millisecondsSinceEpoch}.jpg';
     final ms = DateTime.now().difference(t0).inMilliseconds;
     AppLogger.info(
       '[HDMI_POSE] Sidecar still ok ($name, ${bytes.length} bytes, '
       'resumeLV=$resumeLiveView, ${ms}ms)',
+    );
+    CaptureFlowLog.event(
+      'capture.sidecar_ok',
+      fields: {'bytes': bytes.length, 'ms': ms, 'resume_lv': resumeLiveView},
     );
     unawaited(
       service.postClientEvent('capture_ok', {
@@ -166,6 +196,11 @@ Future<XFile?> tryCaptureFromSidecar(
     }
   } catch (e) {
     AppLogger.warning('[HDMI_POSE] Camera sidecar capture failed; falling back: $e');
+    CaptureFlowLog.event(
+      'capture.sidecar_fail',
+      fields: {'error': '$e'},
+      level: LogLevel.warning,
+    );
     unawaited(
       service.postClientEvent('capture_error', {'error': '$e'}),
     );

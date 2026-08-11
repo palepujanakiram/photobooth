@@ -29,6 +29,7 @@ import '../../utils/uvc_capture_config.dart';
 import 'camera_description_label.dart';
 import 'photo_capture_camera_selection_helpers.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/capture_flow_log.dart';
 import '../../utils/logger.dart';
 import '../../utils/error_reporting_helpers.dart';
 import 'photo_capture_camera_error_helpers.dart';
@@ -1164,6 +1165,24 @@ class CaptureViewModel extends ChangeNotifier {
     if (!force && (_isCapturing || _isUploading)) return;
     final isUvc = cameraId.startsWith('uvc:');
     final isSidecar = isSidecarCameraId(cameraId);
+    final path = isSidecar ? 'sidecar' : (isUvc ? 'uvc' : 'external');
+    final t0 = DateTime.now();
+    WebFlowTrace.reset(label: 'classic_external_still');
+    CaptureFlowLog.event(
+      'capture.persist_begin',
+      fields: {
+        'path': path,
+        'camera': cameraId,
+        'session': _sessionManager.sessionId,
+      },
+      webFlow: true,
+    );
+    unawaited(
+      ErrorReportingManager.setPhotoCaptureContext(
+        sessionId: _sessionManager.sessionId,
+        capturePath: path,
+      ),
+    );
     _isCapturing = true;
     _errorMessage = null;
     notifyListeners();
@@ -1184,9 +1203,14 @@ class CaptureViewModel extends ChangeNotifier {
         ).timeout(
           _externalCapturePersistTimeout,
           onTimeout: () {
-            AppLogger.error(
-              'Sidecar persist timed out after '
-              '${_externalCapturePersistTimeout.inSeconds}s; using raw still',
+            CaptureFlowLog.event(
+              'capture.persist_timeout',
+              fields: {
+                'path': path,
+                'timeout_s': _externalCapturePersistTimeout.inSeconds,
+              },
+              level: LogLevel.warning,
+              webFlow: true,
             );
             return rawFile;
           },
@@ -1211,7 +1235,26 @@ class CaptureViewModel extends ChangeNotifier {
           cameraId: cameraId,
         ),
       );
+      CaptureFlowLog.event(
+        'capture.photo_ready',
+        fields: {
+          'path': path,
+          'photo': _capturedPhoto?.id,
+          'ms': DateTime.now().difference(t0).inMilliseconds,
+        },
+        webFlow: true,
+      );
     } catch (e, st) {
+      CaptureFlowLog.event(
+        'capture.persist_fail',
+        fields: {
+          'path': path,
+          'error': '$e',
+          'ms': DateTime.now().difference(t0).inMilliseconds,
+        },
+        level: LogLevel.error,
+        webFlow: true,
+      );
       _errorMessage = 'USB camera capture failed: $e';
       unawaited(
         ErrorReportingManager.recordError(
@@ -2025,6 +2068,7 @@ class CaptureViewModel extends ChangeNotifier {
   bool _lastRawCaptureFromSidecar = false;
 
   Future<XFile> _obtainRawCaptureFile() async {
+    final sidecarConfigured = _localCameraService?.isConfigured == true;
     final sidecarFile = await tryCaptureFromSidecar(
       _localCameraService,
       preferStripPrintQuality: preferStripPrintQuality,
@@ -2034,6 +2078,22 @@ class CaptureViewModel extends ChangeNotifier {
       return sidecarFile;
     }
     _lastRawCaptureFromSidecar = false;
+    // Booth Pi owns the still — never CameraX-fallback on a miss (TV has no
+    // controller; that path threw cameraNotReady and wedged Classic 4-shot).
+    if (shouldRefuseCameraxFallbackWhenSidecarMisses(
+      sidecarConfigured: sidecarConfigured,
+    )) {
+      CaptureFlowLog.event(
+        'capture.sidecar_miss_no_camerax',
+        fields: {'session': _sessionManager.sessionId},
+        level: LogLevel.warning,
+        webFlow: true,
+      );
+      throw CameraException(
+        'sidecarCaptureFailed',
+        'Pi sidecar still failed; refusing CameraX fallback',
+      );
+    }
     return _obtainRawCaptureViaTakePicturePreferred();
   }
 
@@ -2237,6 +2297,16 @@ class CaptureViewModel extends ChangeNotifier {
       'capture_hasController': _cameraController != null,
       'capture_initialized': _cameraController?.value.isInitialized ?? false,
     }));
+    CaptureFlowLog.event(
+      'capture.shutter_begin',
+      fields: {
+        'path': _localCameraService?.isConfigured == true ? 'sidecar_or_camerax' : 'camerax',
+        'session': _sessionManager.sessionId,
+        'ready': isReady,
+        'has_controller': _cameraController != null,
+      },
+      webFlow: true,
+    );
 
     if (_isCapturing || _capturedPhoto != null) return;
     if (!await _guardCaptureReady()) return;
@@ -2254,9 +2324,30 @@ class CaptureViewModel extends ChangeNotifier {
           'Capture timed out after ${_captureOverallTimeout.inSeconds}s',
         ),
       );
+      CaptureFlowLog.event(
+        'capture.photo_ready',
+        fields: {
+          'path': _lastRawCaptureFromSidecar ? 'sidecar' : 'camerax',
+          'photo': _capturedPhoto?.id,
+          'session': _sessionManager.sessionId,
+        },
+        webFlow: true,
+      );
     } on CameraException catch (e, stackTrace) {
+      CaptureFlowLog.event(
+        'capture.raw_fail',
+        fields: {'error': '$e'},
+        level: LogLevel.error,
+        webFlow: true,
+      );
       await _handleCaptureCameraException(e, stackTrace);
     } catch (e, stackTrace) {
+      CaptureFlowLog.event(
+        'capture.raw_fail',
+        fields: {'error': '$e'},
+        level: LogLevel.error,
+        webFlow: true,
+      );
       await _handleCaptureGenericError(e, stackTrace);
     } finally {
       WebFlowTrace.log('CAPTURE', 'finally isCapturing=false');

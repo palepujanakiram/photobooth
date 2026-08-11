@@ -52,6 +52,7 @@ import '../../utils/device_classifier.dart';
 import '../../utils/image_helper.dart';
 import '../../utils/kiosk_page_route.dart';
 import '../../utils/logger.dart';
+import '../../utils/capture_flow_log.dart';
 import '../../utils/route_args.dart';
 import '../../utils/surprise_me_helpers.dart';
 import '../../utils/uvc_capture_config.dart';
@@ -59,6 +60,7 @@ import '../fotoflashback/fotoflashback_filter_view.dart';
 import '../theme_selection/theme_model.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
+import '../../services/session_manager.dart';
 import '../../services/uvc_device_event_hub.dart';
 import '../../services/uvc_session_coordinator.dart';
 import '../../views/widgets/app_colors.dart';
@@ -409,12 +411,22 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!widget.sessionKind.isClassicOneShot || !mounted) return;
     final next = classicOneShotTransition(phase: _oneShotPhase, event: event);
     if (next == null) {
-      AppLogger.debug(
-        'Classic 1-shot ignore event=$event phase=$_oneShotPhase',
+      CaptureFlowLog.event(
+        'classic.oneshot_ignore',
+        fields: {'event': '$event', 'phase': '$_oneShotPhase'},
+        level: LogLevel.debug,
       );
       return;
     }
-    AppLogger.debug('Classic 1-shot $_oneShotPhase → $next ($event)');
+    CaptureFlowLog.event(
+      'classic.oneshot_phase',
+      fields: {
+        'from': '$_oneShotPhase',
+        'to': '$next',
+        'event': '$event',
+        'session': SessionManager().sessionId,
+      },
+    );
     _oneShotPhase = next;
     switch (next) {
       case ClassicOneShotPhase.counting:
@@ -1174,6 +1186,26 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         context.read<AppSettingsManager>().settings?.enableOsdScrub,
       );
       final acceptedAfter = _stripShots.length + 1;
+      CaptureFlowLog.event(
+        'classic.shot_accept',
+        fields: {
+          'shot': acceptedAfter,
+          'total': total,
+          'photo': photo.id,
+          'scrub': scrubEnabled,
+          'session': SessionManager().sessionId,
+          'kind': widget.sessionKind.name,
+        },
+      );
+      unawaited(
+        ErrorReportingManager.setPhotoCaptureContext(
+          photoId: photo.id,
+          sessionId: SessionManager().sessionId,
+          shotIndex: acceptedAfter,
+          shotTotal: total,
+          sessionKind: widget.sessionKind.name,
+        ),
+      );
       final plan = planClassicStripAccept(
         acceptedCountAfterAdd: acceptedAfter,
         total: total,
@@ -3801,6 +3833,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
       try {
         AppLogger.debug('UVC capture start source=$source');
+        CaptureFlowLog.event(
+          'capture.shutter_begin',
+          fields: {
+            'path': 'uvc',
+            'source': source,
+            'kind': widget.sessionKind.name,
+            'shot': _stripShots.length + 1,
+            'total': _classicShotCap,
+            'session': SessionManager().sessionId,
+          },
+          webFlow: true,
+        );
         // DSLR body already clicks on sidecar still — skip synthetic flash/SFX
         // so the booth does not stack white flash + mirror clicks + LCD flap.
         final preferSidecar =
@@ -3838,6 +3882,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         if (sidecar != null) {
           fromSidecar = true;
           capturedFile = sidecar;
+          CaptureFlowLog.event(
+            'capture.raw_ok',
+            fields: {
+              'path': 'sidecar',
+              'source': source,
+              'kind': widget.sessionKind.name,
+            },
+            webFlow: true,
+          );
           AppLogger.info('UVC pose shutter used Pi sidecar still');
           // Sidecar already restarted the LV keeper when resumeLiveView=true.
           // A second Flutter ensure would stop/start it again (extra clicks).
@@ -3845,6 +3898,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           // Never grab a blank HDMI/UVC frame when the Pi DSLR path is configured —
           // that is what advanced the booth with a black still after PTP Timeout.
           captureFailed = true;
+          CaptureFlowLog.event(
+            'capture.raw_fail',
+            fields: {
+              'path': 'sidecar',
+              'source': source,
+              'reason': 'sidecar_miss_refused_uvc',
+            },
+            level: LogLevel.error,
+            webFlow: true,
+          );
           AppLogger.error(
             '[HDMI_POSE] Sidecar still failed; refusing blank UVC fallback '
             'source=$source',

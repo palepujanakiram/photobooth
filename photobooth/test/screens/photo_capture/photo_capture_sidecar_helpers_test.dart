@@ -39,6 +39,19 @@ void main() {
     });
   });
 
+  group('shouldRefuseCameraxFallbackWhenSidecarMisses', () {
+    test('refuses CameraX when Pi stills are configured', () {
+      expect(
+        shouldRefuseCameraxFallbackWhenSidecarMisses(sidecarConfigured: true),
+        isTrue,
+      );
+      expect(
+        shouldRefuseCameraxFallbackWhenSidecarMisses(sidecarConfigured: false),
+        isFalse,
+      );
+    });
+  });
+
   group('ensureCanonLiveViewForHdmiPose', () {
     test('no-ops when service null or not configured', () async {
       expect(

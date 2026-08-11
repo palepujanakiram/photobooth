@@ -1,6 +1,5 @@
 import 'error_reporting_service.dart';
 import 'bugsnag_error_reporter.dart';
-import '../../utils/constants.dart';
 
 /// Central manager for error reporting
 /// This is the main interface that the app code should use for logging and error reporting
@@ -69,9 +68,13 @@ class ErrorReportingManager {
   }
 
   /// Log a message/breadcrumb
-  /// This creates a trail of events that help understand what led to an error
+  /// This creates a trail of events that help understand what led to an error.
+  ///
+  /// Always leaves Bugsnag breadcrumbs when reporting is enabled — do **not**
+  /// gate on console `ENABLE_LOG_OUTPUT` (that only controls AppLogger/HUD).
+  /// Release kiosk builds need capture-phase crumbs without enabling chatty logs.
   static void log(String message) {
-    if (!_isEnabled || !AppConstants.kEnableLogOutput) return;
+    if (!_isEnabled) return;
 
     for (final service in _services) {
       service.log(message);
@@ -186,12 +189,20 @@ class ErrorReportingManager {
     String? photoId,
     String? sessionId,
     String? themeId,
+    int? shotIndex,
+    int? shotTotal,
+    String? capturePath,
+    String? sessionKind,
   }) async {
     final context = <String, dynamic>{};
     if (photoId != null) context['photo_id'] = photoId;
     if (sessionId != null) context['session_id'] = sessionId;
     if (themeId != null) context['theme_id'] = themeId;
-    
+    if (shotIndex != null) context['shot_index'] = shotIndex;
+    if (shotTotal != null) context['shot_total'] = shotTotal;
+    if (capturePath != null) context['capture_path'] = capturePath;
+    if (sessionKind != null) context['session_kind'] = sessionKind;
+
     if (context.isNotEmpty) {
       await setCustomKeys(context);
     }
