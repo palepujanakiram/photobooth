@@ -708,7 +708,12 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _composePreviewDebounce?.cancel();
     if (classicOverlayCleanupEnabled) {
       // Finish background polish if still running so print matches preview.
-      await preparePreview();
+      await preparePreview().timeout(
+        const Duration(seconds: 45),
+        onTimeout: () {
+          AppLogger.warning('Classic preparePreview timed out on compose');
+        },
+      );
     }
     _commitActiveScribble();
     _sessionManager.setPrintOrientation(_printOrientation);
@@ -717,7 +722,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     final alreadyReady = _composePreview != null &&
         _composePreviewFingerprint == fingerprint &&
         (_composePreview!.printImageUrl.trim().isNotEmpty);
-    if (!alreadyReady) {
+    final deferWarm =
+        shouldDeferClassicComposePreviewWarm(imageDataUrls: _imageDataUrls);
+    if (!alreadyReady && !deferWarm) {
       // Start / join idle warm before flipping [_composing] (warm bails if composing).
       var warm = _composeWarmInFlight;
       if (warm == null || _composeWarmFingerprint != fingerprint) {
@@ -725,7 +732,12 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         warm = _composeWarmInFlight;
       }
       if (warm != null && _composeWarmFingerprint == fingerprint) {
-        await warm;
+        await warm.timeout(
+          const Duration(seconds: 45),
+          onTimeout: () {
+            AppLogger.warning('Classic compose warm join timed out');
+          },
+        );
       }
     }
 
@@ -736,9 +748,28 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       final reuse = _composePreview != null &&
           _composePreviewFingerprint == fingerprint &&
           (_composePreview!.printImageUrl.trim().isNotEmpty);
-      final result = reuse
-          ? _composePreview!
-          : await _requestComposeStrip(sessionId);
+      final StripComposeResult result;
+      if (reuse) {
+        result = _composePreview!;
+      } else {
+        CaptureFlowLog.event(
+          'classic.compose_start',
+          fields: {
+            'shots': _imageDataUrls.length,
+            'filter': _selectedFilterId,
+          },
+        );
+        result = await _requestComposeStrip(sessionId).timeout(
+          const Duration(seconds: 60),
+          onTimeout: () => throw TimeoutException(
+            'Classic strip compose timed out after 60s',
+          ),
+        );
+        CaptureFlowLog.event(
+          'classic.compose_done',
+          fields: {'shots': _imageDataUrls.length},
+        );
+      }
       _composeResult = result;
       _composePreview = result;
       _composePreviewFingerprint = fingerprint;
@@ -754,6 +785,14 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         isSelected: true,
         printSize: printSize,
       );
+    } on TimeoutException catch (e, st) {
+      AppLogger.warning(
+        'Classic compose timed out',
+        error: e,
+        stackTrace: st,
+      );
+      _errorMessage = AppStrings.flashbackComposeFailed;
+      return null;
     } on ApiException catch (e) {
       _errorMessage = e.message;
       return null;
@@ -793,10 +832,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     Duration? delay,
   }) {
     if (!_hasComposableShotCount) return;
-    // Skip *immediate* warm for large payloads on cold load — use delayed /
-    // look-select warm instead so Continue is not always a cold bake.
-    if (!allowLargePayloadWarm &&
-        shouldDeferClassicComposePreviewWarm(imageDataUrls: _imageDataUrls)) {
+    // 4-shot / huge payloads: never background-warm. Sequential bake + compose
+    // of strip-quality JPEGs freezes / LMKs Mini PC Pick-a-look (felt "stuck").
+    if (shouldDeferClassicComposePreviewWarm(imageDataUrls: _imageDataUrls)) {
+      _composePreviewDebounce?.cancel();
       return;
     }
     _composePreviewDebounce?.cancel();

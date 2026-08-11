@@ -1,8 +1,7 @@
-/// Whether Pick-a-look should skip **immediate** print-twin warm on catalog load.
+/// Whether Pick-a-look should skip background print-twin warm entirely.
 ///
-/// Large strip-quality JPEGs + bake in `compute()` LMK-killed 4GB Android TV when
-/// warm ran the instant looks appeared. Idle warm (delayed / after look select)
-/// is still allowed so Continue can reuse a ready compose.
+/// 4-shot / huge strip-quality payloads: idle bake+compose freezes Mini PC
+/// look UI (and can LMK). Continue still composes on demand with a timeout.
 bool shouldDeferClassicComposePreviewWarm({
   required List<String> imageDataUrls,
   int largePayloadChars = 700000,
