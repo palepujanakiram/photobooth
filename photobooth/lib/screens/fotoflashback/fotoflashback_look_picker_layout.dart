@@ -32,11 +32,13 @@ int flashbackLookPreviewCacheWidth({
   required double layoutWidth,
   required double devicePixelRatio,
 }) {
-  if (!layoutWidth.isFinite || layoutWidth <= 0) return 1600;
+  if (!layoutWidth.isFinite || layoutWidth <= 0) return 1280;
   final dpr = devicePixelRatio.isFinite && devicePixelRatio > 0
       ? devicePixelRatio
       : 2.0;
   // Slight oversample (1.25×) so cover-crop + chrome still look crisp.
+  // Cap hard at 1280 — look screen already holds full JPEG bytes in Dart heap;
+  // decoding wider GPU textures on 4GB TV boxes contributes to LMK.
   final target = (layoutWidth * dpr * 1.25).round();
-  return math.max(960, math.min(2400, target));
+  return math.max(640, math.min(1280, target));
 }

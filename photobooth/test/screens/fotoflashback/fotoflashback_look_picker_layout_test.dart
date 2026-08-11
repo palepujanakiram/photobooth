@@ -29,18 +29,18 @@ void main() {
       );
       expect(
         flashbackLookPreviewCacheWidth(layoutWidth: 500, devicePixelRatio: 2.5),
-        1563,
+        1280,
       );
     });
 
     test('clamps decode size for memory safety', () {
       expect(
         flashbackLookPreviewCacheWidth(layoutWidth: 80, devicePixelRatio: 1),
-        960,
+        640,
       );
       expect(
         flashbackLookPreviewCacheWidth(layoutWidth: 2000, devicePixelRatio: 3),
-        2400,
+        1280,
       );
     });
 
@@ -50,7 +50,7 @@ void main() {
           layoutWidth: double.nan,
           devicePixelRatio: 2,
         ),
-        1600,
+        1280,
       );
     });
   });

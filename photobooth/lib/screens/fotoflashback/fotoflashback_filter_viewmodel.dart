@@ -7,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/capture_flow_log.dart';
+import '../../utils/classic_look_memory_helpers.dart';
 import '../../utils/classic_strip_scrub_coordinator.dart';
 import '../../utils/classic_strip_scrub_helpers.dart';
 import '../../utils/constants.dart';
@@ -768,6 +769,11 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   void _scheduleComposePreview() {
     if (!_hasComposableShotCount) return;
+    // Skip background print-twin warm for large Classic payloads — bake+compose
+    // in compute() has LMK-killed 4GB Android TV right after looks appear.
+    if (shouldDeferClassicComposePreviewWarm(imageDataUrls: _imageDataUrls)) {
+      return;
+    }
     _composePreviewDebounce?.cancel();
     // Short debounce: browse is already instant via ColorFilter; this only
     // warms the exact print twin in the background.
@@ -827,6 +833,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     final baked = await bakeStripLookMatricesOntoDataUrls(
       dataUrls: _imageDataUrls,
       filterId: _selectedFilterId,
+      maxEdge: classicLookBakeMaxEdge(imageDataUrls: _imageDataUrls),
     );
     _bakedByFilter[_selectedFilterId] = baked;
     return baked;
