@@ -579,8 +579,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (_oneShotPhase != ClassicOneShotPhase.finishing) return;
 
     if (_stripShots.isEmpty) {
-      final scrubEnabled = classicOverlayScrubEnabled(
-        context.read<AppSettingsManager>().settings?.enableOsdScrub,
+      final scrubEnabled = classicOverlayScrubDuringCaptureEnabled(
+        enableOsdScrub:
+            context.read<AppSettingsManager>().settings?.enableOsdScrub,
+        deviceType: _captureViewModel.deviceType,
       );
       final Future<ClassicShotScrubResult> scrubFuture;
       if (scrubEnabled) {
@@ -1182,8 +1184,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _cancelFlashbackAutoTimers();
 
     try {
-      final scrubEnabled = classicOverlayScrubEnabled(
-        context.read<AppSettingsManager>().settings?.enableOsdScrub,
+      final scrubEnabled = classicOverlayScrubDuringCaptureEnabled(
+        enableOsdScrub:
+            context.read<AppSettingsManager>().settings?.enableOsdScrub,
+        deviceType: _captureViewModel.deviceType,
       );
       final acceptedAfter = _stripShots.length + 1;
       CaptureFlowLog.event(
@@ -1193,8 +1197,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           'total': total,
           'photo': photo.id,
           'scrub': scrubEnabled,
+          'scrub_admin': classicOverlayScrubEnabled(
+            context.read<AppSettingsManager>().settings?.enableOsdScrub,
+          ),
           'session': SessionManager().sessionId,
           'kind': widget.sessionKind.name,
+          'device': '${_captureViewModel.deviceType}',
         },
       );
       unawaited(

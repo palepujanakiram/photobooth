@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:photobooth/models/strip_models.dart';
 import 'package:photobooth/services/session_manager.dart';
+import 'package:photobooth/utils/app_device_type.dart';
 import 'package:photobooth/utils/classic_af_marker_inject.dart';
 import 'package:photobooth/utils/classic_strip_scrub_helpers.dart';
 import 'package:photobooth/utils/constants.dart';
@@ -43,6 +44,25 @@ void main() {
       expect(classicOverlayScrubEnabled(null), isTrue);
       expect(classicOverlayScrubEnabled(false), isFalse);
       expect(classicOverlayScrubEnabled(true), isTrue);
+    });
+  });
+
+  group('classicOverlayScrubDuringCaptureEnabled', () {
+    test('defers scrub on Android TV even when admin scrub is ON', () {
+      expect(
+        classicOverlayScrubDuringCaptureEnabled(
+          enableOsdScrub: true,
+          deviceType: AppDeviceType.androidTv,
+        ),
+        isFalse,
+      );
+      expect(
+        classicOverlayScrubDuringCaptureEnabled(
+          enableOsdScrub: true,
+          deviceType: AppDeviceType.androidPhone,
+        ),
+        isTrue,
+      );
     });
   });
 

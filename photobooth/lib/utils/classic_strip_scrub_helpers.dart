@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../services/api_service.dart';
 import '../services/session_manager.dart';
+import 'app_device_type.dart';
 import 'constants.dart';
 import 'logger.dart';
 
@@ -10,6 +11,20 @@ import 'logger.dart';
 bool classicOverlayScrubEnabled(bool? enableOsdScrub) {
   if (!AppConstants.kEnableStripOverlayCleanup) return false;
   return enableOsdScrub != false;
+}
+
+/// Whether Gemini scrub may run on the capture strip (accept / 1-shot handoff).
+///
+/// Android TV defers scrub to the look screen: strip-quality JPEG encode + scrub
+/// concurrent with UVC reopen has LMK-killed the Mini PC (return to launcher,
+/// often with no Bugsnag event). Admin [classicOverlayScrubEnabled] still applies
+/// on FotoFlashback look via [FotoFlashbackFilterViewModel.preparePreview].
+bool classicOverlayScrubDuringCaptureEnabled({
+  required bool? enableOsdScrub,
+  required AppDeviceType? deviceType,
+}) {
+  if (deviceType == AppDeviceType.androidTv) return false;
+  return classicOverlayScrubEnabled(enableOsdScrub);
 }
 
 /// Result of per-shot Classic scrub (fail-open keeps [dataUrl] on error).
