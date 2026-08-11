@@ -59,8 +59,9 @@ class AppSettingsModel {
   final bool? watermarkEnabled;
   final bool? exifStampEnabled;
   final bool? c2paSigningEnabled;
-  /// Classic shot cleanup master switch (`photoStripConfig.enableOsdScrub`):
-  /// Gemini AF polish + OSD scrub when true; originals when false/null.
+  /// Classic shot cleanup (`photoStripConfig.enableOsdScrub`), already resolved
+  /// for the bound kiosk when settings were fetched with `?kiosk=` (kiosk
+  /// override wins over account default). True = AF/OSD scrub; false/null = originals.
   final bool? enableOsdScrub;
   /// Test-only: burn AF brackets into Classic captures (`injectAfMarkers`).
   final bool? injectAfMarkers;
