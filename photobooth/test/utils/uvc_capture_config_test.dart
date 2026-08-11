@@ -124,7 +124,7 @@ void main() {
         AppDeviceType.androidTv,
         preferStripPrintQuality: true,
       ),
-      UvcCaptureConfig.resolutionPreset,
+      UvcCameraResolutionPreset.low,
     );
     expect(
       UvcCaptureConfig.resolutionPresetFor(AppDeviceType.androidPhone),

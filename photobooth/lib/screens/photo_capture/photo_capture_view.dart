@@ -1452,12 +1452,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final previous = _uvcOp;
     _uvcOp = gate.future;
     try {
-      await previous.timeout(
-        const Duration(seconds: 4),
-        onTimeout: () {
-          AppLogger.debug('UVC lock queue wait timed out; proceeding');
-        },
-      );
+      // Never skip an in-flight close/open — doing so double-disposed
+      // libUVCCamera and SIGABRT'd (fdsan) on Classic 4-shot POSE entry.
+      try {
+        await previous.timeout(const Duration(seconds: 12));
+      } on TimeoutException {
+        AppLogger.warning(
+          'UVC lock queue wait timed out after 12s; continuing carefully',
+        );
+      }
       return await fn().timeout(
         timeout,
         onTimeout: () => throw TimeoutException(
@@ -1465,7 +1468,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         ),
       );
     } finally {
-      gate.complete();
+      if (!gate.isCompleted) {
+        gate.complete();
+      }
     }
   }
 
@@ -2944,11 +2949,25 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _clearUvcBindingState();
   }
 
-  /// Teardown when leaving capture — bypasses [_withUvcLock] so Continue cannot
-  /// block behind a slow in-flight UVC open/capture.
+  /// Teardown when leaving capture — still uses [_withUvcLock] so Continue
+  /// cannot race an in-flight open (unlocked close caused fdsan SIGABRT).
   Future<void> _disposeUvcForNavigation() async {
     _resetUvcLiveFeedSessionFlags();
-    await _closeUvcControllerUnlocked();
+    try {
+      await _withUvcLock(
+        _closeUvcControllerUnlocked,
+        timeout: const Duration(seconds: 8),
+      );
+    } catch (e, st) {
+      AppLogger.error(
+        'UVC navigation dispose failed',
+        error: e,
+        stackTrace: st,
+      );
+      try {
+        await _closeUvcControllerUnlocked();
+      } catch (_) {}
+    }
     _clearUvcBindingState();
   }
 
@@ -3149,6 +3168,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       if (_uvcController != null && _uvcController!.value.isInitialized) return;
 
       _uvcOpeningController = true;
+      // Finish any prior native teardown before openCamera's stale-close path.
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        await UvcSessionCoordinator.waitBeforeOpen(
+          deviceType: _captureViewModel.deviceType,
+        );
+        if (!mounted) {
+          _uvcOpeningController = false;
+          return;
+        }
+      }
       await _closeUvcControllerUnlocked();
       if (!mounted) {
         return;

@@ -27,8 +27,10 @@ import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import io.flutter.plugin.common.BinaryMessenger;
@@ -119,6 +121,13 @@ import io.flutter.view.TextureRegistry;
      * Serializes native open/close so a new session cannot race an in-flight teardown.
      */
     private final Object cameraLifecycleLock = new Object();
+
+    /**
+     * Native UVCCamera instances already passed through [releaseCameraSafely].
+     * Prevents a second {@code close()}/{@code release()} (fdsan SIGABRT).
+     */
+    private final Set<UVCCamera> releasedCameras =
+            Collections.newSetFromMap(new IdentityHashMap<>());
 
     /**
      * Constructs a new {@link UvcCameraPlatform} instance
@@ -1221,10 +1230,19 @@ import io.flutter.view.TextureRegistry;
      * Releases preview + native UVC handle once. Prefer {@link UVCCamera#close()} over
      * {@link UVCCamera#destroy()} — destroy() can fdsan SIGABRT if the USB fd was already
      * released by {@link USBMonitor} on disconnect.
+     *
+     * <p>Also guards against a second {@code close()}/{@code release()} on the same
+     * instance (Classic POSE re-entry was double-disposing and aborting the process).
      */
-    private static void releaseCameraSafely(final UVCCamera camera) {
+    private void releaseCameraSafely(final UVCCamera camera) {
         if (camera == null) {
             return;
+        }
+        synchronized (releasedCameras) {
+            if (!releasedCameras.add(camera)) {
+                Log.w(TAG, "releaseCameraSafely: already released, skip");
+                return;
+            }
         }
         try {
             camera.stopPreview();

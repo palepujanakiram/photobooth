@@ -29,7 +29,7 @@ import 'constants.dart';
 /// Classic strip keeps a higher long-edge / JPEG quality when
 /// `preferStripPrintQuality` is set (HDMI usually still ≤1920).
 /// Thermal / low-memory kiosks fall back to the Thermal row via [thermalReliefEnabled].
-/// Android TV uses `low` unless Classic strip print quality is requested.
+/// Android TV uses `low` even for Classic strip (sidecar stills carry print quality).
 class UvcCaptureConfig {
   UvcCaptureConfig._(); // coverage:ignore-line
 
@@ -44,16 +44,19 @@ class UvcCaptureConfig {
   static const UvcCameraResolutionPreset thermalResolutionPreset =
       UvcCameraResolutionPreset.medium;
 
-  /// TV boxes negotiate more reliably at 640×480 (`low`), unless Classic strip
-  /// print quality is requested (then prefer ~1080p over a soft 480p stream).
+  /// TV boxes negotiate more reliably at 640×480 (`low`). Classic strip print
+  /// quality applies to Pi/sidecar stills — do **not** bump the live UVC
+  /// preset on Android TV (high + LV arm was SIGABRT/OOM on 4GB Mini PCs).
   static UvcCameraResolutionPreset resolutionPresetFor(
     AppDeviceType? deviceType, {
     bool preferStripPrintQuality = false,
   }) {
     if (thermalReliefEnabled) return thermalResolutionPreset;
-    if (preferStripPrintQuality) return resolutionPreset;
     if (deviceType == AppDeviceType.androidTv) {
       return UvcCameraResolutionPreset.low;
+    }
+    if (preferStripPrintQuality) {
+      return resolutionPreset;
     }
     return resolutionPreset;
   }

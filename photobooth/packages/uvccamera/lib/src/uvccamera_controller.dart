@@ -26,6 +26,7 @@ class UvcCameraController extends ValueNotifier<UvcCameraControllerState> {
 
   bool _isDisposed = false;
   Future<void>? _initializeFuture;
+  Future<void>? _disposeFuture;
 
   /// Camera ID
   int? _cameraId;
@@ -81,44 +82,87 @@ class UvcCameraController extends ValueNotifier<UvcCameraControllerState> {
 
   @override
   Future<void> dispose() async {
+    final inFlight = _disposeFuture;
+    if (inFlight != null) {
+      try {
+        await inFlight;
+      } catch (_) {}
+      return;
+    }
     if (_isDisposed) {
       return;
     }
-    super.dispose();
 
+    final completer = Completer<void>();
+    _disposeFuture = completer.future;
+    try {
+      // mustCallSuper: notify/remove listeners before native teardown.
+      try {
+        super.dispose();
+      } catch (_) {}
+      await _disposeBody();
+      completer.complete();
+    } catch (e, st) {
+      if (!completer.isCompleted) {
+        completer.completeError(e, st);
+      }
+    }
+  }
+
+  Future<void> _disposeBody() async {
+    if (_isDisposed) {
+      return;
+    }
+    // Mark disposed before awaiting init so a racing initialize() bails out.
     _isDisposed = true;
 
-    if (_initializeFuture != null) {
-      await _initializeFuture;
+    final init = _initializeFuture;
+    if (init != null) {
+      try {
+        await init;
+      } catch (_) {
+        // Open failed — still fall through to closeCamera if id was assigned.
+      }
       _initializeFuture = null;
     }
 
     if (_cameraButtonEventStream != null) {
       if (_cameraId != null) {
-        await UvcCameraPlatformInterface.instance.detachFromCameraButtonCallback(_cameraId!);
+        try {
+          await UvcCameraPlatformInterface.instance.detachFromCameraButtonCallback(_cameraId!);
+        } catch (_) {}
       }
       _cameraButtonEventStream = null;
     }
 
     if (_cameraStatusEventStream != null) {
       if (_cameraId != null) {
-        await UvcCameraPlatformInterface.instance.detachFromCameraStatusCallback(_cameraId!);
+        try {
+          await UvcCameraPlatformInterface.instance.detachFromCameraStatusCallback(_cameraId!);
+        } catch (_) {}
       }
       _cameraStatusEventStream = null;
     }
 
     if (_cameraErrorEventStream != null) {
       if (_cameraId != null) {
-        await UvcCameraPlatformInterface.instance.detachFromCameraErrorCallback(_cameraId!);
+        try {
+          await UvcCameraPlatformInterface.instance.detachFromCameraErrorCallback(_cameraId!);
+        } catch (_) {}
       }
       _cameraErrorEventStream = null;
     }
 
     _textureId = null;
 
-    if (_cameraId != null) {
-      await UvcCameraPlatformInterface.instance.closeCamera(_cameraId!);
-      _cameraId = null;
+    final cameraId = _cameraId;
+    _cameraId = null;
+    if (cameraId != null) {
+      try {
+        await UvcCameraPlatformInterface.instance.closeCamera(cameraId);
+      } catch (_) {
+        // Native close is idempotent; ignore transport errors.
+      }
     }
   }
 
