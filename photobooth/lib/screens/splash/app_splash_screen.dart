@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'bootstrap_route_args.dart';
 import 'kiosk_qr_scan_screen.dart';
 import '../../models/kiosk_device_status.dart';
+import '../../models/kiosk_info_model.dart';
 import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/client_identification.dart';
@@ -202,14 +203,15 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       _busy = true;
       _error = null;
     });
-    final kiosk = await _api.fetchKioskByCode(code);
+    final kiosk = await _fetchKioskByCodeBounded(code);
     if (!mounted) return;
     if (kiosk == null) {
       setState(() {
         _busy = false;
         _bootstrapDone = true;
         _needsEntry = true;
-        _error = 'Stored kiosk code is no longer valid. Enter a new code.';
+        _error =
+            'Could not verify kiosk code. Check network and try again, or enter a new code.';
         _codeController.text = code;
       });
       return;
@@ -225,6 +227,29 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     if (!mounted) return;
     setState(() => _busy = false);
     _goToTerms(urls);
+  }
+
+  /// Splash must not sit on [_busy] for the full Dio 5‑minute API timeout —
+  /// that freezes the kiosk-code field under an overlay (feels hung).
+  Future<KioskInfoModel?> _fetchKioskByCodeBounded(String code) async {
+    try {
+      return await _api.fetchKioskByCode(code).timeout(
+        const Duration(seconds: 12),
+        onTimeout: () {
+          AppLogger.warning(
+            'Splash fetchKioskByCode timed out after 12s for ${code.trim()}',
+          );
+          return null;
+        },
+      );
+    } catch (e, st) {
+      AppLogger.warning(
+        'Splash fetchKioskByCode failed',
+        error: e,
+        stackTrace: st,
+      );
+      return null;
+    }
   }
 
   /// Bundled slideshow assets load instantly; theme API samples are not used here.
@@ -252,12 +277,13 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       _busy = true;
       _error = null;
     });
-    final kiosk = await _api.fetchKioskByCode(code);
+    final kiosk = await _fetchKioskByCodeBounded(code);
     if (!mounted) return;
     if (kiosk == null) {
       setState(() {
         _busy = false;
-        _error = 'Invalid kiosk code. Check with your venue and try again.';
+        _error =
+            'Invalid kiosk code or network timeout. Check with your venue and try again.';
       });
       return;
     }
