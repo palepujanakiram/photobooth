@@ -346,14 +346,19 @@ class _AppSplashKioskForm extends StatelessWidget {
           color: CupertinoColors.systemBlue,
           borderRadius: BorderRadius.circular(12),
           onPressed: busy ? null : onSubmitCode,
-          child: Text(
-            manageKiosk ? 'Save & continue' : 'Continue',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: CupertinoColors.white,
-            ),
-          ),
+          child: busy
+              ? const CupertinoActivityIndicator(
+                  radius: 12,
+                  color: CupertinoColors.white,
+                )
+              : Text(
+                  manageKiosk ? 'Save & continue' : 'Continue',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: CupertinoColors.white,
+                  ),
+                ),
         ),
         const SizedBox(height: 14),
         CupertinoButton(

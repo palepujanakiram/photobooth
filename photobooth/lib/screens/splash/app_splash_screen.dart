@@ -21,6 +21,7 @@ import '../../utils/logger.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/animated_slideshow_background.dart'
     show kSlideshowAssetPaths;
+import 'app_splash_input_helpers.dart';
 import 'app_splash_screen_body.dart';
 
 /// Cold start and kiosk management: branded animation, no stacked dialogs.
@@ -203,30 +204,32 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       _busy = true;
       _error = null;
     });
-    final kiosk = await _fetchKioskByCodeBounded(code);
-    if (!mounted) return;
-    if (kiosk == null) {
-      setState(() {
-        _busy = false;
-        _bootstrapDone = true;
-        _needsEntry = true;
-        _error =
-            'Could not verify kiosk code. Check network and try again, or enter a new code.';
-        _codeController.text = code;
-      });
-      return;
+    try {
+      final kiosk = await _fetchKioskByCodeBounded(code);
+      if (!mounted) return;
+      if (kiosk == null) {
+        setState(() {
+          _bootstrapDone = true;
+          _needsEntry = true;
+          _error =
+              'Could not verify kiosk code. Check network and try again, or enter a new code.';
+          _codeController.text = code;
+        });
+        return;
+      }
+      await _kiosk.setKioskCode(code);
+      await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
+      await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
+      await _refreshSettingsForBoundKiosk().timeout(
+        const Duration(seconds: 12),
+        onTimeout: () {},
+      );
+      final urls = await _loadThemeBackgroundUrls();
+      if (!mounted) return;
+      _goToTerms(urls);
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
-    await _kiosk.setKioskCode(code);
-    await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
-    await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
-    await _refreshSettingsForBoundKiosk().timeout(
-      const Duration(seconds: 12),
-      onTimeout: () {},
-    );
-    final urls = await _loadThemeBackgroundUrls();
-    if (!mounted) return;
-    setState(() => _busy = false);
-    _goToTerms(urls);
   }
 
   /// Splash must not sit on [_busy] for the full Dio 5‑minute API timeout —
@@ -273,32 +276,35 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       setState(() => _error = 'Enter a kiosk code');
       return;
     }
+    if (_busy) return;
     setState(() {
       _busy = true;
       _error = null;
     });
-    final kiosk = await _fetchKioskByCodeBounded(code);
-    if (!mounted) return;
-    if (kiosk == null) {
-      setState(() {
-        _busy = false;
-        _error =
-            'Invalid kiosk code or network timeout. Check with your venue and try again.';
-      });
-      return;
+    try {
+      final kiosk = await _fetchKioskByCodeBounded(code);
+      if (!mounted) return;
+      if (kiosk == null) {
+        setState(() {
+          _error =
+              'Invalid kiosk code or network timeout. Check with your venue and try again.';
+        });
+        return;
+      }
+      await _kiosk.setKioskCode(code);
+      await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
+      await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
+      await endPhotoboothCustomerSessionLogged('splash: kiosk code submitted');
+      await _refreshSettingsForBoundKiosk().timeout(
+        const Duration(seconds: 12),
+        onTimeout: () {},
+      );
+      final urls = await _loadThemeBackgroundUrls();
+      if (!mounted) return;
+      _goToTerms(urls);
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
-    await _kiosk.setKioskCode(code);
-    await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
-    await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
-    await endPhotoboothCustomerSessionLogged('splash: kiosk code submitted');
-    await _refreshSettingsForBoundKiosk().timeout(
-      const Duration(seconds: 12),
-      onTimeout: () {},
-    );
-    final urls = await _loadThemeBackgroundUrls();
-    if (!mounted) return;
-    setState(() => _busy = false);
-    _goToTerms(urls);
   }
 
   Future<void> _openQrScanner() async {
@@ -475,32 +481,30 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     bool showManageSummary,
   ) {
     const inputHeight = 56.0;
+    // Do not rewrite [TextEditingController] in onChanged — clearing IME
+    // composing / jumping selection freezes typing on Android soft keyboards.
+    // Uppercase on submit (and textCapitalization) is enough.
     final textField = CupertinoTextField(
       controller: _codeController,
       placeholder: 'Kiosk code',
       autofocus: !showManageSummary,
-      enabled: !_busy,
+      enabled: splashCodeFieldEnabled(busy: _busy, showForm: true),
       textAlign: TextAlign.start,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       autocorrect: false,
       enableSuggestions: false,
       textCapitalization: TextCapitalization.characters,
+      keyboardType: TextInputType.visiblePassword,
       textInputAction: TextInputAction.done,
       style: TextStyle(fontSize: 17, color: appColors.textColor),
-      onChanged: (v) {
+      onChanged: (_) {
         if (_error != null) {
           setState(() => _error = null);
         }
-        final up = v.toUpperCase();
-        if (up != v) {
-          _codeController.value = _codeController.value.copyWith(
-            text: up,
-            selection: TextSelection.collapsed(offset: up.length),
-            composing: TextRange.empty,
-          );
-        }
       },
-      onSubmitted: (_) => _submitCode(),
+      onSubmitted: (_) {
+        if (!_busy) unawaited(_submitCode());
+      },
     );
 
     final scanDisabled = _busy || kIsWeb;
@@ -659,7 +663,10 @@ class _AppSplashScreenState extends State<AppSplashScreen>
                 appSplashVersionFooter(versionFooter, appColors),
               ],
             ),
-            if (_busy)
+            if (splashShouldBlockWithBusyOverlay(
+              busy: _busy,
+              showForm: showForm,
+            ))
               Positioned.fill(
                 child: ColoredBox(
                   color: Colors.black.withValues(alpha: 0.25),

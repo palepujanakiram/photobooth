@@ -38,17 +38,16 @@ void main() {
   });
 
   group('classicOverlayScrubEnabled', () {
-    test('honours admin enableOsdScrub when build gate is on', () {
-      expect(AppConstants.kEnableStripOverlayCleanup, isTrue);
-      // Unset defaults to ON (matches server `enableOsdScrub !== false`).
-      expect(classicOverlayScrubEnabled(null), isTrue);
+    test('build kill-switch forces OFF regardless of admin flag', () {
+      expect(AppConstants.kEnableStripOverlayCleanup, isFalse);
+      expect(classicOverlayScrubEnabled(null), isFalse);
       expect(classicOverlayScrubEnabled(false), isFalse);
-      expect(classicOverlayScrubEnabled(true), isTrue);
+      expect(classicOverlayScrubEnabled(true), isFalse);
     });
   });
 
   group('classicOverlayScrubDuringCaptureEnabled', () {
-    test('defers scrub on Android TV even when admin scrub is ON', () {
+    test('stays OFF on Android TV and when kill-switch is off', () {
       expect(
         classicOverlayScrubDuringCaptureEnabled(
           enableOsdScrub: true,
@@ -61,7 +60,7 @@ void main() {
           enableOsdScrub: true,
           deviceType: AppDeviceType.androidPhone,
         ),
-        isTrue,
+        isFalse,
       );
     });
   });
