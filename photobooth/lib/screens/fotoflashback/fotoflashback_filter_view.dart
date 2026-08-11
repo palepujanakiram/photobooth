@@ -126,6 +126,34 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
     final vm = _viewModel;
     final appColors = AppColors.of(context);
     if (vm == null) {
+      // Named-route builds without [filterArgs] used to spin forever on TV.
+      final parsed = widget.filterArgs ??
+          FlashbackFilterArgs.tryParse(
+            ModalRoute.of(context)?.settings.arguments,
+          );
+      if (parsed == null) {
+        return Scaffold(
+          backgroundColor: appColors.backgroundColor,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => unawaited(_goBackToCapture()),
+            ),
+          ),
+          body: const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                AppStrings.flashbackMissingArgs,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 15),
+              ),
+            ),
+          ),
+        );
+      }
       return Scaffold(
         backgroundColor: appColors.backgroundColor,
         body: const Center(child: CircularProgressIndicator()),
@@ -178,6 +206,18 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                             fontSize: 13,
                           ),
                         ),
+                      if (viewModel.errorMessage != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          viewModel.errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.orange.shade200.withValues(alpha: 0.9),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                       if (viewModel.isPreparingPreview) ...[
                         const SizedBox(height: 8),
                         Row(
@@ -495,11 +535,23 @@ class _LookPickerBody extends StatelessWidget {
                     ? const Center(
                         child: CircularProgressIndicator(color: Colors.amber),
                       )
-                    : _FilterOptionList(
-                        filters: filters,
-                        selectedId: filterId,
-                        onSelect: onSelectFilter,
-                      ),
+                    : filters.isEmpty
+                        ? Center(
+                            child: Text(
+                              AppStrings.flashbackFiltersLoadTimeout,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.amber.shade100
+                                    .withValues(alpha: 0.75),
+                                fontSize: 13,
+                              ),
+                            ),
+                          )
+                        : _FilterOptionList(
+                            filters: filters,
+                            selectedId: filterId,
+                            onSelect: onSelectFilter,
+                          ),
               ),
             ],
           ),

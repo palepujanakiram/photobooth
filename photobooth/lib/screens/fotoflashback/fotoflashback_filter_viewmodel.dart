@@ -14,6 +14,7 @@ import '../../utils/exceptions.dart';
 import '../../utils/logger.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/print_size_helpers.dart';
+import '../../utils/strip_filters_catalog_fallback.dart';
 import '../../utils/strip_look_color_matrices.dart';
 import '../../utils/strip_look_matrix_bake.dart';
 import '../../utils/strip_preview_grade_compress.dart';
@@ -30,11 +31,14 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     bool overlayCleanupAlreadyDone = false,
     List<bool> shotCleaned = const [],
     PrintOrientation? printOrientation,
+    /// Test-only override for [AppConstants.kEnableStripOverlayCleanup].
+    bool? overlayCleanupBuildGate,
   })  : _imageDataUrls = List<String>.from(imageDataUrls),
         _api = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager(),
         _previewCleaned = overlayCleanupAlreadyDone,
         _printOrientation = printOrientation ?? PrintOrientation.portrait,
+        _overlayCleanupBuildGate = overlayCleanupBuildGate,
         _shotCleaned = List<bool>.generate(
           imageDataUrls.length,
           (i) =>
@@ -47,6 +51,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   final ApiService _api;
   final SessionManager _sessionManager;
   PrintOrientation _printOrientation;
+  final bool? _overlayCleanupBuildGate;
 
   StripFiltersCatalog? _catalog;
   String _selectedFilterId = kDefaultStripFilterId;
@@ -70,6 +75,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   int _placementSeq = 0;
   int _gradeSeq = 0;
   int _composePreviewSeq = 0;
+  int _catalogLoadGen = 0;
   Timer? _composePreviewDebounce;
   String? _composePreviewFingerprint;
   StripComposeResult? _composePreview;
@@ -122,9 +128,13 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   StripFiltersCatalog? get catalog => _catalog;
 
   /// Admin master switch from strip catalog + build kill-switch.
-  bool get classicOverlayCleanupEnabled =>
-      AppConstants.kEnableStripOverlayCleanup &&
-      (_catalog?.enableOsdScrub ?? false);
+  bool get classicOverlayCleanupEnabled {
+    final gate =
+        _overlayCleanupBuildGate ?? AppConstants.kEnableStripOverlayCleanup;
+    if (!gate) return false;
+    // Match [classicOverlayScrubEnabled]: unset admin value defaults to ON.
+    return (_catalog?.enableOsdScrub) != false;
+  }
 
   List<StripFilter> get filters => _catalog?.filters ?? const [];
 
@@ -221,9 +231,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   StripComposeResult? get composeResult => _composeResult;
 
-  /// Look picker + Continue stay interactive while polish/grade run in background.
-  bool get canCompose =>
-      _hasComposableShotCount && !_composing && !_loading;
+  /// Continue stays enabled while the catalog loads — defaults work offline.
+  bool get canCompose => _hasComposableShotCount && !_composing;
 
   StripFilter? get selectedFilter {
     for (final f in filters) {
@@ -233,15 +242,31 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   }
 
   Future<void> loadFilters() async {
+    final gen = ++_catalogLoadGen;
     _loading = true;
     _errorMessage = null;
     notifyListeners();
     try {
-      await _loadCatalog();
+      await _loadCatalog(gen).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          if (gen != _catalogLoadGen) return;
+          AppLogger.warning('Strip filters catalog timed out after 15s');
+          _applyFallbackCatalog(AppStrings.flashbackFiltersLoadTimeout);
+        },
+      );
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (gen == _catalogLoadGen) {
+        if (_catalog == null || filters.isEmpty) {
+          _applyFallbackCatalog(
+            _errorMessage ?? AppStrings.flashbackFiltersLoadTimeout,
+          );
+        }
+        _loading = false;
+        notifyListeners();
+      }
     }
+    if (gen != _catalogLoadGen) return;
     if (classicOverlayCleanupEnabled && !_previewCleaned) {
       unawaited(preparePreview().then((_) {
         _scheduleComposePreview();
@@ -250,9 +275,19 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _scheduleComposePreview();
   }
 
-  Future<void> _loadCatalog() async {
+  void _applyFallbackCatalog(String message) {
+    _catalog = stripFiltersCatalogFallback();
+    _selectedFilterId = kDefaultStripFilterId;
+    _selectedFrameId = kDefaultStripFrameId;
+    _selectedStickerId = kDefaultStripStickerId;
+    _errorMessage = message;
+  }
+
+  Future<void> _loadCatalog(int gen) async {
     try {
-      _catalog = await _api.fetchStripFilters();
+      final catalog = await _api.fetchStripFilters();
+      if (gen != _catalogLoadGen) return;
+      _catalog = catalog;
       if (filters.isNotEmpty &&
           !filters.any((f) => f.id == _selectedFilterId)) {
         _selectedFilterId = filters.first.id;
@@ -267,10 +302,15 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
           _placements.isEmpty) {
         _selectedStickerId = kDefaultStripStickerId;
       }
+      _errorMessage = null;
     } on ApiException catch (e) {
-      _errorMessage = e.message;
+      if (gen != _catalogLoadGen) return;
+      if (filters.isNotEmpty) return;
+      _applyFallbackCatalog(e.message);
     } catch (e) {
-      _errorMessage = e.toString();
+      if (gen != _catalogLoadGen) return;
+      if (filters.isNotEmpty) return;
+      _applyFallbackCatalog(e.toString());
     }
   }
 
@@ -398,7 +438,11 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       return null;
     }
     try {
-      final result = await coord.awaitShotForAdopt(i);
+      // Do not wait forever on a stuck capture Gemini call — look can re-POST.
+      final result = await coord.awaitShotForAdopt(i).timeout(
+        const Duration(seconds: 45),
+        onTimeout: () => null,
+      );
       if (result == null) return null;
       if (result.dataUrl.trim().isEmpty) return null;
       // Fail-open capture results must not block look-screen re-clean.

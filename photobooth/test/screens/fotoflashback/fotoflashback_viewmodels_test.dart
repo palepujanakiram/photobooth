@@ -80,6 +80,7 @@ void main() {
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
       apiService: api,
       shotCleaned: const [true, true, false, false],
+      overlayCleanupBuildGate: true,
     );
     await vm.loadFilters();
     await vm.preparePreview();
@@ -119,6 +120,7 @@ void main() {
       imageDataUrls: List<String>.from(urls),
       apiService: lookApi,
       shotCleaned: const [false, false, false, false],
+      overlayCleanupBuildGate: true,
     );
     await vm.loadFilters();
     await vm.preparePreview();
@@ -163,6 +165,7 @@ void main() {
         imageDataUrls: List<String>.from(urls),
         apiService: lookApi,
         shotCleaned: const [false, false, false, false],
+        overlayCleanupBuildGate: true,
       );
       await vm.loadFilters();
       await vm.preparePreview();
@@ -202,6 +205,7 @@ void main() {
         imageDataUrls: List<String>.from(urls),
         apiService: lookApi,
         shotCleaned: const [false, false, false, false],
+        overlayCleanupBuildGate: true,
       );
       await vm.loadFilters();
       await vm.preparePreview();
@@ -226,6 +230,7 @@ void main() {
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
       apiService: api,
       shotCleaned: const [false, false, false, false],
+      overlayCleanupBuildGate: true,
     );
     await vm.loadFilters();
     await vm.preparePreview();
@@ -249,6 +254,7 @@ void main() {
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
       apiService: lookApi,
       shotCleaned: const [false, false, false, false],
+      overlayCleanupBuildGate: true,
     );
     await vm.loadFilters();
     await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -269,6 +275,7 @@ void main() {
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
       apiService: api,
       shotCleaned: const [false, false, false, false],
+      overlayCleanupBuildGate: true,
     );
     await vm.loadFilters();
     // Allow the unawaited prepare from loadFilters to finish first.
@@ -330,6 +337,7 @@ void main() {
       theme: stripTheme,
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
       apiService: api,
+      overlayCleanupBuildGate: true,
     );
 
     expect(vm.canCompose, isTrue);
@@ -387,6 +395,7 @@ void main() {
       theme: stripTheme,
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
       apiService: api,
+      overlayCleanupBuildGate: true,
     );
     await vm.loadFilters();
     expect(vm.classicOverlayCleanupEnabled, isFalse);
@@ -404,6 +413,7 @@ void main() {
       theme: stripTheme,
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
       apiService: _StripFakeApi(),
+      overlayCleanupBuildGate: true,
     );
     vm.setDrawMode(true);
     expect(vm.drawMode, isTrue);
@@ -502,6 +512,8 @@ void main() {
     );
     await loadFail.loadFilters();
     expect(loadFail.errorMessage, 'filters down');
+    expect(loadFail.filters, isNotEmpty);
+    expect(loadFail.canCompose, isTrue);
 
     final apiBoom = _StripFakeApi(throwGenericLoad: true);
     final loadBoom = FotoFlashbackFilterViewModel(
@@ -511,6 +523,7 @@ void main() {
     );
     await loadBoom.loadFilters();
     expect(loadBoom.errorMessage, contains('load boom'));
+    expect(loadBoom.filters, isNotEmpty);
 
     final apiComposeBoom = _StripFakeApi(throwGenericCompose: true);
     SessionManager().setSessionFromResponse(_sessionJson('sess-1'));
@@ -592,6 +605,7 @@ void main() {
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
       apiService: api,
       shotCleaned: const [true, false, false, false],
+      overlayCleanupBuildGate: true,
     );
     await vm.loadFilters();
     expect(vm.scrubDotStatuses.first, ClassicScrubDotStatus.cleaned);
@@ -665,6 +679,7 @@ void main() {
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
       apiService: _EmptyScrubFakeApi(),
       shotCleaned: const [false, false, false, false],
+      overlayCleanupBuildGate: true,
     );
     await vm.loadFilters();
     await vm.preparePreview();
@@ -678,6 +693,7 @@ void main() {
       theme: stripTheme,
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
       apiService: api,
+      overlayCleanupBuildGate: true,
     );
     await vm.loadFilters();
     vm.selectFrame('custom_sheet');
@@ -692,6 +708,7 @@ void main() {
       theme: stripTheme,
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
       apiService: api,
+      overlayCleanupBuildGate: true,
     );
     await vm.loadFilters();
     await vm.refreshPreviewGrade();
@@ -706,6 +723,7 @@ void main() {
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
       apiService: _StripFakeApi(),
       shotCleaned: const [false, false, false, false],
+      overlayCleanupBuildGate: true,
     );
     await vm.loadFilters();
     final image = await vm.compose();
@@ -732,6 +750,7 @@ void main() {
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
       apiService: _StripFakeApi(),
       shotCleaned: const [false, false, false, false],
+      overlayCleanupBuildGate: true,
     );
     expect(vm.penWidth, 0.02);
     expect(vm.scrubDotStatuses, everyElement(ClassicScrubDotStatus.pending));
@@ -762,6 +781,7 @@ void main() {
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
       apiService: _SlowScrubFakeApi(),
       shotCleaned: const [false, false, false, false],
+      overlayCleanupBuildGate: true,
     );
     await vm.loadFilters();
     final prepare = vm.preparePreview();
@@ -775,6 +795,7 @@ void main() {
       theme: stripTheme,
       imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
       apiService: _StripFakeApi(),
+      overlayCleanupBuildGate: true,
     );
     vm.setDrawMode(true);
     vm.beginScribble(0.2, 0.2);

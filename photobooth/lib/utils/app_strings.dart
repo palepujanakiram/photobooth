@@ -501,6 +501,10 @@ abstract final class AppStrings {
   static const flashbackComposePayCta = 'Continue to pay';
   static const flashbackComposing = 'Building your strip…';
   static const flashbackPreparingPreview = 'Polishing photos…';
+  static const flashbackFiltersLoadTimeout =
+      'Looks took too long to load. You can still continue with the default look.';
+  static const flashbackMissingArgs =
+      'Photo session data was lost. Go back and retake, or restart the booth.';
   static const flashbackGradingPreview = 'Refreshing preview…';
   static const flashbackWarmingPrintPreview = 'Preparing print match…';
   static const flashbackFinishEncodeFailed =

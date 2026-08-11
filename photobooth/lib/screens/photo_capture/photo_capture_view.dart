@@ -1351,14 +1351,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         dataUrls.length,
         (i) => i < scrubResults.length && scrubResults[i].scrubbed,
       );
-      await Navigator.of(context).pushReplacementNamed(
-        AppConstants.kRouteFlashbackFilter,
-        arguments: FlashbackFilterArgs(
-          theme: theme,
-          imageDataUrls: dataUrls,
-          overlayCleanupAlreadyDone: allScrubbed,
-          shotCleaned: shotCleaned,
-          classicShotMode: ClassicShotMode.fourShot,
+      final filterArgs = FlashbackFilterArgs(
+        theme: theme,
+        imageDataUrls: dataUrls,
+        overlayCleanupAlreadyDone: allScrubbed,
+        shotCleaned: shotCleaned,
+        classicShotMode: ClassicShotMode.fourShot,
+      );
+      // Direct page route — named `routes:` → const FotoFlashbackFilterScreen()
+      // drops typed args on Android TV (forever spinner on Pick a look).
+      await pushReplacementKioskFade<void, void>(
+        context,
+        FotoFlashbackFilterScreen(filterArgs: filterArgs),
+        settings: RouteSettings(
+          name: AppConstants.kRouteFlashbackFilter,
+          arguments: filterArgs,
         ),
       );
     } catch (e, st) {
