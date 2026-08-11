@@ -46,6 +46,12 @@ void main() {
     });
   });
 
+  group('classicComposeRequestsOverlayCleanup', () {
+    test('compose never requests a second Gemini scrub pass', () {
+      expect(classicComposeRequestsOverlayCleanup(), isFalse);
+    });
+  });
+
   group('classicOverlayScrubDuringCaptureEnabled', () {
     test('stays OFF on Android TV and when kill-switch is off', () {
       expect(

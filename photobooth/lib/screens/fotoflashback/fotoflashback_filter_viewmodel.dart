@@ -395,7 +395,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         },
       );
     } catch (e) {
-      // Preview still usable with originals; compose will clean again.
+      // Preview still usable with originals; compose does not re-run Gemini.
       CaptureFlowLog.event(
         'classic.scrub_fail_open',
         fields: {'session': sessionId, 'error': '$e'},
@@ -760,9 +760,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
           },
         );
         result = await _requestComposeStrip(sessionId).timeout(
-          const Duration(seconds: 60),
+          AppConstants.kClassicStripComposeTimeout,
           onTimeout: () => throw TimeoutException(
-            'Classic strip compose timed out after 60s',
+            'Classic strip compose timed out after '
+            '${AppConstants.kClassicStripComposeTimeout.inSeconds}s',
           ),
         );
         CaptureFlowLog.event(
@@ -927,7 +928,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       sticker: kDefaultStripStickerId,
       stickerPlacements: _placements,
       scribbles: _scribbles,
-      cleanOverlays: classicOverlayCleanupEnabled && !_previewCleaned,
+      cleanOverlays: classicComposeRequestsOverlayCleanup(),
       orientation: _printOrientation,
     );
   }

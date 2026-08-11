@@ -13,6 +13,13 @@ bool classicOverlayScrubEnabled(bool? enableOsdScrub) {
   return enableOsdScrub != false;
 }
 
+/// Whether `/strip/compose` may request Gemini AF scrub (`cleanOverlays`).
+///
+/// Always false: scrub belongs to capture + look-screen prepare only. A second
+/// Gemini pass on Continue caused multi-minute compose and client timeouts
+/// when look polish was still unfinished or had fail-opened.
+bool classicComposeRequestsOverlayCleanup() => false;
+
 /// Whether Gemini scrub may run on the capture strip (accept / 1-shot handoff).
 ///
 /// Android TV defers scrub to the look screen: strip-quality JPEG encode + scrub

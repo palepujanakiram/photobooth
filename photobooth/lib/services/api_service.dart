@@ -797,7 +797,11 @@ class ApiService {
       final r = await _dio.post<dynamic>(
         '/api/sessions/$sessionId/strip/compose',
         data: body,
-        options: Options(responseType: ResponseType.json),
+        options: Options(
+          responseType: ResponseType.json,
+          sendTimeout: AppConstants.kClassicStripComposeTimeout,
+          receiveTimeout: AppConstants.kClassicStripComposeTimeout,
+        ),
       );
       final data = r.data;
       Map<String, dynamic>? map;

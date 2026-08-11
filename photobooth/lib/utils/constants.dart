@@ -28,6 +28,11 @@ class AppConstants {
   // Timeout for AI generation (same as general timeout)
   static const Duration kAiGenerationTimeout = Duration(seconds: 300);
 
+  /// Classic Pick-a-look Continue: local look-bake + `/strip/compose`.
+  /// Must stay ≥ server scrub/branding worst-case (seen ~250s) or the UI shows
+  /// [AppStrings.flashbackComposeFailed] while the API still returns 200.
+  static const Duration kClassicStripComposeTimeout = Duration(seconds: 300);
+
   /// Fallback when `/api/settings` omits or invalidates `parallelImageCount`.
   /// Server-driven value chooses POST `/api/generate-image` (when **1**) vs
   /// GET `/api/generate-stream-parallel` (when **> 1**); see [ApiService.generateImages].
