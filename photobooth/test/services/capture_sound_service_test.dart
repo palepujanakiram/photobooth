@@ -16,6 +16,14 @@ void main() {
       await service.dispose();
     });
 
+    test('dispose is idempotent', () async {
+      final service = CaptureSoundService(enabled: false);
+      await service.dispose();
+      await service.dispose();
+      await service.playShutter();
+      await service.warmUp();
+    });
+
     test('shutter volume is full', () {
       expect(CaptureSoundService(enabled: false).enabled, isFalse);
       expect(CaptureSoundService.shutterVolume, 1.0);
