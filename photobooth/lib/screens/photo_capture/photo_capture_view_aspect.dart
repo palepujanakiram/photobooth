@@ -96,22 +96,18 @@ double captureCardAspectRatioForLivePreview({
     }
     return fallbackAspect;
   }
+  // Portrait phones: always a portrait card. UVC/CameraX buffers are often
+  // landscape while the guest holds the phone upright — do not inset a
+  // landscape letterbox (Classic "Classic print" countdown looked wrong).
+  if (captureCardIsPhonePortrait(context)) {
+    return captureCardViewportSlotAspect(layoutConstraints, fallbackAspect);
+  }
   if (uvcPreviewDisplaySize != null && uvcPreviewDisplaySize.height > 0) {
     return (uvcPreviewDisplaySize.width / uvcPreviewDisplaySize.height)
         .clamp(0.35, 2.85);
   }
   final liveAspect = captureCardLivePreviewAspectRatio(viewModel);
-  if (liveAspect != null) {
-    // On phones, sensor buffers are often landscape while CameraPreview shows
-    // portrait. Size the card to the available viewport instead of the buffer.
-    if (captureCardIsPhonePortrait(context)) {
-      return captureCardViewportSlotAspect(layoutConstraints, fallbackAspect);
-    }
-    return liveAspect;
-  }
-  if (captureCardIsPhonePortrait(context)) {
-    return captureCardViewportSlotAspect(layoutConstraints, fallbackAspect);
-  }
+  if (liveAspect != null) return liveAspect;
   return fallbackAspect;
 }
 
