@@ -125,6 +125,22 @@ void main() {
     vm.dispose();
   });
 
+  test('isClassicSingleSheet accepts landscape 6x4', () {
+    final landscape = GeneratedImage(
+      id: 'l',
+      imageUrl: 'https://example.com/l.jpg',
+      theme: sampleTheme('l'),
+      isSelected: true,
+      printSize: AppConstants.kPrintSizeLandscape6x4,
+    );
+    final vm = PrintSelectionViewModel(images: [landscape]);
+    expect(vm.isClassicSingleSheet(landscape), isTrue);
+    expect(vm.isClassicDeliverable(landscape), isTrue);
+    vm.toggleSelected('l');
+    expect(vm.selectedCount, 1);
+    vm.dispose();
+  });
+
   test('empty selection totals 0', () {
     final custom = GeneratedImage(
       id: 's',

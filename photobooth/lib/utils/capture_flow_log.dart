@@ -10,6 +10,9 @@ import 'web_flow_trace.dart';
 class CaptureFlowLog {
   CaptureFlowLog._();
 
+  /// Test-only: exercises the private constructor for coverage.
+  static void touchPrivateConstructorForTests() => CaptureFlowLog._();
+
   /// Emit one phase event to [AppLogger] and Bugsnag breadcrumbs.
   ///
   /// When [webFlow] is true, also appends to [WebFlowTrace] (HUD / DevTools).

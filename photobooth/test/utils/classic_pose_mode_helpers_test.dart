@@ -37,11 +37,19 @@ void main() {
   group('CaptureSessionKind', () {
     test('fotoZen is not classic and has no shot count', () {
       expect(CaptureSessionKind.fotoZen.isClassic, isFalse);
+      expect(CaptureSessionKind.fotoZen.isFotoZen, isTrue);
+      expect(CaptureSessionKind.fotoZen.isClassicOneShot, isFalse);
+      expect(CaptureSessionKind.fotoZen.isClassicFourShot, isFalse);
       expect(CaptureSessionKind.fotoZen.classicShotCount, isNull);
       expect(CaptureSessionKind.fotoZen.classicShotMode, isNull);
     });
 
     test('classic kinds expose shot counts', () {
+      expect(CaptureSessionKind.classicOneShot.isClassicOneShot, isTrue);
+      expect(CaptureSessionKind.classicOneShot.isClassicFourShot, isFalse);
+      expect(CaptureSessionKind.classicOneShot.isFotoZen, isFalse);
+      expect(CaptureSessionKind.classicFourShot.isClassicFourShot, isTrue);
+      expect(CaptureSessionKind.classicFourShot.isClassicOneShot, isFalse);
       expect(CaptureSessionKind.classicOneShot.classicShotCount, 1);
       expect(CaptureSessionKind.classicFourShot.classicShotCount, 4);
       expect(

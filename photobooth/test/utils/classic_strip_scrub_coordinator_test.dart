@@ -166,6 +166,31 @@ void main() {
     expect(coord.shotCount, 0);
   });
 
+  test('dropLast during encode skips scrub without Gemini', () async {
+    final api = _SlowScrubApi(delay: const Duration(milliseconds: 80));
+    final coord = ClassicStripScrubCoordinator.instance;
+    final encodeGate = Completer<void>();
+
+    final future = coord.enqueueShot(
+      encodeShotDataUrl: () async {
+        await encodeGate.future;
+        return 'data:image/jpeg;base64,shot1';
+      },
+      enableScrub: true,
+      apiService: api,
+    );
+
+    await Future<void>.delayed(Duration.zero);
+    coord.dropLast();
+    encodeGate.complete();
+
+    final dropped = await future;
+    expect(dropped.scrubbed, isFalse);
+    expect(dropped.dataUrl, 'data:image/jpeg;base64,shot1');
+    expect(api.cleanCalls, 0);
+    expect(coord.shotCount, 0);
+  });
+
   test('dropLast skips queued Gemini for abandoned shot', () async {
     final api = _SlowScrubApi(delay: const Duration(milliseconds: 80));
     final coord = ClassicStripScrubCoordinator.instance;

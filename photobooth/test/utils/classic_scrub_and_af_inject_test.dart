@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
@@ -86,6 +87,32 @@ void main() {
       );
       expect(out.dataUrl, 'data:image/jpeg;base64,raw');
       expect(out.scrubbed, isFalse);
+    });
+
+    test('skips Gemini when cancelled while waiting on scrub gate', () async {
+      final gateHold = Completer<void>();
+      final first = ClassicStripScrubGate.enqueue(() async {
+        await gateHold.future;
+        return 0;
+      });
+
+      var cancelled = false;
+      final scrubFuture = scrubClassicShotDataUrl(
+        encodeShotDataUrl: () async => 'data:image/jpeg;base64,raw',
+        enableScrub: true,
+        apiService: _RecordingScrubApi(),
+        isCancelled: () => cancelled,
+      );
+
+      // Past the pre-gate cancel check; waiting behind [first].
+      await Future<void>.delayed(Duration.zero);
+      cancelled = true;
+      gateHold.complete();
+      await first;
+
+      final out = await scrubFuture;
+      expect(out.scrubbed, isFalse);
+      expect(out.dataUrl, 'data:image/jpeg;base64,raw');
     });
 
     test('serializes concurrent scrub API calls', () async {

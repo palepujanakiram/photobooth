@@ -67,6 +67,35 @@ void main() {
       service.dispose();
     });
 
+    test('prepareStill throws when not configured', () async {
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: false,
+          baseUrl: 'http://192.168.2.50:8791',
+        ),
+      );
+      await expectLater(service.prepareStill(), throwsStateError);
+      service.dispose();
+    });
+
+    test('prepareStill throws on HTTP error status', () async {
+      final client = MockClient((request) async {
+        return http.Response('busy', 503);
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await expectLater(
+        service.prepareStill(),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('prepare-still failed'),
+          ),
+        ),
+      );
+      service.dispose();
+    });
+
     test('isHealthy true when connected', () async {
       final client = MockClient((request) async {
         expect(request.url.path, '/health');
@@ -227,6 +256,66 @@ void main() {
       });
       final service = LocalCameraService(config: config, client: client);
       await expectLater(service.ensureLiveView(), throwsStateError);
+      service.dispose();
+    });
+
+    test('ensureLiveView throws when not configured', () async {
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: false,
+          baseUrl: 'http://192.168.2.50:8791',
+        ),
+      );
+      await expectLater(service.ensureLiveView(), throwsStateError);
+      service.dispose();
+    });
+
+    test('ensureLiveView truncates long error bodies', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          '{"ok":false,"enabled":false,"holding":false,"error":"${'y' * 300}"}',
+          502,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await expectLater(
+        service.ensureLiveView(),
+        throwsA(
+          isA<StateError>().having(
+            (e) => '$e'.length,
+            'message length',
+            lessThan(400),
+          ),
+        ),
+      );
+      service.dispose();
+    });
+
+    test('ensureLiveView throws on invalid JSON body', () async {
+      final client = MockClient((request) async {
+        return http.Response('not-json', 200);
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await expectLater(
+        service.ensureLiveView(),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('invalid JSON'),
+          ),
+        ),
+      );
+      service.dispose();
+    });
+
+    test('postClientEvent swallows network errors', () async {
+      final client = MockClient((request) async {
+        throw Exception('log down');
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await service.postClientEvent('pose_ready');
       service.dispose();
     });
 

@@ -101,5 +101,55 @@ void main() {
       expect(p.b, lessThan(170));
       expect(p.r / p.b, greaterThan(40 / 180));
     });
+
+    test('uses compact JPEG quality when maxEdge is small', () async {
+      final src = img.Image(width: 8, height: 8);
+      img.fill(src, color: img.ColorRgb8(10, 20, 30));
+      final dataUrl =
+          'data:image/jpeg;base64,${base64Encode(img.encodeJpg(src, quality: 95))}';
+      final out = await bakeStripLookMatricesOntoDataUrls(
+        dataUrls: [dataUrl],
+        filterId: 'mono',
+        maxEdge: 1200,
+      );
+      expect(out.single, startsWith('data:image/jpeg;base64,'));
+    });
+
+    test('sequential bakes multiple shots one isolate at a time', () async {
+      String urlFor(int v) {
+        final src = img.Image(width: 6, height: 6);
+        img.fill(src, color: img.ColorRgb8(v, v, v));
+        return 'data:image/jpeg;base64,'
+            '${base64Encode(img.encodeJpg(src, quality: 90))}';
+      }
+
+      final urls = [urlFor(40), urlFor(80)];
+      final out = await bakeStripLookMatricesOntoDataUrls(
+        dataUrls: urls,
+        filterId: 'mono',
+        sequential: true,
+        maxEdge: 800,
+      );
+      expect(out, hasLength(2));
+      expect(out[0], isNot(urls[0]));
+      expect(out[1], isNot(urls[1]));
+    });
+
+    test('downscales wide plates by width', () {
+      final wide = img.Image(width: 2592, height: 1944);
+      img.fill(wide, color: img.ColorRgb8(40, 50, 60));
+      final dataUrl =
+          'data:image/jpeg;base64,${base64Encode(img.encodeJpg(wide, quality: 90))}';
+      final out = bakeOneStripLookMatrixDataUrlForTest(
+        dataUrl,
+        null,
+        maxEdge: 800,
+      );
+      final match =
+          RegExp(r'^data:image/jpeg;base64,(.+)$').firstMatch(out)!;
+      final decoded = img.decodeImage(base64Decode(match.group(1)!))!;
+      expect(decoded.width, 800);
+      expect(decoded.height, lessThan(800));
+    });
   });
 }

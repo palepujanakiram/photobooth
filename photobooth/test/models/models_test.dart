@@ -125,6 +125,26 @@ void main() {
       }).classicPhotosEnabled,
       isFalse,
     );
+    for (final flag in ['true', '1', 'yes', 'on', ' TRUE ']) {
+      expect(
+        KioskInfoModel.fromJson({
+          'id': 'k1',
+          'code': 'ABC',
+          'classicPhotosEnabled': flag,
+        }).classicPhotosEnabled,
+        isTrue,
+        reason: 'string flag "$flag" should enable Classic',
+      );
+    }
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'classicPhotosEnabled': <String>['weird'],
+      }).classicPhotosEnabled,
+      isTrue,
+      reason: 'unknown shape prefers enabling Classic',
+    );
   });
 
   test('KioskFrameModel.fromJson', () {

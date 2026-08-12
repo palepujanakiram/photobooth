@@ -80,9 +80,26 @@ void main() {
       expect(out.getPixel(50, out.height ~/ 2).r, greaterThan(150));
     });
 
+    test('pads tall portrait into landscape 6×4 by widening canvas', () {
+      final tall = img.Image(width: 100, height: 200);
+      img.fill(tall, color: img.ColorRgb8(200, 100, 50));
+      final out = letterboxImageToAspect(tall, 6 / 4);
+      expect(out, isNotNull);
+      expect(out!.height, 200);
+      expect(out.width, closeTo(300, 1));
+      expect(out.getPixel(0, 100).r, lessThan(20));
+      expect(out.getPixel(out.width ~/ 2, 100).r, greaterThan(150));
+    });
+
     test('no-ops when aspect already matches', () {
       final portrait = img.Image(width: 100, height: 150);
       expect(letterboxImageToAspect(portrait, 4 / 6), isNull);
+    });
+
+    test('returns null for non-positive target aspect', () {
+      final square = img.Image(width: 10, height: 10);
+      expect(letterboxImageToAspect(square, 0), isNull);
+      expect(letterboxImageToAspect(square, -1), isNull);
     });
 
     test('networkPrintSizeAspectRatio maps paper tokens only', () {
@@ -199,6 +216,105 @@ void main() {
         image,
       );
       expect(output.path, file.path);
+    });
+  });
+
+  group('letterboxImageToNetworkPrintSize / prepareImageForDnpPrint', () {
+    const pathProviderChannel =
+        MethodChannel('plugins.flutter.io/path_provider');
+
+    setUp(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(pathProviderChannel, (call) async {
+        if (call.method == 'getTemporaryDirectory') {
+          return Directory.systemTemp.path;
+        }
+        return null;
+      });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(pathProviderChannel, null);
+    });
+
+    Future<XFile> _jpegFile(img.Image image, {String name = 'src.jpg'}) async {
+      final dir = await Directory.systemTemp.createTemp('dnp_letterbox');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/$name');
+      await file.writeAsBytes(img.encodeJpg(image));
+      return XFile(file.path);
+    }
+
+    test('no-ops for strip / unknown network print sizes', () async {
+      final input = await _jpegFile(img.Image(width: 100, height: 100));
+      final out = await letterboxImageToNetworkPrintSize(
+        input,
+        AppConstants.kPrintSizeStripDual2x6,
+      );
+      expect(out.path, input.path);
+    });
+
+    test('returns same file when bytes are empty', () async {
+      final dir = await Directory.systemTemp.createTemp('dnp_letterbox');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/empty.jpg');
+      await file.writeAsBytes([]);
+      final input = XFile(file.path);
+      final out = await letterboxImageToNetworkPrintSize(
+        input,
+        AppConstants.kPrintSizePortrait4x6,
+      );
+      expect(out.path, input.path);
+    });
+
+    test('returns same file when decode fails', () async {
+      final dir = await Directory.systemTemp.createTemp('dnp_letterbox');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/invalid.jpg');
+      await file.writeAsBytes([0xFF, 0xD8, 0xFF, 0xD9]);
+      final input = XFile(file.path);
+      final out = await letterboxImageToNetworkPrintSize(
+        input,
+        AppConstants.kPrintSizePortrait4x6,
+      );
+      expect(out.path, input.path);
+    });
+
+    test('returns same file when aspect already matches paper', () async {
+      final input = await _jpegFile(img.Image(width: 100, height: 150));
+      final out = await letterboxImageToNetworkPrintSize(
+        input,
+        AppConstants.kPrintSizePortrait4x6,
+      );
+      expect(out.path, input.path);
+    });
+
+    test('writes letterboxed JPEG when aspect mismatches paper', () async {
+      final input = await _jpegFile(img.Image(width: 100, height: 100));
+      final out = await letterboxImageToNetworkPrintSize(
+        input,
+        AppConstants.kPrintSizePortrait4x6,
+      );
+      expect(out.path, isNot(input.path));
+      expect(await File(out.path).exists(), isTrue);
+      final decoded = img.decodeImage(await File(out.path).readAsBytes());
+      expect(decoded, isNotNull);
+      expect(decoded!.width, 100);
+      expect(decoded.height, closeTo(150, 1));
+    });
+
+    test('prepareImageForDnpPrint EXIF-bakes then letterboxes', () async {
+      final input = await _jpegFile(img.Image(width: 120, height: 80));
+      final out = await prepareImageForDnpPrint(
+        input,
+        networkPrintSize: AppConstants.kPrintSizePortrait4x6,
+      );
+      expect(out.path, isNotEmpty);
+      expect(await File(out.path).exists(), isTrue);
+      final decoded = img.decodeImage(await File(out.path).readAsBytes());
+      expect(decoded, isNotNull);
+      expect(decoded!.width / decoded.height, closeTo(4 / 6, 0.05));
     });
   });
 }

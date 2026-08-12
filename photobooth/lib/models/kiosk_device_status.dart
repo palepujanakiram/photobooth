@@ -22,16 +22,18 @@ class KioskDeviceStatusEntry {
   final KioskDeviceTransport? transport;
 }
 
-/// Snapshot of DNP, receipt, USB camera, and Pi DSLR sidecar connectivity.
+/// Snapshot of photo printers, receipt, USB camera, and Pi DSLR connectivity.
 class KioskDeviceStatusSnapshot {
   const KioskDeviceStatusSnapshot({
     required this.dnpPrinter,
+    required this.selphyPrinter,
     required this.receiptPrinter,
     required this.usbCamera,
     required this.dslrSidecar,
   });
 
   final KioskDeviceStatusEntry dnpPrinter;
+  final KioskDeviceStatusEntry selphyPrinter;
   final KioskDeviceStatusEntry receiptPrinter;
   final KioskDeviceStatusEntry usbCamera;
   final KioskDeviceStatusEntry dslrSidecar;

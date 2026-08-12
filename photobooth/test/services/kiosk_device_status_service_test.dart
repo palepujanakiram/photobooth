@@ -10,6 +10,7 @@ import 'package:photobooth/services/kiosk_device_status_service.dart';
 import 'package:photobooth/services/receipt/receipt_print_bridge.dart';
 import 'package:photobooth/services/receipt/receipt_usb_client.dart';
 import 'package:photobooth/services/receipt/receipt_wifi_client.dart';
+import 'package:photobooth/services/selphy/selphy_print_bridge.dart';
 import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/camera_sidecar_config.dart';
 
@@ -18,6 +19,7 @@ void main() {
     test('USB DNP transport reports USB mode when device present', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: true),
         receiptBridge: _FakeReceiptBridge(
           probeResult: const ReceiptPrinterProbeResult(
@@ -39,6 +41,7 @@ void main() {
     test('auto transport prefers USB when DNP visible on USB', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: true),
         wifiClient: DnpWifiClient(
           discoverFn: ({int parallelism = 20}) async => 'http://10.0.0.9',
@@ -63,6 +66,7 @@ void main() {
       var discoverCalled = false;
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         wifiClient: DnpWifiClient(
           client: MockClient((request) async {
@@ -97,6 +101,7 @@ void main() {
     test('wifi DNP transport uses WiFi discovery', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         wifiClient: DnpWifiClient(
           discoverFn: ({int parallelism = 20}) async => 'http://10.0.0.9',
@@ -120,6 +125,7 @@ void main() {
     test('receipt printer not configured shows not configured', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         receiptBridge: _FakeReceiptBridge(
           probeResult: const ReceiptPrinterProbeResult(
@@ -141,6 +147,7 @@ void main() {
     test('receipt printer USB reports connected USB mode', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         receiptBridge: _FakeReceiptBridge(
           probeResult: const ReceiptPrinterProbeResult(
@@ -162,6 +169,7 @@ void main() {
     test('receipt printer Wi-Fi discovery reports WiFi mode', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         receiptBridge: _FakeReceiptBridge(
           probeResult: const ReceiptPrinterProbeResult(
@@ -184,6 +192,7 @@ void main() {
     test('default wifi transport reports WiFi when unset', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         wifiClient: DnpWifiClient(
           discoverFn: ({int parallelism = 20}) async => 'http://10.0.0.9',
@@ -205,6 +214,7 @@ void main() {
     test('auto transport falls back to WiFi when USB absent', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         wifiClient: DnpWifiClient(
           discoverFn: ({int parallelism = 20}) async => 'http://10.0.0.9',
@@ -228,6 +238,7 @@ void main() {
     test('wifi DNP discovery timeout reports not connected', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         wifiClient: DnpWifiClient(
           discoverFn: ({int parallelism = 20}) async {
@@ -255,6 +266,7 @@ void main() {
     test('receipt printer enabled without host is configured', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         receiptBridge: _FakeReceiptBridge(
           probeResult: const ReceiptPrinterProbeResult(
@@ -278,6 +290,7 @@ void main() {
     test('USB camera present reports connected USB', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         receiptBridge: _FakeReceiptBridge(
           probeResult: const ReceiptPrinterProbeResult(
@@ -297,6 +310,7 @@ void main() {
     test('USB camera absent reports not connected', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         receiptBridge: _FakeReceiptBridge(
           probeResult: const ReceiptPrinterProbeResult(
@@ -315,6 +329,7 @@ void main() {
     test('DSLR sidecar not configured when camera disabled in settings', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         receiptBridge: _FakeReceiptBridge(
           probeResult: const ReceiptPrinterProbeResult(
@@ -343,6 +358,7 @@ void main() {
       CameraSidecarConfig? seen;
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         receiptBridge: _FakeReceiptBridge(
           probeResult: const ReceiptPrinterProbeResult(
@@ -374,6 +390,7 @@ void main() {
     test('DSLR sidecar not connected when Pi health fails', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         receiptBridge: _FakeReceiptBridge(
           probeResult: const ReceiptPrinterProbeResult(
@@ -399,6 +416,7 @@ void main() {
     test('DSLR sidecar probe timeout reports not connected', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         receiptBridge: _FakeReceiptBridge(
           probeResult: const ReceiptPrinterProbeResult(
@@ -439,6 +457,7 @@ void main() {
     test('receipt probe timeout reports disconnected configured printer', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         receiptBridge: _SlowReceiptBridge(
           delay: const Duration(seconds: 5),
@@ -456,6 +475,7 @@ void main() {
     test('receipt probe errors report disconnected configured printer', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         receiptBridge: _ErrorReceiptBridge(),
         probeUvcDevices: () async => false,
@@ -471,6 +491,7 @@ void main() {
       var discoverCalled = false;
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         wifiClient: DnpWifiClient(
           discoverFn: ({int parallelism = 20}) async {
@@ -498,6 +519,7 @@ void main() {
       var probedHost = '';
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         wifiClient: DnpWifiClient(
           client: MockClient((request) async {
@@ -534,11 +556,56 @@ void main() {
         settings: AppSettingsModel(receiptPrinterEnabled: false),
       );
       expect(snap.receiptPrinter.configured, isFalse);
+      expect(snap.selphyPrinter.connected, isFalse);
+    });
+
+    test('DNP USB probe timeout reports not connected', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _SlowUsbClient(delay: const Duration(seconds: 5)),
+        wifiDiscoverTimeout: const Duration(milliseconds: 40),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(printerTransport: 'usb'),
+      );
+      expect(snap.dnpPrinter.connected, isFalse);
+    });
+
+    test('USB camera probe timeout reports not connected', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _FakeUsbClient(present: false),
+        wifiDiscoverTimeout: const Duration(milliseconds: 40),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async {
+          await Future<void>.delayed(const Duration(seconds: 5));
+          return true;
+        },
+      );
+      final snap = await service.probe(settings: AppSettingsModel());
+      expect(snap.usbCamera.connected, isFalse);
     });
 
     test('wifi DNP probe catches unexpected errors', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         wifiClient: DnpWifiClient(
           discoverFn: ({int parallelism = 20}) async {
@@ -563,6 +630,7 @@ void main() {
     test('web platform skips DNP hardware probe', () async {
       final service = KioskDeviceStatusService(
         isWeb: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         receiptBridge: _FakeReceiptBridge(
           probeResult: const ReceiptPrinterProbeResult(
             connected: false,
@@ -605,6 +673,7 @@ void main() {
 
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
         usbClient: _FakeUsbClient(present: false),
         receiptBridge: _FakeReceiptBridge(
           probeResult: const ReceiptPrinterProbeResult(
@@ -617,7 +686,126 @@ void main() {
       final snap = await service.probe(settings: AppSettingsModel());
       expect(snap.usbCamera.connected, isTrue);
     });
+
+    test('Selphy USB connected reports Canon Selphy USB row', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(connected: true, transport: 'usb'),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(settings: AppSettingsModel());
+      expect(snap.selphyPrinter.connected, isTrue);
+      expect(snap.selphyPrinter.transport, KioskDeviceTransport.usb);
+      expect(snap.selphyPrinter.deviceName, AppStrings.kioskDeviceSelphyPrinter);
+    });
+
+    test('Selphy WiFi connected reports Canon Selphy WiFi row', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(connected: true, transport: 'wifi'),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(settings: AppSettingsModel());
+      expect(snap.selphyPrinter.connected, isTrue);
+      expect(snap.selphyPrinter.transport, KioskDeviceTransport.wifi);
+    });
+
+    test('Selphy not connected when probe finds nothing', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(connected: false),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(settings: AppSettingsModel());
+      expect(snap.selphyPrinter.connected, isFalse);
+      expect(snap.selphyPrinter.deviceName, AppStrings.kioskDeviceSelphyPrinter);
+    });
+
+    test('Selphy probe timeout reports not connected', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(
+          connected: true,
+          delay: const Duration(seconds: 5),
+        ),
+        wifiDiscoverTimeout: const Duration(milliseconds: 40),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(settings: AppSettingsModel());
+      expect(snap.selphyPrinter.connected, isFalse);
+    });
+
+    test('Selphy probe error reports not connected', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(throwOnProbe: true),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+      );
+      final snap = await service.probe(settings: AppSettingsModel());
+      expect(snap.selphyPrinter.connected, isFalse);
+    });
   });
+}
+
+class _FakeSelphyBridge extends SelphyPrintBridge {
+  _FakeSelphyBridge({
+    this.connected = false,
+    this.transport = 'usb',
+    this.delay,
+    this.throwOnProbe = false,
+  }) : super(isAndroid: () => true, webUnsupported: false);
+
+  final bool connected;
+  final String transport;
+  final Duration? delay;
+  final bool throwOnProbe;
+
+  @override
+  Future<({bool connected, String? transport})> probe() async {
+    if (delay != null) await Future<void>.delayed(delay!);
+    if (throwOnProbe) throw StateError('selphy probe failed');
+    return (connected: connected, transport: transport);
+  }
 }
 
 class _FakeUsbClient extends DnpUsbClient {
@@ -630,6 +818,18 @@ class _FakeUsbClient extends DnpUsbClient {
 
   @override
   Future<bool> hasUsbHost() async => present;
+}
+
+class _SlowUsbClient extends DnpUsbClient {
+  _SlowUsbClient({required this.delay});
+
+  final Duration delay;
+
+  @override
+  Future<bool> probeDevicePresent() async {
+    await Future<void>.delayed(delay);
+    return true;
+  }
 }
 
 class _FakeReceiptBridge extends ReceiptPrintBridge {
