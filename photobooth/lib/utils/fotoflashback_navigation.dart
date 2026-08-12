@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../screens/photo_capture/photo_capture_view.dart';
@@ -11,6 +12,34 @@ import 'constants.dart';
 import 'kiosk_page_route.dart';
 import 'logger.dart';
 import 'route_args.dart';
+
+/// Test-only page factory so navigation unit tests skip heavy camera init.
+@visibleForTesting
+Widget Function({
+  required CaptureSessionKind sessionKind,
+  required CaptureRouteArgs captureArgs,
+})? debugFotoFlashbackCapturePageBuilder;
+
+/// Builds the Classic POSE page (or [debugFotoFlashbackCapturePageBuilder]).
+@visibleForTesting
+Widget buildFotoFlashbackCapturePage({
+  required CaptureSessionKind sessionKind,
+  required CaptureRouteArgs captureArgs,
+  bool awaitGuestStart = false,
+}) {
+  final pageBuilder = debugFotoFlashbackCapturePageBuilder;
+  if (pageBuilder != null) {
+    return pageBuilder(sessionKind: sessionKind, captureArgs: captureArgs);
+  }
+  return PhotoCaptureScreen(
+    key: ValueKey<String>(
+      'pose-${sessionKind.name}-${captureArgs.multiShotTotal}'
+      '${awaitGuestStart ? '-await' : ''}',
+    ),
+    sessionKind: sessionKind,
+    captureArgs: captureArgs,
+  );
+}
 
 /// Builds Classic POSE route args (theme + strip progress only).
 ///
@@ -59,13 +88,10 @@ Future<void> navigateToFotoFlashbackCapture({
     'Classic 1-shot must pass multiShotTotal=1',
   );
 
-  final page = PhotoCaptureScreen(
-    key: ValueKey<String>(
-      'pose-${kind.name}-${args.multiShotTotal}'
-      '${awaitGuestStart ? '-await' : ''}',
-    ),
+  final page = buildFotoFlashbackCapturePage(
     sessionKind: kind,
     captureArgs: args,
+    awaitGuestStart: awaitGuestStart,
   );
   final settings = RouteSettings(
     name: '${AppConstants.kRouteCapture}-${kind.name}',

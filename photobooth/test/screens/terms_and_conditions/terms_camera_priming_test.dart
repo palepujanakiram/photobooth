@@ -157,6 +157,22 @@ void main() {
       expect(result.phase, TermsCameraPrimingPhase.failed);
       expect(result.allowsContinue, isFalse);
     });
+
+    test('returns ready when post-preload check throws but UVC is attached',
+        () async {
+      final result = await runTermsCameraPriming(
+        ensurePermission: () async => true,
+        preloadCameras: () async {},
+        classifyDevice: () async => AppDeviceType.androidTv,
+        startPrewarm: (_) async {},
+        hasOpenableCamera: (_) => throw StateError('camera check failed'),
+        isCameraPlatform: true,
+        probeAttachedUvc: () async => true,
+      );
+
+      expect(result.phase, TermsCameraPrimingPhase.ready);
+      expect(result.allowsContinue, isTrue);
+    });
   });
 
   group('termsHasUsableCaptureSource', () {

@@ -1,13 +1,20 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cross_file/cross_file.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:photobooth/models/strip_models.dart';
 import 'package:photobooth/screens/fotoflashback/fotoflashback_capture_viewmodel.dart';
 import 'package:photobooth/screens/fotoflashback/fotoflashback_filter_viewmodel.dart';
 import 'package:photobooth/screens/photo_capture/photo_model.dart';
+import 'package:photobooth/screens/photo_generate/photo_generate_viewmodel.dart';
 import 'package:photobooth/services/session_manager.dart';
+import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/classic_strip_scrub_coordinator.dart';
+import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/exceptions.dart';
 import 'package:photobooth/utils/print_orientation.dart';
 import 'package:photobooth/utils/strip_look_color_matrices.dart';
@@ -16,16 +23,27 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../fakes/fake_api_service.dart';
 import '../../fixtures/theme_fixtures.dart';
 
+String _tinyJpegDataUrl() {
+  final src = img.Image(width: 4, height: 4);
+  img.fill(src, color: img.ColorRgb8(20, 40, 60));
+  return 'data:image/jpeg;base64,'
+      '${base64Encode(img.encodeJpg(src, quality: 90))}';
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   SharedPreferences.setMockInitialValues({});
 
   setUp(() {
     ClassicStripScrubCoordinator.instance.resetForTests();
+    FotoFlashbackFilterViewModel.composeWarmJoinTimeoutForTest =
+        const Duration(seconds: 45);
   });
 
   tearDown(() {
     ClassicStripScrubCoordinator.instance.resetForTests();
+    FotoFlashbackFilterViewModel.composeWarmJoinTimeoutForTest =
+        const Duration(seconds: 45);
   });
 
   final stripTheme = sampleTheme('strip1').copyWith((p) {
@@ -801,6 +819,248 @@ void main() {
     vm.beginScribble(0.2, 0.2);
     expect(vm.canUndoScribble, isTrue);
   });
+
+  test('FotoFlashbackFilterViewModel exposes idle compose-refresh getters', () {
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: _StripFakeApi(),
+    );
+    expect(vm.isRefreshingComposePreview, isFalse);
+    expect(vm.isRefreshingLookPreview, isFalse);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel falls back when catalog has no filters',
+      () async {
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: _EmptyFiltersFakeApi(),
+    );
+    await vm.loadFilters();
+    expect(vm.filters, isNotEmpty);
+    expect(vm.errorMessage, AppStrings.flashbackFiltersLoadTimeout);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel catalog load timeout uses fallback', () {
+    fakeAsync((async) {
+      final vm = FotoFlashbackFilterViewModel(
+        theme: stripTheme,
+        imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+        apiService: _HangingCatalogFakeApi(),
+      );
+      unawaited(vm.loadFilters());
+      async.elapse(const Duration(seconds: 15));
+      async.flushMicrotasks();
+      expect(vm.filters, isNotEmpty);
+      expect(vm.errorMessage, AppStrings.flashbackFiltersLoadTimeout);
+      vm.dispose();
+    });
+  });
+
+  test('FotoFlashbackFilterViewModel adopt scrub times out and re-posts', () {
+    fakeAsync((async) {
+      ClassicStripScrubCoordinator.instance.resetForTests();
+      SessionManager().setSessionFromResponse(_sessionJson('sess-adopt-to'));
+      final hang = Completer<String>();
+      for (var i = 0; i < 4; i++) {
+        ClassicStripScrubCoordinator.instance.enqueueShot(
+          encodeShotDataUrl: () => hang.future,
+          enableScrub: true,
+          apiService: _StripFakeApi(),
+        );
+      }
+      final api = _CountingScrubFakeApi();
+      final vm = FotoFlashbackFilterViewModel(
+        theme: stripTheme,
+        imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
+        apiService: api,
+        shotCleaned: const [false, false, false, false],
+        overlayCleanupBuildGate: true,
+      );
+      unawaited(vm.preparePreview());
+      async.elapse(const Duration(seconds: 45));
+      async.flushMicrotasks();
+      // First shot timed out adopt → API clean; remaining shots still pending.
+      expect(api.cleanCalls, greaterThan(0));
+      hang.complete('data:image/jpeg;base64,raw');
+      async.flushMicrotasks();
+      vm.dispose();
+      ClassicStripScrubCoordinator.instance.resetForTests();
+    });
+  });
+
+  test('FotoFlashbackFilterViewModel compose survives preparePreview timeout',
+      () {
+    fakeAsync((async) {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-prep-to'));
+      final api = _HangingScrubComposeFakeApi();
+      final vm = FotoFlashbackFilterViewModel(
+        theme: stripTheme,
+        imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
+        apiService: api,
+        shotCleaned: const [false, false, false, false],
+        overlayCleanupBuildGate: true,
+      );
+      late GeneratedImage? image;
+      unawaited(vm.compose().then((v) => image = v));
+      async.elapse(const Duration(seconds: 45));
+      async.flushMicrotasks();
+      // After prepare timeout, composeStrip still runs (skipBake for 4-shot).
+      async.elapse(const Duration(milliseconds: 10));
+      async.flushMicrotasks();
+      expect(image, isNotNull);
+      vm.dispose();
+    });
+  });
+
+  test('FotoFlashbackFilterViewModel compose times out on hanging strip API',
+      () {
+    fakeAsync((async) {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-compose-to'));
+      final api = _HangingComposeOnlyFakeApi();
+      final vm = FotoFlashbackFilterViewModel(
+        theme: stripTheme,
+        imageDataUrls: List.filled(4, 'data:image/jpeg;base64,shot'),
+        apiService: api,
+        overlayCleanupAlreadyDone: true,
+        overlayCleanupBuildGate: false,
+      );
+      late GeneratedImage? image;
+      unawaited(vm.compose().then((v) => image = v));
+      async.elapse(AppConstants.kClassicStripComposeTimeout);
+      async.flushMicrotasks();
+      expect(image, isNull);
+      expect(vm.errorMessage, AppStrings.flashbackComposeFailed);
+      vm.dispose();
+    });
+  });
+
+  test('FotoFlashbackFilterViewModel 1-shot warms, reuses, and bakes looks',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-one-warm'));
+    final api = _StripFakeApi();
+    final url = _tinyJpegDataUrl();
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: [url],
+      apiService: api,
+      overlayCleanupBuildGate: false,
+    );
+    await vm.loadFilters();
+    vm.setDrawMode(true);
+    vm.beginScribble(0.1, 0.1);
+    vm.extendScribble(0.2, 0.2);
+    vm.endScribble();
+    expect(vm.scribbles, hasLength(1));
+
+    await vm.refreshComposePreview();
+    expect(vm.lookComposePreviewUrl, isNotNull);
+    expect(api.composeCalls, 1);
+
+    // Cache hit on second warm with same fingerprint.
+    await vm.refreshComposePreview();
+    expect(api.composeCalls, 1);
+
+    // Scribble change invalidates fingerprint; bake cache for filter still hits.
+    vm.beginScribble(0.3, 0.3);
+    vm.extendScribble(0.4, 0.4);
+    vm.endScribble();
+    await vm.refreshComposePreview();
+    expect(api.composeCalls, 2);
+
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    // Reuse warmed preview — no third compose POST.
+    expect(api.composeCalls, 2);
+    expect(api.lastComposeFilter, kStripComposePreBakedFilterId);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel joins in-flight compose warm', () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-join-warm'));
+    final gate = Completer<void>();
+    final api = _GatedComposeFakeApi(gate);
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      apiService: api,
+      overlayCleanupBuildGate: false,
+    );
+    await vm.loadFilters();
+    final warm = vm.refreshComposePreview();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(vm.isWarmingPrintPreview, isTrue);
+
+    final composeFuture = vm.compose();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    gate.complete();
+    final image = await composeFuture;
+    await warm;
+    expect(image, isNotNull);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel warm join timeout is fail-open', () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-warm-to'));
+    FotoFlashbackFilterViewModel.composeWarmJoinTimeoutForTest =
+        const Duration(milliseconds: 30);
+    final gate = Completer<void>();
+    final api = _GatedComposeFakeApi(gate);
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      apiService: api,
+      overlayCleanupBuildGate: false,
+    );
+    await vm.loadFilters();
+    unawaited(vm.refreshComposePreview());
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    final composeFuture = vm.compose();
+    // Warm still gated; join times out, then compose posts itself.
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    gate.complete();
+    final image = await composeFuture;
+    expect(image, isNotNull);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel schedules warm after orientation change',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-orient-warm'));
+    final api = _StripFakeApi();
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      apiService: api,
+      overlayCleanupBuildGate: false,
+    );
+    await vm.loadFilters();
+    vm.selectPrintOrientation(PrintOrientation.landscape);
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    expect(api.composeCalls, greaterThan(0));
+    expect(vm.lookComposePreviewUrl, isNotNull);
+    vm.dispose();
+  });
+
+  test('FotoFlashbackFilterViewModel compose starts warm when none in flight',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-start-warm'));
+    final api = _StripFakeApi();
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      apiService: api,
+      overlayCleanupBuildGate: false,
+    );
+    // No loadFilters → no debounce warm; compose itself kicks refreshComposePreview.
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    expect(api.composeCalls, greaterThan(0));
+    vm.dispose();
+  });
 }
 
 Map<String, dynamic> _sessionJson(String id) => {
@@ -1157,5 +1417,80 @@ class _SheetFramesFakeApi extends _StripFakeApi {
         'grid2x2': {'title': 'Together', 'subtitle': 'Moments'},
       },
     });
+  }
+}
+
+class _EmptyFiltersFakeApi extends _StripFakeApi {
+  @override
+  Future<StripFiltersCatalog> fetchStripFilters() async {
+    return StripFiltersCatalog.fromJson({
+      'brand': 'FotoFlashback',
+      'shotCount': 4,
+      'filters': <Map<String, dynamic>>[],
+    });
+  }
+}
+
+class _HangingCatalogFakeApi extends _StripFakeApi {
+  @override
+  Future<StripFiltersCatalog> fetchStripFilters() => Completer<StripFiltersCatalog>().future;
+}
+
+class _HangingScrubComposeFakeApi extends _StripFakeApi {
+  @override
+  Future<StripOverlayCleanResult> cleanStripOverlays({
+    required String sessionId,
+    required List<String> images,
+  }) {
+    return Completer<StripOverlayCleanResult>().future;
+  }
+}
+
+class _HangingComposeOnlyFakeApi extends _StripFakeApi {
+  @override
+  Future<StripComposeResult> composeStrip({
+    required String sessionId,
+    required List<String> images,
+    String filter = kDefaultStripFilterId,
+    String frame = kDefaultStripFrameId,
+    String sticker = kDefaultStripStickerId,
+    List<StripStickerPlacement> stickerPlacements = const [],
+    List<StripScribbleStroke> scribbles = const [],
+    bool cleanOverlays = false,
+    PrintOrientation? orientation,
+  }) {
+    return Completer<StripComposeResult>().future;
+  }
+}
+
+class _GatedComposeFakeApi extends _StripFakeApi {
+  _GatedComposeFakeApi(this.gate);
+
+  final Completer<void> gate;
+
+  @override
+  Future<StripComposeResult> composeStrip({
+    required String sessionId,
+    required List<String> images,
+    String filter = kDefaultStripFilterId,
+    String frame = kDefaultStripFrameId,
+    String sticker = kDefaultStripStickerId,
+    List<StripStickerPlacement> stickerPlacements = const [],
+    List<StripScribbleStroke> scribbles = const [],
+    bool cleanOverlays = false,
+    PrintOrientation? orientation,
+  }) async {
+    await gate.future;
+    return super.composeStrip(
+      sessionId: sessionId,
+      images: images,
+      filter: filter,
+      frame: frame,
+      sticker: sticker,
+      stickerPlacements: stickerPlacements,
+      scribbles: scribbles,
+      cleanOverlays: cleanOverlays,
+      orientation: orientation,
+    );
   }
 }

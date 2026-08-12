@@ -760,6 +760,72 @@ void main() {
       );
     });
 
+    test('USB transport uses default platform check (_defaultIsAndroid)',
+        () async {
+      final jpeg = File(
+        '${Directory.systemTemp.path}/dnp_usb_default_'
+        '${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await jpeg.writeAsBytes([0xFF, 0xD8]);
+      addTearDown(() async {
+        if (await jpeg.exists()) await jpeg.delete();
+      });
+
+      // No isAndroid inject — exercises _defaultIsAndroid.
+      final bridge = DnpPrintBridge(
+        usbClient: _RecordingUsbClient(const MethodChannel('test/usb_default')),
+        wifiClient: DnpWifiClient(
+          client: MockClient((_) async => http.Response('', 404)),
+        ),
+      );
+
+      // On non-Android hosts this throws USB-only-on-Android; on Android it
+      // prints via the fake USB client. Either path calls _defaultIsAndroid.
+      try {
+        await bridge.printImage(
+          imageFile: XFile(jpeg.path),
+          settings: AppSettingsModel(printerTransport: 'usb'),
+          networkPrintSize: 's4x6',
+        );
+      } on PrintException catch (e) {
+        expect(e.message, contains('Android'));
+      }
+    });
+
+    test('USB transport rejects when isAndroid is false', () async {
+      final jpeg = File(
+        '${Directory.systemTemp.path}/dnp_usb_non_android_'
+        '${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await jpeg.writeAsBytes([0xFF, 0xD8]);
+      addTearDown(() async {
+        if (await jpeg.exists()) await jpeg.delete();
+      });
+
+      final bridge = DnpPrintBridge(
+        usbClient: _RecordingUsbClient(const MethodChannel('test/usb_ios')),
+        wifiClient: DnpWifiClient(
+          client: MockClient((_) async => http.Response('', 404)),
+        ),
+        isAndroid: () => false,
+      );
+
+      await expectLater(
+        bridge.printImage(
+          imageFile: XFile(jpeg.path),
+          settings: AppSettingsModel(printerTransport: 'usb'),
+          networkPrintSize: 's4x6',
+        ),
+        throwsA(
+          isA<PrintException>().having(
+            (e) => e.message,
+            'message',
+            contains('Android'),
+          ),
+        ),
+      );
+    });
+
     test('auto transport rethrows non-recoverable USB errors', () async {
       final usb = _RecordingUsbClient(const MethodChannel('test/usb'))
         ..printError = PlatformException(

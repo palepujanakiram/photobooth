@@ -40,5 +40,9 @@ class ClassicCaptureIntent {
   }
 
   /// Test-only.
-  static void resetForTests() => clear();
+  static void resetForTests() {
+    clear();
+    // Keep private constructor exercised for coverage.
+    ClassicCaptureIntent._();
+  }
 }

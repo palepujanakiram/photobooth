@@ -1,13 +1,19 @@
 import 'dart:async' show unawaited;
 
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 
 import '../../services/file_helper.dart';
 import '../../services/local_camera_service.dart';
 import '../../utils/capture_flow_log.dart';
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
+
+/// When true, sidecar helpers take the web (in-memory XFile) branches.
+@visibleForTesting
+bool debugSidecarHelpersForceWeb = false;
+
+bool get _sidecarTreatAsWeb => kIsWeb || debugSidecarHelpersForceWeb;
 
 /// True when [cameraId] is a Pi gphoto2 / FZ200D still.
 bool isSidecarCameraId(String? cameraId) {
@@ -169,7 +175,7 @@ Future<XFile?> tryCaptureFromSidecar(
         'ms': ms,
       }),
     );
-    if (kIsWeb) {
+    if (_sidecarTreatAsWeb) {
       return XFile.fromData(
         bytes,
         mimeType: 'image/jpeg',
@@ -222,7 +228,7 @@ Future<XFile> persistSidecarCaptureStill(
   XFile rawFile, {
   int bakeQuarterTurns = 0,
 }) async {
-  if (kIsWeb) {
+  if (_sidecarTreatAsWeb) {
     return rawFile;
   }
   XFile source = rawFile;

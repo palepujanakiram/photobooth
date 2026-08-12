@@ -175,5 +175,15 @@ void main() {
         isNull,
       );
     });
+
+    test('finished accepts captured without finishStarted', () {
+      expect(
+        classicOneShotTransition(
+          phase: ClassicOneShotPhase.captured,
+          event: ClassicOneShotEvent.finished,
+        ),
+        ClassicOneShotPhase.done,
+      );
+    });
   });
 }

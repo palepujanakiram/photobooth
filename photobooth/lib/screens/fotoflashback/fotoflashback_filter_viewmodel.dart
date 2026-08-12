@@ -24,6 +24,10 @@ import '../theme_selection/theme_model.dart';
 
 /// Loads strip looks and composes the dual strip (Gemini AF polish on shots).
 class FotoFlashbackFilterViewModel extends ChangeNotifier {
+  /// Shorten warm-join wait in unit tests (production: 45s).
+  @visibleForTesting
+  static Duration composeWarmJoinTimeoutForTest = const Duration(seconds: 45);
+
   FotoFlashbackFilterViewModel({
     required this.theme,
     required List<String> imageDataUrls,
@@ -733,7 +737,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       }
       if (warm != null && _composeWarmFingerprint == fingerprint) {
         await warm.timeout(
-          const Duration(seconds: 45),
+          composeWarmJoinTimeoutForTest,
           onTimeout: () {
             AppLogger.warning('Classic compose warm join timed out');
           },

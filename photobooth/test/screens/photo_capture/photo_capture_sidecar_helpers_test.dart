@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
@@ -16,6 +17,8 @@ import '../../helpers/tiny_jpeg.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  String tempDirPath = '/tmp';
+
   setUpAll(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
@@ -23,11 +26,16 @@ void main() {
       (call) async {
         if (call.method == 'getTemporaryDirectory' ||
             call.method == 'getApplicationSupportDirectory') {
-          return '/tmp';
+          return tempDirPath;
         }
         return null;
       },
     );
+  });
+
+  tearDown(() {
+    debugSidecarHelpersForceWeb = false;
+    tempDirPath = '/tmp';
   });
 
   group('isSidecarCameraId', () {
@@ -292,6 +300,73 @@ void main() {
       expect(await tryCaptureFromSidecar(service), isNull);
       service.dispose();
     });
+
+    test('returns null when capture bytes are empty', () async {
+      final service = _EmptyBytesCameraService();
+      expect(await tryCaptureFromSidecar(service), isNull);
+      service.dispose();
+    });
+
+    test('returns in-memory XFile on web path', () async {
+      debugSidecarHelpersForceWeb = true;
+      final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(32, 3)]);
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/camera/client-log')) {
+          return http.Response('', 204);
+        }
+        if (request.url.path.endsWith('/health')) {
+          return http.Response('{"ok":true,"connected":true}', 200);
+        }
+        return http.Response.bytes(jpeg, 200);
+      });
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://192.168.2.50:8791',
+        ),
+        client: client,
+      );
+      final file = await tryCaptureFromSidecar(service);
+      expect(file, isNotNull);
+      expect(file!.path, isEmpty);
+      expect(await file.readAsBytes(), jpeg);
+      service.dispose();
+    });
+
+    test('falls back to memory when temp write fails', () async {
+      final blocker = File(
+        '${Directory.systemTemp.path}/sidecar_temp_blocker_'
+        '${DateTime.now().microsecondsSinceEpoch}',
+      );
+      await blocker.writeAsBytes(const [1]);
+      tempDirPath = blocker.path;
+      addTearDown(() {
+        if (blocker.existsSync()) blocker.deleteSync();
+      });
+
+      final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(32, 4)]);
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/camera/client-log')) {
+          return http.Response('', 204);
+        }
+        if (request.url.path.endsWith('/health')) {
+          return http.Response('{"ok":true,"connected":true}', 200);
+        }
+        return http.Response.bytes(jpeg, 200);
+      });
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://192.168.2.50:8791',
+        ),
+        client: client,
+      );
+      final file = await tryCaptureFromSidecar(service);
+      expect(file, isNotNull);
+      expect(file!.path, isEmpty);
+      expect(await file.readAsBytes(), jpeg);
+      service.dispose();
+    });
   });
 
   group('persistSidecarCaptureStill', () {
@@ -363,5 +438,57 @@ void main() {
       expect(baked.height, 40);
       await ImageHelper.tryDeleteLocalFile(saved.path);
     });
+
+    test('returns raw file unchanged on web path', () async {
+      debugSidecarHelpersForceWeb = true;
+      final raw = XFile.fromData(
+        kTinyJpegBytes,
+        mimeType: 'image/jpeg',
+        name: 'web.jpg',
+      );
+      final saved = await persistSidecarCaptureStill(raw);
+      expect(identical(saved, raw), isTrue);
+    });
+
+    test('throws when empty-path capture has no bytes', () async {
+      final raw = XFile.fromData(
+        Uint8List(0),
+        mimeType: 'image/jpeg',
+        name: 'empty.jpg',
+      );
+      await expectLater(
+        persistSidecarCaptureStill(raw),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'message',
+            contains('Sidecar capture is empty'),
+          ),
+        ),
+      );
+    });
   });
+}
+
+class _EmptyBytesCameraService extends LocalCameraService {
+  _EmptyBytesCameraService()
+      : super(
+          config: const CameraSidecarConfig(
+            enabled: true,
+            baseUrl: 'http://192.168.2.50:8791',
+          ),
+          client: MockClient((_) async => http.Response('', 204)),
+        );
+
+  @override
+  Future<bool> isHealthy() async => true;
+
+  @override
+  Future<Uint8List> capture({
+    int maxLongEdge = kSidecarCaptureMaxLongEdge,
+    int jpegQuality = kSidecarCaptureJpegQuality,
+    bool resumeLiveView = true,
+  }) async {
+    return Uint8List(0);
+  }
 }
