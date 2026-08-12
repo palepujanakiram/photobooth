@@ -66,6 +66,11 @@ void main() {
         connected: true,
         transport: KioskDeviceTransport.usb,
       ),
+      selphyPrinter: KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceSelphyPrinter,
+        connected: false,
+        transport: KioskDeviceTransport.usb,
+      ),
       receiptPrinter: KioskDeviceStatusEntry(
         deviceName: AppStrings.kioskDeviceReceiptPrinter,
         connected: false,
@@ -99,6 +104,7 @@ void main() {
       ),
     );
     expect(find.textContaining(AppStrings.kioskDeviceDslrSidecar), findsOneWidget);
+    expect(find.textContaining(AppStrings.kioskDeviceSelphyPrinter), findsOneWidget);
     expect(find.textContaining(AppStrings.kioskDeviceTransportLan), findsOneWidget);
     expect(find.text(AppStrings.kioskDeviceStatusHeading), findsOneWidget);
     expect(find.text(AppStrings.kioskDeviceStatusRefresh), findsOneWidget);

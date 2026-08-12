@@ -16,12 +16,14 @@ import 'dnp/dnp_usb_client.dart';
 import 'dnp/dnp_wifi_client.dart';
 import 'local_camera_service.dart';
 import 'receipt/receipt_print_bridge.dart';
+import 'selphy/selphy_print_bridge.dart';
 
 /// Probes booth hardware for the kiosk settings status panel.
 class KioskDeviceStatusService {
   KioskDeviceStatusService({
     DnpUsbClient? usbClient,
     DnpWifiClient? wifiClient,
+    SelphyPrintBridge? selphyBridge,
     ReceiptPrintBridge? receiptBridge,
     Future<bool> Function()? probeUvcDevices,
     Future<bool> Function(CameraSidecarConfig config)? probeDslrSidecar,
@@ -30,6 +32,7 @@ class KioskDeviceStatusService {
     Duration? wifiDiscoverTimeout,
   })  : _usb = usbClient ?? DnpUsbClient(),
         _wifi = wifiClient ?? DnpWifiClient(),
+        _selphy = selphyBridge ?? SelphyPrintBridge(),
         _receipt = receiptBridge ?? ReceiptPrintBridge(),
         _probeUvcDevices = probeUvcDevices ?? _defaultUvcProbe,
         _probeDslrSidecar = probeDslrSidecar ?? _defaultDslrSidecarProbe,
@@ -40,6 +43,7 @@ class KioskDeviceStatusService {
 
   final DnpUsbClient _usb;
   final DnpWifiClient _wifi;
+  final SelphyPrintBridge _selphy;
   final ReceiptPrintBridge _receipt;
   final Future<bool> Function() _probeUvcDevices;
   final Future<bool> Function(CameraSidecarConfig config) _probeDslrSidecar;
@@ -50,16 +54,17 @@ class KioskDeviceStatusService {
   Future<KioskDeviceStatusSnapshot> probe({AppSettingsModel? settings}) async {
     final transport = resolveDnpPrintTransport(settings);
     // Receipt + DSLR are LAN HTTP/TCP and can run together.
-    // DNP USB + UVC both touch Android USB host — never run them in parallel
-    // (Android TV / capture-card boxes can hard-freeze the USB stack; Dart
-    // .timeout does not cancel the native call).
+    // DNP USB + Selphy USB + UVC all touch Android USB host — never run them in
+    // parallel (Android TV / capture-card boxes can hard-freeze the USB stack).
     final receiptFuture = _probeReceiptPrinter(settings);
     final dslrFuture = _probeDslrCamera(settings);
     final dnp = await _probeDnpPrinter(transport, settings);
+    final selphy = await _probeSelphyPrinter();
     final usbCamera = await _probeUsbCamera();
     final networked = await Future.wait([receiptFuture, dslrFuture]);
     return KioskDeviceStatusSnapshot(
       dnpPrinter: dnp,
+      selphyPrinter: selphy,
       receiptPrinter: networked[0],
       usbCamera: usbCamera,
       dslrSidecar: networked[1],
@@ -102,6 +107,39 @@ class KioskDeviceStatusService {
           connected: wifiOk,
           transport: KioskDeviceTransport.wifi,
         );
+    }
+  }
+
+  Future<KioskDeviceStatusEntry> _probeSelphyPrinter() async {
+    if (_isWeb() || !_isAndroid()) {
+      return const KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceSelphyPrinter,
+        connected: false,
+        transport: KioskDeviceTransport.usb,
+      );
+    }
+    try {
+      final result = await _selphy.probe().timeout(_wifiDiscoverTimeout);
+      final transport = result.transport == 'wifi'
+          ? KioskDeviceTransport.wifi
+          : KioskDeviceTransport.usb;
+      return KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceSelphyPrinter,
+        connected: result.connected,
+        transport: transport,
+      );
+    } on TimeoutException {
+      return const KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceSelphyPrinter,
+        connected: false,
+        transport: KioskDeviceTransport.usb,
+      );
+    } catch (_) {
+      return const KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceSelphyPrinter,
+        connected: false,
+        transport: KioskDeviceTransport.usb,
+      );
     }
   }
 

@@ -137,6 +137,8 @@ dependencies {
     // at versions compatible with this project’s Gradle; do not pin an older BoM or
     // firebase-messaging-ktx here — newer BoMs may omit the separate ktx artifact line.
     implementation 'com.bugsnag:bugsnag-android:6.+'
+    // Canon Selphy CP1500 official USB + Wi‑Fi SDKs (local AARs).
+    implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'])
     // Core library desugaring for Java 8+ APIs on older Android versions
     // Required by flutter_local_notifications (version 2.1.4+)
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'

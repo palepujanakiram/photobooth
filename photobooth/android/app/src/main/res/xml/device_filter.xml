@@ -6,6 +6,8 @@
     <usb-device class="14" />
     <!-- DNP DS-RX1 / DS-RX1HS dye-sub printer (VID 0x1343, PID 0x0005). -->
     <usb-device vendor-id="4931" product-id="5" />
+    <!-- Canon Selphy (VID 0x04a9 = 1193), e.g. CP1500. -->
+    <usb-device vendor-id="1193" />
     <!-- ESC/POS thermal receipt printers (Posiflow KP 307 UEWB, USB Printer Class). -->
     <usb-device class="7" />
 </resources>

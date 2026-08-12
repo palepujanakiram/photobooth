@@ -622,6 +622,7 @@ abstract final class AppStrings {
       sheets == 1 ? '1 print total' : '$sheets prints total';
 
   static const kioskDeviceDnpPrinter = 'DNP Printer';
+  static const kioskDeviceSelphyPrinter = 'Canon Selphy';
   static const kioskDeviceReceiptPrinter = 'Receipt Printer';
   static const kioskDeviceUsbCamera = 'USB Camera';
   static const kioskDeviceDslrSidecar = 'DSLR Camera';
@@ -634,4 +635,6 @@ abstract final class AppStrings {
   static const kioskDeviceTransportUnknown = '—';
   static const kioskDeviceStatusHeading = 'Device status';
   static const kioskDeviceStatusRefresh = 'Refresh';
+  static const noPhotoPrinterConnected =
+      'No photo printer connected (DNP or Canon Selphy)';
 }

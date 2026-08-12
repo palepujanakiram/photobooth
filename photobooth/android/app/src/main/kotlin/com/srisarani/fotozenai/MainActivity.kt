@@ -19,6 +19,7 @@ class MainActivity : FlutterActivity() {
         DeviceMemoryMethodChannel.register(flutterEngine, this)
         DnpUsbMethodChannel.register(flutterEngine, this)
         ReceiptUsbMethodChannel.register(flutterEngine, this)
+        SelphyMethodChannel.register(flutterEngine, this)
         hardwareKeysHandler = HardwareKeysHandler.attach(flutterEngine)
     }
 
@@ -31,6 +32,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         DnpUsbMethodChannel.onDestroy()
         ReceiptUsbMethodChannel.onDestroy()
+        SelphyMethodChannel.onDestroy()
         super.onDestroy()
     }
 

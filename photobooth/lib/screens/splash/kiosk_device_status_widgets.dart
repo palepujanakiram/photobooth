@@ -4,7 +4,7 @@ import '../../models/kiosk_device_status.dart';
 import '../../utils/app_strings.dart';
 import '../../views/widgets/app_colors.dart';
 
-/// Status rows shown under kiosk manage actions (DNP, receipt, USB, DSLR).
+/// Status rows shown under kiosk manage actions (DNP, Selphy, receipt, USB, DSLR).
 class KioskDeviceStatusPanel extends StatelessWidget {
   const KioskDeviceStatusPanel({
     super.key,
@@ -40,6 +40,11 @@ class KioskDeviceStatusPanel extends StatelessWidget {
         else if (snapshot != null) ...[
           const SizedBox(height: 10),
           KioskDeviceStatusRow(entry: snapshot!.dnpPrinter, appColors: appColors),
+          const SizedBox(height: 8),
+          KioskDeviceStatusRow(
+            entry: snapshot!.selphyPrinter,
+            appColors: appColors,
+          ),
           const SizedBox(height: 8),
           KioskDeviceStatusRow(
             entry: snapshot!.receiptPrinter,
