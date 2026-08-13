@@ -8,6 +8,7 @@ import '../../services/local_camera_service.dart';
 import '../../utils/capture_flow_log.dart';
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
+import '../../utils/sidecar_error_parse.dart';
 
 /// When true, sidecar helpers take the web (in-memory XFile) branches.
 @visibleForTesting
@@ -47,12 +48,15 @@ Future<({bool ok, bool holding})> ensureCanonLiveViewForHdmiPose(
   }
   const attempts = 2;
   for (var i = 0; i < attempts; i++) {
+    final corrId = service.newCorrId();
+    final t0 = DateTime.now();
     try {
-      final result = await service.ensureLiveView();
+      final result = await service.ensureLiveView(corrId: corrId);
+      final ms = DateTime.now().difference(t0).inMilliseconds;
       AppLogger.info(
         '[HDMI_POSE] Canon LV ensure attempt ${i + 1}/$attempts: '
         'enabled=${result.enabled} woke=${result.woke} '
-        'holding=${result.holding}',
+        'holding=${result.holding} ms=$ms corr=$corrId',
       );
       unawaited(
         service.postClientEvent('lv_ensure', {
@@ -60,19 +64,26 @@ Future<({bool ok, bool holding})> ensureCanonLiveViewForHdmiPose(
           'enabled': result.enabled,
           'woke': result.woke,
           'holding': result.holding,
+          'ms': ms,
+          'corrId': corrId,
         }),
       );
       if (result.enabled || result.holding) {
         return (ok: true, holding: result.holding || result.enabled);
       }
     } catch (e) {
+      final ms = DateTime.now().difference(t0).inMilliseconds;
+      final info = parseSidecarError(e);
       AppLogger.warning(
-        '[HDMI_POSE] Canon LV ensure attempt ${i + 1}/$attempts failed: $e',
+        '[HDMI_POSE] Canon LV ensure attempt ${i + 1}/$attempts failed '
+        'ms=$ms code=${info.code} eds=${info.edsErrorHex}: $e',
       );
       unawaited(
         service.postClientEvent('lv_ensure_error', {
           'attempt': i + 1,
-          'error': '$e',
+          'ms': ms,
+          'corrId': corrId,
+          ...info.toDetail(),
         }),
       );
     }
@@ -106,15 +117,22 @@ Future<XFile?> tryCaptureFromSidecar(
   if (service == null || !service.isConfigured) {
     return null;
   }
+  final corrId = service.newCorrId();
   try {
     // Do not hard-skip on a flaky 2s health probe — Android TV often hits
     // SocketException while the Pi is fine; always attempt the still.
-    final healthy = await service.isHealthy();
+    final healthy = await service.isHealthy(corrId: corrId);
     if (!healthy) {
       AppLogger.warning(
-        '[HDMI_POSE] Sidecar health soft-fail; attempting capture anyway',
+        '[HDMI_POSE] Sidecar health soft-fail; attempting capture anyway '
+        'corr=$corrId host=${service.baseUrlLabel}',
       );
-      unawaited(service.postClientEvent('capture_health_soft_fail'));
+      unawaited(
+        service.postClientEvent('capture_health_soft_fail', {
+          'corrId': corrId,
+          'host': service.baseUrlLabel,
+        }),
+      );
     }
     final maxLongEdge = preferStripPrintQuality
         ? kStripCapturedPhotoMaxDimension
@@ -124,7 +142,8 @@ Future<XFile?> tryCaptureFromSidecar(
         : kSidecarCaptureJpegQuality;
     AppLogger.info(
       '[HDMI_POSE] Sidecar still begin resumeLV=$resumeLiveView '
-      'stripQ=$preferStripPrintQuality maxEdge=$maxLongEdge q=$jpegQuality',
+      'stripQ=$preferStripPrintQuality maxEdge=$maxLongEdge q=$jpegQuality '
+      'corr=$corrId host=${service.baseUrlLabel}',
     );
     CaptureFlowLog.event(
       'capture.sidecar_begin',
@@ -134,6 +153,7 @@ Future<XFile?> tryCaptureFromSidecar(
         'max_edge': maxLongEdge,
         'q': jpegQuality,
         'healthy': healthy,
+        'corr_id': corrId,
       },
     );
     unawaited(
@@ -143,6 +163,8 @@ Future<XFile?> tryCaptureFromSidecar(
         'preferStripPrintQuality': preferStripPrintQuality,
         'maxLongEdge': maxLongEdge,
         'jpegQuality': jpegQuality,
+        'corrId': corrId,
+        'host': service.baseUrlLabel,
       }),
     );
     final t0 = DateTime.now();
@@ -150,11 +172,15 @@ Future<XFile?> tryCaptureFromSidecar(
       resumeLiveView: resumeLiveView,
       maxLongEdge: maxLongEdge,
       jpegQuality: jpegQuality,
+      corrId: corrId,
     );
     if (bytes.isEmpty) {
       CaptureFlowLog.event(
         'capture.sidecar_empty',
         level: LogLevel.warning,
+      );
+      unawaited(
+        service.postClientEvent('capture_empty', {'corrId': corrId}),
       );
       return null;
     }
@@ -162,17 +188,23 @@ Future<XFile?> tryCaptureFromSidecar(
     final ms = DateTime.now().difference(t0).inMilliseconds;
     AppLogger.info(
       '[HDMI_POSE] Sidecar still ok ($name, ${bytes.length} bytes, '
-      'resumeLV=$resumeLiveView, ${ms}ms)',
+      'resumeLV=$resumeLiveView, ${ms}ms) corr=$corrId',
     );
     CaptureFlowLog.event(
       'capture.sidecar_ok',
-      fields: {'bytes': bytes.length, 'ms': ms, 'resume_lv': resumeLiveView},
+      fields: {
+        'bytes': bytes.length,
+        'ms': ms,
+        'resume_lv': resumeLiveView,
+        'corr_id': corrId,
+      },
     );
     unawaited(
       service.postClientEvent('capture_ok', {
         'bytes': bytes.length,
         'resumeLiveView': resumeLiveView,
         'ms': ms,
+        'corrId': corrId,
       }),
     );
     if (_sidecarTreatAsWeb) {
@@ -201,14 +233,26 @@ Future<XFile?> tryCaptureFromSidecar(
       );
     }
   } catch (e) {
-    AppLogger.warning('[HDMI_POSE] Camera sidecar capture failed; falling back: $e');
+    final info = parseSidecarError(e);
+    AppLogger.warning(
+      '[HDMI_POSE] Camera sidecar capture failed; falling back '
+      'code=${info.code} eds=${info.edsErrorHex} corr=$corrId: $e',
+    );
     CaptureFlowLog.event(
       'capture.sidecar_fail',
-      fields: {'error': '$e'},
+      fields: {
+        'error': '$e',
+        'code': info.code,
+        'eds_error': info.edsError,
+        'corr_id': corrId,
+      },
       level: LogLevel.warning,
     );
     unawaited(
-      service.postClientEvent('capture_error', {'error': '$e'}),
+      service.postClientEvent('capture_error', {
+        'corrId': corrId,
+        ...info.toDetail(),
+      }),
     );
     return null;
   }

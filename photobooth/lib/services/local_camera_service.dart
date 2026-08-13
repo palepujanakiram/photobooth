@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
 import '../utils/camera_sidecar_config.dart';
 import '../utils/logger.dart';
+import '../utils/sidecar_error_parse.dart';
 
 /// Long-edge cap requested from Pi on still download (matches kiosk normalize).
 const int kSidecarCaptureMaxLongEdge = 1920;
@@ -28,6 +31,10 @@ class LocalCameraService {
   final http.Client _client;
   final Duration _healthTimeout;
   final Duration _captureTimeout;
+  final Random _random = Random();
+
+  /// Last correlation id used on a sidecar call (also sent as header).
+  String? lastCorrId;
 
   bool get isConfigured => _config.isConfigured;
 
@@ -46,6 +53,16 @@ class LocalCameraService {
 
   String get previewFrameUrl => _config.previewFrameUrl;
 
+  /// Host:port for pose diagnostics (no secrets).
+  String get baseUrlLabel {
+    try {
+      final u = Uri.parse(_config.baseUrl);
+      return '${u.host}:${u.hasPort ? u.port : 8791}';
+    } catch (_) {
+      return _config.baseUrl;
+    }
+  }
+
   Uri _uri(String path, [Map<String, String>? query]) {
     final base = Uri.parse(_config.baseUrl);
     return base.replace(
@@ -63,23 +80,54 @@ class LocalCameraService {
     return '$left$right';
   }
 
-  Map<String, String> get _headers => const {
-        'Accept': 'application/json, image/jpeg, */*',
-      };
+  String newCorrId() {
+    final id =
+        'c${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}'
+        '${_random.nextInt(0xffffff).toRadixString(16).padLeft(6, '0')}';
+    lastCorrId = id;
+    return id;
+  }
+
+  Map<String, String> _headers({String? corrId}) {
+    final id = corrId ?? lastCorrId ?? newCorrId();
+    lastCorrId = id;
+    return {
+      'Accept': 'application/json, image/jpeg, */*',
+      'X-Fotozen-Corr-Id': id,
+    };
+  }
 
   /// True when sidecar reports a connected camera.
-  Future<bool> isHealthy() async {
+  Future<bool> isHealthy({String? corrId}) async {
     if (!isConfigured) return false;
+    final id = corrId ?? newCorrId();
+    final t0 = DateTime.now();
     try {
       final response = await _client
-          .get(_uri('/health'), headers: _headers)
+          .get(_uri('/health'), headers: _headers(corrId: id))
           .timeout(_healthTimeout);
-      if (response.statusCode != 200) return false;
+      final ms = DateTime.now().difference(t0).inMilliseconds;
+      if (response.statusCode != 200) {
+        AppLogger.warning(
+          'Camera sidecar health status=${response.statusCode} ms=$ms corr=$id',
+        );
+        return false;
+      }
       final body = jsonDecode(response.body);
       if (body is! Map<String, dynamic>) return false;
-      return body['ok'] == true && body['connected'] == true;
+      final ok = body['ok'] == true && body['connected'] == true;
+      AppLogger.info(
+        'Camera sidecar health ok=$ok connected=${body['connected']} '
+        'backend=${body['backend']} ms=$ms corr=$id',
+      );
+      return ok;
     } catch (e) {
-      AppLogger.warning('Camera sidecar health failed: $e');
+      final ms = DateTime.now().difference(t0).inMilliseconds;
+      final info = parseSidecarError(e);
+      AppLogger.warning(
+        'Camera sidecar health failed ms=$ms corr=$id '
+        'code=${info.code} eds=${info.edsErrorHex}: $e',
+      );
       return false;
     }
   }
@@ -87,6 +135,7 @@ class LocalCameraService {
   /// Single gphoto2 live-view JPEG for pose UI polling.
   Future<Uint8List> fetchPreviewJpeg({
     Duration timeout = const Duration(seconds: 5),
+    String? corrId,
   }) async {
     if (!isConfigured) {
       throw StateError('Camera sidecar is not configured');
@@ -94,7 +143,7 @@ class LocalCameraService {
     final response = await _client
         .post(
           _uri('/camera/preview', const {'download': '1'}),
-          headers: _headers,
+          headers: _headers(corrId: corrId),
         )
         .timeout(timeout);
     return _requireJpegBytes(response, action: 'preview');
@@ -110,22 +159,71 @@ class LocalCameraService {
     int maxLongEdge = kSidecarCaptureMaxLongEdge,
     int jpegQuality = kSidecarCaptureJpegQuality,
     bool resumeLiveView = true,
+    String? corrId,
   }) async {
     if (!isConfigured) {
       throw StateError('Camera sidecar is not configured');
     }
-    final response = await _client
-        .post(
-          _uri('/camera/capture', {
-            'download': '1',
-            'maxLongEdge': '$maxLongEdge',
-            'jpegQuality': '$jpegQuality',
-            'resumeLiveView': resumeLiveView ? '1' : '0',
-          }),
-          headers: _headers,
-        )
-        .timeout(_captureTimeout);
-    return _requireJpegBytes(response, action: 'capture');
+    final id = corrId ?? newCorrId();
+    final t0 = DateTime.now();
+    AppLogger.info(
+      'Camera sidecar capture HTTP begin maxEdge=$maxLongEdge '
+      'q=$jpegQuality resumeLV=$resumeLiveView corr=$id',
+    );
+    unawaited(
+      postClientEvent('capture_http_begin', {
+        'maxLongEdge': maxLongEdge,
+        'jpegQuality': jpegQuality,
+        'resumeLiveView': resumeLiveView,
+        'corrId': id,
+      }),
+    );
+    final progress = Timer.periodic(const Duration(seconds: 5), (timer) {
+      final elapsed = DateTime.now().difference(t0).inMilliseconds;
+      AppLogger.warning(
+        'Camera sidecar capture still waiting elapsedMs=$elapsed corr=$id',
+      );
+      unawaited(
+        postClientEvent('capture_progress', {
+          'elapsedMs': elapsed,
+          'corrId': id,
+        }),
+      );
+    });
+    try {
+      final response = await _client
+          .post(
+            _uri('/camera/capture', {
+              'download': '1',
+              'maxLongEdge': '$maxLongEdge',
+              'jpegQuality': '$jpegQuality',
+              'resumeLiveView': resumeLiveView ? '1' : '0',
+            }),
+            headers: _headers(corrId: id),
+          )
+          .timeout(_captureTimeout);
+      final ms = DateTime.now().difference(t0).inMilliseconds;
+      AppLogger.info(
+        'Camera sidecar capture HTTP status=${response.statusCode} '
+        'bytes=${response.bodyBytes.length} ms=$ms corr=$id',
+      );
+      return _requireJpegBytes(response, action: 'capture');
+    } on TimeoutException catch (e) {
+      final ms = DateTime.now().difference(t0).inMilliseconds;
+      AppLogger.warning(
+        'Camera sidecar capture timeout ms=$ms corr=$id: $e',
+      );
+      unawaited(
+        postClientEvent('capture_timeout', {
+          'timeoutMs': _captureTimeout.inMilliseconds,
+          'elapsedMs': ms,
+          'corrId': id,
+        }),
+      );
+      rethrow;
+    } finally {
+      progress.cancel();
+    }
   }
 
   /// Exit movie LV during the countdown so [capture] can shutter at timer zero.
@@ -133,19 +231,29 @@ class LocalCameraService {
   /// Requires fotozen-sidecar ≥ 1.2.19 (`POST /camera/prepare-still`).
   Future<void> prepareStill({
     Duration timeout = const Duration(seconds: 20),
+    String? corrId,
   }) async {
     if (!isConfigured) {
       throw StateError('Camera sidecar is not configured');
     }
+    final id = corrId ?? newCorrId();
+    final t0 = DateTime.now();
+    AppLogger.info('Camera sidecar prepare-still begin corr=$id');
     final response = await _client
-        .post(_uri('/camera/prepare-still'), headers: _headers)
+        .post(_uri('/camera/prepare-still'), headers: _headers(corrId: id))
         .timeout(timeout);
+    final ms = DateTime.now().difference(t0).inMilliseconds;
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      AppLogger.warning(
+        'Camera sidecar prepare-still failed status=${response.statusCode} '
+        'ms=$ms corr=$id body=${response.body}',
+      );
       throw StateError(
         'Camera sidecar prepare-still failed '
         '(${response.statusCode}): ${response.body}',
       );
     }
+    AppLogger.info('Camera sidecar prepare-still ok ms=$ms corr=$id');
   }
 
   /// Arms Canon Live View over USB so HDMI → capture card is not blank.
@@ -155,13 +263,18 @@ class LocalCameraService {
   /// Best-effort — `holding` means the Pi kept the PTP session open.
   Future<({bool enabled, bool woke, bool holding})> ensureLiveView({
     Duration timeout = const Duration(seconds: 12),
+    String? corrId,
   }) async {
     if (!isConfigured) {
       throw StateError('Camera sidecar is not configured');
     }
+    final id = corrId ?? newCorrId();
+    final t0 = DateTime.now();
+    AppLogger.info('Camera sidecar live-view begin corr=$id');
     final response = await _client
-        .post(_uri('/camera/live-view'), headers: _headers)
+        .post(_uri('/camera/live-view'), headers: _headers(corrId: id))
         .timeout(timeout);
+    final ms = DateTime.now().difference(t0).inMilliseconds;
     final body = _decodeLiveViewBody(response);
     final enabled = body['enabled'] == true;
     final woke = body['woke'] == true;
@@ -172,11 +285,19 @@ class LocalCameraService {
         final preview = response.body.length > 240
             ? response.body.substring(0, 240)
             : response.body;
+        AppLogger.warning(
+          'Camera sidecar live-view failed status=${response.statusCode} '
+          'ms=$ms corr=$id body=$preview',
+        );
         throw StateError(
           'Camera sidecar live-view failed (${response.statusCode}): $preview',
         );
       }
     }
+    AppLogger.info(
+      'Camera sidecar live-view ok enabled=$enabled woke=$woke '
+      'holding=$holding ms=$ms corr=$id',
+    );
     return (enabled: enabled, woke: woke, holding: holding);
   }
 
@@ -186,17 +307,21 @@ class LocalCameraService {
     Map<String, Object?>? detail,
   ]) async {
     if (!isConfigured) return;
+    final id = lastCorrId ?? newCorrId();
     try {
       await _client
           .post(
             _uri('/camera/client-log'),
             headers: {
-              ..._headers,
+              ..._headers(corrId: id),
               'Content-Type': 'application/json',
             },
             body: jsonEncode({
               'type': type,
-              if (detail != null) 'detail': detail,
+              'detail': {
+                ...?detail,
+                'corrId': detail?['corrId'] ?? id,
+              },
             }),
           )
           .timeout(const Duration(milliseconds: 800));

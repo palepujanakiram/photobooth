@@ -481,13 +481,14 @@ class _EmptyBytesCameraService extends LocalCameraService {
         );
 
   @override
-  Future<bool> isHealthy() async => true;
+  Future<bool> isHealthy({String? corrId}) async => true;
 
   @override
   Future<Uint8List> capture({
     int maxLongEdge = kSidecarCaptureMaxLongEdge,
     int jpegQuality = kSidecarCaptureJpegQuality,
     bool resumeLiveView = true,
+    String? corrId,
   }) async {
     return Uint8List(0);
   }

@@ -54,6 +54,7 @@ import '../../utils/kiosk_page_route.dart';
 import '../../utils/logger.dart';
 import '../../utils/capture_flow_log.dart';
 import '../../utils/route_args.dart';
+import '../../utils/sidecar_error_parse.dart';
 import '../../utils/surprise_me_helpers.dart';
 import '../../utils/uvc_capture_config.dart';
 import '../fotoflashback/fotoflashback_filter_view.dart';
@@ -1035,18 +1036,30 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
     unawaited(service.postClientEvent('prepare_still_begin', {
       'countdownStep': countdownStep,
+      'corrId': service.newCorrId(),
+      'host': service.baseUrlLabel,
     }));
     return () async {
+      final t0 = DateTime.now();
       try {
         await service.prepareStill(
           timeout: AppConstants.kFlashbackSidecarStillPrepareWait +
               const Duration(seconds: 2),
         );
-        unawaited(service.postClientEvent('prepare_still_ok'));
+        final ms = DateTime.now().difference(t0).inMilliseconds;
+        unawaited(service.postClientEvent('prepare_still_ok', {
+          'ms': ms,
+          'corrId': service.lastCorrId,
+        }));
       } catch (e) {
+        final ms = DateTime.now().difference(t0).inMilliseconds;
         AppLogger.warning('[HDMI_POSE] Sidecar still prepare failed: $e');
         unawaited(
-          service.postClientEvent('prepare_still_error', {'error': '$e'}),
+          service.postClientEvent('prepare_still_error', {
+            'ms': ms,
+            'corrId': service.lastCorrId,
+            ...parseSidecarError(e).toDetail(),
+          }),
         );
       }
     }();
@@ -1059,6 +1072,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     } catch (e) {
       // Fire shutter anyway — Pi capture will finish LV exit on the USB queue.
       AppLogger.warning('[HDMI_POSE] Sidecar still prepare wait: $e');
+      unawaited(
+        _captureViewModel.localCameraService?.postClientEvent(
+          'prepare_still_wait_timeout',
+          {
+            'error': '$e',
+            'waitMs':
+                AppConstants.kFlashbackSidecarStillPrepareWait.inMilliseconds,
+          },
+        ),
+      );
     }
   }
 
@@ -1300,10 +1323,40 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _canonLvHolding = true;
       _captureViewModel.markSidecarPreviewReady();
       unawaited(() async {
+        final service = _captureViewModel.localCameraService;
+        if (service == null || !service.isConfigured) return;
+        final corrId = service.newCorrId();
+        final t0 = DateTime.now();
         try {
-          await _captureViewModel.localCameraService
-              ?.ensureLiveView(timeout: const Duration(seconds: 4));
-        } catch (_) {
+          final result = await service.ensureLiveView(
+            timeout: const Duration(seconds: 4),
+            corrId: corrId,
+          );
+          final ms = DateTime.now().difference(t0).inMilliseconds;
+          unawaited(
+            service.postClientEvent('lv_ensure_after_shot', {
+              'ok': true,
+              'enabled': result.enabled,
+              'holding': result.holding,
+              'ms': ms,
+              'corrId': corrId,
+              'stripIndex': _stripShots.length,
+            }),
+          );
+        } catch (e) {
+          final ms = DateTime.now().difference(t0).inMilliseconds;
+          AppLogger.warning(
+            '[HDMI_POSE] LV ensure after shot failed ms=$ms: $e',
+          );
+          unawaited(
+            service.postClientEvent('lv_ensure_after_shot', {
+              'ok': false,
+              'ms': ms,
+              'corrId': corrId,
+              'stripIndex': _stripShots.length,
+              ...parseSidecarError(e).toDetail(),
+            }),
+          );
           // Preview poller / next prepareStill will recover.
         }
       }());
