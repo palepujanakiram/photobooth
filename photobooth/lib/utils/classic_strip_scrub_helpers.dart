@@ -22,16 +22,24 @@ bool classicComposeRequestsOverlayCleanup() => false;
 
 /// Whether Gemini scrub may run on the capture strip (accept / 1-shot handoff).
 ///
-/// Android TV defers scrub to the look screen: strip-quality JPEG encode + scrub
-/// concurrent with UVC reopen has LMK-killed the Mini PC (return to launcher,
-/// often with no Bugsnag event). Admin [classicOverlayScrubEnabled] still applies
-/// on FotoFlashback look via [FotoFlashbackFilterViewModel.preparePreview].
+/// Always false: mid-strip Gemini + huge data-URL POSTs contend with Pi EVF /
+/// live preview after shot 1 and make shots 2–4 feel frozen. Encode still runs
+/// for Surprise Me / look handoff; look screen [preparePreview] applies scrub
+/// when admin [classicOverlayScrubEnabled] is on.
+///
+/// [enableOsdScrub] / [deviceType] kept so call sites stay stable; both are
+/// intentionally unused until a future per-device capture-scrub gate returns.
 bool classicOverlayScrubDuringCaptureEnabled({
   required bool? enableOsdScrub,
   required AppDeviceType? deviceType,
 }) {
-  if (deviceType == AppDeviceType.androidTv) return false;
-  return classicOverlayScrubEnabled(enableOsdScrub);
+  assert(() {
+    // Touch named args so the public API is not flagged unused.
+    enableOsdScrub;
+    deviceType;
+    return true;
+  }());
+  return false;
 }
 
 /// Result of per-shot Classic scrub (fail-open keeps [dataUrl] on error).

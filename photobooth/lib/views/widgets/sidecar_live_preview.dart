@@ -47,6 +47,13 @@ class _SidecarLivePreviewState extends State<SidecarLivePreview> {
       if (widget.paused) {
         _poller?.pause();
       } else {
+        // Drop the last pre-shutter frame so we do not paint a frozen still
+        // while Canon EVF / Pi preview re-arms for the next pose.
+        setState(() {
+          _frame = null;
+          _error = null;
+          _notifiedFirstFrame = false;
+        });
         _poller?.resume();
       }
     }

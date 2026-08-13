@@ -1369,21 +1369,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       'sidecarPreview=$_useSidecarPosePreview keepUvc=$_keepUvcOpenForSession',
     );
 
-    // Pi MJPEG pose: capture already resumed EVF. Skip HDMI settle + UVC reopen
-    // so shots 2–4 start countdown in ~1s instead of waiting on LV ensure.
+    // Pi MJPEG pose: await EVF re-arm before next countdown / encode unlock.
+    // Fire-and-forget left the poller painting a stale last frame while shot 2+
+    // countdown ran — guests saw a "stuck" live preview.
     if (_useSidecarPosePreview) {
-      _canonLvHolding = true;
-      _captureViewModel.markSidecarPreviewReady();
-      unawaited(() async {
-        final service = _captureViewModel.localCameraService;
-        if (service == null || !service.isConfigured) return;
-        final corrId = service.newCorrId();
-        final t0 = DateTime.now();
+      final service = _captureViewModel.localCameraService;
+      final corrId = service?.newCorrId();
+      final t0 = DateTime.now();
+      var holding = false;
+      if (service != null && service.isConfigured) {
         try {
           final result = await service.ensureLiveView(
             timeout: const Duration(seconds: 4),
             corrId: corrId,
           );
+          holding = result.holding || result.enabled;
           final ms = DateTime.now().difference(t0).inMilliseconds;
           unawaited(
             service.postClientEvent('lv_ensure_after_shot', {
@@ -1411,7 +1411,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           );
           // Preview poller / next prepareStill will recover.
         }
-      }());
+      }
+      _canonLvHolding = holding || _canonLvHolding;
+      _captureViewModel.markSidecarPreviewReady();
       if (mounted) setState(() {});
       return;
     }
