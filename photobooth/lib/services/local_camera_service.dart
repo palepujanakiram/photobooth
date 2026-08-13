@@ -36,6 +36,19 @@ class LocalCameraService {
   /// Last correlation id used on a sidecar call (also sent as header).
   String? lastCorrId;
 
+  DateTime? _lastHealthyAt;
+
+  /// True when a recent LV/capture succeeded — skip another health RTT.
+  bool get recentlyHealthy {
+    final at = _lastHealthyAt;
+    if (at == null) return false;
+    return DateTime.now().difference(at) < const Duration(seconds: 30);
+  }
+
+  void markHealthy() {
+    _lastHealthyAt = DateTime.now();
+  }
+
   bool get isConfigured => _config.isConfigured;
 
   bool _forceLivePreview = false;
@@ -120,6 +133,7 @@ class LocalCameraService {
         'Camera sidecar health ok=$ok connected=${body['connected']} '
         'backend=${body['backend']} ms=$ms corr=$id',
       );
+      if (ok) markHealthy();
       return ok;
     } catch (e) {
       final ms = DateTime.now().difference(t0).inMilliseconds;
@@ -298,6 +312,7 @@ class LocalCameraService {
       'Camera sidecar live-view ok enabled=$enabled woke=$woke '
       'holding=$holding ms=$ms corr=$id',
     );
+    if (enabled || holding) markHealthy();
     return (enabled: enabled, woke: woke, holding: holding);
   }
 

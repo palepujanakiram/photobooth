@@ -57,8 +57,8 @@ bool uvcShouldMaskHdmiDuringStill({
 /// Guest-facing copy while the pose preview is masked for a still.
 ///
 /// Sidecar Classic fires LV/movie exit clicks before the real shutter — phase
-/// the copy so the first slap is "Setting up camera…" and the shutter is
-/// "Say cheese!". Plain UVC/CameraX keeps "Capturing…".
+/// the copy so the first slap is "Setting up camera…" / "Hold still…" and the
+/// shutter is "Say cheese!". Plain UVC/CameraX keeps "Capturing…".
 String captureStillInProgressLabel({
   required bool usesSidecarDslr,
   bool preparingCamera = false,
@@ -66,8 +66,20 @@ String captureStillInProgressLabel({
 }) {
   if (!usesSidecarDslr) return AppStrings.captureCapturingPhoto;
   if (isCapturing) return AppStrings.captureSayCheese;
-  if (preparingCamera) return AppStrings.captureSettingUpCamera;
+  if (preparingCamera) return AppStrings.captureHoldStillFocusing;
   return AppStrings.captureSayCheese;
+}
+
+/// Translucent banner over live HDMI while prepareStill runs (no full black mask).
+bool shouldShowSidecarPrepHoldBanner({
+  required bool sidecarConfigured,
+  required bool sidecarStillPrepStarted,
+  required bool hasCapturedPhoto,
+  required bool isCapturing,
+}) {
+  if (!sidecarConfigured || hasCapturedPhoto) return false;
+  if (isCapturing) return false;
+  return sidecarStillPrepStarted;
 }
 
 /// Whether countdown [canStart] may stay true after sidecar prepare-still.

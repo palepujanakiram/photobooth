@@ -91,6 +91,9 @@ class CaptureViewModel extends ChangeNotifier {
   /// FotoFlashback multi-shot: normalize stills at print-oriented JPEG quality.
   bool preferStripPrintQuality = false;
 
+  /// When false, Pi skips EVF re-arm after still (Classic 1-shot → looks).
+  bool resumeLiveViewAfterSidecarStill = true;
+
   int? _normalizeJpegQualityForCapture({required bool isUvc}) {
     return captureNormalizeJpegQuality(
       isUvc: isUvc,
@@ -2072,6 +2075,7 @@ class CaptureViewModel extends ChangeNotifier {
     final sidecarFile = await tryCaptureFromSidecar(
       _localCameraService,
       preferStripPrintQuality: preferStripPrintQuality,
+      resumeLiveView: resumeLiveViewAfterSidecarStill,
     );
     if (sidecarFile != null) {
       _lastRawCaptureFromSidecar = true;

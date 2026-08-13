@@ -173,11 +173,23 @@ abstract final class AppStrings {
   /// Sidecar prepare (LV/movie exit clicks) before the real shutter.
   static const captureSettingUpCamera = 'Setting up camera…';
 
+  /// Guest prompt while Pi tears down live view during countdown (HDMI may flicker).
+  static const captureHoldStillFocusing = 'Hold still — camera focusing…';
+
   /// Real shutter / download — guest-facing prompt.
   static const captureSayCheese = 'Say cheese!';
 
   /// Legacy generic still-in-progress copy.
   static const captureHoldStillForPhoto = 'Hold still…';
+
+  /// Pi DSLR miss — keep preview; guest taps Capture (not USB reopen).
+  static const captureDslrMissRetry =
+      'Camera was busy. Tap Capture to try again.';
+
+  static const captureDslrMissRetryButton = 'Retry photo';
+
+  static const captureDslrMissRetryUsbFallback =
+      'Camera capture failed. Check the DSLR USB cable to the Pi, then tap Retry.';
 
   /// Pose UI while waiting for the first Pi DSLR live-view frame.
   static const sidecarLivePreviewConnecting = 'Connecting to DSLR…';

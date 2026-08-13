@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/photo_capture/photo_capture_hdmi_pose_helpers.dart';
+import 'package:photobooth/utils/app_strings.dart';
 
 void main() {
   group('uvcHdmiPoseReadyForCountdown', () {
@@ -199,13 +200,34 @@ void main() {
   });
 
   group('captureStillInProgressLabel', () {
-    test('sidecar prepare phase asks guests to wait for camera setup', () {
+    test('sidecar prepare phase asks guests to hold still', () {
       expect(
         captureStillInProgressLabel(
           usesSidecarDslr: true,
           preparingCamera: true,
         ),
-        'Setting up camera…',
+        AppStrings.captureHoldStillFocusing,
+      );
+    });
+
+    test('prep hold banner shows only during sidecar prepare', () {
+      expect(
+        shouldShowSidecarPrepHoldBanner(
+          sidecarConfigured: true,
+          sidecarStillPrepStarted: true,
+          hasCapturedPhoto: false,
+          isCapturing: false,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldShowSidecarPrepHoldBanner(
+          sidecarConfigured: true,
+          sidecarStillPrepStarted: true,
+          hasCapturedPhoto: false,
+          isCapturing: true,
+        ),
+        isFalse,
       );
     });
 

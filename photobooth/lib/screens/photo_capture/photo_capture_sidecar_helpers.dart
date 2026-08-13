@@ -113,23 +113,25 @@ Future<XFile?> tryCaptureFromSidecar(
   LocalCameraService? service, {
   bool resumeLiveView = true,
   bool preferStripPrintQuality = false,
+  String? corrId,
 }) async {
   if (service == null || !service.isConfigured) {
     return null;
   }
-  final corrId = service.newCorrId();
+  final id = corrId ?? service.newCorrId();
   try {
-    // Do not hard-skip on a flaky 2s health probe — Android TV often hits
-    // SocketException while the Pi is fine; always attempt the still.
-    final healthy = await service.isHealthy(corrId: corrId);
+    // Skip a full health RTT when the Pi recently succeeded (TV LAN flakiness).
+    final healthy = service.recentlyHealthy
+        ? true
+        : await service.isHealthy(corrId: id);
     if (!healthy) {
       AppLogger.warning(
         '[HDMI_POSE] Sidecar health soft-fail; attempting capture anyway '
-        'corr=$corrId host=${service.baseUrlLabel}',
+        'corr=$id host=${service.baseUrlLabel}',
       );
       unawaited(
         service.postClientEvent('capture_health_soft_fail', {
-          'corrId': corrId,
+          'corrId': id,
           'host': service.baseUrlLabel,
         }),
       );
@@ -143,7 +145,7 @@ Future<XFile?> tryCaptureFromSidecar(
     AppLogger.info(
       '[HDMI_POSE] Sidecar still begin resumeLV=$resumeLiveView '
       'stripQ=$preferStripPrintQuality maxEdge=$maxLongEdge q=$jpegQuality '
-      'corr=$corrId host=${service.baseUrlLabel}',
+      'corr=$id host=${service.baseUrlLabel}',
     );
     CaptureFlowLog.event(
       'capture.sidecar_begin',
@@ -153,7 +155,7 @@ Future<XFile?> tryCaptureFromSidecar(
         'max_edge': maxLongEdge,
         'q': jpegQuality,
         'healthy': healthy,
-        'corr_id': corrId,
+        'corr_id': id,
       },
     );
     unawaited(
@@ -163,7 +165,7 @@ Future<XFile?> tryCaptureFromSidecar(
         'preferStripPrintQuality': preferStripPrintQuality,
         'maxLongEdge': maxLongEdge,
         'jpegQuality': jpegQuality,
-        'corrId': corrId,
+        'corrId': id,
         'host': service.baseUrlLabel,
       }),
     );
@@ -172,7 +174,7 @@ Future<XFile?> tryCaptureFromSidecar(
       resumeLiveView: resumeLiveView,
       maxLongEdge: maxLongEdge,
       jpegQuality: jpegQuality,
-      corrId: corrId,
+      corrId: id,
     );
     if (bytes.isEmpty) {
       CaptureFlowLog.event(
@@ -180,15 +182,16 @@ Future<XFile?> tryCaptureFromSidecar(
         level: LogLevel.warning,
       );
       unawaited(
-        service.postClientEvent('capture_empty', {'corrId': corrId}),
+        service.postClientEvent('capture_empty', {'corrId': id}),
       );
       return null;
     }
+    service.markHealthy();
     final name = 'fz200d_${DateTime.now().millisecondsSinceEpoch}.jpg';
     final ms = DateTime.now().difference(t0).inMilliseconds;
     AppLogger.info(
       '[HDMI_POSE] Sidecar still ok ($name, ${bytes.length} bytes, '
-      'resumeLV=$resumeLiveView, ${ms}ms) corr=$corrId',
+      'resumeLV=$resumeLiveView, ${ms}ms) corr=$id',
     );
     CaptureFlowLog.event(
       'capture.sidecar_ok',
@@ -196,7 +199,7 @@ Future<XFile?> tryCaptureFromSidecar(
         'bytes': bytes.length,
         'ms': ms,
         'resume_lv': resumeLiveView,
-        'corr_id': corrId,
+        'corr_id': id,
       },
     );
     unawaited(
@@ -204,7 +207,7 @@ Future<XFile?> tryCaptureFromSidecar(
         'bytes': bytes.length,
         'resumeLiveView': resumeLiveView,
         'ms': ms,
-        'corrId': corrId,
+        'corrId': id,
       }),
     );
     if (_sidecarTreatAsWeb) {
@@ -236,7 +239,7 @@ Future<XFile?> tryCaptureFromSidecar(
     final info = parseSidecarError(e);
     AppLogger.warning(
       '[HDMI_POSE] Camera sidecar capture failed; falling back '
-      'code=${info.code} eds=${info.edsErrorHex} corr=$corrId: $e',
+      'code=${info.code} eds=${info.edsErrorHex} corr=$id: $e',
     );
     CaptureFlowLog.event(
       'capture.sidecar_fail',
@@ -244,13 +247,13 @@ Future<XFile?> tryCaptureFromSidecar(
         'error': '$e',
         'code': info.code,
         'eds_error': info.edsError,
-        'corr_id': corrId,
+        'corr_id': id,
       },
       level: LogLevel.warning,
     );
     unawaited(
       service.postClientEvent('capture_error', {
-        'corrId': corrId,
+        'corrId': id,
         ...info.toDetail(),
       }),
     );

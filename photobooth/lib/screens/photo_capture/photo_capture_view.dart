@@ -111,6 +111,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   /// True once sidecar [prepareStill] / still-mask starts — LV is intentionally
   /// down until the still finishes; do not gate shutter on [_canonLvHolding].
   bool _sidecarStillPrepStarted = false;
+  /// Shared across prepare → capture → client-log for one pose attempt.
+  String? _poseCorrId;
   UvcFeedPhase _uvcPhase = UvcFeedPhase.live;
   final GlobalKey _uvcPreviewBoundaryKey = GlobalKey();
   bool _uvcOpeningController = false;
@@ -294,11 +296,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     unawaited(
       _captureViewModel.localCameraService?.postClientEvent(
         'hdmi_mask_soft_fail',
+        {'corrId': _poseCorrId},
       ),
     );
     _captureViewModel.cancelCountdown();
     _flashbackCountdownStarting = false;
-    _clearUvcTransientCaptureUi();
+    _clearUvcTransientCaptureUi(releaseSidecarArm: true);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text(AppStrings.captureMaskStallRetry)),
@@ -516,6 +519,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           onCountdownFinished: _armUvcHdmiStillMask,
         );
       } else {
+        _captureViewModel.resumeLiveViewAfterSidecarStill = false;
         await _captureViewModel.captureWithCountdown(
           () async {
             await _awaitSidecarStillPrepare(sidecarPrepare);
@@ -545,9 +549,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _flashbackCountdownStarting = false;
       // Countdown may have armed the HDMI mask then aborted before shutter.
       if (_captureViewModel.capturedPhoto == null && !_uvcCaptureInFlight) {
+        final hadPrep = _sidecarStillPrepStarted;
         _uvcHdmiStillMaskArmed = false;
         _sidecarStillPrepStarted = false;
         _cancelMaskStallSoftFailTimer();
+        if (hadPrep) {
+          unawaited(_releaseSidecarStillArm(reason: 'countdown_aborted'));
+        }
       }
       if (mounted && widget.sessionKind.isClassicOneShot) {
         if (_captureViewModel.capturedPhoto != null) {
@@ -759,9 +767,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     } finally {
       _flashbackCountdownStarting = false;
       if (_captureViewModel.capturedPhoto == null && !_uvcCaptureInFlight) {
+        final hadPrep = _sidecarStillPrepStarted;
         _uvcHdmiStillMaskArmed = false;
         _sidecarStillPrepStarted = false;
         _cancelMaskStallSoftFailTimer();
+        if (hadPrep) {
+          unawaited(_releaseSidecarStillArm(reason: 'countdown_aborted'));
+        }
       }
       if (mounted) _maybeAdvanceFlashbackAutoChain();
     }
@@ -1034,10 +1046,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     AppLogger.info(
       '[HDMI_POSE] Sidecar still prepare at countdown=$countdownStep',
     );
+    final serviceCorr = service.newCorrId();
+    _poseCorrId = serviceCorr;
     unawaited(service.postClientEvent('prepare_still_begin', {
       'countdownStep': countdownStep,
-      'corrId': service.newCorrId(),
+      'corrId': serviceCorr,
       'host': service.baseUrlLabel,
+      'shot': _stripShots.length + 1,
+      'kind': widget.sessionKind.name,
     }));
     return () async {
       final t0 = DateTime.now();
@@ -1045,11 +1061,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         await service.prepareStill(
           timeout: AppConstants.kFlashbackSidecarStillPrepareWait +
               const Duration(seconds: 2),
+          corrId: serviceCorr,
         );
         final ms = DateTime.now().difference(t0).inMilliseconds;
         unawaited(service.postClientEvent('prepare_still_ok', {
           'ms': ms,
-          'corrId': service.lastCorrId,
+          'corrId': serviceCorr,
         }));
       } catch (e) {
         final ms = DateTime.now().difference(t0).inMilliseconds;
@@ -1057,7 +1074,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         unawaited(
           service.postClientEvent('prepare_still_error', {
             'ms': ms,
-            'corrId': service.lastCorrId,
+            'corrId': serviceCorr,
             ...parseSidecarError(e).toDetail(),
           }),
         );
@@ -1134,6 +1151,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     _captureViewModel.preferStripPrintQuality = true;
+    _captureViewModel.resumeLiveViewAfterSidecarStill =
+        !widget.sessionKind.isClassicOneShot;
     AppLogger.debug(
       'Classic POSE kind=${widget.sessionKind.name} '
       'multiShotTotal=$_multiShotTotal '
@@ -1724,13 +1743,45 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     return result.ok;
   }
 
-  void _clearUvcTransientCaptureUi() {
+  void _clearUvcTransientCaptureUi({bool releaseSidecarArm = false}) {
+    final hadPrep = _sidecarStillPrepStarted;
     _showCaptureFlash = false;
     _uvcCaptureInFlight = false;
     _uvcHdmiStillMaskArmed = false;
     _sidecarStillPrepStarted = false;
     _cancelMaskStallSoftFailTimer();
     _syncCaptureWatchdog(_captureViewModel);
+    if (releaseSidecarArm && hadPrep) {
+      unawaited(_releaseSidecarStillArm(reason: 'prep_cleared'));
+    }
+  }
+
+  /// Re-arm Canon EVF / drop EDSDK still-arm after aborted prepare.
+  Future<void> _releaseSidecarStillArm({required String reason}) async {
+    final service = _captureViewModel.localCameraService;
+    if (service == null || !service.isConfigured) return;
+    try {
+      await service.ensureLiveView(
+        timeout: const Duration(seconds: 4),
+        corrId: _poseCorrId ?? service.newCorrId(),
+      );
+      _canonLvHolding = true;
+      unawaited(
+        service.postClientEvent('prep_arm_released', {
+          'reason': reason,
+          'corrId': _poseCorrId,
+        }),
+      );
+    } catch (e) {
+      AppLogger.warning('[HDMI_POSE] prep arm release failed ($reason): $e');
+      unawaited(
+        service.postClientEvent('prep_arm_release_error', {
+          'reason': reason,
+          'corrId': _poseCorrId,
+          ...parseSidecarError(e).toDetail(),
+        }),
+      );
+    }
   }
 
   Future<void> _pulseCaptureFlash({bool playSound = true}) async {
@@ -3607,7 +3658,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final capturing = viewModel.isCapturing || _uvcCaptureInFlight;
     return captureStillInProgressLabel(
       usesSidecarDslr: usesSidecar,
-      preparingCamera: _uvcHdmiStillMaskArmed && !capturing,
+      preparingCamera:
+          (_uvcHdmiStillMaskArmed || _sidecarStillPrepStarted) && !capturing,
       isCapturing: capturing,
     );
   }
@@ -3742,7 +3794,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                             _resumeUvcLiveFeed(reason: 'retryTap'),
                             label: 'UVC retry open failed',
                           ),
-                  child: const Text('Retry USB camera'),
+                  child: Text(
+                    _captureViewModel.localCameraService?.isConfigured == true
+                        ? AppStrings.captureDslrMissRetryButton
+                        : 'Retry USB camera',
+                  ),
                 ),
               ],
             ),
@@ -3922,6 +3978,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       _cancelUvcIdleSleepTimer();
       if (mounted) setState(() {});
 
+      // DSLR body already clicks on sidecar still — skip synthetic flash/SFX
+      // so the booth does not stack white flash + mirror clicks + LCD flap.
+      final preferSidecar =
+          _captureViewModel.localCameraService?.isConfigured == true;
       try {
         AppLogger.debug('UVC capture start source=$source');
         CaptureFlowLog.event(
@@ -3936,10 +3996,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           },
           webFlow: true,
         );
-        // DSLR body already clicks on sidecar still — skip synthetic flash/SFX
-        // so the booth does not stack white flash + mirror clicks + LCD flap.
-        final preferSidecar =
-            _captureViewModel.localCameraService?.isConfigured == true;
         if (preferSidecar) {
           _armUvcHdmiStillMask();
         } else {
@@ -3965,10 +4021,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         // Classic 1-shot leaves for looks — no next HDMI pose, so skip LV re-arm
         // (avoids stacked mirror clicks under Saving…).
         final resumeLvAfterStill = !widget.sessionKind.isClassicOneShot;
+        final poseCorr = _poseCorrId ??
+            _captureViewModel.localCameraService?.newCorrId();
+        _poseCorrId = poseCorr;
         final sidecar = await tryCaptureFromSidecar(
           _captureViewModel.localCameraService,
           resumeLiveView: resumeLvAfterStill,
           preferStripPrintQuality: _captureViewModel.preferStripPrintQuality,
+          corrId: poseCorr,
         );
         if (sidecar != null) {
           fromSidecar = true;
@@ -4006,15 +4066,28 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           unawaited(
             _captureViewModel.localCameraService?.postClientEvent(
               'capture_refused_uvc_fallback',
-              {'source': source},
+              {
+                'source': source,
+                'corrId': poseCorr,
+                'shot': _stripShots.length + 1,
+              },
             ),
           );
           if (mounted) {
-            _uvcPhase = UvcFeedPhase.error;
+            // Keep UVC open — guest retries Capture, not USB reopen.
+            _uvcPhase = UvcFeedPhase.live;
             setState(() {
-              _uvcError =
-                  'Camera capture failed. Check the DSLR USB link, then tap Retry.';
+              _uvcError = null;
             });
+            unawaited(_releaseSidecarStillArm(reason: 'sidecar_miss'));
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(AppStrings.captureDslrMissRetry),
+                  duration: Duration(seconds: 4),
+                ),
+              );
+            }
           }
           return;
         } else {
@@ -4045,7 +4118,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         _uvcPhase = UvcFeedPhase.error;
         setState(() {
           _uvcError = isUvcShutterCaptureSource(source)
-              ? 'DSLR shutter capture failed. Tap Retry USB camera, or use Capture on screen.'
+              ? (preferSidecar
+                  ? AppStrings.captureDslrMissRetryUsbFallback
+                  : 'DSLR shutter capture failed. Tap Retry, or use Capture on screen.')
               : 'USB camera capture failed: $e';
         });
       } finally {
@@ -4053,8 +4128,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           _detachUvcHardwareListeners();
           await _closeUvcControllerUnlocked();
         } else if (captureFailed) {
-          _detachUvcHardwareListeners();
-          await _closeUvcControllerUnlocked();
+          final keepOpen = preferSidecar ||
+              UvcCaptureConfig.shouldKeepUvcControllerOpen(
+                classicFourShotSession: _isFlashbackFourShot,
+              );
+          if (!keepOpen) {
+            _detachUvcHardwareListeners();
+            await _closeUvcControllerUnlocked();
+          } else if (_uvcPhase == UvcFeedPhase.error) {
+            // Real UVC hardware failure — leave error card.
+          } else {
+            _uvcPhase = UvcFeedPhase.live;
+          }
         }
         // Hold Saving UI until setCapturedPhotoFromExternalFile finishes when
         // we have a still — clearing here flashed blank Connecting in between.
@@ -4744,6 +4829,39 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                   if (viewModel.isCountingDown)
                     Positioned.fill(
                       child: _buildCountdownOverlay(context, viewModel.countdownValue!),
+                    ),
+                  if (!hasCapturedPhoto &&
+                      shouldShowSidecarPrepHoldBanner(
+                        sidecarConfigured:
+                            viewModel.localCameraService?.isConfigured == true,
+                        sidecarStillPrepStarted: _sidecarStillPrepStarted,
+                        hasCapturedPhoto: hasCapturedPhoto,
+                        isCapturing:
+                            viewModel.isCapturing || _uvcCaptureInFlight,
+                      ))
+                    Positioned(
+                      left: 12,
+                      right: 12,
+                      bottom: 12,
+                      child: Material(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(10),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          child: Text(
+                            AppStrings.captureHoldStillFocusing,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   if (!hasCapturedPhoto &&
                       shouldShowClassicBetweenShotReadyBanner(
