@@ -63,7 +63,7 @@ void main() {
   });
 
   group('captureNormalizeMaxDimension', () {
-    test('Classic strip uses 3840 for UVC and built-in', () {
+    test('Classic strip uses 1920 for UVC and built-in', () {
       expect(
         captureNormalizeMaxDimension(
           isUvc: true,

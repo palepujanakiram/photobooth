@@ -1242,12 +1242,20 @@ class ApiService {
   }
 
   /// POST /api/payment/initiate — returns payment link for UPI QR.
+  ///
+  /// Optional cart fields are stored server-side on `payments.metadata` for
+  /// audit / payment-ledger (explains amounts like ₹250 = ₹200 + 1×₹50).
   Future<PaymentInitiateResult> initiatePayment({
     required String sessionId,
     required int amount,
     String type = 'INITIAL',
     String? customerPhone,
     required String fcmToken,
+    int? sheets,
+    int? copiesPerImage,
+    int? imageCount,
+    int? initialPrintPrice,
+    int? additionalPrintPrice,
   }) async {
     try {
       final body = <String, dynamic>{
@@ -1258,6 +1266,19 @@ class ApiService {
       };
       if (customerPhone != null && customerPhone.trim().isNotEmpty) {
         body['customerPhone'] = customerPhone.trim();
+      }
+      if (sheets != null && sheets >= 1) body['sheets'] = sheets;
+      if (copiesPerImage != null && copiesPerImage >= 1) {
+        body['copiesPerImage'] = copiesPerImage;
+      }
+      if (imageCount != null && imageCount >= 1) {
+        body['imageCount'] = imageCount;
+      }
+      if (initialPrintPrice != null && initialPrintPrice >= 0) {
+        body['initialPrintPrice'] = initialPrintPrice;
+      }
+      if (additionalPrintPrice != null && additionalPrintPrice >= 0) {
+        body['additionalPrintPrice'] = additionalPrintPrice;
       }
 
       final raw = await _apiClient.initiatePayment(body);

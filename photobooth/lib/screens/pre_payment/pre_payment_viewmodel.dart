@@ -183,6 +183,13 @@ class PrePaymentViewModel extends ChangeNotifier {
         amount: chargeAmount,
         type: 'INITIAL',
         fcmToken: fcmToken ?? '',
+        sheets: 1,
+        copiesPerImage: 1,
+        imageCount: 1,
+        initialPrintPrice: initialAmount,
+        additionalPrintPrice:
+            _appSettingsManager.settings?.additionalPrintPrice ??
+                AppConstants.kDefaultAdditionalPrintPrice,
       );
       if (generation != _paymentInitiateGeneration) return;
       _applyPaymentInitiateResult(result);

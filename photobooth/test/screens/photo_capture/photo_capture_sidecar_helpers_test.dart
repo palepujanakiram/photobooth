@@ -237,8 +237,8 @@ void main() {
         if (request.url.path.endsWith('/health')) {
           return http.Response('{"ok":true,"connected":true}', 200);
         }
-        expect(request.url.queryParameters['maxLongEdge'], '3840');
-        expect(request.url.queryParameters['jpegQuality'], '97');
+        expect(request.url.queryParameters['maxLongEdge'], '1920');
+        expect(request.url.queryParameters['jpegQuality'], '92');
         return http.Response.bytes(jpeg, 200);
       });
       final service = LocalCameraService(

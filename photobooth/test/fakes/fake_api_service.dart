@@ -110,6 +110,11 @@ class FakeApiService extends ApiService {
     String type = 'INITIAL',
     String? customerPhone,
     required String fcmToken,
+    int? sheets,
+    int? copiesPerImage,
+    int? imageCount,
+    int? initialPrintPrice,
+    int? additionalPrintPrice,
   }) async {
     initiatePaymentCalls++;
     if (initiatePaymentThrows) {

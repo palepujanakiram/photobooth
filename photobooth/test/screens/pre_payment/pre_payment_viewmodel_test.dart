@@ -840,6 +840,11 @@ class _ThrowingInitiateApi extends FakeApiService {
     String type = 'INITIAL',
     String? customerPhone,
     required String fcmToken,
+    int? sheets,
+    int? copiesPerImage,
+    int? imageCount,
+    int? initialPrintPrice,
+    int? additionalPrintPrice,
   }) async {
     throw StateError('boom');
   }

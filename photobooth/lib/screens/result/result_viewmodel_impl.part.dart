@@ -51,6 +51,11 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         amount: _r.chargeAmount,
         customerPhone: customerPhone,
         fcmToken: fcmToken ?? '',
+        sheets: _r.printSheetCount,
+        copiesPerImage: _r.printCopies,
+        imageCount: _r._generatedImages.length,
+        initialPrintPrice: _r.initialPrintPrice,
+        additionalPrintPrice: _r.additionalPrintPrice,
       );
       if (generation != _r._paymentInitiateGeneration) return;
       _applyPaymentInitiateResult(result);

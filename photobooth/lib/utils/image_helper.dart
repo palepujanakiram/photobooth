@@ -18,9 +18,12 @@ import 'web_flow_trace.dart';
 const int kCapturedPhotoMaxDimension = 1920;
 const int kCapturedPhotoJpegQuality = 85;
 
-/// FotoFlashback strip stills — keep more source pixels + quality before compose.
-const int kStripCapturedPhotoMaxDimension = 3840;
-const int kStripCapturedPhotoJpegQuality = 97;
+/// FotoFlashback strip stills — booth print quality without multi‑MP transfer lag.
+///
+/// 1920 long-edge is enough for 4×6 / dual 2×6; 3840 forced ~8MB Canon JPEGs
+/// through Pi sharp + Flutter bake and made 4-shot gaps feel stuck (~30s+).
+const int kStripCapturedPhotoMaxDimension = 1920;
+const int kStripCapturedPhotoJpegQuality = 92;
 
 /// `PATCH /api/sessions/:id` `userImageUrl`: long edge cap and quality (API contract).
 const int kSessionPatchUserImageMaxLongEdgePx = 1536;

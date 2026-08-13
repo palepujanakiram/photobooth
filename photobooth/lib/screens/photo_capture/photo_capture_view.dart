@@ -1284,10 +1284,33 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   /// Live preview for the next Classic pose (still already cleared from VM).
   Future<void> _resumeAfterClassicShotAccepted() async {
     if (!mounted) return;
+    // Always clear prep/mask so the next countdown is not treated as "capturing".
+    _uvcHdmiStillMaskArmed = false;
+    _sidecarStillPrepStarted = false;
+    _cancelMaskStallSoftFailTimer();
+
     AppLogger.debug(
       'Classic strip resume pose strip=${_stripShots.length} '
-      'keepUvc=$_keepUvcOpenForSession',
+      'sidecarPreview=$_useSidecarPosePreview keepUvc=$_keepUvcOpenForSession',
     );
+
+    // Pi MJPEG pose: capture already resumed EVF. Skip HDMI settle + UVC reopen
+    // so shots 2–4 start countdown in ~1s instead of waiting on LV ensure.
+    if (_useSidecarPosePreview) {
+      _canonLvHolding = true;
+      _captureViewModel.markSidecarPreviewReady();
+      unawaited(() async {
+        try {
+          await _captureViewModel.localCameraService
+              ?.ensureLiveView(timeout: const Duration(seconds: 4));
+        } catch (_) {
+          // Preview poller / next prepareStill will recover.
+        }
+      }());
+      if (mounted) setState(() {});
+      return;
+    }
+
     if (_uvcDevice != null) {
       await _restoreUvcLiveFeedAfterRetake();
       return;
