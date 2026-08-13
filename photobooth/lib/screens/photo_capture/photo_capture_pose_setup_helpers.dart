@@ -2,27 +2,29 @@ import '../../utils/app_device_type.dart';
 import '../../utils/constants.dart';
 import '../../utils/uvc_capture_config.dart';
 
-/// Prefer Pi USB MJPEG over HDMI→UVC for pose preview.
+/// Prefer Pi USB MJPEG over HDMI→UVC for pose preview (lab / dart-define).
 ///
-/// Classic booths keep HDMI→UVC for the live feed and use the Pi only for
-/// stills — forcing `/camera/live` blanked Classic 1-shot when MJPEG was down.
-/// AI FotoZen may still opt in via admin `cameraLivePreviewEnabled`.
+/// Production booths opt in via admin `cameraLivePreviewEnabled` (Classic + AI).
 bool shouldForceSidecarLivePreview({required bool sidecarConfigured}) {
   return false;
 }
 
 /// Whether POSE should show Pi MJPEG instead of opening CameraX/UVC.
 ///
-/// Classic (1-shot + 4-shot) prefers HDMI/UVC + Canon LV hold. When HDMI open
-/// fails, [classicSidecarFallback] may temporarily use Pi `/camera/live`.
+/// When admin **Show Pi live preview** is on (EDSDK or gphoto
+/// `GET /camera/live` + `POST /camera/live-view`), Classic and AI both use the
+/// DSLR EVF stream. Classic can also fall back to Pi if HDMI/UVC fails to open.
 bool shouldUseSidecarPosePreview({
   required bool classicSession,
   required bool sidecarLivePreviewEnabled,
   required bool sidecarConfigured,
   bool classicSidecarFallback = false,
 }) {
-  if (classicSession) return classicSidecarFallback;
+  if (!sidecarConfigured) return false;
+  // Admin kiosk toggle — EDSDK MJPEG for Classic 1-shot / 4-shot and AI.
   if (sidecarLivePreviewEnabled) return true;
+  // Classic: HDMI open failed → temporary Pi `/camera/live`.
+  if (classicSession) return classicSidecarFallback;
   return shouldForceSidecarLivePreview(sidecarConfigured: sidecarConfigured);
 }
 

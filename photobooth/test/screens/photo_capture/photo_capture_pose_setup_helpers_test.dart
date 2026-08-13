@@ -48,12 +48,20 @@ void main() {
     expect(shouldForceSidecarLivePreview(sidecarConfigured: false), isFalse);
   });
 
-  test('shouldUseSidecarPosePreview skips Classic; AI may use admin live preview',
+  test('shouldUseSidecarPosePreview honors admin live preview for Classic + AI',
       () {
     expect(
       shouldUseSidecarPosePreview(
         classicSession: true,
         sidecarLivePreviewEnabled: true,
+        sidecarConfigured: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldUseSidecarPosePreview(
+        classicSession: true,
+        sidecarLivePreviewEnabled: false,
         sidecarConfigured: true,
       ),
       isFalse,
@@ -80,6 +88,14 @@ void main() {
         classicSession: false,
         sidecarLivePreviewEnabled: false,
         sidecarConfigured: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldUseSidecarPosePreview(
+        classicSession: true,
+        sidecarLivePreviewEnabled: true,
+        sidecarConfigured: false,
       ),
       isFalse,
     );
