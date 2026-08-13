@@ -14,12 +14,20 @@ class FlashbackReviewHoldBanner extends StatefulWidget {
     super.key,
     required this.endsAt,
     required this.isLastShot,
+    this.nextShot,
+    this.total,
   });
 
   /// Absolute deadline when auto-accept should fire (set once per still).
   final DateTime endsAt;
 
   final bool isLastShot;
+
+  /// Next pose index (1-based) during mid-strip rearrange.
+  final int? nextShot;
+
+  /// Strip length (usually 4).
+  final int? total;
 
   @override
   State<FlashbackReviewHoldBanner> createState() =>
@@ -77,6 +85,8 @@ class _FlashbackReviewHoldBannerState extends State<FlashbackReviewHoldBanner> {
         AppStrings.flashbackReviewHoldStatus(
           isLastShot: widget.isLastShot,
           secondsLeft: secondsLeft,
+          nextShot: widget.nextShot,
+          total: widget.total,
         ),
         textAlign: TextAlign.center,
         style: const TextStyle(

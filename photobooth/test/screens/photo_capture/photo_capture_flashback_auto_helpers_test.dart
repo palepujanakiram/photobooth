@@ -4,15 +4,22 @@ import 'package:photobooth/utils/constants.dart';
 
 void main() {
   group('captureCountdownSecondsForMode', () {
-    test('Classic shot 1 uses 6s; follow-on uses 3s; AI uses 5s', () {
+    test('Classic 1-shot and 4-shot use 10s; AI uses 5s', () {
       expect(
         captureCountdownSecondsForMode(isFlashbackMultiShot: true),
-        AppConstants.kFlashbackCaptureCountdownSeconds,
+        10,
       );
       expect(
         captureCountdownSecondsForMode(
           isFlashbackMultiShot: true,
           acceptedShotCount: 1,
+        ),
+        10,
+      );
+      expect(
+        captureCountdownSecondsForMode(
+          isFlashbackMultiShot: true,
+          acceptedShotCount: 3,
         ),
         AppConstants.kFlashbackFollowOnCountdownSeconds,
       );
@@ -20,35 +27,34 @@ void main() {
         captureCountdownSecondsForMode(isFlashbackMultiShot: false),
         AppConstants.kCaptureCountdownSeconds,
       );
-      expect(AppConstants.kFlashbackCaptureCountdownSeconds, 6);
-      expect(AppConstants.kFlashbackFollowOnCountdownSeconds, 3);
+      expect(AppConstants.kFlashbackCaptureCountdownSeconds, 10);
+      expect(AppConstants.kFlashbackFollowOnCountdownSeconds, 10);
     });
   });
 
   group('flashbackSidecarStillPrepareAtSecond', () {
-    test('shot 1 prepares mid-countdown; follow-on at countdown start', () {
+    test('all Classic shots prepare mid-countdown at second 4', () {
       expect(
         flashbackSidecarStillPrepareAtSecond(acceptedShotCount: 0),
-        AppConstants.kFlashbackSidecarStillPrepareAtSecond,
+        4,
       );
       expect(
         flashbackSidecarStillPrepareAtSecond(
           acceptedShotCount: 2,
-          countdownSeconds: 3,
+          countdownSeconds: 10,
         ),
-        3,
+        4,
       );
       expect(
         flashbackSidecarStillPrepareAtSecond(acceptedShotCount: 1),
-        AppConstants.kFlashbackFollowOnCountdownSeconds,
+        AppConstants.kFlashbackSidecarStillPrepareAtSecond,
       );
-      expect(AppConstants.kFlashbackSidecarStillPrepareAtSecond, 4);
       expect(AppConstants.kFlashbackSidecarStillPrepareWait.inSeconds, 3);
     });
   });
 
   group('flashbackShotReviewHoldDuration', () {
-    test('1-shot is brief; shot 1 review 2s; later reviews 1.2s', () {
+    test('1-shot brief; mid-strip 8s rearrange; last shot short', () {
       expect(
         flashbackShotReviewHoldDuration(
           acceptedShotCountBeforeThis: 0,
@@ -61,20 +67,23 @@ void main() {
           acceptedShotCountBeforeThis: 0,
           total: 4,
         ),
-        AppConstants.kFlashbackShotReviewDuration,
+        AppConstants.kFlashbackBetweenShotRearrangeDuration,
       );
       expect(
         flashbackShotReviewHoldDuration(
           acceptedShotCountBeforeThis: 1,
           total: 4,
         ),
-        AppConstants.kFlashbackFollowOnShotReviewDuration,
+        const Duration(seconds: 8),
       );
-      expect(AppConstants.kFlashbackShotReviewDuration.inSeconds, 2);
       expect(
-        AppConstants.kFlashbackFollowOnShotReviewDuration.inMilliseconds,
-        1200,
+        flashbackShotReviewHoldDuration(
+          acceptedShotCountBeforeThis: 3,
+          total: 4,
+        ),
+        AppConstants.kFlashbackLastShotReviewDuration,
       );
+      expect(AppConstants.kFlashbackBetweenShotRearrangeDuration.inSeconds, 8);
     });
   });
 

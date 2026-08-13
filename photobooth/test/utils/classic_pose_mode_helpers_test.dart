@@ -19,18 +19,20 @@ void main() {
   });
 
   group('classicPoseSubtitle', () {
-    test('1-shot uses Classic print title', () {
+    test('1-shot explains 10s countdown', () {
       expect(
         classicPoseSubtitle(ClassicShotMode.single6x4),
-        AppStrings.flashbackSingle6x4Title,
+        AppStrings.flashbackCaptureSubtitleSingle,
       );
     });
 
-    test('4-shot uses shot progress', () {
+    test('4-shot explains 10s pose and 8s rearrange', () {
       expect(
         classicPoseSubtitle(ClassicShotMode.fourShot),
-        AppStrings.flashbackShotProgress(1, 4),
+        AppStrings.flashbackCaptureSubtitle,
       );
+      expect(AppStrings.flashbackCaptureSubtitle, contains('10s'));
+      expect(AppStrings.flashbackCaptureSubtitle, contains('8s'));
     });
   });
 

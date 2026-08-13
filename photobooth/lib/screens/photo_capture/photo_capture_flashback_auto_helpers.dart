@@ -59,13 +59,13 @@ int flashbackReviewSecondsRemaining({
 
 /// Pose countdown length for the active capture mode.
 ///
-/// Classic 4-shot: shot 1 uses the full window; shots 2–4 use the shorter
-/// follow-on timer ([acceptedShotCount] ≥ 1).
+/// Classic 1-shot and 4-shot use a 10s pose window for every shutter.
 int captureCountdownSecondsForMode({
   required bool isFlashbackMultiShot,
   int acceptedShotCount = 0,
 }) {
   if (!isFlashbackMultiShot) return AppConstants.kCaptureCountdownSeconds;
+  // Follow-on shots use the same 10s window as shot 1.
   if (acceptedShotCount >= 1) {
     return AppConstants.kFlashbackFollowOnCountdownSeconds;
   }
@@ -74,33 +74,31 @@ int captureCountdownSecondsForMode({
 
 /// Countdown step at which Classic + Pi should start [prepareStill].
 ///
-/// Shot 1: mid-countdown ([kFlashbackSidecarStillPrepareAtSecond]).
-/// Shots 2–4: as soon as the countdown starts ([countdownSeconds]) so LV exit
-/// has the full pose window and the shutter is not blocked after zero.
+/// All Classic shots prepare mid-countdown so EVF stays up for most of the
+/// 10s pose window, then tears down ~4s before shutter.
 int flashbackSidecarStillPrepareAtSecond({
   required int acceptedShotCount,
   int? countdownSeconds,
 }) {
-  if (acceptedShotCount >= 1) {
-    return countdownSeconds ??
-        AppConstants.kFlashbackFollowOnCountdownSeconds;
-  }
+  // [acceptedShotCount] / [countdownSeconds] kept for call-site compatibility.
   return AppConstants.kFlashbackSidecarStillPrepareAtSecond;
 }
 
 /// Review-hold length before auto-accept for the still just taken.
 ///
 /// [acceptedShotCountBeforeThis] is strip length *before* accepting this still
-/// (0 while reviewing shot 1).
+/// (0 while reviewing shot 1). Mid-strip uses the 8s rearrange window; the
+/// final still (and Classic 1-shot) use a short handoff to looks.
 Duration flashbackShotReviewHoldDuration({
   required int acceptedShotCountBeforeThis,
   required int total,
 }) {
-  if (total == 1) return const Duration(milliseconds: 600);
-  if (acceptedShotCountBeforeThis >= 1) {
-    return AppConstants.kFlashbackFollowOnShotReviewDuration;
+  if (total <= 1) return const Duration(milliseconds: 600);
+  final shotNumber = acceptedShotCountBeforeThis + 1;
+  if (shotNumber >= total) {
+    return AppConstants.kFlashbackLastShotReviewDuration;
   }
-  return AppConstants.kFlashbackShotReviewDuration;
+  return AppConstants.kFlashbackBetweenShotRearrangeDuration;
 }
 
 /// Mid-strip status while waiting for LV / HDMI warmup (not counting down).

@@ -514,7 +514,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               _stripShots.isEmpty,
           countdownSeconds: seconds,
           onCountdownStep: (step) {
-            sidecarPrepare ??= _maybeStartSidecarStillPrepare(step);
+            sidecarPrepare = _onClassicCountdownStep(step, sidecarPrepare);
           },
           onCountdownFinished: _armUvcHdmiStillMask,
         );
@@ -540,7 +540,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               _stripShots.isEmpty,
           countdownSeconds: seconds,
           onCountdownStep: (step) {
-            sidecarPrepare ??= _maybeStartSidecarStillPrepare(step);
+            sidecarPrepare = _onClassicCountdownStep(step, sidecarPrepare);
           },
           onCountdownFinished: _armUvcHdmiStillMask,
         );
@@ -677,10 +677,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         // Kept for legacy null-checks; banner reads [endsAt] directly.
         _flashbackReviewSecondsLeft =
             hold > Duration.zero ? hold.inSeconds.clamp(0, 60) : null;
+        _syncFlashbackSubtitle();
       });
     } else {
       _flashbackReviewSecondsLeft =
           hold > Duration.zero ? hold.inSeconds.clamp(0, 60) : null;
+      _syncFlashbackSubtitle();
     }
 
     _flashbackReviewTimer = Timer(hold, () {
@@ -742,7 +744,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               _hdmiPoseCountdownCanStart(),
           countdownSeconds: seconds,
           onCountdownStep: (step) {
-            sidecarPrepare ??= _maybeStartSidecarStillPrepare(step);
+            sidecarPrepare = _onClassicCountdownStep(step, sidecarPrepare);
           },
           onCountdownFinished: _armUvcHdmiStillMask,
         );
@@ -759,7 +761,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               (_sidecarStillPrepStarted || _flashbackCameraReady),
           countdownSeconds: seconds,
           onCountdownStep: (step) {
-            sidecarPrepare ??= _maybeStartSidecarStillPrepare(step);
+            sidecarPrepare = _onClassicCountdownStep(step, sidecarPrepare);
           },
           onCountdownFinished: _armUvcHdmiStillMask,
         );
@@ -1027,6 +1029,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   /// Starts Pi movie-LV teardown so the real shutter can land at timer zero.
+  Future<void>? _onClassicCountdownStep(
+    int step,
+    Future<void>? sidecarPrepare,
+  ) {
+    if (mounted) {
+      setState(_syncFlashbackSubtitle);
+    } else {
+      _syncFlashbackSubtitle();
+    }
+    return sidecarPrepare ?? _maybeStartSidecarStillPrepare(step);
+  }
+
   Future<void>? _maybeStartSidecarStillPrepare(int countdownStep) {
     final service = _captureViewModel.localCameraService;
     if (service == null || !service.isConfigured) return null;
@@ -1168,13 +1182,32 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void _syncFlashbackSubtitle() {
     if (_isFlashbackSingleShot) {
       _multiShotTotal = 1;
-      _subtitleHint = AppStrings.flashbackSingle6x4Title;
+      final counting = _captureViewModel.isCountingDown;
+      _subtitleHint = counting
+          ? AppStrings.flashbackPoseProgressSingle
+          : AppStrings.flashbackCaptureSubtitleSingle;
       return;
     }
     final total = _classicShotCap;
     if (total < 1) return;
     final next = (_stripShots.length + 1).clamp(1, total);
-    _subtitleHint = AppStrings.flashbackShotProgress(next, total);
+    if (_captureViewModel.isCountingDown) {
+      _subtitleHint = AppStrings.flashbackPoseProgress(next, total);
+    } else if (_flashbackReviewEndsAt != null &&
+        _captureViewModel.capturedPhoto != null) {
+      final reviewingShot = next;
+      final isLast = reviewingShot >= total;
+      _subtitleHint = isLast
+          ? AppStrings.flashbackReviewLastShot
+          : AppStrings.flashbackRearrangeForShot(
+              (reviewingShot + 1).clamp(1, total),
+              total,
+            );
+    } else if (_stripShots.isNotEmpty && next <= total) {
+      _subtitleHint = AppStrings.flashbackGetReadyForShot(next, total);
+    } else {
+      _subtitleHint = AppStrings.flashbackCaptureSubtitle;
+    }
   }
 
   Future<void> _acceptFlashbackShot(CaptureViewModel viewModel) async {
@@ -4330,7 +4363,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final total = _classicShotCap;
     if (total <= 0) return AppStrings.flashbackGettingReadyNextShot;
     final next = (_stripShots.length + 1).clamp(1, total);
-    return AppStrings.flashbackGetReadyForShot(next, total);
+    return AppStrings.flashbackRearrangeForShot(next, total);
   }
 
   Widget _buildStartingCameraState({String message = AppStrings.captureStartingPreview}) {
@@ -4897,6 +4930,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                         endsAt: _flashbackReviewEndsAt!,
                         isLastShot: (_stripShots.length + 1) >=
                             (_multiShotTotal ?? kStripShotCount),
+                        nextShot: ((_stripShots.length + 2)
+                            .clamp(1, _multiShotTotal ?? kStripShotCount)),
+                        total: _multiShotTotal ?? kStripShotCount,
                       ),
                     ),
                   // Plain UVC/CameraX stills may dim the preview. Sidecar DSLR
@@ -5083,18 +5119,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
-  /// Builds the on-screen capture countdown overlay (e.g. 5, 4, 3…).
+  /// Builds the on-screen capture countdown overlay (e.g. 10, 9, 8…).
   Widget _buildCountdownOverlay(BuildContext context, int countdownValue) {
     final flashback = _isClassicPose;
     final total = _isFlashbackSingleShot ? 1 : (_classicShotCap > 0 ? _classicShotCap : kStripShotCount);
     final shotNumber = (_stripShots.length + 1).clamp(1, total);
     final showAiIntro = !flashback &&
         countdownValue == AppConstants.kCaptureCountdownSeconds;
-    final headline = flashback
-        ? (_isFlashbackSingleShot
-            ? AppStrings.flashbackSingle6x4Title
-            : AppStrings.flashbackShotProgress(shotNumber, total))
-        : (showAiIntro ? AppStrings.captureCountdownIntro : null);
+    final String? headline;
+    if (flashback) {
+      headline = _isFlashbackSingleShot
+          ? AppStrings.flashbackPoseProgressSingle
+          : AppStrings.flashbackPoseProgress(shotNumber, total);
+    } else {
+      headline = showAiIntro ? AppStrings.captureCountdownIntro : null;
+    }
 
     return Container(
       color: Colors.black.withValues(alpha: 0.5),
@@ -5364,8 +5403,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                         canStart: () => _hdmiPoseCountdownCanStart(),
                         countdownSeconds: countdownSecs,
                         onCountdownStep: (step) {
-                          sidecarPrepare ??=
-                              _maybeStartSidecarStillPrepare(step);
+                          sidecarPrepare =
+                              _onClassicCountdownStep(step, sidecarPrepare);
                         },
                         onCountdownFinished: _armUvcHdmiStillMask,
                       );

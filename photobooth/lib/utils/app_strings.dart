@@ -452,11 +452,14 @@ abstract final class AppStrings {
   static const flashbackBrand = 'FotoFlashback';
   static const flashbackCaptureTitle = 'FotoFlashback';
   static const flashbackCaptureSubtitle =
-      'Strike a pose — we need 4 shots for your strip.';
+      '4 shots · 10s to pose · 8s between shots to rearrange';
   static const flashbackCaptureSubtitleSingle =
-      'Strike a pose — one shot for your print.';
+      'One shot · 10s pose countdown';
   static String flashbackShotProgress(int current, int total) =>
       'Shot $current of $total';
+  static String flashbackPoseProgress(int current, int total) =>
+      'Pose now — Shot $current of $total';
+  static const flashbackPoseProgressSingle = 'Pose now — 10 second countdown';
   static const flashbackSingle6x4Title = 'Classic print';
   static String flashbackSinglePrintTitle(bool portrait) =>
       portrait ? 'Classic 4×6' : 'Classic 6×4';
@@ -473,12 +476,16 @@ abstract final class AppStrings {
   /// Theme selection CTA while session/theme sync runs before the next route.
   static const themeSelectionContinuing = 'Continuing…';
 
-  /// Shown during the inter-shot hold while the guest reviews the still.
-  static const flashbackGettingReadyNextShot = 'Getting ready for the next shot…';
+  /// Shown during the inter-shot hold while the guest reviews / rearranges.
+  static const flashbackGettingReadyNextShot =
+      'Rearrange for the next pose…';
 
   /// Mid-strip while LV / HDMI warmup settles before the next countdown.
   static String flashbackGetReadyForShot(int current, int total) =>
       'Get ready — Shot $current of $total';
+
+  static String flashbackRearrangeForShot(int current, int total) =>
+      'Rearrange for Shot $current of $total';
 
   /// HDMI mask armed but shutter never began — soft-fail snackbar.
   static const captureMaskStallRetry =
@@ -490,10 +497,17 @@ abstract final class AppStrings {
   static String flashbackReviewHoldStatus({
     required bool isLastShot,
     required int secondsLeft,
+    int? nextShot,
+    int? total,
   }) {
-    final base = isLastShot
-        ? flashbackReviewLastShot
-        : flashbackGettingReadyNextShot;
+    final String base;
+    if (isLastShot) {
+      base = flashbackReviewLastShot;
+    } else if (nextShot != null && total != null && total > 0) {
+      base = flashbackRearrangeForShot(nextShot, total);
+    } else {
+      base = flashbackGettingReadyNextShot;
+    }
     if (secondsLeft <= 0) return base;
     return '$base  $secondsLeft';
   }
