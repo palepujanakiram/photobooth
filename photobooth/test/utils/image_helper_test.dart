@@ -158,4 +158,123 @@ void main() {
     expect(meta!.width, 20);
     expect(meta.height, 40);
   });
+
+  test('peekJpegSofDimensions reads tiny jpeg size', () {
+    final size = peekJpegSofDimensions(kTinyJpegBytes);
+    expect(size, isNotNull);
+    expect(size!.width, 2);
+    expect(size.height, 2);
+  });
+
+  test('meanJpegLuma reads tiny jpeg and rejects non-jpeg', () async {
+    final luma = await meanJpegLuma(kTinyJpegBytes);
+    expect(luma, isNotNull);
+    expect(luma, inInclusiveRange(0, 255));
+    expect(await meanJpegLuma(Uint8List(0)), isNull);
+    expect(await meanJpegLuma(Uint8List.fromList([0x00, 0x01])), isNull);
+    expect(await meanJpegLuma(kTinyJpegBytes, sampleWidth: 0), isNull);
+  });
+
+  test('peekJpegSofDimensions rejects truncated and non-jpeg', () {
+    expect(peekJpegSofDimensions([]), isNull);
+    expect(peekJpegSofDimensions([0x49, 0x49, 0x2a, 0x00]), isNull);
+    expect(peekJpegSofDimensions([0xFF, 0xD8]), isNull);
+    expect(peekJpegSofDimensions([0xFF, 0xD8, 0xFF]), isNull);
+    expect(peekJpegSofDimensions([0xFF, 0xD8, 0xFF, 0xC0]), isNull);
+    expect(peekJpegSofDimensions([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x01]), isNull);
+    expect(
+      peekJpegSofDimensions([0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x0B, 0x08]),
+      isNull,
+    );
+  });
+
+  test('peekJpegSofDimensions skips padding RST SOI and reads SOF', () {
+    List<int> sof(int marker, int width, int height) => [
+          0xFF,
+          marker,
+          0x00,
+          0x0B,
+          0x08,
+          height >> 8,
+          height & 0xFF,
+          width >> 8,
+          width & 0xFF,
+          0x03,
+          0x01,
+          0x22,
+          0x00,
+        ];
+    expect(
+      peekJpegSofDimensions([0xFF, 0xD8, 0x00, 0xFF, 0xD0, ...sof(0xC0, 2, 3)]),
+      (width: 2, height: 3),
+    );
+    expect(
+      peekJpegSofDimensions([0xFF, 0xD8, 0xFF, 0xD8, ...sof(0xC1, 4, 5)]),
+      (width: 4, height: 5),
+    );
+    expect(
+      peekJpegSofDimensions([0xFF, 0xD8, 0xFF, 0x01, ...sof(0xC2, 6, 7)]),
+      (width: 6, height: 7),
+    );
+    expect(
+      peekJpegSofDimensions([0xFF, 0xD8, 0xFF, 0xD9, ...sof(0xC3, 8, 9)]),
+      (width: 8, height: 9),
+    );
+    expect(
+      peekJpegSofDimensions(sof(0xC0, 0, 0)..insertAll(0, [0xFF, 0xD8])),
+      isNull,
+    );
+  });
+
+  test('downscaleJpegToMaxLongEdge leaves small stills unchanged', () async {
+    final raw = XFile.fromData(
+      kTinyJpegBytes,
+      mimeType: 'image/jpeg',
+      name: 't.jpg',
+    );
+    final out = await ImageHelper.downscaleJpegToMaxLongEdge(raw);
+    expect(identical(out, raw), isTrue);
+  });
+
+  test('downscaleJpegToMaxLongEdge shrinks landscape and portrait stills',
+      () async {
+    final landscape = img.Image(width: 400, height: 200);
+    img.fill(landscape, color: img.ColorRgb8(12, 12, 12));
+    final landOut = await ImageHelper.downscaleJpegToMaxLongEdge(
+      XFile.fromData(
+        Uint8List.fromList(img.encodeJpg(landscape, quality: 90)),
+        mimeType: 'image/jpeg',
+        name: 'w.jpg',
+      ),
+      maxLongEdge: 100,
+    );
+    final landDecoded = img.decodeImage(await landOut.readAsBytes());
+    expect(landDecoded, isNotNull);
+    expect(landDecoded!.width, 100);
+    expect(landDecoded.height, 50);
+
+    final portrait = img.Image(width: 100, height: 400);
+    img.fill(portrait, color: img.ColorRgb8(12, 12, 12));
+    final portOut = await ImageHelper.downscaleJpegToMaxLongEdge(
+      XFile.fromData(
+        Uint8List.fromList(img.encodeJpg(portrait, quality: 90)),
+        mimeType: 'image/jpeg',
+        name: 'h.jpg',
+      ),
+      maxLongEdge: 80,
+    );
+    final portDecoded = img.decodeImage(await portOut.readAsBytes());
+    expect(portDecoded, isNotNull);
+    expect(portDecoded!.height, 80);
+    expect(portDecoded.width, 20);
+  });
+
+  test('downscaleJpegToMaxLongEdge throws on empty bytes', () async {
+    await expectLater(
+      ImageHelper.downscaleJpegToMaxLongEdge(
+        XFile.fromData(Uint8List(0), mimeType: 'image/jpeg', name: 'e.jpg'),
+      ),
+      throwsA(isA<Exception>()),
+    );
+  });
 }

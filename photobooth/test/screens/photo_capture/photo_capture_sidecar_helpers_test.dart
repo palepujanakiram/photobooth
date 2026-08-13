@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -13,6 +14,23 @@ import 'package:photobooth/utils/camera_sidecar_config.dart';
 import 'package:photobooth/utils/image_helper.dart';
 
 import '../../helpers/tiny_jpeg.dart';
+
+http.Response? sidecarBoothMetaResponse(http.Request request) {
+  final path = request.url.path;
+  if (path.endsWith('/camera/client-log')) {
+    return http.Response('', 204);
+  }
+  if (path.endsWith('/health')) {
+    return http.Response('{"ok":true,"connected":true}', 200);
+  }
+  if (path.endsWith('/camera/prepare-still')) {
+    return http.Response('', 200);
+  }
+  if (path.endsWith('/camera/preview')) {
+    return http.Response.bytes(kTinyJpegBytes, 200);
+  }
+  return null;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -44,6 +62,167 @@ void main() {
       expect(isSidecarCameraId('uvc:1:2:cam'), isFalse);
       expect(isSidecarCameraId(null), isFalse);
       expect(isSidecarCameraId(''), isFalse);
+    });
+  });
+
+  group('shouldTreatSidecarNativeStateAsDead', () {
+    test('flags ABI and crash states only', () {
+      expect(shouldTreatSidecarNativeStateAsDead('unsupported_abi'), isTrue);
+      expect(shouldTreatSidecarNativeStateAsDead('crashed'), isTrue);
+      expect(shouldTreatSidecarNativeStateAsDead('max_restarts'), isTrue);
+      expect(shouldTreatSidecarNativeStateAsDead('running'), isFalse);
+      expect(shouldTreatSidecarNativeStateAsDead('idle'), isFalse);
+      expect(shouldTreatSidecarNativeStateAsDead(''), isFalse);
+    });
+  });
+
+  group('sidecarNativeProcessCanServeHttp', () {
+    LocalCameraService configuredService() {
+      return LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://127.0.0.1:8791',
+          livePreviewEnabled: true,
+        ),
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+    }
+
+    test('false when service is null or not configured', () async {
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          null,
+          queryNativeState: () async => 'running',
+        ),
+        isFalse,
+      );
+      final disabled = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: false,
+          baseUrl: 'http://127.0.0.1:8791',
+        ),
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          disabled,
+          queryNativeState: () async => 'running',
+        ),
+        isFalse,
+      );
+      disabled.dispose();
+    });
+
+    test('true when native process is running', () async {
+      final service = configuredService();
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          service,
+          queryNativeState: () async => 'running',
+        ),
+        isTrue,
+      );
+      expect(service.isConfigured, isTrue);
+      service.dispose();
+    });
+
+    test('true when idle but HTTP is listening', () async {
+      final service = configuredService();
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          service,
+          queryNativeState: () async => 'idle',
+        ),
+        isTrue,
+      );
+      expect(service.isConfigured, isTrue);
+      service.dispose();
+    });
+
+    test('marks unavailable when idle and HTTP is down', () async {
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://127.0.0.1:8791',
+          livePreviewEnabled: true,
+        ),
+        client: MockClient((_) async => throw Exception('Connection refused')),
+      );
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          service,
+          queryNativeState: () async => 'idle',
+        ),
+        isFalse,
+      );
+      expect(service.isConfigured, isFalse);
+      service.dispose();
+    });
+
+    test('marks unavailable on unsupported_abi', () async {
+      final service = configuredService();
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          service,
+          queryNativeState: () async => 'unsupported_abi',
+        ),
+        isFalse,
+      );
+      expect(service.isConfigured, isFalse);
+      expect(service.shouldShowLivePreview, isFalse);
+      service.setForceLivePreview(true);
+      expect(service.shouldShowLivePreview, isFalse);
+      service.dispose();
+    });
+
+    test('marks unavailable on crashed and max_restarts', () async {
+      final crashed = configuredService();
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          crashed,
+          queryNativeState: () async => 'crashed',
+        ),
+        isFalse,
+      );
+      crashed.dispose();
+      final maxed = configuredService();
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          maxed,
+          queryNativeState: () async => 'max_restarts',
+        ),
+        isFalse,
+      );
+      maxed.dispose();
+    });
+
+    test('query errors keep sidecar only when HTTP is listening', () async {
+      final up = configuredService();
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          up,
+          queryNativeState: () => throw Exception('channel down'),
+        ),
+        isTrue,
+      );
+      up.dispose();
+      final down = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://127.0.0.1:8791',
+          livePreviewEnabled: true,
+        ),
+        client: MockClient((_) async => throw Exception('Connection refused')),
+      );
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          down,
+          queryNativeState: () => Completer<String>().future,
+          nativeStateTimeout: Duration.zero,
+        ),
+        isFalse,
+      );
+      down.dispose();
     });
   });
 
@@ -163,6 +342,73 @@ void main() {
     });
   });
 
+  group('shouldPreferLiveViewJpeg', () {
+    test('keeps still when luma is missing or still is bright enough', () {
+      expect(
+        shouldPreferLiveViewJpeg(stillLuma: null, liveLuma: 120),
+        isFalse,
+      );
+      expect(
+        shouldPreferLiveViewJpeg(stillLuma: 20, liveLuma: null),
+        isFalse,
+      );
+      expect(
+        shouldPreferLiveViewJpeg(stillLuma: 80, liveLuma: 140),
+        isFalse,
+      );
+      expect(
+        shouldPreferLiveViewJpeg(stillLuma: 20, liveLuma: 30),
+        isFalse,
+      );
+    });
+
+    test('prefers live when still is almost black and live is brighter', () {
+      expect(
+        shouldPreferLiveViewJpeg(stillLuma: 18, liveLuma: 110),
+        isTrue,
+      );
+    });
+  });
+
+  group('pickSidecarCaptureJpeg', () {
+    test('returns still when live is missing or not jpeg', () async {
+      final still = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9]);
+      expect(
+        await pickSidecarCaptureJpeg(stillJpeg: still, liveJpeg: null),
+        still,
+      );
+      expect(
+        await pickSidecarCaptureJpeg(
+          stillJpeg: still,
+          liveJpeg: Uint8List.fromList([0x00, 0x01]),
+        ),
+        still,
+      );
+    });
+
+    test('returns live jpeg when still luma is too dark', () async {
+      final still = Uint8List.fromList([0xff, 0xd8, 0xff, 0x01]);
+      final live = Uint8List.fromList([0xff, 0xd8, 0xff, 0x02]);
+      final picked = await pickSidecarCaptureJpeg(
+        stillJpeg: still,
+        liveJpeg: live,
+        meanLuma: (bytes) async => bytes[3] == 0x01 ? 12 : 120,
+      );
+      expect(picked, live);
+    });
+
+    test('keeps still when live is not brighter enough', () async {
+      final still = Uint8List.fromList([0xff, 0xd8, 0xff, 0x01]);
+      final live = Uint8List.fromList([0xff, 0xd8, 0xff, 0x02]);
+      final picked = await pickSidecarCaptureJpeg(
+        stillJpeg: still,
+        liveJpeg: live,
+        meanLuma: (bytes) async => 90,
+      );
+      expect(picked, still);
+    });
+  });
+
   group('tryCaptureFromSidecar', () {
     test('returns null when service null or not configured', () async {
       expect(await tryCaptureFromSidecar(null), isNull);
@@ -180,12 +426,9 @@ void main() {
     test('returns path-backed XFile when healthy and capture succeeds', () async {
       final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(64, 2)]);
       final client = MockClient((request) async {
-        if (request.url.path.endsWith('/camera/client-log')) {
-          return http.Response('', 204);
-        }
-        if (request.url.path.endsWith('/health')) {
-          return http.Response('{"ok":true,"connected":true}', 200);
-        }
+        final meta = sidecarBoothMetaResponse(request);
+        if (meta != null) return meta;
+        expect(request.url.path, endsWith('/camera/capture'));
         expect(request.url.queryParameters['resumeLiveView'], '1');
         return http.Response.bytes(jpeg, 200);
       });
@@ -204,15 +447,40 @@ void main() {
       service.dispose();
     });
 
+    test('calls prepare-still before capture', () async {
+      final jpeg =
+          Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(64, 2)]);
+      final paths = <String>[];
+      final client = MockClient((request) async {
+        paths.add(request.url.path);
+        final meta = sidecarBoothMetaResponse(request);
+        if (meta != null) return meta;
+        return http.Response.bytes(jpeg, 200);
+      });
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://192.168.2.50:8791',
+        ),
+        client: client,
+      );
+      expect(await tryCaptureFromSidecar(service), isNotNull);
+      expect(paths, contains('/camera/prepare-still'));
+      expect(
+        paths.indexOf('/camera/prepare-still'),
+        lessThan(
+          paths.indexWhere((p) => p.endsWith('/camera/capture')),
+        ),
+      );
+      service.dispose();
+    });
+
     test('passes resumeLiveView=0 for classic 1-shot handoff', () async {
       final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(64, 2)]);
       final client = MockClient((request) async {
-        if (request.url.path.endsWith('/camera/client-log')) {
-          return http.Response('', 204);
-        }
-        if (request.url.path.endsWith('/health')) {
-          return http.Response('{"ok":true,"connected":true}', 200);
-        }
+        final meta = sidecarBoothMetaResponse(request);
+        if (meta != null) return meta;
+        expect(request.url.path, endsWith('/camera/capture'));
         expect(request.url.queryParameters['resumeLiveView'], '0');
         return http.Response.bytes(jpeg, 200);
       });
@@ -231,12 +499,9 @@ void main() {
     test('requests strip print long-edge and quality when preferred', () async {
       final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(64, 2)]);
       final client = MockClient((request) async {
-        if (request.url.path.endsWith('/camera/client-log')) {
-          return http.Response('', 204);
-        }
-        if (request.url.path.endsWith('/health')) {
-          return http.Response('{"ok":true,"connected":true}', 200);
-        }
+        final meta = sidecarBoothMetaResponse(request);
+        if (meta != null) return meta;
+        expect(request.url.path, endsWith('/camera/capture'));
         expect(request.url.queryParameters['maxLongEdge'], '1920');
         expect(request.url.queryParameters['jpegQuality'], '92');
         return http.Response.bytes(jpeg, 200);
@@ -463,6 +728,24 @@ void main() {
             (e) => e.toString(),
             'message',
             contains('Sidecar capture is empty'),
+          ),
+        ),
+      );
+    });
+
+    test('throws when capture bytes are not JPEG', () async {
+      final raw = XFile.fromData(
+        Uint8List.fromList([0x49, 0x49, 0x2a, 0x00, ...List.filled(24, 0)]),
+        mimeType: 'image/jpeg',
+        name: 'raw.cr2',
+      );
+      await expectLater(
+        persistSidecarCaptureStill(raw),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'message',
+            contains('not a JPEG still'),
           ),
         ),
       );

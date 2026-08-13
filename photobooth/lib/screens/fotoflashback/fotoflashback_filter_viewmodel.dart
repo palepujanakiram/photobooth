@@ -52,7 +52,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         );
 
   final ThemeModel theme;
-  List<String> _imageDataUrls;
+  final List<String> _imageDataUrls;
   final ApiService _api;
   final SessionManager _sessionManager;
   PrintOrientation _printOrientation;

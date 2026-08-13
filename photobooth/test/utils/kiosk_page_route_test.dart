@@ -36,6 +36,25 @@ void main() {
     expect(find.text('next'), findsOneWidget);
   });
 
+  testWidgets('kioskFadeTransition wraps child in FadeTransition', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return kioskFadeTransition(
+              context,
+              const AlwaysStoppedAnimation<double>(1),
+              const AlwaysStoppedAnimation<double>(0),
+              const Text('faded'),
+            );
+          },
+        ),
+      ),
+    );
+    expect(find.text('faded'), findsOneWidget);
+    expect(find.byType(FadeTransition), findsWidgets);
+  });
+
   testWidgets('KioskFadePageRoute transitionsBuilder fades child', (tester) async {
     final route = KioskFadePageRoute<void>(
       page: const Text('fade-child'),

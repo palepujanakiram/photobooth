@@ -50,6 +50,12 @@ void main() {
     expect(await ensureCameraPermission(), isTrue);
   });
 
+  test('isNativeMobileCameraPlatform false on desktop', () {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    expect(isNativeMobileCameraPlatform, isFalse);
+  });
+
   test('ensureCameraPermissionForPlatform returns true when already granted',
       () async {
     expect(

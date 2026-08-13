@@ -1,5 +1,19 @@
 import 'package:flutter/material.dart';
 
+/// Fade used by [KioskFadePageRoute] (extracted so unit tests can invoke it).
+Widget kioskFadeTransition(
+  BuildContext context,
+  Animation<double> animation,
+  Animation<double> secondaryAnimation,
+  Widget child,
+) {
+  final curved = CurvedAnimation(
+    parent: animation,
+    curve: Curves.easeOutCubic,
+  );
+  return FadeTransition(opacity: curved, child: child);
+}
+
 /// Short cross-fade for kiosk hand-offs (Terms → POSE) so navigation feels instant.
 class KioskFadePageRoute<T> extends PageRouteBuilder<T> {
   KioskFadePageRoute({
@@ -10,13 +24,7 @@ class KioskFadePageRoute<T> extends PageRouteBuilder<T> {
           pageBuilder: (context, animation, secondaryAnimation) => page,
           transitionDuration: duration,
           reverseTransitionDuration: duration,
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            final curved = CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-            );
-            return FadeTransition(opacity: curved, child: child);
-          },
+          transitionsBuilder: kioskFadeTransition,
         );
 }
 

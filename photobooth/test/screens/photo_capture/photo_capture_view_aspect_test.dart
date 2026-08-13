@@ -231,6 +231,39 @@ void main() {
     },
   );
 
+  testWidgets(
+    'captured sidecar still uses decoded landscape over live lock',
+    (WidgetTester tester) async {
+      final viewModel = CaptureViewModel();
+      addTearDown(viewModel.dispose);
+      viewModel.lockCaptureCardAspectRatio(0.67);
+      viewModel.setCapturedImagePixelSizeForTest(const Size(1920, 1280));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(size: Size(1920, 1080)),
+            child: Builder(
+              builder: (context) {
+                const constraints =
+                    BoxConstraints(maxWidth: 900, maxHeight: 800);
+                final aspect = captureCardAspectRatioForCaptured(
+                  context: context,
+                  viewModel: viewModel,
+                  fallbackAspect: 0.67,
+                  layoutConstraints: constraints,
+                  preferThemeSlotAspect: false,
+                );
+                expect(aspect, closeTo(1920 / 1280, 0.001));
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
   testWidgets('captureCardAspectRatioForCaptured uses decoded image aspect', (
     WidgetTester tester,
   ) async {

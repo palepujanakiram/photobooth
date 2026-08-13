@@ -49,6 +49,12 @@ double captureCardAspectRatioForCaptured({
   required BoxConstraints layoutConstraints,
   bool preferThemeSlotAspect = false,
 }) {
+  // Prefer the still we actually captured. Sidecar live pose uses a portrait
+  // theme slot; Canon JPEGs are landscape — a live lock would letterbox black.
+  final decodedAspect = captureCardDecodedImageAspect(
+    viewModel.capturedImagePixelSize,
+  );
+  if (decodedAspect != null) return decodedAspect;
   final locked = viewModel.lockedCaptureCardAspectRatio;
   if (locked != null && locked > 0) {
     return locked.clamp(0.35, 2.85);
@@ -61,10 +67,6 @@ double captureCardAspectRatioForCaptured({
     }
     return fallbackAspect;
   }
-  final decodedAspect = captureCardDecodedImageAspect(
-    viewModel.capturedImagePixelSize,
-  );
-  if (decodedAspect != null) return decodedAspect;
   final personAspect = captureCardAspectRatioFromPersonCount(
     viewModel.estimatedPersonCountForCaptureReview,
   );

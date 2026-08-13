@@ -1,3 +1,5 @@
+import 'package:flutter/painting.dart';
+
 import '../../utils/app_device_type.dart';
 import '../../utils/constants.dart';
 import '../../utils/uvc_capture_config.dart';
@@ -50,6 +52,29 @@ bool kioskShouldTryUvcBeforeCameraX(AppDeviceType? deviceType) {
       deviceType == AppDeviceType.androidTablet;
 }
 
+/// Kiosk TV/tablet boxes often have zero Camera2 cameras. Calling
+/// [availableCameras] then makes CameraX retry until ANR.
+///
+/// Sidecar DSLR pose must skip CameraX too — even when the box is classified
+/// as a phone. After shutter, USB re-enumeration used to call
+/// [CaptureViewModel.resetAndInitializeCameras] and wipe the review still.
+bool kioskShouldSkipCameraXWhenUvcUnavailable(
+  AppDeviceType? deviceType, {
+  bool sidecarConfigured = false,
+}) {
+  if (sidecarConfigured) return true;
+  return kioskShouldTryUvcBeforeCameraX(deviceType);
+}
+
+/// Keep the POSE "Starting camera…" wait only while a UVC webcam is attached
+/// or the sidecar can still serve HTTP. Otherwise the spinner never ends.
+bool shouldKeepPoseStartingForExternalSource({
+  required bool uvcWebcamAttached,
+  required bool sidecarConfigured,
+}) {
+  return uvcWebcamAttached || sidecarConfigured;
+}
+
 /// Whether POSE may adopt Terms CameraX prewarm on first frame (phones only).
 bool shouldAdoptTermsPrewarmOnPoseInit(AppDeviceType? deviceType) {
   return !kioskShouldTryUvcBeforeCameraX(deviceType);
@@ -76,6 +101,22 @@ Duration uvcPoseEntryOpenTimeout(AppDeviceType? deviceType) {
   return UvcCaptureConfig.quickOpenTimeout;
 }
 
+/// Review still fit. Sidecar live pose uses [BoxFit.cover]; letterbox contain
+/// left a landscape Canon JPEG as a thin strip on a black portrait card.
+BoxFit poseReviewStillBoxFit({required bool sidecarPosePreview}) {
+  return sidecarPosePreview ? BoxFit.cover : BoxFit.contain;
+}
+
+/// Decode the full sidecar JPEG on review. [cacheWidth] on this Mini PC
+/// made the still look soft; 1920 long-edge is safe without GPU downscale.
+bool poseReviewStillSharpDisplay({
+  required bool sidecarPosePreview,
+  required AppDeviceType? deviceType,
+}) {
+  if (sidecarPosePreview) return true;
+  return !kioskShouldTryUvcBeforeCameraX(deviceType);
+}
+
 /// Defer JPEG encode / face detection until Continue on memory-constrained kiosks.
 bool shouldDeferUploadPrepUntilContinue({
   required AppDeviceType? deviceType,
@@ -83,6 +124,7 @@ bool shouldDeferUploadPrepUntilContinue({
 }) {
   if (!UvcCaptureConfig.deferUploadPrepUntilContinue) return false;
   if (cameraId?.startsWith('uvc:') == true) return true;
+  if (cameraId?.startsWith('sidecar:') == true) return true;
   if (AppConstants.kLowMemoryKioskMode) return true;
   return kioskShouldTryUvcBeforeCameraX(deviceType);
 }
@@ -93,6 +135,7 @@ bool shouldSkipClientFaceDetectionForUpload({
   required String? cameraId,
 }) {
   if (cameraId?.startsWith('uvc:') == true) return true;
+  if (cameraId?.startsWith('sidecar:') == true) return true;
   if (AppConstants.kLowMemoryKioskMode) return true;
   return kioskShouldTryUvcBeforeCameraX(deviceType);
 }

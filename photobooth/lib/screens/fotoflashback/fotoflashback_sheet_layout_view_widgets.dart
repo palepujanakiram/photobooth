@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/strip_models.dart';
 
-/// On-screen 4×6 preview for Classic sheet layouts (polaroid / grid / film / romantic).
+/// On-screen 4×6 preview for Classic sheet layouts (polaroid / grid / romantic).
 ///
 /// Geometry comes from zenai `STRIP_WYSIWYG_LAYOUT`. When [colorFilter] is null,
 /// [imageDataUrls] are assumed already Sharp-graded (Option A).
@@ -306,132 +306,6 @@ class _Grid2x2SheetPreview extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _FilmstripSheetPreview extends StatelessWidget {
-  const _FilmstripSheetPreview({
-    required this.images,
-    required this.layout,
-    this.colorFilter,
-  });
-
-  final List<Uint8List> images;
-  final StripWysiwygLayout layout;
-  final ColorFilter? colorFilter;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final w = constraints.maxWidth;
-        final h = constraints.maxHeight;
-        final labelGutter = w * layout.filmStripPadX;
-        final marginY = h * layout.filmMarginY;
-        final gutter = h * layout.filmGutter;
-        final cellH = (h - marginY * 2 - gutter * 3) / 4;
-        final photoW = cellH * layout.filmCellAspect;
-        final railW = w * layout.filmRailW;
-        final stripW = photoW + railW * 2;
-        final stripLeft = labelGutter;
-        final photoLeft = stripLeft + railW;
-        final holeW = w * layout.filmHoleW;
-        final holeH = h * layout.filmHoleH;
-        final holePitch = h * layout.filmHolePitch;
-        final holeCount =
-            ((h * 0.90) / holePitch).floor().clamp(8, 28);
-
-        return ColoredBox(
-          color: Colors.white,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                left: stripLeft,
-                top: h * (40 / 1800),
-                width: stripW,
-                height: h * (1720 / 1800),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0A0A0A),
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                ),
-              ),
-              for (var i = 0; i < holeCount; i++) ...[
-                Positioned(
-                  left: stripLeft + (railW - holeW) / 2,
-                  top: h * (56 / 1800) + i * holePitch,
-                  child: _SprocketHole(width: holeW, height: holeH),
-                ),
-                Positioned(
-                  left: stripLeft + stripW - railW + (railW - holeW) / 2,
-                  top: h * (56 / 1800) + i * holePitch,
-                  child: _SprocketHole(width: holeW, height: holeH),
-                ),
-              ],
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: labelGutter,
-                child: Center(
-                  child: RotatedBox(
-                    quarterTurns: 3,
-                    child: Text(
-                      layout.filmLabel,
-                      maxLines: 1,
-                      softWrap: false,
-                      style: TextStyle(
-                        color: const Color(0xFF1A1A1A),
-                        fontSize: (w * 0.07).clamp(12.0, 18.0),
-                        letterSpacing: 3.5,
-                        fontWeight: FontWeight.w900,
-                        height: 1,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              for (var i = 0; i < 4; i++)
-                Positioned(
-                  left: photoLeft,
-                  top: marginY + i * (cellH + gutter),
-                  width: photoW,
-                  height: cellH,
-                  child: ColoredBox(
-                    color: Colors.black,
-                    child: _gradedPhoto(
-                      bytes: images.length > i ? images[i] : null,
-                      colorFilter: colorFilter,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _SprocketHole extends StatelessWidget {
-  const _SprocketHole({required this.width, required this.height});
-
-  final double width;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(width * 0.28),
-      ),
     );
   }
 }

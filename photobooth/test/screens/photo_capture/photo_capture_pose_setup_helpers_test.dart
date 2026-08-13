@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/photo_capture/photo_capture_pose_setup_helpers.dart';
 import 'package:photobooth/utils/app_device_type.dart';
@@ -41,6 +42,53 @@ void main() {
     expect(kioskShouldTryUvcBeforeCameraX(AppDeviceType.androidPhone), isFalse);
     expect(kioskShouldTryUvcBeforeCameraX(AppDeviceType.iosPhone), isFalse);
     expect(kioskShouldTryUvcBeforeCameraX(null), isFalse);
+  });
+
+  test('kioskShouldSkipCameraXWhenUvcUnavailable on kiosk TV and tablet', () {
+    expect(
+      kioskShouldSkipCameraXWhenUvcUnavailable(AppDeviceType.androidTv),
+      isTrue,
+    );
+    expect(
+      kioskShouldSkipCameraXWhenUvcUnavailable(AppDeviceType.androidTablet),
+      isTrue,
+    );
+    expect(
+      kioskShouldSkipCameraXWhenUvcUnavailable(AppDeviceType.androidPhone),
+      isFalse,
+    );
+    expect(kioskShouldSkipCameraXWhenUvcUnavailable(null), isFalse);
+    expect(
+      kioskShouldSkipCameraXWhenUvcUnavailable(
+        AppDeviceType.androidPhone,
+        sidecarConfigured: true,
+      ),
+      isTrue,
+    );
+  });
+
+  test('shouldKeepPoseStartingForExternalSource only while a source exists', () {
+    expect(
+      shouldKeepPoseStartingForExternalSource(
+        uvcWebcamAttached: true,
+        sidecarConfigured: false,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldKeepPoseStartingForExternalSource(
+        uvcWebcamAttached: false,
+        sidecarConfigured: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldKeepPoseStartingForExternalSource(
+        uvcWebcamAttached: false,
+        sidecarConfigured: false,
+      ),
+      isFalse,
+    );
   });
 
   test('shouldForceSidecarLivePreview is off (HDMI pose preferred)', () {
@@ -125,6 +173,41 @@ void main() {
     );
   });
 
+  test('poseReviewStillBoxFit covers sidecar stills', () {
+    expect(
+      poseReviewStillBoxFit(sidecarPosePreview: true),
+      BoxFit.cover,
+    );
+    expect(
+      poseReviewStillBoxFit(sidecarPosePreview: false),
+      BoxFit.contain,
+    );
+  });
+
+  test('poseReviewStillSharpDisplay on sidecar pose', () {
+    expect(
+      poseReviewStillSharpDisplay(
+        sidecarPosePreview: true,
+        deviceType: AppDeviceType.androidPhone,
+      ),
+      isTrue,
+    );
+    expect(
+      poseReviewStillSharpDisplay(
+        sidecarPosePreview: false,
+        deviceType: AppDeviceType.androidTv,
+      ),
+      isFalse,
+    );
+    expect(
+      poseReviewStillSharpDisplay(
+        sidecarPosePreview: false,
+        deviceType: AppDeviceType.androidPhone,
+      ),
+      isTrue,
+    );
+  });
+
   test('shouldDeferUploadPrepUntilContinue on TV and UVC ids', () {
     expect(
       shouldDeferUploadPrepUntilContinue(
@@ -147,6 +230,13 @@ void main() {
       ),
       isFalse,
     );
+    expect(
+      shouldDeferUploadPrepUntilContinue(
+        deviceType: AppDeviceType.androidPhone,
+        cameraId: 'sidecar:FZ200D',
+      ),
+      isTrue,
+    );
   });
 
   test('shouldSkipClientFaceDetectionForUpload on kiosks', () {
@@ -161,6 +251,13 @@ void main() {
       shouldSkipClientFaceDetectionForUpload(
         deviceType: AppDeviceType.androidPhone,
         cameraId: 'uvc:1:2:x',
+      ),
+      isTrue,
+    );
+    expect(
+      shouldSkipClientFaceDetectionForUpload(
+        deviceType: AppDeviceType.androidPhone,
+        cameraId: 'sidecar:FZ200D',
       ),
       isTrue,
     );

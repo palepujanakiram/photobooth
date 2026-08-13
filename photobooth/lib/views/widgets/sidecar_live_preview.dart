@@ -68,6 +68,7 @@ class _SidecarLivePreviewState extends State<SidecarLivePreview> {
       },
       onError: (err) {
         if (!mounted || _frame != null) return;
+        if (isSidecarPreviewWarmingError(err)) return;
         setState(() => _error = err);
       },
     );

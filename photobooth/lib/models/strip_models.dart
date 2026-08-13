@@ -347,7 +347,7 @@ class StripWysiwygLayout {
   final String filmLabel;
 
   /// Matches zenai `STRIP_WYSIWYG_LAYOUT` when the API omits `layout`.
-  static final StripWysiwygLayout defaults = StripWysiwygLayout(
+  static const StripWysiwygLayout defaults = StripWysiwygLayout(
     borderRatio: 4 / 600,
     accentStrokeRatio: 1.75 / 600,
     noirAccentStrokeRatio: 2.5 / 600,
@@ -359,7 +359,7 @@ class StripWysiwygLayout {
     stickerBaseRatio: 0.16,
     stickerLargeRatio: 0.2,
     stickerMinPx: 14,
-    romanticSlots: const [
+    romanticSlots: [
       (left: 70 / 1200, top: 110 / 1800, width: 520 / 1200, height: 640 / 1800),
       (left: 610 / 1200, top: 160 / 1800, width: 520 / 1200, height: 640 / 1800),
       (left: 120 / 1200, top: 780 / 1800, width: 360 / 1200, height: 440 / 1800),
@@ -372,7 +372,7 @@ class StripWysiwygLayout {
     romanticCaption: 'Forever starts here',
     polaroidFrameW: 464 / 1200,
     polaroidFrameH: 612 / 1800,
-    polaroidSlots: const [
+    polaroidSlots: [
       (left: 70 / 1200, top: 90 / 1800, rotDeg: -4),
       (left: 620 / 1200, top: 70 / 1800, rotDeg: 3),
       (left: 90 / 1200, top: 920 / 1800, rotDeg: 2.5),

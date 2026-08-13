@@ -775,7 +775,7 @@ class _GenerationWaitFaceScanChecklistState
     return FadeTransition(
       opacity: Tween<double>(begin: 1, end: 0).animate(_fade),
       child: SizeTransition(
-        axisAlignment: -1,
+        alignment: Alignment.topCenter,
         sizeFactor: Tween<double>(begin: 1, end: 0).animate(_fade),
         child: _GenerationWaitChecklistCard(
           title: 'Likeness',

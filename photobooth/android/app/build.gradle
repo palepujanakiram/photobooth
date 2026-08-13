@@ -63,6 +63,17 @@ android {
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_static"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
     }
 
     signingConfigs {
@@ -84,11 +95,14 @@ android {
         }
     }
 
-    // Keep .so files uncompressed so AGP 8.5.1+ can ZIP-align them on 16 KB boundaries.
-    // (useLegacyPackaging=true would compress them and break mmap on 16 KB devices.)
+    // Extract JNI libs at install time (AGP forbids android:extractNativeLibs in the
+    // manifest). Required so Canon sidecar binaries in jniLibs/{arm64-v8a,armeabi-v7a}
+    // can be exec'd from nativeLibraryDir (SELinux apk_data_file). ELF 16 KB LOAD alignment is still
+    // required (NDK r28 / verify_16kb_alignment.sh); Play's APK zip-align check applies
+    // only when libs stay uncompressed inside the APK (useLegacyPackaging=false).
     packaging {
         jniLibs {
-            useLegacyPackaging false
+            useLegacyPackaging true
         }
     }
 

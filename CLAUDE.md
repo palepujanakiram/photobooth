@@ -41,8 +41,12 @@ flutter test --coverage               # with coverage report
 # Coverage gate (CI requirement)
 dart run tool/verify_coverage_scope.dart
 
-# Run (debug)
-flutter run
+# Run (debug) — Impeller off on Amlogic Mini PC / Android TV
+flutter run --debug --no-enable-impeller
+
+# Canon USB sidecar (after C++ changes, 32-bit box)
+#   cd ../canon_sidecar && SIDECAR_ARCHES=arm32 ./build.sh
+# Then full flutter run (not hot reload). See canon_sidecar/SETUP.md.
 
 # Build APK — must use the version-sync wrapper, not plain flutter build
 ./scripts/flutter_with_version.sh build apk
@@ -101,7 +105,7 @@ All route names are constants in `lib/utils/constants.dart`; the route table is 
 
 **Generated files**: `*.g.dart` files are Retrofit/json_serializable output — never edit them; regenerate with `dart run build_runner build`.
 
-**Camera**: The app supports both the standard `camera` plugin and external/USB cameras via `uvccamera` (UVC protocol). External camera logic is in `lib/screens/photo_capture/photo_capture_uvc_screen.dart`. Camera selection helpers pick between them at runtime.
+**Camera**: Pose can use the Canon EDSDK USB sidecar (`127.0.0.1:8791`), UVC/HDMI via `uvccamera`, or the standard `camera` plugin. Sidecar pose skips CameraX on boxes with no Camera2 cameras. See `canon_sidecar/SETUP.md`.
 
 **Web**: Web is a secondary platform. File I/O, camera, and print paths use conditional imports (`dart.library.html` / `dart.library.io`) or stub files. On web, Dio requires `configureDioForWeb()` to avoid `SocketException`.
 

@@ -133,18 +133,26 @@ class KioskDeviceStatusRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ok = entry.configured && entry.connected;
-    final icon = ok
-        ? CupertinoIcons.checkmark_circle_fill
-        : CupertinoIcons.exclamationmark_circle_fill;
-    final iconColor = ok
-        ? CupertinoColors.systemGreen.resolveFrom(context)
-        : CupertinoColors.systemOrange.resolveFrom(context);
+    final ok = entry.configured && entry.connected && !entry.crashed;
+    final IconData icon;
+    final Color iconColor;
+    if (ok) {
+      icon = CupertinoIcons.checkmark_circle_fill;
+      iconColor = CupertinoColors.systemGreen.resolveFrom(context);
+    } else if (entry.crashed) {
+      icon = CupertinoIcons.xmark_circle_fill;
+      iconColor = CupertinoColors.systemRed.resolveFrom(context);
+    } else {
+      icon = CupertinoIcons.exclamationmark_circle_fill;
+      iconColor = CupertinoColors.systemOrange.resolveFrom(context);
+    }
     final stateLabel = !entry.configured
         ? AppStrings.kioskDeviceNotConfigured
-        : entry.connected
-            ? AppStrings.kioskDeviceConnected
-            : AppStrings.kioskDeviceNotConnected;
+        : entry.crashed
+            ? AppStrings.kioskDeviceCrashed
+            : entry.connected
+                ? AppStrings.kioskDeviceConnected
+                : AppStrings.kioskDeviceNotConnected;
     final modeLabel = _transportLabel(entry.transport);
 
     return Row(
