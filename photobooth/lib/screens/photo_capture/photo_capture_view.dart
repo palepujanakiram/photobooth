@@ -5357,13 +5357,22 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           if (flashback &&
               _stripShots.isNotEmpty &&
               ClassicStripScrubCoordinator.instance.shotCount > 0) ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: ClassicScrubProgressDots(
-                statuses: ClassicStripScrubCoordinator.instance.statuses,
-                totalSlots: _multiShotTotal,
+            // Capture scrub is deferred to Pick a look — hide polish dots here
+            // so green/yellow does not imply Gemini already ran.
+            if (classicOverlayScrubDuringCaptureEnabled(
+              enableOsdScrub: context
+                  .read<AppSettingsManager>()
+                  .settings
+                  ?.enableOsdScrub,
+              deviceType: viewModel.deviceType,
+            ))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: ClassicScrubProgressDots(
+                  statuses: ClassicStripScrubCoordinator.instance.statuses,
+                  totalSlots: _multiShotTotal,
+                ),
               ),
-            ),
             ElevatedButton(
               style: captureScreenButtonStyle(secondary: true),
               onPressed: (viewModel.isCapturing ||
