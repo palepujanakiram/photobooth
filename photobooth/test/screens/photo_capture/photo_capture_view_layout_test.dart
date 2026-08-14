@@ -46,4 +46,32 @@ void main() {
     expect(wide.$1, lessThanOrEqualTo(300));
     expect(wide.$2, lessThanOrEqualTo(100));
   });
+
+  test('capturePreviewCardMaxBounds caps 32\" to tablet FotoZen scale', () {
+    const padConstraints = BoxConstraints(maxWidth: 1200, maxHeight: 560);
+    final pad = capturePreviewCardMaxBounds(
+      media: const Size(1280, 800),
+      constraints: padConstraints,
+      isLandscape: true,
+      isPhonePortrait: false,
+    );
+    expect(pad.$1, lessThanOrEqualTo(AppConstants.kCapturePreviewCardMaxWidthLandscape));
+    expect(pad.$2, lessThanOrEqualTo(AppConstants.kCapturePreviewCardMaxHeightLandscape));
+    expect(
+      pad.$1,
+      closeTo(1280 * AppConstants.kCapturePreviewCardMaxWidthFractionLandscape, 0.5),
+    );
+
+    const tvConstraints = BoxConstraints(maxWidth: 1840, maxHeight: 820);
+    final tv = capturePreviewCardMaxBounds(
+      media: const Size(1920, 1080),
+      constraints: tvConstraints,
+      isLandscape: true,
+      isPhonePortrait: false,
+    );
+    expect(tv.$1, AppConstants.kCapturePreviewCardMaxWidthLandscape);
+    expect(tv.$2, AppConstants.kCapturePreviewCardMaxHeightLandscape);
+    // 32\" must not grow past the Pad-era absolute ceiling.
+    expect(tv.$1, lessThanOrEqualTo(padConstraints.maxWidth));
+  });
 }

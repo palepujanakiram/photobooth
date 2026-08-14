@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
@@ -4584,6 +4583,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                   service: viewModel.localCameraService!,
                   paused: viewModel.isCapturing || _uvcCaptureInFlight,
                   onFirstFrame: viewModel.markSidecarPreviewReady,
+                  // Same framing as the review still (no cover-crop zoom).
+                  fit: BoxFit.contain,
                 );
         } else if (_isUsingUvc) {
           previewWidget = _buildUvcPreview(context, viewModel);
@@ -4667,83 +4668,98 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
-  /// Column layout for both orientations: info at top, buttons row, preview/photo fills rest.
+  /// Capture body: info at top, preview fills middle, actions at bottom.
   Widget _buildCaptureColumn({
     required BuildContext context,
     required CaptureViewModel viewModel,
     required bool hasCapturedPhoto,
     required Widget previewWidget,
   }) {
-    final showNativeDetails = !_isUsingUvc &&
-        AppConstants.kShowNativeCameraInfoPane &&
-        viewModel.nativeCameraDetails != null &&
-        !hasCapturedPhoto;
+    final previewCard = _buildCapturePreviewCard(
+      context,
+      viewModel,
+      previewWidget,
+      hasCapturedPhoto,
+    );
+    final errorSection =
+        hasCapturedPhoto && viewModel.hasError && viewModel.errorMessage != null
+            ? Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _buildCaptureErrorSection(context, viewModel),
+              )
+            : null;
+    final actions = Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 8),
+      child: CenteredMaxWidth(
+        maxWidth: kCaptureActionsMaxWidth,
+        child: hasCapturedPhoto
+            ? _buildCapturedPhotoControlsRow(context, viewModel)
+            : _buildGalleryCaptureButtonsRow(context, viewModel),
+      ),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 1. Camera info (pre-capture) or captured photo info (post-capture) at top
-        if (showNativeDetails)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _buildNativeCameraDetailsCard(
-              context,
-              viewModel.nativeCameraDetails!,
-              previewSize: viewModel.previewSize,
-              resolutionPreset: viewModel.effectiveResolutionPreset,
-              currentZoom: viewModel.currentZoom,
-            ),
-          ),
-        if (hasCapturedPhoto &&
-            AppConstants.kShowNativeCameraInfoPane)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (AppConstants.kShowNativeCameraInfoPane)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _effectiveRotationLabel(viewModel),
-                      style: const TextStyle(color: Colors.white70, fontSize: 11),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        // 2. Preview or captured photo: same aspect as theme hero card; size capped so landscape matches carousel scale.
-        Expanded(
-          child: _buildCapturePreviewCard(
-            context,
-            viewModel,
-            previewWidget,
-            hasCapturedPhoto,
-          ),
+        ..._buildCaptureColumnInfoTop(
+          context,
+          viewModel,
+          hasCapturedPhoto: hasCapturedPhoto,
         ),
-        // 3. Post-capture errors (e.g. upload) above Continue — full-screen branch is skipped when a photo exists.
-        if (hasCapturedPhoto && viewModel.hasError && viewModel.errorMessage != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: _buildCaptureErrorSection(context, viewModel),
-          ),
-        // 4. Bottom actions (consistent placement).
-        Padding(
-          padding: const EdgeInsets.only(top: 12, bottom: 8),
-          child: CenteredMaxWidth(
-            maxWidth: 360,
-            child: hasCapturedPhoto
-                ? _buildCapturedPhotoControlsRow(context, viewModel)
-                : _buildGalleryCaptureButtonsRow(context, viewModel),
-          ),
-        ),
+        Expanded(child: previewCard),
+        if (errorSection != null) errorSection,
+        actions,
       ],
     );
+  }
+
+  /// Optional camera / rotation info above the preview.
+  List<Widget> _buildCaptureColumnInfoTop(
+    BuildContext context,
+    CaptureViewModel viewModel, {
+    required bool hasCapturedPhoto,
+  }) {
+    final showNativeDetails = !_isUsingUvc &&
+        AppConstants.kShowNativeCameraInfoPane &&
+        viewModel.nativeCameraDetails != null &&
+        !hasCapturedPhoto;
+    final widgets = <Widget>[];
+    if (showNativeDetails) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _buildNativeCameraDetailsCard(
+            context,
+            viewModel.nativeCameraDetails!,
+            previewSize: viewModel.previewSize,
+            resolutionPreset: viewModel.effectiveResolutionPreset,
+            currentZoom: viewModel.currentZoom,
+          ),
+        ),
+      );
+    }
+    if (hasCapturedPhoto && AppConstants.kShowNativeCameraInfoPane) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                _effectiveRotationLabel(viewModel),
+                style: const TextStyle(color: Colors.white70, fontSize: 11),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return widgets;
   }
 
   /// Preview / captured still: [ThemeCard]-style shell. Card **aspect** follows the stream or file
@@ -4762,7 +4778,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         final media = MediaQuery.sizeOf(context);
         final isLandscape =
             MediaQuery.orientationOf(context) == Orientation.landscape;
-        final isTablet = media.shortestSide >= AppConstants.kTabletBreakpoint;
         final fallbackAspect = AppConstants.themeCardSlotAspectRatio(context);
         final isPhonePortrait = !isLandscape &&
             media.shortestSide < AppConstants.kTabletBreakpoint;
@@ -4774,23 +4789,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           constraints,
           uvcPreviewDisplaySize:
               _isUsingUvc ? _uvcPreviewDisplaySize(viewModel) : null,
-          // Match Classic: Pi MJPEG sits in the portrait theme slot, not HDMI
-          // landscape frame sizing.
+          // Portrait Classic: theme slot. Landscape: follow feed (see aspect helper).
           preferThemeSlotAspect: _useSidecarPosePreview,
         );
 
-        final (widthCapFrac, heightCapFrac) = capturePreviewCardSizeFractions(
+        final (maxW, maxH) = capturePreviewCardMaxBounds(
+          media: media,
+          constraints: constraints,
           isLandscape: isLandscape,
           isPhonePortrait: isPhonePortrait,
         );
-
-        // Tablets: use the full canvas available for a cleaner kiosk-style preview.
-        final maxW = isTablet
-            ? constraints.maxWidth
-            : math.min(constraints.maxWidth, media.width * widthCapFrac);
-        final maxH = isTablet
-            ? constraints.maxHeight
-            : math.min(constraints.maxHeight, media.height * heightCapFrac);
 
         final (cardW, cardH) = capturePreviewCardDimensions(
           constraints: constraints,
@@ -5123,19 +5131,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   /// Builds the on-screen capture countdown overlay (e.g. 10, 9, 8…).
   Widget _buildCountdownOverlay(BuildContext context, int countdownValue) {
-    final flashback = _isClassicPose;
-    final total = _isFlashbackSingleShot ? 1 : (_classicShotCap > 0 ? _classicShotCap : kStripShotCount);
-    final shotNumber = (_stripShots.length + 1).clamp(1, total);
-    final showAiIntro = !flashback &&
+    // Classic shot progress already appears in the app-bar subtitle — avoid
+    // repeating "Pose now — Shot X of Y" inside the preview card.
+    final showAiIntro = !_isClassicPose &&
         countdownValue == AppConstants.kCaptureCountdownSeconds;
-    final String? headline;
-    if (flashback) {
-      headline = _isFlashbackSingleShot
-          ? AppStrings.flashbackPoseProgressSingle
-          : AppStrings.flashbackPoseProgress(shotNumber, total);
-    } else {
-      headline = showAiIntro ? AppStrings.captureCountdownIntro : null;
-    }
+    final String? headline =
+        showAiIntro ? AppStrings.captureCountdownIntro : null;
 
     return Container(
       color: Colors.black.withValues(alpha: 0.5),
@@ -5147,7 +5148,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               Text(
                 headline,
                 style: TextStyle(
-                  fontSize: flashback ? 28 : 22,
+                  fontSize: 22,
                   fontWeight: FontWeight.w700,
                   color: Colors.white.withValues(alpha: 0.95),
                 ),

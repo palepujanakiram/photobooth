@@ -13,7 +13,9 @@ class SidecarLivePreview extends StatefulWidget {
     required this.service,
     this.paused = false,
     this.onFirstFrame,
-    this.fit = BoxFit.cover,
+    /// Match captured-still framing ([BoxFit.contain]). [BoxFit.cover] crops
+    /// Canon LV on large landscape cards and looks more zoomed-in than the shot.
+    this.fit = BoxFit.contain,
   });
 
   final LocalCameraService service;
