@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import '../utils/camera_sidecar_config.dart';
 import '../utils/logger.dart';
 import '../utils/sidecar_error_parse.dart';
+import 'session_manager.dart';
 
 /// Long-edge cap requested from Pi on still download (matches kiosk normalize).
 const int kSidecarCaptureMaxLongEdge = 1920;
@@ -323,6 +324,7 @@ class LocalCameraService {
   ]) async {
     if (!isConfigured) return;
     final id = lastCorrId ?? newCorrId();
+    final sessionId = SessionManager().sessionId;
     try {
       await _client
           .post(
@@ -336,6 +338,8 @@ class LocalCameraService {
               'detail': {
                 ...?detail,
                 'corrId': detail?['corrId'] ?? id,
+                if (sessionId != null && sessionId.isNotEmpty)
+                  'sessionId': detail?['sessionId'] ?? sessionId,
               },
             }),
           )
