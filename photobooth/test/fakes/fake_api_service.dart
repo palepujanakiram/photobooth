@@ -228,6 +228,7 @@ class FakeApiService extends ApiService {
     List<StripScribbleStroke> scribbles = const [],
     bool cleanOverlays = false,
     PrintOrientation? orientation,
+    Duration? timeout,
   }) async {
     return StripComposeResult(
       imageUrl: 'https://example.com/strip.jpg',

@@ -38,6 +38,45 @@ void main() {
     );
   });
 
+  test('flashbackContinueBusyLabel follows polish then compose', () {
+    expect(
+      flashbackContinueBusyLabel(
+        isSingleClassic: false,
+        isPreparingPreview: true,
+        isWarmingPrintPreview: false,
+        hasLookComposePreview: false,
+      ),
+      AppStrings.flashbackPreparingPreview,
+    );
+    expect(
+      flashbackContinueBusyLabel(
+        isSingleClassic: false,
+        isPreparingPreview: false,
+        isWarmingPrintPreview: true,
+        hasLookComposePreview: false,
+      ),
+      AppStrings.flashbackWarmingPrintPreview,
+    );
+    expect(
+      flashbackContinueBusyLabel(
+        isSingleClassic: false,
+        isPreparingPreview: false,
+        isWarmingPrintPreview: true,
+        hasLookComposePreview: true,
+      ),
+      AppStrings.flashbackComposing,
+    );
+    expect(
+      flashbackContinueBusyLabel(
+        isSingleClassic: true,
+        isPreparingPreview: false,
+        isWarmingPrintPreview: false,
+        hasLookComposePreview: false,
+      ),
+      AppStrings.flashbackComposingSingle,
+    );
+  });
+
   test('FlashbackPrePayArgs.tryParse validates four images', () {
     final theme = sampleTheme('t').copyWith((p) => p.tier = 'photo_strip');
     final typed = FlashbackPrePayArgs(

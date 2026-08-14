@@ -72,11 +72,14 @@ int captureCountdownSecondsForMode({
   return AppConstants.kFlashbackCaptureCountdownSeconds;
 }
 
-/// Countdown step at which Classic + Pi should start [prepareStill].
+/// Countdown step at which HDMI + Pi gphoto2 should start [prepareStill].
 ///
 /// Shot 1: mid-countdown ([kFlashbackSidecarStillPrepareAtSecond]).
 /// Shots 2–4: as soon as the countdown starts ([countdownSeconds]) so LV exit
 /// has the full pose window and the shutter is not blocked after zero.
+///
+/// Not used when Pose is the Canon USB EVF stream — see
+/// [shouldPrepareSidecarStillDuringCountdown].
 int flashbackSidecarStillPrepareAtSecond({
   required int acceptedShotCount,
   int? countdownSeconds,
@@ -86,6 +89,21 @@ int flashbackSidecarStillPrepareAtSecond({
         AppConstants.kFlashbackFollowOnCountdownSeconds;
   }
   return AppConstants.kFlashbackSidecarStillPrepareAtSecond;
+}
+
+/// Whether to tear down sidecar live view mid-countdown.
+///
+/// HDMI + Pi: yes — movie LV needs ~2–3s to exit so the shutter can land at 0.
+/// Canon USB EVF pose: no — that live view is the guest preview. Stopping it
+/// at countdown 4 freezes the frame. Capture still calls prepare-still
+/// immediately before the shutter.
+bool shouldPrepareSidecarStillDuringCountdown({
+  required bool sidecarConfigured,
+  required bool poseShowsSidecarLivePreview,
+}) {
+  if (!sidecarConfigured) return false;
+  if (poseShowsSidecarLivePreview) return false;
+  return true;
 }
 
 /// Review-hold length before auto-accept for the still just taken.

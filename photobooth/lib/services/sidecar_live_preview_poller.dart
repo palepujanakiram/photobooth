@@ -36,6 +36,9 @@ class SidecarLivePreviewPoller {
 
   bool get isRunning => _timer != null;
 
+  /// Keep polls short so a slow EVF download cannot freeze pose for seconds.
+  static const Duration frameTimeout = Duration(milliseconds: 800);
+
   void start() {
     if (_disposed || _timer != null) return;
     _timer = Timer.periodic(interval, (_) => unawaited(_tick()));
@@ -55,7 +58,7 @@ class SidecarLivePreviewPoller {
     if (!_service.shouldShowLivePreview) return;
     _inFlight = true;
     try {
-      final bytes = await _service.fetchPreviewJpeg();
+      final bytes = await _service.fetchPreviewJpeg(timeout: frameTimeout);
       if (_disposed || _paused) return;
       _onFrame?.call(bytes);
     } catch (e) {

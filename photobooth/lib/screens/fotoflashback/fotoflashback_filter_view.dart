@@ -218,7 +218,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           ),
                         ),
                       ],
-                      if (viewModel.isPreparingPreview) ...[
+                      if (!_busy && viewModel.isPreparingPreview) ...[
                         const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -243,7 +243,8 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                             ),
                           ],
                         ),
-                      ] else if (viewModel.isWarmingPrintPreview &&
+                      ] else if (!_busy &&
+                          viewModel.isWarmingPrintPreview &&
                           viewModel.lookComposePreviewUrl == null) ...[
                         const SizedBox(height: 8),
                         Text(
@@ -256,7 +257,8 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           ),
                         ),
                       ],
-                      if (viewModel.classicOverlayCleanupEnabled &&
+                      if (!_busy &&
+                          viewModel.classicOverlayCleanupEnabled &&
                           viewModel.scrubDotStatuses.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         ClassicScrubProgressDots(
@@ -392,27 +394,22 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                         onClear: viewModel.clearScribbles,
                       ),
                       const SizedBox(height: 12),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.amber.shade700,
-                          foregroundColor: Colors.black,
-                          minimumSize: const Size(double.infinity, 56),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
+                      _LookPickerContinueButton(
+                        enabled: !_navigatingBack &&
+                            (_busy ||
+                                viewModel.isComposing ||
+                                viewModel.canCompose),
+                        busy: viewModel.isComposing || _busy,
+                        busyLabel: flashbackContinueBusyLabel(
+                          isSingleClassic: viewModel.isSingleClassic,
+                          isPreparingPreview: viewModel.isPreparingPreview,
+                          isWarmingPrintPreview:
+                              viewModel.isWarmingPrintPreview,
+                          hasLookComposePreview:
+                              viewModel.lookComposePreviewUrl != null,
                         ),
-                        onPressed: (viewModel.canCompose && !_busy && !_navigatingBack)
-                            ? () => unawaited(_confirmLook())
-                            : null,
-                        child: Text(
-                          (viewModel.isComposing || _busy)
-                              ? AppStrings.flashbackComposing
-                              : cta,
-                          style: const TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        cta: cta,
+                        onPressed: () => unawaited(_confirmLook()),
                       ),
                     ],
                   ),
@@ -919,6 +916,60 @@ class _FlashbackChip extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _LookPickerContinueButton extends StatelessWidget {
+  const _LookPickerContinueButton({
+    required this.enabled,
+    required this.busy,
+    required this.busyLabel,
+    required this.cta,
+    required this.onPressed,
+  });
+
+  final bool enabled;
+  final bool busy;
+  final String busyLabel;
+  final String cta;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    const labelStyle = TextStyle(
+      fontSize: 17,
+      fontWeight: FontWeight.bold,
+    );
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.amber.shade700,
+        foregroundColor: Colors.black,
+        disabledBackgroundColor: Colors.amber.shade700,
+        disabledForegroundColor: Colors.black,
+        minimumSize: const Size(double.infinity, 56),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+      ),
+      onPressed: enabled ? onPressed : null,
+      child: busy
+          ? Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: Colors.black,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(busyLabel, style: labelStyle),
+              ],
+            )
+          : Text(cta, style: labelStyle),
     );
   }
 }

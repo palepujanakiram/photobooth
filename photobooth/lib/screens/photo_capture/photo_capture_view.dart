@@ -106,6 +106,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   DateTime? _lastUvcShutterAt;
   bool _uvcShutterKeysEnabled = false;
   bool _uvcCaptureInFlight = false;
+  final GlobalKey _sidecarPreviewKey = GlobalKey();
   /// Opaque HDMI mask from countdown end through still assign (status LCD).
   bool _uvcHdmiStillMaskArmed = false;
   /// True once sidecar [prepareStill] / still-mask starts — LV is intentionally
@@ -1015,9 +1016,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   /// Starts Pi movie-LV teardown so the real shutter can land at timer zero.
+  ///
+  /// Skipped when Pose is Canon USB EVF — stopping LV at countdown 4 freezes
+  /// the only preview the guest sees. Capture still prepares immediately
+  /// before the shutter.
   Future<void>? _maybeStartSidecarStillPrepare(int countdownStep) {
     final service = _captureViewModel.localCameraService;
     if (service == null || !service.isConfigured) return null;
+    if (!shouldPrepareSidecarStillDuringCountdown(
+      sidecarConfigured: true,
+      poseShowsSidecarLivePreview: _useSidecarPosePreview,
+    )) {
+      return null;
+    }
     final countdownSeconds = captureCountdownSecondsForMode(
       isFlashbackMultiShot: _isFlashbackFourShot || _isFlashbackSingleShot,
       acceptedShotCount: _stripShots.length,
@@ -3979,6 +3990,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           _captureViewModel.localCameraService,
           resumeLiveView: resumeLvAfterStill,
           preferStripPrintQuality: _captureViewModel.preferStripPrintQuality,
+          preferLivePreviewFrame: _useSidecarPosePreview,
         );
         if (sidecar != null) {
           fromSidecar = true;
@@ -4460,16 +4472,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           previewWidget = const SizedBox.shrink();
         } else if (_useSidecarPosePreview &&
             viewModel.localCameraService != null) {
-          previewWidget = _isUvcSavingStill(viewModel)
+          previewWidget = _isUvcSavingStill(viewModel) &&
+                  !viewModel.isCountingDown
               ? _uvcSavingPhotoCard(
                   message: _stillInProgressLabel(viewModel),
                   // Countdown overlay already owns the center; avoid a second spinner.
                   showSpinner: !viewModel.isCountingDown,
                 )
-              : SidecarLivePreview(
-                  service: viewModel.localCameraService!,
-                  paused: viewModel.isCapturing || _uvcCaptureInFlight,
-                  onFirstFrame: viewModel.markSidecarPreviewReady,
+              : RepaintBoundary(
+                  child: SidecarLivePreview(
+                    key: _sidecarPreviewKey,
+                    service: viewModel.localCameraService!,
+                    paused: viewModel.isCapturing || _uvcCaptureInFlight,
+                    onFirstFrame: viewModel.markSidecarPreviewReady,
+                  ),
                 );
         } else if (_isUsingUvc) {
           previewWidget = _buildUvcPreview(context, viewModel);

@@ -409,6 +409,23 @@ void main() {
     });
   });
 
+  group('sidecarLiveJpegCanBePoseCapture', () {
+    test('accepts jpeg bytes and rejects empty or non-jpeg', () {
+      expect(
+        sidecarLiveJpegCanBePoseCapture(
+          Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9]),
+        ),
+        isTrue,
+      );
+      expect(sidecarLiveJpegCanBePoseCapture(null), isFalse);
+      expect(sidecarLiveJpegCanBePoseCapture(Uint8List(0)), isFalse);
+      expect(
+        sidecarLiveJpegCanBePoseCapture(Uint8List.fromList([0x00, 0x01])),
+        isFalse,
+      );
+    });
+  });
+
   group('tryCaptureFromSidecar', () {
     test('returns null when service null or not configured', () async {
       expect(await tryCaptureFromSidecar(null), isNull);
@@ -472,6 +489,39 @@ void main() {
           paths.indexWhere((p) => p.endsWith('/camera/capture')),
         ),
       );
+      service.dispose();
+    });
+
+    test('preferLivePreviewFrame uses EVF jpeg and skips mechanical shutter',
+        () async {
+      final still =
+          Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(64, 9)]);
+      final paths = <String>[];
+      var usedLive = false;
+      final client = MockClient((request) async {
+        paths.add(request.url.path);
+        final meta = sidecarBoothMetaResponse(request);
+        if (meta != null) return meta;
+        return http.Response.bytes(still, 200);
+      });
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://192.168.2.50:8791',
+          livePreviewEnabled: true,
+        ),
+        client: client,
+      );
+      final file = await tryCaptureFromSidecar(
+        service,
+        preferLivePreviewFrame: true,
+        onUsedLivePreviewFrame: () => usedLive = true,
+      );
+      expect(usedLive, isTrue);
+      expect(file, isNotNull);
+      expect(await file!.readAsBytes(), kTinyJpegBytes);
+      expect(paths.where((p) => p.endsWith('/camera/capture')), isEmpty);
+      expect(paths.where((p) => p.endsWith('/camera/prepare-still')), isEmpty);
       service.dispose();
     });
 

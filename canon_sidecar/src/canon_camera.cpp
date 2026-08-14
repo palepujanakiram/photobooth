@@ -209,7 +209,9 @@ std::vector<uint8_t> CanonCamera::_getPreviewJpegImpl() {
     }
 
     EdsError err = 0x0000A102;
-    for (int i = 0; i < 40; i++) {
+    // Fail fast: a 2s retry loop froze pose mid-countdown while shutter still
+    // grabbed a later EVF frame.
+    for (int i = 0; i < 8; i++) {
         EdsGetEvent();
         err = EdsDownloadEvfImage(_camera, evfImage);
         if (err == EDS_ERR_OK) {

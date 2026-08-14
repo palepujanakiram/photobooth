@@ -2049,9 +2049,8 @@ class CaptureViewModel extends ChangeNotifier {
         _countdownValue = step;
         notifyListeners();
         onCountdownStep?.call(step);
-        if (step > 1) {
-          await Future<void>.delayed(const Duration(seconds: 1));
-        }
+        // Hold every tick including 1 so guests still see live EVF, then shutter.
+        await Future<void>.delayed(const Duration(seconds: 1));
       }
 
       if (generation != _countdownGeneration || !canStart()) return;
@@ -2117,12 +2116,16 @@ class CaptureViewModel extends ChangeNotifier {
   }
 
   bool _lastRawCaptureFromSidecar = false;
+  bool _lastSidecarUsedLivePreview = false;
 
   Future<XFile> _obtainRawCaptureFile() async {
     final sidecarConfigured = _localCameraService?.isConfigured == true;
+    _lastSidecarUsedLivePreview = false;
     final sidecarFile = await tryCaptureFromSidecar(
       _localCameraService,
       preferStripPrintQuality: preferStripPrintQuality,
+      preferLivePreviewFrame: usesSidecarLivePreview,
+      onUsedLivePreviewFrame: () => _lastSidecarUsedLivePreview = true,
     );
     if (sidecarFile != null) {
       _lastRawCaptureFromSidecar = true;
@@ -2285,7 +2288,7 @@ class CaptureViewModel extends ChangeNotifier {
     WebFlowTrace.log('CAPTURE', 'shutter_begin kIsWeb=$kIsWeb isReady=$isReady');
     final imageFile = await _obtainRawCaptureFile();
     // Sidecar still already clicks the body — skip the synthetic SFX.
-    if (!_lastRawCaptureFromSidecar) {
+    if (!_lastRawCaptureFromSidecar || _lastSidecarUsedLivePreview) {
       unawaited(playCaptureShutterSound());
     }
     final isFrontCamera =
@@ -2369,6 +2372,9 @@ class CaptureViewModel extends ChangeNotifier {
     _isCapturing = true;
     _errorMessage = null;
     notifyListeners();
+
+    // Let SidecarLivePreview pause before we take the USB bus for the still.
+    await Future<void>.delayed(Duration.zero);
 
     await _awaitCameraIdleBeforeCapture();
 
