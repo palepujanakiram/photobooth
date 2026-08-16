@@ -326,9 +326,7 @@ void main() {
       expect(snap.usbCamera.connected, isFalse);
     });
 
-    test('DSLR sidecar configured from environment (admin settings ignored)', () async {
-      // resolveCameraSidecarConfig always returns the environment config;
-      // admin cameraEnabled / Pi host settings are intentionally ignored.
+    test('DSLR direct mode uses localhost even when Pi host is set', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
         selphyBridge: _FakeSelphyBridge(),
@@ -347,17 +345,52 @@ void main() {
       );
       final snap = await service.probe(
         settings: AppSettingsModel(
-          cameraEnabled: false,
+          cameraEnabled: true,
+          cameraConnectionMode: 'direct',
           cameraSidecarHost: '172.16.4.128',
           cameraSidecarPort: 8791,
         ),
       );
-      // Sidecar is always configured to localhost regardless of admin settings.
       expect(snap.dslrSidecar.configured, isTrue);
       expect(snap.dslrSidecar.connected, isTrue);
       expect(snap.dslrSidecar.deviceName, AppStrings.kioskDeviceDslrSidecar);
-      // Camera is USB-connected directly — transport is USB, not LAN.
       expect(snap.dslrSidecar.transport, KioskDeviceTransport.usb);
+    });
+
+    test('DSLR pi mode uses LAN transport and HTTP health', () async {
+      CameraSidecarConfig? seen;
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (config) async {
+          seen = config;
+          return true;
+        },
+        querySidecarNativeState: () async => 'idle',
+        queryCanonCameraPresent: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: true,
+          cameraConnectionMode: 'pi',
+          cameraSidecarHost: '172.16.4.128',
+          cameraSidecarPort: 8791,
+        ),
+      );
+      expect(seen?.baseUrl, 'http://172.16.4.128:8791');
+      expect(seen?.connectionMode, CameraConnectionMode.pi);
+      expect(snap.dslrSidecar.configured, isTrue);
+      expect(snap.dslrSidecar.connected, isTrue);
+      expect(snap.dslrSidecar.transport, KioskDeviceTransport.lan);
     });
 
     test('DSLR sidecar connected when Canon camera present in USB list', () async {
@@ -384,6 +417,7 @@ void main() {
       final snap = await service.probe(
         settings: AppSettingsModel(
           cameraEnabled: true,
+          cameraConnectionMode: 'direct',
           cameraSidecarHost: '172.16.4.128',
           cameraSidecarPort: 8791,
         ),
@@ -391,7 +425,7 @@ void main() {
       expect(snap.dslrSidecar.configured, isTrue);
       expect(snap.dslrSidecar.connected, isTrue);
       expect(snap.dslrSidecar.transport, KioskDeviceTransport.usb);
-      // Admin Pi host is ignored; always uses localhost from environment config.
+      // Explicit direct mode ignores Pi host and uses localhost EDSDK.
       expect(seen?.baseUrl, 'http://127.0.0.1:8791');
       expect(seen?.isConfigured, isTrue);
     });
@@ -416,6 +450,7 @@ void main() {
       final snap = await service.probe(
         settings: AppSettingsModel(
           cameraEnabled: true,
+          cameraConnectionMode: 'direct',
           cameraSidecarHost: '172.16.4.128',
           cameraSidecarPort: 8791,
         ),
@@ -449,6 +484,7 @@ void main() {
       final snap = await service.probe(
         settings: AppSettingsModel(
           cameraEnabled: true,
+          cameraConnectionMode: 'direct',
           cameraSidecarHost: '172.16.4.128',
           cameraSidecarPort: 8791,
         ),
@@ -479,6 +515,7 @@ void main() {
       final snap = await service.probe(
         settings: AppSettingsModel(
           cameraEnabled: true,
+          cameraConnectionMode: 'direct',
           cameraSidecarHost: '172.16.4.128',
           cameraSidecarPort: 8791,
         ),
@@ -508,6 +545,7 @@ void main() {
       final snap = await service.probe(
         settings: AppSettingsModel(
           cameraEnabled: true,
+          cameraConnectionMode: 'direct',
           cameraSidecarHost: '172.16.4.128',
           cameraSidecarPort: 8791,
         ),
@@ -537,6 +575,7 @@ void main() {
       final snap = await service.probe(
         settings: AppSettingsModel(
           cameraEnabled: true,
+          cameraConnectionMode: 'direct',
           cameraSidecarHost: '172.16.4.128',
           cameraSidecarPort: 8791,
         ),

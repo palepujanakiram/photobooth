@@ -280,35 +280,45 @@ class KioskDeviceStatusService {
     AppSettingsModel? settings,
   ) async {
     final config = resolveCameraSidecarConfig(settings);
+    final transport = config.isPiConnection
+        ? KioskDeviceTransport.lan
+        : KioskDeviceTransport.usb;
     if (!config.isConfigured) {
-      return const KioskDeviceStatusEntry(
+      return KioskDeviceStatusEntry(
         deviceName: AppStrings.kioskDeviceDslrSidecar,
         connected: false,
         configured: false,
-        transport: KioskDeviceTransport.usb,
+        transport: transport,
       );
     }
 
-    // All three probes run concurrently.
-    final cameraPresentFuture = _safeCanonCameraPresent();
+    // Direct USB: native presence + health. Pi: HTTP health is enough.
+    final cameraPresentFuture = config.isDirectConnection
+        ? _safeCanonCameraPresent()
+        : Future<bool>.value(false);
     final healthFuture = _safeDslrHealth(config);
-    final nativeStateFuture = _safeSidecarNativeState();
+    final nativeStateFuture = config.isDirectConnection
+        ? _safeSidecarNativeState()
+        : Future<String?>.value(null);
 
     final cameraPresent = await cameraPresentFuture;
     final httpHealthy = await healthFuture;
     final nativeState = await nativeStateFuture;
 
-    // connected = Canon DSLR physically present in USB device list.
-    // crashed   = sidecar started but exited unexpectedly (independent of camera).
-    final crashed =
-        !httpHealthy && (nativeState == 'crashed' || nativeState == 'max_restarts');
+    // Direct: connected = Canon on USB. Pi: connected = sidecar /health ok.
+    // crashed = local EDSDK sidecar exited (direct only).
+    final crashed = config.isDirectConnection &&
+        !httpHealthy &&
+        (nativeState == 'crashed' || nativeState == 'max_restarts');
+    final connected =
+        config.isDirectConnection ? cameraPresent : httpHealthy;
 
     return KioskDeviceStatusEntry(
       deviceName: AppStrings.kioskDeviceDslrSidecar,
-      connected: cameraPresent,
+      connected: connected,
       configured: true,
       crashed: crashed,
-      transport: KioskDeviceTransport.usb,
+      transport: transport,
     );
   }
 
