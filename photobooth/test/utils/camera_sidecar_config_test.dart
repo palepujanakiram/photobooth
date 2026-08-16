@@ -190,6 +190,25 @@ void main() {
       );
       expect(resolved.enabled, isFalse);
       expect(resolved.isConfigured, isFalse);
+      expect(resolved.connectionMode, CameraConnectionMode.direct);
+    });
+
+    test('pi mode keeps connectionMode when cameraEnabled false', () {
+      final resolved = resolveCameraSidecarConfig(
+        AppSettingsModel(
+          cameraEnabled: false,
+          cameraConnectionMode: 'pi',
+          cameraSidecarHost: '172.16.4.128',
+          cameraSidecarPort: 8791,
+          cameraLivePreviewEnabled: true,
+        ),
+        environment: localhost,
+      );
+      expect(resolved.enabled, isFalse);
+      expect(resolved.isConfigured, isFalse);
+      expect(resolved.connectionMode, CameraConnectionMode.pi);
+      expect(resolved.baseUrl, 'http://172.16.4.128:8791');
+      expect(resolved.livePreviewEnabled, isTrue);
     });
 
     test('pi mode disabled without host', () {
