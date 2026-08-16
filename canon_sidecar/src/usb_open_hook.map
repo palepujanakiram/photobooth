@@ -5,6 +5,7 @@ GLIBC_2.4 {
     openat;
     openat64;
     access;
+    ioctl;
 };
 
 GLIBC_2.7 {

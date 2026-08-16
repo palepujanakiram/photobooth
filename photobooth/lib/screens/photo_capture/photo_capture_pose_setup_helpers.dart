@@ -75,6 +75,31 @@ bool shouldKeepPoseStartingForExternalSource({
   return uvcWebcamAttached || sidecarConfigured;
 }
 
+/// After HDMI/UVC cannot open, poll Canon EDSDK EVF when the sidecar is
+/// configured (AI and Classic). HDMI remains preferred when a capture card
+/// is actually attached.
+bool shouldStartSidecarPreviewAfterUvcMiss({
+  required bool sidecarConfigured,
+}) {
+  return sidecarConfigured;
+}
+
+/// Do not spend the UVC open budget when no capture card is attached.
+bool shouldSkipUvcProbeForSidecarPose({
+  required bool sidecarConfigured,
+  required bool uvcWebcamAttached,
+}) {
+  return sidecarConfigured && !uvcWebcamAttached;
+}
+
+/// HDMI settle waits for the capture card to leave the body LCD.
+/// USB EVF MJPEG is already the pose preview — skip that pause.
+bool shouldWaitHdmiSettleAfterCanonLv({
+  required bool sidecarIsPosePreview,
+}) {
+  return !sidecarIsPosePreview;
+}
+
 /// Whether POSE may adopt Terms CameraX prewarm on first frame (phones only).
 bool shouldAdoptTermsPrewarmOnPoseInit(AppDeviceType? deviceType) {
   return !kioskShouldTryUvcBeforeCameraX(deviceType);

@@ -93,7 +93,7 @@ bool CanonCamera::_initImpl() {
             return false;
         }
         _sdkInitialised = true;
-        sleepMs(1000);  // allow USB enumeration
+        sleepMs(200);  // USB fd is already open via the Android hook
     }
 
     EdsCameraListRef list = nullptr;
@@ -108,6 +108,12 @@ bool CanonCamera::_initImpl() {
     if (count == 0) {
         EdsRelease(list);
         fprintf(stderr, "[canon] no camera found\n");
+        // Drop the SDK so the next attempt re-enumerates USB from scratch.
+        // EDSDK can cache an empty list across GetCameraList retries.
+        if (_sdkInitialised) {
+            EdsTerminateSDK();
+            _sdkInitialised = false;
+        }
         return false;
     }
 
@@ -171,7 +177,7 @@ bool CanonCamera::_startLiveViewImpl() {
         fprintf(stderr, "[canon] set Evf_OutputDevice failed\n");
         return false;
     }
-    sleepMs(800);
+    sleepMs(150);
     _lvActive = true;
     return true;
 }

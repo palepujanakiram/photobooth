@@ -89,6 +89,9 @@ Java_com_srisarani_fotozenai_canon_CanonSidecarSpawner_nativeSpawn(
         if (std::strncmp(*e, "CANON_USB_PATH=", 15) == 0) {
             continue;
         }
+        if (std::strncmp(*e, "LIBUSB_DEBUG=", 13) == 0) {
+            continue;
+        }
         envStore.emplace_back(*e);
     }
     if (!preload.empty()) {
@@ -97,6 +100,7 @@ Java_com_srisarani_fotozenai_canon_CanonSidecarSpawner_nativeSpawn(
     if (usbFd >= 0 && !usbPath.empty()) {
         envStore.emplace_back("CANON_USB_FD=" + std::to_string(usbFd));
         envStore.emplace_back("CANON_USB_PATH=" + usbPath);
+        envStore.emplace_back("LIBUSB_DEBUG=3");
     }
 
     std::vector<char *> envp;

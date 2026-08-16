@@ -36,7 +36,7 @@ class CanonSidecarService : Service() {
         private const val NOTIF_ID         = 1001
         private const val ASSET_DIR        = "canon_sidecar"
         private const val MAX_RESTARTS     = 10
-        private const val HOOK_ASSET_VER   = "2"
+        private const val HOOK_ASSET_VER   = "3"
 
         /** Sidecar lifecycle state readable from [CanonSidecarStatusMethodChannel]. */
         @Volatile var state: String = "idle"

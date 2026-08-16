@@ -180,7 +180,8 @@ void main() {
       expect(resolved.baseUrl, 'http://127.0.0.1:8791');
     });
 
-    test('direct mode respects cameraEnabled false', () {
+    test('direct mode keeps on-device sidecar on when cameraEnabled is false',
+        () {
       final resolved = resolveCameraSidecarConfig(
         AppSettingsModel(
           cameraEnabled: false,
@@ -188,8 +189,8 @@ void main() {
         ),
         environment: localhost,
       );
-      expect(resolved.enabled, isFalse);
-      expect(resolved.isConfigured, isFalse);
+      expect(resolved.enabled, isTrue);
+      expect(resolved.isConfigured, isTrue);
       expect(resolved.connectionMode, CameraConnectionMode.direct);
     });
 

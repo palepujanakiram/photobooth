@@ -16,28 +16,24 @@ const int kUsbDeviceClassStillImaging = 6;
 const int kUsbDeviceClassPrinter = 7;
 const int kUsbDeviceClassMassStorage = 8;
 const int kUsbDeviceClassHub = 9;
+const int kUsbDeviceClassVideo = 14;
+const int kUsbDeviceClassMisc = 239;
+const int kUsbDeviceClassVendorSpec = 255;
+
+/// UVC IAD uses Misc (239) + Common (2).
+const int kUsbMiscSubclassCommon = 2;
 
 /// True when [device] is a UVC webcam — excludes DNP printers and other USB gear.
 bool isUvcWebcamDevice(UvcCameraDevice device) {
-  if (device.vendorId == kDnpPrinterUsbVendorId) return false;
-  if (device.vendorId == kCanonUsbVendorId) return false;
-  if (device.vendorId == kAppleUsbVendorId) return false;
-  if (device.deviceClass == kUsbDeviceClassPrinter ||
-      device.deviceClass == kUsbDeviceClassHub ||
-      device.deviceClass == kUsbDeviceClassCdc ||
-      device.deviceClass == kUsbDeviceClassHid ||
-      device.deviceClass == kUsbDeviceClassStillImaging) {
-    return false;
+  if (_isBlockedCaptureVendor(device.vendorId)) return false;
+  if (_isNonCameraUsbClass(device.deviceClass)) return false;
+  if (_isUvcVideoDeviceClass(device.deviceClass, device.deviceSubclass)) {
+    return true;
   }
-  if (device.deviceClass == kUsbDeviceClassMassStorage) return false;
-  // UVC IAD (Misc + Common) or legacy Video class.
-  if (device.deviceClass == 239 && device.deviceSubclass == 2) return true;
-  if (device.deviceClass == 14) return true;
-  // Per-interface class (common for UVC webcams); blocklist above catches
-  // Canon PTP, Apple NCM, DNP, HID.
-  if (device.deviceClass == 0) return true;
-  // Vendor-specific (0xFF) — many HDMI capture cards report this.
-  if (device.deviceClass == 255) return true;
+  if (device.deviceClass == kUsbDeviceClassVendorSpec) return true;
+  if (device.deviceClass == 0) {
+    return _perInterfaceLooksLikeUvcWebcam(device.interfaceClasses);
+  }
   return true;
 }
 
@@ -50,4 +46,41 @@ Iterable<UvcCameraDevice> filterUvcWebcamDevices(
 
 bool hasUvcWebcamDevices(Map<String, UvcCameraDevice> devices) {
   return filterUvcWebcamDevices(devices.values).isNotEmpty;
+}
+
+bool _isBlockedCaptureVendor(int vendorId) {
+  return vendorId == kDnpPrinterUsbVendorId ||
+      vendorId == kCanonUsbVendorId ||
+      vendorId == kAppleUsbVendorId;
+}
+
+bool _isNonCameraUsbClass(int usbClass) {
+  return usbClass == kUsbDeviceClassPrinter ||
+      usbClass == kUsbDeviceClassHub ||
+      usbClass == kUsbDeviceClassCdc ||
+      usbClass == kUsbDeviceClassHid ||
+      usbClass == kUsbDeviceClassStillImaging ||
+      usbClass == kUsbDeviceClassMassStorage;
+}
+
+bool _isUvcVideoDeviceClass(int deviceClass, int deviceSubclass) {
+  if (deviceClass == kUsbDeviceClassMisc &&
+      deviceSubclass == kUsbMiscSubclassCommon) {
+    return true;
+  }
+  return deviceClass == kUsbDeviceClassVideo;
+}
+
+bool _isUvcCaptureInterfaceClass(int interfaceClass) {
+  return interfaceClass == kUsbDeviceClassVideo ||
+      interfaceClass == kUsbDeviceClassMisc ||
+      interfaceClass == kUsbDeviceClassVendorSpec;
+}
+
+/// Class 0 (per-interface) HID dongles look like webcams until interfaces are
+/// inspected. Empty [interfaceClasses] keeps the legacy "assume webcam" path
+/// for unit tests and older native builds.
+bool _perInterfaceLooksLikeUvcWebcam(List<int> interfaceClasses) {
+  if (interfaceClasses.isEmpty) return true;
+  return interfaceClasses.any(_isUvcCaptureInterfaceClass);
 }

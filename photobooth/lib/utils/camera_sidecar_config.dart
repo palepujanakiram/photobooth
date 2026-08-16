@@ -199,9 +199,10 @@ CameraSidecarConfig _directConfig({
   required CameraSidecarConfig env,
   required AppSettingsModel? settings,
 }) {
-  final enabled = settings?.cameraEnabled == false
-      ? false
-      : (settings?.cameraEnabled == true || env.enabled);
+  // cameraEnabled in ZenAI gates the Pi/LAN sidecar. On-device EDSDK stays
+  // available whenever the bundled sidecar is on — a USB DSLR on the Mini PC
+  // must still work when GSM left cameraEnabled false.
+  final enabled = settings?.cameraEnabled == true || env.enabled;
   final live = settings?.cameraLivePreviewEnabled ?? env.livePreviewEnabled;
   final base = env.baseUrl.trim().isNotEmpty
       ? env.baseUrl.trim().replaceAll(RegExp(r'/$'), '')
