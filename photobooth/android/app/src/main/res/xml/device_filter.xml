@@ -6,7 +6,13 @@
     <usb-device class="14" />
     <!-- DNP DS-RX1 / DS-RX1HS dye-sub printer (VID 0x1343, PID 0x0005). -->
     <usb-device vendor-id="4931" product-id="5" />
-    <!-- Canon Selphy (VID 0x04a9 = 1193), e.g. CP1500. -->
+    <!-- Canon Selphy printer (VID 0x04a9 = 1193), e.g. CP1500. -->
+    <usb-device vendor-id="1193" product-id="12492" />
+    <!-- Canon EOS DSLRs — PTP/MTP Still Imaging interface (class 6).
+         The app distinguishes DSLRs from Selphy in CanonUsbPermissionManager
+         by checking the USB interface class. Adding vendor-only entry so the
+         USB_DEVICE_ATTACHED intent fires for any Canon camera (including future
+         models). Confirm EOS 200D II product ID with: adb shell lsusb -->
     <usb-device vendor-id="1193" />
     <!-- ESC/POS thermal receipt printers (Posiflow KP 307 UEWB, USB Printer Class). -->
     <usb-device class="7" />

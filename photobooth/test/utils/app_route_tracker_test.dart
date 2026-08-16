@@ -71,6 +71,37 @@ void main() {
     expect(tracker.currentRouteName, AppConstants.kRouteTerms);
   });
 
+  testWidgets(
+      'AppRouteTracker does not notify ListenableBuilder during Navigator mount',
+      (tester) async {
+    final tracker = AppRouteTracker();
+    FlutterError? caught;
+    final oldOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      if (details.exception is FlutterError) {
+        caught = details.exception as FlutterError;
+      }
+      oldOnError?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = oldOnError);
+
+    await tester.pumpWidget(
+      ListenableBuilder(
+        listenable: tracker,
+        builder: (context, _) {
+          return MaterialApp(
+            navigatorObservers: [tracker],
+            home: Text(tracker.currentRouteName ?? 'none'),
+          );
+        },
+      ),
+    );
+
+    expect(caught, isNull);
+    await tester.pump();
+    expect(find.byType(MaterialApp), findsOneWidget);
+  });
+
   test('AppRouteTracker didRemove sets previous route', () {
     final tracker = AppRouteTracker();
     final routeA = MaterialPageRoute<void>(

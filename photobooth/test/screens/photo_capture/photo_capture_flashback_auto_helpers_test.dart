@@ -32,6 +32,38 @@ void main() {
     });
   });
 
+  group('shouldPrepareSidecarStillDuringCountdown', () {
+    test('HDMI + sidecar shutter tears down LV mid-countdown', () {
+      expect(
+        shouldPrepareSidecarStillDuringCountdown(
+          sidecarConfigured: true,
+          poseShowsSidecarLivePreview: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('Canon USB EVF pose keeps live view through the countdown', () {
+      expect(
+        shouldPrepareSidecarStillDuringCountdown(
+          sidecarConfigured: true,
+          poseShowsSidecarLivePreview: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('skips prepare when sidecar is not configured', () {
+      expect(
+        shouldPrepareSidecarStillDuringCountdown(
+          sidecarConfigured: false,
+          poseShowsSidecarLivePreview: false,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('flashbackSidecarStillPrepareAtSecond', () {
     test('all Classic shots prepare mid-countdown at second 4', () {
       expect(

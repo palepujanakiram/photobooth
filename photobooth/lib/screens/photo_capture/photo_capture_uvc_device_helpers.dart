@@ -80,10 +80,12 @@ Future<UvcCameraDevice?> resolveUvcDeviceForHotplug(
       return null;
     }
     final devices = await UvcCamera.getDevices();
-    for (final device in devices.values) {
+    if (!isUvcWebcamDevice(preferred)) return null;
+    final webcams = filterUvcWebcamDevices(devices.values);
+    for (final device in webcams) {
       if (uvcDeviceMatches(device, preferred)) return device;
     }
-    if (devices.isNotEmpty) return devices.values.first;
+    if (webcams.isNotEmpty) return webcams.first;
     return null;
   } catch (_) {
     return null;

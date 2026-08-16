@@ -9,7 +9,7 @@ In this git repository, **this directory (`photobooth/`) is the Flutter project 
 ```bash
 cd photobooth
 flutter pub get
-flutter run
+flutter run --debug --no-enable-impeller
 ```
 
 The repository root only holds shared config (e.g. `.github/`, this README’s parent `README.md`); **do not** run `flutter` from the repo root.
@@ -32,9 +32,13 @@ The repository root only holds shared config (e.g. `.github/`, this README’s p
 
 ## Camera Implementation
 
-The app uses **only the official Flutter `camera` plugin**. There are no custom native camera plugins.
+Pose can use three sources, in this order on kiosk boxes:
 
-- **Camera list**: Cameras are enumerated via `availableCameras()` from the `camera` package when the user opens the Capture screen (includes built-in and external/USB cameras on supported devices).
+1. **Canon EDSDK sidecar** (USB DSLR on `127.0.0.1:8791`) — live EVF JPEG + shutter stills. See [`../canon_sidecar/SETUP.md`](../canon_sidecar/SETUP.md).
+2. **UVC / HDMI capture card** via the `uvccamera` plugin.
+3. **Official Flutter `camera` plugin** (CameraX) for built-in / some USB webcams. Mini PCs with **zero Camera2 cameras** skip CameraX when sidecar pose is active.
+
+- **Camera list**: Cameras are enumerated via `availableCameras()` from the `camera` package when Pose opens CameraX (includes built-in and external/USB cameras on supported devices).
 - **Capture screen**:
   - **Preview**: Camera preview with orientation correction on Android (using display rotation from the platform and `RotatedBox` + `FittedBox` when needed). On Android TV OS 11, device orientation (0°, 90°, 180°, 270°) is supported via a platform channel that reads `WindowManager.getDefaultDisplay().rotation`.
   - **Zoom**: If the device supports it, zoom level is shown in an overlay and the user can change it (same style as a reference app).
@@ -52,16 +56,29 @@ From **`photobooth/`** (this folder):
 flutter pub get
 ```
 
-2. Run the app:
+2. Run the app (debug). From **`photobooth/`**, with the Android box on ADB:
 
 ```bash
-flutter run
+flutter run --debug --no-enable-impeller
 ```
 
-3. Build release APK (output under `build/app/outputs/flutter-apk/`):
+Sidecar dart-defines default **on** (`CAMERA_SIDECAR_ENABLED`, `CAMERA_SIDECAR_URL=http://127.0.0.1:8791`, `CAMERA_SIDECAR_LIVE_PREVIEW`). You do not need to pass them for a local Canon USB kiosk.
+
+After **C++ / Kotlin / JNI** sidecar changes on a 32-bit Mini PC:
 
 ```bash
-flutter build apk
+cd ../canon_sidecar
+SIDECAR_ARCHES=arm32 ./build.sh
+cd ../photobooth
+flutter run --debug --no-enable-impeller
+```
+
+Hot reload does not replace `libcanon_sidecar.so`. Dart-only Pose fixes: press `R` (hot restart).
+
+3. Build release APK (output under `build/app/outputs/flutter-apk/`). **Do not** use plain `flutter build apk` — it skips version sync:
+
+```bash
+./scripts/flutter_with_version.sh build apk --release
 ```
 
 The release APK name is set in `android/app/build.gradle` via the `appName` variable (default `photobooth`), producing `{appName}-release.apk` and `{appName}-debug.apk`.

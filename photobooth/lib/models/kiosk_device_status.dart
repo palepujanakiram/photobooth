@@ -12,6 +12,7 @@ class KioskDeviceStatusEntry {
     required this.connected,
     required this.transport,
     this.configured = true,
+    this.crashed = false,
   });
 
   final String deviceName;
@@ -19,6 +20,10 @@ class KioskDeviceStatusEntry {
 
   /// When false (e.g. receipt printer disabled), UI shows "Not configured".
   final bool configured;
+
+  /// True when the sidecar process started but exited unexpectedly.
+  final bool crashed;
+
   final KioskDeviceTransport? transport;
 }
 

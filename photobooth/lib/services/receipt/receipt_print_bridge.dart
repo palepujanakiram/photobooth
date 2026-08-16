@@ -11,7 +11,6 @@ import '../../utils/receipt_printer_endpoint.dart';
 import '../dnp/dnp_wifi_client.dart';
 import '../receipt_printer_service_io.dart';
 import 'receipt_escpos_normalizer.dart';
-import 'receipt_printer_profile.dart';
 import 'receipt_usb_client.dart';
 import 'receipt_wifi_client.dart';
 

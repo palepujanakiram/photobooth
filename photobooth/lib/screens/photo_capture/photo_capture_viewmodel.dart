@@ -18,6 +18,7 @@ import '../../services/phone_upload_helpers.dart';
 import '../../services/session_manager.dart';
 import '../../utils/app_runtime_config.dart';
 import '../../utils/camera_sidecar_config.dart';
+import '../../utils/canon_sidecar_status_channel.dart';
 import '../../utils/classic_af_marker_inject.dart';
 import '../../utils/constants.dart';
 import '../../utils/device_classifier.dart';
@@ -410,18 +411,43 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// False when the native sidecar cannot listen on localhost (wrong ABI, crash).
+  Future<bool> sidecarCanServePosePreview({
+    Future<String> Function()? queryNativeState,
+  }) async {
+    final canServe = await sidecarNativeProcessCanServeHttp(
+      _localCameraService,
+      queryNativeState:
+          queryNativeState ?? CanonSidecarStatusChannel.getState,
+    );
+    if (!canServe) notifyListeners();
+    return canServe;
+  }
+
   /// Skip CameraX/UVC open; arm capture once the Pi reports connected.
-  Future<void> prepareSidecarLivePreview() async {
+  ///
+  /// Returns false when localhost is not serving so POSE can open HDMI/UVC.
+  Future<bool> prepareSidecarLivePreview() async {
     _isLoadingCameras = false;
     _isInitializing = false;
     _sidecarPreviewReady = false;
     notifyListeners();
     final service = _localCameraService;
-    if (service == null || !service.shouldShowLivePreview) return;
+    if (service == null || !service.shouldShowLivePreview) return false;
+    final listening = await service.isListening();
+    if (!listening) {
+      // Direct EDSDK only — do not poison Pi/LAN config on a transient miss.
+      if (service.isDirectConnection) {
+        service.markRuntimeUnavailable();
+      }
+      notifyListeners();
+      return false;
+    }
     final healthy = await service.isHealthy();
     if (healthy) {
       markSidecarPreviewReady();
     }
+    return true;
   }
 
   CameraController? get cameraController => _cameraController;
@@ -487,6 +513,13 @@ class CaptureViewModel extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  /// Review-card tests: set decoded still size without reading a JPEG.
+  @visibleForTesting
+  void setCapturedImagePixelSizeForTest(Size? size) {
+    _capturedImagePixelSize = size;
+  }
+
   PhoneUploadLinkInfo? get activePhoneUploadLink => _activePhoneUploadLink;
   bool get isUploading => _isUploading;
   int get uploadElapsedSeconds => _uploadElapsedSeconds;
@@ -1229,7 +1262,7 @@ class CaptureViewModel extends ChangeNotifier {
       await _assignCapturedPhotoModel(
         savedFile,
         cameraIdOverride: cameraId,
-        skipCapturedImagePixelSizeDecode: isUvc || isSidecar,
+        skipCapturedImagePixelSizeDecode: isUvc,
         uploadPrepDelay: isUvc
             ? UvcCaptureConfig.uploadPrepDelay
             : const Duration(milliseconds: 48),
@@ -1404,6 +1437,14 @@ class CaptureViewModel extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    // This Mini PC / DSLR pose has zero Camera2 cameras. Enumeration starts
+    // CameraX retries that also run after shutter and used to clear review.
+    if (usesSidecarLivePreview) {
+      _isLoadingCameras = false;
+      _errorMessage = null;
+      notifyListeners();
+      return;
+    }
 
     if (!forceRefresh && _cachedAvailableCameras != null) {
       _applyCachedCameraList();
@@ -1482,7 +1523,11 @@ class CaptureViewModel extends ChangeNotifier {
   /// When the first POSE visit uses UVC only, [loadCameras] never runs; warming
   /// the cache avoids a 15–25s CameraX enumeration on the next visit.
   Future<void> warmCameraEnumerationCache() async {
-    if (_cachedAvailableCameras != null || usesDesktopPhotoPicker) return;
+    if (_cachedAvailableCameras != null ||
+        usesDesktopPhotoPicker ||
+        usesSidecarLivePreview) {
+      return;
+    }
     try {
       if (!await _ensureAndroidCameraPermission()) return;
       final allCameras = await cam.availableCameras().timeout(
@@ -1504,6 +1549,15 @@ class CaptureViewModel extends ChangeNotifier {
     if (_isCapturing) {
       AppLogger.debug('⚠️ Cannot reset cameras - capture in progress');
       ErrorReportingManager.log('⚠️ Reset blocked - capture in progress');
+      return;
+    }
+    // USB re-plug after a DSLR shutter must not wipe the review still.
+    if (_capturedPhoto != null) {
+      AppLogger.debug('⚠️ Cannot reset cameras - captured photo on review');
+      return;
+    }
+    if (usesSidecarLivePreview) {
+      AppLogger.debug('Sidecar live preview — skipping CameraX reset');
       return;
     }
 
@@ -2001,9 +2055,8 @@ class CaptureViewModel extends ChangeNotifier {
         _countdownValue = step;
         notifyListeners();
         onCountdownStep?.call(step);
-        if (step > 1) {
-          await Future<void>.delayed(const Duration(seconds: 1));
-        }
+        // Hold every tick including 1 so guests still see live EVF, then shutter.
+        await Future<void>.delayed(const Duration(seconds: 1));
       }
 
       if (generation != _countdownGeneration || !canStart()) return;
@@ -2069,12 +2122,16 @@ class CaptureViewModel extends ChangeNotifier {
   }
 
   bool _lastRawCaptureFromSidecar = false;
+  bool _lastSidecarUsedLivePreview = false;
 
   Future<XFile> _obtainRawCaptureFile() async {
     final sidecarConfigured = _localCameraService?.isConfigured == true;
+    _lastSidecarUsedLivePreview = false;
     final sidecarFile = await tryCaptureFromSidecar(
       _localCameraService,
       preferStripPrintQuality: preferStripPrintQuality,
+      preferLivePreviewFrame: usesSidecarLivePreview,
+      onUsedLivePreviewFrame: () => _lastSidecarUsedLivePreview = true,
       resumeLiveView: resumeLiveViewAfterSidecarStill,
     );
     if (sidecarFile != null) {
@@ -2132,7 +2189,10 @@ class CaptureViewModel extends ChangeNotifier {
         _cameraController?.description.name ??
         _currentCamera?.name;
     final photoId = _uuid.v4();
-    if (cameraIdOverride == null) {
+    if (isSidecarCameraId(cameraId)) {
+      // Live pose uses a portrait theme slot; Canon JPEG is landscape.
+      _lockedCaptureCardAspectRatio = null;
+    } else if (cameraIdOverride == null) {
       _snapshotLockedCaptureCardAspectFromLivePreview();
     }
     _capturedPhoto = PhotoModel(
@@ -2143,7 +2203,7 @@ class CaptureViewModel extends ChangeNotifier {
     );
     _capturedImagePixelSize = null;
     if (!skipCapturedImagePixelSizeDecode) {
-      unawaited(_refreshCapturedImagePixelSizeSoon(savedFile));
+      await _refreshCapturedImagePixelSize(savedFile);
     }
     unawaited(ErrorReportingManager.setPhotoCaptureContext(
       photoId: photoId,
@@ -2166,6 +2226,7 @@ class CaptureViewModel extends ChangeNotifier {
   /// USB/normalize RAM and often leaves a stale prep future on Continue.
   Future<void> _scheduleDeferredUploadPrepDuringReview(String photoId) async {
     if (_deviceType == AppDeviceType.androidTv) return;
+    if (isSidecarCameraId(_capturedPhoto?.cameraId)) return;
     const delay = UvcCaptureConfig.uploadPrepDelay;
     await Future<void>.delayed(delay);
     if (_capturedPhoto?.id != photoId || _isUploading) return;
@@ -2234,7 +2295,7 @@ class CaptureViewModel extends ChangeNotifier {
     WebFlowTrace.log('CAPTURE', 'shutter_begin kIsWeb=$kIsWeb isReady=$isReady');
     final imageFile = await _obtainRawCaptureFile();
     // Sidecar still already clicks the body — skip the synthetic SFX.
-    if (!_lastRawCaptureFromSidecar) {
+    if (!_lastRawCaptureFromSidecar || _lastSidecarUsedLivePreview) {
       unawaited(playCaptureShutterSound());
     }
     final isFrontCamera =
@@ -2271,7 +2332,7 @@ class CaptureViewModel extends ChangeNotifier {
       reviewFile,
       cameraIdOverride: sidecarStill ? 'sidecar:FZ200D' : null,
       skipCapturedImagePixelSizeDecode:
-          kioskShouldTryUvcBeforeCameraX(_deviceType) || sidecarStill,
+          sidecarStill ? false : kioskShouldTryUvcBeforeCameraX(_deviceType),
       skipUploadPrep: shouldDeferUploadPrepUntilContinue(
         deviceType: _deviceType,
         cameraId: sidecarStill ? 'sidecar:FZ200D' : _currentCamera?.name,
@@ -2318,6 +2379,9 @@ class CaptureViewModel extends ChangeNotifier {
     _isCapturing = true;
     _errorMessage = null;
     notifyListeners();
+
+    // Let SidecarLivePreview pause before we take the USB bus for the still.
+    await Future<void>.delayed(Duration.zero);
 
     await _awaitCameraIdleBeforeCapture();
 
@@ -3234,6 +3298,16 @@ class CaptureViewModel extends ChangeNotifier {
     final path = file.path;
     try {
       final bytes = await file.readAsBytes();
+      final sof = peekJpegSofDimensions(bytes);
+      if (sof != null) {
+        if (_capturedPhoto?.imageFile.path != path) return;
+        _capturedImagePixelSize = Size(
+          sof.width.toDouble(),
+          sof.height.toDouble(),
+        );
+        notifyListeners();
+        return;
+      }
       final buffer = await ImmutableBuffer.fromUint8List(bytes);
       final codec = await instantiateImageCodecFromBuffer(buffer);
       final frame = await codec.getNextFrame();

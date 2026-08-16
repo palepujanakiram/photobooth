@@ -172,6 +172,105 @@ void main() {
     );
   });
 
+  test('captureCamerasForDevice empty list and non-kiosk fallback', () {
+    expect(
+      captureCamerasForDevice(
+        cameras: const [],
+        deviceType: AppDeviceType.androidTv,
+        looksLikeExternalName: (_) => false,
+      ),
+      isEmpty,
+    );
+    expect(
+      captureCamerasForDevice(
+        cameras: [front, back],
+        deviceType: null,
+        looksLikeExternalName: (_) => false,
+      ),
+      [front, back],
+    );
+    expect(
+      captureCamerasForDevice(
+        cameras: [front, back],
+        deviceType: AppDeviceType.unknown,
+        looksLikeExternalName: (_) => false,
+      ),
+      [front, back],
+    );
+  });
+
+  test('captureCamerasForDevice uses name heuristic on tablet', () {
+    const hdmi = CameraDescription(
+      name: 'HDMI Capture Card',
+      lensDirection: CameraLensDirection.back,
+      sensorOrientation: 0,
+    );
+    expect(
+      captureCamerasForDevice(
+        cameras: [front, hdmi],
+        deviceType: AppDeviceType.androidTablet,
+        looksLikeExternalName: (name) => name.contains('HDMI'),
+      ),
+      [hdmi],
+    );
+  });
+
+  test('camerasForDeviceType null and unknown keep all cameras', () {
+    expect(
+      camerasForDeviceType(
+        cameras: [front, external],
+        deviceType: null,
+        looksLikeExternalName: (_) => false,
+      ),
+      [front, external],
+    );
+    expect(
+      camerasForDeviceType(
+        cameras: [front, external],
+        deviceType: AppDeviceType.unknown,
+        looksLikeExternalName: (_) => false,
+      ),
+      [front, external],
+    );
+  });
+
+  test('kioskHasCachedExternalCamera rejects missing cache', () {
+    expect(
+      kioskHasCachedExternalCamera(
+        cached: null,
+        deviceType: AppDeviceType.androidTv,
+        looksLikeExternalName: (_) => false,
+      ),
+      isFalse,
+    );
+    expect(
+      kioskHasCachedExternalCamera(
+        cached: const [],
+        deviceType: AppDeviceType.androidTv,
+        looksLikeExternalName: (_) => false,
+      ),
+      isFalse,
+    );
+    expect(
+      kioskHasCachedExternalCamera(
+        cached: [external],
+        deviceType: null,
+        looksLikeExternalName: (_) => false,
+      ),
+      isFalse,
+    );
+  });
+
+  test('orderCaptureCamerasExternalFirst prefers external lens', () {
+    expect(
+      orderCaptureCamerasExternalFirst(
+        cameras: [front, external, back],
+        looksLikeExternalName: (_) => false,
+      ),
+      [external, front, back],
+    );
+  });
+
   test('orderCaptureCamerasExternalFirst uses name heuristic', () {
     const hdmi = CameraDescription(
       name: 'HDMI Capture Card',

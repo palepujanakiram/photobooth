@@ -10,6 +10,14 @@ import '../utils/logger.dart';
 import '../utils/sidecar_error_parse.dart';
 import 'session_manager.dart';
 
+/// True when [bytes] start with a JPEG SOI marker (`FF D8 FF`).
+bool sidecarHttpBodyLooksLikeJpeg(List<int> bytes) {
+  return bytes.length >= 3 &&
+      bytes[0] == 0xFF &&
+      bytes[1] == 0xD8 &&
+      bytes[2] == 0xFF;
+}
+
 /// Long-edge cap requested from Pi on still download (matches kiosk normalize).
 const int kSidecarCaptureMaxLongEdge = 1920;
 
@@ -50,17 +58,32 @@ class LocalCameraService {
     _lastHealthyAt = DateTime.now();
   }
 
-  bool get isConfigured => _config.isConfigured;
-
+  bool _runtimeUnavailable = false;
   bool _forceLivePreview = false;
+
+  bool get isConfigured => _config.isConfigured && !_runtimeUnavailable;
+
+  /// On-device Canon EDSDK at localhost (vs remote Pi/LAN).
+  bool get isDirectConnection => _config.isDirectConnection;
+
+  /// Remote Pi gphoto2 sidecar (vs on-device EDSDK).
+  bool get isPiConnection => _config.isPiConnection;
 
   /// ZenAI `cameraLivePreviewEnabled`, or POSE forcing USB MJPEG (AI + Classic).
   bool get shouldShowLivePreview =>
-      _config.shouldShowLivePreview || _forceLivePreview;
+      !_runtimeUnavailable &&
+      (_config.shouldShowLivePreview || _forceLivePreview);
 
   /// HDMI→UVC is often blank on FZ200D; force Pi USB MJPEG for AI + Classic pose.
   void setForceLivePreview(bool enabled) {
+    if (_runtimeUnavailable) return;
     _forceLivePreview = enabled;
+  }
+
+  /// Native sidecar cannot serve HTTP (wrong ABI, crashed). Stop localhost polls.
+  void markRuntimeUnavailable() {
+    _runtimeUnavailable = true;
+    _forceLivePreview = false;
   }
 
   String get livePreviewUrl => _config.livePreviewUrl;
@@ -143,6 +166,19 @@ class LocalCameraService {
         'Camera sidecar health failed ms=$ms corr=$id '
         'code=${info.code} eds=${info.edsErrorHex}: $e',
       );
+      return false;
+    }
+  }
+
+  /// True when the sidecar HTTP port answers (camera may still be disconnected).
+  Future<bool> isListening() async {
+    if (!isConfigured) return false;
+    try {
+      final response = await _client
+          .get(_uri('/health'), headers: _headers())
+          .timeout(_healthTimeout);
+      return response.statusCode > 0;
+    } catch (_) {
       return false;
     }
   }
@@ -379,6 +415,11 @@ class LocalCameraService {
         bytes[0] == 0x7b /* { */) {
       final asText = utf8.decode(bytes, allowMalformed: true);
       throw StateError('Camera sidecar $action error: $asText');
+    }
+    if (!sidecarHttpBodyLooksLikeJpeg(bytes)) {
+      throw StateError(
+        'Camera sidecar $action was not JPEG (${bytes.length} bytes)',
+      );
     }
     return Uint8List.fromList(bytes);
   }

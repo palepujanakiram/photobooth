@@ -33,6 +33,10 @@ class AppConstants {
   /// [AppStrings.flashbackComposeFailed] while the API still returns 200.
   static const Duration kClassicStripComposeTimeout = Duration(seconds: 300);
 
+  /// Classic 1-shot Continue — no 4-shot scrub. Do not sit on a hidden CTA
+  /// for [kClassicStripComposeTimeout] (felt like ~5 minutes).
+  static const Duration kClassicSingleComposeTimeout = Duration(seconds: 45);
+
   /// Fallback when `/api/settings` omits or invalidates `parallelImageCount`.
   /// Server-driven value chooses POST `/api/generate-image` (when **1**) vs
   /// GET `/api/generate-stream-parallel` (when **> 1**); see [ApiService.generateImages].
@@ -270,6 +274,7 @@ class AppConstants {
 
   /// Classic + Pi DSLR: begin movie-LV teardown when the countdown reaches this
   /// second so the real shutter can fire as the timer hits zero (~3–4s prep).
+  /// Canon USB EVF pose skips this — stopping LV here freezes the preview.
   static const int kFlashbackSidecarStillPrepareAtSecond = 4;
 
   /// Classic follow-on shots also prepare mid-countdown (same as shot 1).

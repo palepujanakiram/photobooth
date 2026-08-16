@@ -59,8 +59,38 @@ void main() {
     deviceSubclass: 0,
   );
 
+  const canonPtpDslr = UvcCameraDevice(
+    name: 'Canon Digital Camera',
+    vendorId: kCanonUsbVendorId,
+    productId: 13033,
+    deviceClass: 0,
+    deviceSubclass: 0,
+  );
+
+  const appleNcmGadget = UvcCameraDevice(
+    name: 'Mac',
+    vendorId: kAppleUsbVendorId,
+    productId: 6405,
+    deviceClass: 0,
+    deviceSubclass: 0,
+  );
+
+  const hidReceiver = UvcCameraDevice(
+    name: 'USB Receiver',
+    vendorId: 43173,
+    productId: 8789,
+    deviceClass: kUsbDeviceClassHid,
+    deviceSubclass: 0,
+  );
+
   test('isUvcWebcamDevice excludes DNP printer on USB', () {
     expect(isUvcWebcamDevice(dnpPrinter), isFalse);
+  });
+
+  test('isUvcWebcamDevice excludes Canon PTP and Apple NCM gadgets', () {
+    expect(isUvcWebcamDevice(canonPtpDslr), isFalse);
+    expect(isUvcWebcamDevice(appleNcmGadget), isFalse);
+    expect(isUvcWebcamDevice(hidReceiver), isFalse);
   });
 
   test('isUvcWebcamDevice accepts UVC IAD and Video class devices', () {
@@ -73,9 +103,70 @@ void main() {
     expect(isUvcWebcamDevice(vendorSpecificCaptureCard), isTrue);
   });
 
-  test('isUvcWebcamDevice excludes printer and hub classes', () {
+  test('isUvcWebcamDevice excludes CDC and still-imaging classes', () {
+    expect(
+      isUvcWebcamDevice(
+        const UvcCameraDevice(
+          name: 'CDC NCM',
+          vendorId: 0x1d6b,
+          productId: 0x0100,
+          deviceClass: kUsbDeviceClassCdc,
+          deviceSubclass: 0,
+        ),
+      ),
+      isFalse,
+    );
+    expect(
+      isUvcWebcamDevice(
+        const UvcCameraDevice(
+          name: 'PTP Camera',
+          vendorId: 0x04b0,
+          productId: 0x0422,
+          deviceClass: kUsbDeviceClassStillImaging,
+          deviceSubclass: 1,
+        ),
+      ),
+      isFalse,
+    );
+  });
+
+  test('isUvcWebcamDevice accepts other USB classes as capture-capable', () {
+    expect(
+      isUvcWebcamDevice(
+        const UvcCameraDevice(
+          name: 'Misc IAD non-UVC',
+          vendorId: 0x1111,
+          productId: 0x2222,
+          deviceClass: 239,
+          deviceSubclass: 0,
+        ),
+      ),
+      isTrue,
+    );
+  });
+
+  test('isUvcWebcamDevice excludes printer, hub, and mass storage classes', () {
     expect(isUvcWebcamDevice(usbPrinter), isFalse);
     expect(isUvcWebcamDevice(usbHub), isFalse);
+    expect(
+      isUvcWebcamDevice(
+        const UvcCameraDevice(
+          name: 'USB Disk',
+          vendorId: 0x0781,
+          productId: 0x5567,
+          deviceClass: kUsbDeviceClassMassStorage,
+          deviceSubclass: 0,
+        ),
+      ),
+      isFalse,
+    );
+  });
+
+  test('hasUvcWebcamDevices false when only Canon PTP attached', () {
+    expect(
+      hasUvcWebcamDevices({'canon': canonPtpDslr}),
+      isFalse,
+    );
   });
 
   test('hasUvcWebcamDevices false when only DNP attached', () {

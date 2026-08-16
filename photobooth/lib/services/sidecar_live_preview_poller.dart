@@ -4,10 +4,16 @@ import 'dart:typed_data';
 import '../services/local_camera_service.dart';
 import '../utils/logger.dart';
 
-/// Polls Pi `/camera/preview` for pose UI frames.
+/// True when Canon EVF is still warming (503 / no frame) — keep connecting UI.
+bool isSidecarPreviewWarmingError(Object error) {
+  final msg = error.toString().toLowerCase();
+  return msg.contains('503') || msg.contains('no frame');
+}
+
+/// Polls localhost `/camera/preview` for pose UI frames.
 ///
 /// Prefer polling over MJPEG multipart: Flutter Android handles discrete JPEGs
-/// reliably, and we can pause during tethered still capture so gphoto2 is free.
+/// reliably, and we can pause during tethered still capture so the sidecar is free.
 class SidecarLivePreviewPoller {
   SidecarLivePreviewPoller({
     required LocalCameraService service,
@@ -30,6 +36,9 @@ class SidecarLivePreviewPoller {
 
   bool get isRunning => _timer != null;
 
+  /// Keep polls short so a slow EVF download cannot freeze pose for seconds.
+  static const Duration frameTimeout = Duration(milliseconds: 800);
+
   void start() {
     if (_disposed || _timer != null) return;
     _timer = Timer.periodic(interval, (_) => unawaited(_tick()));
@@ -49,7 +58,7 @@ class SidecarLivePreviewPoller {
     if (!_service.shouldShowLivePreview) return;
     _inFlight = true;
     try {
-      final bytes = await _service.fetchPreviewJpeg();
+      final bytes = await _service.fetchPreviewJpeg(timeout: frameTimeout);
       if (_disposed || _paused) return;
       _onFrame?.call(bytes);
     } catch (e) {

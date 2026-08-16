@@ -41,12 +41,12 @@ void main() {
       );
     });
 
-    test('keeps bake for small 1-shot payloads', () {
+    test('skips bake for 1-shot payloads', () {
       expect(
         shouldSkipClassicClientLookBake(
           imageDataUrls: ['data:image/jpeg;base64,tiny'],
         ),
-        isFalse,
+        isTrue,
       );
     });
   });
@@ -57,6 +57,13 @@ void main() {
         classicLookBakeMaxEdge(
           imageDataUrls: List.filled(4, 'data:image/jpeg;base64,abc'),
         ),
+        1400,
+      );
+    });
+
+    test('uses compact edge for large 1-shot', () {
+      expect(
+        classicLookBakeMaxEdge(imageDataUrls: ['x' * 800000]),
         1400,
       );
     });
@@ -76,6 +83,53 @@ void main() {
           imageDataUrls: List.filled(4, 'data:image/jpeg;base64,abc'),
         ),
         isTrue,
+      );
+    });
+
+    test('is true for large 1-shot payloads', () {
+      expect(
+        shouldBakeClassicLooksSequentially(
+          imageDataUrls: ['x' * 800000],
+        ),
+        isTrue,
+      );
+    });
+
+    test('is false for small 1-shot payloads', () {
+      expect(
+        shouldBakeClassicLooksSequentially(
+          imageDataUrls: ['data:image/jpeg;base64,tiny'],
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('shouldCompactClassicComposeUploads', () {
+    test('skips tiny fixtures', () {
+      expect(
+        shouldCompactClassicComposeUploads(
+          imageDataUrls: List.filled(4, 'data:image/jpeg;base64,abc'),
+        ),
+        isFalse,
+      );
+    });
+
+    test('compacts large 4-shot payloads', () {
+      expect(
+        shouldCompactClassicComposeUploads(
+          imageDataUrls: List.filled(4, 'x' * 60000),
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('classicImagePayloadIsLarge', () {
+    test('is false for small payloads', () {
+      expect(
+        classicImagePayloadIsLarge(imageDataUrls: ['tiny']),
+        isFalse,
       );
     });
   });

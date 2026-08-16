@@ -27,6 +27,21 @@ void main() {
     },
   );
 
+  test('captureWithCountdown holds the last tick for a full second', () async {
+    final vm = CaptureViewModel();
+    final started = DateTime.now();
+    await vm.captureWithCountdown(
+      () async {},
+      canStart: () => true,
+      countdownSeconds: 1,
+    );
+    expect(
+      DateTime.now().difference(started) >= const Duration(milliseconds: 900),
+      isTrue,
+    );
+    vm.dispose();
+  });
+
   test('captureWithCountdown invokes onCountdownStep each second', () async {
     final vm = CaptureViewModel();
     final steps = <int>[];

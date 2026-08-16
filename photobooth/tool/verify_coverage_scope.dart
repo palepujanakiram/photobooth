@@ -28,6 +28,7 @@ bool ignored(String path) {
     'kiosk_device_status_widgets.dart',
     '_carousel_page.dart',
     '_loaded_body.dart',
+    'photo_capture_desktop_body.dart',
     '_continue_helpers.dart',
     '_copy_helpers.dart',
     '_thumb_helpers.dart',

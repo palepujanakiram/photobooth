@@ -48,6 +48,12 @@ void main() {
     expect(sw.elapsed, lessThan(const Duration(seconds: 5)));
   });
 
+  test('trackTeardown swallows teardown errors', () async {
+    UvcSessionCoordinator.trackTeardown(Future<void>.error(Exception('usb')));
+    await UvcSessionCoordinator.waitBeforeOpen();
+    expect(UvcSessionCoordinator.hadPriorSession, isTrue);
+  });
+
   test('debugInstance exposes private constructor for coverage', () {
     expect(UvcSessionCoordinator.debugInstance(), isNotNull);
   });

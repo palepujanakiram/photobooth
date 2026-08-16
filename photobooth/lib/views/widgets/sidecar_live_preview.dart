@@ -77,6 +77,7 @@ class _SidecarLivePreviewState extends State<SidecarLivePreview> {
       },
       onError: (err) {
         if (!mounted || _frame != null) return;
+        if (isSidecarPreviewWarmingError(err)) return;
         setState(() => _error = err);
       },
     );
@@ -101,7 +102,7 @@ class _SidecarLivePreviewState extends State<SidecarLivePreview> {
           frame,
           fit: widget.fit,
           gaplessPlayback: true,
-          filterQuality: FilterQuality.medium,
+          filterQuality: FilterQuality.low,
         ),
       );
     }

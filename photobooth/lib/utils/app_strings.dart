@@ -194,9 +194,13 @@ abstract final class AppStrings {
   /// Pose UI while waiting for the first Pi DSLR live-view frame.
   static const sidecarLivePreviewConnecting = 'Connecting to DSLR…';
 
-  /// Pose UI when Pi live preview cannot load (still may capture if healthy).
+  /// Pose UI when EDSDK sidecar live preview cannot load.
   static const sidecarLivePreviewUnavailable =
-      'DSLR live preview unavailable. Check the Pi camera link.';
+      'DSLR live preview unavailable.';
+
+  /// Pose UI when a captured still cannot be decoded for review.
+  static const captureStillDisplayFailed =
+      'Photo saved, but it could not be shown. Retake the shot.';
 
   /// Shown on POSE when no camera is available but Gallery / Phone QR is enabled.
   static const captureNoCameraUploadHint =
@@ -655,6 +659,7 @@ abstract final class AppStrings {
   static const kioskDeviceConnected = 'Connected';
   static const kioskDeviceNotConnected = 'Not connected';
   static const kioskDeviceNotConfigured = 'Not configured';
+  static const kioskDeviceCrashed = 'Crashed — restart app';
   static const kioskDeviceTransportUsb = 'USB';
   static const kioskDeviceTransportWifi = 'WiFi';
   static const kioskDeviceTransportLan = 'LAN';

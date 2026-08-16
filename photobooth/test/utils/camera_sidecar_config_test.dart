@@ -3,16 +3,42 @@ import 'package:photobooth/models/app_settings_model.dart';
 import 'package:photobooth/utils/camera_sidecar_config.dart';
 
 void main() {
-  const env = CameraSidecarConfig(
+  const localhost = CameraSidecarConfig(
     enabled: true,
-    baseUrl: 'http://192.168.2.50:8791',
+    baseUrl: 'http://127.0.0.1:8791',
+    livePreviewEnabled: true,
+    connectionMode: CameraConnectionMode.direct,
   );
 
+  group('parseCameraConnectionMode', () {
+    test('accepts pi and direct aliases', () {
+      expect(parseCameraConnectionMode('pi'), CameraConnectionMode.pi);
+      expect(parseCameraConnectionMode('LAN'), CameraConnectionMode.pi);
+      expect(parseCameraConnectionMode('direct'), CameraConnectionMode.direct);
+      expect(parseCameraConnectionMode('usb'), CameraConnectionMode.direct);
+      expect(parseCameraConnectionMode('edsdk'), CameraConnectionMode.direct);
+      expect(parseCameraConnectionMode(''), isNull);
+      expect(parseCameraConnectionMode(null), isNull);
+    });
+  });
+
+  group('isLoopbackCameraHost', () {
+    test('detects loopback hosts', () {
+      expect(isLoopbackCameraHost('127.0.0.1'), isTrue);
+      expect(isLoopbackCameraHost('localhost'), isTrue);
+      expect(isLoopbackCameraHost('192.168.2.50'), isFalse);
+    });
+  });
+
   group('CameraSidecarConfig.fromEnvironment', () {
-    test('uses dart-define defaults when not overridden', () {
+    test('defaults to localhost sidecar enabled with live preview', () {
       final cfg = CameraSidecarConfig.fromEnvironment();
-      expect(cfg.enabled, isFalse);
-      expect(cfg.baseUrl, 'http://192.168.2.50:8791');
+      expect(cfg.enabled, isTrue);
+      expect(cfg.baseUrl, 'http://127.0.0.1:8791');
+      expect(cfg.livePreviewEnabled, isTrue);
+      expect(cfg.isConfigured, isTrue);
+      expect(cfg.shouldShowLivePreview, isTrue);
+      expect(cfg.connectionMode, CameraConnectionMode.direct);
     });
   });
 
@@ -26,21 +52,21 @@ void main() {
     test('live preview URLs join path prefixes', () {
       const withSlash = CameraSidecarConfig(
         enabled: true,
-        baseUrl: 'http://10.0.0.1:8791/booth/',
+        baseUrl: 'http://127.0.0.1:8791/booth/',
         livePreviewEnabled: true,
       );
-      expect(withSlash.livePreviewUrl, 'http://10.0.0.1:8791/booth/camera/live');
+      expect(withSlash.livePreviewUrl, 'http://127.0.0.1:8791/booth/camera/live');
       expect(
         withSlash.previewFrameUrl,
-        'http://10.0.0.1:8791/booth/camera/preview?download=1',
+        'http://127.0.0.1:8791/booth/camera/preview?download=1',
       );
 
       const withPrefix = CameraSidecarConfig(
         enabled: true,
-        baseUrl: 'http://10.0.0.1:8791/booth',
+        baseUrl: 'http://127.0.0.1:8791/booth',
         livePreviewEnabled: true,
       );
-      expect(withPrefix.livePreviewUrl, 'http://10.0.0.1:8791/booth/camera/live');
+      expect(withPrefix.livePreviewUrl, 'http://127.0.0.1:8791/booth/camera/live');
     });
   });
 
@@ -60,27 +86,29 @@ void main() {
   group('buildCameraSidecarBaseUrl', () {
     test('omits root path and trailing slash', () {
       expect(
-        buildCameraSidecarBaseUrl(host: '10.0.0.5', port: 8791),
-        'http://10.0.0.5:8791',
+        buildCameraSidecarBaseUrl(host: '127.0.0.1', port: 8791),
+        'http://127.0.0.1:8791',
       );
     });
 
     test('appends custom path prefix', () {
       expect(
         buildCameraSidecarBaseUrl(
-          host: '10.0.0.5',
-          port: 8080,
+          host: '127.0.0.1',
+          port: 8791,
           path: '/sidecar/',
         ),
-        'http://10.0.0.5:8080/sidecar',
+        'http://127.0.0.1:8791/sidecar',
       );
     });
   });
 
   group('resolveCameraSidecarConfig', () {
-    test('falls back to environment when settings null', () {
-      final resolved = resolveCameraSidecarConfig(null, environment: env);
-      expect(resolved, same(env));
+    test('returns direct localhost when settings null', () {
+      final resolved = resolveCameraSidecarConfig(null, environment: localhost);
+      expect(resolved.enabled, isTrue);
+      expect(resolved.baseUrl, 'http://127.0.0.1:8791');
+      expect(resolved.connectionMode, CameraConnectionMode.direct);
     });
 
     test('uses fromEnvironment when environment arg omitted', () {
@@ -88,121 +116,92 @@ void main() {
       final fromEnv = CameraSidecarConfig.fromEnvironment();
       expect(resolved.enabled, fromEnv.enabled);
       expect(resolved.baseUrl, fromEnv.baseUrl);
+      expect(resolved.connectionMode, fromEnv.connectionMode);
     });
 
-    test('falls back when settings omit camera fields', () {
-      final resolved = resolveCameraSidecarConfig(
-        AppSettingsModel(printerEnabled: true),
-        environment: env,
-      );
-      expect(resolved, same(env));
-    });
-
-    test('settings win when camera fields present', () {
+    test('explicit direct mode ignores Pi host', () {
       final resolved = resolveCameraSidecarConfig(
         AppSettingsModel(
           cameraEnabled: true,
-          cameraSidecarHost: ' 172.16.4.20 ',
+          cameraConnectionMode: 'direct',
+          cameraSidecarHost: '192.168.2.50',
           cameraSidecarPort: 8791,
-          cameraSidecarPath: '/',
           cameraLivePreviewEnabled: true,
         ),
-        environment: env,
+        environment: localhost,
       );
+      expect(resolved.connectionMode, CameraConnectionMode.direct);
+      expect(resolved.baseUrl, 'http://127.0.0.1:8791');
       expect(resolved.enabled, isTrue);
-      expect(resolved.baseUrl, 'http://172.16.4.20:8791');
-      expect(resolved.isConfigured, isTrue);
       expect(resolved.livePreviewEnabled, isTrue);
-      expect(resolved.shouldShowLivePreview, isTrue);
-      expect(resolved.livePreviewUrl, 'http://172.16.4.20:8791/camera/live');
-      expect(
-        resolved.previewFrameUrl,
-        'http://172.16.4.20:8791/camera/preview?download=1',
-      );
     });
 
-    test('live preview off by default when settings omit the flag', () {
+    test('explicit pi mode uses ZenAI host/port', () {
       final resolved = resolveCameraSidecarConfig(
         AppSettingsModel(
           cameraEnabled: true,
-          cameraSidecarHost: '172.16.4.20',
+          cameraConnectionMode: 'pi',
+          cameraSidecarHost: '192.168.2.50',
+          cameraSidecarPort: 8791,
+          cameraLivePreviewEnabled: true,
+        ),
+        environment: localhost,
+      );
+      expect(resolved.connectionMode, CameraConnectionMode.pi);
+      expect(resolved.baseUrl, 'http://192.168.2.50:8791');
+      expect(resolved.enabled, isTrue);
+      expect(resolved.livePreviewEnabled, isTrue);
+      expect(resolved.isPiConnection, isTrue);
+    });
+
+    test('infers pi from remote host when mode omitted', () {
+      final resolved = resolveCameraSidecarConfig(
+        AppSettingsModel(
+          cameraEnabled: true,
+          cameraSidecarHost: '172.16.4.128',
           cameraSidecarPort: 8791,
         ),
-        environment: env,
+        environment: localhost,
       );
-      expect(resolved.livePreviewEnabled, isFalse);
-      expect(resolved.shouldShowLivePreview, isFalse);
+      expect(resolved.connectionMode, CameraConnectionMode.pi);
+      expect(resolved.baseUrl, 'http://172.16.4.128:8791');
     });
 
-    test('live preview alone counts as settings-present', () {
+    test('infers direct from loopback host when mode omitted', () {
       final resolved = resolveCameraSidecarConfig(
-        AppSettingsModel(cameraLivePreviewEnabled: true),
-        environment: env,
+        AppSettingsModel(
+          cameraEnabled: true,
+          cameraSidecarHost: '127.0.0.1',
+          cameraSidecarPort: 8791,
+        ),
+        environment: localhost,
       );
-      expect(resolved.enabled, isFalse);
-      expect(resolved.livePreviewEnabled, isTrue);
-      expect(resolved.shouldShowLivePreview, isFalse);
+      expect(resolved.connectionMode, CameraConnectionMode.direct);
+      expect(resolved.baseUrl, 'http://127.0.0.1:8791');
     });
 
-    test('disabled when cameraEnabled false even with host', () {
+    test('direct mode respects cameraEnabled false', () {
       final resolved = resolveCameraSidecarConfig(
         AppSettingsModel(
           cameraEnabled: false,
-          cameraSidecarHost: '172.16.4.20',
-          cameraSidecarPort: 8791,
+          cameraConnectionMode: 'direct',
         ),
-        environment: env,
+        environment: localhost,
       );
       expect(resolved.enabled, isFalse);
       expect(resolved.isConfigured, isFalse);
     });
 
-    test('disabled when enabled but host empty', () {
+    test('pi mode disabled without host', () {
       final resolved = resolveCameraSidecarConfig(
         AppSettingsModel(
           cameraEnabled: true,
-          cameraSidecarHost: '  ',
-          cameraSidecarPort: 8791,
+          cameraConnectionMode: 'pi',
         ),
-        environment: env,
+        environment: localhost,
       );
       expect(resolved.enabled, isFalse);
-      expect(resolved.baseUrl, isEmpty);
-    });
-
-    test('defaults invalid port to sidecar default', () {
-      final resolved = resolveCameraSidecarConfig(
-        AppSettingsModel(
-          cameraEnabled: true,
-          cameraSidecarHost: '10.0.0.1',
-          cameraSidecarPort: 0,
-        ),
-        environment: env,
-      );
-      expect(resolved.baseUrl, 'http://10.0.0.1:$kCameraSidecarDefaultPort');
-    });
-
-    test('uses custom path from settings', () {
-      final resolved = resolveCameraSidecarConfig(
-        AppSettingsModel(
-          cameraEnabled: true,
-          cameraSidecarHost: '10.0.0.1',
-          cameraSidecarPort: 8080,
-          cameraSidecarPath: 'cam',
-        ),
-        environment: env,
-      );
-      expect(resolved.baseUrl, 'http://10.0.0.1:8080/cam');
-    });
-
-    test('cameraEnabled alone without host is settings-present but not configured',
-        () {
-      final resolved = resolveCameraSidecarConfig(
-        AppSettingsModel(cameraEnabled: false),
-        environment: env,
-      );
-      expect(resolved.enabled, isFalse);
-      expect(identical(resolved, env), isFalse);
+      expect(resolved.connectionMode, CameraConnectionMode.pi);
     });
   });
 }

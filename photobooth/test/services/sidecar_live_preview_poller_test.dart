@@ -54,6 +54,16 @@ void main() {
       service.dispose();
     });
 
+    test('isSidecarPreviewWarmingError detects EVF warmup 503s', () {
+      expect(
+        isSidecarPreviewWarmingError(
+          StateError('Camera sidecar preview failed (503): {"error":"no frame"}'),
+        ),
+        isTrue,
+      );
+      expect(isSidecarPreviewWarmingError(StateError('connection refused')), isFalse);
+    });
+
     test('reports errors from failed preview fetches', () async {
       final client = MockClient((request) async {
         return http.Response('busy', 503);

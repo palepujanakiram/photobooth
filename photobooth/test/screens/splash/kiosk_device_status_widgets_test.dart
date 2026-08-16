@@ -59,7 +59,32 @@ void main() {
     );
   });
 
-  testWidgets('KioskDeviceStatusPanel shows DSLR LAN row', (tester) async {
+  testWidgets('KioskDeviceStatusRow shows crashed state with red icon even when USB present', (tester) async {
+    // Camera is physically connected (connected: true) but sidecar crashed.
+    // Must show red, not green.
+    const entry = KioskDeviceStatusEntry(
+      deviceName: AppStrings.kioskDeviceDslrSidecar,
+      connected: true,
+      crashed: true,
+      transport: KioskDeviceTransport.usb,
+    );
+    await tester.pumpWidget(
+      CupertinoApp(
+        home: Builder(
+          builder: (context) {
+            return KioskDeviceStatusRow(
+              entry: entry,
+              appColors: AppColors.of(context),
+            );
+          },
+        ),
+      ),
+    );
+    expect(find.textContaining(AppStrings.kioskDeviceCrashed), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.xmark_circle_fill), findsOneWidget);
+  });
+
+  testWidgets('KioskDeviceStatusPanel shows DSLR USB row', (tester) async {
     const snapshot = KioskDeviceStatusSnapshot(
       dnpPrinter: KioskDeviceStatusEntry(
         deviceName: AppStrings.kioskDeviceDnpPrinter,
@@ -85,7 +110,7 @@ void main() {
       dslrSidecar: KioskDeviceStatusEntry(
         deviceName: AppStrings.kioskDeviceDslrSidecar,
         connected: true,
-        transport: KioskDeviceTransport.lan,
+        transport: KioskDeviceTransport.usb,
       ),
     );
     var refreshTaps = 0;
@@ -105,7 +130,13 @@ void main() {
     );
     expect(find.textContaining(AppStrings.kioskDeviceDslrSidecar), findsOneWidget);
     expect(find.textContaining(AppStrings.kioskDeviceSelphyPrinter), findsOneWidget);
-    expect(find.textContaining(AppStrings.kioskDeviceTransportLan), findsOneWidget);
+    // DSLR row includes "Connected" and "USB" — verify the full combined text.
+    expect(
+      find.textContaining(
+        '${AppStrings.kioskDeviceDslrSidecar}  ${AppStrings.kioskDeviceConnected}  ${AppStrings.kioskDeviceTransportUsb}',
+      ),
+      findsOneWidget,
+    );
     expect(find.text(AppStrings.kioskDeviceStatusHeading), findsOneWidget);
     expect(find.text(AppStrings.kioskDeviceStatusRefresh), findsOneWidget);
     await tester.tap(find.text(AppStrings.kioskDeviceStatusRefresh));

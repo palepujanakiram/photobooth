@@ -7,13 +7,13 @@ alwaysApply: true
 
 Flutter photo booth app with AI transformations. Use this context when editing or adding code.
 
-**App root:** `photobooth/` — the Flutter package (`pubspec.yaml`, `lib/`, `android/`, `ios/`) lives there. Run `flutter pub get`, `flutter run`, and `dart run build_runner` from `photobooth/`, not from the repository root.
+**App root:** `photobooth/` — the Flutter package (`pubspec.yaml`, `lib/`, `android/`, `ios/`) lives there. Run `flutter pub get`, `flutter run --debug --no-enable-impeller`, and `dart run build_runner` from `photobooth/`, not from the repository root. Canon USB sidecar: [`canon_sidecar/SETUP.md`](../../canon_sidecar/SETUP.md).
 
 ## Stack & platforms
 
 - **Flutter** (SDK >=3.0.0 <4.0.0), **Provider** for state
 - **Platforms**: iOS, Android (phones, tablets, Android TV). **Android minimum**: API 30 (Android 11). Web exists but is secondary (stubs for file/camera).
-- **Camera**: Official Flutter `camera` plugin only; no custom native camera. External/USB cameras supported via `camera_android_camerax` (dependency override 0.7.1).
+- **Camera**: Canon EDSDK USB sidecar (`canon_sidecar/`, localhost `:8791`) on kiosk Mini PCs; UVC/HDMI via `uvccamera`; otherwise official Flutter `camera` / CameraX. External USB webcams also via `camera_android_camerax` (dependency override 0.7.1).
 - **API**: Dio + Retrofit; base URL in `lib/utils/app_config.dart` (`AppConfig.baseUrl`).
 - **Error reporting**: Bugsnag via `ErrorReportingManager` (disabled on web).
 

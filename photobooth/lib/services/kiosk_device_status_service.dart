@@ -8,6 +8,7 @@ import '../models/app_settings_model.dart';
 import '../models/kiosk_device_status.dart';
 import '../utils/app_strings.dart';
 import '../utils/camera_sidecar_config.dart';
+import '../utils/canon_sidecar_status_channel.dart';
 import '../utils/printer_endpoint.dart';
 import '../utils/receipt_printer_config.dart';
 import '../utils/uvc_webcam_filter.dart';
@@ -27,6 +28,8 @@ class KioskDeviceStatusService {
     ReceiptPrintBridge? receiptBridge,
     Future<bool> Function()? probeUvcDevices,
     Future<bool> Function(CameraSidecarConfig config)? probeDslrSidecar,
+    Future<String> Function()? querySidecarNativeState,
+    Future<bool> Function()? queryCanonCameraPresent,
     bool Function()? isAndroid,
     bool Function()? isWeb,
     Duration? wifiDiscoverTimeout,
@@ -36,6 +39,10 @@ class KioskDeviceStatusService {
         _receipt = receiptBridge ?? ReceiptPrintBridge(),
         _probeUvcDevices = probeUvcDevices ?? _defaultUvcProbe,
         _probeDslrSidecar = probeDslrSidecar ?? _defaultDslrSidecarProbe,
+        _querySidecarNativeState =
+            querySidecarNativeState ?? CanonSidecarStatusChannel.getState,
+        _queryCanonCameraPresent =
+            queryCanonCameraPresent ?? CanonSidecarStatusChannel.isCameraPresent,
         _isAndroid = isAndroid ?? (() => !kIsWeb && Platform.isAndroid),
         _isWeb = isWeb ?? (() => kIsWeb),
         _wifiDiscoverTimeout =
@@ -47,6 +54,8 @@ class KioskDeviceStatusService {
   final ReceiptPrintBridge _receipt;
   final Future<bool> Function() _probeUvcDevices;
   final Future<bool> Function(CameraSidecarConfig config) _probeDslrSidecar;
+  final Future<String> Function() _querySidecarNativeState;
+  final Future<bool> Function() _queryCanonCameraPresent;
   final bool Function() _isAndroid;
   final bool Function() _isWeb;
   final Duration _wifiDiscoverTimeout;
@@ -271,38 +280,71 @@ class KioskDeviceStatusService {
     AppSettingsModel? settings,
   ) async {
     final config = resolveCameraSidecarConfig(settings);
+    final transport = config.isPiConnection
+        ? KioskDeviceTransport.lan
+        : KioskDeviceTransport.usb;
     if (!config.isConfigured) {
-      return const KioskDeviceStatusEntry(
+      return KioskDeviceStatusEntry(
         deviceName: AppStrings.kioskDeviceDslrSidecar,
         connected: false,
         configured: false,
-        transport: KioskDeviceTransport.lan,
+        transport: transport,
       );
     }
+
+    // Direct USB: native presence + health. Pi: HTTP health is enough.
+    final cameraPresentFuture = config.isDirectConnection
+        ? _safeCanonCameraPresent()
+        : Future<bool>.value(false);
+    final healthFuture = _safeDslrHealth(config);
+    final nativeStateFuture = config.isDirectConnection
+        ? _safeSidecarNativeState()
+        : Future<String?>.value(null);
+
+    final cameraPresent = await cameraPresentFuture;
+    final httpHealthy = await healthFuture;
+    final nativeState = await nativeStateFuture;
+
+    // Direct: connected = Canon on USB. Pi: connected = sidecar /health ok.
+    // crashed = local EDSDK sidecar exited (direct only).
+    final crashed = config.isDirectConnection &&
+        !httpHealthy &&
+        (nativeState == 'crashed' || nativeState == 'max_restarts');
+    final connected =
+        config.isDirectConnection ? cameraPresent : httpHealthy;
+
+    return KioskDeviceStatusEntry(
+      deviceName: AppStrings.kioskDeviceDslrSidecar,
+      connected: connected,
+      configured: true,
+      crashed: crashed,
+      transport: transport,
+    );
+  }
+
+  Future<bool> _safeCanonCameraPresent() async {
     try {
-      final connected = await _probeDslrSidecar(config).timeout(
-        _wifiDiscoverTimeout,
-      );
-      return KioskDeviceStatusEntry(
-        deviceName: AppStrings.kioskDeviceDslrSidecar,
-        connected: connected,
-        configured: true,
-        transport: KioskDeviceTransport.lan,
-      );
-    } on TimeoutException {
-      return const KioskDeviceStatusEntry(
-        deviceName: AppStrings.kioskDeviceDslrSidecar,
-        connected: false,
-        configured: true,
-        transport: KioskDeviceTransport.lan,
-      );
+      return await _queryCanonCameraPresent()
+          .timeout(const Duration(seconds: 2), onTimeout: () => false);
     } catch (_) {
-      return const KioskDeviceStatusEntry(
-        deviceName: AppStrings.kioskDeviceDslrSidecar,
-        connected: false,
-        configured: true,
-        transport: KioskDeviceTransport.lan,
-      );
+      return false;
+    }
+  }
+
+  Future<bool> _safeDslrHealth(CameraSidecarConfig config) async {
+    try {
+      return await _probeDslrSidecar(config).timeout(_wifiDiscoverTimeout);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<String> _safeSidecarNativeState() async {
+    try {
+      return await _querySidecarNativeState()
+          .timeout(const Duration(seconds: 1), onTimeout: () => 'idle');
+    } catch (_) {
+      return 'idle';
     }
   }
 

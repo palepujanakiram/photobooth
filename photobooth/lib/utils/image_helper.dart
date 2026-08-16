@@ -29,6 +29,81 @@ const int kStripCapturedPhotoJpegQuality = 92;
 const int kSessionPatchUserImageMaxLongEdgePx = 1536;
 const int kSessionPatchUserImageJpegQuality = 85;
 
+/// Reads JPEG SOF width/height without decoding the bitmap.
+({int width, int height})? peekJpegSofDimensions(List<int> bytes) {
+  if (bytes.length < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8) {
+    return null;
+  }
+  var i = 2;
+  while (i + 1 < bytes.length) {
+    if (bytes[i] != 0xFF) {
+      i++;
+      continue;
+    }
+    final marker = bytes[i + 1];
+    if (marker == 0xD8 ||
+        marker == 0xD9 ||
+        marker == 0x01 ||
+        (marker >= 0xD0 && marker <= 0xD7)) {
+      i += 2;
+      continue;
+    }
+    if (i + 3 >= bytes.length) return null;
+    final len = (bytes[i + 2] << 8) | bytes[i + 3];
+    if (len < 2) return null;
+    final isSof = marker == 0xC0 ||
+        marker == 0xC1 ||
+        marker == 0xC2 ||
+        marker == 0xC3;
+    if (isSof) {
+      if (i + 8 >= bytes.length) return null;
+      final height = (bytes[i + 5] << 8) | bytes[i + 6];
+      final width = (bytes[i + 7] << 8) | bytes[i + 8];
+      if (width > 0 && height > 0) {
+        return (width: width, height: height);
+      }
+      return null;
+    }
+    i += 2 + len;
+  }
+  return null;
+}
+
+/// Average luma 0–255 from a tiny Skia decode. Used to detect underexposed
+/// Canon stills vs the gain-boosted live-view JPEG.
+Future<double?> meanJpegLuma(Uint8List bytes, {int sampleWidth = 48}) async {
+  if (bytes.length < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8) {
+    return null;
+  }
+  if (sampleWidth <= 0) return null;
+  try {
+    final codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: sampleWidth,
+    );
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    try {
+      final bd = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (bd == null) return null;
+      final px = bd.buffer.asUint8List(bd.offsetInBytes, bd.lengthInBytes);
+      var sum = 0;
+      var n = 0;
+      for (var i = 0; i + 3 < px.length; i += 4) {
+        sum += (px[i] * 3 + px[i + 1] * 6 + px[i + 2]) ~/ 10;
+        n++;
+      }
+      if (n == 0) return null;
+      return sum / n;
+    } finally {
+      image.dispose();
+      codec.dispose();
+    }
+  } catch (_) {
+    return null;
+  }
+}
+
 /// Metadata returned for a photo (dimensions, format label, and file size in bytes).
 typedef ImageMetadata = ({int width, int height, String format, int fileSizeBytes});
 
@@ -271,6 +346,58 @@ class ImageHelper {
         ),
       );
       return _writeBakedJpegBytes(bakedBytes);
+    }
+  }
+
+  /// Decode with [ui.instantiateImageCodec] target size so 20MP Canon stills
+  /// never allocate a full-resolution RGBA buffer on 4GB kiosks.
+  static Future<XFile> downscaleJpegToMaxLongEdge(
+    XFile sourceFile, {
+    int maxLongEdge = kCapturedPhotoMaxDimension,
+    int jpegQuality = 95,
+  }) async {
+    if (kIsWeb) return sourceFile;
+    final path = sourceFile.path;
+    final bytes = path.isNotEmpty
+        ? await File(path).readAsBytes()
+        : await sourceFile.readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception('Captured image is empty');
+    }
+    final size = peekJpegSofDimensions(bytes);
+    if (size == null ||
+        (size.width <= maxLongEdge && size.height <= maxLongEdge)) {
+      return sourceFile;
+    }
+    final quality = jpegQuality.clamp(1, 100);
+    final landscape = size.width >= size.height;
+    final codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: landscape ? maxLongEdge : null,
+      targetHeight: landscape ? null : maxLongEdge,
+    );
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    try {
+      final bd = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (bd == null) {
+        throw Exception('Skia downscale produced empty pixels');
+      }
+      final rgba = bd.buffer.asUint8List(bd.offsetInBytes, bd.lengthInBytes);
+      final bakedBytes = await compute(
+        _encodeRgbaToJpegIsolate,
+        (
+          rgba: rgba,
+          width: image.width,
+          height: image.height,
+          jpegQuality: quality,
+          quarterTurns: 0,
+        ),
+      );
+      return _writeBakedJpegBytes(bakedBytes);
+    } finally {
+      image.dispose();
+      codec.dispose();
     }
   }
 

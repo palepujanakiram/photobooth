@@ -35,13 +35,15 @@ class AppSettingsModel {
   /// `auto` | `usb` | `wifi` — DNP connection mode from ZenAI kiosk admin.
   /// `auto` hunts [printerHost] → USB → Wi‑Fi discovery.
   final String? printerTransport;
-  /// When true, prefer Pi gphoto2 sidecar stills over device CameraX/UVC.
+  /// When true, prefer DSLR sidecar stills over device CameraX/UVC.
   final bool? cameraEnabled;
+  /// `pi` (LAN Raspberry Pi sidecar) or `direct` (on-device Canon EDSDK USB).
+  final String? cameraConnectionMode;
   final String? cameraSidecarHost;
   final int? cameraSidecarPort;
   /// Base path on the sidecar (usually `/`).
   final String? cameraSidecarPath;
-  /// When true with [cameraEnabled], pose screen uses Pi `/camera/live` MJPEG
+  /// When true with [cameraEnabled], pose screen uses sidecar live view
   /// instead of webcam / HDMI capture card.
   final bool? cameraLivePreviewEnabled;
   final bool? receiptPrinterEnabled;
@@ -101,6 +103,7 @@ class AppSettingsModel {
     this.printerPath,
     this.printerTransport,
     this.cameraEnabled,
+    this.cameraConnectionMode,
     this.cameraSidecarHost,
     this.cameraSidecarPort,
     this.cameraSidecarPath,
@@ -172,6 +175,8 @@ class AppSettingsModel {
       printerPath: JsonParseHelpers.stringOrNull(json['printerPath']),
       printerTransport: JsonParseHelpers.stringOrNull(json['printerTransport']),
       cameraEnabled: JsonParseHelpers.boolOrNull(json['cameraEnabled']),
+      cameraConnectionMode:
+          JsonParseHelpers.stringOrNull(json['cameraConnectionMode']),
       cameraSidecarHost: JsonParseHelpers.stringOrNull(json['cameraSidecarHost']),
       cameraSidecarPort: JsonParseHelpers.intOrNull(json['cameraSidecarPort']),
       cameraSidecarPath: JsonParseHelpers.stringOrNull(json['cameraSidecarPath']),
