@@ -1777,12 +1777,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     return DateTime.now().difference(readyAt) < _uvcPreviewWarmupPeriod;
   }
 
-  Future<bool> _armCanonLiveViewForPose() async {
+  Future<bool> _armCanonLiveViewForPose({
+    bool sidecarIsPosePreview = false,
+  }) async {
     final result = await ensureCanonLiveViewForHdmiPose(
       _captureViewModel.localCameraService,
     );
     _canonLvHolding = result.holding;
     if (!result.ok && !result.holding) return result.ok;
+    if (!shouldWaitHdmiSettleAfterCanonLv(
+      sidecarIsPosePreview: sidecarIsPosePreview,
+    )) {
+      return result.ok;
+    }
     final settle = result.holding
         ? UvcCaptureConfig.canonLvHdmiSettleDelayWhenHeld
         : UvcCaptureConfig.canonLvHdmiSettleDelay;
@@ -2030,6 +2037,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _captureViewModel.addListener(_onCaptureViewModelStateChanged);
     ClassicStripScrubCoordinator.instance.addListener(_onScrubProgressChanged);
     _tryAdoptTermsPrewarmOnInitIfAllowed();
+    _expectExternalCaptureSource =
+        _captureViewModel.localCameraService?.isConfigured == true;
     _skipUvcForCameraXSession =
         _captureViewModel.preferEnumeratedCameraPath ||
         CaptureViewModel.hasEnumerationCache;
@@ -2237,7 +2246,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     } else {
       AppLogger.info('POSE using Pi DSLR sidecar live preview');
     }
-    await _armCanonLiveViewForPose();
+    _classicSidecarPreviewFallback = widget.sessionKind.isClassic;
+    _expectExternalCaptureSource = true;
+    if (mounted) setState(() {});
+    await _armCanonLiveViewForPose(sidecarIsPosePreview: true);
     if (!mounted) return true;
     final ready = await _captureViewModel.prepareSidecarLivePreview();
     if (!mounted) return true;
@@ -2307,6 +2319,20 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     final kioskUvc = kioskShouldTryUvcBeforeCameraX(deviceType);
+    final sidecarConfigured =
+        _captureViewModel.localCameraService?.isConfigured == true;
+    if (kioskUvc && sidecarConfigured) {
+      final uvcAttached = await hasAttachedUvcDevices();
+      if (!mounted) return;
+      if (shouldSkipUvcProbeForSidecarPose(
+        sidecarConfigured: sidecarConfigured,
+        uvcWebcamAttached: uvcAttached,
+      )) {
+        final started = await _startSidecarPosePreviewSession();
+        if (!mounted) return;
+        if (started) return;
+      }
+    }
     if (kioskUvc) {
       _skipUvcForCameraXSession = false;
       await _releaseCameraXForUvcSession();
@@ -2336,12 +2362,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         }
         if (kioskShouldSkipCameraXWhenUvcUnavailable(
           deviceType,
-          sidecarConfigured: _useSidecarPosePreview,
+          sidecarConfigured:
+              _captureViewModel.localCameraService?.isConfigured == true,
         )) {
           AppLogger.warning(
             'POSE: no UVC webcam on kiosk; skipping CameraX enumeration',
           );
-          _expectExternalCaptureSource = false;
+          _expectExternalCaptureSource =
+              _captureViewModel.localCameraService?.isConfigured == true;
           await _finishPrewarmPoseSetup();
           _clearPoseStartingSpinner();
           return;
@@ -2392,7 +2420,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _skipUvcForCameraXSession = false;
   }
 
-  /// After HDMI/UVC open fails on Classic: keep probing UVC and/or use Pi live.
+  /// After HDMI/UVC open fails: keep probing UVC and/or use Canon sidecar EVF.
   ///
   /// Returns true when POSE setup should stop (do not fall through to empty
   /// CameraX → "No camera detected").
@@ -2413,31 +2441,36 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       sidecarConfigured: sidecarConfigured,
     );
 
-    if (classic && sidecarConfigured) {
+    if (sidecar != null &&
+        shouldStartSidecarPreviewAfterUvcMiss(
+          sidecarConfigured: sidecarConfigured,
+        )) {
       try {
-        final healthy = await sidecar!.isHealthy().timeout(
+        sidecar.setForceLivePreview(true);
+        final healthy = await sidecar.isHealthy().timeout(
           const Duration(seconds: 3),
           onTimeout: () => false,
         );
-        if (healthy && mounted) {
+        if (mounted) {
           AppLogger.info(
-            'POSE Classic: UVC open failed — using Pi live preview fallback '
-            '(HDMI will keep probing)',
+            'POSE: UVC open failed — using Canon sidecar live preview '
+            'classic=$classic healthy=$healthy',
           );
-          _classicSidecarPreviewFallback = true;
-          sidecar.setForceLivePreview(true);
-          await _armCanonLiveViewForPose();
+          _classicSidecarPreviewFallback = classic;
+          await _armCanonLiveViewForPose(sidecarIsPosePreview: true);
           if (!mounted) return true;
           await _captureViewModel.prepareSidecarLivePreview();
           if (!mounted) return true;
           unawaited(
-            sidecar.postClientEvent('pose_classic_sidecar_fallback', {
+            sidecar.postClientEvent('pose_sidecar_uvc_fallback', {
               'uvcAttached': uvcAttached,
+              'classic': classic,
+              'healthy': healthy,
             }),
           );
         }
       } on Object catch (e) {
-        AppLogger.warning('POSE Classic sidecar fallback health check: $e');
+        AppLogger.warning('POSE sidecar fallback after UVC miss: $e');
       }
     }
 
@@ -2544,11 +2577,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
     if (kioskShouldSkipCameraXWhenUvcUnavailable(
       deviceType ?? _captureViewModel.deviceType,
-      sidecarConfigured: _useSidecarPosePreview,
+      sidecarConfigured:
+          _captureViewModel.localCameraService?.isConfigured == true,
     )) {
       AppLogger.warning(
         'POSE: sidecar/kiosk skip CameraX after UVC miss',
       );
+      if (await _recoverClassicPoseAfterUvcOpenFailed()) {
+        return;
+      }
       await _finishPrewarmPoseSetup();
       _clearPoseStartingSpinner();
       return;
@@ -2771,7 +2808,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!mounted) return;
     if (kioskShouldSkipCameraXWhenUvcUnavailable(
       _captureViewModel.deviceType,
-      sidecarConfigured: _useSidecarPosePreview,
+      sidecarConfigured:
+          _captureViewModel.localCameraService?.isConfigured == true,
     )) {
       return;
     }

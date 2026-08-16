@@ -180,7 +180,8 @@ void main() {
       expect(resolved.baseUrl, 'http://127.0.0.1:8791');
     });
 
-    test('direct mode respects cameraEnabled false', () {
+    test('direct mode keeps on-device sidecar on when cameraEnabled is false',
+        () {
       final resolved = resolveCameraSidecarConfig(
         AppSettingsModel(
           cameraEnabled: false,
@@ -188,8 +189,8 @@ void main() {
         ),
         environment: localhost,
       );
-      expect(resolved.enabled, isFalse);
-      expect(resolved.isConfigured, isFalse);
+      expect(resolved.enabled, isTrue);
+      expect(resolved.isConfigured, isTrue);
       expect(resolved.connectionMode, CameraConnectionMode.direct);
     });
 
@@ -221,6 +222,75 @@ void main() {
       );
       expect(resolved.enabled, isFalse);
       expect(resolved.connectionMode, CameraConnectionMode.pi);
+    });
+
+    test('pi env with no admin camera fields stays unconfigured', () {
+      const piEnv = CameraSidecarConfig(
+        enabled: true,
+        baseUrl: 'http://127.0.0.1:8791',
+        connectionMode: CameraConnectionMode.pi,
+      );
+      final noSettings = resolveCameraSidecarConfig(null, environment: piEnv);
+      expect(noSettings.enabled, isFalse);
+      expect(noSettings.baseUrl, isEmpty);
+      expect(noSettings.connectionMode, CameraConnectionMode.pi);
+
+      final emptySettings = resolveCameraSidecarConfig(
+        AppSettingsModel(),
+        environment: piEnv,
+      );
+      expect(emptySettings.isConfigured, isFalse);
+      expect(emptySettings.connectionMode, CameraConnectionMode.pi);
+    });
+
+    test('pi env treats each admin camera field as providing config', () {
+      const piEnv = CameraSidecarConfig(
+        enabled: true,
+        baseUrl: 'http://127.0.0.1:8791',
+        connectionMode: CameraConnectionMode.pi,
+      );
+      expect(
+        resolveCameraSidecarConfig(
+          AppSettingsModel(cameraEnabled: true),
+          environment: piEnv,
+        ).connectionMode,
+        CameraConnectionMode.pi,
+      );
+      expect(
+        resolveCameraSidecarConfig(
+          AppSettingsModel(cameraSidecarHost: '172.16.4.128'),
+          environment: piEnv,
+        ).baseUrl,
+        'http://172.16.4.128:8791',
+      );
+      expect(
+        resolveCameraSidecarConfig(
+          AppSettingsModel(cameraSidecarPort: 8791),
+          environment: piEnv,
+        ).connectionMode,
+        CameraConnectionMode.pi,
+      );
+      expect(
+        resolveCameraSidecarConfig(
+          AppSettingsModel(cameraSidecarPath: '/booth'),
+          environment: piEnv,
+        ).connectionMode,
+        CameraConnectionMode.pi,
+      );
+      expect(
+        resolveCameraSidecarConfig(
+          AppSettingsModel(cameraLivePreviewEnabled: false),
+          environment: piEnv,
+        ).livePreviewEnabled,
+        isFalse,
+      );
+    });
+  });
+
+  group('resolveCameraConnectionMode', () {
+    test('uses fromEnvironment when environment arg omitted', () {
+      final mode = resolveCameraConnectionMode(null);
+      expect(mode, CameraSidecarConfig.fromEnvironment().connectionMode);
     });
   });
 }

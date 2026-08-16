@@ -99,8 +99,34 @@ object CanonUsbPermissionManager {
             Log.e(TAG, "UsbManager.openDevice returned null for ${camera.deviceName}")
             return null
         }
+        detachKernelDriverForEdsdk(connection, camera)
         Log.i(TAG, "Opened ${camera.deviceName} fd=${connection.fileDescriptor}")
         return camera to connection
+    }
+
+    /**
+     * Force-claim then release the PTP interface so Android's MTP/PTP driver
+     * is detached. Leave the interface free — EDSDK/libusb must claim it.
+     */
+    private fun detachKernelDriverForEdsdk(
+        connection: UsbDeviceConnection,
+        camera: UsbDevice,
+    ) {
+        for (i in 0 until camera.interfaceCount) {
+            val intf = camera.getInterface(i)
+            if (intf.interfaceClass != USB_CLASS_STILL_IMAGING) continue
+            try {
+                val claimed = connection.claimInterface(intf, true)
+                if (claimed) {
+                    connection.releaseInterface(intf)
+                    Log.i(TAG, "Detached kernel driver on PTP interface $i")
+                } else {
+                    Log.w(TAG, "claimInterface(force) failed on PTP interface $i")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "PTP interface $i prepare: ${e.message}")
+            }
+        }
     }
 
     // ── Device detection ──────────────────────────────────────────────────────

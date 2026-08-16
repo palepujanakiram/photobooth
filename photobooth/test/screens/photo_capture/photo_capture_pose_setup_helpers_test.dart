@@ -67,6 +67,52 @@ void main() {
     );
   });
 
+  test('shouldStartSidecarPreviewAfterUvcMiss when sidecar is configured', () {
+    expect(
+      shouldStartSidecarPreviewAfterUvcMiss(sidecarConfigured: true),
+      isTrue,
+    );
+    expect(
+      shouldStartSidecarPreviewAfterUvcMiss(sidecarConfigured: false),
+      isFalse,
+    );
+  });
+
+  test('shouldSkipUvcProbeForSidecarPose when DSLR sidecar can serve pose', () {
+    expect(
+      shouldSkipUvcProbeForSidecarPose(
+        sidecarConfigured: true,
+        uvcWebcamAttached: false,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldSkipUvcProbeForSidecarPose(
+        sidecarConfigured: true,
+        uvcWebcamAttached: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldSkipUvcProbeForSidecarPose(
+        sidecarConfigured: false,
+        uvcWebcamAttached: false,
+      ),
+      isFalse,
+    );
+  });
+
+  test('shouldWaitHdmiSettleAfterCanonLv only for capture-card pose', () {
+    expect(
+      shouldWaitHdmiSettleAfterCanonLv(sidecarIsPosePreview: true),
+      isFalse,
+    );
+    expect(
+      shouldWaitHdmiSettleAfterCanonLv(sidecarIsPosePreview: false),
+      isTrue,
+    );
+  });
+
   test('shouldKeepPoseStartingForExternalSource only while a source exists', () {
     expect(
       shouldKeepPoseStartingForExternalSource(

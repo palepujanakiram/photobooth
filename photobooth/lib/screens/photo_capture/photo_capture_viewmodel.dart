@@ -434,6 +434,10 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
     final service = _localCameraService;
     if (service == null || !service.shouldShowLivePreview) return false;
+    if (service.recentlyHealthy) {
+      markSidecarPreviewReady();
+      return true;
+    }
     final listening = await service.isListening();
     if (!listening) {
       // Direct EDSDK only — do not poison Pi/LAN config on a transient miss.

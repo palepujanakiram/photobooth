@@ -16,6 +16,7 @@ import android.view.Surface;
 
 import androidx.annotation.NonNull;
 
+import com.serenegiant.usb.DeviceFilter;
 import com.serenegiant.usb.Size;
 import com.serenegiant.usb.USBMonitor;
 import com.serenegiant.usb.UVCCamera;
@@ -148,6 +149,13 @@ import io.flutter.view.TextureRegistry;
         this.deviceEventStreamHandler = deviceEventStreamHandler;
 
         usbMonitor = new USBMonitor(applicationContext, new UvcCameraDeviceMonitorListener(this));
+        // Do not watch Canon PTP / HID dongles — USBMonitor would otherwise
+        // attach to every USB device and steal the DSLR from EDSDK.
+        usbMonitor.setDeviceFilter(List.of(
+                new DeviceFilter(-1, -1, 14, -1, -1, null, null, null),
+                new DeviceFilter(-1, -1, 239, 2, -1, null, null, null),
+                new DeviceFilter(-1, -1, 255, -1, -1, null, null, null)
+        ));
         usbMonitor.register();
     }
 
@@ -168,28 +176,7 @@ import io.flutter.view.TextureRegistry;
      * @param device the USB device
      */
     /* package-private */ void castDeviceAttachedEvent(final UsbDevice device) {
-        Log.v(TAG, "castDeviceAttachedEvent: device=" + device);
-
-        final var eventSink = deviceEventStreamHandler.getEventSink();
-        if (eventSink == null) {
-            Log.w(TAG, "castDeviceAttachedEvent: event sink not found");
-            return;
-        }
-
-        final var event = Map.of(
-                "device", Map.of(
-                        "name", device.getDeviceName(),
-                        "deviceClass", device.getDeviceClass(),
-                        "deviceSubclass", device.getDeviceSubclass(),
-                        "vendorId", device.getVendorId(),
-                        "productId", device.getProductId()
-                ),
-                "type", "attached"
-        );
-
-        mainLooperHandler.post(
-                () -> eventSink.success(event)
-        );
+        castDeviceEvent(device, "attached");
     }
 
     /**
@@ -198,28 +185,7 @@ import io.flutter.view.TextureRegistry;
      * @param device the USB device
      */
     /* package-private */ void castDeviceDetachedEvent(final UsbDevice device) {
-        Log.v(TAG, "castDeviceDetachedEvent: device=" + device);
-
-        final var eventSink = deviceEventStreamHandler.getEventSink();
-        if (eventSink == null) {
-            Log.w(TAG, "castDeviceDetachedEvent: event sink not found");
-            return;
-        }
-
-        final var event = Map.of(
-                "device", Map.of(
-                        "name", device.getDeviceName(),
-                        "deviceClass", device.getDeviceClass(),
-                        "deviceSubclass", device.getDeviceSubclass(),
-                        "vendorId", device.getVendorId(),
-                        "productId", device.getProductId()
-                ),
-                "type", "detached"
-        );
-
-        mainLooperHandler.post(
-                () -> eventSink.success(event)
-        );
+        castDeviceEvent(device, "detached");
     }
 
     /**
@@ -228,28 +194,7 @@ import io.flutter.view.TextureRegistry;
      * @param device the USB device
      */
     /* package-private */ void castDeviceConnectedEvent(final UsbDevice device) {
-        Log.v(TAG, "castDeviceConnectedEvent: device=" + device);
-
-        final var eventSink = deviceEventStreamHandler.getEventSink();
-        if (eventSink == null) {
-            Log.w(TAG, "castDeviceConnectedEvent: event sink not found");
-            return;
-        }
-
-        final var event = Map.of(
-                "device", Map.of(
-                        "name", device.getDeviceName(),
-                        "deviceClass", device.getDeviceClass(),
-                        "deviceSubclass", device.getDeviceSubclass(),
-                        "vendorId", device.getVendorId(),
-                        "productId", device.getProductId()
-                ),
-                "type", "connected"
-        );
-
-        mainLooperHandler.post(
-                () -> eventSink.success(event)
-        );
+        castDeviceEvent(device, "connected");
     }
 
     /**
@@ -258,28 +203,30 @@ import io.flutter.view.TextureRegistry;
      * @param device the USB device
      */
     /* package-private */ void castDeviceDisconnectedEvent(final UsbDevice device) {
-        Log.v(TAG, "castDeviceDisconnectedEvent: device=" + device);
+        castDeviceEvent(device, "disconnected");
+    }
+
+    private void castDeviceEvent(final UsbDevice device, final String type) {
+        Log.v(TAG, "castDeviceEvent: type=" + type + " device=" + device);
+        if (!UvcUsbDeviceFilter.isLikelyUvcCaptureDevice(device)) {
+            Log.d(TAG, "castDeviceEvent: skip non-UVC type=" + type
+                    + " name=" + device.getDeviceName()
+                    + " vid=" + device.getVendorId()
+                    + " pid=" + device.getProductId());
+            return;
+        }
 
         final var eventSink = deviceEventStreamHandler.getEventSink();
         if (eventSink == null) {
-            Log.w(TAG, "castDeviceDisconnectedEvent: event sink not found");
+            Log.w(TAG, "castDeviceEvent: event sink not found type=" + type);
             return;
         }
 
         final var event = Map.of(
-                "device", Map.of(
-                        "name", device.getDeviceName(),
-                        "deviceClass", device.getDeviceClass(),
-                        "deviceSubclass", device.getDeviceSubclass(),
-                        "vendorId", device.getVendorId(),
-                        "productId", device.getProductId()
-                ),
-                "type", "disconnected"
+                "device", UvcUsbDeviceFilter.toDeviceMap(device),
+                "type", type
         );
-
-        mainLooperHandler.post(
-                () -> eventSink.success(event)
-        );
+        mainLooperHandler.post(() -> eventSink.success(event));
     }
 
     /**
@@ -302,7 +249,18 @@ import io.flutter.view.TextureRegistry;
      * @return the list of UVC camera devices
      */
     public List<UsbDevice> getDevices() {
-        return usbMonitor.getDeviceList();
+        final List<UsbDevice> cameras = new ArrayList<>();
+        for (final var device : usbMonitor.getDeviceList()) {
+            if (UvcUsbDeviceFilter.isLikelyUvcCaptureDevice(device)) {
+                cameras.add(device);
+            } else {
+                Log.d(TAG, "getDevices: skip non-UVC name=" + device.getDeviceName()
+                        + " vid=" + device.getVendorId()
+                        + " pid=" + device.getProductId()
+                        + " class=" + device.getDeviceClass());
+            }
+        }
+        return cameras;
     }
 
     /**
@@ -320,6 +278,9 @@ import io.flutter.view.TextureRegistry;
         final var device = findDeviceByName(deviceName);
         if (device == null) {
             throw new IllegalArgumentException("Device not found: " + deviceName);
+        }
+        if (!UvcUsbDeviceFilter.isLikelyUvcCaptureDevice(device)) {
+            throw new IllegalArgumentException("Not a UVC capture device: " + deviceName);
         }
 
         synchronized (pendingDevicePermissionRequestLock) {
@@ -404,6 +365,9 @@ import io.flutter.view.TextureRegistry;
         final var device = findDeviceByName(deviceName);
         if (device == null) {
             throw new IllegalArgumentException("Device not found: " + deviceName);
+        }
+        if (!UvcUsbDeviceFilter.isLikelyUvcCaptureDevice(device)) {
+            throw new IllegalArgumentException("Not a UVC capture device: " + deviceName);
         }
 
         final var binaryMessenger = this.binaryMessenger.get();

@@ -12,6 +12,8 @@ import android.os.Handler
 import android.os.Looper
 import com.srisarani.fotozenai.dnp.DnpImageProcessor
 import com.srisarani.fotozenai.dnp.DnpPrepareBitmapOptions
+import com.srisarani.fotozenai.dnp.DnpPrintImage
+import com.srisarani.fotozenai.dnp.DnpPrintJob
 import com.srisarani.fotozenai.dnp.DnpPrintProgressEmitter
 import com.srisarani.fotozenai.dnp.DnpPrintSize
 import com.srisarani.fotozenai.dnp.DnpPrinterException
@@ -263,12 +265,11 @@ object DnpUsbMethodChannel {
                 bitmap.recycle()
 
                 usbPrinter.print(
-                    pixels,
-                    w,
-                    h,
-                    size,
-                    copies,
-                    matte = false,
+                    DnpPrintJob(
+                        image = DnpPrintImage(pixels, w, h),
+                        size = size,
+                        copies = copies,
+                    ),
                     onProgress = printProgressReporter,
                 )
                 mainHandler.post {

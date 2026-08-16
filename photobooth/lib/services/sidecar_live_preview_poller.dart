@@ -17,7 +17,7 @@ bool isSidecarPreviewWarmingError(Object error) {
 class SidecarLivePreviewPoller {
   SidecarLivePreviewPoller({
     required LocalCameraService service,
-    this.interval = const Duration(milliseconds: 350),
+    this.interval = const Duration(milliseconds: 120),
     void Function(Uint8List bytes)? onFrame,
     void Function(Object error)? onError,
   })  : _service = service,

@@ -357,6 +357,35 @@ void main() {
       expect(snap.dslrSidecar.transport, KioskDeviceTransport.usb);
     });
 
+    test('DSLR direct USB stays configured when GSM cameraEnabled is false',
+        () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async => false,
+        querySidecarNativeState: () async => 'running',
+        queryCanonCameraPresent: () async => true,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: false,
+          cameraConnectionMode: 'direct',
+        ),
+      );
+      expect(snap.dslrSidecar.configured, isTrue);
+      expect(snap.dslrSidecar.connected, isTrue);
+      expect(snap.dslrSidecar.transport, KioskDeviceTransport.usb);
+    });
+
     test('DSLR pi mode uses LAN transport and HTTP health', () async {
       CameraSidecarConfig? seen;
       final service = KioskDeviceStatusService(
@@ -390,6 +419,36 @@ void main() {
       expect(seen?.connectionMode, CameraConnectionMode.pi);
       expect(snap.dslrSidecar.configured, isTrue);
       expect(snap.dslrSidecar.connected, isTrue);
+      expect(snap.dslrSidecar.transport, KioskDeviceTransport.lan);
+    });
+
+    test('DSLR pi mode is not configured when cameraEnabled is false', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async => true,
+        querySidecarNativeState: () async => 'running',
+        queryCanonCameraPresent: () async => true,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: false,
+          cameraConnectionMode: 'pi',
+          cameraSidecarHost: '172.16.4.128',
+          cameraSidecarPort: 8791,
+        ),
+      );
+      expect(snap.dslrSidecar.configured, isFalse);
+      expect(snap.dslrSidecar.connected, isFalse);
       expect(snap.dslrSidecar.transport, KioskDeviceTransport.lan);
     });
 

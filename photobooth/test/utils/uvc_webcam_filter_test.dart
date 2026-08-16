@@ -83,6 +83,43 @@ void main() {
     deviceSubclass: 0,
   );
 
+  /// YJX-CHIP wireless dongle as Android actually reports it: class 0
+  /// (per-interface) with only HID interfaces — not device class 3.
+  const hidReceiverPerInterface = UvcCameraDevice(
+    name: '/dev/bus/usb/001/003',
+    vendorId: 43173,
+    productId: 8789,
+    deviceClass: 0,
+    deviceSubclass: 0,
+    interfaceClasses: [
+      kUsbDeviceClassHid,
+      kUsbDeviceClassHid,
+      kUsbDeviceClassHid,
+    ],
+  );
+
+  const compositeWebcamWithVideoIfaces = UvcCameraDevice(
+    name: 'Generic UVC',
+    vendorId: 0x046d,
+    productId: 0x0990,
+    deviceClass: 0,
+    deviceSubclass: 0,
+    interfaceClasses: [
+      kUsbDeviceClassVideo,
+      kUsbDeviceClassVideo,
+      kUsbDeviceClassHid,
+    ],
+  );
+
+  const class0HdmiCapture = UvcCameraDevice(
+    name: 'USB Video',
+    vendorId: 0x534d,
+    productId: 0x2109,
+    deviceClass: 0,
+    deviceSubclass: 0,
+    interfaceClasses: [kUsbDeviceClassVendorSpec],
+  );
+
   test('isUvcWebcamDevice excludes DNP printer on USB', () {
     expect(isUvcWebcamDevice(dnpPrinter), isFalse);
   });
@@ -91,6 +128,64 @@ void main() {
     expect(isUvcWebcamDevice(canonPtpDslr), isFalse);
     expect(isUvcWebcamDevice(appleNcmGadget), isFalse);
     expect(isUvcWebcamDevice(hidReceiver), isFalse);
+    expect(isUvcWebcamDevice(hidReceiverPerInterface), isFalse);
+  });
+
+  test('isUvcWebcamDevice uses interface classes for per-interface devices', () {
+    expect(isUvcWebcamDevice(compositeWebcamWithVideoIfaces), isTrue);
+    expect(isUvcWebcamDevice(class0HdmiCapture), isTrue);
+    expect(isUvcWebcamDevice(compositeWebcam), isTrue);
+    expect(
+      isUvcWebcamDevice(
+        const UvcCameraDevice(
+          name: 'IAD webcam',
+          vendorId: 0x046d,
+          productId: 0x0825,
+          deviceClass: 0,
+          deviceSubclass: 0,
+          interfaceClasses: [kUsbDeviceClassMisc, kUsbDeviceClassVideo],
+        ),
+      ),
+      isTrue,
+    );
+  });
+
+  test('isUvcWebcamDevice rejects HID-only maps from native', () {
+    final device = UvcCameraDevice.fromMap({
+      'name': '/dev/bus/usb/001/003',
+      'deviceClass': 0,
+      'deviceSubclass': 0,
+      'vendorId': 43173,
+      'productId': 8789,
+      'interfaceClasses': [3, 3, 3],
+    });
+    expect(isUvcWebcamDevice(device), isFalse);
+    expect(device.toMap()['interfaceClasses'], [3, 3, 3]);
+  });
+
+  test('fromMap keeps video interfaces and ignores invalid class entries', () {
+    final device = UvcCameraDevice.fromMap({
+      'name': 'cam',
+      'deviceClass': 0,
+      'deviceSubclass': 0,
+      'vendorId': 1,
+      'productId': 2,
+      'interfaceClasses': [14.0, 'skip', 14],
+    });
+    expect(isUvcWebcamDevice(device), isTrue);
+    expect(device.interfaceClasses, [14, 14]);
+  });
+
+  test('class-0 device without interfaceClasses still counts as webcam', () {
+    final device = UvcCameraDevice.fromMap({
+      'name': 'cam',
+      'deviceClass': 0,
+      'deviceSubclass': 0,
+      'vendorId': 1,
+      'productId': 2,
+    });
+    expect(isUvcWebcamDevice(device), isTrue);
+    expect(device.interfaceClasses, isEmpty);
   });
 
   test('isUvcWebcamDevice accepts UVC IAD and Video class devices', () {
@@ -172,6 +267,13 @@ void main() {
   test('hasUvcWebcamDevices false when only DNP attached', () {
     expect(
       hasUvcWebcamDevices({'dnp': dnpPrinter}),
+      isFalse,
+    );
+  });
+
+  test('hasUvcWebcamDevices false when only HID receiver attached', () {
+    expect(
+      hasUvcWebcamDevices({'hid': hidReceiverPerInterface}),
       isFalse,
     );
   });

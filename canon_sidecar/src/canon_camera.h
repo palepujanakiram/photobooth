@@ -3,6 +3,7 @@
 #include "EDSDK.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -12,6 +13,10 @@
 #include <thread>
 #include <type_traits>
 #include <vector>
+
+inline void canonSleepMs(int ms) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+}
 
 // Owns the EDSDK session and exposes blocking camera operations.
 // All EDSDK calls are serialised on a private thread (_edsdkThread).
@@ -72,12 +77,18 @@ private:
 
     // ── EDSDK operations (run on _edsdkThread only) ──────────────────────────
     bool                 _initImpl();
+    bool                 _ensureSdkInitialised();
+    bool                 _openFirstCamera();
     void                 _shutdownImpl();
     bool                 _startLiveViewImpl();
     bool                 _stopLiveViewImpl();
     std::vector<uint8_t> _getPreviewJpegImpl();
     void                 _prepareStillImpl();
     std::vector<uint8_t> _captureImpl(int timeoutSeconds);
+    bool                 _pressShutter();
+    std::vector<uint8_t> _waitForJpeg(int timeoutSeconds);
+    void                 _drainTrailingTransfers();
+    void                 _restoreLiveViewAfterStill();
 
     bool _setProp(EdsPropertyID id, EdsUInt32 value);
     std::vector<uint8_t> _streamToBytes(EdsStreamRef stream);
@@ -85,6 +96,8 @@ private:
     void _preferHostJpeg();
     void _cancelPendingTransfers();
     std::vector<uint8_t> _downloadJpegOrCancel(EdsDirectoryItemRef item);
+    std::vector<uint8_t> _downloadItemBytes(
+        EdsDirectoryItemRef item, EdsUInt64 size);
 
     // ── EDSDK callbacks (static, called from EdsGetEvent on _edsdkThread) ───
     static EdsError EDSCALLBACK _onObject(
