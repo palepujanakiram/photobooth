@@ -10,18 +10,34 @@ internal object CanonSidecarSpawner {
         System.loadLibrary("canon_sidecar_spawn")
     }
 
-    data class Spawned(val pid: Int, val stdoutFd: Int)
+    data class Spawned(
+        val pid: Int,
+        val stdoutFd: Int,
+    )
 
-    fun spawn(
-        interpreter: String,
-        args: Array<String>,
-        cwd: String,
-        preload: String,
-        usbFd: Int,
-        usbPath: String?,
-    ): Spawned {
-        val result = nativeSpawn(interpreter, args, cwd, preload, usbFd, usbPath)
-            ?: error("nativeSpawn returned null")
+    data class UsbInherit(
+        val preload: String,
+        val fd: Int,
+        val path: String?,
+    )
+
+    data class SpawnRequest(
+        val interpreter: String,
+        val args: Array<String>,
+        val cwd: String,
+        val usb: UsbInherit,
+    )
+
+    fun spawn(request: SpawnRequest): Spawned {
+        val result =
+            nativeSpawn(
+                request.interpreter,
+                request.args,
+                request.cwd,
+                request.usb.preload,
+                request.usb.fd,
+                request.usb.path,
+            ) ?: error("nativeSpawn returned null")
         if (result.size < 2 || result[0] <= 0) {
             error("nativeSpawn failed")
         }

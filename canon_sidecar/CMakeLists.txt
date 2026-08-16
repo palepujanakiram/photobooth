@@ -28,6 +28,8 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 add_executable(canon-sidecar
     ${SRC_DIR}/main.cpp
     ${SRC_DIR}/canon_camera.cpp
+    ${SRC_DIR}/canon_camera_live.cpp
+    ${SRC_DIR}/canon_camera_capture.cpp
 )
 
 set_target_properties(canon-sidecar PROPERTIES

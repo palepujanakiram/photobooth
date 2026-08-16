@@ -12,8 +12,6 @@ using namespace std::chrono_literals;
 static CanonCamera g_camera;
 static std::atomic<bool> g_shuttingDown{false};
 
-// Retry camera init in background so /health reports the real state
-// without blocking the HTTP server from starting.
 static void cameraInitLoop() {
     while (!g_shuttingDown.load()) {
         if (!g_camera.isConnected()) {
@@ -23,8 +21,6 @@ static void cameraInitLoop() {
         std::this_thread::sleep_for(5s);
     }
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 static void jsonOk(httplib::Response& res, const char* body) {
     res.set_content(body, "application/json");
@@ -44,71 +40,87 @@ static void err503(httplib::Response& res, const char* msg) {
         "application/json");
 }
 
-// ── Entry point ───────────────────────────────────────────────────────────────
+static bool requireCamera(httplib::Response& res) {
+    if (g_camera.isConnected()) {
+        return true;
+    }
+    err503(res, "camera not connected");
+    return false;
+}
+
+static void handleHealth(const httplib::Request&, httplib::Response& res) {
+    jsonOk(
+        res,
+        g_camera.isConnected() ? R"({"ok":true,"connected":true})"
+                               : R"({"ok":false,"connected":false})");
+}
+
+static void handleLiveView(const httplib::Request&, httplib::Response& res) {
+    if (!requireCamera(res)) {
+        return;
+    }
+    jsonOk(
+        res,
+        g_camera.startLiveView()
+            ? R"({"enabled":true,"woke":true,"holding":true})"
+            : R"({"enabled":false,"woke":false,"holding":false})");
+}
+
+static void handlePreview(const httplib::Request&, httplib::Response& res) {
+    if (!requireCamera(res)) {
+        return;
+    }
+    auto jpeg = g_camera.getPreviewJpeg();
+    if (jpeg.empty()) {
+        err503(res, "no frame");
+        return;
+    }
+    jpegOk(res, jpeg);
+}
+
+static void handlePrepareStill(const httplib::Request&, httplib::Response& res) {
+    if (!requireCamera(res)) {
+        return;
+    }
+    g_camera.prepareStill();
+    res.status = 200;
+    res.set_content("", "text/plain");
+}
+
+static void handleCapture(const httplib::Request&, httplib::Response& res) {
+    if (!requireCamera(res)) {
+        return;
+    }
+    auto jpeg = g_camera.capture(30);
+    if (jpeg.empty()) {
+        err503(res, "capture failed");
+        return;
+    }
+    jpegOk(res, jpeg);
+}
+
+static void handleClientLog(const httplib::Request&, httplib::Response& res) {
+    res.status = 200;
+    res.set_content("", "text/plain");
+}
+
+static void registerRoutes(httplib::Server& svr) {
+    svr.Get("/health", handleHealth);
+    svr.Post("/camera/live-view", handleLiveView);
+    svr.Post("/camera/preview", handlePreview);
+    svr.Get("/camera/preview", handlePreview);
+    svr.Post("/camera/prepare-still", handlePrepareStill);
+    svr.Post("/camera/capture", handleCapture);
+    svr.Post("/camera/client-log", handleClientLog);
+}
 
 int main() {
     fprintf(stderr, "[sidecar] Canon EDSDK sidecar v1.0 starting\n");
 
-    // Start the HTTP server before camera init so health checks can start.
     httplib::Server svr;
     svr.new_task_queue = [] { return new httplib::ThreadPool(4); };
+    registerRoutes(svr);
 
-    // GET /health
-    svr.Get("/health", [](const httplib::Request&, httplib::Response& res) {
-        bool ok = g_camera.isConnected();
-        jsonOk(res,
-            ok ? R"({"ok":true,"connected":true})"
-               : R"({"ok":false,"connected":false})");
-    });
-
-    // POST /camera/live-view
-    svr.Post("/camera/live-view",
-        [](const httplib::Request&, httplib::Response& res) {
-        if (!g_camera.isConnected()) {
-            err503(res, "camera not connected");
-            return;
-        }
-        bool ok = g_camera.startLiveView();
-        jsonOk(res,
-            ok ? R"({"enabled":true,"woke":true,"holding":true})"
-               : R"({"enabled":false,"woke":false,"holding":false})");
-    });
-
-    auto handlePreview = [](const httplib::Request&, httplib::Response& res) {
-        if (!g_camera.isConnected()) { err503(res, "camera not connected"); return; }
-        auto jpeg = g_camera.getPreviewJpeg();
-        if (jpeg.empty()) { err503(res, "no frame"); return; }
-        jpegOk(res, jpeg);
-    };
-    svr.Post("/camera/preview", handlePreview);
-    svr.Get("/camera/preview", handlePreview);
-
-    // POST /camera/prepare-still
-    svr.Post("/camera/prepare-still",
-        [](const httplib::Request&, httplib::Response& res) {
-        if (!g_camera.isConnected()) { err503(res, "camera not connected"); return; }
-        g_camera.prepareStill();
-        res.status = 200;
-        res.set_content("", "text/plain");
-    });
-
-    // POST /camera/capture?download=1
-    svr.Post("/camera/capture",
-        [](const httplib::Request&, httplib::Response& res) {
-        if (!g_camera.isConnected()) { err503(res, "camera not connected"); return; }
-        auto jpeg = g_camera.capture(30);
-        if (jpeg.empty()) { err503(res, "capture failed"); return; }
-        jpegOk(res, jpeg);
-    });
-
-    // POST /camera/client-log  — best-effort breadcrumb, no action needed
-    svr.Post("/camera/client-log",
-        [](const httplib::Request&, httplib::Response& res) {
-        res.status = 200;
-        res.set_content("", "text/plain");
-    });
-
-    // Background thread retries camera init every 5 s until connected.
     std::thread initThread(cameraInitLoop);
 
     const int port = 8791;

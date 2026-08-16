@@ -131,12 +131,17 @@ internal class CanonSidecarRuntime(
         usbPath: String?,
     ): CanonSidecarSpawner.Spawned =
         CanonSidecarSpawner.spawn(
-            interpreter = plan.interpreter.absolutePath,
-            args = spawnArgs(plan, preload),
-            cwd = plan.glibcDir.absolutePath,
-            preload = preload,
-            usbFd = usbFd,
-            usbPath = usbPath,
+            CanonSidecarSpawner.SpawnRequest(
+                interpreter = plan.interpreter.absolutePath,
+                args = spawnArgs(plan, preload),
+                cwd = plan.glibcDir.absolutePath,
+                usb =
+                    CanonSidecarSpawner.UsbInherit(
+                        preload = preload,
+                        fd = usbFd,
+                        path = usbPath,
+                    ),
+            ),
         )
 
     private fun spawnArgs(
