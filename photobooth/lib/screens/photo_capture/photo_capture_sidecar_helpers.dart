@@ -9,6 +9,7 @@ import '../../services/local_camera_service.dart';
 import '../../utils/capture_flow_log.dart';
 import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
+import '../../utils/sidecar_error_parse.dart';
 
 /// When true, sidecar helpers take the web (in-memory XFile) branches.
 @visibleForTesting
@@ -86,13 +87,21 @@ bool shouldTreatSidecarNativeStateAsDead(String state) {
 
 /// Probes native sidecar lifecycle; marks the Dart client unused when dead.
 ///
-/// Returns false when pose must open HDMI/UVC instead of polling localhost.
+/// For [CameraConnectionMode.pi] (remote LAN host), native on-device EDSDK
+/// state is irrelevant — never call [LocalCameraService.markRuntimeUnavailable]
+/// from crash/`unsupported_abi` (that would poison Pi stills/preview).
+///
+/// Returns false when pose must open HDMI/UVC instead of polling the sidecar.
 Future<bool> sidecarNativeProcessCanServeHttp(
   LocalCameraService? service, {
   required Future<String> Function() queryNativeState,
   Duration nativeStateTimeout = const Duration(seconds: 1),
 }) async {
   if (service == null || !service.isConfigured) return false;
+  // Pi/LAN: only the remote HTTP port matters; ignore native EDSDK process.
+  if (service.isPiConnection) {
+    return service.isListening();
+  }
   String state;
   try {
     state = await queryNativeState().timeout(
@@ -139,12 +148,15 @@ Future<({bool ok, bool holding})> ensureCanonLiveViewForHdmiPose(
   }
   const attempts = 2;
   for (var i = 0; i < attempts; i++) {
+    final corrId = service.newCorrId();
+    final t0 = DateTime.now();
     try {
-      final result = await service.ensureLiveView();
+      final result = await service.ensureLiveView(corrId: corrId);
+      final ms = DateTime.now().difference(t0).inMilliseconds;
       AppLogger.info(
         '[HDMI_POSE] Canon LV ensure attempt ${i + 1}/$attempts: '
         'enabled=${result.enabled} woke=${result.woke} '
-        'holding=${result.holding}',
+        'holding=${result.holding} ms=$ms corr=$corrId',
       );
       unawaited(
         service.postClientEvent('lv_ensure', {
@@ -152,19 +164,26 @@ Future<({bool ok, bool holding})> ensureCanonLiveViewForHdmiPose(
           'enabled': result.enabled,
           'woke': result.woke,
           'holding': result.holding,
+          'ms': ms,
+          'corrId': corrId,
         }),
       );
       if (result.enabled || result.holding) {
         return (ok: true, holding: result.holding || result.enabled);
       }
     } catch (e) {
+      final ms = DateTime.now().difference(t0).inMilliseconds;
+      final info = parseSidecarError(e);
       AppLogger.warning(
-        '[HDMI_POSE] Canon LV ensure attempt ${i + 1}/$attempts failed: $e',
+        '[HDMI_POSE] Canon LV ensure attempt ${i + 1}/$attempts failed '
+        'ms=$ms code=${info.code} eds=${info.edsErrorHex}: $e',
       );
       unawaited(
         service.postClientEvent('lv_ensure_error', {
           'attempt': i + 1,
-          'error': '$e',
+          'ms': ms,
+          'corrId': corrId,
+          ...info.toDetail(),
         }),
       );
     }
@@ -196,19 +215,28 @@ Future<XFile?> tryCaptureFromSidecar(
   bool preferStripPrintQuality = false,
   bool preferLivePreviewFrame = false,
   void Function()? onUsedLivePreviewFrame,
+  String? corrId,
 }) async {
   if (service == null || !service.isConfigured) {
     return null;
   }
+  final id = corrId ?? service.newCorrId();
   try {
-    // Do not hard-skip on a flaky 2s health probe — Android TV often hits
-    // SocketException while the Pi is fine; always attempt the still.
-    final healthy = await service.isHealthy();
+    // Skip a full health RTT when the Pi recently succeeded (TV LAN flakiness).
+    final healthy = service.recentlyHealthy
+        ? true
+        : await service.isHealthy(corrId: id);
     if (!healthy) {
       AppLogger.warning(
-        '[HDMI_POSE] Sidecar health soft-fail; attempting capture anyway',
+        '[HDMI_POSE] Sidecar health soft-fail; attempting capture anyway '
+        'corr=$id host=${service.baseUrlLabel}',
       );
-      unawaited(service.postClientEvent('capture_health_soft_fail'));
+      unawaited(
+        service.postClientEvent('capture_health_soft_fail', {
+          'corrId': id,
+          'host': service.baseUrlLabel,
+        }),
+      );
     }
     final maxLongEdge = preferStripPrintQuality
         ? kStripCapturedPhotoMaxDimension
@@ -218,7 +246,8 @@ Future<XFile?> tryCaptureFromSidecar(
         : kSidecarCaptureJpegQuality;
     AppLogger.info(
       '[HDMI_POSE] Sidecar still begin resumeLV=$resumeLiveView '
-      'stripQ=$preferStripPrintQuality maxEdge=$maxLongEdge q=$jpegQuality',
+      'stripQ=$preferStripPrintQuality maxEdge=$maxLongEdge q=$jpegQuality '
+      'corr=$id host=${service.baseUrlLabel}',
     );
     CaptureFlowLog.event(
       'capture.sidecar_begin',
@@ -228,6 +257,7 @@ Future<XFile?> tryCaptureFromSidecar(
         'max_edge': maxLongEdge,
         'q': jpegQuality,
         'healthy': healthy,
+        'corr_id': id,
       },
     );
     unawaited(
@@ -237,6 +267,8 @@ Future<XFile?> tryCaptureFromSidecar(
         'preferStripPrintQuality': preferStripPrintQuality,
         'maxLongEdge': maxLongEdge,
         'jpegQuality': jpegQuality,
+        'corrId': id,
+        'host': service.baseUrlLabel,
       }),
     );
     Uint8List? liveJpeg;
@@ -282,11 +314,15 @@ Future<XFile?> tryCaptureFromSidecar(
       resumeLiveView: resumeLiveView,
       maxLongEdge: maxLongEdge,
       jpegQuality: jpegQuality,
+      corrId: id,
     );
     if (bytes.isEmpty) {
       CaptureFlowLog.event(
         'capture.sidecar_empty',
         level: LogLevel.warning,
+      );
+      unawaited(
+        service.postClientEvent('capture_empty', {'corrId': id}),
       );
       return null;
     }
@@ -294,33 +330,52 @@ Future<XFile?> tryCaptureFromSidecar(
       stillJpeg: bytes,
       liveJpeg: liveJpeg,
     );
+    service.markHealthy();
     final name = 'fz200d_${DateTime.now().millisecondsSinceEpoch}.jpg';
     final ms = DateTime.now().difference(t0).inMilliseconds;
     AppLogger.info(
       '[HDMI_POSE] Sidecar still ok ($name, ${bytes.length} bytes, '
-      'resumeLV=$resumeLiveView, ${ms}ms)',
+      'resumeLV=$resumeLiveView, ${ms}ms) corr=$id',
     );
     CaptureFlowLog.event(
       'capture.sidecar_ok',
-      fields: {'bytes': bytes.length, 'ms': ms, 'resume_lv': resumeLiveView},
+      fields: {
+        'bytes': bytes.length,
+        'ms': ms,
+        'resume_lv': resumeLiveView,
+        'corr_id': id,
+      },
     );
     unawaited(
       service.postClientEvent('capture_ok', {
         'bytes': bytes.length,
         'resumeLiveView': resumeLiveView,
         'ms': ms,
+        'corrId': id,
       }),
     );
     return _xFileFromSidecarJpegBytes(bytes, name);
   } catch (e) {
-    AppLogger.warning('[HDMI_POSE] Camera sidecar capture failed; falling back: $e');
+    final info = parseSidecarError(e);
+    AppLogger.warning(
+      '[HDMI_POSE] Camera sidecar capture failed; falling back '
+      'code=${info.code} eds=${info.edsErrorHex} corr=$id: $e',
+    );
     CaptureFlowLog.event(
       'capture.sidecar_fail',
-      fields: {'error': '$e'},
+      fields: {
+        'error': '$e',
+        'code': info.code,
+        'eds_error': info.edsError,
+        'corr_id': id,
+      },
       level: LogLevel.warning,
     );
     unawaited(
-      service.postClientEvent('capture_error', {'error': '$e'}),
+      service.postClientEvent('capture_error', {
+        'corrId': id,
+        ...info.toDetail(),
+      }),
     );
     return null;
   }

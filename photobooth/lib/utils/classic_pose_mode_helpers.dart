@@ -10,6 +10,6 @@ CaptureSessionKind captureSessionKindForClassic(ClassicShotMode mode) {
 /// Subtitle under POSE for the given Classic mode.
 String classicPoseSubtitle(ClassicShotMode mode) {
   return mode.isSingle6x4
-      ? AppStrings.flashbackSingle6x4Title
-      : AppStrings.flashbackShotProgress(1, mode.shotCount);
+      ? AppStrings.flashbackCaptureSubtitleSingle
+      : AppStrings.flashbackCaptureSubtitle;
 }

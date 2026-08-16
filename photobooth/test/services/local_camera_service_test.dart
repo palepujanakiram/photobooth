@@ -482,9 +482,12 @@ void main() {
       await service.postClientEvent('pose_ready', {'ready': true});
       expect(seen?.url.path, '/camera/client-log');
       expect(seen?.method, 'POST');
+      expect(seen?.headers['X-Fotozen-Corr-Id'], isNotEmpty);
       final body = jsonDecode(seen!.body) as Map<String, dynamic>;
       expect(body['type'], 'pose_ready');
-      expect(body['detail'], {'ready': true});
+      final detail = body['detail'] as Map<String, dynamic>;
+      expect(detail['ready'], isTrue);
+      expect(detail['corrId'], isNotEmpty);
       service.dispose();
     });
 

@@ -111,14 +111,23 @@ class AppConstants {
   static const Duration kThemeCarouselAutoScrollPauseDuration =
       Duration(seconds: 8);
 
-  /// Capture / preview card: max width as a fraction of screen width (landscape aligns ~theme carousel hero ~0.42–0.44).
-  static const double kCapturePreviewCardMaxWidthFractionLandscape = 0.44;
+  /// Capture / preview card: max width as a fraction of screen width (landscape).
+  /// Applied on phones, tablets, and TVs so large kiosks keep Pad-like side margins.
+  static const double kCapturePreviewCardMaxWidthFractionLandscape = 0.82;
 
   /// Capture / preview card: max width in portrait (leave side margins).
   static const double kCapturePreviewCardMaxWidthFractionPortrait = 0.92;
 
-  /// Capture / preview card: max height as fraction of screen height (landscape kiosks — avoid a full-height tower).
-  static const double kCapturePreviewCardMaxHeightFractionLandscape = 0.50;
+  /// Capture / preview card: max height as fraction of screen height (landscape).
+  static const double kCapturePreviewCardMaxHeightFractionLandscape = 0.58;
+
+  /// Absolute landscape card width cap (logical px). Keeps 32" / 4K kiosks at the
+  /// same FotoZen POSE card scale as ~11" tablets instead of filling the panel.
+  static const double kCapturePreviewCardMaxWidthLandscape = 1100;
+
+  /// Absolute landscape card height cap (logical px); pairs with
+  /// [kCapturePreviewCardMaxWidthLandscape] (~16:9).
+  static const double kCapturePreviewCardMaxHeightLandscape = 620;
 
   /// Portrait tablets/kiosks: taller slot so landscape HDMI/camera frames are not
   /// squeezed into a short strip (heads cropped when the feed used cover-fit).
@@ -257,34 +266,41 @@ class AppConstants {
   // Camera capture countdown (in seconds) — AI / single-shot POSE.
   static const int kCaptureCountdownSeconds = 5;
 
-  /// FotoFlashback Classic 4-shot booth: pose window for shot 1.
-  static const int kFlashbackCaptureCountdownSeconds = 6;
+  /// Classic 1-shot and 4-shot pose countdown before each shutter.
+  static const int kFlashbackCaptureCountdownSeconds = 10;
 
-  /// Classic 4-shot shots 2–4: shorter pose window (shot 1 keeps 6s).
-  static const int kFlashbackFollowOnCountdownSeconds = 3;
+  /// Classic 4-shot shots 2–4 use the same pose window as shot 1.
+  static const int kFlashbackFollowOnCountdownSeconds = 10;
 
-  /// HDMI + Pi gphoto2 only: begin movie-LV teardown when the countdown
-  /// reaches this second so the shutter can fire at zero (~2–3s prep).
+  /// Classic + Pi DSLR: begin movie-LV teardown when the countdown reaches this
+  /// second so the real shutter can fire as the timer hits zero (~3–4s prep).
   /// Canon USB EVF pose skips this — stopping LV here freezes the preview.
   static const int kFlashbackSidecarStillPrepareAtSecond = 4;
 
-  /// Classic 4-shot shots 2–4: start prepareStill when the countdown begins
-  /// (pass [countdownSeconds] into [flashbackSidecarStillPrepareAtSecond]).
-  /// Kept as documentation of the intent; the helper uses the live countdown.
-  static const int kFlashbackFollowOnStillPrepareAtSecond = 3;
+  /// Classic follow-on shots also prepare mid-countdown (same as shot 1).
+  static const int kFlashbackFollowOnStillPrepareAtSecond = 4;
 
   /// Max wait for Pi [prepareStill] before firing the shutter anyway.
   /// Capture will finish LV exit on the USB queue if prepare is still running.
   static const Duration kFlashbackSidecarStillPrepareWait =
       Duration(seconds: 3);
 
-  /// Brief hold on the just-taken Classic shot before auto-continuing.
-  /// Tap Retake during this window (or Retake last on the next countdown).
-  static const Duration kFlashbackShotReviewDuration = Duration(seconds: 2);
+  /// Classic 4-shot: time on the just-taken still for guests to rearrange
+  /// before the next 10s pose countdown (mid-strip only).
+  static const Duration kFlashbackBetweenShotRearrangeDuration =
+      Duration(seconds: 8);
 
-  /// Classic 4-shot reviews after shot 1: shorter hold before the next pose.
+  /// Alias for strip review hold between poses (same as rearrange window).
+  static const Duration kFlashbackShotReviewDuration =
+      kFlashbackBetweenShotRearrangeDuration;
+
+  /// Classic 4-shot reviews after shot 1 — same rearrange window.
   static const Duration kFlashbackFollowOnShotReviewDuration =
-      Duration(milliseconds: 1200);
+      kFlashbackBetweenShotRearrangeDuration;
+
+  /// Brief hold on the final Classic still before looks (not a rearrange).
+  static const Duration kFlashbackLastShotReviewDuration =
+      Duration(seconds: 2);
 
   /// If HDMI still-mask is armed but shutter never starts, recover quickly
   /// instead of waiting for the long capture watchdog (~35s).

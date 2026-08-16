@@ -196,6 +196,27 @@ void main() {
       maxed.dispose();
     });
 
+    test('Pi/LAN ignores native crash — does not poison remote config', () async {
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://192.168.1.50:8791',
+          livePreviewEnabled: true,
+          connectionMode: CameraConnectionMode.pi,
+        ),
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          service,
+          queryNativeState: () async => 'crashed',
+        ),
+        isTrue,
+      );
+      expect(service.isConfigured, isTrue);
+      service.dispose();
+    });
+
     test('query errors keep sidecar only when HTTP is listening', () async {
       final up = configuredService();
       expect(
@@ -814,13 +835,14 @@ class _EmptyBytesCameraService extends LocalCameraService {
         );
 
   @override
-  Future<bool> isHealthy() async => true;
+  Future<bool> isHealthy({String? corrId}) async => true;
 
   @override
   Future<Uint8List> capture({
     int maxLongEdge = kSidecarCaptureMaxLongEdge,
     int jpegQuality = kSidecarCaptureJpegQuality,
     bool resumeLiveView = true,
+    String? corrId,
   }) async {
     return Uint8List(0);
   }

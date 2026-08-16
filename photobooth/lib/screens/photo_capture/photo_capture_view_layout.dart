@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../../utils/constants.dart';
 
+/// Max width for Retake / Take shot (and related) action columns.
+const double kCaptureActionsMaxWidth = 360;
+
 /// Max width/height fractions for the capture preview card (portrait vs landscape).
 (double widthFrac, double heightFrac) capturePreviewCardSizeFractions({
   required bool isLandscape,
@@ -21,6 +24,29 @@ import '../../utils/constants.dart';
     heightFrac = AppConstants.kCapturePreviewCardMaxHeightFractionPortrait;
   }
   return (widthFrac, heightFrac);
+}
+
+/// Max width/height for the POSE preview card inside [constraints].
+///
+/// Uses screen fractions on every form factor, then absolute landscape caps so
+/// 32" / TV kiosks match the tablet FotoZen POSE card scale.
+(double maxW, double maxH) capturePreviewCardMaxBounds({
+  required Size media,
+  required BoxConstraints constraints,
+  required bool isLandscape,
+  required bool isPhonePortrait,
+}) {
+  final (widthFrac, heightFrac) = capturePreviewCardSizeFractions(
+    isLandscape: isLandscape,
+    isPhonePortrait: isPhonePortrait,
+  );
+  var maxW = math.min(constraints.maxWidth, media.width * widthFrac);
+  var maxH = math.min(constraints.maxHeight, media.height * heightFrac);
+  if (isLandscape) {
+    maxW = math.min(maxW, AppConstants.kCapturePreviewCardMaxWidthLandscape);
+    maxH = math.min(maxH, AppConstants.kCapturePreviewCardMaxHeightLandscape);
+  }
+  return (maxW, maxH);
 }
 
 /// Computes preview card width/height inside [constraints] for [aspect].

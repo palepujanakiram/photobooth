@@ -54,7 +54,7 @@ void main() {
   });
 
   group('classicOverlayScrubDuringCaptureEnabled', () {
-    test('stays OFF on Android TV; phones honor admin when gate is on', () {
+    test('stays OFF on capture for all devices (look screen scrubs)', () {
       expect(
         classicOverlayScrubDuringCaptureEnabled(
           enableOsdScrub: true,
@@ -67,7 +67,7 @@ void main() {
           enableOsdScrub: true,
           deviceType: AppDeviceType.androidPhone,
         ),
-        isTrue,
+        isFalse,
       );
       expect(
         classicOverlayScrubDuringCaptureEnabled(

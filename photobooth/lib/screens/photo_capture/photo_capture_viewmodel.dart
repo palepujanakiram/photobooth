@@ -92,6 +92,9 @@ class CaptureViewModel extends ChangeNotifier {
   /// FotoFlashback multi-shot: normalize stills at print-oriented JPEG quality.
   bool preferStripPrintQuality = false;
 
+  /// When false, Pi skips EVF re-arm after still (Classic 1-shot → looks).
+  bool resumeLiveViewAfterSidecarStill = true;
+
   int? _normalizeJpegQualityForCapture({required bool isUvc}) {
     return captureNormalizeJpegQuality(
       isUvc: isUvc,
@@ -433,7 +436,10 @@ class CaptureViewModel extends ChangeNotifier {
     if (service == null || !service.shouldShowLivePreview) return false;
     final listening = await service.isListening();
     if (!listening) {
-      service.markRuntimeUnavailable();
+      // Direct EDSDK only — do not poison Pi/LAN config on a transient miss.
+      if (service.isDirectConnection) {
+        service.markRuntimeUnavailable();
+      }
       notifyListeners();
       return false;
     }
@@ -2126,6 +2132,7 @@ class CaptureViewModel extends ChangeNotifier {
       preferStripPrintQuality: preferStripPrintQuality,
       preferLivePreviewFrame: usesSidecarLivePreview,
       onUsedLivePreviewFrame: () => _lastSidecarUsedLivePreview = true,
+      resumeLiveView: resumeLiveViewAfterSidecarStill,
     );
     if (sidecarFile != null) {
       _lastRawCaptureFromSidecar = true;

@@ -13,7 +13,9 @@ class SidecarLivePreview extends StatefulWidget {
     required this.service,
     this.paused = false,
     this.onFirstFrame,
-    this.fit = BoxFit.cover,
+    /// Match captured-still framing ([BoxFit.contain]). [BoxFit.cover] crops
+    /// Canon LV on large landscape cards and looks more zoomed-in than the shot.
+    this.fit = BoxFit.contain,
   });
 
   final LocalCameraService service;
@@ -47,6 +49,13 @@ class _SidecarLivePreviewState extends State<SidecarLivePreview> {
       if (widget.paused) {
         _poller?.pause();
       } else {
+        // Drop the last pre-shutter frame so we do not paint a frozen still
+        // while Canon EVF / Pi preview re-arms for the next pose.
+        setState(() {
+          _frame = null;
+          _error = null;
+          _notifiedFirstFrame = false;
+        });
         _poller?.resume();
       }
     }

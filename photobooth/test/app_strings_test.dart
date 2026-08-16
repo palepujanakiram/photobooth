@@ -54,7 +54,16 @@ void main() {
     expect(AppStrings.resultPrintSheetsLine(4), '4 prints total');
     expect(
       AppStrings.flashbackReviewHoldStatus(isLastShot: false, secondsLeft: 8),
-      'Getting ready for the next shot…  8',
+      'Rearrange for the next pose…  8',
+    );
+    expect(
+      AppStrings.flashbackReviewHoldStatus(
+        isLastShot: false,
+        secondsLeft: 8,
+        nextShot: 2,
+        total: 4,
+      ),
+      'Rearrange for Shot 2 of 4  8',
     );
     expect(
       AppStrings.flashbackReviewHoldStatus(isLastShot: true, secondsLeft: 3),
@@ -67,6 +76,18 @@ void main() {
     expect(
       AppStrings.flashbackGetReadyForShot(2, 4),
       'Get ready — Shot 2 of 4',
+    );
+    expect(
+      AppStrings.flashbackPoseProgress(1, 4),
+      'Pose now — Shot 1 of 4',
+    );
+    expect(
+      AppStrings.flashbackCaptureSubtitle,
+      contains('10s'),
+    );
+    expect(
+      AppStrings.flashbackCaptureSubtitle,
+      contains('8s'),
     );
     expect(AppStrings.captureMaskStallRetry, contains('Tap Capture'));
     expect(AppStrings.printSelectionTotal(250), 'Total ₹250');

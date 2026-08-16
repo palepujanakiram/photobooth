@@ -14,18 +14,20 @@ void main() {
           body: FlashbackReviewHoldBanner(
             endsAt: endsAt,
             isLastShot: false,
+            nextShot: 2,
+            total: 4,
           ),
         ),
       ),
     );
 
     final text = (find
-            .textContaining(AppStrings.flashbackGettingReadyNextShot)
+            .textContaining('Rearrange for Shot 2 of 4')
             .evaluate()
             .single
             .widget as Text)
         .data!;
-    expect(text, contains(AppStrings.flashbackGettingReadyNextShot));
+    expect(text, contains('Rearrange for Shot 2 of 4'));
     final seconds =
         int.parse(RegExp(r'(\d+)\s*$').firstMatch(text)!.group(1)!);
     expect(seconds, inInclusiveRange(7, 8));
