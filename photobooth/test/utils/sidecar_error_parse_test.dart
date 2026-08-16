@@ -31,5 +31,11 @@ void main() {
       );
       expect(info.code, 'EDSDK_OPEN_COOLDOWN');
     });
+
+    test('extracts decimal edsError when hex is absent', () {
+      final info = parseSidecarError('capture failed edsError=128');
+      expect(info.edsError, 128);
+      expect(info.edsErrorHex, '0x80');
+    });
   });
 }

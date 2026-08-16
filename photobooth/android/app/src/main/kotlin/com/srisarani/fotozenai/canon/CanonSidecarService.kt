@@ -12,11 +12,8 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
 import android.os.Build
 import android.os.IBinder
-import android.os.ParcelFileDescriptor
 import android.util.Log
 import java.io.File
-import java.io.FileInputStream
-import java.io.InputStream
 
 /**
  * Long-running foreground Service that:
@@ -29,14 +26,10 @@ import java.io.InputStream
  * Flutter [LocalCameraService] connects to http://127.0.0.1:8791.
  */
 class CanonSidecarService : Service() {
-
     companion object {
-        private const val TAG              = "CanonSidecar"
+        private const val TAG = "CanonSidecar"
         private const val NOTIF_CHANNEL_ID = "canon_sidecar"
-        private const val NOTIF_ID         = 1001
-        private const val ASSET_DIR        = "canon_sidecar"
-        private const val MAX_RESTARTS     = 10
-        private const val HOOK_ASSET_VER   = "3"
+        private const val NOTIF_ID = 1001
 
         /** Sidecar lifecycle state readable from [CanonSidecarStatusMethodChannel]. */
         @Volatile var state: String = "idle"
@@ -66,297 +59,112 @@ class CanonSidecarService : Service() {
         }
     }
 
-    private var sidecarPid = 0
-    private var stdoutPfd: ParcelFileDescriptor? = null
-    private var logThread: Thread? = null
-    private var watchThread: Thread? = null
-    private var restartCount = 0
     private var permissionGranted = false
     private var sidecarAbi: String? = null
     private var usbDevice: UsbDevice? = null
     private var usbConnection: UsbDeviceConnection? = null
-    @Volatile private var sidecarHasUsbFd = false
-    @Volatile private var spawnEpoch = 0
+
     @Volatile private var runtimeReady = false
 
-    private val permissionReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action != CanonUsbPermissionManager.ACTION_CANON_PERMISSION_GRANTED) {
-                return
+    private val runtime =
+        CanonSidecarRuntime(
+            sidecarDir = { sidecarDir() },
+            ensureUsbOpen = { ensureUsbOpen() },
+            usbFd = { usbFdOrMinusOne() },
+            usbPath = { usbDevice?.deviceName },
+            refreshPermission = {
+                if (!permissionGranted) {
+                    permissionGranted = CanonUsbPermissionManager.hasGrantedPermission(this)
+                }
+                permissionGranted
+            },
+            onState = { state = it },
+        )
+
+    private val permissionReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(
+                context: Context,
+                intent: Intent,
+            ) {
+                if (intent.action != CanonUsbPermissionManager.ACTION_CANON_PERMISSION_GRANTED) {
+                    return
+                }
+                permissionGranted = true
+                ensureUsbOpen()
+                onUsbPermissionGranted()
             }
-            permissionGranted = true
-            ensureUsbOpen()
-            val hasFd = usbFdOrMinusOne() >= 0
-            if (sidecarPid > 0 && hasFd && !sidecarHasUsbFd) {
-                Log.i(TAG, "Canon USB fd ready — restarting sidecar so EDSDK can inherit it")
-                stopSidecar()
-                launchSidecar()
-                return
-            }
-            if (sidecarPid > 0) {
-                Log.i(TAG, "Canon USB permission granted — sidecar already running")
-                return
-            }
-            Log.i(TAG, "Canon USB permission granted — launching sidecar")
-            launchSidecar()
         }
-    }
 
     override fun onCreate() {
         super.onCreate()
         sidecarAbi = CanonSidecarAbi.resolved()
         createNotificationChannel()
         startForeground(NOTIF_ID, buildNotification())
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(
-                permissionReceiver,
-                IntentFilter(CanonUsbPermissionManager.ACTION_CANON_PERMISSION_GRANTED),
-                Context.RECEIVER_NOT_EXPORTED,
-            )
-        } else {
-            registerReceiver(
-                permissionReceiver,
-                IntentFilter(CanonUsbPermissionManager.ACTION_CANON_PERMISSION_GRANTED),
-            )
-        }
-
+        registerPermissionReceiver()
         Thread({
-            extractAssets()
-            stageExecutables()
-            makeRuntimeExecutable(sidecarDir())
+            extractAndStage()
             runtimeReady = true
             permissionGranted = CanonUsbPermissionManager.requestPermissionIfNeeded(this)
             ensureUsbOpen()
-            launchSidecar()
+            runtime.launch(sidecarAbi)
         }, "canon-stage").start()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (runtimeReady && sidecarPid <= 0) launchSidecar()
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
+        if (runtimeReady && runtime.pid <= 0) runtime.launch(sidecarAbi)
         return START_STICKY
     }
 
     override fun onDestroy() {
         unregisterReceiver(permissionReceiver)
         CanonUsbPermissionManager.unregister(this)
-        stopSidecar()
+        runtime.stop()
         closeUsbConnection()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    /**
-     * Extracts glibc dependency libraries from APK assets to filesDir so they
-     * are readable at runtime. Executables are copied in [stageExecutables].
-     */
-    private fun extractAssets() {
+    private fun onUsbPermissionGranted() {
+        val hasFd = usbFdOrMinusOne() >= 0
+        if (runtime.pid > 0 && hasFd && !runtime.hasUsbFd) {
+            Log.i(TAG, "Canon USB fd ready — restarting sidecar so EDSDK can inherit it")
+            runtime.stop()
+            runtime.launch(sidecarAbi)
+            return
+        }
+        if (runtime.pid > 0) {
+            Log.i(TAG, "Canon USB permission granted — sidecar already running")
+            return
+        }
+        Log.i(TAG, "Canon USB permission granted — launching sidecar")
+        runtime.launch(sidecarAbi)
+    }
+
+    private fun extractAndStage() {
         val abi = sidecarAbi ?: return
         val destDir = sidecarDir()
-        val marker = File(destDir, ".abi")
-        val hookVer = File(destDir, ".hookver")
-        if (marker.exists() &&
-            marker.readText().trim() == abi &&
-            hookVer.exists() &&
-            hookVer.readText().trim() == HOOK_ASSET_VER &&
-            File(destDir, "libc.so.6").let { it.exists() && it.length() > 0 } &&
-            File(destDir, "libudev.so.1").let { it.exists() && it.length() > 0 } &&
-            File(destDir, CanonSidecarAbi.USB_HOOK_SO).let { it.exists() && it.length() > 0 }
-        ) {
-            Log.d(TAG, "Glibc assets already extracted for $abi at $destDir")
-            return
-        }
-
-        Log.i(TAG, "Extracting glibc assets for $abi to $destDir")
-        destDir.deleteRecursively()
-        destDir.mkdirs()
-        val assetPath = "$ASSET_DIR/$abi"
-        val assetFiles = assets.list(assetPath) ?: emptyArray()
-        if (assetFiles.isEmpty()) {
-            Log.e(TAG, "No sidecar glibc assets at $assetPath")
-            return
-        }
-        for (name in assetFiles) {
-            val dest = File(destDir, name)
-            assets.open("$assetPath/$name").use { src ->
-                dest.outputStream().use { out -> src.copyTo(out) }
-            }
-        }
-        marker.writeText(abi)
-        hookVer.writeText(HOOK_ASSET_VER)
-        Log.i(TAG, "Extracted ${assetFiles.size} glibc dependency files for $abi")
-    }
-
-    /** Copies JNI sidecar binaries into filesDir so they are exec'able. */
-    private fun stageExecutables() {
-        val abi = sidecarAbi ?: return
-        val nativeDir = File(applicationInfo.nativeLibraryDir)
-        val destDir = sidecarDir()
-        destDir.mkdirs()
-        val copies = listOf(
-            File(nativeDir, CanonSidecarAbi.interpreterSoName(abi)) to
-                File(destDir, CanonSidecarAbi.interpreterRuntimeName(abi)),
-            File(nativeDir, CanonSidecarAbi.BINARY_SO) to
-                File(destDir, CanonSidecarAbi.BINARY_RUNTIME),
-            File(nativeDir, CanonSidecarAbi.EDSDK_SO) to
-                File(destDir, CanonSidecarAbi.EDSDK_SO),
+        CanonSidecarAssets.extractGlibcDeps(this, abi, destDir)
+        CanonSidecarAssets.stageExecutables(
+            File(applicationInfo.nativeLibraryDir),
+            destDir,
+            abi,
         )
-        for ((src, dest) in copies) {
-            if (!src.exists()) {
-                Log.e(TAG, "Missing JNI lib ${src.name} in ${nativeDir.absolutePath}")
-                continue
-            }
-            src.copyTo(dest, overwrite = true)
-            dest.setReadable(true, false)
-            dest.setExecutable(true, false)
-        }
-        makeRuntimeExecutable(destDir)
+        CanonSidecarAssets.makeRuntimeExecutable(destDir)
     }
 
-    /** Android 10+ will not mmap a 0600 file as PROT_EXEC — glibc .so files need +x. */
-    private fun makeRuntimeExecutable(dir: File) {
-        dir.listFiles()?.forEach { file ->
-            if (file.isFile) {
-                file.setReadable(true, false)
-                file.setExecutable(true, false)
-            }
+    private fun registerPermissionReceiver() {
+        val filter = IntentFilter(CanonUsbPermissionManager.ACTION_CANON_PERMISSION_GRANTED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(permissionReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(permissionReceiver, filter)
         }
-    }
-
-    private fun launchSidecar() {
-        if (sidecarPid > 0) return
-        if (restartCount >= MAX_RESTARTS) {
-            Log.e(TAG, "Max restarts ($MAX_RESTARTS) reached — giving up")
-            state = "max_restarts"
-            return
-        }
-
-        val abi = sidecarAbi
-        if (abi == null) {
-            Log.e(TAG, "Sidecar ABI unresolved")
-            state = "unsupported_abi"
-            return
-        }
-
-        val glibcDir = sidecarDir()
-        val interpreter = File(glibcDir, CanonSidecarAbi.interpreterRuntimeName(abi))
-        val binary = File(glibcDir, CanonSidecarAbi.BINARY_RUNTIME)
-
-        if (!interpreter.exists() || !binary.exists()) {
-            Log.e(
-                TAG,
-                "Sidecar runtime missing in ${glibcDir.absolutePath} " +
-                    "(need ${interpreter.name} and ${binary.name})",
-            )
-            state = "crashed"
-            return
-        }
-        interpreter.setExecutable(true, false)
-        binary.setExecutable(true, false)
-        makeRuntimeExecutable(glibcDir)
-
-        if (!permissionGranted) {
-            permissionGranted = CanonUsbPermissionManager.hasGrantedPermission(this)
-        }
-        ensureUsbOpen()
-
-        val usbFd = usbFdOrMinusOne()
-        val usbPath = usbDevice?.deviceName
-        val hook = File(glibcDir, CanonSidecarAbi.USB_HOOK_SO)
-        val preload = if (hook.exists()) hook.absolutePath else ""
-        if (usbFd < 0) {
-            Log.w(
-                TAG,
-                "No USB file descriptor yet — EDSDK cannot open usbfs until permission + openDevice",
-            )
-        }
-
-        Log.i(
-            TAG,
-            "Starting canon-sidecar $abi (attempt ${restartCount + 1}) " +
-                "usbPermission=$permissionGranted usbFd=$usbFd path=$usbPath",
-        )
-
-        try {
-            val epoch = ++spawnEpoch
-            val spawned = CanonSidecarSpawner.spawn(
-                interpreter = interpreter.absolutePath,
-                args = buildList {
-                    add("--library-path")
-                    add(glibcDir.absolutePath)
-                    if (preload.isNotEmpty()) {
-                        add("--preload")
-                        add(preload)
-                    }
-                    add(binary.absolutePath)
-                }.toTypedArray(),
-                cwd = glibcDir.absolutePath,
-                preload = preload,
-                usbFd = usbFd,
-                usbPath = usbPath,
-            )
-            sidecarPid = spawned.pid
-            sidecarHasUsbFd = usbFd >= 0
-            restartCount++
-            state = "running"
-
-            stdoutPfd?.close()
-            stdoutPfd = ParcelFileDescriptor.adoptFd(spawned.stdoutFd)
-            logThread?.interrupt()
-            logThread = Thread({
-                val fd = stdoutPfd?.fileDescriptor ?: return@Thread
-                tailLog(FileInputStream(fd))
-            }, "canon-log").also { it.start() }
-
-            watchThread = Thread({
-                val code = CanonSidecarSpawner.waitPid(spawned.pid)
-                if (epoch != spawnEpoch) {
-                    return@Thread
-                }
-                sidecarPid = 0
-                sidecarHasUsbFd = false
-                state = if (restartCount >= MAX_RESTARTS) "max_restarts" else "crashed"
-                Log.w(TAG, "canon-sidecar exited with code $code — restarting in 3 s")
-                try {
-                    Thread.sleep(3_000)
-                } catch (_: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    return@Thread
-                }
-                if (epoch != spawnEpoch) {
-                    return@Thread
-                }
-                launchSidecar()
-            }, "canon-watch").also { it.isDaemon = true; it.start() }
-        } catch (e: Exception) {
-            state = "crashed"
-            sidecarPid = 0
-            sidecarHasUsbFd = false
-            Log.e(TAG, "Failed to exec canon-sidecar: ${e.message}", e)
-        }
-    }
-
-    private fun stopSidecar() {
-        spawnEpoch++
-        val pid = sidecarPid
-        sidecarPid = 0
-        sidecarHasUsbFd = false
-        if (pid > 0) {
-            try {
-                CanonSidecarSpawner.kill(pid)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to kill sidecar pid=$pid: ${e.message}")
-            }
-        }
-        try {
-            stdoutPfd?.close()
-        } catch (_: Exception) {
-        }
-        stdoutPfd = null
-        logThread?.interrupt()
-        logThread = null
-        watchThread = null
     }
 
     private fun ensureUsbOpen() {
@@ -372,7 +180,8 @@ class CanonSidecarService : Service() {
     private fun closeUsbConnection() {
         try {
             usbConnection?.close()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "close USB connection: ${e.message}")
         }
         usbConnection = null
         usbDevice = null
@@ -383,34 +192,28 @@ class CanonSidecarService : Service() {
         return if (fd >= 0) fd else -1
     }
 
-    private fun tailLog(stream: InputStream) {
-        try {
-            stream.bufferedReader().forEachLine { line ->
-                Log.i(TAG, line)
-            }
-        } catch (_: Exception) {}
-    }
-
-    private fun sidecarDir(): File = File(filesDir, ASSET_DIR)
+    private fun sidecarDir(): File = CanonSidecarAssets.sidecarDir(filesDir)
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val channel =
+            NotificationChannel(
                 NOTIF_CHANNEL_ID,
                 "Camera Service",
                 NotificationManager.IMPORTANCE_MIN,
             ).apply { setShowBadge(false) }
-            getSystemService(NotificationManager::class.java)
-                .createNotificationChannel(channel)
-        }
+        getSystemService(NotificationManager::class.java)
+            .createNotificationChannel(channel)
     }
 
     private fun buildNotification(): Notification {
-        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, NOTIF_CHANNEL_ID)
-        } else {
-            @Suppress("DEPRECATION") Notification.Builder(this)
-        }
+        val builder =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Notification.Builder(this, NOTIF_CHANNEL_ID)
+            } else {
+                @Suppress("DEPRECATION")
+                Notification.Builder(this)
+            }
         return builder
             .setContentTitle("Camera ready")
             .setSmallIcon(android.R.drawable.ic_menu_camera)

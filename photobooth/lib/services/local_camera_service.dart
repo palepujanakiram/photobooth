@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../utils/camera_sidecar_config.dart';
@@ -31,15 +32,19 @@ class LocalCameraService {
     http.Client? client,
     Duration? healthTimeout,
     Duration? captureTimeout,
+    @visibleForTesting Duration? captureProgressInterval,
   })  : _config = config ?? CameraSidecarConfig.fromEnvironment(),
         _client = client ?? http.Client(),
         _healthTimeout = healthTimeout ?? const Duration(seconds: 5),
-        _captureTimeout = captureTimeout ?? const Duration(seconds: 60);
+        _captureTimeout = captureTimeout ?? const Duration(seconds: 60),
+        _captureProgressInterval =
+            captureProgressInterval ?? const Duration(seconds: 5);
 
   final CameraSidecarConfig _config;
   final http.Client _client;
   final Duration _healthTimeout;
   final Duration _captureTimeout;
+  final Duration _captureProgressInterval;
   final Random _random = Random();
 
   /// Last correlation id used on a sidecar call (also sent as header).
@@ -229,7 +234,7 @@ class LocalCameraService {
         'corrId': id,
       }),
     );
-    final progress = Timer.periodic(const Duration(seconds: 5), (timer) {
+    final progress = Timer.periodic(_captureProgressInterval, (timer) {
       final elapsed = DateTime.now().difference(t0).inMilliseconds;
       AppLogger.warning(
         'Camera sidecar capture still waiting elapsedMs=$elapsed corr=$id',
