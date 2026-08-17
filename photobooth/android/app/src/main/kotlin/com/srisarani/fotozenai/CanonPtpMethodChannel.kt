@@ -186,6 +186,32 @@ object CanonPtpMethodChannel {
         detachReceiverRegistered = true
     }
 
+    /**
+     * Releases the camera when the app leaves the foreground.
+     *
+     * An open PTP session that dies with the process leaves the body mid-transaction: the
+     * next connect reads the tail of the old transfer as a container header — *"Container
+     * truncated: declared 1140862976"* — and clearing the stall does not recover it. The
+     * camera then needs a physical power cycle, which on a booth is a site visit.
+     *
+     * Releasing on the way out makes the common exits clean: home button, task switch, a
+     * kill while backgrounded. It cannot help a crash or a power cut, which is why the
+     * stall/drain recovery on connect still exists.
+     *
+     * Skipped while a capture session is running — the native screen sits on top of
+     * MainActivity, which stops it, and disconnecting there would cut the camera out from
+     * under the shot in progress.
+     */
+    fun onStop() {
+        if (pendingCaptureResult != null) {
+            CanonLog.d("Capture in progress; keeping the camera session open")
+            return
+        }
+        if (CameraSessionManager.state.value is ConnectionState.NoDevice) return
+        CanonLog.i("App backgrounded — releasing the camera session cleanly")
+        CameraSessionManager.disconnect()
+    }
+
     fun onDestroy() {
         if (detachReceiverRegistered) {
             runCatching { appContext.unregisterReceiver(usbDetachReceiver) }

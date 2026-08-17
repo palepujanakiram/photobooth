@@ -8,9 +8,13 @@ import com.srisarani.fotozenai.canon.ptp.PtpReader
 import com.srisarani.fotozenai.canon.ptp.PtpSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -170,8 +174,26 @@ class EosLiveView(
         val warmUpTimeoutMs: Long = 6_000,
     )
 
-    private val _currentFrame = MutableStateFlow<Bitmap?>(null)
-    val currentFrame: StateFlow<Bitmap?> = _currentFrame.asStateFlow()
+    /**
+     * The newest frame, as a `SharedFlow` rather than a `StateFlow`.
+     *
+     * > Fixed on hardware 2026-08-17. This was a `StateFlow<Bitmap?>`, and a `StateFlow`
+     * > only emits when the value *changes*. Because [decodeInto] reuses one allocation via
+     * > `inBitmap` — the optimisation that makes 20fps reachable — every frame is the **same
+     * > Bitmap instance**, so assigning it was a no-op after the first one. The stream ran
+     * > perfectly (570 frames, 0 dropped) while the screen showed a frozen first frame.
+     *
+     * `replay = 1` so a collector attaching mid-stream paints immediately instead of waiting
+     * for the next frame, and `DROP_OLDEST` keeps the documented behaviour: a slow consumer
+     * misses intermediate frames rather than delaying the stream. For a viewfinder a late
+     * frame is worse than a missing one.
+     */
+    private val _currentFrame = MutableSharedFlow<Bitmap>(
+        replay = 1,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val currentFrame: SharedFlow<Bitmap> = _currentFrame.asSharedFlow()
 
     private val _isRunning = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
@@ -345,7 +367,9 @@ class EosLiveView(
         }
         lastFrameAtMillis = now
 
-        _currentFrame.value = bitmap
+        // tryEmit, never emit: a suspending emit would stall the poll loop behind a slow
+        // consumer, which is the stall this class is built to avoid.
+        _currentFrame.tryEmit(bitmap)
     }
 
     /**
@@ -363,7 +387,9 @@ class EosLiveView(
 
         properties.trySetUInt32(EosProperty.EVF_OUTPUT_DEVICE, EvfOutputDevice.OFF.toLong())
 
-        _currentFrame.value = null
+        // Drop the replayed frame so a collector attaching after a stop does not paint a
+        // stale viewfinder from the previous session.
+        _currentFrame.resetReplayCache()
         reusableBitmap = null
         lastFrameAtMillis = 0
         measuredFps = 0.0

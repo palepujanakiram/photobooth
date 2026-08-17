@@ -138,6 +138,14 @@ object CameraSessionManager {
             if (liveViewWasRunning) {
                 CanonLog.d("Pausing live view for capture (C-13)")
                 liveView?.stop()
+                // Let the body finish tearing the EVF stream down before asking it to fire.
+                //
+                // Observed on hardware 2026-08-17: releasing immediately after stopping live
+                // view returned DeviceBusy for the whole ~10s retry budget, and the shot
+                // never happened. Stopping live view is asynchronous inside the camera - the
+                // mirror has to come down and the sensor stop streaming - so an instant
+                // RemoteReleaseOn arrives while the body still considers itself busy.
+                kotlinx.coroutines.delay(LIVE_VIEW_SETTLE_BEFORE_RELEASE_MS)
             }
 
             val released = runCatching {
@@ -458,6 +466,18 @@ object CameraSessionManager {
      */
     /** Mirror-cycle settling time before live view is re-enabled after a capture. */
     private const val LIVE_VIEW_RESUME_DELAY_MS = 400L
+
+    /**
+     * Settling time between stopping live view and firing the shutter.
+     *
+     * The POC only ever delayed on the *resume* side, which left the release racing the
+     * EVF teardown. On hardware that showed up as `EOS_RemoteReleaseOn failed: DeviceBusy`
+     * repeated until the ~10s budget expired, with no photo taken — a shutter button that
+     * silently does nothing, which is `P-18`'s symptom from a different cause.
+     *
+     * Matched to [LIVE_VIEW_RESUME_DELAY_MS]: the same mirror cycle, in the other direction.
+     */
+    private const val LIVE_VIEW_SETTLE_BEFORE_RELEASE_MS = 400L
 
     /**
      * How long to hold live view down waiting for the shot to reach disk (`C-16`).

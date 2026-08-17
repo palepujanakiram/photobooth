@@ -32,6 +32,13 @@ class MainActivity : FlutterActivity() {
         CanonPtpMethodChannel.onResume(this)
     }
 
+    override fun onStop() {
+        // Release the DSLR on the way out so a later process kill cannot leave the camera
+        // mid-transaction, which costs a physical power cycle to clear.
+        CanonPtpMethodChannel.onStop()
+        super.onStop()
+    }
+
     override fun onDestroy() {
         DnpUsbMethodChannel.onDestroy()
         ReceiptUsbMethodChannel.onDestroy()
