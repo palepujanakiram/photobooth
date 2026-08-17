@@ -2,12 +2,18 @@ package com.srisarani.fotozenai.canoncapture
 
 import android.app.Activity
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.AudioManager
+import android.media.MediaActionSound
+import android.media.ToneGenerator
 import android.os.Bundle
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import com.srisarani.fotozenai.R
 import com.srisarani.fotozenai.canon.CanonLog
@@ -21,6 +27,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -42,6 +49,8 @@ class CanonCaptureActivity : Activity() {
     private lateinit var surface: SurfaceView
     private lateinit var statusText: TextView
     private lateinit var titleText: TextView
+    private lateinit var countdownText: TextView
+    private lateinit var thumbnailStrip: LinearLayout
     private lateinit var shutterButton: Button
     private lateinit var cancelButton: Button
 
@@ -51,7 +60,17 @@ class CanonCaptureActivity : Activity() {
 
     private val shots = mutableListOf<CaptureSessionContract.Shot>()
     private var captureJob: Job? = null
+    private var idleJob: Job? = null
     private var finished = false
+
+    /**
+     * Countdown ticks and the shutter click.
+     *
+     * Native rather than played from Dart: a channel round trip would land the click after
+     * the mirror has already moved, and a shutter sound that arrives late reads as lag.
+     */
+    private var toneGenerator: ToneGenerator? = null
+    private var shutterSound: MediaActionSound? = null
 
     /**
      * Handles already delivered by the capture queue.
@@ -66,7 +85,8 @@ class CanonCaptureActivity : Activity() {
         super.onCreate(savedInstanceState)
         // A booth screen must not sleep mid-pose, and the guest is not touching the device.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        setContentView(R.layout.activity_canon_capture)
+        // One line switches the booth look for the diagnostic one — see CaptureScreenStyle.
+        setContentView(CaptureScreenStyle.current.layoutRes)
 
         request = CaptureSessionContract.Request.fromJson(
             intent.getStringExtra(CaptureSessionContract.EXTRA_REQUEST),
@@ -75,17 +95,32 @@ class CanonCaptureActivity : Activity() {
         surface = findViewById(R.id.canon_live_view)
         statusText = findViewById(R.id.canon_status)
         titleText = findViewById(R.id.canon_title)
+        countdownText = findViewById(R.id.canon_countdown)
+        thumbnailStrip = findViewById(R.id.canon_thumbnails)
         shutterButton = findViewById(R.id.canon_shutter)
         cancelButton = findViewById(R.id.canon_cancel)
 
+        toneGenerator = runCatching {
+            ToneGenerator(AudioManager.STREAM_MUSIC, TONE_VOLUME)
+        }.getOrNull()
+        shutterSound = runCatching { MediaActionSound().apply { load(MediaActionSound.SHUTTER_CLICK) } }
+            .getOrNull()
+
         request.titleText?.let { titleText.text = it }
+        // Booth layout only; the diagnostic one has no subtitle line.
+        request.subtitleText?.let {
+            findViewById<TextView?>(R.id.canon_subtitle)?.text = it
+        }
         request.shutterText?.let { shutterButton.text = it }
         request.cancelText?.let { cancelButton.text = it }
 
         shutterButton.setOnClickListener { onShutter() }
-        cancelButton.setOnClickListener {
+        val cancel = View.OnClickListener {
             finishWith(CaptureSessionContract.Result.cancelled("Cancelled by user"))
         }
+        cancelButton.setOnClickListener(cancel)
+        // Present only in the booth layout, mirroring the Flutter capture bar's back arrow.
+        findViewById<View?>(R.id.canon_back)?.setOnClickListener(cancel)
         // The box reports touch AND d-pad; the shutter must be reachable without a screen tap.
         shutterButton.requestFocus()
 
@@ -115,11 +150,95 @@ class CanonCaptureActivity : Activity() {
             if (!ensureConnected()) return@launch
 
             startLiveView()
-            setStatus(
-                getString(R.string.canon_status_ready_format, shots.size + 1, request.shotCount),
-            )
-            shutterButton.isEnabled = true
+            startIdleWatchdog()
+
+            if (request.autoStart) {
+                runShotSequence()
+            } else {
+                setStatus(
+                    getString(
+                        R.string.canon_status_ready_format,
+                        shots.size + 1,
+                        request.shotCount,
+                    ),
+                )
+                shutterButton.isEnabled = true
+            }
         }
+    }
+
+    /**
+     * Ends the session if it outlives its budget.
+     *
+     * A guest who walks away mid-strip would otherwise leave the booth sitting on a native
+     * screen with no way back — the Flutter side is blocked awaiting this Activity, so
+     * nothing else can recover it.
+     */
+    private fun startIdleWatchdog() {
+        idleJob = scope.launch {
+            delay(request.idleTimeoutSeconds * 1000L)
+            CanonLog.w("Capture session idle for %ds — abandoning", request.idleTimeoutSeconds)
+            finishWith(
+                CaptureSessionContract.Result.cancelled(
+                    "No photos completed within ${request.idleTimeoutSeconds}s",
+                ),
+            )
+        }
+    }
+
+    /** Countdown → shot → rearrange, repeated [CaptureSessionContract.Request.shotCount] times. */
+    private suspend fun runShotSequence() {
+        shutterButton.isEnabled = false
+        while (shots.size < request.shotCount && !finished) {
+            val shotNumber = shots.size + 1
+
+            // Between shots, hold on the viewfinder so guests can rearrange. Skipped before
+            // the first shot: the countdown is the guest's cue to get into position.
+            if (shotNumber > 1 && request.betweenShotSeconds > 0) {
+                holdForRearrange(shotNumber)
+            }
+
+            runCountdown(shotNumber)
+            if (finished) return
+
+            val ok = runOneShot()
+            if (!ok) {
+                // A failed shot is retried rather than abandoning the strip — the guest is
+                // still standing there, and losing three good shots to one bad one is worse
+                // than an extra countdown.
+                setStatus(getString(R.string.canon_status_capture_failed))
+                delay(RETRY_PAUSE_MS)
+            }
+        }
+    }
+
+    private suspend fun holdForRearrange(nextShot: Int) {
+        for (remaining in request.betweenShotSeconds downTo 1) {
+            if (finished) return
+            setStatus(
+                getString(
+                    R.string.canon_status_rearrange_format,
+                    nextShot,
+                    request.shotCount,
+                    remaining,
+                ),
+            )
+            delay(1000)
+        }
+    }
+
+    private suspend fun runCountdown(shotNumber: Int) {
+        for (remaining in request.countdownSeconds downTo 1) {
+            if (finished) return
+            countdownText.visibility = View.VISIBLE
+            countdownText.text = remaining.toString()
+            setStatus(
+                getString(R.string.canon_status_pose_format, shotNumber, request.shotCount),
+            )
+            if (remaining <= COUNTDOWN_BEEP_FROM) beep()
+            delay(1000)
+        }
+        countdownText.visibility = View.GONE
     }
 
     /** Connects if needed; finishes the Activity with a typed error if it cannot. */
@@ -178,10 +297,8 @@ class CanonCaptureActivity : Activity() {
         // newest frame, so falling behind drops frames instead of accumulating lag — which
         // for a viewfinder is the correct trade: a late frame is worse than a missing one.
         scope.launch {
-            liveView.currentFrame.collect { frame: Bitmap? ->
-                if (frame != null) {
-                    withContext(Dispatchers.Default) { renderer?.draw(frame) }
-                }
+            liveView.currentFrame.collect { frame: Bitmap ->
+                withContext(Dispatchers.Default) { renderer?.draw(frame) }
             }
         }
     }
@@ -194,7 +311,8 @@ class CanonCaptureActivity : Activity() {
         captureJob = scope.launch { runOneShot() }
     }
 
-    private suspend fun runOneShot() {
+    /** Fires one shot and stores it. Returns false when the shot did not land. */
+    private suspend fun runOneShot(): Boolean {
         val queue = CameraSessionManager.captureQueue
         if (queue == null) {
             finishWith(
@@ -203,10 +321,11 @@ class CanonCaptureActivity : Activity() {
                     "Capture queue unavailable — the camera session is not fully open",
                 ),
             )
-            return
+            return false
         }
 
         setStatus(getString(R.string.canon_status_capturing))
+        shutterSound()
 
         // Subscribe BEFORE firing, and UNDISPATCHED so the collector is attached before
         // this line returns. A download can finish faster than a coroutine scheduled the
@@ -222,13 +341,14 @@ class CanonCaptureActivity : Activity() {
 
         if (completed == null) {
             setStatus(getString(R.string.canon_status_capture_failed))
-            shutterButton.isEnabled = true
+            shutterButton.isEnabled = !request.autoStart
             CanonLog.e("Capture timed out after %dms", CAPTURE_TIMEOUT_MS)
-            return
+            return false
         }
 
         consumedHandles += completed.handle
         onCaptured(completed)
+        return true
     }
 
     private suspend fun onCaptured(done: CaptureQueue.Item.Done) {
@@ -263,6 +383,8 @@ class CanonCaptureActivity : Activity() {
             done.elapsedMs,
         )
 
+        addThumbnail(derivative?.file?.absolutePath)
+
         if (shots.size >= request.shotCount) {
             finishWith(
                 CaptureSessionContract.Result(
@@ -270,12 +392,44 @@ class CanonCaptureActivity : Activity() {
                     shots = shots.toList(),
                 ),
             )
-        } else {
+        } else if (!request.autoStart) {
             setStatus(
                 getString(R.string.canon_status_ready_format, shots.size + 1, request.shotCount),
             )
             shutterButton.isEnabled = true
         }
+    }
+
+    /**
+     * Adds the shot to the strip so guests can see the set building.
+     *
+     * Decoded small and off the main thread — these come from the display derivative, not
+     * the original, and a thumbnail is never a reason to touch a 6000×4000 file.
+     */
+    private suspend fun addThumbnail(displayPath: String?) {
+        if (displayPath == null || request.shotCount <= 1) return
+        val bitmap = withContext(Dispatchers.Default) {
+            runCatching {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(displayPath, bounds)
+                val options = BitmapFactory.Options().apply {
+                    inSampleSize = DisplayDerivative
+                        .sampleSizeFor(bounds.outWidth, bounds.outHeight, THUMBNAIL_LONG_EDGE)
+                }
+                BitmapFactory.decodeFile(displayPath, options)
+            }.getOrNull()
+        } ?: return
+
+        val view = ImageView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                THUMBNAIL_WIDTH_PX,
+                LinearLayout.LayoutParams.MATCH_PARENT,
+            ).also { it.marginEnd = THUMBNAIL_GAP_PX }
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setImageBitmap(bitmap)
+        }
+        thumbnailStrip.addView(view)
+        thumbnailStrip.visibility = View.VISIBLE
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -310,8 +464,22 @@ class CanonCaptureActivity : Activity() {
         // every shot would cost seconds and an extra permission round trip.
         stopLiveView()
         renderer = null
+        idleJob?.cancel()
+        runCatching { toneGenerator?.release() }
+        runCatching { shutterSound?.release() }
+        toneGenerator = null
+        shutterSound = null
         scope.cancel()
         super.onDestroy()
+    }
+
+    /** Sound is a nicety; a device with no audio focus must not break the capture. */
+    private fun beep() {
+        runCatching { toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, BEEP_MS) }
+    }
+
+    private fun shutterSound() {
+        runCatching { shutterSound?.play(MediaActionSound.SHUTTER_CLICK) }
     }
 
     private fun setStatus(text: String) {
@@ -328,6 +496,18 @@ class CanonCaptureActivity : Activity() {
 
     private companion object {
         const val CONNECT_TIMEOUT_MS = 30_000L
+
+        /** Beep only on the closing seconds — a beep every second for 10s is irritating. */
+        const val COUNTDOWN_BEEP_FROM = 3
+        const val BEEP_MS = 150
+        const val TONE_VOLUME = 80
+
+        /** Pause after a failed shot before retrying, so the body can settle. */
+        const val RETRY_PAUSE_MS = 1_500L
+
+        const val THUMBNAIL_LONG_EDGE = 320
+        const val THUMBNAIL_WIDTH_PX = 150
+        const val THUMBNAIL_GAP_PX = 12
 
         /**
          * Shutter to image-on-disk.

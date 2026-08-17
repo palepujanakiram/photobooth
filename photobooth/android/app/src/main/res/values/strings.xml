@@ -9,6 +9,9 @@
 -->
 <resources>
     <string name="canon_capture_title">Camera</string>
+    <!-- Booth layout: matches the Flutter capture bar exactly (photo_capture_view_scaffold). -->
+    <string name="canon_capture_title_booth">POSE</string>
+    <string name="canon_capture_subtitle">Step in front of the camera and strike your best look</string>
     <string name="canon_capture_shutter">Take photo</string>
     <string name="canon_capture_cancel">Cancel</string>
 
@@ -17,4 +20,6 @@
     <string name="canon_status_processing">Saving photo…</string>
     <string name="canon_status_capture_failed">That shot did not land. Try again.</string>
     <string name="canon_status_ready_format">Ready — shot %1$d of %2$d</string>
+    <string name="canon_status_pose_format">Get ready — shot %1$d of %2$d</string>
+    <string name="canon_status_rearrange_format">Rearrange for shot %1$d of %2$d — %3$ds</string>
 </resources>

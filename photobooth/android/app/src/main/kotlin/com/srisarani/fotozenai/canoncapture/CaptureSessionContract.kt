@@ -42,22 +42,48 @@ object CaptureSessionContract {
     data class Request(
         /** Shots to take. 1 for AI, 4 for a Classic strip. */
         val shotCount: Int = 1,
+        /**
+         * Seconds a guest gets to pose before each shot.
+         *
+         * Passed in rather than hardcoded so `AppConstants` stays the single source of
+         * truth — the booth currently uses 10s for Classic poses.
+         */
+        val countdownSeconds: Int = 10,
+        /**
+         * Seconds between shots in a strip, for guests to rearrange.
+         *
+         * `AppConstants.kFlashbackBetweenShotRearrangeDuration` — 8s today.
+         */
+        val betweenShotSeconds: Int = 8,
         /** Long edge of the display derivative handed back to Dart. */
         val displayMaxLongEdge: Int = DisplayDerivative.DEFAULT_MAX_LONG_EDGE,
         val displayJpegQuality: Int = DisplayDerivative.DEFAULT_JPEG_QUALITY,
         /** Abandons the session so a walk-away cannot strand the booth. */
         val idleTimeoutSeconds: Int = 180,
+        /**
+         * Start the countdown as soon as the camera is ready, with no button press.
+         *
+         * True for the booth: a guest standing in front of a camera should not have to find
+         * and press anything. False leaves the shutter button as the trigger, which is what
+         * bring-up and diagnostics want.
+         */
+        val autoStart: Boolean = true,
         /** Copy is passed in so AppStrings stays the single source of truth. */
         val titleText: String? = null,
+        val subtitleText: String? = null,
         val shutterText: String? = null,
         val cancelText: String? = null,
     ) {
         fun toJson(): String = JSONObject().apply {
             put("shotCount", shotCount)
+            put("countdownSeconds", countdownSeconds)
+            put("betweenShotSeconds", betweenShotSeconds)
             put("displayMaxLongEdge", displayMaxLongEdge)
             put("displayJpegQuality", displayJpegQuality)
             put("idleTimeoutSeconds", idleTimeoutSeconds)
+            put("autoStart", autoStart)
             put("titleText", titleText ?: JSONObject.NULL)
+            put("subtitleText", subtitleText ?: JSONObject.NULL)
             put("shutterText", shutterText ?: JSONObject.NULL)
             put("cancelText", cancelText ?: JSONObject.NULL)
         }.toString()
@@ -69,6 +95,9 @@ object CaptureSessionContract {
                     val json = JSONObject(raw)
                     Request(
                         shotCount = json.optInt("shotCount", 1).coerceIn(1, 12),
+                        countdownSeconds = json.optInt("countdownSeconds", 10).coerceIn(0, 60),
+                        betweenShotSeconds = json.optInt("betweenShotSeconds", 8)
+                            .coerceIn(0, 60),
                         displayMaxLongEdge = json
                             .optInt("displayMaxLongEdge", DisplayDerivative.DEFAULT_MAX_LONG_EDGE)
                             .coerceIn(320, 8000),
@@ -78,7 +107,9 @@ object CaptureSessionContract {
                         idleTimeoutSeconds = json
                             .optInt("idleTimeoutSeconds", 180)
                             .coerceIn(10, 3600),
+                        autoStart = json.optBoolean("autoStart", true),
                         titleText = json.optNullableString("titleText"),
+                        subtitleText = json.optNullableString("subtitleText"),
                         shutterText = json.optNullableString("shutterText"),
                         cancelText = json.optNullableString("cancelText"),
                     )
@@ -91,6 +122,12 @@ object CaptureSessionContract {
                 return Request(
                     shotCount = (args["shotCount"] as? Int ?: defaults.shotCount)
                         .coerceIn(1, 12),
+                    countdownSeconds = (
+                        args["countdownSeconds"] as? Int ?: defaults.countdownSeconds
+                        ).coerceIn(0, 60),
+                    betweenShotSeconds = (
+                        args["betweenShotSeconds"] as? Int ?: defaults.betweenShotSeconds
+                        ).coerceIn(0, 60),
                     displayMaxLongEdge = (
                         args["displayMaxLongEdge"] as? Int ?: defaults.displayMaxLongEdge
                         ).coerceIn(320, 8000),
@@ -100,7 +137,9 @@ object CaptureSessionContract {
                     idleTimeoutSeconds = (
                         args["idleTimeoutSeconds"] as? Int ?: defaults.idleTimeoutSeconds
                         ).coerceIn(10, 3600),
+                    autoStart = args["autoStart"] as? Boolean ?: defaults.autoStart,
                     titleText = args["titleText"] as? String,
+                    subtitleText = args["subtitleText"] as? String,
                     shutterText = args["shutterText"] as? String,
                     cancelText = args["cancelText"] as? String,
                 )

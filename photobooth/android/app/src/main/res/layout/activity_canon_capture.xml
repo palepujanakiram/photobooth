@@ -6,6 +6,7 @@
   screen actually needs.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/black"
@@ -32,6 +33,33 @@
         android:shadowRadius="6"
         android:shadowDx="0"
         android:shadowDy="2" />
+
+    <!-- Pose countdown. Deliberately huge: it has to be readable from where a guest
+         actually stands, which is metres from the screen, not arm's length. -->
+    <TextView
+        android:id="@+id/canon_countdown"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:textColor="@android:color/white"
+        android:textSize="160sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        android:shadowColor="@android:color/black"
+        android:shadowRadius="18"
+        android:shadowDx="0"
+        android:shadowDy="4"
+        tools:text="3" />
+
+    <!-- Strip so far, so guests can see the set building between Classic shots. -->
+    <LinearLayout
+        android:id="@+id/canon_thumbnails"
+        android:layout_width="wrap_content"
+        android:layout_height="110dp"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="96dp"
+        android:orientation="horizontal"
+        android:visibility="gone" />
 
     <TextView
         android:id="@+id/canon_status"
