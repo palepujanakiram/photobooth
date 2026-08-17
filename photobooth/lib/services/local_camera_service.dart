@@ -40,7 +40,7 @@ class LocalCameraService {
         _captureProgressInterval =
             captureProgressInterval ?? const Duration(seconds: 5);
 
-  final CameraSidecarConfig _config;
+  CameraSidecarConfig _config;
   final http.Client _client;
   final Duration _healthTimeout;
   final Duration _captureTimeout;
@@ -73,6 +73,17 @@ class LocalCameraService {
 
   /// Remote Pi gphoto2 sidecar (vs on-device EDSDK).
   bool get isPiConnection => _config.isPiConnection;
+
+  /// True when GSM or dart-define chose the mode (not inferred from host).
+  bool get modeExplicit => _config.modeExplicit;
+
+  /// Point this client at a different sidecar (inferred-Pi → localhost USB).
+  void adoptConfig(CameraSidecarConfig config) {
+    _config = config;
+    _runtimeUnavailable = false;
+    _forceLivePreview = false;
+    _lastHealthyAt = null;
+  }
 
   /// ZenAI `cameraLivePreviewEnabled`, or POSE forcing USB MJPEG (AI + Classic).
   bool get shouldShowLivePreview =>

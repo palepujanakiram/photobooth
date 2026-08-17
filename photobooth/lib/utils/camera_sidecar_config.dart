@@ -22,6 +22,7 @@ class CameraSidecarConfig {
     required this.baseUrl,
     this.livePreviewEnabled = false,
     this.connectionMode = CameraConnectionMode.direct,
+    this.modeExplicit = false,
   });
 
   final bool enabled;
@@ -32,6 +33,12 @@ class CameraSidecarConfig {
 
   /// Pi LAN vs on-device USB EDSDK.
   final CameraConnectionMode connectionMode;
+
+  /// True when ZenAI `cameraConnectionMode` or dart-define chose the mode.
+  ///
+  /// False when the mode was inferred from a leftover sidecar host — Pose may
+  /// fall back to on-device USB if that Pi is unreachable.
+  final bool modeExplicit;
 
   bool get isConfigured => enabled && baseUrl.trim().isNotEmpty;
 
@@ -72,13 +79,13 @@ class CameraSidecarConfig {
   }
 
   static CameraSidecarConfig fromEnvironment() {
-    final mode = parseCameraConnectionMode(cameraConnectionModeDefine) ??
-        CameraConnectionMode.direct;
+    final fromDefine = parseCameraConnectionMode(cameraConnectionModeDefine);
     return CameraSidecarConfig(
       enabled: _envFlag(cameraSidecarEnabledDefine),
       baseUrl: cameraSidecarUrlDefine.trim().replaceAll(RegExp(r'/$'), ''),
       livePreviewEnabled: _envFlag(cameraSidecarLivePreviewDefine),
-      connectionMode: mode,
+      connectionMode: fromDefine ?? CameraConnectionMode.direct,
+      modeExplicit: fromDefine != null,
     );
   }
 
@@ -170,6 +177,18 @@ bool _settingsProvideCameraConfig(AppSettingsModel settings) {
       (settings.cameraConnectionMode?.trim().isNotEmpty ?? false);
 }
 
+/// True when ZenAI or dart-define set the mode (do not USB-fallback an
+/// explicit Pi booth).
+bool cameraConnectionModeIsExplicit(AppSettingsModel? settings) {
+  if (parseCameraConnectionMode(settings?.cameraConnectionMode) != null) {
+    return true;
+  }
+  return parseCameraConnectionMode(
+        CameraSidecarConfig.cameraConnectionModeDefine,
+      ) !=
+      null;
+}
+
 /// Resolve mode: admin → dart-define → infer from host → direct default.
 CameraConnectionMode resolveCameraConnectionMode(
   AppSettingsModel? settings, {
@@ -198,6 +217,7 @@ CameraConnectionMode resolveCameraConnectionMode(
 CameraSidecarConfig _directConfig({
   required CameraSidecarConfig env,
   required AppSettingsModel? settings,
+  required bool modeExplicit,
 }) {
   // cameraEnabled in ZenAI gates the Pi/LAN sidecar. On-device EDSDK stays
   // available whenever the bundled sidecar is on — a USB DSLR on the Mini PC
@@ -205,7 +225,7 @@ CameraSidecarConfig _directConfig({
   final enabled = settings?.cameraEnabled == true || env.enabled;
   // Direct USB has no HDMI card path — always show EDSDK EVF for pose.
   // Admin "Show live preview" is for Pi/HDMI hybrid booths only.
-  final live = true;
+  const live = true;
   final base = env.baseUrl.trim().isNotEmpty
       ? env.baseUrl.trim().replaceAll(RegExp(r'/$'), '')
       : kDirectCameraSidecarBaseUrl;
@@ -214,12 +234,13 @@ CameraSidecarConfig _directConfig({
     baseUrl: base,
     livePreviewEnabled: live,
     connectionMode: CameraConnectionMode.direct,
+    modeExplicit: modeExplicit,
   );
 }
 
 CameraSidecarConfig _piConfig({
-  required CameraSidecarConfig env,
   required AppSettingsModel settings,
+  required bool modeExplicit,
 }) {
   final host = settings.cameraSidecarHost?.trim() ?? '';
   final portRaw = settings.cameraSidecarPort;
@@ -239,6 +260,7 @@ CameraSidecarConfig _piConfig({
     baseUrl: baseUrl,
     livePreviewEnabled: settings.cameraLivePreviewEnabled == true,
     connectionMode: CameraConnectionMode.pi,
+    modeExplicit: modeExplicit,
   );
 }
 
@@ -250,9 +272,14 @@ CameraSidecarConfig resolveCameraSidecarConfig(
 }) {
   final env = environment ?? CameraSidecarConfig.fromEnvironment();
   final mode = resolveCameraConnectionMode(settings, environment: env);
+  final modeExplicit = cameraConnectionModeIsExplicit(settings);
 
   if (mode == CameraConnectionMode.direct) {
-    return _directConfig(env: env, settings: settings);
+    return _directConfig(
+      env: env,
+      settings: settings,
+      modeExplicit: modeExplicit,
+    );
   }
 
   if (settings == null || !_settingsProvideCameraConfig(settings)) {
@@ -262,8 +289,12 @@ CameraSidecarConfig resolveCameraSidecarConfig(
       baseUrl: '',
       livePreviewEnabled: false,
       connectionMode: CameraConnectionMode.pi,
+      modeExplicit: modeExplicit,
     );
   }
 
-  return _piConfig(env: env, settings: settings);
+  return _piConfig(
+    settings: settings,
+    modeExplicit: modeExplicit,
+  );
 }

@@ -127,6 +127,23 @@ Future<bool> sidecarNativeProcessCanServeHttp(
   return false;
 }
 
+/// True when the bundled on-device EDSDK process is already running.
+Future<bool> nativeEdsdkSidecarIsRunning(
+  Future<String> Function() queryNativeState, {
+  Duration nativeStateTimeout = const Duration(seconds: 1),
+}) async {
+  String state;
+  try {
+    state = await queryNativeState().timeout(
+      nativeStateTimeout,
+      onTimeout: () => 'idle',
+    );
+  } catch (_) {
+    state = 'idle';
+  }
+  return state == 'running';
+}
+
 /// Classic HDMI booths use Pi for the still; CameraX is often uninitialized.
 ///
 /// Falling through to [CameraController.takePicture] yields `cameraNotReady`

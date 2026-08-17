@@ -39,6 +39,7 @@ void main() {
       expect(cfg.isConfigured, isTrue);
       expect(cfg.shouldShowLivePreview, isTrue);
       expect(cfg.connectionMode, CameraConnectionMode.direct);
+      expect(cfg.modeExplicit, isFalse);
     });
   });
 
@@ -109,6 +110,7 @@ void main() {
       expect(resolved.enabled, isTrue);
       expect(resolved.baseUrl, 'http://127.0.0.1:8791');
       expect(resolved.connectionMode, CameraConnectionMode.direct);
+      expect(resolved.modeExplicit, isFalse);
     });
 
     test('uses fromEnvironment when environment arg omitted', () {
@@ -134,6 +136,7 @@ void main() {
       expect(resolved.baseUrl, 'http://127.0.0.1:8791');
       expect(resolved.enabled, isTrue);
       expect(resolved.livePreviewEnabled, isTrue);
+      expect(resolved.modeExplicit, isTrue);
     });
 
     test('explicit pi mode uses ZenAI host/port', () {
@@ -152,6 +155,23 @@ void main() {
       expect(resolved.enabled, isTrue);
       expect(resolved.livePreviewEnabled, isTrue);
       expect(resolved.isPiConnection, isTrue);
+      expect(resolved.modeExplicit, isTrue);
+    });
+
+    test('explicit pi honors admin live preview off', () {
+      final resolved = resolveCameraSidecarConfig(
+        AppSettingsModel(
+          cameraEnabled: true,
+          cameraConnectionMode: 'pi',
+          cameraSidecarHost: '192.168.2.50',
+          cameraSidecarPort: 8791,
+          cameraLivePreviewEnabled: false,
+        ),
+        environment: localhost,
+      );
+      expect(resolved.livePreviewEnabled, isFalse);
+      expect(resolved.shouldShowLivePreview, isFalse);
+      expect(resolved.modeExplicit, isTrue);
     });
 
     test('infers pi from remote host when mode omitted', () {
@@ -165,6 +185,7 @@ void main() {
       );
       expect(resolved.connectionMode, CameraConnectionMode.pi);
       expect(resolved.baseUrl, 'http://172.16.4.128:8791');
+      expect(resolved.modeExplicit, isFalse);
     });
 
     test('infers direct from loopback host when mode omitted', () {
@@ -178,6 +199,7 @@ void main() {
       );
       expect(resolved.connectionMode, CameraConnectionMode.direct);
       expect(resolved.baseUrl, 'http://127.0.0.1:8791');
+      expect(resolved.modeExplicit, isFalse);
     });
 
     test('direct mode keeps on-device sidecar on when cameraEnabled is false',
@@ -304,6 +326,29 @@ void main() {
     test('uses fromEnvironment when environment arg omitted', () {
       final mode = resolveCameraConnectionMode(null);
       expect(mode, CameraSidecarConfig.fromEnvironment().connectionMode);
+    });
+
+    test('cameraConnectionModeIsExplicit follows backend field', () {
+      expect(cameraConnectionModeIsExplicit(null), isFalse);
+      expect(cameraConnectionModeIsExplicit(AppSettingsModel()), isFalse);
+      expect(
+        cameraConnectionModeIsExplicit(
+          AppSettingsModel(cameraConnectionMode: 'direct'),
+        ),
+        isTrue,
+      );
+      expect(
+        cameraConnectionModeIsExplicit(
+          AppSettingsModel(cameraConnectionMode: 'pi'),
+        ),
+        isTrue,
+      );
+      expect(
+        cameraConnectionModeIsExplicit(
+          AppSettingsModel(cameraConnectionMode: 'nope'),
+        ),
+        isFalse,
+      );
     });
   });
 }
