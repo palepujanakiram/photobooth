@@ -15,7 +15,7 @@ import '../../utils/platform_capabilities.dart';
 import '../../utils/device_classifier.dart';
 import '../../utils/kiosk_page_route.dart';
 import '../experience_choice/experience_choice_view.dart';
-import '../photo_capture/photo_capture_view.dart';
+import '../photo_capture/capture_screen_factory.dart';
 import '../photo_capture/photo_capture_pose_setup_helpers.dart';
 import '../photo_capture/photo_capture_uvc_device_helpers.dart';
 import '../photo_capture/photo_capture_viewmodel.dart';
@@ -172,7 +172,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         final prefill = _capturePrefillPhoto;
         await pushReplacementKioskFade<void, void>(
           context,
-          PhotoCaptureScreen(
+          buildCaptureScreen(
             key: ValueKey<Object?>('ai-pose-${prefill ?? 'fresh'}'),
             sessionKind: CaptureSessionKind.fotoZen,
           ),

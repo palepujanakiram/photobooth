@@ -2121,6 +2121,29 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  /// Adopts a still produced outside this ViewModel's own camera pipeline.
+  ///
+  /// Used by the direct-PTP path, where a native Activity owns live view, the
+  /// countdown and the shutter, and hands back finished files. Everything after
+  /// capture — review, upload prep, the strip — is unchanged, so the DSLR reuses
+  /// the flow rather than forking it.
+  ///
+  /// [file] should be the **display derivative**, not the 6000×4000 original: the
+  /// pipeline below this point encodes and decodes it, and a 24MP JPEG is ~96MB
+  /// as a bitmap. The original stays on disk for printing.
+  Future<void> adoptExternalCapture(
+    XFile file, {
+    required String cameraId,
+    bool skipUploadPrep = false,
+  }) async {
+    _lastRawCaptureFromSidecar = false;
+    await _assignCapturedPhotoModel(
+      file,
+      cameraIdOverride: cameraId,
+      skipUploadPrep: skipUploadPrep,
+    );
+  }
+
   Future<void> _assignCapturedPhotoModel(
     XFile savedFile, {
     String? cameraIdOverride,

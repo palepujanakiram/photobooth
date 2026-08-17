@@ -401,10 +401,13 @@ class DirectPtpCameraService {
   /// code, so the capture flow has one place to handle every outcome.
   Future<DirectPtpCaptureResult> runCaptureSession({
     int shotCount = 1,
+    int countdownSeconds = 10,
+    int betweenShotSeconds = 8,
     int displayMaxLongEdge = 1920,
     int displayJpegQuality = 90,
     int idleTimeoutSeconds = 180,
     String? titleText,
+    String? subtitleText,
     String? shutterText,
     String? cancelText,
   }) async {
@@ -420,10 +423,13 @@ class DirectPtpCameraService {
         'runCaptureSession',
         <String, Object?>{
           'shotCount': shotCount,
+          'countdownSeconds': countdownSeconds,
+          'betweenShotSeconds': betweenShotSeconds,
           'displayMaxLongEdge': displayMaxLongEdge,
           'displayJpegQuality': displayJpegQuality,
           'idleTimeoutSeconds': idleTimeoutSeconds,
           'titleText': titleText,
+          'subtitleText': subtitleText,
           'shutterText': shutterText,
           'cancelText': cancelText,
         },

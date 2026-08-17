@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../screens/photo_capture/photo_capture_view.dart';
+import '../screens/photo_capture/capture_screen_factory.dart';
 import '../screens/theme_selection/theme_model.dart';
 import 'app_strings.dart';
 import 'capture_session_kind.dart';
@@ -31,7 +31,7 @@ Widget buildFotoFlashbackCapturePage({
   if (pageBuilder != null) {
     return pageBuilder(sessionKind: sessionKind, captureArgs: captureArgs);
   }
-  return PhotoCaptureScreen(
+  return buildCaptureScreen(
     key: ValueKey<String>(
       'pose-${sessionKind.name}-${captureArgs.multiShotTotal}'
       '${awaitGuestStart ? '-await' : ''}',

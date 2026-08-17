@@ -16,7 +16,7 @@ import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/animated_slideshow_background.dart';
 import '../../views/widgets/centered_max_width.dart';
-import '../photo_capture/photo_capture_view.dart';
+import '../photo_capture/capture_screen_factory.dart';
 import 'experience_choice_view_widgets.dart';
 import 'experience_choice_viewmodel.dart';
 
@@ -73,7 +73,7 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
     final prefill = widget.capturePrefillPhoto;
     await pushReplacementKioskFade<void, void>(
       context,
-      PhotoCaptureScreen(
+      buildCaptureScreen(
         key: ValueKey<Object?>('ai-pose-${prefill ?? 'fresh'}'),
         sessionKind: CaptureSessionKind.fotoZen,
       ),
