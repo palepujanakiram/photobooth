@@ -32,6 +32,29 @@ bool get directPtpSmokeRequested {
 bool get directPtpSmokeCaptureRequested =>
     kDirectPtpSmokeDefine.trim().toLowerCase() == 'capture';
 
+/// How long the bring-up check waits for a camera to show up on the bus.
+const Duration _probeWindow = Duration(seconds: 90);
+const Duration _probeInterval = Duration(seconds: 3);
+
+/// Polls until a camera appears, or the window closes.
+Future<DirectPtpDevice?> _awaitDevice(DirectPtpCameraService camera) async {
+  final deadline = DateTime.now().add(_probeWindow);
+  var announced = false;
+  while (DateTime.now().isBefore(deadline)) {
+    final device = await camera.probeDevice();
+    if (device != null) return device;
+    if (!announced) {
+      announced = true;
+      AppLogger.info(
+        '[PTP_SMOKE] no camera yet — waiting up to ${_probeWindow.inSeconds}s. '
+        'Switch the camera on now if it is off.',
+      );
+    }
+    await Future<void>.delayed(_probeInterval);
+  }
+  return null;
+}
+
 /// Probes and connects once, logging what the camera reports. Never throws.
 Future<void> runDirectPtpSmokeCheckIfRequested({
   DirectPtpCameraService? service,
@@ -48,15 +71,23 @@ Future<void> runDirectPtpSmokeCheckIfRequested({
       return;
     }
 
-    final device = await camera.probeDevice();
-    AppLogger.info('[PTP_SMOKE] device=${device ?? 'none'}');
+    // Wait for the camera rather than sampling once at startup.
+    //
+    // The body's own auto-power-off drops it off the USB bus within a couple of
+    // minutes unless something holds a session open, so a single probe at app
+    // start turns bring-up into a race between launching the app and switching
+    // the camera on. Polling removes the race: switch the camera on whenever,
+    // and this picks it up.
+    final device = await _awaitDevice(camera);
     if (device == null) {
       AppLogger.warning(
-        '[PTP_SMOKE] no PTP camera on the bus — check the cable, and that the '
-        "camera's USB/connection menu is not in a mass-storage mode",
+        '[PTP_SMOKE] no PTP camera appeared within ${_probeWindow.inSeconds}s — '
+        'check the cable, that the camera is switched on, that its USB/connection '
+        'menu is not in a mass-storage mode, and that auto power off is disabled',
       );
       return;
     }
+    AppLogger.info('[PTP_SMOKE] device=$device');
 
     final status = await camera.connect();
     AppLogger.info('[PTP_SMOKE] connect → $status');

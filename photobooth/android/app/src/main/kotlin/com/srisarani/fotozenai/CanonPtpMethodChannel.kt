@@ -206,6 +206,10 @@ object CanonPtpMethodChannel {
     // ------------------------------------------------------------------ methods
 
     private fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        // Dart's AppLogger writes through dart:developer, which goes to the VM service and
+        // never reaches logcat — so on a device the only evidence of what Dart asked for is
+        // this line. Cheap: these are lifecycle calls, not a per-frame path.
+        CanonLog.i("Channel call: %s", call.method)
         when (call.method) {
             "hasUsbHost" -> result.success(UsbCameraDiscovery(appContext).isUsbHostSupported)
             "probeDevice" -> result.success(probeDevice())
