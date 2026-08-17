@@ -5,6 +5,28 @@
 3.58 GB RAM, 256 MB heap) + Canon EOS 200D II over USB. **Not** a phone-only build — the
 final implementation has to run on the box.
 
+## 0. Working rule — the POC is read-only
+
+**`android-camera-connection` (the Canon tether app) is never modified.** Not a package
+rename, not a refactor, not a "small fix while we're in there". Every change on this work
+lands inside `photobooth/`.
+
+Its code is **copied** into the photobooth app and adapted there. The POC stays exactly as
+it is on disk, which is what makes it useful:
+
+- It remains a **known-good reference** to diff against when the photobooth copy misbehaves
+  on hardware — a standalone app that provably drives this camera is the fastest way to
+  answer "is it the protocol or is it our integration?"
+- It remains **independently runnable** on the box, so the camera can be exercised without
+  building the whole Flutter app.
+- Its `docs/` (`STATUS.md`, `GAPS_AND_EDGE_CASES.md`, `DEBUGGING.md`, the device-capability
+  dump) stay the authoritative record of what was learned on hardware.
+
+Consequence for this plan: the two copies **will** drift, and that is accepted rather than
+fought. The photobooth copy is the one that ships; the POC is a frozen reference. If a bug
+is found in the photobooth copy that also exists in the POC, it is fixed in photobooth only
+and noted here.
+
 ---
 
 ## 1. Where the app is today
@@ -34,7 +56,8 @@ The `android-camera-connection` POC removed that dependency: pure Kotlin PTP ove
 - Camera + printer + touch panel + wireless receiver coexisting through one chained hub
 - 206 unit tests
 
-Everything below is about moving that stack into this app.
+Everything below is about copying that stack into this app (§0 — the POC itself stays
+untouched).
 
 ---
 
@@ -143,12 +166,13 @@ Each is independently shippable and independently revertible. Nothing in P1–P4
 behaviour for any existing build: the direct-PTP path is unreachable until P5 selects it,
 and the default stays `device`.
 
-### P1 — Port the PTP stack, headless
+### P1 — Copy the PTP stack into photobooth, headless
 
-Bring the POC's pure-Kotlin layers into
-`android/app/src/main/kotlin/com/srisarani/fotozenai/canon/`:
+Copy the POC's pure-Kotlin layers into
+`photobooth/android/app/src/main/kotlin/com/srisarani/fotozenai/canon/`. **Read out of the
+POC, write into photobooth — the POC tree is not touched** (§0).
 
-| From POC | To | Lines |
+| Copied from POC | Into photobooth | Lines |
 |---|---|---|
 | `usb/` (5 files) | `canon/usb/` | ~890 |
 | `ptp/` (7 files) | `canon/ptp/` | ~1,400 |
@@ -156,13 +180,17 @@ Bring the POC's pure-Kotlin layers into
 | `capture/` (3 files) | `canon/capture/` | ~420 |
 | `session/CameraSessionManager.kt`, `state/ConnectionState.kt` | `canon/session/` | ~610 |
 
-Mechanical changes:
+Mechanical changes, all applied **to the photobooth copy only**:
 
 - Package rename `com.managemyfloor.canontether.*` → `com.srisarani.fotozenai.canon.*`
 - **Timber → a `CanonLog` shim** over `android.util.Log`. The POC uses Timber throughout;
   this app does not have it, and adding a logging dependency for a find-and-replace is not
   worth it. One small file, one mechanical substitution.
-- Port the POC's 206 unit tests to `android/app/src/test/`.
+- Copy the POC's 206 unit tests into `photobooth/android/app/src/test/` and rename their
+  packages to match.
+
+Nothing above is a change to `android-camera-connection`; it keeps its own package names,
+its own Timber dependency and its own passing test suite.
 
 Build changes required (this module has **no** Kotlin unit tests and **no** declared
 coroutines dependency today — both are new):
@@ -209,8 +237,9 @@ debugging session and five of the seven presented as a symptom in a different su
 | `U-06` | `CLEAR_FEATURE(ENDPOINT_HALT)` on connect — recovers a wedged camera without a power cycle, which on a kiosk is the difference between a log line and a site visit |
 | `U-17` | Drain budget must exceed a live-view frame, or an unclean exit needs a replug |
 
-**Done when:** `./gradlew :app:testDebugUnitTest` passes in this repo, and
-`./scripts/flutter_with_version.sh build apk` still builds. No Dart touched.
+**Done when:** `./gradlew :app:testDebugUnitTest` passes in `photobooth/android/`, and
+`./scripts/flutter_with_version.sh build apk` still builds. No Dart touched, and
+`git status` in `android-camera-connection` is clean.
 
 ### P2 — Bridge and connection lifecycle, no UI
 
@@ -365,7 +394,8 @@ together, as at an event.
 
 ## 6. Verification
 
-**Kotlin unit** — the POC's 206 tests, ported. They cover the parts that are pure logic and
+**Kotlin unit** — the POC's 206 tests, copied into photobooth and run by
+`./gradlew :app:testDebugUnitTest` there. They cover the parts that are pure logic and
 expensive to debug on hardware: ZLP handling (mutation-verified), PTP string parsing
 (mutation-verified), transaction-ID recovery, EVF frame parsing including a fuzz test,
 event-loop survival under malformed payloads.
