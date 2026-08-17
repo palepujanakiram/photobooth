@@ -291,7 +291,7 @@ class UsbTransport(
      */
     fun recoverFromStall(): Boolean {
         val cleared = channel.clearStall()
-        val discarded = drain()
+        val discarded = drain(RECOVERY_DRAIN_TIMEOUT_MS)
         if (discarded > 0) CanonLog.i("Discarded %dB left over from a previous session", discarded)
         return cleared
     }
@@ -317,6 +317,22 @@ class UsbTransport(
          */
         const val MAX_DRAIN_ROUNDS = 2048
         const val MAX_DRAIN_BYTES = 8 * 1024 * 1024
+
+        /**
+         * Per-read timeout while draining after a stall clear.
+         *
+         * The default drain timeout is [Config.zlpTimeoutMs] (50ms), tuned for a
+         * zero-length packet that is either already there or never coming. Recovery is a
+         * different problem: observed on hardware 2026-08-17, a drain at 50ms found the
+         * endpoint empty and reported nothing discarded, and the very next `GetDeviceInfo`
+         * still read leftovers — *"Container truncated: declared 1140862976"*, the exact
+         * signature `U-17` describes. The stale data was in flight, not absent.
+         *
+         * Costs one extra timeout on a genuinely clean endpoint, since the drain loop stops
+         * on the first empty read. That is a cheap price for not needing someone to walk
+         * over and power-cycle the camera.
+         */
+        const val RECOVERY_DRAIN_TIMEOUT_MS = 250
         const val DRAIN_BUFFER_BYTES = 16 * 1024
     }
 }
