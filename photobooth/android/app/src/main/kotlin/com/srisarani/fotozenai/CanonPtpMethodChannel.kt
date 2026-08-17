@@ -1,5 +1,6 @@
 package com.srisarani.fotozenai
 
+import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -16,6 +17,8 @@ import com.srisarani.fotozenai.canon.state.isFault
 import com.srisarani.fotozenai.canon.state.isOperational
 import com.srisarani.fotozenai.canon.state.label
 import com.srisarani.fotozenai.canon.usb.UsbCameraDiscovery
+import com.srisarani.fotozenai.canoncapture.CanonCaptureActivity
+import com.srisarani.fotozenai.canoncapture.CaptureSessionContract
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
@@ -56,9 +59,23 @@ object CanonPtpMethodChannel {
      */
     private const val CONNECT_TIMEOUT_MS = 30_000L
 
+    /** Request code for the native capture screen. */
+    private const val CAPTURE_REQUEST_CODE = 0x0CA9
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private lateinit var appContext: Context
+
+    /**
+     * The hosting Activity, needed to start the capture screen for a result.
+     *
+     * Held only between `register` and `onDestroy`, and cleared there — [appContext] is used
+     * for everything that outlives the Activity so this reference stays short-lived.
+     */
+    private var activity: Activity? = null
+
+    /** The Dart call awaiting a capture session, if one is open. */
+    private var pendingCaptureResult: MethodChannel.Result? = null
 
     private var statusSink: EventChannel.EventSink? = null
     private var detachReceiverRegistered = false
@@ -99,6 +116,7 @@ object CanonPtpMethodChannel {
     }
 
     fun register(flutterEngine: FlutterEngine, context: Context) {
+        activity = context as? Activity
         register(flutterEngine.dartExecutor.binaryMessenger, context)
     }
 
@@ -173,6 +191,13 @@ object CanonPtpMethodChannel {
             runCatching { appContext.unregisterReceiver(usbDetachReceiver) }
             detachReceiverRegistered = false
         }
+        // A Dart call still awaiting a capture session must be answered, or the capture
+        // flow waits on a Future that can never complete.
+        pendingCaptureResult?.success(
+            CaptureSessionContract.Result.cancelled("App shut down during capture").toMap(),
+        )
+        pendingCaptureResult = null
+        activity = null
         statusSink = null
         CameraSessionManager.disconnect()
         scope.cancel()
@@ -186,12 +211,82 @@ object CanonPtpMethodChannel {
             "probeDevice" -> result.success(probeDevice())
             "connect" -> connect(result)
             "status" -> result.success(stateMap(CameraSessionManager.state.value))
+            "runCaptureSession" -> runCaptureSession(call, result)
             "disconnect" -> {
                 CameraSessionManager.disconnect()
                 result.success(null)
             }
             else -> result.notImplemented()
         }
+    }
+
+    /**
+     * Opens the native capture screen and resolves with what it captured.
+     *
+     * The Activity owns live view, the shutter and the download; only file paths come back.
+     * Dart is suspended on this call for the whole session, which is exactly the semantics
+     * the capture flow wants — one await, one set of photos.
+     */
+    private fun runCaptureSession(call: MethodCall, result: MethodChannel.Result) {
+        val host = activity
+        if (host == null) {
+            result.success(
+                CaptureSessionContract.Result
+                    .error(
+                        CaptureSessionContract.ERROR_CONNECT_FAILED,
+                        "No activity available to host the capture screen",
+                    )
+                    .toMap(),
+            )
+            return
+        }
+        if (pendingCaptureResult != null) {
+            // Two capture screens would fight over one USB endpoint, and PTP is strictly
+            // serialised — so refuse rather than queue.
+            result.success(
+                CaptureSessionContract.Result
+                    .error(
+                        CaptureSessionContract.ERROR_CAMERA_BUSY,
+                        "A capture session is already running",
+                    )
+                    .toMap(),
+            )
+            return
+        }
+
+        val request = CaptureSessionContract.Request.fromMap(call.arguments as? Map<*, *>)
+        pendingCaptureResult = result
+        val intent = Intent(host, CanonCaptureActivity::class.java)
+            .putExtra(CaptureSessionContract.EXTRA_REQUEST, request.toJson())
+        host.startActivityForResult(intent, CAPTURE_REQUEST_CODE)
+        host.overridePendingTransition(0, 0)
+    }
+
+    /**
+     * Forwarded from `MainActivity.onActivityResult`.
+     *
+     * Returns true when it handled the code, so the host can fall through to anything else
+     * that also uses `startActivityForResult`.
+     */
+    fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
+        if (requestCode != CAPTURE_REQUEST_CODE) return false
+        val pending = pendingCaptureResult ?: return true
+        pendingCaptureResult = null
+
+        val captureResult = if (resultCode == Activity.RESULT_OK) {
+            CaptureSessionContract.Result.fromIntent(data)
+        } else {
+            // A killed or dismissed Activity is a cancellation, not an error: nothing is
+            // broken and the booth should simply return to where the guest was.
+            CaptureSessionContract.Result.cancelled("Capture screen closed")
+        }
+        CanonLog.i(
+            "Capture session result: %s (%d shots)",
+            captureResult.status,
+            captureResult.shots.size,
+        )
+        pending.success(captureResult.toMap())
+        return true
     }
 
     /**

@@ -10,5 +10,14 @@
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
+    <!--
+      Native DSLR capture screen. Black background and no animation so entering and leaving
+      reads as a screen change within the booth flow rather than a switch to another app —
+      the Activity sits on top of the Flutter one mid-session.
+    -->
+    <style name="CanonCaptureTheme" parent="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
 </resources>
 

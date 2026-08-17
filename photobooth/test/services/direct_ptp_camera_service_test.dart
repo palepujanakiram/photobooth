@@ -223,6 +223,116 @@ void main() {
     });
   });
 
+  group('runCaptureSession', () {
+    test('parses a completed session and passes the shot count through',
+        () async {
+      MethodCall? seen;
+      handle((call) async {
+        seen = call;
+        return <Object?, Object?>{
+          'status': 'completed',
+          'shots': <Object?>[
+            <Object?, Object?>{
+              'originalPath': '/data/captures/0001_IMG_3001.JPG',
+              'displayPath': '/data/captures/0001_IMG_3001.display.jpg',
+              'widthPx': 6000,
+              'heightPx': 4000,
+              'bytes': 6542638,
+              'capturedAtMs': 1755400000000,
+            },
+          ],
+        };
+      });
+
+      final result = await service().runCaptureSession(shotCount: 4);
+
+      expect(result.status, DirectPtpCaptureStatus.completed);
+      expect(result.isCompleted, isTrue);
+      expect(result.shots, hasLength(1));
+      expect(result.shots.first.widthPx, 6000);
+      expect(result.shots.first.bytes, 6542638);
+      final args = seen!.arguments as Map<Object?, Object?>;
+      expect(args['shotCount'], 4);
+    });
+
+    test('previewPath prefers the derivative, never the original', () async {
+      // The whole point: a 6000x4000 original decoded in Dart is ~96 MB and an
+      // instant OOM on the target box.
+      const shot = DirectPtpShot(
+        originalPath: '/data/o.JPG',
+        displayPath: '/data/o.display.jpg',
+      );
+      expect(shot.previewPath, '/data/o.display.jpg');
+    });
+
+    test('previewPath falls back to the original when no derivative exists',
+        () {
+      const shot = DirectPtpShot(originalPath: '/data/o.JPG');
+      expect(shot.previewPath, '/data/o.JPG');
+    });
+
+    test('a cancelled session is not an error and carries no shots', () async {
+      handle((_) async => <Object?, Object?>{
+            'status': 'cancelled',
+            'shots': <Object?>[],
+            'errorMessage': 'Back pressed',
+          });
+      final result = await service().runCaptureSession();
+      expect(result.isCancelled, isTrue);
+      expect(result.isCompleted, isFalse);
+      expect(result.shots, isEmpty);
+    });
+
+    test('an error keeps the code separate from the message', () async {
+      // Codes drive operator action — "put a card in the camera" is a different
+      // response from "plug the camera in" — so they must not be flattened into
+      // free text.
+      handle((_) async => <Object?, Object?>{
+            'status': 'error',
+            'errorCode': 'card_unavailable',
+            'errorMessage': 'No SD card',
+          });
+      final result = await service().runCaptureSession();
+      expect(result.status, DirectPtpCaptureStatus.error);
+      expect(result.errorCode, 'card_unavailable');
+    });
+
+    test('completed with zero shots does not count as completed', () async {
+      // Guards against treating a lost result as a successful empty session.
+      handle((_) async => <Object?, Object?>{
+            'status': 'completed',
+            'shots': <Object?>[],
+          });
+      expect((await service().runCaptureSession()).isCompleted, isFalse);
+    });
+
+    test('a platform exception becomes an error result, not a throw', () async {
+      handle((_) async => throw PlatformException(code: 'boom'));
+      final result = await service().runCaptureSession();
+      expect(result.status, DirectPtpCaptureStatus.error);
+      expect(result.errorCode, 'capture_failed');
+    });
+
+    test('off Android it reports unsupported without touching the channel',
+        () async {
+      final calls = <String>[];
+      handle((_) async => null, calls: calls);
+      final offAndroid = DirectPtpCameraService(isAndroid: () => false);
+      final result = await offAndroid.runCaptureSession();
+      expect(result.errorCode, 'unsupported_platform');
+      expect(calls, isEmpty);
+    });
+
+    test('a malformed shots payload degrades to an empty list', () async {
+      handle((_) async => <Object?, Object?>{
+            'status': 'completed',
+            'shots': 'not a list',
+          });
+      final result = await service().runCaptureSession();
+      expect(result.shots, isEmpty);
+    });
+  });
+
   group('DirectPtpStatus.fromMap', () {
     test('tolerates a map missing every optional key', () async {
       final status =

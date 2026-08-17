@@ -1,5 +1,6 @@
 package com.srisarani.fotozenai
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
 import io.flutter.embedding.android.FlutterActivity
@@ -37,6 +38,13 @@ class MainActivity : FlutterActivity() {
         SelphyMethodChannel.onDestroy()
         CanonPtpMethodChannel.onDestroy()
         super.onDestroy()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        // The native DSLR capture screen returns its shots this way; anything it does not
+        // claim falls through to Flutter's own plugin result handling.
+        if (CanonPtpMethodChannel.onActivityResult(requestCode, resultCode, data)) return
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

@@ -167,5 +167,10 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'com.google.truth:truth:1.4.4'
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0'
+    // Only the canoncapture tests need it: android.graphics.Rect and org.json are stubs
+    // under plain JVM tests (Rect returns 0, JSONObject.toString() returns null), so the
+    // geometry and the capture contract cannot be verified without real implementations.
+    // The PTP stack's own tests are pure logic and do not use it.
+    testImplementation 'org.robolectric:robolectric:4.14.1'
 }
 

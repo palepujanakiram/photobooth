@@ -174,6 +174,115 @@ class DirectPtpDevice {
       'pid: 0x${productId.toRadixString(16)}, permission: $hasPermission)';
 }
 
+/// How a native capture session ended.
+enum DirectPtpCaptureStatus { completed, cancelled, error, unknown }
+
+DirectPtpCaptureStatus _captureStatusFromName(String? name) {
+  switch (name) {
+    case 'completed':
+      return DirectPtpCaptureStatus.completed;
+    case 'cancelled':
+      return DirectPtpCaptureStatus.cancelled;
+    case 'error':
+      return DirectPtpCaptureStatus.error;
+    default:
+      return DirectPtpCaptureStatus.unknown;
+  }
+}
+
+/// One photo taken by the native capture screen.
+///
+/// Both fields are **paths**, never bytes. The original is a ~6.5 MB, 6000×4000
+/// JPEG — around 96 MB once decoded — so it is never read into Dart. Use
+/// [displayPath] for anything on screen or uploaded, and [originalPath] only for
+/// printing, where the native side decodes it subsampled.
+@immutable
+class DirectPtpShot {
+  const DirectPtpShot({
+    required this.originalPath,
+    this.displayPath,
+    this.widthPx = 0,
+    this.heightPx = 0,
+    this.bytes = 0,
+    this.capturedAtMs = 0,
+  });
+
+  factory DirectPtpShot.fromMap(Map<Object?, Object?> map) {
+    return DirectPtpShot(
+      originalPath: (map['originalPath'] as String?) ?? '',
+      displayPath: map['displayPath'] as String?,
+      widthPx: (map['widthPx'] as int?) ?? 0,
+      heightPx: (map['heightPx'] as int?) ?? 0,
+      bytes: (map['bytes'] as num?)?.toInt() ?? 0,
+      capturedAtMs: (map['capturedAtMs'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  /// Untouched camera JPEG. Print from this.
+  final String originalPath;
+
+  /// Downscaled copy for review and upload. Null when the derivative failed —
+  /// the original is still on disk, so this costs a thumbnail, not the photo.
+  final String? displayPath;
+
+  final int widthPx;
+  final int heightPx;
+  final int bytes;
+  final int capturedAtMs;
+
+  /// Best path to show on screen without risking a full-resolution decode.
+  String get previewPath => displayPath ?? originalPath;
+
+  @override
+  String toString() =>
+      'DirectPtpShot($originalPath, ${widthPx}x$heightPx, $bytes bytes)';
+}
+
+/// Outcome of a native capture session.
+@immutable
+class DirectPtpCaptureResult {
+  const DirectPtpCaptureResult({
+    required this.status,
+    this.shots = const <DirectPtpShot>[],
+    this.errorCode,
+    this.errorMessage,
+  });
+
+  factory DirectPtpCaptureResult.fromMap(Map<Object?, Object?> map) {
+    final rawShots = map['shots'];
+    final shots = rawShots is List
+        ? rawShots
+            .whereType<Map<Object?, Object?>>()
+            .map(DirectPtpShot.fromMap)
+            .toList()
+        : const <DirectPtpShot>[];
+    return DirectPtpCaptureResult(
+      status: _captureStatusFromName(map['status'] as String?),
+      shots: shots,
+      errorCode: map['errorCode'] as String?,
+      errorMessage: map['errorMessage'] as String?,
+    );
+  }
+
+  final DirectPtpCaptureStatus status;
+  final List<DirectPtpShot> shots;
+
+  /// Stable code for the failure: `no_device`, `permission_denied`,
+  /// `card_unavailable`, `camera_busy`, … Each maps to a different operator
+  /// action, which is why it is separate from [errorMessage].
+  final String? errorCode;
+  final String? errorMessage;
+
+  bool get isCompleted =>
+      status == DirectPtpCaptureStatus.completed && shots.isNotEmpty;
+  bool get isCancelled => status == DirectPtpCaptureStatus.cancelled;
+
+  @override
+  String toString() =>
+      'DirectPtpCaptureResult(${status.name}, ${shots.length} shots, '
+      'code: $errorCode)';
+}
+
 /// Dart side of the direct-PTP DSLR bridge (`CanonPtpMethodChannel`).
 ///
 /// Connection lifecycle only. Capture and live view never cross this channel —
@@ -278,6 +387,58 @@ class DirectPtpCameraService {
         state: DirectPtpState.error,
         label: 'Status failed',
         message: '$e',
+      );
+    }
+  }
+
+  /// Opens the native capture screen and waits for it to finish.
+  ///
+  /// The returned Future spans the whole session — connect, live view, every
+  /// shot, download and derivative — because the native screen owns all of it.
+  /// Nothing but paths comes back.
+  ///
+  /// Never throws: a failure arrives as [DirectPtpCaptureStatus.error] with a
+  /// code, so the capture flow has one place to handle every outcome.
+  Future<DirectPtpCaptureResult> runCaptureSession({
+    int shotCount = 1,
+    int displayMaxLongEdge = 1920,
+    int displayJpegQuality = 90,
+    int idleTimeoutSeconds = 180,
+    String? titleText,
+    String? shutterText,
+    String? cancelText,
+  }) async {
+    if (!isSupported) {
+      return const DirectPtpCaptureResult(
+        status: DirectPtpCaptureStatus.error,
+        errorCode: 'unsupported_platform',
+        errorMessage: 'Direct PTP capture needs Android USB host',
+      );
+    }
+    try {
+      final map = await _channel.invokeMapMethod<Object?, Object?>(
+        'runCaptureSession',
+        <String, Object?>{
+          'shotCount': shotCount,
+          'displayMaxLongEdge': displayMaxLongEdge,
+          'displayJpegQuality': displayJpegQuality,
+          'idleTimeoutSeconds': idleTimeoutSeconds,
+          'titleText': titleText,
+          'shutterText': shutterText,
+          'cancelText': cancelText,
+        },
+      );
+      final result = map == null
+          ? const DirectPtpCaptureResult(status: DirectPtpCaptureStatus.unknown)
+          : DirectPtpCaptureResult.fromMap(map);
+      AppLogger.info('Direct PTP capture session → $result');
+      return result;
+    } catch (e) {
+      AppLogger.warning('Direct PTP capture session failed: $e');
+      return DirectPtpCaptureResult(
+        status: DirectPtpCaptureStatus.error,
+        errorCode: 'capture_failed',
+        errorMessage: '$e',
       );
     }
   }

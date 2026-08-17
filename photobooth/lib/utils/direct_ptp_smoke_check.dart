@@ -21,8 +21,16 @@ const String kDirectPtpSmokeDefine =
 
 bool get directPtpSmokeRequested {
   final v = kDirectPtpSmokeDefine.trim().toLowerCase();
-  return v == '1' || v == 'true' || v == 'yes' || v == 'on';
+  return v == '1' || v == 'true' || v == 'yes' || v == 'on' || v == 'capture';
 }
+
+/// `CANON_PTP_SMOKE=capture` also opens the native capture screen once.
+///
+/// Separate from the plain connect check because it takes over the display and
+/// waits for a human to press the shutter — fine when bringing the screen up,
+/// wrong as a side effect of merely checking the link.
+bool get directPtpSmokeCaptureRequested =>
+    kDirectPtpSmokeDefine.trim().toLowerCase() == 'capture';
 
 /// Probes and connects once, logging what the camera reports. Never throws.
 Future<void> runDirectPtpSmokeCheckIfRequested({
@@ -59,6 +67,25 @@ Future<void> runDirectPtpSmokeCheckIfRequested({
     } else {
       AppLogger.warning('[PTP_SMOKE] not operational: ${status.label} '
           '${status.message ?? ''}');
+      return;
+    }
+
+    if (!directPtpSmokeCaptureRequested) return;
+
+    AppLogger.info('[PTP_SMOKE] opening native capture screen');
+    final result = await camera.runCaptureSession(shotCount: 1);
+    AppLogger.info('[PTP_SMOKE] capture → $result');
+    for (final shot in result.shots) {
+      AppLogger.info(
+        '[PTP_SMOKE] shot original=${shot.originalPath} '
+        '(${shot.widthPx}x${shot.heightPx}, ${shot.bytes} bytes) '
+        'display=${shot.displayPath}',
+      );
+    }
+    if (result.status == DirectPtpCaptureStatus.error) {
+      AppLogger.warning(
+        '[PTP_SMOKE] capture error ${result.errorCode}: ${result.errorMessage}',
+      );
     }
   } catch (e, s) {
     // A bring-up probe must never be able to stop the app from starting.
