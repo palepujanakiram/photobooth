@@ -252,6 +252,37 @@ void main() {
     });
   });
 
+  group('nativeEdsdkSidecarIsRunning', () {
+    test('true only for running', () async {
+      expect(
+        await nativeEdsdkSidecarIsRunning(() async => 'running'),
+        isTrue,
+      );
+      expect(
+        await nativeEdsdkSidecarIsRunning(() async => 'idle'),
+        isFalse,
+      );
+      expect(
+        await nativeEdsdkSidecarIsRunning(() async => 'crashed'),
+        isFalse,
+      );
+    });
+
+    test('false on timeout or throw', () async {
+      expect(
+        await nativeEdsdkSidecarIsRunning(
+          () => Completer<String>().future,
+          nativeStateTimeout: Duration.zero,
+        ),
+        isFalse,
+      );
+      expect(
+        await nativeEdsdkSidecarIsRunning(() => throw Exception('channel')),
+        isFalse,
+      );
+    });
+  });
+
   group('shouldRefuseCameraxFallbackWhenSidecarMisses', () {
     test('refuses CameraX when Pi stills are configured', () {
       expect(

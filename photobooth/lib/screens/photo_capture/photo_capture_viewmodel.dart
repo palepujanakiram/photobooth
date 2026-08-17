@@ -424,11 +424,43 @@ class CaptureViewModel extends ChangeNotifier {
     return canServe;
   }
 
+  /// GSM omitted mode and a leftover Pi host is down — use on-device USB EVF.
+  ///
+  /// Explicit backend `cameraConnectionMode=pi` is left on the Pi path.
+  Future<bool> adoptDirectSidecarIfInferredPiUnreachable({
+    Future<String> Function()? queryNativeState,
+  }) async {
+    final service = _localCameraService;
+    if (service == null) return false;
+    final query = queryNativeState ?? CanonSidecarStatusChannel.getState;
+    final piListening = await service.isListening();
+    final nativeRunning = await nativeEdsdkSidecarIsRunning(query);
+    if (!shouldSwitchInferredPiToDirect(
+      isPiConnection: service.isPiConnection,
+      modeExplicit: service.modeExplicit,
+      piListening: piListening,
+      nativeSidecarRunning: nativeRunning,
+    )) {
+      return false;
+    }
+    service.adoptConfig(
+      const CameraSidecarConfig(
+        enabled: true,
+        baseUrl: kDirectCameraSidecarBaseUrl,
+        livePreviewEnabled: true,
+        connectionMode: CameraConnectionMode.direct,
+      ),
+    );
+    notifyListeners();
+    return true;
+  }
+
   /// Skip CameraX/UVC open; arm capture once the sidecar reports connected.
   ///
   /// Returns false when localhost is not serving yet so POSE can retry or fall
   /// back to HDMI/UVC. Does **not** permanently disable direct EDSDK on a
-  /// single listen miss (asset extract / HTTP bind race).
+  /// single listen miss (asset extract / HTTP bind race). Direct USB still
+  /// commits Pose to the EVF poller while the sidecar binds.
   Future<bool> prepareSidecarLivePreview({
     int listenAttempts = 6,
     Duration listenRetryDelay = const Duration(milliseconds: 500),
@@ -452,7 +484,10 @@ class CaptureViewModel extends ChangeNotifier {
     }
     if (!listening) {
       notifyListeners();
-      return false;
+      return shouldKeepDirectSidecarPose(
+        isDirectConnection: service.isDirectConnection,
+        sidecarConfigured: service.isConfigured,
+      );
     }
     final healthy = await service.isHealthy();
     if (healthy) {

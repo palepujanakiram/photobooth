@@ -62,11 +62,13 @@ void main() {
           enabled: true,
           baseUrl: 'http://127.0.0.1:8791',
           connectionMode: CameraConnectionMode.direct,
+          modeExplicit: true,
         ),
         client: MockClient((_) async => http.Response('{}', 200)),
       );
       expect(direct.isDirectConnection, isTrue);
       expect(direct.isPiConnection, isFalse);
+      expect(direct.modeExplicit, isTrue);
       expect(direct.baseUrlLabel, '127.0.0.1:8791');
       expect(direct.recentlyHealthy, isFalse);
       direct.dispose();
@@ -163,6 +165,36 @@ void main() {
       });
       final service = LocalCameraService(config: config, client: client);
       expect(await service.hasPendingBodyStill(), isFalse);
+      service.dispose();
+    });
+
+    test('adoptConfig switches inferred Pi client to localhost USB', () {
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://172.16.4.128:8791',
+          livePreviewEnabled: false,
+          connectionMode: CameraConnectionMode.pi,
+        ),
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      expect(service.isPiConnection, isTrue);
+      expect(service.modeExplicit, isFalse);
+      expect(service.shouldShowLivePreview, isFalse);
+      service.markRuntimeUnavailable();
+      service.adoptConfig(
+        const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: kDirectCameraSidecarBaseUrl,
+          livePreviewEnabled: true,
+          connectionMode: CameraConnectionMode.direct,
+        ),
+      );
+      expect(service.isDirectConnection, isTrue);
+      expect(service.isConfigured, isTrue);
+      expect(service.shouldShowLivePreview, isTrue);
+      expect(service.baseUrlLabel, '127.0.0.1:8791');
+      expect(service.recentlyHealthy, isFalse);
       service.dispose();
     });
 

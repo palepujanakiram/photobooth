@@ -2266,12 +2266,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   Future<bool> _startSidecarPosePreviewSession() async {
     final forced = !_captureViewModel.usesSidecarLivePreview;
+    final direct =
+        _captureViewModel.localCameraService?.isDirectConnection == true;
     if (forced) {
       AppLogger.info(
-        'POSE: forcing Pi USB live preview (skip HDMI/UVC) '
+        'POSE: forcing sidecar USB live preview (skip HDMI/UVC) '
         'kind=${widget.sessionKind.name}',
       );
       _captureViewModel.localCameraService?.setForceLivePreview(true);
+    } else if (direct) {
+      AppLogger.info('POSE using Canon USB EVF live preview');
     } else {
       AppLogger.info('POSE using Pi DSLR sidecar live preview');
     }
@@ -2296,6 +2300,33 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     return true;
   }
 
+  /// Direct USB / Pi live preview: mount EVF before HDMI/UVC.
+  ///
+  /// Returns true when Pose setup should stop (sidecar session started, or
+  /// direct USB should not fall through to a capture card).
+  Future<bool> _trySidecarPosePreviewFirst() async {
+    await _captureViewModel.adoptDirectSidecarIfInferredPiUnreachable();
+    if (!mounted) return true;
+    if (!_useSidecarPosePreview) return false;
+
+    final service = _captureViewModel.localCameraService;
+    final canServe = await _captureViewModel.sidecarCanServePosePreview();
+    if (!mounted) return true;
+    final keepDirect = shouldKeepDirectSidecarPose(
+      isDirectConnection: service?.isDirectConnection == true,
+      sidecarConfigured: service?.isConfigured == true,
+    );
+    if (canServe || keepDirect) {
+      final started = await _startSidecarPosePreviewSession();
+      if (!mounted) return true;
+      if (started || keepDirect) return true;
+    }
+    AppLogger.warning(
+      'POSE: Canon sidecar not running on this device; using HDMI/UVC preview',
+    );
+    return false;
+  }
+
   Future<void> _beginPoseCaptureSetupBody() async {
     if (!mounted) return;
     unawaited(
@@ -2304,18 +2335,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }),
     );
 
-    if (_useSidecarPosePreview) {
-      final canServe = await _captureViewModel.sidecarCanServePosePreview();
-      if (!mounted) return;
-      if (canServe) {
-        final started = await _startSidecarPosePreviewSession();
-        if (!mounted) return;
-        if (started) return;
-      }
-      AppLogger.warning(
-        'POSE: Canon sidecar not running on this device; using HDMI/UVC preview',
-      );
-    }
+    if (await _trySidecarPosePreviewFirst()) return;
 
     // Classic (+ AI without Pi live preview): HDMI/UVC pose, sidecar stills.
 
