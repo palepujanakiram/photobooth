@@ -311,7 +311,12 @@ Everything that makes it a booth screen rather than a shutter button:
   the booth in a native Activity.
 - Error contract: `{status: 'error', code, message}` with codes distinct enough to act on —
   `no_device`, `permission_denied`, `connect_failed`, `capture_failed`, `download_failed`,
-  `camera_busy`.
+  `camera_busy`, `card_unavailable`.
+
+`card_unavailable` exists because `CaptureDestination = BOTH` (§5) makes a missing or full
+SD card a capture failure. It needs its own code: "put a card in the camera" is an
+operator action, and burying it inside `capture_failed` turns a ten-second fix into a
+debugging session.
 
 **Done when:** a full Classic 4-shot session runs on the box start to finish and hands four
 paths back.
@@ -359,6 +364,11 @@ together, as at an event.
 3. Full Classic 4-shot → strip → DNP print
 4. Unplug the camera mid-session; confirm recovery without an app restart
 5. Peak heap during capture + print, measured — see §4
+6. **Pull the SD card and confirm the JPEGs are physically on it**, matching the host copies
+   one for one (§5). Then run once with the card removed and confirm the failure surfaces as
+   `card_unavailable` rather than a hang or a generic capture error.
+7. Disconnect cleanly and confirm the camera is left on `CAMERA_CARD` — i.e. it still shoots
+   normally standalone without a power cycle.
 
 ---
 
@@ -375,19 +385,52 @@ together, as at an event.
 | **Toolchain.** AGP 9 built-in Kotlin, `builtInKotlin=false` globally, `minifyEnabled false` for an R8/coroutines crash. | Views not Compose (§2.3); declare coroutines explicitly; add the test config as a separate first commit so a build break is trivially bisectable. |
 | Quality gates — Sonar >90 % on new code, 100 % on services/utils/models, S107 (≤7 params), S3776 (complexity ≤15) | The Kotlin arrives already tested (206 tests). Budget Dart test work for `DirectPtpCameraService` and `CameraSourceConfig`. The launch arguments will exceed 7 params — use a `DirectPtpCaptureRequest` input class from the start. |
 
-## 5. Open questions
+## 5. Decisions and open questions
+
+### Locked: `CaptureDestination = BOTH`
+
+Every capture writes to **both** the camera's SD card and the host.
+
+```kotlin
+EosCaptureDestination.BOTH  // CAMERA_CARD (2) or HOST (4) = 6
+```
+
+The card keeps the original as an archive while the host still receives every frame over
+USB. `HOST` alone means exactly one copy of a photo that cannot be reshot, living in
+app-scoped storage that is deleted with the app; the card costs nothing and survives a
+reflash. `CAMERA_CARD` alone is not an option at all — the image never crosses USB, so
+there would be nothing to build a print derivative from.
+
+Three things this pins down for implementation:
+
+- **Order is load-bearing.** Destination must be set **before** the `EOS_PCHDDCapacity`
+  (`0x911A`) operation. Reversed, the destination write is accepted without error and then
+  silently ignored: the camera saves to its card and emits `StorageInfoChanged` instead of
+  `ObjectAdded`, so the host waits forever for a photo it was never offered. Nothing errors
+  (`P-15`/`P-16`). The POC's `EosCaptureTest` asserts this order — keep that test.
+- **A card must be present and have space.** With `BOTH`, a missing or full card is now a
+  capture failure mode that `HOST`-only did not have. The pre-flight check at P2 should
+  surface card state, and P4's error contract needs a `card_unavailable` code.
+- **Teardown restores `CAMERA_CARD`**, so the camera is left usable standalone after the
+  booth closes. The POC already does this in `restoreCardCapture()`.
+
+> **Verify on hardware at P6, do not assume.** The POC's `EosCapture.kt` already sets
+> `BOTH`, but its `EosCaptureDestination` values carry a `⚠️ VERIFY against ptp.h` marker,
+> and its `STATUS.md` open item #4 still claims capture is HOST-only with nothing reaching
+> the card. Code and notes disagree. Either the note is stale, or the body did not honour
+> `6` and fell back to host. **The P6 checklist must include physically pulling the card and
+> confirming the JPEGs are on it** — "we set the property" is not evidence.
+
+### Open
 
 1. **`largeHeap`** — settle at P3 with a measured peak, not up front.
-2. **`CaptureDestination`** — the POC is HOST-only, so nothing is written to the SD card. For
-   an event that cannot be reshot, `BOTH` (6) gives a second copy for the cost of a slower
-   capture. Worth a decision before P6.
-3. **Full-resolution print** — the app currently prints the 1920 px derivative. Holding the
+2. **Full-resolution print** — the app currently prints the 1920 px derivative. Holding the
    6000×4000 original means the print becomes a single high-quality 3.25× reduction from
    untouched capture data instead of a 1.04× reduction of an already-resized, already-
    recompressed image. Deliberately **out of scope here** (you scoped this round to getting
    capture working end-to-end) — the original is written to disk at P3 regardless, so the
    print change is a later, isolated commit.
-4. **Deleting the sidecar** — not on this branch. `main` keeps a working fallback until
+3. **Deleting the sidecar** — not on this branch. `main` keeps a working fallback until
    direct PTP has run a real event.
 
 ---
