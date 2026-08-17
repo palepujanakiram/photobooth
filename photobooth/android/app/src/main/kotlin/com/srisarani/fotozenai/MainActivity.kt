@@ -20,6 +20,7 @@ class MainActivity : FlutterActivity() {
         DnpUsbMethodChannel.register(flutterEngine, this)
         ReceiptUsbMethodChannel.register(flutterEngine, this)
         SelphyMethodChannel.register(flutterEngine, this)
+        CanonPtpMethodChannel.register(flutterEngine, this)
         hardwareKeysHandler = HardwareKeysHandler.attach(flutterEngine)
     }
 
@@ -27,12 +28,14 @@ class MainActivity : FlutterActivity() {
         super.onResume()
         DnpUsbMethodChannel.onResume(this)
         ReceiptUsbMethodChannel.onResume(this)
+        CanonPtpMethodChannel.onResume(this)
     }
 
     override fun onDestroy() {
         DnpUsbMethodChannel.onDestroy()
         ReceiptUsbMethodChannel.onDestroy()
         SelphyMethodChannel.onDestroy()
+        CanonPtpMethodChannel.onDestroy()
         super.onDestroy()
     }
 

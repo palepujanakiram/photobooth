@@ -103,7 +103,16 @@ class EosCapture(
             CanonLog.e(it, "EOS_PCHDDCapacity failed (P-05) - host capture will fail as 'disk full'")
         }.isSuccess
 
-        if (capacityOk) CanonLog.i("Host capture configured: destination=host, capacity announced")
+        // Report the destination actually written. The POC logged a hardcoded
+        // "destination=host" here, which contradicts the BOTH the line above sets — and a
+        // log that disagrees with the code is worse than no log, because it is the first
+        // thing anyone checks when photos turn out to be missing from the card.
+        if (capacityOk) {
+            CanonLog.i(
+                "Host capture configured: destination=%s (card+host), capacity announced",
+                if (destinationOk) "both" else "UNSET",
+            )
+        }
     }
 
     /**

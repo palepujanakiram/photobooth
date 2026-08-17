@@ -34,8 +34,14 @@ import java.io.File
  */
 object CaptureStorage {
 
-    /** Public folder name. Sits at the top level so it is easy to find on a TV box. */
-    const val PUBLIC_DIR_NAME = "CanonTether"
+    /**
+     * Public folder name. Sits at the top level so it is easy to find on a TV box.
+     *
+     * Renamed from the POC's "CanonTether": on a booth device the folder is what an
+     * operator sees when they go looking for the night's photos, and it should name the
+     * product rather than the prototype it came from.
+     */
+    const val PUBLIC_DIR_NAME = "FotozenCaptures"
 
     /**
      * True when we can write plain files to public storage.
