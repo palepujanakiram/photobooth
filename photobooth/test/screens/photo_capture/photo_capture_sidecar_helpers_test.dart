@@ -139,12 +139,13 @@ void main() {
       service.dispose();
     });
 
-    test('marks unavailable when idle and HTTP is down', () async {
+    test('idle and HTTP down leaves config intact for warm-up retry', () async {
       final service = LocalCameraService(
         config: const CameraSidecarConfig(
           enabled: true,
           baseUrl: 'http://127.0.0.1:8791',
           livePreviewEnabled: true,
+          connectionMode: CameraConnectionMode.direct,
         ),
         client: MockClient((_) async => throw Exception('Connection refused')),
       );
@@ -155,7 +156,8 @@ void main() {
         ),
         isFalse,
       );
-      expect(service.isConfigured, isFalse);
+      // Must remain configured so pose can retry after asset extract / bind.
+      expect(service.isConfigured, isTrue);
       service.dispose();
     });
 
@@ -232,6 +234,7 @@ void main() {
           enabled: true,
           baseUrl: 'http://127.0.0.1:8791',
           livePreviewEnabled: true,
+          connectionMode: CameraConnectionMode.direct,
         ),
         client: MockClient((_) async => throw Exception('Connection refused')),
       );
@@ -243,6 +246,8 @@ void main() {
         ),
         isFalse,
       );
+      // Timeout → idle; HTTP down is warm-up, not terminal poison.
+      expect(down.isConfigured, isTrue);
       down.dispose();
     });
   });

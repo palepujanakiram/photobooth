@@ -91,6 +91,11 @@ bool shouldTreatSidecarNativeStateAsDead(String state) {
 /// state is irrelevant — never call [LocalCameraService.markRuntimeUnavailable]
 /// from crash/`unsupported_abi` (that would poison Pi stills/preview).
 ///
+/// For direct EDSDK, only poison on confirmed terminal states
+/// (`unsupported_abi` / `crashed` / `max_restarts`). Idle + HTTP not listening
+/// is a normal warm-up (asset extract / bind) — return false so pose can retry
+/// without permanently disabling the session.
+///
 /// Returns false when pose must open HDMI/UVC instead of polling the sidecar.
 Future<bool> sidecarNativeProcessCanServeHttp(
   LocalCameraService? service, {
@@ -118,7 +123,7 @@ Future<bool> sidecarNativeProcessCanServeHttp(
   if (state == 'running') return true;
   final listening = await service.isListening();
   if (listening) return true;
-  service.markRuntimeUnavailable();
+  // Warm-up: process not running yet and HTTP not bound — retry later.
   return false;
 }
 

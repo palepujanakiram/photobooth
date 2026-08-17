@@ -424,10 +424,15 @@ class CaptureViewModel extends ChangeNotifier {
     return canServe;
   }
 
-  /// Skip CameraX/UVC open; arm capture once the Pi reports connected.
+  /// Skip CameraX/UVC open; arm capture once the sidecar reports connected.
   ///
-  /// Returns false when localhost is not serving so POSE can open HDMI/UVC.
-  Future<bool> prepareSidecarLivePreview() async {
+  /// Returns false when localhost is not serving yet so POSE can retry or fall
+  /// back to HDMI/UVC. Does **not** permanently disable direct EDSDK on a
+  /// single listen miss (asset extract / HTTP bind race).
+  Future<bool> prepareSidecarLivePreview({
+    int listenAttempts = 6,
+    Duration listenRetryDelay = const Duration(milliseconds: 500),
+  }) async {
     _isLoadingCameras = false;
     _isInitializing = false;
     _sidecarPreviewReady = false;
@@ -438,12 +443,14 @@ class CaptureViewModel extends ChangeNotifier {
       markSidecarPreviewReady();
       return true;
     }
-    final listening = await service.isListening();
-    if (!listening) {
-      // Direct EDSDK only — do not poison Pi/LAN config on a transient miss.
-      if (service.isDirectConnection) {
-        service.markRuntimeUnavailable();
+    var listening = await service.isListening();
+    if (!listening && service.isDirectConnection && listenAttempts > 1) {
+      for (var i = 1; i < listenAttempts && !listening; i++) {
+        await Future<void>.delayed(listenRetryDelay);
+        listening = await service.isListening();
       }
+    }
+    if (!listening) {
       notifyListeners();
       return false;
     }

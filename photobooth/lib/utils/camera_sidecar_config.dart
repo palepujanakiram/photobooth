@@ -203,7 +203,9 @@ CameraSidecarConfig _directConfig({
   // available whenever the bundled sidecar is on — a USB DSLR on the Mini PC
   // must still work when GSM left cameraEnabled false.
   final enabled = settings?.cameraEnabled == true || env.enabled;
-  final live = settings?.cameraLivePreviewEnabled ?? env.livePreviewEnabled;
+  // Direct USB has no HDMI card path — always show EDSDK EVF for pose.
+  // Admin "Show live preview" is for Pi/HDMI hybrid booths only.
+  final live = true;
   final base = env.baseUrl.trim().isNotEmpty
       ? env.baseUrl.trim().replaceAll(RegExp(r'/$'), '')
       : kDirectCameraSidecarBaseUrl;

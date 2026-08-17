@@ -194,6 +194,19 @@ void main() {
       expect(resolved.connectionMode, CameraConnectionMode.direct);
     });
 
+    test('direct mode always enables live EVF even when admin live preview off',
+        () {
+      final resolved = resolveCameraSidecarConfig(
+        AppSettingsModel(
+          cameraConnectionMode: 'direct',
+          cameraLivePreviewEnabled: false,
+        ),
+        environment: localhost,
+      );
+      expect(resolved.livePreviewEnabled, isTrue);
+      expect(resolved.shouldShowLivePreview, isTrue);
+    });
+
     test('pi mode keeps connectionMode when cameraEnabled false', () {
       final resolved = resolveCameraSidecarConfig(
         AppSettingsModel(
