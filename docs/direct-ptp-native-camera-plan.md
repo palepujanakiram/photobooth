@@ -227,7 +227,7 @@ debugging session and five of the seven presented as a symptom in a different su
 |---|---|
 | `C-16` | Live view must stay down until the image is **downloaded**, not just shot — a timer-based resume starves the download into a self-reinforcing busy deadlock |
 | `C-17` | Force drive mode to single, or the body's own self-timer adds its own countdown on top of ours |
-| `C-19` | Route EVF to `TFT+PC`; PC-only makes the camera display "Busy" and halves stream stability |
+| `C-19` | Route EVF to `TFT+PC` (§5). PC-only blanks the body's screen to "Busy" and cuts live-view stability ~8× (~54 frames per start vs ~430) |
 | `P-15` / `P-16` | Capacity is an **operation** (`0x911A`), not a property, and destination must be set **before** it — reverse the order and the camera silently saves to its card while the host waits forever |
 | `P-17` | This body emits `ObjectAddedEx64` (`0xC1A9`), not `0xC181`, with no filename |
 | `P-18` | The camera stays `DeviceBusy` up to ~8 s after a shot; the retry budget must cover it |
@@ -367,8 +367,13 @@ together, as at an event.
 6. **Pull the SD card and confirm the JPEGs are physically on it**, matching the host copies
    one for one (§5). Then run once with the card removed and confirm the failure surfaces as
    `card_unavailable` rather than a hang or a generic capture error.
-7. Disconnect cleanly and confirm the camera is left on `CAMERA_CARD` — i.e. it still shoots
-   normally standalone without a power cycle.
+7. Disconnect cleanly and confirm the camera is left on `CAMERA_CARD` with `EVFOutputDevice
+   = OFF` — i.e. it still shoots normally standalone without a power cycle.
+8. **With live view running, confirm the camera's own rear screen shows a live viewfinder,
+   not "Busy"** (§5). If it shows Busy, EVF routing has regressed to PC-only — check that
+   before anything else, because it also costs ~8× the stream stability.
+9. Record the SD card model alongside the post-capture busy timings, since `BOTH` puts the
+   card write inside that window.
 
 ---
 
@@ -411,6 +416,12 @@ Three things this pins down for implementation:
 - **A card must be present and have space.** With `BOTH`, a missing or full card is now a
   capture failure mode that `HOST`-only did not have. The pre-flight check at P2 should
   surface card state, and P4's error contract needs a `card_unavailable` code.
+- **Card speed is now on the critical path.** The body writes a full 24 MP JPEG to the card
+  *inside* the post-capture busy window — the same window `P-18` budgets ~10 s of
+  busy-retry for. A slow card stretches it, and the symptom is the camera sitting on "Busy"
+  longer than expected after a shot, which reads exactly like a protocol bug. **Use a fast
+  UHS-I card and rule it out first** before debugging the busy path. Worth recording the
+  card model in the P6 results so the measurement means something later.
 - **Teardown restores `CAMERA_CARD`**, so the camera is left usable standalone after the
   booth closes. The POC already does this in `restoreCardCapture()`.
 
@@ -420,6 +431,36 @@ Three things this pins down for implementation:
 > the card. Code and notes disagree. Either the note is stale, or the body did not honour
 > `6` and fell back to host. **The P6 checklist must include physically pulling the card and
 > confirming the JPEGs are on it** — "we set the property" is not evidence.
+
+### Locked: `EVFOutputDevice = TFT + PC`
+
+Live view is routed to the camera's own screen **and** the host, never to the host alone.
+
+```kotlin
+EvfOutputDevice.CAMERA_TFT_AND_PC  // CAMERA_TFT (1) or PC (2) = 3
+```
+
+With PC-only routing (`2`) the 200D II blanks its rear screen and displays **"Busy"** for
+as long as live view runs (`C-19`). Two reasons that is unacceptable for a booth:
+
+- **The camera stays functional.** The body keeps a working viewfinder, so an operator can
+  frame, check focus and see what the camera sees without going through the app. On
+  PC-only the camera is a black box with a "Busy" placard — indistinguishable from hung, so
+  a guest or operator starts pressing things.
+- **It is measurably more stable, not just prettier.** The POC measured **~54 frames per
+  live-view start on PC-only against ~430 with TFT+PC** — roughly 8×. Whatever the body is
+  doing differently, PC-only is the worse path on this hardware.
+
+This is the same escalation `fotozen-sidecar` already applies on the Pi path
+(`output=TFT + PC`), which is why the current booth does not show the symptom.
+
+The POC already sets this (`EosLiveView.kt:203`), so the copy inherits it. It is recorded
+here because it looks like a redundant setting — routing to the host *and* the screen when
+only the host consumes frames reads as something to simplify away. It is not. Do not
+change it to `PC` on the grounds that the camera's screen is unused.
+
+Teardown sets `EVFOutputDevice = OFF`, and `CaptureDestination` back to `CAMERA_CARD`, so
+the body is left usable standalone.
 
 ### Open
 
