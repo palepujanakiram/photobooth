@@ -337,18 +337,18 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
         Provider<Alice?>.value(value: AliceInspector.instance),
       ],
       child: OverlaySupport.global(
-        child: ListenableBuilder(
-          listenable: _routeTracker,
-          builder: (context, _) {
-            return MaterialApp(
-              navigatorKey: widget.navigatorKey,
-              navigatorObservers: [_routeTracker, appRouteObserver],
-              title: AppConstants.kBrandName,
-              debugShowCheckedModeBanner: false,
-              builder: (context, child) {
-                return Consumer<AppSettingsManager>(
-                  builder: (context, _, __) {
-                    AliceInspector.syncWithRuntimeConfig();
+        child: MaterialApp(
+          navigatorKey: widget.navigatorKey,
+          navigatorObservers: [_routeTracker, appRouteObserver],
+          title: AppConstants.kBrandName,
+          debugShowCheckedModeBanner: false,
+          builder: (context, child) {
+            return Consumer<AppSettingsManager>(
+              builder: (context, _, __) {
+                AliceInspector.syncWithRuntimeConfig();
+                return ListenableBuilder(
+                  listenable: _routeTracker,
+                  builder: (context, __) {
                     return DebugPerformanceOverlayScope(
                       routeName: _routeTracker.currentRouteName,
                       child: child ?? const SizedBox.shrink(),
@@ -356,27 +356,27 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
                   },
                 );
               },
-              theme: ThemeData(
-                colorScheme: ColorScheme.fromSeed(
-                    seedColor: Colors.blue, brightness: Brightness.light),
-                useMaterial3: true,
-              ),
-              darkTheme: ThemeData(
-                colorScheme: ColorScheme.fromSeed(
-                    seedColor: Colors.blue, brightness: Brightness.dark),
-                useMaterial3: true,
-              ),
-              themeMode: ThemeMode.system,
-              localizationsDelegates: const [
-                GlobalMaterialLocalizations.delegate,
-                GlobalWidgetsLocalizations.delegate,
-                GlobalCupertinoLocalizations.delegate,
-              ],
-              supportedLocales: const [Locale('en')],
-              initialRoute: AppConstants.kRouteSplash,
-              routes: buildAppRoutes(),
             );
           },
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+                seedColor: Colors.blue, brightness: Brightness.light),
+            useMaterial3: true,
+          ),
+          darkTheme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+                seedColor: Colors.blue, brightness: Brightness.dark),
+            useMaterial3: true,
+          ),
+          themeMode: ThemeMode.system,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('en')],
+          initialRoute: AppConstants.kRouteSplash,
+          routes: buildAppRoutes(),
         ),
       ),
     );

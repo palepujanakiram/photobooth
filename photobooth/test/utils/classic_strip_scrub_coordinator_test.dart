@@ -161,7 +161,8 @@ void main() {
     );
     await f;
     expect(coord.shotCount, 1);
-    expect(coord.statuses, [ClassicScrubDotStatus.cleaned]);
+    expect(coord.statuses, [ClassicScrubDotStatus.pending]);
+    expect((await f).scrubbed, isFalse);
     coord.dropLast();
     expect(coord.shotCount, 0);
   });

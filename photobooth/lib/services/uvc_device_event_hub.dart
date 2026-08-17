@@ -58,7 +58,8 @@ class UvcDeviceEventHub {
   Stream<UvcCameraDeviceEvent>? _resolveUpstream() {
     if (_testUpstream != null) return _testUpstream;
     if (defaultTargetPlatform != TargetPlatform.android) return null;
-    return UvcCamera.deviceEventStream;
+    // EventChannel — not unit-testable on the VM.
+    return UvcCamera.deviceEventStream; // coverage:ignore-line
   }
 
   @visibleForTesting

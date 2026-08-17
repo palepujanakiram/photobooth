@@ -33,6 +33,10 @@ class AppConstants {
   /// [AppStrings.flashbackComposeFailed] while the API still returns 200.
   static const Duration kClassicStripComposeTimeout = Duration(seconds: 300);
 
+  /// Classic 1-shot Continue — no 4-shot scrub. Do not sit on a hidden CTA
+  /// for [kClassicStripComposeTimeout] (felt like ~5 minutes).
+  static const Duration kClassicSingleComposeTimeout = Duration(seconds: 45);
+
   /// Fallback when `/api/settings` omits or invalidates `parallelImageCount`.
   /// Server-driven value chooses POST `/api/generate-image` (when **1**) vs
   /// GET `/api/generate-stream-parallel` (when **> 1**); see [ApiService.generateImages].
@@ -107,14 +111,23 @@ class AppConstants {
   static const Duration kThemeCarouselAutoScrollPauseDuration =
       Duration(seconds: 8);
 
-  /// Capture / preview card: max width as a fraction of screen width (landscape aligns ~theme carousel hero ~0.42–0.44).
-  static const double kCapturePreviewCardMaxWidthFractionLandscape = 0.44;
+  /// Capture / preview card: max width as a fraction of screen width (landscape).
+  /// Applied on phones, tablets, and TVs so large kiosks keep Pad-like side margins.
+  static const double kCapturePreviewCardMaxWidthFractionLandscape = 0.82;
 
   /// Capture / preview card: max width in portrait (leave side margins).
   static const double kCapturePreviewCardMaxWidthFractionPortrait = 0.92;
 
-  /// Capture / preview card: max height as fraction of screen height (landscape kiosks — avoid a full-height tower).
-  static const double kCapturePreviewCardMaxHeightFractionLandscape = 0.50;
+  /// Capture / preview card: max height as fraction of screen height (landscape).
+  static const double kCapturePreviewCardMaxHeightFractionLandscape = 0.58;
+
+  /// Absolute landscape card width cap (logical px). Keeps 32" / 4K kiosks at the
+  /// same FotoZen POSE card scale as ~11" tablets instead of filling the panel.
+  static const double kCapturePreviewCardMaxWidthLandscape = 1100;
+
+  /// Absolute landscape card height cap (logical px); pairs with
+  /// [kCapturePreviewCardMaxWidthLandscape] (~16:9).
+  static const double kCapturePreviewCardMaxHeightLandscape = 620;
 
   /// Portrait tablets/kiosks: taller slot so landscape HDMI/camera frames are not
   /// squeezed into a short strip (heads cropped when the feed used cover-fit).
@@ -261,6 +274,7 @@ class AppConstants {
 
   /// Classic + Pi DSLR: begin movie-LV teardown when the countdown reaches this
   /// second so the real shutter can fire as the timer hits zero (~3–4s prep).
+  /// Canon USB EVF pose skips this — stopping LV here freezes the preview.
   static const int kFlashbackSidecarStillPrepareAtSecond = 4;
 
   /// Classic follow-on shots also prepare mid-countdown (same as shot 1).

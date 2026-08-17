@@ -1,4 +1,5 @@
-import 'dart:async' show unawaited;
+import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
@@ -16,10 +17,114 @@ bool debugSidecarHelpersForceWeb = false;
 
 bool get _sidecarTreatAsWeb => kIsWeb || debugSidecarHelpersForceWeb;
 
+/// Still JPEGs below this luma look “almost black” vs EVF preview.
+const double kSidecarStillDarkLuma = 48;
+
+/// Prefer the live-view JPEG when it is at least this much brighter.
+const double kSidecarLiveBrighterDelta = 24;
+
+/// Canon EVF is gain-boosted; the shutter JPEG uses still AE and is often
+/// several stops darker indoors. Pose should keep the frame the guest saw.
+bool shouldPreferLiveViewJpeg({
+  required double? stillLuma,
+  required double? liveLuma,
+}) {
+  if (stillLuma == null || liveLuma == null) return false;
+  return stillLuma < kSidecarStillDarkLuma &&
+      liveLuma >= stillLuma + kSidecarLiveBrighterDelta;
+}
+
+/// True when an EVF JPEG can stand in for the delayed mechanical still.
+///
+/// Canon shutter + AF runs 1–3s after the countdown. Guests posed to live
+/// view; the still is often their hands already down.
+bool sidecarLiveJpegCanBePoseCapture(Uint8List? jpeg) {
+  final bytes = jpeg;
+  return bytes != null &&
+      bytes.isNotEmpty &&
+      sidecarHttpBodyLooksLikeJpeg(bytes);
+}
+
+Future<Uint8List> pickSidecarCaptureJpeg({
+  required Uint8List stillJpeg,
+  Uint8List? liveJpeg,
+  Future<double?> Function(Uint8List bytes)? meanLuma,
+}) async {
+  final live = liveJpeg;
+  if (live == null ||
+      live.isEmpty ||
+      !sidecarHttpBodyLooksLikeJpeg(live)) {
+    return stillJpeg;
+  }
+  final lumaOf = meanLuma ?? meanJpegLuma;
+  final stillLuma = await lumaOf(stillJpeg);
+  final liveLuma = await lumaOf(live);
+  if (!shouldPreferLiveViewJpeg(stillLuma: stillLuma, liveLuma: liveLuma)) {
+    return stillJpeg;
+  }
+  AppLogger.info(
+    '[HDMI_POSE] Still too dark (luma=${stillLuma!.toStringAsFixed(1)}) '
+    'vs live (${liveLuma!.toStringAsFixed(1)}); using live-view JPEG',
+  );
+  return live;
+}
+
 /// True when [cameraId] is a Pi gphoto2 / FZ200D still.
 bool isSidecarCameraId(String? cameraId) {
   final id = cameraId?.trim() ?? '';
   return id.startsWith('sidecar:');
+}
+
+/// Native sidecar states that cannot listen on `127.0.0.1:8791`.
+///
+/// `unsupported_abi` is x86 / non-ARM. ARM32 and ARM64 Android both ship a
+/// matching EDSDK sidecar. `crashed` / `max_restarts` mean the process exited.
+bool shouldTreatSidecarNativeStateAsDead(String state) {
+  return state == 'unsupported_abi' ||
+      state == 'crashed' ||
+      state == 'max_restarts';
+}
+
+/// Probes native sidecar lifecycle; marks the Dart client unused when dead.
+///
+/// For [CameraConnectionMode.pi] (remote LAN host), native on-device EDSDK
+/// state is irrelevant — never call [LocalCameraService.markRuntimeUnavailable]
+/// from crash/`unsupported_abi` (that would poison Pi stills/preview).
+///
+/// For direct EDSDK, only poison on confirmed terminal states
+/// (`unsupported_abi` / `crashed` / `max_restarts`). Idle + HTTP not listening
+/// is a normal warm-up (asset extract / bind) — return false so pose can retry
+/// without permanently disabling the session.
+///
+/// Returns false when pose must open HDMI/UVC instead of polling the sidecar.
+Future<bool> sidecarNativeProcessCanServeHttp(
+  LocalCameraService? service, {
+  required Future<String> Function() queryNativeState,
+  Duration nativeStateTimeout = const Duration(seconds: 1),
+}) async {
+  if (service == null || !service.isConfigured) return false;
+  // Pi/LAN: only the remote HTTP port matters; ignore native EDSDK process.
+  if (service.isPiConnection) {
+    return service.isListening();
+  }
+  String state;
+  try {
+    state = await queryNativeState().timeout(
+      nativeStateTimeout,
+      onTimeout: () => 'idle',
+    );
+  } catch (_) {
+    state = 'idle';
+  }
+  if (shouldTreatSidecarNativeStateAsDead(state)) {
+    service.markRuntimeUnavailable();
+    return false;
+  }
+  if (state == 'running') return true;
+  final listening = await service.isListening();
+  if (listening) return true;
+  // Warm-up: process not running yet and HTTP not bound — retry later.
+  return false;
 }
 
 /// Classic HDMI booths use Pi for the still; CameraX is often uninitialized.
@@ -113,6 +218,8 @@ Future<XFile?> tryCaptureFromSidecar(
   LocalCameraService? service, {
   bool resumeLiveView = true,
   bool preferStripPrintQuality = false,
+  bool preferLivePreviewFrame = false,
+  void Function()? onUsedLivePreviewFrame,
   String? corrId,
 }) async {
   if (service == null || !service.isConfigured) {
@@ -169,8 +276,46 @@ Future<XFile?> tryCaptureFromSidecar(
         'host': service.baseUrlLabel,
       }),
     );
+    Uint8List? liveJpeg;
+    try {
+      liveJpeg = await service.fetchPreviewJpeg(
+        timeout: const Duration(seconds: 2),
+      );
+    } catch (e) {
+      AppLogger.warning('[HDMI_POSE] Sidecar live freeze before capture: $e');
+    }
+    if (preferLivePreviewFrame && sidecarLiveJpegCanBePoseCapture(liveJpeg)) {
+      onUsedLivePreviewFrame?.call();
+      final name = 'fz200d_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      AppLogger.info(
+        '[HDMI_POSE] Pose capture is live EVF JPEG (${liveJpeg!.length} bytes)',
+      );
+      CaptureFlowLog.event(
+        'capture.sidecar_ok',
+        fields: {
+          'bytes': liveJpeg.length,
+          'ms': 0,
+          'resume_lv': resumeLiveView,
+          'source': 'live_evf',
+        },
+      );
+      unawaited(
+        service.postClientEvent('capture_ok', {
+          'bytes': liveJpeg.length,
+          'source': 'live_evf',
+        }),
+      );
+      return _xFileFromSidecarJpegBytes(liveJpeg, name);
+    }
+    try {
+      await service.prepareStill(timeout: const Duration(seconds: 8));
+    } catch (e) {
+      AppLogger.warning(
+        '[HDMI_POSE] Sidecar prepare-still before capture: $e',
+      );
+    }
     final t0 = DateTime.now();
-    final bytes = await service.capture(
+    var bytes = await service.capture(
       resumeLiveView: resumeLiveView,
       maxLongEdge: maxLongEdge,
       jpegQuality: jpegQuality,
@@ -186,6 +331,10 @@ Future<XFile?> tryCaptureFromSidecar(
       );
       return null;
     }
+    bytes = await pickSidecarCaptureJpeg(
+      stillJpeg: bytes,
+      liveJpeg: liveJpeg,
+    );
     service.markHealthy();
     final name = 'fz200d_${DateTime.now().millisecondsSinceEpoch}.jpg';
     final ms = DateTime.now().difference(t0).inMilliseconds;
@@ -210,31 +359,7 @@ Future<XFile?> tryCaptureFromSidecar(
         'corrId': id,
       }),
     );
-    if (_sidecarTreatAsWeb) {
-      return XFile.fromData(
-        bytes,
-        mimeType: 'image/jpeg',
-        name: name,
-      );
-    }
-    try {
-      final tempDir = await FileHelper.getTempDirectoryPath();
-      final dir = '$tempDir/sidecar';
-      await FileHelper.ensureDirectory(dir);
-      final path = '$dir/$name';
-      final file = FileHelper.createFile(path);
-      await (file as dynamic).writeAsBytes(bytes, flush: true);
-      return XFile(path, mimeType: 'image/jpeg', name: name);
-    } catch (writeErr) {
-      AppLogger.warning(
-        'Sidecar temp write failed; using in-memory still: $writeErr',
-      );
-      return XFile.fromData(
-        bytes,
-        mimeType: 'image/jpeg',
-        name: name,
-      );
-    }
+    return _xFileFromSidecarJpegBytes(bytes, name);
   } catch (e) {
     final info = parseSidecarError(e);
     AppLogger.warning(
@@ -261,6 +386,34 @@ Future<XFile?> tryCaptureFromSidecar(
   }
 }
 
+Future<XFile> _xFileFromSidecarJpegBytes(Uint8List bytes, String name) async {
+  if (_sidecarTreatAsWeb) {
+    return XFile.fromData(
+      bytes,
+      mimeType: 'image/jpeg',
+      name: name,
+    );
+  }
+  try {
+    final tempDir = await FileHelper.getTempDirectoryPath();
+    final dir = '$tempDir/sidecar';
+    await FileHelper.ensureDirectory(dir);
+    final path = '$dir/$name';
+    final file = FileHelper.createFile(path);
+    await (file as dynamic).writeAsBytes(bytes, flush: true);
+    return XFile(path, mimeType: 'image/jpeg', name: name);
+  } catch (writeErr) {
+    AppLogger.warning(
+      'Sidecar temp write failed; using in-memory still: $writeErr',
+    );
+    return XFile.fromData(
+      bytes,
+      mimeType: 'image/jpeg',
+      name: name,
+    );
+  }
+}
+
 /// Persist a DSLR sidecar JPEG for review, baked to match the upright live feed.
 ///
 /// Full-resolution Canon stills (often 20MP+) hang [compute] normalize on
@@ -278,21 +431,12 @@ Future<XFile> persistSidecarCaptureStill(
   if (_sidecarTreatAsWeb) {
     return rawFile;
   }
-  XFile source = rawFile;
-  if (rawFile.path.isEmpty) {
-    final bytes = await rawFile.readAsBytes();
-    if (bytes.isEmpty) {
-      throw Exception('Sidecar capture is empty');
-    }
-    final tempDir = await FileHelper.getTempDirectoryPath();
-    final dir = '$tempDir/sidecar';
-    await FileHelper.ensureDirectory(dir);
-    final path =
-        '$dir/fz200d_${DateTime.now().millisecondsSinceEpoch}.jpg';
-    final file = FileHelper.createFile(path);
-    await (file as dynamic).writeAsBytes(bytes, flush: true);
-    source = XFile(path, mimeType: 'image/jpeg');
-  }
+  final source = await _materializeSidecarStillFile(rawFile);
+  final sized = await ImageHelper.downscaleJpegToMaxLongEdge(
+    source,
+    maxLongEdge: kSidecarCaptureMaxLongEdge,
+    jpegQuality: 95,
+  );
   final turns = ((bakeQuarterTurns % 4) + 4) % 4;
   AppLogger.info(
     turns == 0
@@ -301,9 +445,27 @@ Future<XFile> persistSidecarCaptureStill(
             '(match live RotatedBox; skip full normalize)',
   );
   return ImageHelper.bakeExifAndQuarterTurns(
-    source,
+    sized,
     quarterTurns: turns,
     // High quality for EXIF-only bake — avoid crushing Pi ~1920 Canon stills.
     jpegQuality: 95,
   );
+}
+
+Future<XFile> _materializeSidecarStillFile(XFile rawFile) async {
+  final bytes = await rawFile.readAsBytes();
+  if (bytes.isEmpty) {
+    throw Exception('Sidecar capture is empty');
+  }
+  if (!sidecarHttpBodyLooksLikeJpeg(bytes)) {
+    throw Exception('Sidecar capture is not a JPEG still');
+  }
+  if (rawFile.path.isNotEmpty) return rawFile;
+  final tempDir = await FileHelper.getTempDirectoryPath();
+  final dir = '$tempDir/sidecar';
+  await FileHelper.ensureDirectory(dir);
+  final path = '$dir/fz200d_${DateTime.now().millisecondsSinceEpoch}.jpg';
+  final file = FileHelper.createFile(path);
+  await (file as dynamic).writeAsBytes(bytes, flush: true);
+  return XFile(path, mimeType: 'image/jpeg');
 }

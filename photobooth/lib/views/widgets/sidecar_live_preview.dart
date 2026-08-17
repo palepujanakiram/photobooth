@@ -13,7 +13,9 @@ class SidecarLivePreview extends StatefulWidget {
     required this.service,
     this.paused = false,
     this.onFirstFrame,
-    this.fit = BoxFit.cover,
+    /// Match captured-still framing ([BoxFit.contain]). [BoxFit.cover] crops
+    /// Canon LV on large landscape cards and looks more zoomed-in than the shot.
+    this.fit = BoxFit.contain,
   });
 
   final LocalCameraService service;
@@ -75,6 +77,7 @@ class _SidecarLivePreviewState extends State<SidecarLivePreview> {
       },
       onError: (err) {
         if (!mounted || _frame != null) return;
+        if (isSidecarPreviewWarmingError(err)) return;
         setState(() => _error = err);
       },
     );
@@ -99,7 +102,7 @@ class _SidecarLivePreviewState extends State<SidecarLivePreview> {
           frame,
           fit: widget.fit,
           gaplessPlayback: true,
-          filterQuality: FilterQuality.medium,
+          filterQuality: FilterQuality.low,
         ),
       );
     }

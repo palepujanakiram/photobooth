@@ -3,31 +3,16 @@ import 'package:flutter/foundation.dart';
 /// Android / iOS native builds (not web or desktop).
 bool get isMobileNativePlatform {
   if (kIsWeb) return false;
-  switch (defaultTargetPlatform) {
-    case TargetPlatform.android:
-    case TargetPlatform.iOS:
-      return true;
-    case TargetPlatform.fuchsia:
-    case TargetPlatform.linux:
-    case TargetPlatform.macOS:
-    case TargetPlatform.windows:
-      return false;
-  }
+  return defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
 }
 
 /// Windows / macOS / Linux Flutter desktop (not web).
 bool get isDesktopPlatform {
   if (kIsWeb) return false;
-  switch (defaultTargetPlatform) {
-    case TargetPlatform.windows:
-    case TargetPlatform.macOS:
-    case TargetPlatform.linux:
-      return true;
-    case TargetPlatform.android:
-    case TargetPlatform.iOS:
-    case TargetPlatform.fuchsia:
-      return false;
-  }
+  return defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux;
 }
 
 /// Live [CameraController] preview (mobile native + Flutter web camera plugin).

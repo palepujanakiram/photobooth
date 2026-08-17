@@ -578,6 +578,7 @@ class _PaymentFlowStripApi extends FakeApiService {
     List<StripScribbleStroke> scribbles = const [],
     bool cleanOverlays = false,
     PrintOrientation? orientation,
+    Duration? timeout,
   }) async {
     if (failCompose) {
       throw ApiException('compose down');

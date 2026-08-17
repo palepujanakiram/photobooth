@@ -103,13 +103,7 @@ import io.flutter.plugin.common.MethodChannel;
                 for (final var device : devicesList) {
                     devicesMap.put(
                             device.getDeviceName(),
-                            Map.of(
-                                    "name", device.getDeviceName(),
-                                    "deviceClass", device.getDeviceClass(),
-                                    "deviceSubclass", device.getDeviceSubclass(),
-                                    "vendorId", device.getVendorId(),
-                                    "productId", device.getProductId()
-                            )
+                            UvcUsbDeviceFilter.toDeviceMap(device)
                     );
                 }
 

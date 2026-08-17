@@ -9,13 +9,20 @@ bool captureCardIsPhonePortrait(BuildContext context) {
       MediaQuery.sizeOf(context).shortestSide < AppConstants.kTabletBreakpoint;
 }
 
+/// Aspect that fills [layoutConstraints] (portrait phones clamp to a tall slot;
+/// landscape may use the full pane ratio so the card scales with orientation).
 double captureCardViewportSlotAspect(
   BoxConstraints layoutConstraints,
-  double fallbackAspect,
-) {
+  double fallbackAspect, {
+  bool allowLandscape = false,
+}) {
   final w = layoutConstraints.maxWidth;
   final h = layoutConstraints.maxHeight;
   if (w <= 0 || h <= 0) return fallbackAspect;
+  if (allowLandscape) {
+    // Prefer ~16:9 POSE cards; avoid ultra-wide viewport strips on short panes.
+    return (w / h).clamp(1.15, 16 / 9);
+  }
   return (w / h).clamp(0.28, 0.92);
 }
 
@@ -49,22 +56,26 @@ double captureCardAspectRatioForCaptured({
   required BoxConstraints layoutConstraints,
   bool preferThemeSlotAspect = false,
 }) {
+  // Prefer the still we actually captured. Sidecar live pose uses a portrait
+  // theme slot; Canon JPEGs are landscape — a live lock would letterbox black.
+  final decodedAspect = captureCardDecodedImageAspect(
+    viewModel.capturedImagePixelSize,
+  );
+  if (decodedAspect != null) return decodedAspect;
   final locked = viewModel.lockedCaptureCardAspectRatio;
   if (locked != null && locked > 0) {
     return locked.clamp(0.35, 2.85);
   }
-  // Pi USB MJPEG / theme-slot pose: keep the Classic portrait card on review
-  // instead of flipping to landscape from person-count heuristics.
-  if (preferThemeSlotAspect) {
+  final isLandscape =
+      MediaQuery.orientationOf(context) == Orientation.landscape;
+  // Portrait Classic: keep the print-style theme slot. Landscape: scale to the
+  // still / feed so tablets are not stuck with a narrow portrait tower.
+  if (preferThemeSlotAspect && !isLandscape) {
     if (captureCardIsPhonePortrait(context)) {
       return captureCardViewportSlotAspect(layoutConstraints, fallbackAspect);
     }
     return fallbackAspect;
   }
-  final decodedAspect = captureCardDecodedImageAspect(
-    viewModel.capturedImagePixelSize,
-  );
-  if (decodedAspect != null) return decodedAspect;
   final personAspect = captureCardAspectRatioFromPersonCount(
     viewModel.estimatedPersonCountForCaptureReview,
   );
@@ -77,6 +88,13 @@ double captureCardAspectRatioForCaptured({
   if (captureCardIsPhonePortrait(context)) {
     return captureCardViewportSlotAspect(layoutConstraints, fallbackAspect);
   }
+  if (isLandscape) {
+    return captureCardViewportSlotAspect(
+      layoutConstraints,
+      fallbackAspect,
+      allowLandscape: true,
+    );
+  }
   return fallbackAspect;
 }
 
@@ -88,9 +106,11 @@ double captureCardAspectRatioForLivePreview({
   Size? uvcPreviewDisplaySize,
   bool preferThemeSlotAspect = false,
 }) {
-  // Sidecar Classic/AI pose uses the portrait theme slot (cover-crop the feed),
-  // not the landscape HDMI/UVC buffer aspect.
-  if (preferThemeSlotAspect) {
+  final isLandscape =
+      MediaQuery.orientationOf(context) == Orientation.landscape;
+  // Portrait Classic: theme slot. Landscape: follow the live feed / pane so the
+  // preview card scales with orientation instead of a fixed portrait tower.
+  if (preferThemeSlotAspect && !isLandscape) {
     if (captureCardIsPhonePortrait(context)) {
       return captureCardViewportSlotAspect(layoutConstraints, fallbackAspect);
     }
@@ -108,6 +128,13 @@ double captureCardAspectRatioForLivePreview({
   }
   final liveAspect = captureCardLivePreviewAspectRatio(viewModel);
   if (liveAspect != null) return liveAspect;
+  if (isLandscape) {
+    return captureCardViewportSlotAspect(
+      layoutConstraints,
+      fallbackAspect,
+      allowLandscape: true,
+    );
+  }
   return fallbackAspect;
 }
 

@@ -7,25 +7,23 @@ bool shouldDeferClassicComposePreviewWarm({
   int largePayloadChars = 700000,
 }) {
   if (imageDataUrls.length >= 4) return true;
-  var total = 0;
-  for (final url in imageDataUrls) {
-    total += url.length;
-    if (total >= largePayloadChars) return true;
-  }
-  return false;
+  return classicImagePayloadIsLarge(
+    imageDataUrls: imageDataUrls,
+    largePayloadChars: largePayloadChars,
+  );
 }
 
 /// True when Continue should skip local Flutter look-bake and let the server
 /// Sharp pipeline apply the selected filter id.
 ///
-/// Same trigger as [shouldDeferClassicComposePreviewWarm]: 4-shot / huge
-/// payloads. Sequential print-size bake on Mini PC / web often OOMs or hangs
-/// before `/strip/compose` is ever POSTed ("Couldn't build strip" with no
-/// server log).
+/// 4-shot / huge payloads: sequential print-size bake on Mini PC hangs before
+/// `/strip/compose`. 1-shot: the same 2400 bake of a Canon EVF/JPEG plate can
+/// sit on Continue for minutes; ColorFilter browse already matches the look.
 bool shouldSkipClassicClientLookBake({
   required List<String> imageDataUrls,
   int largePayloadChars = 700000,
 }) {
+  if (imageDataUrls.length == 1) return true;
   return shouldDeferClassicComposePreviewWarm(
     imageDataUrls: imageDataUrls,
     largePayloadChars: largePayloadChars,
@@ -42,11 +40,12 @@ int classicLookBakeMaxEdge({
   int compactEdge = 1400,
   int largePayloadChars = 700000,
 }) {
-  if (imageDataUrls.length >= 4) return compactEdge;
-  var total = 0;
-  for (final url in imageDataUrls) {
-    total += url.length;
-    if (total >= largePayloadChars) return compactEdge;
+  if (imageDataUrls.length >= 4 ||
+      classicImagePayloadIsLarge(
+        imageDataUrls: imageDataUrls,
+        largePayloadChars: largePayloadChars,
+      )) {
+    return compactEdge;
   }
   return fullEdge;
 }
@@ -57,4 +56,34 @@ bool shouldBakeClassicLooksSequentially({
 }) {
   return imageDataUrls.length > 1 ||
       shouldDeferClassicComposePreviewWarm(imageDataUrls: imageDataUrls);
+}
+
+/// Default size at which `/strip/compose` should 1600/q90 compact first.
+///
+/// Tiny unit-test fixtures stay under this so fakeAsync compose tests skip
+/// the isolate. Four Canon plates are well above it.
+const int kClassicComposeCompactPayloadChars = 200000;
+
+/// True when compose uploads are large enough to stall Mini PC Continue.
+bool shouldCompactClassicComposeUploads({
+  required List<String> imageDataUrls,
+  int largePayloadChars = kClassicComposeCompactPayloadChars,
+}) {
+  return classicImagePayloadIsLarge(
+    imageDataUrls: imageDataUrls,
+    largePayloadChars: largePayloadChars,
+  );
+}
+
+/// Running length of strip shot data URLs, short-circuiting at [largePayloadChars].
+bool classicImagePayloadIsLarge({
+  required List<String> imageDataUrls,
+  int largePayloadChars = 700000,
+}) {
+  var total = 0;
+  for (final url in imageDataUrls) {
+    total += url.length;
+    if (total >= largePayloadChars) return true;
+  }
+  return false;
 }

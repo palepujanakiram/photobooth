@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Fotozen AI (selected device)",
+            "request": "launch",
+            "type": "dart",
+            "cwd": "${workspaceFolder}/photobooth",
+            "program": "lib/main.dart",
+            "flutterMode": "debug",
+            "toolArgs": [
+                "--no-enable-impeller"
+            ]
+        }
+    ]
+}

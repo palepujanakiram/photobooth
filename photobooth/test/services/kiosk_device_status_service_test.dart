@@ -326,7 +326,7 @@ void main() {
       expect(snap.usbCamera.connected, isFalse);
     });
 
-    test('DSLR sidecar not configured when camera disabled in settings', () async {
+    test('DSLR direct mode uses localhost even when Pi host is set', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
         selphyBridge: _FakeSelphyBridge(),
@@ -340,21 +340,53 @@ void main() {
         ),
         probeUvcDevices: () async => false,
         probeDslrSidecar: (_) async => true,
+        querySidecarNativeState: () async => 'idle',
+        queryCanonCameraPresent: () async => true,
       );
       final snap = await service.probe(
         settings: AppSettingsModel(
-          cameraEnabled: false,
+          cameraEnabled: true,
+          cameraConnectionMode: 'direct',
           cameraSidecarHost: '172.16.4.128',
           cameraSidecarPort: 8791,
         ),
       );
-      expect(snap.dslrSidecar.configured, isFalse);
-      expect(snap.dslrSidecar.connected, isFalse);
+      expect(snap.dslrSidecar.configured, isTrue);
+      expect(snap.dslrSidecar.connected, isTrue);
       expect(snap.dslrSidecar.deviceName, AppStrings.kioskDeviceDslrSidecar);
-      expect(snap.dslrSidecar.transport, KioskDeviceTransport.lan);
+      expect(snap.dslrSidecar.transport, KioskDeviceTransport.usb);
     });
 
-    test('DSLR sidecar connected when Pi health succeeds', () async {
+    test('DSLR direct USB stays configured when GSM cameraEnabled is false',
+        () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async => false,
+        querySidecarNativeState: () async => 'running',
+        queryCanonCameraPresent: () async => true,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: false,
+          cameraConnectionMode: 'direct',
+        ),
+      );
+      expect(snap.dslrSidecar.configured, isTrue);
+      expect(snap.dslrSidecar.connected, isTrue);
+      expect(snap.dslrSidecar.transport, KioskDeviceTransport.usb);
+    });
+
+    test('DSLR pi mode uses LAN transport and HTTP health', () async {
       CameraSidecarConfig? seen;
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
@@ -372,22 +404,92 @@ void main() {
           seen = config;
           return true;
         },
+        querySidecarNativeState: () async => 'idle',
+        queryCanonCameraPresent: () async => false,
       );
       final snap = await service.probe(
         settings: AppSettingsModel(
           cameraEnabled: true,
+          cameraConnectionMode: 'pi',
+          cameraSidecarHost: '172.16.4.128',
+          cameraSidecarPort: 8791,
+        ),
+      );
+      expect(seen?.baseUrl, 'http://172.16.4.128:8791');
+      expect(seen?.connectionMode, CameraConnectionMode.pi);
+      expect(snap.dslrSidecar.configured, isTrue);
+      expect(snap.dslrSidecar.connected, isTrue);
+      expect(snap.dslrSidecar.transport, KioskDeviceTransport.lan);
+    });
+
+    test('DSLR pi mode is not configured when cameraEnabled is false', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async => true,
+        querySidecarNativeState: () async => 'running',
+        queryCanonCameraPresent: () async => true,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: false,
+          cameraConnectionMode: 'pi',
+          cameraSidecarHost: '172.16.4.128',
+          cameraSidecarPort: 8791,
+        ),
+      );
+      expect(snap.dslrSidecar.configured, isFalse);
+      expect(snap.dslrSidecar.connected, isFalse);
+      expect(snap.dslrSidecar.transport, KioskDeviceTransport.lan);
+    });
+
+    test('DSLR sidecar connected when Canon camera present in USB list', () async {
+      CameraSidecarConfig? seen;
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (config) async {
+          seen = config;
+          return true;
+        },
+        querySidecarNativeState: () async => 'idle',
+        queryCanonCameraPresent: () async => true,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: true,
+          cameraConnectionMode: 'direct',
           cameraSidecarHost: '172.16.4.128',
           cameraSidecarPort: 8791,
         ),
       );
       expect(snap.dslrSidecar.configured, isTrue);
       expect(snap.dslrSidecar.connected, isTrue);
-      expect(snap.dslrSidecar.transport, KioskDeviceTransport.lan);
-      expect(seen?.baseUrl, 'http://172.16.4.128:8791');
+      expect(snap.dslrSidecar.transport, KioskDeviceTransport.usb);
+      // Explicit direct mode ignores Pi host and uses localhost EDSDK.
+      expect(seen?.baseUrl, 'http://127.0.0.1:8791');
       expect(seen?.isConfigured, isTrue);
     });
 
-    test('DSLR sidecar not connected when Pi health fails', () async {
+    test('DSLR sidecar not connected when camera absent from USB list', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
         selphyBridge: _FakeSelphyBridge(),
@@ -401,19 +503,23 @@ void main() {
         ),
         probeUvcDevices: () async => false,
         probeDslrSidecar: (_) async => false,
+        querySidecarNativeState: () async => 'idle',
+        queryCanonCameraPresent: () async => false,
       );
       final snap = await service.probe(
         settings: AppSettingsModel(
           cameraEnabled: true,
+          cameraConnectionMode: 'direct',
           cameraSidecarHost: '172.16.4.128',
           cameraSidecarPort: 8791,
         ),
       );
       expect(snap.dslrSidecar.configured, isTrue);
       expect(snap.dslrSidecar.connected, isFalse);
+      expect(snap.dslrSidecar.transport, KioskDeviceTransport.usb);
     });
 
-    test('DSLR sidecar probe timeout reports not connected', () async {
+    test('DSLR sidecar probe timeout does not affect USB-connected status', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
         selphyBridge: _FakeSelphyBridge(),
@@ -430,17 +536,111 @@ void main() {
           await Future<void>.delayed(const Duration(milliseconds: 50));
           return true;
         },
+        querySidecarNativeState: () async => 'idle',
+        queryCanonCameraPresent: () async => true,
         wifiDiscoverTimeout: const Duration(milliseconds: 10),
       );
       final snap = await service.probe(
         settings: AppSettingsModel(
           cameraEnabled: true,
+          cameraConnectionMode: 'direct',
+          cameraSidecarHost: '172.16.4.128',
+          cameraSidecarPort: 8791,
+        ),
+      );
+      // Camera is USB-present → connected even if HTTP health timed out.
+      expect(snap.dslrSidecar.configured, isTrue);
+      expect(snap.dslrSidecar.connected, isTrue);
+      expect(snap.dslrSidecar.crashed, isFalse);
+    });
+
+    test('DSLR sidecar shows crashed when native state is crashed', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async => false,
+        querySidecarNativeState: () async => 'crashed',
+        queryCanonCameraPresent: () async => true,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: true,
+          cameraConnectionMode: 'direct',
           cameraSidecarHost: '172.16.4.128',
           cameraSidecarPort: 8791,
         ),
       );
       expect(snap.dslrSidecar.configured, isTrue);
-      expect(snap.dslrSidecar.connected, isFalse);
+      expect(snap.dslrSidecar.connected, isTrue);
+      expect(snap.dslrSidecar.crashed, isTrue);
+    });
+
+    test('DSLR sidecar shows crashed when max restarts exceeded', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async => false,
+        querySidecarNativeState: () async => 'max_restarts',
+        queryCanonCameraPresent: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: true,
+          cameraConnectionMode: 'direct',
+          cameraSidecarHost: '172.16.4.128',
+          cameraSidecarPort: 8791,
+        ),
+      );
+      expect(snap.dslrSidecar.crashed, isTrue);
+    });
+
+    test('DSLR sidecar not crashed when running but camera initialising', () async {
+      // Sidecar is running (HTTP health returns false = camera not yet ready in EDSDK)
+      // but native state is "running" — not crashed.
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async => false,
+        querySidecarNativeState: () async => 'running',
+        queryCanonCameraPresent: () async => true,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: true,
+          cameraConnectionMode: 'direct',
+          cameraSidecarHost: '172.16.4.128',
+          cameraSidecarPort: 8791,
+        ),
+      );
+      expect(snap.dslrSidecar.connected, isTrue);
+      expect(snap.dslrSidecar.crashed, isFalse);
     });
 
     test('default DSLR probe returns false when sidecar disabled', () async {

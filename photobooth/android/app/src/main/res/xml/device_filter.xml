@@ -6,9 +6,14 @@
     <usb-device class="14" />
     <!-- DNP DS-RX1 / DS-RX1HS dye-sub printer (VID 0x1343, PID 0x0005). -->
     <usb-device vendor-id="4931" product-id="5" />
-    <!-- Canon (VID 0x04a9 = 1193). Covers the Selphy CP1500 and the EOS DSLR body used by
-         the direct-PTP camera path — both are Canon, so one entry matches both. IDs here
-         are DECIMAL; hex silently never matches. -->
+    <!-- Canon Selphy printer (VID 0x04a9 = 1193), e.g. CP1500. -->
+    <usb-device vendor-id="1193" product-id="12492" />
+    <!-- Canon, vendor-wide (0x04a9 = 1193). Covers the Selphy and every EOS body, so
+         USB_DEVICE_ATTACHED fires for future models too. Both Canon stacks separate
+         cameras from printers by USB interface class, not product id:
+         CanonUsbPermissionManager.isCanonDslr and UsbCameraDiscovery.findCameras both
+         require the Still Imaging class (6). IDs here are DECIMAL; hex silently never
+         matches. -->
     <usb-device vendor-id="1193" />
     <!-- Still Image / PTP class (6/1/1): any tethered DSLR, not just Canon. Lets the
          direct-PTP path be brought up against a spare body. -->

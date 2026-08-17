@@ -202,3 +202,18 @@ String flashbackContinueCta({
   }
   return AppStrings.flashbackComposeCta;
 }
+
+/// Continue-button status after tap — polish / print-match / compose.
+String flashbackContinueBusyLabel({
+  required bool isSingleClassic,
+  required bool isPreparingPreview,
+  required bool isWarmingPrintPreview,
+  required bool hasLookComposePreview,
+}) {
+  if (isPreparingPreview) return AppStrings.flashbackPreparingPreview;
+  if (isWarmingPrintPreview && !hasLookComposePreview) {
+    return AppStrings.flashbackWarmingPrintPreview;
+  }
+  if (isSingleClassic) return AppStrings.flashbackComposingSingle;
+  return AppStrings.flashbackComposing;
+}

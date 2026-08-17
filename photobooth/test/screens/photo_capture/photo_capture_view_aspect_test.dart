@@ -189,7 +189,7 @@ void main() {
   });
 
   testWidgets(
-    'preferThemeSlotAspect keeps landscape kiosk on portrait theme slot',
+    'preferThemeSlotAspect keeps portrait theme slot only in portrait',
     (WidgetTester tester) async {
       final viewModel = CaptureViewModel();
       addTearDown(viewModel.dispose);
@@ -197,7 +197,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: MediaQuery(
-            data: const MediaQueryData(size: Size(1280, 800)),
+            data: const MediaQueryData(size: Size(800, 1280)),
             child: Builder(
               builder: (context) {
                 const constraints =
@@ -214,6 +214,41 @@ void main() {
                   preferThemeSlotAspect: true,
                 );
                 expect(live, closeTo(fallback, 0.001));
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
+  testWidgets(
+    'preferThemeSlotAspect on landscape follows live feed aspect',
+    (WidgetTester tester) async {
+      final viewModel = CaptureViewModel();
+      addTearDown(viewModel.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(size: Size(1280, 800)),
+            child: Builder(
+              builder: (context) {
+                const constraints =
+                    BoxConstraints(maxWidth: 1100, maxHeight: 500);
+                final fallback =
+                    AppConstants.themeCardSlotAspectRatio(context);
+                expect(fallback, lessThan(1.0));
+                final live = captureCardAspectRatioForLivePreview(
+                  context: context,
+                  viewModel: viewModel,
+                  fallbackAspect: fallback,
+                  layoutConstraints: constraints,
+                  uvcPreviewDisplaySize: const Size(1920, 1080),
+                  preferThemeSlotAspect: true,
+                );
+                expect(live, closeTo(1920 / 1080, 0.01));
                 final captured = captureCardAspectRatioForCaptured(
                   context: context,
                   viewModel: viewModel,
@@ -221,7 +256,42 @@ void main() {
                   layoutConstraints: constraints,
                   preferThemeSlotAspect: true,
                 );
-                expect(captured, closeTo(fallback, 0.001));
+                // No decoded still — landscape fills ~16:9, not an ultra-wide strip.
+                expect(captured, closeTo(16 / 9, 0.01));
+                expect(captured, greaterThan(1.0));
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
+  testWidgets(
+    'captured sidecar still uses decoded landscape over live lock',
+    (WidgetTester tester) async {
+      final viewModel = CaptureViewModel();
+      addTearDown(viewModel.dispose);
+      viewModel.lockCaptureCardAspectRatio(0.67);
+      viewModel.setCapturedImagePixelSizeForTest(const Size(1920, 1280));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(size: Size(1920, 1080)),
+            child: Builder(
+              builder: (context) {
+                const constraints =
+                    BoxConstraints(maxWidth: 900, maxHeight: 800);
+                final aspect = captureCardAspectRatioForCaptured(
+                  context: context,
+                  viewModel: viewModel,
+                  fallbackAspect: 0.67,
+                  layoutConstraints: constraints,
+                  preferThemeSlotAspect: false,
+                );
+                expect(aspect, closeTo(1920 / 1280, 0.001));
                 return const SizedBox.shrink();
               },
             ),

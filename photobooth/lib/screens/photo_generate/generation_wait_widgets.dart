@@ -775,7 +775,9 @@ class _GenerationWaitFaceScanChecklistState
     return FadeTransition(
       opacity: Tween<double>(begin: 1, end: 0).animate(_fade),
       child: SizeTransition(
-        axisAlignment: -1,
+        // Vertical collapse from the top (-1.0); SizeTransition has no
+        // `alignment` param on current Flutter SDK (use axisAlignment).
+        axisAlignment: -1.0,
         sizeFactor: Tween<double>(begin: 1, end: 0).animate(_fade),
         child: _GenerationWaitChecklistCard(
           title: 'Likeness',

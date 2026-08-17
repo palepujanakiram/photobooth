@@ -770,6 +770,7 @@ class ApiService {
     List<StripScribbleStroke> scribbles = const [],
     bool cleanOverlays = false,
     PrintOrientation? orientation,
+    Duration? timeout,
   }) async {
     if (images.length != 1 && images.length != kStripShotCount) {
       throw ApiException(
@@ -799,8 +800,8 @@ class ApiService {
         data: body,
         options: Options(
           responseType: ResponseType.json,
-          sendTimeout: AppConstants.kClassicStripComposeTimeout,
-          receiveTimeout: AppConstants.kClassicStripComposeTimeout,
+          sendTimeout: timeout ?? AppConstants.kClassicStripComposeTimeout,
+          receiveTimeout: timeout ?? AppConstants.kClassicStripComposeTimeout,
         ),
       );
       final data = r.data;

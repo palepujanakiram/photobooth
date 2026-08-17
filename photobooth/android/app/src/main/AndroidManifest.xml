@@ -9,6 +9,10 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
     <!-- FCM: show notifications / delivery on Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Canon EDSDK sidecar runs as a foreground Service (Android 8+ requirement). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <!-- connectedDevice foregroundServiceType requires this on Android 14+ (API 34). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
 
     <!-- Camera: required for capture and for camera list (availableCameras) -->
     <uses-permission android:name="android.permission.CAMERA"/>
@@ -42,9 +46,7 @@
         android:icon="@mipmap/ic_launcher"
         android:banner="@mipmap/ic_launcher"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:usesCleartextTraffic="false"
-        android:extractNativeLibs="false"
-        tools:replace="android:extractNativeLibs">
+        android:usesCleartextTraffic="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -85,6 +87,20 @@
             android:theme="@style/CanonCaptureTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true" />
+
+        <!--
+          Canon EDSDK sidecar: manages the native camera process.
+
+          Declared even when CanonCameraStack.current is PTP — an undeclared service that is
+          never started costs nothing, whereas a missing declaration turns flipping the stack
+          constant into a runtime crash rather than a rebuild. MainActivity gates whether it
+          actually starts.
+        -->
+        <service
+            android:name=".canon.CanonSidecarService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

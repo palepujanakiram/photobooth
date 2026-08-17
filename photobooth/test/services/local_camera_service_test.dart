@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:photobooth/services/local_camera_service.dart';
+import 'package:photobooth/services/session_manager.dart';
 import 'package:photobooth/utils/camera_sidecar_config.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('CameraSidecarConfig', () {
@@ -49,6 +52,79 @@ void main() {
       service.setForceLivePreview(true);
       expect(service.shouldShowLivePreview, isTrue);
       service.setForceLivePreview(false);
+      expect(service.shouldShowLivePreview, isFalse);
+      service.dispose();
+    });
+
+    test('reports connection mode and host label', () {
+      final direct = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://127.0.0.1:8791',
+          connectionMode: CameraConnectionMode.direct,
+        ),
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      expect(direct.isDirectConnection, isTrue);
+      expect(direct.isPiConnection, isFalse);
+      expect(direct.baseUrlLabel, '127.0.0.1:8791');
+      expect(direct.recentlyHealthy, isFalse);
+      direct.dispose();
+
+      final pi = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://172.16.4.128',
+          connectionMode: CameraConnectionMode.pi,
+        ),
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      expect(pi.isPiConnection, isTrue);
+      expect(pi.isDirectConnection, isFalse);
+      expect(pi.baseUrlLabel, '172.16.4.128:8791');
+      pi.dispose();
+
+      final invalid = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: '::not-a-uri::',
+        ),
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      expect(invalid.baseUrlLabel, '::not-a-uri::');
+      invalid.dispose();
+    });
+
+    test('recentlyHealthy after a successful health check', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode({'ok': true, 'connected': true}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      final service = LocalCameraService(config: config, client: client);
+      expect(service.recentlyHealthy, isFalse);
+      expect(await service.isHealthy(), isTrue);
+      expect(service.recentlyHealthy, isTrue);
+      service.dispose();
+    });
+
+    test('markRuntimeUnavailable stops preview and capture config', () {
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://127.0.0.1:8791',
+          livePreviewEnabled: true,
+        ),
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      expect(service.isConfigured, isTrue);
+      expect(service.shouldShowLivePreview, isTrue);
+      service.markRuntimeUnavailable();
+      expect(service.isConfigured, isFalse);
+      expect(service.shouldShowLivePreview, isFalse);
+      service.setForceLivePreview(true);
       expect(service.shouldShowLivePreview, isFalse);
       service.dispose();
     });
@@ -123,6 +199,13 @@ void main() {
       service.dispose();
     });
 
+    test('sidecarHttpBodyLooksLikeJpeg detects JPEG SOI', () {
+      expect(sidecarHttpBodyLooksLikeJpeg([0xff, 0xd8, 0xff, 0xd9]), isTrue);
+      expect(sidecarHttpBodyLooksLikeJpeg([0xff, 0xd8]), isFalse);
+      expect(sidecarHttpBodyLooksLikeJpeg([0x49, 0x49, 0x2a, 0x00]), isFalse);
+      expect(sidecarHttpBodyLooksLikeJpeg([]), isFalse);
+    });
+
     test('capture returns jpeg bytes and sends download query', () async {
       final jpeg = <int>[0xff, 0xd8, 0xff, 0xd9, ...List.filled(100, 1)];
       final client = MockClient((request) async {
@@ -163,6 +246,57 @@ void main() {
       });
       final service = LocalCameraService(config: config, client: client);
       await service.capture(resumeLiveView: false);
+      service.dispose();
+    });
+
+    test('capture logs progress while waiting', () async {
+      final client = MockClient((request) async {
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        return http.Response.bytes([0xff, 0xd8, 0xff, 0xd9], 200);
+      });
+      final service = LocalCameraService(
+        config: config,
+        client: client,
+        captureProgressInterval: const Duration(milliseconds: 5),
+      );
+      final bytes = await service.capture();
+      expect(bytes.first, 0xff);
+      service.dispose();
+    });
+
+    test('capture rethrows on timeout', () async {
+      final client = MockClient((request) async {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        return http.Response.bytes([0xff, 0xd8, 0xff, 0xd9], 200);
+      });
+      final service = LocalCameraService(
+        config: config,
+        client: client,
+        captureTimeout: const Duration(milliseconds: 1),
+      );
+      await expectLater(service.capture(), throwsA(isA<TimeoutException>()));
+      service.dispose();
+    });
+
+    test('capture throws when body is not JPEG', () async {
+      final client = MockClient((request) async {
+        return http.Response.bytes(
+          [0x49, 0x49, 0x2a, 0x00, ...List.filled(80, 0)],
+          200,
+          headers: {'content-type': 'image/jpeg'},
+        );
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await expectLater(
+        service.capture(),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.toString(),
+            'message',
+            contains('was not JPEG'),
+          ),
+        ),
+      );
       service.dispose();
     });
 
@@ -350,6 +484,38 @@ void main() {
       service.dispose();
     });
 
+    test('isListening is true on any HTTP response', () async {
+      final ok = LocalCameraService(
+        config: config,
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      expect(await ok.isListening(), isTrue);
+      ok.dispose();
+      final errorStatus = LocalCameraService(
+        config: config,
+        client: MockClient((_) async => http.Response('down', 500)),
+      );
+      expect(await errorStatus.isListening(), isTrue);
+      errorStatus.dispose();
+    });
+
+    test('isListening is false when not configured or request throws', () async {
+      final disabled = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: false,
+          baseUrl: 'http://127.0.0.1:8791',
+        ),
+      );
+      expect(await disabled.isListening(), isFalse);
+      disabled.dispose();
+      final down = LocalCameraService(
+        config: config,
+        client: MockClient((_) async => throw Exception('Connection refused')),
+      );
+      expect(await down.isListening(), isFalse);
+      down.dispose();
+    });
+
     test('capture throws when not configured', () async {
       const disabled = CameraSidecarConfig(
         enabled: false,
@@ -408,6 +574,33 @@ void main() {
       final detail = body['detail'] as Map<String, dynamic>;
       expect(detail['ready'], isTrue);
       expect(detail['corrId'], isNotEmpty);
+      service.dispose();
+    });
+
+    test('postClientEvent includes sessionId from SessionManager', () async {
+      SharedPreferences.setMockInitialValues({});
+      SessionManager().clearSession();
+      addTearDown(SessionManager().clearSession);
+      SessionManager().setSessionFromResponse({
+        'id': 'sess-sidecar',
+        'sessionId': 'sess-sidecar',
+        'termsAccepted': true,
+        'termsAcceptedAt': DateTime.now().toIso8601String(),
+        'attemptsUsed': 0,
+        'generatedImages': <dynamic>[],
+        'expiresAt':
+            DateTime.now().add(const Duration(hours: 1)).toIso8601String(),
+      });
+      http.Request? seen;
+      final client = MockClient((request) async {
+        seen = request;
+        return http.Response('', 204);
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await service.postClientEvent('pose_ready', {'ready': true});
+      final body = jsonDecode(seen!.body) as Map<String, dynamic>;
+      final detail = body['detail'] as Map<String, dynamic>;
+      expect(detail['sessionId'], 'sess-sidecar');
       service.dispose();
     });
 

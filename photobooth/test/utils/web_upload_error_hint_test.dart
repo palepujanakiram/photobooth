@@ -43,6 +43,26 @@ void main() {
     );
   });
 
+  test('webUploadErrorHintImpl treats .localhost as local dev', () {
+    expect(
+      webUploadErrorHintImpl(
+        isWeb: true,
+        baseUrl: 'http://api.localhost:8080',
+      ),
+      contains('run_web_dev.sh'),
+    );
+  });
+
+  test('webUploadErrorHintImpl empty host is not local dev', () {
+    expect(
+      webUploadErrorHintImpl(
+        isWeb: true,
+        baseUrl: 'not a url',
+      ),
+      '',
+    );
+  });
+
   test('webUploadErrorHintImpl empty for production web without 403', () {
     expect(
       webUploadErrorHintImpl(

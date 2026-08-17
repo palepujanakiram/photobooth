@@ -16,8 +16,6 @@ import '../../utils/logger.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/print_size_helpers.dart';
 import '../../utils/strip_filters_catalog_fallback.dart';
-import '../../utils/strip_look_color_matrices.dart';
-import '../../utils/strip_look_matrix_bake.dart';
 import '../../utils/strip_preview_grade_compress.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
@@ -52,7 +50,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         );
 
   final ThemeModel theme;
-  List<String> _imageDataUrls;
+  final List<String> _imageDataUrls;
   final ApiService _api;
   final SessionManager _sessionManager;
   PrintOrientation _printOrientation;
@@ -87,9 +85,6 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   String? _composePreviewFingerprint;
   StripComposeResult? _composePreview;
   final Map<String, List<String>> _gradedByFilter = {};
-  /// Print-sized Flutter-baked JPEGs keyed by filter id (invalidated with shots).
-  final Map<String, List<String>> _bakedByFilter = {};
-  String? _bakedShotsKey;
   final List<bool> _shotCleaned;
   int? _scrubbingIndex;
   /// True after at least one look-screen scrub pass finished (success or fail).
@@ -104,7 +99,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   /// Always false — Flutter ColorFilter until [lookComposePreviewUrl] is ready.
   bool get previewImagesAreGraded => false;
 
-  /// Exact print JPEG once background warm finishes (Flutter-baked + compose).
+  /// Exact print JPEG once background warm finishes (server compose).
   /// Null while warming → UI keeps instant ColorFilter (same matrices).
   String? get lookComposePreviewUrl {
     final url = _composePreview?.printImageUrl.trim() ?? '';
@@ -124,6 +119,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   /// Classic 1-shot print (portrait 4×6 by default; guest can switch to 6×4).
   bool get isSingleClassic => _imageDataUrls.length == 1;
+
+  Duration get _composeTimeout => isSingleClassic
+      ? AppConstants.kClassicSingleComposeTimeout
+      : AppConstants.kClassicStripComposeTimeout;
 
   bool get _hasComposableShotCount =>
       _imageDataUrls.length == 1 ||
@@ -357,8 +356,6 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _previewCleaned = false;
     _scrubPassCompleted = false;
     _gradedByFilter.clear();
-    _bakedByFilter.clear();
-    _bakedShotsKey = null;
     // Drop failed capture results so Refresh re-POSTs instead of re-adopting.
     ClassicStripScrubCoordinator.instance.releaseFailedShots();
     notifyListeners();
@@ -468,8 +465,6 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _imageDataUrls[i] = result.dataUrl;
     if (i < _shotCleaned.length) _shotCleaned[i] = result.scrubbed;
     _gradedByFilter.clear();
-    _bakedByFilter.clear();
-    _bakedShotsKey = null;
     notifyListeners();
     return result.scrubbed;
   }
@@ -710,8 +705,11 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     }
 
     _composePreviewDebounce?.cancel();
-    if (classicOverlayCleanupEnabled) {
-      // Finish background polish if still running so print matches preview.
+    if (classicOverlayCleanupEnabled &&
+        !isSingleClassic &&
+        !_scrubPassCompleted) {
+      // Join the first look-screen polish so print matches preview. Do not
+      // start a second Gemini pass on Continue (felt like the CTA vanished).
       await preparePreview().timeout(
         const Duration(seconds: 45),
         onTimeout: () {
@@ -764,10 +762,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
           },
         );
         result = await _requestComposeStrip(sessionId).timeout(
-          AppConstants.kClassicStripComposeTimeout,
+          _composeTimeout,
           onTimeout: () => throw TimeoutException(
             'Classic strip compose timed out after '
-            '${AppConstants.kClassicStripComposeTimeout.inSeconds}s',
+            '${_composeTimeout.inSeconds}s',
           ),
         );
         CaptureFlowLog.event(
@@ -899,61 +897,33 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     }
   }
 
-  String _shotsBakeCacheKey() => [
-        for (final url in _imageDataUrls) '${url.length}:${url.hashCode}',
-      ].join(',');
-
-  Future<List<String>> _bakedImagesForSelectedLook() async {
-    final shotsKey = _shotsBakeCacheKey();
-    if (_bakedShotsKey != shotsKey) {
-      _bakedByFilter.clear();
-      _bakedShotsKey = shotsKey;
-    }
-    final cached = _bakedByFilter[_selectedFilterId];
-    if (cached != null && cached.length == _imageDataUrls.length) {
-      return cached;
-    }
-    final baked = await bakeStripLookMatricesOntoDataUrls(
-      dataUrls: _imageDataUrls,
-      filterId: _selectedFilterId,
-      maxEdge: classicLookBakeMaxEdge(imageDataUrls: _imageDataUrls),
-      sequential: shouldBakeClassicLooksSequentially(
-        imageDataUrls: _imageDataUrls,
-      ),
-    );
-    _bakedByFilter[_selectedFilterId] = baked;
-    return baked;
-  }
-
   Future<StripComposeResult> _requestComposeStrip(String sessionId) async {
-    // 4-shot / huge payloads: skip Flutter print-size bake (OOM / hang before
-    // POST). Server Sharp applies the selected look. Small 1-shot still bakes
-    // Flutter matrices so Classic Warm is not washed by Sharp.
-    final skipBake =
-        shouldSkipClassicClientLookBake(imageDataUrls: _imageDataUrls);
-    final images = skipBake
-        ? List<String>.from(_imageDataUrls)
-        : await _bakedImagesForSelectedLook();
-    final filter =
-        skipBake ? _selectedFilterId : kStripComposePreBakedFilterId;
+    // Never Flutter-bake on Continue. Compact large Canon plates (1-shot and
+    // 4-shot) to 1600/q90 so Mini PC POST is not four full EVF JPEGs.
+    final images = shouldCompactClassicComposeUploads(
+      imageDataUrls: _imageDataUrls,
+    )
+        ? await compressDataUrlsForStripPreviewGrade(_imageDataUrls)
+        : List<String>.from(_imageDataUrls);
     CaptureFlowLog.event(
       'classic.compose_request',
       fields: {
         'shots': images.length,
-        'filter': filter,
-        'skip_bake': skipBake,
+        'filter': _selectedFilterId,
+        'skip_bake': true,
       },
     );
     return _api.composeStrip(
       sessionId: sessionId,
       images: images,
-      filter: filter,
+      filter: _selectedFilterId,
       frame: _selectedFrameId,
       sticker: kDefaultStripStickerId,
       stickerPlacements: _placements,
       scribbles: _scribbles,
       cleanOverlays: classicComposeRequestsOverlayCleanup(),
       orientation: _printOrientation,
+      timeout: _composeTimeout,
     );
   }
 

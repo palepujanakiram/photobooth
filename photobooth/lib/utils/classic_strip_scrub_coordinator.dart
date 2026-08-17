@@ -133,10 +133,13 @@ class ClassicStripScrubCoordinator extends ChangeNotifier {
       }
 
       if (!enableScrub) {
+        // Encode-only (capture scrub deferred to Pick a look). Do NOT mark
+        // [cleaned] — that green state meant Gemini finished and caused guests
+        // to think polish already ran while look screen still scrubbed once.
         final result = ClassicShotScrubResult(dataUrl: raw, scrubbed: false);
         entry
           ..result = result
-          ..status = ClassicScrubDotStatus.cleaned;
+          ..status = ClassicScrubDotStatus.pending;
         notifyListeners();
         completer.complete(result);
         return;
