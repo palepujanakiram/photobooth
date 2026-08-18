@@ -175,6 +175,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           buildCaptureScreen(
             key: ValueKey<Object?>('ai-pose-${prefill ?? 'fresh'}'),
             sessionKind: CaptureSessionKind.fotoZen,
+            context: context,
           ),
           settings: RouteSettings(
             name: '${AppConstants.kRouteCapture}-ai',

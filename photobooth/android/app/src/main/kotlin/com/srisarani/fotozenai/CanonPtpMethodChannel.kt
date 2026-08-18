@@ -17,6 +17,8 @@ import com.srisarani.fotozenai.canon.state.isFault
 import com.srisarani.fotozenai.canon.state.isOperational
 import com.srisarani.fotozenai.canon.state.label
 import com.srisarani.fotozenai.canon.usb.UsbCameraDiscovery
+import com.srisarani.fotozenai.canon.CanonSidecarService
+import com.srisarani.fotozenai.canoncapture.CanonCameraStack
 import com.srisarani.fotozenai.canoncapture.CanonCaptureActivity
 import com.srisarani.fotozenai.canoncapture.CaptureSessionContract
 import io.flutter.embedding.engine.FlutterEngine
@@ -242,12 +244,48 @@ object CanonPtpMethodChannel {
             "connect" -> connect(result)
             "status" -> result.success(stateMap(CameraSessionManager.state.value))
             "runCaptureSession" -> runCaptureSession(call, result)
+            "setPreferredStack" -> setPreferredStack(call, result)
             "disconnect" -> {
                 CameraSessionManager.disconnect()
                 result.success(null)
             }
             else -> result.notImplemented()
         }
+    }
+
+    /**
+     * Persists PTP vs EDSDK for the next cold start and stops/starts the EDSDK
+     * sidecar in-process so ZenAI `cameraConnectionMode` can flip without a rebuild.
+     *
+     * Args: `{ "stack": "ptp" | "edsdk" }`.
+     */
+    private fun setPreferredStack(call: MethodCall, result: MethodChannel.Result) {
+        val raw = (call.argument<String>("stack") ?: "edsdk").trim().lowercase()
+        val stack =
+            if (raw == "ptp" || raw == "direct_ptp" || raw == "directptp") {
+                CanonCameraStack.PTP
+            } else {
+                CanonCameraStack.EDSDK_SIDECAR
+            }
+        val previous = CanonCameraStack.resolved(appContext)
+        CanonCameraStack.setPreferred(appContext, stack)
+        if (previous != stack) {
+            if (stack == CanonCameraStack.PTP) {
+                CanonLog.i("Switching Canon stack to PTP — stopping EDSDK sidecar")
+                CameraSessionManager.disconnect()
+                CanonSidecarService.stop(appContext)
+            } else {
+                CanonLog.i("Switching Canon stack to EDSDK — starting sidecar")
+                CameraSessionManager.disconnect()
+                CanonSidecarService.start(appContext)
+            }
+        }
+        result.success(
+            mapOf(
+                "stack" to if (stack == CanonCameraStack.PTP) "ptp" else "edsdk",
+                "changed" to (previous != stack),
+            ),
+        )
     }
 
     /**

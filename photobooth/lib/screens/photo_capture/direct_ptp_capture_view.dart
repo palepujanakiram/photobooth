@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../theme_selection/theme_model.dart';
+import '../../services/app_settings_manager.dart';
 import '../../services/direct_ptp_camera_service.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/capture_session_kind.dart';
@@ -57,6 +58,8 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
   late final DirectPtpCameraService _camera =
       widget.cameraService ?? DirectPtpCameraService();
 
+  late final CaptureViewModel _captureViewModel;
+
   /// What the screen is waiting on, so the label says something true.
   ///
   /// A single "Starting the camera…" spinner across capture, processing and
@@ -76,9 +79,18 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
   @override
   void initState() {
     super.initState();
+    _captureViewModel = CaptureViewModel(
+      appSettingsManager: context.read<AppSettingsManager>(),
+    );
     // After the first frame so this screen is painted behind the native one —
     // otherwise the guest sees a blank route flash as the Activity comes up.
     WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_runSession()));
+  }
+
+  @override
+  void dispose() {
+    _captureViewModel.dispose();
+    super.dispose();
   }
 
   ThemeModel? get _flashbackTheme => widget.captureArgs?.flashbackTheme;
@@ -141,10 +153,9 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
   }
 
   Future<void> _finishFotoZen(XFile file) async {
-    final viewModel = context.read<CaptureViewModel>();
-    await viewModel.adoptExternalCapture(file, cameraId: _cameraId);
+    await _captureViewModel.adoptExternalCapture(file, cameraId: _cameraId);
     if (!mounted) return;
-    await _continueWithCapturedPhoto(viewModel);
+    await _continueWithCapturedPhoto();
   }
 
   /// Hands the still to the normal upload → theme-selection flow.
@@ -158,40 +169,39 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
   ///
   /// Still being mounted afterwards *is* the signal that it did not navigate:
   /// success replaces this route, which disposes us.
-  Future<void> _continueWithCapturedPhoto(CaptureViewModel viewModel) async {
+  Future<void> _continueWithCapturedPhoto() async {
     setState(() => _phase = _DirectPtpPhase.processing);
     // Logged because the handler's early returns are silent, and which one fired
     // is the difference between "no kiosk session", "upload already running" and
     // "upload rejected" — three different fixes.
     AppLogger.info(
-      '[PTP_CONTINUE] begin canContinue=${viewModel.canContinueUpload} '
-      'isUploading=${viewModel.isUploading} '
-      'hasPhoto=${viewModel.capturedPhoto != null}',
+      '[PTP_CONTINUE] begin canContinue=${_captureViewModel.canContinueUpload} '
+      'isUploading=${_captureViewModel.isUploading} '
+      'hasPhoto=${_captureViewModel.capturedPhoto != null}',
     );
     await handleCapturedPhotoContinue(
       context: context,
-      viewModel: viewModel,
+      viewModel: _captureViewModel,
       isMounted: () => mounted,
     );
     if (!mounted) return;
     AppLogger.warning(
       '[PTP_CONTINUE] did not navigate — '
-      'hasPhoto=${viewModel.capturedPhoto != null} '
-      'hasError=${viewModel.hasError} error=${viewModel.errorMessage}',
+      'hasPhoto=${_captureViewModel.capturedPhoto != null} '
+      'hasError=${_captureViewModel.hasError} error=${_captureViewModel.errorMessage}',
     );
     setState(() {
       _sessionRunning = false;
       _canRetryContinue = true;
-      _error = viewModel.errorMessage?.trim().isNotEmpty == true
-          ? viewModel.errorMessage
+      _error = _captureViewModel.errorMessage?.trim().isNotEmpty == true
+          ? _captureViewModel.errorMessage
           : AppStrings.directPtpContinueFailed;
     });
   }
 
   /// Retries the hand-off with the photo already taken.
   Future<void> _retryContinue() async {
-    final viewModel = context.read<CaptureViewModel>();
-    if (viewModel.capturedPhoto == null) {
+    if (_captureViewModel.capturedPhoto == null) {
       // Nothing to continue with; fall back to reopening the camera.
       await _runSession();
       return;
@@ -200,13 +210,12 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
       _sessionRunning = true;
       _error = null;
     });
-    await _continueWithCapturedPhoto(viewModel);
+    await _continueWithCapturedPhoto();
   }
 
   /// Discards the captured still and reopens the native camera screen.
   Future<void> _retake() async {
-    final viewModel = context.read<CaptureViewModel>();
-    await viewModel.clearCapturedPhotoAwaitingSession();
+    await _captureViewModel.clearCapturedPhotoAwaitingSession();
     if (!mounted) return;
     setState(() => _canRetryContinue = false);
     await _runSession();
@@ -286,14 +295,17 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          const Positioned.fill(child: ThemeBackground(theme: null)),
-          SafeArea(child: Center(child: _buildBody())),
-        ],
+    return ChangeNotifierProvider.value(
+      value: _captureViewModel,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            const Positioned.fill(child: ThemeBackground(theme: null)),
+            SafeArea(child: Center(child: _buildBody())),
+          ],
+        ),
       ),
     );
   }

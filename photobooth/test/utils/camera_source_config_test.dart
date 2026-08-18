@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photobooth/models/app_settings_model.dart';
 import 'package:photobooth/utils/camera_source_config.dart';
 
 void main() {
@@ -65,6 +66,46 @@ void main() {
 
     test('an unrecognised define does not silently disable the camera', () {
       expect(resolveCameraSource(overrideDefine: 'typo'), CameraSource.device);
+    });
+  });
+
+  group('usesDirectPtpCamera', () {
+    test('honours ZenAI cameraConnectionMode=direct_ptp', () {
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+          overrideSourceDefine: '',
+        ),
+        isTrue,
+      );
+    });
+
+    test('explicit pi/direct never opens PTP even with CAMERA_SOURCE', () {
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(cameraConnectionMode: 'pi'),
+          overrideSourceDefine: 'direct_ptp',
+        ),
+        isFalse,
+      );
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct'),
+          overrideSourceDefine: 'direct_ptp',
+        ),
+        isFalse,
+      );
+    });
+
+    test('falls back to CAMERA_SOURCE when mode is unset', () {
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(),
+          overrideSourceDefine: 'direct_ptp',
+          overrideConnectionModeDefine: '',
+        ),
+        isTrue,
+      );
     });
   });
 }

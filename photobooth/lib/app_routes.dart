@@ -51,6 +51,7 @@ Map<String, WidgetBuilder> buildAppRoutes() {
       return buildCaptureScreen(
         sessionKind: captureSessionKindFor(args),
         captureArgs: args,
+        context: context,
       );
     },
     AppConstants.kRouteFlashbackCapture: (context) =>

@@ -1,5 +1,9 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../models/app_settings_model.dart';
+import '../../services/app_settings_manager.dart';
 import '../../utils/camera_source_config.dart';
 import '../../utils/capture_session_kind.dart';
 import '../../utils/route_args.dart';
@@ -18,14 +22,17 @@ import 'photo_capture_view.dart';
 /// selected, and on a box with no built-in camera that hangs on "Starting
 /// camera…".
 ///
-/// Selected by [resolveCameraSource]; defaults to [PhotoCaptureScreen], so
-/// builds without `--dart-define=CAMERA_SOURCE=direct_ptp` are unchanged.
+/// Selected by ZenAI `cameraConnectionMode=direct_ptp` or
+/// `--dart-define=CAMERA_SOURCE=direct_ptp`; otherwise [PhotoCaptureScreen].
 Widget buildCaptureScreen({
   Key? key,
   required CaptureSessionKind sessionKind,
   CaptureRouteArgs? captureArgs,
+  BuildContext? context,
+  @visibleForTesting AppSettingsModel? settings,
 }) {
-  if (usesDirectPtpCamera) {
+  final resolvedSettings = settings ?? _settingsFromContext(context);
+  if (usesDirectPtpCamera(settings: resolvedSettings)) {
     return DirectPtpCaptureScreen(
       key: key,
       sessionKind: sessionKind,
@@ -37,6 +44,15 @@ Widget buildCaptureScreen({
     sessionKind: sessionKind,
     captureArgs: captureArgs,
   );
+}
+
+AppSettingsModel? _settingsFromContext(BuildContext? context) {
+  if (context == null) return null;
+  try {
+    return context.read<AppSettingsManager>().settings;
+  } catch (_) {
+    return null;
+  }
 }
 
 /// Derives the POSE flow from route arguments, for the named-route entry.

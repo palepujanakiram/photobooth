@@ -76,6 +76,7 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
       buildCaptureScreen(
         key: ValueKey<Object?>('ai-pose-${prefill ?? 'fresh'}'),
         sessionKind: CaptureSessionKind.fotoZen,
+        context: context,
       ),
       settings: RouteSettings(
         // Distinct name so Android TV cannot reuse Classic `/capture` args.

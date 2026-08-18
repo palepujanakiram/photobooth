@@ -1,5 +1,8 @@
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../models/app_settings_model.dart';
+import 'camera_sidecar_config.dart';
+
 /// Where the booth's stills come from.
 ///
 /// Selected by configuration rather than detected, because on a kiosk the wrong
@@ -61,13 +64,12 @@ CameraSource cameraSourceFromName(
 /// --dart-define=CAMERA_SOURCE=direct_ptp
 /// ```
 ///
-/// Empty by default, so builds without it behave exactly as before. P5 of the
-/// direct-PTP plan promotes this to per-kiosk config from zenai; this define
-/// stays as the lab override, mirroring `CAMERA_SIDECAR_ENABLED`.
+/// Empty by default. Prefer ZenAI `cameraConnectionMode=direct_ptp` for kiosks;
+/// this define stays as the lab override.
 const String kCameraSourceDefine =
     String.fromEnvironment('CAMERA_SOURCE', defaultValue: '');
 
-/// The configured camera source for this build.
+/// The configured camera source for this build (dart-define only).
 CameraSource resolveCameraSource({
   @visibleForTesting String? overrideDefine,
 }) {
@@ -77,5 +79,31 @@ CameraSource resolveCameraSource({
 }
 
 /// True when the booth should hand capture to the native direct-PTP screen.
-bool get usesDirectPtpCamera =>
-    resolveCameraSource() == CameraSource.directPtp;
+///
+/// Order: explicit ZenAI / dart-define [CameraConnectionMode.directPtp], else
+/// `CAMERA_SOURCE=direct_ptp`. Explicit `pi` / `direct` never opens PTP.
+bool usesDirectPtpCamera({
+  AppSettingsModel? settings,
+  @visibleForTesting String? overrideSourceDefine,
+  @visibleForTesting String? overrideConnectionModeDefine,
+}) {
+  final fromSettings = parseCameraConnectionMode(settings?.cameraConnectionMode);
+  if (fromSettings == CameraConnectionMode.directPtp) return true;
+  if (fromSettings == CameraConnectionMode.pi ||
+      fromSettings == CameraConnectionMode.direct) {
+    return false;
+  }
+
+  final fromConnectionDefine = parseCameraConnectionMode(
+    overrideConnectionModeDefine ??
+        CameraSidecarConfig.cameraConnectionModeDefine,
+  );
+  if (fromConnectionDefine == CameraConnectionMode.directPtp) return true;
+  if (fromConnectionDefine == CameraConnectionMode.pi ||
+      fromConnectionDefine == CameraConnectionMode.direct) {
+    return false;
+  }
+
+  return resolveCameraSource(overrideDefine: overrideSourceDefine) ==
+      CameraSource.directPtp;
+}
