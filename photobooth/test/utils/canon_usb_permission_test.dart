@@ -716,5 +716,63 @@ void main() {
       );
       expect(ok, isFalse);
     });
+
+    test('prepareDirectPtpPoseSession disconnects faulted connect attempts', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      var connectCalls = 0;
+      var disconnectCalls = 0;
+      messenger.setMockMethodCallHandler(ptpChannel, (call) async {
+        switch (call.method) {
+          case 'setPreferredStack':
+            return {'stack': 'ptp', 'changed': false};
+          case 'status':
+            return {'state': 'NoDevice', 'label': 'No device'};
+          case 'connect':
+            connectCalls++;
+            if (connectCalls == 1) {
+              return {'state': 'Error', 'label': 'Error', 'message': 'busy'};
+            }
+            return {'state': 'Ready', 'label': 'Ready'};
+          case 'disconnect':
+            disconnectCalls++;
+            return null;
+          default:
+            return null;
+        }
+      });
+
+      final ok = await prepareDirectPtpPoseSession(
+        settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+        camera: DirectPtpCameraService(isAndroid: () => true),
+        pollInterval: const Duration(milliseconds: 1),
+      );
+      expect(ok, isTrue);
+      expect(disconnectCalls, 1);
+      expect(connectCalls, 2);
+    });
+
+    test('direct PTP helpers use default camera service when omitted', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      messenger.setMockMethodCallHandler(ptpChannel, (call) async {
+        switch (call.method) {
+          case 'hasUsbHost':
+            return false;
+          case 'status':
+            return {'state': 'NoDevice', 'label': 'No device'};
+          default:
+            return null;
+        }
+      });
+
+      final settings = AppSettingsModel(cameraConnectionMode: 'direct_ptp');
+      expect(await ensureDirectPtpUsbOnTerms(settings: settings), isTrue);
+      expect(await warmDirectPtpOnTerms(settings: settings), isFalse);
+      expect(await isDirectPtpReadyForTerms(settings: settings), isFalse);
+      expect(await prepareDirectPtpPoseSession(settings: settings), isFalse);
+    });
   });
 }

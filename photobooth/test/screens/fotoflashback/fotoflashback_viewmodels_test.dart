@@ -98,6 +98,47 @@ void main() {
     expect(vm.canCompose, isTrue);
   });
 
+  test('FotoFlashbackFilterViewModel hydrate kicks off overlay scrub after encode',
+      () async {
+    final path =
+        '${Directory.systemTemp.path}/ptp_hydrate_scrub_${DateTime.now().microsecondsSinceEpoch}.jpg';
+    await File(path).writeAsBytes(kTinyJpegBytes);
+    SessionManager().setSessionFromResponse(_sessionJson('sess-hydrate-scrub'));
+    final api = _CountingScrubFakeApi();
+
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const [],
+      pendingImageFilePaths: [path],
+      overlayCleanupBuildGate: true,
+      apiService: api,
+    );
+    await vm.loadFilters();
+
+    for (var i = 0; i < 100 && vm.isHydratingCaptures; i++) {
+      await pumpEventQueue();
+    }
+    expect(vm.isHydratingCaptures, isFalse);
+    expect(vm.imageDataUrls, hasLength(1));
+  });
+
+  test('FotoFlashbackFilterViewModel hydrate reports encode failure', () async {
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const [],
+      pendingImageFilePaths: ['/nonexistent/ptp_hydrate_missing.jpg'],
+      overlayCleanupBuildGate: false,
+    );
+
+    for (var i = 0; i < 50 && vm.isHydratingCaptures; i++) {
+      await pumpEventQueue();
+    }
+
+    expect(vm.isHydratingCaptures, isFalse);
+    expect(vm.errorMessage, AppStrings.flashbackFinishEncodeFailed);
+    expect(vm.imageDataUrls, isEmpty);
+  });
+
   test('FotoFlashbackFilterViewModel clearCapturePreview drops stale bytes',
       () {
     final vm = FotoFlashbackFilterViewModel(

@@ -290,9 +290,6 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         if (gen != _hydrateGeneration) return;
         final url = await ImageHelper.encodeImageToBase64(XFile(path));
         if (gen != _hydrateGeneration) return;
-        if (url.trim().isEmpty) {
-          throw StateError('Empty encode for $path');
-        }
         encoded.add(url);
       }
       if (gen != _hydrateGeneration) return;
