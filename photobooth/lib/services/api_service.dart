@@ -9,6 +9,7 @@ import 'receipt/receipt_printer_profile.dart';
 import '../models/app_settings_model.dart';
 import '../models/kiosk_frame_model.dart';
 import '../models/kiosk_info_model.dart';
+import '../models/event_info_model.dart';
 import '../models/payment_initiate_result.dart';
 import '../models/preprocess_image_result.dart';
 import '../models/parallel_generation_result.dart';
@@ -28,6 +29,7 @@ import 'api_dio_errors.dart';
 import 'api_http_response.dart';
 import 'generation_api_errors.dart';
 import 'kiosk_manager.dart';
+import 'event_manager.dart';
 import 'session_manager.dart';
 import 'api_service_legacy_media.dart';
 import 'api_parallel_sse_consumer.dart';
@@ -412,6 +414,41 @@ class ApiService {
     return null;
   }
 
+  /// GET `/api/event/by-code/:code` — event metadata after kiosk bind.
+  Future<EventInfoModel?> fetchEventByCode(
+    String eventCode, {
+    String? kioskCode,
+  }) async {
+    final code = eventCode.trim().toUpperCase();
+    if (code.isEmpty) return null;
+    try {
+      final qp = <String, dynamic>{};
+      final kiosk = kioskCode?.trim().toUpperCase() ?? '';
+      if (kiosk.isNotEmpty) qp['kioskCode'] = kiosk;
+      final r = await _dio.get<dynamic>(
+        '/api/event/by-code/$code',
+        queryParameters: qp.isEmpty ? null : qp,
+        options: Options(
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+      if (r.statusCode != null && r.statusCode! >= 400) return null;
+      final data = r.data;
+      if (data is Map<String, dynamic>) {
+        final m = EventInfoModel.fromJson(data);
+        return m.isValid ? m : null;
+      }
+      if (data is Map) {
+        final m = EventInfoModel.fromJson(Map<String, dynamic>.from(data));
+        return m.isValid ? m : null;
+      }
+    } on DioException catch (e) {
+      _handleWebNetworkError(e);
+    } catch (_) {}
+    return null;
+  }
+
   /// Parses JSON from `GET /api/kiosk/frames`. Throws [ApiException] if the payload
   /// is not a list or `{ "frames" | "data": [...] }`, or if an entry is invalid.
   List<KioskFrameModel> _parseKioskFramesBody(dynamic data) {
@@ -445,11 +482,16 @@ class ApiService {
     try {
       final kioskCode =
           (await KioskManager().getKioskCode())?.trim().toUpperCase();
+      final eventCode =
+          (await EventManager().getEventCode())?.trim().toUpperCase();
       final kioskId = SessionManager().currentSession?.kioskId;
 
       final qp = <String, dynamic>{};
       if (kioskCode != null && kioskCode.isNotEmpty) {
         qp['kioskCode'] = kioskCode;
+      }
+      if (eventCode != null && eventCode.isNotEmpty) {
+        qp['eventCode'] = eventCode;
       }
       if (kioskId != null && kioskId.isNotEmpty) {
         qp['kioskId'] = kioskId;
@@ -931,8 +973,10 @@ class ApiService {
     bool groupConsentAccepted = true,
   }) async {
     try {
+      final eventCode = await EventManager().getEventCode();
       final response = await _apiClient.acceptTermsAndCreateSession({
         if (kioskCode != null && kioskCode.isNotEmpty) 'kioskCode': kioskCode,
+        if (eventCode != null && eventCode.isNotEmpty) 'eventCode': eventCode,
         if (source != null && source.isNotEmpty) 'source': source,
         'groupConsentAccepted': groupConsentAccepted,
         if (includeSelectedFrameId) 'selectedFrameId': selectedFrameId,

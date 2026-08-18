@@ -8,6 +8,7 @@ import '../utils/error_reporting_helpers.dart';
 import '../utils/logger.dart';
 import 'api_service.dart';
 import 'kiosk_manager.dart';
+import 'event_manager.dart';
 
 /// Singleton class responsible for fetching, caching, and providing themes
 /// to all screens that need them.
@@ -71,7 +72,8 @@ class ThemeManager {
   Future<List<ThemeModel>> fetchThemes({bool forceRefresh = false}) async {
     // Invalidate cache automatically when kiosk changes.
     final kioskCode = await KioskManager().getKioskCode();
-    final kioskKey = (kioskCode ?? '').trim();
+    final eventCode = await EventManager().getEventCode();
+    final kioskKey = '${(kioskCode ?? '').trim()}|${(eventCode ?? '').trim()}';
     if (_cachedThemes.isNotEmpty && _cachedThemesKioskKey != kioskKey) {
       _cachedThemes = [];
       _lastFetchTime = null;
@@ -107,7 +109,9 @@ class ThemeManager {
       final themes = await _apiService.getThemes();
       _cachedThemes = themes;
       final kioskCode = await KioskManager().getKioskCode();
-      _cachedThemesKioskKey = (kioskCode ?? '').trim();
+      final eventCode = await EventManager().getEventCode();
+      _cachedThemesKioskKey =
+          '${(kioskCode ?? '').trim()}|${(eventCode ?? '').trim()}';
       _lastFetchTime = DateTime.now();
       _errorMessage = null;
       _isLoading = false;

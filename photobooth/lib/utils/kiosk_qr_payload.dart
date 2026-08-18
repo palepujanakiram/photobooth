@@ -1,13 +1,16 @@
 /// Encode/decode kiosk codes in QR payloads for phone ↔ booth scanning.
 abstract final class KioskQrPayload {
   /// QR content the booth camera should scan (custom URI + query).
-  static String encode(String kioskCode) {
+  static String encode(String kioskCode, {String? eventCode}) {
     final c = kioskCode.trim().toUpperCase();
     if (c.isEmpty) return '';
+    final qp = <String, String>{'code': c};
+    final event = eventCode?.trim().toUpperCase() ?? '';
+    if (event.isNotEmpty) qp['event'] = event;
     return Uri(
       scheme: 'fotozen',
       host: 'kiosk',
-      queryParameters: {'code': c},
+      queryParameters: qp,
     ).toString();
   }
 
@@ -33,5 +36,22 @@ abstract final class KioskQrPayload {
       return upper;
     }
     return null;
+  }
+
+  /// Event code from a `fotozen://kiosk?...&event=` URI, or null.
+  static String? parseEventCode(String? raw) {
+    if (raw == null) return null;
+    final uri = Uri.tryParse(raw.trim());
+    if (uri == null ||
+        uri.scheme.toLowerCase() != 'fotozen' ||
+        uri.host.toLowerCase() != 'kiosk') {
+      return null;
+    }
+    final event = (uri.queryParameters['event'] ??
+            uri.queryParameters['eventCode'] ??
+            '')
+        .trim();
+    if (event.isEmpty) return null;
+    return event.toUpperCase();
   }
 }

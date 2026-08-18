@@ -277,6 +277,14 @@ void main() {
     expect(await api.fetchKioskByCode('bad'), isNull);
   });
 
+  test('fetchEventByCode returns null for invalid payload', () async {
+    adapter.onGet(
+      '/api/event/by-code/BAD',
+      (s) => s.reply(200, {'id': '', 'code': ''}),
+    );
+    expect(await api.fetchEventByCode('bad'), isNull);
+  });
+
   test('getKioskFrames 500 with invalid frame returns empty', () async {
     SessionManager().setSessionFromResponse({
       'id': 'sess-1',

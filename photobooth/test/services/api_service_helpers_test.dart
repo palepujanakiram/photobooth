@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/services/api_client.dart';
 import 'package:photobooth/services/api_generate_metadata_log.dart';
 import 'package:photobooth/services/api_service_helpers.dart';
+import 'package:photobooth/services/event_manager.dart';
 import 'package:photobooth/services/session_manager.dart';
 import 'package:uuid/uuid.dart';
 import 'package:photobooth/utils/exceptions.dart';
@@ -29,6 +30,16 @@ void main() {
     final qp = await kioskThemesQueryParameters();
     expect(qp['kioskCode'], 'K1');
     expect(qp['kioskId'], 'kid-1');
+  });
+
+  test('kioskThemesQueryParameters includes eventCode when bound', () async {
+    SharedPreferences.setMockInitialValues({
+      'kiosk_code': 'K1',
+      'event_code': 'WED',
+    });
+    EventManager.resetCacheForTests();
+    final qp = await kioskThemesQueryParameters();
+    expect(qp['eventCode'], 'WED');
   });
 
   test('parseThemesResponseBody maps list of maps', () {

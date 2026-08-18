@@ -22,4 +22,18 @@ void main() {
   test('parse returns null for garbage', () {
     expect(KioskQrPayload.parse('not a code!!!'), isNull);
   });
+
+  test('encode can include event code', () {
+    final uri = KioskQrPayload.encode('ab12', eventCode: 'wed');
+    expect(uri, contains('code=AB12'));
+    expect(uri, contains('event=WED'));
+  });
+
+  test('parseEventCode reads event query', () {
+    expect(
+      KioskQrPayload.parseEventCode('fotozen://kiosk?code=xyz9&event=gala'),
+      'GALA',
+    );
+    expect(KioskQrPayload.parseEventCode('fotozen://kiosk?code=xyz9'), isNull);
+  });
 }
