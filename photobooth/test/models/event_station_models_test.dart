@@ -40,6 +40,7 @@ void main() {
     ]);
     expect(jobs.single.printSize, 's6x4');
     expect(jobs.single.isValid, isTrue);
+    expect(jobs.single.status, 'PENDING');
   });
 
   test('nested print job defaults print size', () {
@@ -52,5 +53,101 @@ void main() {
   test('empty payloads yield no jobs', () {
     expect(parseEventThemeJobs(null), isEmpty);
     expect(parseEventPrintJobs({'jobs': <Object>[]}), isEmpty);
+  });
+
+  test('parses station board and buckets print PRINTING to CLAIMED', () {
+    final board = EventStationBoard.fromJson({
+      'stats': {
+        'captures': 3,
+        'themePending': 1,
+        'themeClaimed': 0,
+        'themeDone': 2,
+        'printPending': 1,
+        'printClaimed': 1,
+        'printDone': 4,
+      },
+      'captures': [
+        {
+          'sessionId': 's1',
+          'status': 'PENDING',
+          'previewUrls': ['https://cdn/a.jpg'],
+        },
+      ],
+      'themeJobs': [
+        {'id': 'j1', 'sessionId': 's1', 'status': 'SKIPPED'},
+      ],
+      'printJobs': [
+        {
+          'id': 'p1',
+          'sessionId': 's1',
+          'imageUrl': 'https://cdn/p.jpg',
+          'status': 'PRINTING',
+        },
+        {
+          'id': 'p2',
+          'sessionId': 's1',
+          'imageUrl': 'https://cdn/q.jpg',
+          'status': 'DONE',
+          'canReissue': true,
+        },
+      ],
+    });
+    expect(board.stats.captures, 3);
+    expect(board.captures.single.sessionId, 's1');
+    expect(board.themeJobs.single.status, 'DONE');
+    expect(board.printJobs.first.status, 'CLAIMED');
+    expect(board.printJobs.last.canReissue, isTrue);
+    expect(captureCarouselUrls(board.captures), ['https://cdn/a.jpg']);
+    expect(
+      stationStatusCount(board.printJobs, 'CLAIMED', (j) => j.status),
+      1,
+    );
+  });
+
+  test('board ignores empty maps', () {
+    expect(EventStationBoard.fromJson(null).captures, isEmpty);
+    expect(EventStationStats.fromJson({}).captures, 0);
+  });
+
+  test('parses stats from nums and totals them', () {
+    final stats = EventStationStats.fromJson({
+      'captures': 1.0,
+      'themePending': '2',
+      'themeClaimed': 1,
+      'themeDone': 3,
+      'printPending': 4,
+      'printClaimed': 0,
+      'printDone': 5,
+    });
+    expect(stats.captures, 1);
+    expect(stats.themeTotal, 6);
+    expect(stats.printTotal, 9);
+  });
+
+  test('buckets unknown and failed print statuses', () {
+    expect(
+      EventCaptureStationItem.fromJson({'id': '', 'previewUrls': []}).isValid,
+      isFalse,
+    );
+    final failed = EventPrintStationJob.fromJson({
+      'id': 'p3',
+      'sessionId': 's3',
+      'imageUrl': 'https://cdn/f.jpg',
+      'rawStatus': 'FAILED',
+      'status': 'PENDING',
+    });
+    expect(failed.status, 'PENDING');
+    expect(failed.canReissue, isTrue);
+    final claimed = EventPrintStationJob.fromJson({
+      'id': 'p4',
+      'sessionId': 's4',
+      'imageUrl': 'https://cdn/c.jpg',
+      'status': 'CLAIMED',
+    });
+    expect(claimed.canReissue, isTrue);
+    expect(
+      itemsForStationStatus([claimed], 'claimed', (j) => j.status),
+      hasLength(1),
+    );
   });
 }

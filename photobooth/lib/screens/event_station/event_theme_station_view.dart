@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/event_station_models.dart';
 import '../../services/event_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_scaffold.dart';
-import '../../views/widgets/cached_network_image.dart';
 import '../../views/widgets/theme_card.dart';
+import 'event_station_view_widgets.dart';
 import 'event_theme_station_viewmodel.dart';
 
 class EventThemeStationScreen extends StatelessWidget {
@@ -39,34 +40,77 @@ class EventThemeStationScreen extends StatelessWidget {
               return _ClaimedThemeBody(viewModel: vm);
             }
             return Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    vm.queue.isEmpty
-                        ? AppStrings.eventStationWaitingTheme
-                        : '${vm.queue.length} waiting',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 20),
+                  EventStationStatsBar(stats: vm.stats),
+                  const SizedBox(height: 12),
+                  EventStationStatusTabs(
+                    selected: vm.statusFilter,
+                    onSelected: vm.setStatusFilter,
+                    pendingCount: stationStatusCount(
+                      vm.allJobs,
+                      'PENDING',
+                      (e) => e.status,
+                    ),
+                    claimedCount: stationStatusCount(
+                      vm.allJobs,
+                      'CLAIMED',
+                      (e) => e.status,
+                    ),
+                    doneCount: stationStatusCount(
+                      vm.allJobs,
+                      'DONE',
+                      (e) => e.status,
+                    ),
                   ),
                   if (vm.errorMessage != null)
                     Padding(
-                      padding: const EdgeInsets.only(top: 12),
+                      padding: const EdgeInsets.only(top: 8),
                       child: Text(
                         vm.errorMessage!,
                         textAlign: TextAlign.center,
                         style: const TextStyle(color: Colors.redAccent),
                       ),
                     ),
-                  const Spacer(),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: vm.filteredJobs.isEmpty
+                        ? const Center(
+                            child: Text(AppStrings.eventStationEmptyTheme),
+                          )
+                        : GridView.builder(
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              childAspectRatio: 0.72,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                            ),
+                            itemCount: vm.filteredJobs.length,
+                            itemBuilder: (context, i) {
+                              final job = vm.filteredJobs[i];
+                              final url = job.previewUrls.isEmpty
+                                  ? ''
+                                  : job.previewUrls.first;
+                              return EventStationPhotoTile(
+                                imageUrl: url,
+                                status: job.status,
+                                onTap: job.status == 'PENDING' && !vm.isBusy
+                                    ? () => vm.claimJob(job.id)
+                                    : null,
+                              );
+                            },
+                          ),
+                  ),
                   ElevatedButton(
                     onPressed: vm.queue.isEmpty || vm.isBusy
                         ? null
                         : () => vm.claimNext(),
                     child: vm.isBusy
                         ? const CircularProgressIndicator()
-                        : const Text('Style next guest'),
+                        : const Text(AppStrings.eventStationStyleNext),
                   ),
                 ],
               ),
@@ -88,20 +132,11 @@ class _ClaimedThemeBody extends StatelessWidget {
     final preview = viewModel.claimed?.previewUrls ?? const [];
     return Column(
       children: [
-        if (preview.isNotEmpty)
-          SizedBox(
-            height: 180,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.all(16),
-              itemCount: preview.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (context, i) => AspectRatio(
-                aspectRatio: 2 / 3,
-                child: CachedNetworkImage(imageUrl: preview[i]),
-              ),
-            ),
-          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: EventStationStatsBar(stats: viewModel.stats),
+        ),
+        EventStationImageCarousel(urls: preview),
         if (viewModel.looks.isEmpty)
           const Padding(
             padding: EdgeInsets.all(24),

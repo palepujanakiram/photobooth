@@ -725,5 +725,17 @@ abstract final class AppStrings {
   static const eventStationAssignTheme = 'Use this look';
   static const eventStationNoThemes = 'No themes available for this event.';
   static const eventStationPrintNow = 'Print';
+  static const eventStationReprint = 'Print another copy';
   static const eventStationJobClaimed = 'This job was taken by another station.';
+  static const eventStationStatusPending = 'PENDING';
+  static const eventStationStatusClaimed = 'CLAIMED';
+  static const eventStationStatusDone = 'DONE';
+  static const eventStationStyleNext = 'Style next guest';
+  static const eventStationEmptyCaptures = 'No captured photos yet.';
+  static const eventStationEmptyTheme = 'No photos in this status.';
+  static const eventStationEmptyPrint = 'No print jobs in this status.';
+  static const eventStationStatsCaptures = 'Captured';
+  static const eventStationStatsTheme = 'Theme';
+  static const eventStationStatsPrint = 'Print';
+  static const eventStationStatsLegend = 'PENDING / CLAIMED / DONE';
 }

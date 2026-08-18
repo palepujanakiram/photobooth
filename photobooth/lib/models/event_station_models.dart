@@ -1,3 +1,61 @@
+class EventStationStats {
+  final int captures;
+  final int themePending;
+  final int themeClaimed;
+  final int themeDone;
+  final int printPending;
+  final int printClaimed;
+  final int printDone;
+
+  const EventStationStats({
+    this.captures = 0,
+    this.themePending = 0,
+    this.themeClaimed = 0,
+    this.themeDone = 0,
+    this.printPending = 0,
+    this.printClaimed = 0,
+    this.printDone = 0,
+  });
+
+  factory EventStationStats.fromJson(Map<String, dynamic> json) {
+    int n(String key) => _asInt(json[key]);
+    return EventStationStats(
+      captures: n('captures'),
+      themePending: n('themePending'),
+      themeClaimed: n('themeClaimed'),
+      themeDone: n('themeDone'),
+      printPending: n('printPending'),
+      printClaimed: n('printClaimed'),
+      printDone: n('printDone'),
+    );
+  }
+
+  int get themeTotal => themePending + themeClaimed + themeDone;
+  int get printTotal => printPending + printClaimed + printDone;
+}
+
+class EventCaptureStationItem {
+  final String sessionId;
+  final String status;
+  final List<String> previewUrls;
+
+  const EventCaptureStationItem({
+    required this.sessionId,
+    required this.status,
+    this.previewUrls = const [],
+  });
+
+  factory EventCaptureStationItem.fromJson(Map<String, dynamic> json) {
+    return EventCaptureStationItem(
+      sessionId: (json['sessionId'] ?? json['id'] ?? '').toString(),
+      status: _bucketStatus(json['status']),
+      previewUrls: _stringList(json['previewUrls']),
+    );
+  }
+
+  bool get isValid => sessionId.isNotEmpty && previewUrls.isNotEmpty;
+}
+
 class EventThemeStationJob {
   final String id;
   final String sessionId;
@@ -19,7 +77,7 @@ class EventThemeStationJob {
     return EventThemeStationJob(
       id: (src['id'] ?? json['id'] ?? '').toString(),
       sessionId: (src['sessionId'] ?? json['sessionId'] ?? '').toString(),
-      status: (src['status'] ?? json['status'] ?? '').toString(),
+      status: _bucketStatus(src['status'] ?? json['status']),
       previewUrls: _stringList(json['previewUrls'] ?? src['previewUrls']),
     );
   }
@@ -32,12 +90,16 @@ class EventPrintStationJob {
   final String sessionId;
   final String imageUrl;
   final String printSize;
+  final String status;
+  final bool canReissue;
 
   const EventPrintStationJob({
     required this.id,
     required this.sessionId,
     required this.imageUrl,
     this.printSize = 's4x6',
+    this.status = 'PENDING',
+    this.canReissue = false,
   });
 
   factory EventPrintStationJob.fromJson(Map<String, dynamic> json) {
@@ -46,15 +108,97 @@ class EventPrintStationJob {
         ? Map<String, dynamic>.from(nested)
         : json;
     final size = (src['printSize'] ?? json['printSize'] ?? 's4x6').toString();
+    final raw = (src['rawStatus'] ?? src['status'] ?? json['status'] ?? '').toString();
+    final status = _bucketStatus(src['status'] ?? json['status'] ?? raw);
     return EventPrintStationJob(
       id: (src['id'] ?? json['id'] ?? '').toString(),
       sessionId: (src['sessionId'] ?? json['sessionId'] ?? '').toString(),
       imageUrl: (src['imageUrl'] ?? json['imageUrl'] ?? '').toString(),
       printSize: size.trim().isEmpty ? 's4x6' : size.trim(),
+      status: status,
+      canReissue: src['canReissue'] == true ||
+          json['canReissue'] == true ||
+          raw.toUpperCase() == 'FAILED' ||
+          status == 'DONE' ||
+          status == 'CLAIMED',
     );
   }
 
   bool get isValid => id.isNotEmpty && imageUrl.isNotEmpty;
+}
+
+class EventStationBoard {
+  final EventStationStats stats;
+  final List<EventCaptureStationItem> captures;
+  final List<EventThemeStationJob> themeJobs;
+  final List<EventPrintStationJob> printJobs;
+
+  const EventStationBoard({
+    this.stats = const EventStationStats(),
+    this.captures = const [],
+    this.themeJobs = const [],
+    this.printJobs = const [],
+  });
+
+  factory EventStationBoard.fromJson(dynamic data) {
+    if (data is! Map) return const EventStationBoard();
+    final map = Map<String, dynamic>.from(data);
+    final statsRaw = map['stats'];
+    return EventStationBoard(
+      stats: statsRaw is Map
+          ? EventStationStats.fromJson(Map<String, dynamic>.from(statsRaw))
+          : const EventStationStats(),
+      captures: _mapList(map['captures'], EventCaptureStationItem.fromJson)
+          .where((e) => e.isValid)
+          .toList(),
+      themeJobs: parseEventThemeJobs(map),
+      printJobs: parseEventPrintJobs(map),
+    );
+  }
+}
+
+const eventStationStatusBuckets = ['PENDING', 'CLAIMED', 'DONE'];
+
+List<T> itemsForStationStatus<T>(
+  List<T> items,
+  String status,
+  String Function(T item) readStatus,
+) {
+  final wanted = status.trim().toUpperCase();
+  return items.where((item) => readStatus(item).toUpperCase() == wanted).toList();
+}
+
+int stationStatusCount<T>(
+  List<T> items,
+  String status,
+  String Function(T item) readStatus,
+) {
+  return itemsForStationStatus(items, status, readStatus).length;
+}
+
+List<String> captureCarouselUrls(List<EventCaptureStationItem> captures) {
+  final out = <String>[];
+  for (final item in captures) {
+    for (final url in item.previewUrls) {
+      if (!out.contains(url)) out.add(url);
+    }
+  }
+  return out;
+}
+
+String _bucketStatus(dynamic raw) {
+  final s = (raw ?? '').toString().trim().toUpperCase();
+  if (s == 'PRINTING') return 'CLAIMED';
+  if (s == 'SKIPPED') return 'DONE';
+  if (s == 'FAILED') return 'PENDING';
+  if (eventStationStatusBuckets.contains(s)) return s;
+  return 'PENDING';
+}
+
+int _asInt(dynamic raw) {
+  if (raw is int) return raw;
+  if (raw is num) return raw.toInt();
+  return int.tryParse(raw?.toString() ?? '') ?? 0;
 }
 
 List<String> _stringList(dynamic raw) {
@@ -65,8 +209,19 @@ List<String> _stringList(dynamic raw) {
       .toList();
 }
 
+List<T> _mapList<T>(
+  dynamic raw,
+  T Function(Map<String, dynamic> json) parse,
+) {
+  if (raw is! List) return const [];
+  return raw
+      .whereType<Map>()
+      .map((e) => parse(Map<String, dynamic>.from(e)))
+      .toList();
+}
+
 List<EventThemeStationJob> parseEventThemeJobs(dynamic data) {
-  final list = _jobsList(data);
+  final list = _jobsList(data, 'themeJobs');
   return list
       .map(EventThemeStationJob.fromJson)
       .where((j) => j.isValid)
@@ -74,22 +229,27 @@ List<EventThemeStationJob> parseEventThemeJobs(dynamic data) {
 }
 
 List<EventPrintStationJob> parseEventPrintJobs(dynamic data) {
-  final list = _jobsList(data);
+  final list = _jobsList(data, 'printJobs');
   return list
       .map(EventPrintStationJob.fromJson)
       .where((j) => j.isValid)
       .toList();
 }
 
-List<Map<String, dynamic>> _jobsList(dynamic data) {
+List<Map<String, dynamic>> _jobsList(dynamic data, [String extraKey = 'jobs']) {
   if (data is List) {
     return data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
   }
-  if (data is Map && data['jobs'] is List) {
-    return (data['jobs'] as List)
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
+  if (data is Map) {
+    for (final key in [extraKey, 'jobs']) {
+      final list = data[key];
+      if (list is List) {
+        return list
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      }
+    }
   }
   return const [];
 }

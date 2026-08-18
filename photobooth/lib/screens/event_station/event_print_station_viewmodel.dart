@@ -37,12 +37,25 @@ class EventPrintStationViewModel extends ChangeNotifier {
   Timer? _timer;
   bool _busy = false;
   String? _error;
-  List<EventPrintStationJob> _queue = const [];
+  EventStationBoard _board = const EventStationBoard();
   EventPrintStationJob? _active;
+  String _statusFilter = 'PENDING';
 
   bool get isBusy => _busy;
   String? get errorMessage => _error;
-  List<EventPrintStationJob> get queue => _queue;
+  EventStationStats get stats => _board.stats;
+  List<EventPrintStationJob> get allJobs => _board.printJobs;
+  List<EventPrintStationJob> get queue => itemsForStationStatus(
+        allJobs,
+        'PENDING',
+        (job) => job.status,
+      );
+  List<EventPrintStationJob> get filteredJobs => itemsForStationStatus(
+        allJobs,
+        _statusFilter,
+        (job) => job.status,
+      );
+  String get statusFilter => _statusFilter;
   EventPrintStationJob? get active => _active;
 
   void startPolling() {
@@ -54,9 +67,14 @@ class EventPrintStationViewModel extends ChangeNotifier {
     });
   }
 
+  void setStatusFilter(String status) {
+    _statusFilter = status.trim().toUpperCase();
+    notifyListeners();
+  }
+
   Future<void> refreshQueue() async {
     try {
-      _queue = await _api.listPrintJobs();
+      _board = await _api.fetchBoard();
       _error = null;
     } on ApiException catch (e) {
       _error = e.message;
@@ -67,8 +85,8 @@ class EventPrintStationViewModel extends ChangeNotifier {
   }
 
   Future<bool> printNext() async {
-    if (_busy || _queue.isEmpty) return false;
-    return printJob(_queue.first);
+    if (_busy || queue.isEmpty) return false;
+    return printJob(queue.first);
   }
 
   Future<bool> printJob(EventPrintStationJob job) async {
@@ -109,6 +127,29 @@ class EventPrintStationViewModel extends ChangeNotifier {
     try {
       await _api.completePrintJob(jobId: jobId, success: false, error: message);
     } catch (_) {}
+  }
+
+  Future<bool> reissueJob(EventPrintStationJob job) async {
+    if (_busy || !job.canReissue) return false;
+    _busy = true;
+    _error = null;
+    notifyListeners();
+    try {
+      await _api.reissuePrintJob(job.id);
+      _statusFilter = 'PENDING';
+      await refreshQueue();
+      return true;
+    } on ApiException catch (e) {
+      _error = e.message;
+      return false;
+    } catch (e, st) {
+      AppLogger.error('Print station reissue failed', error: e, stackTrace: st);
+      _error = AppStrings.printFailedGeneric;
+      return false;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
   }
 
   @override

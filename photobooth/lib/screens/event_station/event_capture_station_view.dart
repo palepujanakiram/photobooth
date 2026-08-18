@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/event_station_models.dart';
 import '../../services/event_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_scaffold.dart';
 import '../../views/widgets/app_snackbar.dart';
+import '../../views/widgets/cached_network_image.dart';
 import 'event_capture_station_viewmodel.dart';
+import 'event_station_view_widgets.dart';
 
 class EventCaptureStationScreen extends StatelessWidget {
   const EventCaptureStationScreen({super.key});
@@ -21,7 +24,7 @@ class EventCaptureStationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => EventCaptureStationViewModel(),
+      create: (_) => EventCaptureStationViewModel()..startPolling(),
       child: AppScaffold(
         title: AppStrings.eventStationCapture,
         showBackButton: true,
@@ -35,19 +38,68 @@ class EventCaptureStationScreen extends StatelessWidget {
         child: Consumer<EventCaptureStationViewModel>(
           builder: (context, vm, _) {
             return Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    AppStrings.eventStationCaptureHint,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 18),
+                  EventStationStatsBar(stats: vm.stats),
+                  const SizedBox(height: 12),
+                  EventStationImageCarousel(urls: vm.carouselUrls),
+                  const SizedBox(height: 12),
+                  EventStationStatusTabs(
+                    selected: vm.statusFilter,
+                    onSelected: vm.setStatusFilter,
+                    pendingCount: stationStatusCount(
+                      vm.captures,
+                      'PENDING',
+                      (e) => e.status,
+                    ),
+                    claimedCount: stationStatusCount(
+                      vm.captures,
+                      'CLAIMED',
+                      (e) => e.status,
+                    ),
+                    doneCount: stationStatusCount(
+                      vm.captures,
+                      'DONE',
+                      (e) => e.status,
+                    ),
                   ),
-                  const Spacer(),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: vm.filteredCaptures.isEmpty
+                        ? const Center(
+                            child: Text(AppStrings.eventStationEmptyCaptures),
+                          )
+                        : ListView.separated(
+                            itemCount: vm.filteredCaptures.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (context, i) {
+                              final item = vm.filteredCaptures[i];
+                              final thumb = item.previewUrls.isEmpty
+                                  ? null
+                                  : item.previewUrls.first;
+                              return ListTile(
+                                leading: thumb == null
+                                    ? null
+                                    : SizedBox(
+                                        width: 56,
+                                        height: 56,
+                                        child: CachedNetworkImage(
+                                          imageUrl: thumb,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
+                                title: Text(item.status),
+                                subtitle: Text(item.sessionId),
+                              );
+                            },
+                          ),
+                  ),
                   if (vm.hasError)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.only(bottom: 8),
                       child: Text(
                         vm.errorMessage!,
                         textAlign: TextAlign.center,

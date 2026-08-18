@@ -123,6 +123,32 @@ class EventStationApi {
     _throwIfFailed(r, 'Failed to complete print job');
   }
 
+  Future<EventStationBoard> fetchBoard() async {
+    final qp = await _codes();
+    final r = await _dio.get<dynamic>(
+      '/api/event/station/board',
+      queryParameters: qp,
+    );
+    _throwIfFailed(r, 'Failed to fetch station board');
+    return EventStationBoard.fromJson(r.data);
+  }
+
+  Future<EventPrintStationJob> reissuePrintJob(String jobId) async {
+    final deviceId = await _eventManager.getOrCreateDeviceId();
+    final body = await _codes(deviceId: deviceId);
+    final r = await _dio.post<dynamic>(
+      '/api/event/station/print-jobs/$jobId/reissue',
+      data: body,
+    );
+    _throwIfFailed(r, 'Failed to reissue print job');
+    final data = r.data;
+    if (data is Map) {
+      final job = EventPrintStationJob.fromJson(Map<String, dynamic>.from(data));
+      if (job.isValid) return job;
+    }
+    throw ApiException('Failed to reissue print job');
+  }
+
   void _throwIfFailed(Response<dynamic> r, String fallback) {
     final code = r.statusCode ?? 0;
     if (code >= 200 && code < 300) return;

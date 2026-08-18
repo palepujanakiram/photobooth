@@ -112,6 +112,54 @@ void main() {
     await api.completePrintJob(jobId: 'p1', success: false, error: 'jam');
   });
 
+  test('fetches board and reissues print jobs', () async {
+    adapter.onGet(
+      '/api/event/station/board',
+      (s) => s.reply(200, {
+        'stats': {'captures': 1, 'themePending': 1},
+        'captures': [
+          {
+            'sessionId': 's1',
+            'status': 'PENDING',
+            'previewUrls': ['https://cdn/a.jpg'],
+          },
+        ],
+        'themeJobs': [
+          {'id': 'j1', 'sessionId': 's1', 'status': 'PENDING'},
+        ],
+        'printJobs': [
+          {
+            'id': 'p1',
+            'sessionId': 's1',
+            'imageUrl': 'https://cdn/p.jpg',
+            'status': 'DONE',
+            'canReissue': true,
+          },
+        ],
+      }),
+      queryParameters: {
+        'kioskCode': 'K1',
+        'eventCode': 'GALA',
+      },
+    );
+    adapter.onPost(
+      '/api/event/station/print-jobs/p1/reissue',
+      (s) => s.reply(200, {
+        'job': {
+          'id': 'p2',
+          'sessionId': 's1',
+          'imageUrl': 'https://cdn/p.jpg',
+          'status': 'PENDING',
+        },
+      }),
+      data: Matchers.any,
+    );
+    final board = await api.fetchBoard();
+    expect(board.stats.captures, 1);
+    expect(board.printJobs.single.canReissue, isTrue);
+    expect((await api.reissuePrintJob('p1')).id, 'p2');
+  });
+
   test('throws mapped API error and missing codes', () async {
     adapter.onGet(
       '/api/event/station/theme-jobs',
@@ -150,5 +198,26 @@ void main() {
     );
     expect(() => api.claimThemeJob('j1'), throwsA(isA<ApiException>()));
     expect(() => api.claimPrintJob('p1'), throwsA(isA<ApiException>()));
+    adapter.onPost(
+      '/api/event/station/print-jobs/p2/claim',
+      (s) => s.reply(200, {'id': '', 'sessionId': 's', 'imageUrl': ''}),
+      data: Matchers.any,
+    );
+    expect(() => api.claimPrintJob('p2'), throwsA(isA<ApiException>()));
+    adapter.onPost(
+      '/api/event/station/print-jobs/p1/reissue',
+      (s) => s.reply(200, {'nope': true}),
+      data: Matchers.any,
+    );
+    expect(() => api.reissuePrintJob('p1'), throwsA(isA<ApiException>()));
+    adapter.onGet(
+      '/api/event/station/board',
+      (s) => s.reply(500, 'down'),
+      queryParameters: {
+        'kioskCode': 'K1',
+        'eventCode': 'GALA',
+      },
+    );
+    expect(() => api.fetchBoard(), throwsA(isA<ApiException>()));
   });
 }

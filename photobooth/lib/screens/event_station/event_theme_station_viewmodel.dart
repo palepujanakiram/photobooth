@@ -27,14 +27,27 @@ class EventThemeStationViewModel extends ChangeNotifier {
   Timer? _timer;
   bool _busy = false;
   String? _error;
-  List<EventThemeStationJob> _queue = const [];
+  EventStationBoard _board = const EventStationBoard();
   EventThemeStationJob? _claimed;
   List<ThemeModel> _looks = const [];
   String? _selectedThemeId;
+  String _statusFilter = 'PENDING';
 
   bool get isBusy => _busy;
   String? get errorMessage => _error;
-  List<EventThemeStationJob> get queue => _queue;
+  EventStationStats get stats => _board.stats;
+  List<EventThemeStationJob> get allJobs => _board.themeJobs;
+  List<EventThemeStationJob> get queue => itemsForStationStatus(
+        allJobs,
+        'PENDING',
+        (job) => job.status,
+      );
+  List<EventThemeStationJob> get filteredJobs => itemsForStationStatus(
+        allJobs,
+        _statusFilter,
+        (job) => job.status,
+      );
+  String get statusFilter => _statusFilter;
   EventThemeStationJob? get claimed => _claimed;
   List<ThemeModel> get looks => _looks;
   String? get selectedThemeId => _selectedThemeId;
@@ -49,9 +62,14 @@ class EventThemeStationViewModel extends ChangeNotifier {
     });
   }
 
+  void setStatusFilter(String status) {
+    _statusFilter = status.trim().toUpperCase();
+    notifyListeners();
+  }
+
   Future<void> refreshQueue() async {
     try {
-      _queue = await _api.listThemeJobs();
+      _board = await _api.fetchBoard();
       _error = null;
     } on ApiException catch (e) {
       _error = e.message;
@@ -62,8 +80,8 @@ class EventThemeStationViewModel extends ChangeNotifier {
   }
 
   Future<bool> claimNext() async {
-    if (_busy || _queue.isEmpty) return false;
-    return claimJob(_queue.first.id);
+    if (_busy || queue.isEmpty) return false;
+    return claimJob(queue.first.id);
   }
 
   Future<bool> claimJob(String jobId) async {
