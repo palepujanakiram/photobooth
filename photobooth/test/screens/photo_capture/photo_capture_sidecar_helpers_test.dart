@@ -71,6 +71,8 @@ void main() {
       expect(shouldTreatSidecarNativeStateAsDead('crashed'), isTrue);
       expect(shouldTreatSidecarNativeStateAsDead('max_restarts'), isTrue);
       expect(shouldTreatSidecarNativeStateAsDead('running'), isFalse);
+      expect(shouldTreatSidecarNativeStateAsDead('waiting_usb'), isFalse);
+      expect(shouldTreatSidecarNativeStateAsDead('restarting'), isFalse);
       expect(shouldTreatSidecarNativeStateAsDead('idle'), isFalse);
       expect(shouldTreatSidecarNativeStateAsDead(''), isFalse);
     });
@@ -249,6 +251,37 @@ void main() {
       // Timeout → idle; HTTP down is warm-up, not terminal poison.
       expect(down.isConfigured, isTrue);
       down.dispose();
+    });
+  });
+
+  group('nativeEdsdkSidecarIsRunning', () {
+    test('true only for running', () async {
+      expect(
+        await nativeEdsdkSidecarIsRunning(() async => 'running'),
+        isTrue,
+      );
+      expect(
+        await nativeEdsdkSidecarIsRunning(() async => 'idle'),
+        isFalse,
+      );
+      expect(
+        await nativeEdsdkSidecarIsRunning(() async => 'crashed'),
+        isFalse,
+      );
+    });
+
+    test('false on timeout or throw', () async {
+      expect(
+        await nativeEdsdkSidecarIsRunning(
+          () => Completer<String>().future,
+          nativeStateTimeout: Duration.zero,
+        ),
+        isFalse,
+      );
+      expect(
+        await nativeEdsdkSidecarIsRunning(() => throw Exception('channel')),
+        isFalse,
+      );
     });
   });
 

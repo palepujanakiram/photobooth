@@ -62,11 +62,13 @@ void main() {
           enabled: true,
           baseUrl: 'http://127.0.0.1:8791',
           connectionMode: CameraConnectionMode.direct,
+          modeExplicit: true,
         ),
         client: MockClient((_) async => http.Response('{}', 200)),
       );
       expect(direct.isDirectConnection, isTrue);
       expect(direct.isPiConnection, isFalse);
+      expect(direct.modeExplicit, isTrue);
       expect(direct.baseUrlLabel, '127.0.0.1:8791');
       expect(direct.recentlyHealthy, isFalse);
       direct.dispose();
@@ -126,6 +128,73 @@ void main() {
       expect(service.shouldShowLivePreview, isFalse);
       service.setForceLivePreview(true);
       expect(service.shouldShowLivePreview, isFalse);
+      service.dispose();
+    });
+
+    test('poseArm posts /camera/pose-arm', () async {
+      final client = MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/camera/pose-arm');
+        return http.Response(
+          jsonEncode({'ok': true, 'armed': true, 'ttlMs': 25000}),
+          200,
+        );
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await service.poseArm(ttlMs: 25000);
+      service.dispose();
+    });
+
+    test('hasPendingBodyStill reads GET /camera/pose', () async {
+      final client = MockClient((request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/camera/pose');
+        return http.Response(
+          jsonEncode({'ok': true, 'pendingBodyStill': true}),
+          200,
+        );
+      });
+      final service = LocalCameraService(config: config, client: client);
+      expect(await service.hasPendingBodyStill(), isTrue);
+      service.dispose();
+    });
+
+    test('hasPendingBodyStill is false when sidecar is down', () async {
+      final client = MockClient((request) async {
+        return http.Response('no', 503);
+      });
+      final service = LocalCameraService(config: config, client: client);
+      expect(await service.hasPendingBodyStill(), isFalse);
+      service.dispose();
+    });
+
+    test('adoptConfig switches inferred Pi client to localhost USB', () {
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://172.16.4.128:8791',
+          livePreviewEnabled: false,
+          connectionMode: CameraConnectionMode.pi,
+        ),
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      expect(service.isPiConnection, isTrue);
+      expect(service.modeExplicit, isFalse);
+      expect(service.shouldShowLivePreview, isFalse);
+      service.markRuntimeUnavailable();
+      service.adoptConfig(
+        const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: kDirectCameraSidecarBaseUrl,
+          livePreviewEnabled: true,
+          connectionMode: CameraConnectionMode.direct,
+        ),
+      );
+      expect(service.isDirectConnection, isTrue);
+      expect(service.isConfigured, isTrue);
+      expect(service.shouldShowLivePreview, isTrue);
+      expect(service.baseUrlLabel, '127.0.0.1:8791');
+      expect(service.recentlyHealthy, isFalse);
       service.dispose();
     });
 

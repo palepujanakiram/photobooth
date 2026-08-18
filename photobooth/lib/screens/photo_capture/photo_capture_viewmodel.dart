@@ -424,11 +424,43 @@ class CaptureViewModel extends ChangeNotifier {
     return canServe;
   }
 
+  /// GSM omitted mode and a leftover Pi host is down — use on-device USB EVF.
+  ///
+  /// Explicit backend `cameraConnectionMode=pi` is left on the Pi path.
+  Future<bool> adoptDirectSidecarIfInferredPiUnreachable({
+    Future<String> Function()? queryNativeState,
+  }) async {
+    final service = _localCameraService;
+    if (service == null) return false;
+    final query = queryNativeState ?? CanonSidecarStatusChannel.getState;
+    final piListening = await service.isListening();
+    final nativeRunning = await nativeEdsdkSidecarIsRunning(query);
+    if (!shouldSwitchInferredPiToDirect(
+      isPiConnection: service.isPiConnection,
+      modeExplicit: service.modeExplicit,
+      piListening: piListening,
+      nativeSidecarRunning: nativeRunning,
+    )) {
+      return false;
+    }
+    service.adoptConfig(
+      const CameraSidecarConfig(
+        enabled: true,
+        baseUrl: kDirectCameraSidecarBaseUrl,
+        livePreviewEnabled: true,
+        connectionMode: CameraConnectionMode.direct,
+      ),
+    );
+    notifyListeners();
+    return true;
+  }
+
   /// Skip CameraX/UVC open; arm capture once the sidecar reports connected.
   ///
   /// Returns false when localhost is not serving yet so POSE can retry or fall
   /// back to HDMI/UVC. Does **not** permanently disable direct EDSDK on a
-  /// single listen miss (asset extract / HTTP bind race).
+  /// single listen miss (asset extract / HTTP bind race). Direct USB still
+  /// commits Pose to the EVF poller while the sidecar binds.
   Future<bool> prepareSidecarLivePreview({
     int listenAttempts = 6,
     Duration listenRetryDelay = const Duration(milliseconds: 500),
@@ -452,7 +484,10 @@ class CaptureViewModel extends ChangeNotifier {
     }
     if (!listening) {
       notifyListeners();
-      return false;
+      return shouldKeepDirectSidecarPose(
+        isDirectConnection: service.isDirectConnection,
+        sidecarConfigured: service.isConfigured,
+      );
     }
     final healthy = await service.isHealthy();
     if (healthy) {
@@ -2041,12 +2076,16 @@ class CaptureViewModel extends ChangeNotifier {
   ///
   /// [onCountdownStep] is invoked each second with the displayed value (10…1)
   /// so Classic can start Pi still-prep while guests still see the countdown.
+  ///
+  /// [captureNow] is polled during each second; if it returns true, remaining
+  /// ticks are skipped and [captureAction] runs (photographer shutter).
   Future<void> captureWithCountdown(
     Future<void> Function() captureAction, {
     required bool Function() canStart,
     int? countdownSeconds,
     void Function()? onCountdownFinished,
     void Function(int step)? onCountdownStep,
+    Future<bool> Function()? captureNow,
   }) async {
     if (!canStart() || _isCapturing || _countdownValue != null) {
       return;
@@ -2061,16 +2100,25 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
+      var skipToCapture = false;
       for (var step = _countdownValue!; step >= 1; step--) {
         if (generation != _countdownGeneration || !canStart()) return;
         _countdownValue = step;
         notifyListeners();
         onCountdownStep?.call(step);
-        // Hold every tick including 1 so guests still see live EVF, then shutter.
-        await Future<void>.delayed(const Duration(seconds: 1));
+        final takeNow = await _awaitCountdownTick(
+          generation: generation,
+          captureNow: captureNow,
+        );
+        if (takeNow) {
+          skipToCapture = true;
+          break;
+        }
       }
 
-      if (generation != _countdownGeneration || !canStart()) return;
+      if (generation != _countdownGeneration) return;
+      // Photographer shutter drops LV; [canStart] may flip false — still adopt.
+      if (!skipToCapture && !canStart()) return;
       _countdownValue = null;
       onCountdownFinished?.call();
       notifyListeners();
@@ -2088,6 +2136,25 @@ class CaptureViewModel extends ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  Future<bool> _awaitCountdownTick({
+    required int generation,
+    Future<bool> Function()? captureNow,
+  }) async {
+    if (captureNow == null) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      return false;
+    }
+    const slice = Duration(milliseconds: 200);
+    var waited = 0;
+    while (waited < 1000) {
+      if (generation != _countdownGeneration) return false;
+      if (await captureNow()) return true;
+      await Future<void>.delayed(slice);
+      waited += 200;
+    }
+    return generation == _countdownGeneration && await captureNow();
   }
 
   /// Starts a countdown and then captures a photo.

@@ -40,7 +40,7 @@ class LocalCameraService {
         _captureProgressInterval =
             captureProgressInterval ?? const Duration(seconds: 5);
 
-  final CameraSidecarConfig _config;
+  CameraSidecarConfig _config;
   final http.Client _client;
   final Duration _healthTimeout;
   final Duration _captureTimeout;
@@ -73,6 +73,17 @@ class LocalCameraService {
 
   /// Remote Pi gphoto2 sidecar (vs on-device EDSDK).
   bool get isPiConnection => _config.isPiConnection;
+
+  /// True when GSM or dart-define chose the mode (not inferred from host).
+  bool get modeExplicit => _config.modeExplicit;
+
+  /// Point this client at a different sidecar (inferred-Pi → localhost USB).
+  void adoptConfig(CameraSidecarConfig config) {
+    _config = config;
+    _runtimeUnavailable = false;
+    _forceLivePreview = false;
+    _lastHealthyAt = null;
+  }
 
   /// ZenAI `cameraLivePreviewEnabled`, or POSE forcing USB MJPEG (AI + Classic).
   bool get shouldShowLivePreview =>
@@ -310,6 +321,55 @@ class LocalCameraService {
       );
     }
     AppLogger.info('Camera sidecar prepare-still ok ms=$ms corr=$id');
+  }
+
+  /// Open a countdown window so a photographer shutter is adopted as this shot.
+  ///
+  /// Best-effort: older sidecars without `/camera/pose-arm` are ignored.
+  Future<void> poseArm({
+    int ttlMs = 25000,
+    String? corrId,
+  }) async {
+    if (!isConfigured) return;
+    final id = corrId ?? newCorrId();
+    try {
+      final response = await _client
+          .post(
+            _uri('/camera/pose-arm'),
+            headers: {
+              ..._headers(corrId: id),
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'ttlMs': ttlMs}),
+          )
+          .timeout(const Duration(seconds: 3));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        AppLogger.warning(
+          'Camera sidecar pose-arm status=${response.statusCode} corr=$id',
+        );
+        return;
+      }
+      AppLogger.info('Camera sidecar pose-arm ok ttlMs=$ttlMs corr=$id');
+    } catch (e) {
+      AppLogger.warning('Camera sidecar pose-arm failed corr=$id: $e');
+    }
+  }
+
+  /// True when the Pi already has a photographer still for this countdown.
+  Future<bool> hasPendingBodyStill({String? corrId}) async {
+    if (!isConfigured) return false;
+    final id = corrId ?? lastCorrId ?? newCorrId();
+    try {
+      final response = await _client
+          .get(_uri('/camera/pose'), headers: _headers(corrId: id))
+          .timeout(const Duration(seconds: 2));
+      if (response.statusCode != 200) return false;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return false;
+      return decoded['pendingBodyStill'] == true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Arms Canon Live View over USB so HDMI → capture card is not blank.

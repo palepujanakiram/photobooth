@@ -54,4 +54,25 @@ void main() {
     expect(steps, [3, 2, 1]);
     vm.dispose();
   });
+
+  test('captureWithCountdown skips remaining ticks when captureNow is true',
+      () async {
+    final vm = CaptureViewModel();
+    var shutterRan = false;
+    final started = DateTime.now();
+    await vm.captureWithCountdown(
+      () async {
+        shutterRan = true;
+      },
+      canStart: () => true,
+      countdownSeconds: 8,
+      captureNow: () async => true,
+    );
+    expect(shutterRan, isTrue);
+    expect(
+      DateTime.now().difference(started) < const Duration(seconds: 2),
+      isTrue,
+    );
+    vm.dispose();
+  });
 }

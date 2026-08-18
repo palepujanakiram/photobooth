@@ -6,8 +6,8 @@ class CanonSidecarStatusChannel {
   static const _channel =
       MethodChannel('com.srisarani.fotozenai/canon_sidecar_status');
 
-  /// Sidecar process state: `"idle"` | `"running"` | `"crashed"` |
-  /// `"max_restarts"` | `"unsupported_abi"`.
+  /// Sidecar process state: `"idle"` | `"running"` | `"waiting_usb"` |
+  /// `"restarting"` | `"crashed"` | `"max_restarts"` | `"unsupported_abi"`.
   static Future<String> getState() async {
     try {
       final result = await _channel.invokeMethod<String>('getState');

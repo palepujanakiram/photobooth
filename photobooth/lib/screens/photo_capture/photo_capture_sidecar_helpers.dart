@@ -78,7 +78,9 @@ bool isSidecarCameraId(String? cameraId) {
 /// Native sidecar states that cannot listen on `127.0.0.1:8791`.
 ///
 /// `unsupported_abi` is x86 / non-ARM. ARM32 and ARM64 Android both ship a
-/// matching EDSDK sidecar. `crashed` / `max_restarts` mean the process exited.
+/// matching EDSDK sidecar. `crashed` / `max_restarts` mean the process exited
+/// for good. `waiting_usb` / `restarting` are transient — Pose must keep
+/// retrying (do not poison [LocalCameraService]).
 bool shouldTreatSidecarNativeStateAsDead(String state) {
   return state == 'unsupported_abi' ||
       state == 'crashed' ||
@@ -125,6 +127,23 @@ Future<bool> sidecarNativeProcessCanServeHttp(
   if (listening) return true;
   // Warm-up: process not running yet and HTTP not bound — retry later.
   return false;
+}
+
+/// True when the bundled on-device EDSDK process is already running.
+Future<bool> nativeEdsdkSidecarIsRunning(
+  Future<String> Function() queryNativeState, {
+  Duration nativeStateTimeout = const Duration(seconds: 1),
+}) async {
+  String state;
+  try {
+    state = await queryNativeState().timeout(
+      nativeStateTimeout,
+      onTimeout: () => 'idle',
+    );
+  } catch (_) {
+    state = 'idle';
+  }
+  return state == 'running';
 }
 
 /// Classic HDMI booths use Pi for the still; CameraX is often uninitialized.

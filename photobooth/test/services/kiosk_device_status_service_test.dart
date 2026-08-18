@@ -612,6 +612,33 @@ void main() {
       expect(snap.dslrSidecar.crashed, isTrue);
     });
 
+    test('DSLR sidecar not crashed when waiting for USB fd', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async => false,
+        querySidecarNativeState: () async => 'waiting_usb',
+        queryCanonCameraPresent: () async => true,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: true,
+          cameraConnectionMode: 'direct',
+        ),
+      );
+      expect(snap.dslrSidecar.connected, isTrue);
+      expect(snap.dslrSidecar.crashed, isFalse);
+    });
+
     test('DSLR sidecar not crashed when running but camera initialising', () async {
       // Sidecar is running (HTTP health returns false = camera not yet ready in EDSDK)
       // but native state is "running" — not crashed.
