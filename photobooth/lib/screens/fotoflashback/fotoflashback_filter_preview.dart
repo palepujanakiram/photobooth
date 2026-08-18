@@ -380,6 +380,7 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
                       bytes: images[i]!,
                       fit: photoFit,
                       cacheWidth: cacheW,
+                      imageKey: i < imageDataUrls.length ? imageDataUrls[i] : i,
                     ),
                   )
                 : const ColoredBox(color: Colors.black12),
@@ -845,9 +846,11 @@ Widget _lookPreviewPhoto({
   required Uint8List bytes,
   required BoxFit fit,
   int? cacheWidth,
+  Object? imageKey,
 }) {
   return Image.memory(
     bytes,
+    key: imageKey != null ? ValueKey<Object>(imageKey) : null,
     fit: fit,
     width: double.infinity,
     height: double.infinity,
@@ -943,6 +946,7 @@ class _Single6x4Preview extends StatelessWidget {
             bytes: bytes,
             fit: BoxFit.cover,
             cacheWidth: cacheW,
+            imageKey: imageDataUrl,
           );
     final photoLayer = bytes == null || imagesAreGraded
         ? photo

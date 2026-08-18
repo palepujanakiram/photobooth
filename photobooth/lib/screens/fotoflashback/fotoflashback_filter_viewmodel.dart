@@ -69,6 +69,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   final int _expectedCaptureCount;
   List<String>? _pendingImageFilePaths;
   bool _hydratingCaptures = false;
+  int _hydrateGeneration = 0;
 
   final ThemeModel theme;
   final List<String> _imageDataUrls;
@@ -278,6 +279,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     final paths = _pendingImageFilePaths;
     if (paths == null || paths.isEmpty) return;
 
+    final gen = ++_hydrateGeneration;
     _imageDataUrls.clear();
     _hydratingCaptures = true;
     _errorMessage = null;
@@ -285,12 +287,15 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     try {
       final encoded = <String>[];
       for (final path in paths) {
+        if (gen != _hydrateGeneration) return;
         final url = await ImageHelper.encodeImageToBase64(XFile(path));
+        if (gen != _hydrateGeneration) return;
         if (url.trim().isEmpty) {
           throw StateError('Empty encode for $path');
         }
         encoded.add(url);
       }
+      if (gen != _hydrateGeneration) return;
       _imageDataUrls
         ..clear()
         ..addAll(encoded);
@@ -311,13 +316,16 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       );
       _errorMessage = AppStrings.flashbackFinishEncodeFailed;
     } finally {
-      _hydratingCaptures = false;
-      notifyListeners();
+      if (gen == _hydrateGeneration) {
+        _hydratingCaptures = false;
+        notifyListeners();
+      }
     }
   }
 
   /// Drops capture bytes so Back → POSE never flashes the previous still.
   void clearCapturePreview() {
+    _hydrateGeneration++;
     _composePreviewDebounce?.cancel();
     _composePreviewDebounce = null;
     _hydratingCaptures = false;

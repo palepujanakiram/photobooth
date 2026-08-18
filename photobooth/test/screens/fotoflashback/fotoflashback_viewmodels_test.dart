@@ -114,6 +114,29 @@ void main() {
     expect(vm.canCompose, isFalse);
   });
 
+  test(
+      'FotoFlashbackFilterViewModel clearCapturePreview cancels in-flight hydrate',
+      () async {
+    final dir = await Directory.systemTemp.createTemp('hydrate_cancel_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final path = '${dir.path}/shot.jpg';
+    await File(path).writeAsBytes(kTinyJpegBytes);
+
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const [],
+      pendingImageFilePaths: [path],
+      overlayCleanupBuildGate: false,
+    );
+    expect(vm.isHydratingCaptures, isTrue);
+
+    vm.clearCapturePreview();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(vm.previewImageDataUrls, isEmpty);
+    expect(vm.isHydratingCaptures, isFalse);
+  });
+
   test('FotoFlashbackFilterViewModel print orientation for 1-shot only', () {
     final single = FotoFlashbackFilterViewModel(
       theme: stripTheme,

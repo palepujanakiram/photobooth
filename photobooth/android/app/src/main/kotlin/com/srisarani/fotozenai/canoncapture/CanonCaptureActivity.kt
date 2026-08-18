@@ -150,6 +150,8 @@ class CanonCaptureActivity : Activity() {
 
             if (!ensureConnected()) return@launch
 
+            seedStaleCaptureReplay()
+
             startLiveView()
             startIdleWatchdog()
 
@@ -344,6 +346,16 @@ class CanonCaptureActivity : Activity() {
         captureJob = scope.launch { runOneShot() }
     }
 
+    /**
+     * Ignores the SharedFlow replay from the previous capture session.
+     *
+     * See [CaptureQueue.seedReplayInto] — without this, Back → POSE → shutter returns
+     * the last shot's file before the new release finishes.
+     */
+    private fun seedStaleCaptureReplay() {
+        CameraSessionManager.captureQueue?.seedReplayInto(consumedHandles)
+    }
+
     /** Fires one shot and stores it. Returns false when the shot did not land. */
     private suspend fun runOneShot(): Boolean {
         val queue = CameraSessionManager.captureQueue
@@ -359,6 +371,8 @@ class CanonCaptureActivity : Activity() {
 
         setStatus(getString(R.string.canon_status_capturing))
         shutterSound()
+
+        seedStaleCaptureReplay()
 
         // Subscribe BEFORE firing, and UNDISPATCHED so the collector is attached before
         // this line returns. A download can finish faster than a coroutine scheduled the
