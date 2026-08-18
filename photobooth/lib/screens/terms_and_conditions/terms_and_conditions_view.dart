@@ -28,7 +28,6 @@ import '../../services/kiosk_manager.dart';
 import '../../services/local_camera_service.dart';
 import '../../services/fcm_service.dart';
 import '../../utils/camera_sidecar_config.dart';
-import '../../utils/canon_sidecar_status_channel.dart';
 import '../../utils/canon_usb_permission.dart';
 import '../../utils/classic_photos_enabled_sync.dart';
 import '../../views/widgets/app_snackbar.dart';
@@ -73,19 +72,33 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       _cameraPrimingPhase = TermsCameraPrimingPhase.skipped;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_primeCaptureScreenOnLaunch());
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        // After Splash USB permission — do not stack notification Allow/Don't allow.
-        unawaited(FcmService.ensurePermissionAndPersistToken());
-      }
+      unawaited(_launchTermsSetup());
     });
+  }
+
+  /// Canon USB allow → push permission → camera priming (sequential, no dialog races).
+  Future<void> _launchTermsSetup() async {
+    if (mounted && supportsTermsCameraPriming) {
+      setState(() => _cameraPrimingPhase = TermsCameraPrimingPhase.detecting);
+    }
+
+    if (mounted && defaultTargetPlatform == TargetPlatform.android) {
+      final settings = context.read<AppSettingsManager>().settings;
+      if (isDirectCanonSidecarBooth(settings)) {
+        await primeCanonUsbOnTermsLaunch(settings: settings);
+      }
+      await FcmService.ensurePermissionAndPersistToken();
+    }
+
+    await _primeCaptureScreenOnLaunch();
   }
 
   /// Permission, enumeration, and live-camera prewarm while the guest reads terms.
   Future<void> _primeCaptureScreenOnLaunch() async {
     if (!supportsTermsCameraPriming) return;
 
-    if (mounted) {
+    if (mounted &&
+        _cameraPrimingPhase != TermsCameraPrimingPhase.detecting) {
       setState(() => _cameraPrimingPhase = TermsCameraPrimingPhase.detecting);
     }
 
@@ -123,6 +136,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   Future<bool> _probeSidecarHealthyForTerms() async {
     if (!mounted) return false;
     final settings = context.read<AppSettingsManager>().settings;
+    if (isDirectCanonSidecarBooth(settings)) {
+      return warmDirectSidecarAfterUsbGrant(settings: settings);
+    }
     final service = LocalCameraService(
       config: resolveCameraSidecarConfig(settings),
     );
@@ -131,31 +147,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       return false;
     }
     try {
-      if (service.isDirectConnection) {
-        // Sidecar extracts assets + waits for USB during Splash/Terms — poll
-        // localhost while the guest reads terms instead of a single 3s probe.
-        const attempts = 30;
-        for (var i = 0; i < attempts; i++) {
-          final state = await CanonSidecarStatusChannel.getState().timeout(
-            const Duration(milliseconds: 800),
-            onTimeout: () => 'idle',
-          );
-          if (state == 'waiting_usb') {
-            await CanonSidecarStatusChannel.requestUsbPermissionIfNeeded();
-          }
-          if (await service.isListening()) {
-            service.dispose();
-            return true;
-          }
-          if (state == 'running' && await service.isHealthy()) {
-            service.dispose();
-            return true;
-          }
-          await Future<void>.delayed(const Duration(milliseconds: 500));
-        }
-        service.dispose();
-        return false;
-      }
       final ok = await service.isHealthy().timeout(
         const Duration(seconds: 3),
         onTimeout: () => false,
@@ -525,7 +516,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   String _termsDetectingCamerasMessage() {
     if (!mounted) return AppStrings.termsDetectingCameras;
     final settings = context.read<AppSettingsManager>().settings;
-    if (resolveCameraSidecarConfig(settings).isDirectConnection) {
+    if (isDirectCanonSidecarBooth(settings)) {
       return AppStrings.termsDetectingCamerasCanonUsb;
     }
     return AppStrings.termsDetectingCameras;

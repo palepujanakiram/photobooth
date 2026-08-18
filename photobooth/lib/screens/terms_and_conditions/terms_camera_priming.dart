@@ -83,15 +83,16 @@ Future<TermsCameraPrimingResult> runTermsCameraPriming({
     return const TermsCameraPrimingResult(TermsCameraPrimingPhase.skipped);
   }
 
+  // Direct Canon USB: show the system allow dialog before CAMERA / FCM compete.
+  if (ensureCanonUsbPermission != null) {
+    await ensureCanonUsbPermission();
+  }
+
   final granted = await ensurePermission();
   if (!granted) {
     return const TermsCameraPrimingResult(
       TermsCameraPrimingPhase.permissionDenied,
     );
-  }
-
-  if (ensureCanonUsbPermission != null) {
-    await ensureCanonUsbPermission();
   }
 
   try {
