@@ -48,7 +48,12 @@ class EventStationApi {
       queryParameters: qp,
     );
     _throwIfFailed(r, 'Failed to fetch theme jobs');
-    return parseEventThemeJobs(r.data);
+    return parseEventThemeJobs(r.data)
+        .map((j) => j.withStationImageAuth(
+              kioskCode: qp['kioskCode'] as String,
+              eventCode: qp['eventCode'] as String,
+            ))
+        .toList();
   }
 
   Future<EventThemeStationJob> claimThemeJob(String jobId) async {
@@ -62,7 +67,12 @@ class EventStationApi {
     final data = r.data;
     if (data is Map) {
       final job = EventThemeStationJob.fromJson(Map<String, dynamic>.from(data));
-      if (job.isValid) return job;
+      if (job.isValid) {
+        return job.withStationImageAuth(
+          kioskCode: body['kioskCode'] as String,
+          eventCode: body['eventCode'] as String,
+        );
+      }
     }
     throw ApiException('Failed to claim theme job');
   }
@@ -88,7 +98,12 @@ class EventStationApi {
       queryParameters: qp,
     );
     _throwIfFailed(r, 'Failed to fetch print jobs');
-    return parseEventPrintJobs(r.data);
+    return parseEventPrintJobs(r.data)
+        .map((j) => j.withStationImageAuth(
+              kioskCode: qp['kioskCode'] as String,
+              eventCode: qp['eventCode'] as String,
+            ))
+        .toList();
   }
 
   Future<EventPrintStationJob> claimPrintJob(String jobId) async {
@@ -102,7 +117,12 @@ class EventStationApi {
     final data = r.data;
     if (data is Map) {
       final job = EventPrintStationJob.fromJson(Map<String, dynamic>.from(data));
-      if (job.isValid) return job;
+      if (job.isValid) {
+        return job.withStationImageAuth(
+          kioskCode: body['kioskCode'] as String,
+          eventCode: body['eventCode'] as String,
+        );
+      }
     }
     throw ApiException('Failed to claim print job');
   }
@@ -130,7 +150,10 @@ class EventStationApi {
       queryParameters: qp,
     );
     _throwIfFailed(r, 'Failed to fetch station board');
-    return EventStationBoard.fromJson(r.data);
+    return EventStationBoard.fromJson(r.data).withStationImageAuth(
+      kioskCode: qp['kioskCode'] as String,
+      eventCode: qp['eventCode'] as String,
+    );
   }
 
   Future<EventPrintStationJob> reissuePrintJob(String jobId) async {
@@ -144,7 +167,12 @@ class EventStationApi {
     final data = r.data;
     if (data is Map) {
       final job = EventPrintStationJob.fromJson(Map<String, dynamic>.from(data));
-      if (job.isValid) return job;
+      if (job.isValid) {
+        return job.withStationImageAuth(
+          kioskCode: body['kioskCode'] as String,
+          eventCode: body['eventCode'] as String,
+        );
+      }
     }
     throw ApiException('Failed to reissue print job');
   }

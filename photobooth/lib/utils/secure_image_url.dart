@@ -4,7 +4,11 @@ import '../services/session_manager.dart';
 import 'app_config.dart';
 
 /// Known API hosts that may appear in absolute URLs returned by the backend.
-const _knownApiHosts = {'fotozenai.fly.dev', 'fotozenai-test.fly.dev'};
+const _knownApiHosts = {
+  'fotozenai.fly.dev',
+  'fotozenai-test.fly.dev',
+  'zenai.fly.dev',
+};
 
 /// Helpers for accessing protected image endpoints.
 ///
@@ -68,10 +72,24 @@ class SecureImageUrl {
   static String absolutize(String url) => _absolutizeIfRelative(url);
 
   /// Returns [url] with `sessionId` and `kioskToken` when needed for `/api/img/...`.
-  static String withSessionId(String url, {String? sessionId, String? kioskToken}) {
+  ///
+  /// Event station queues pass the **guest** [sessionId] plus [kioskCode] and
+  /// [eventCode]. Pass [kioskToken] as `''` to skip the stored operator token.
+  static String withSessionId(
+    String url, {
+    String? sessionId,
+    String? kioskToken,
+    String? kioskCode,
+    String? eventCode,
+  }) {
     final sid = (sessionId ?? SessionManager().sessionId)?.trim();
     final token = (kioskToken ?? SessionManager().kioskAuthToken)?.trim();
-    if ((sid == null || sid.isEmpty) && (token == null || token.isEmpty)) {
+    final kiosk = kioskCode?.trim();
+    final event = eventCode?.trim();
+    if ((sid == null || sid.isEmpty) &&
+        (token == null || token.isEmpty) &&
+        (kiosk == null || kiosk.isEmpty) &&
+        (event == null || event.isEmpty)) {
       return url;
     }
 
@@ -95,7 +113,18 @@ class SecureImageUrl {
     if (sid != null && sid.isNotEmpty && !qp.containsKey('sessionId')) {
       qp['sessionId'] = sid;
     }
-    if (token != null && token.isNotEmpty && !qp.containsKey('kioskToken')) {
+    if (kiosk != null && kiosk.isNotEmpty && !qp.containsKey('kioskCode')) {
+      qp['kioskCode'] = kiosk;
+    }
+    if (event != null && event.isNotEmpty && !qp.containsKey('eventCode')) {
+      qp['eventCode'] = event;
+    }
+    final isStationImage =
+        qp.containsKey('kioskCode') && qp.containsKey('eventCode');
+    if (!isStationImage &&
+        token != null &&
+        token.isNotEmpty &&
+        !qp.containsKey('kioskToken')) {
       qp['kioskToken'] = token;
     }
     return uri.replace(queryParameters: qp).toString();

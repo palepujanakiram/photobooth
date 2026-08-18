@@ -1,3 +1,5 @@
+import '../utils/secure_image_url.dart';
+
 class EventStationStats {
   final int captures;
   final int themePending;
@@ -54,6 +56,25 @@ class EventCaptureStationItem {
   }
 
   bool get isValid => sessionId.isNotEmpty && previewUrls.isNotEmpty;
+
+  EventCaptureStationItem withStationImageAuth({
+    required String kioskCode,
+    required String eventCode,
+  }) {
+    return EventCaptureStationItem(
+      sessionId: sessionId,
+      status: status,
+      previewUrls: [
+        for (final url in previewUrls)
+          stampEventStationImageUrl(
+            url: url,
+            sessionId: sessionId,
+            kioskCode: kioskCode,
+            eventCode: eventCode,
+          ),
+      ],
+    );
+  }
 }
 
 class EventThemeStationJob {
@@ -83,6 +104,26 @@ class EventThemeStationJob {
   }
 
   bool get isValid => id.isNotEmpty && sessionId.isNotEmpty;
+
+  EventThemeStationJob withStationImageAuth({
+    required String kioskCode,
+    required String eventCode,
+  }) {
+    return EventThemeStationJob(
+      id: id,
+      sessionId: sessionId,
+      status: status,
+      previewUrls: [
+        for (final url in previewUrls)
+          stampEventStationImageUrl(
+            url: url,
+            sessionId: sessionId,
+            kioskCode: kioskCode,
+            eventCode: eventCode,
+          ),
+      ],
+    );
+  }
 }
 
 class EventPrintStationJob {
@@ -125,6 +166,25 @@ class EventPrintStationJob {
   }
 
   bool get isValid => id.isNotEmpty && imageUrl.isNotEmpty;
+
+  EventPrintStationJob withStationImageAuth({
+    required String kioskCode,
+    required String eventCode,
+  }) {
+    return EventPrintStationJob(
+      id: id,
+      sessionId: sessionId,
+      imageUrl: stampEventStationImageUrl(
+        url: imageUrl,
+        sessionId: sessionId,
+        kioskCode: kioskCode,
+        eventCode: eventCode,
+      ),
+      printSize: printSize,
+      status: status,
+      canReissue: canReissue,
+    );
+  }
 }
 
 class EventStationBoard {
@@ -155,9 +215,45 @@ class EventStationBoard {
       printJobs: parseEventPrintJobs(map),
     );
   }
+
+  EventStationBoard withStationImageAuth({
+    required String kioskCode,
+    required String eventCode,
+  }) {
+    return EventStationBoard(
+      stats: stats,
+      captures: [
+        for (final item in captures)
+          item.withStationImageAuth(kioskCode: kioskCode, eventCode: eventCode),
+      ],
+      themeJobs: [
+        for (final job in themeJobs)
+          job.withStationImageAuth(kioskCode: kioskCode, eventCode: eventCode),
+      ],
+      printJobs: [
+        for (final job in printJobs)
+          job.withStationImageAuth(kioskCode: kioskCode, eventCode: eventCode),
+      ],
+    );
+  }
 }
 
 const eventStationStatusBuckets = ['PENDING', 'CLAIMED', 'DONE'];
+
+String stampEventStationImageUrl({
+  required String url,
+  required String sessionId,
+  required String kioskCode,
+  required String eventCode,
+}) {
+  return SecureImageUrl.withSessionId(
+    url,
+    sessionId: sessionId,
+    kioskToken: '',
+    kioskCode: kioskCode,
+    eventCode: eventCode,
+  );
+}
 
 List<T> itemsForStationStatus<T>(
   List<T> items,

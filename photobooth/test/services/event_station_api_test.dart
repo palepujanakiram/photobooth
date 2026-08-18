@@ -121,7 +121,7 @@ void main() {
           {
             'sessionId': 's1',
             'status': 'PENDING',
-            'previewUrls': ['https://cdn/a.jpg'],
+            'previewUrls': ['/api/img/generated/a.jpg'],
           },
         ],
         'themeJobs': [
@@ -157,6 +157,9 @@ void main() {
     final board = await api.fetchBoard();
     expect(board.stats.captures, 1);
     expect(board.printJobs.single.canReissue, isTrue);
+    expect(board.captures.single.previewUrls.single, contains('sessionId=s1'));
+    expect(board.captures.single.previewUrls.single, contains('kioskCode=K1'));
+    expect(board.captures.single.previewUrls.single, contains('eventCode=GALA'));
     expect((await api.reissuePrintJob('p1')).id, 'p2');
   });
 

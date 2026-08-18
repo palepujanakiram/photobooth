@@ -150,4 +150,45 @@ void main() {
       hasLength(1),
     );
   });
+
+  test('stamps guest session and station codes onto protected image URLs', () {
+    final board = EventStationBoard.fromJson({
+      'captures': [
+        {
+          'sessionId': 's1',
+          'status': 'PENDING',
+          'previewUrls': ['/api/img/generated/a.jpg'],
+        },
+      ],
+      'themeJobs': [
+        {
+          'id': 'j1',
+          'sessionId': 's1',
+          'status': 'PENDING',
+          'previewUrls': ['/api/img/previews/t.jpg'],
+        },
+      ],
+      'printJobs': [
+        {
+          'id': 'p1',
+          'sessionId': 's1',
+          'imageUrl': '/api/img/generated/p.jpg',
+          'status': 'PENDING',
+        },
+      ],
+    }).withStationImageAuth(kioskCode: 'K1', eventCode: 'GALA');
+    expect(board.captures.single.previewUrls.single, contains('sessionId=s1'));
+    expect(board.captures.single.previewUrls.single, contains('kioskCode=K1'));
+    expect(board.themeJobs.single.previewUrls.single, contains('eventCode=GALA'));
+    expect(board.printJobs.single.imageUrl, contains('sessionId=s1'));
+    expect(
+      stampEventStationImageUrl(
+        url: 'https://cdn/a.jpg',
+        sessionId: 's1',
+        kioskCode: 'K1',
+        eventCode: 'GALA',
+      ),
+      'https://cdn/a.jpg',
+    );
+  });
 }

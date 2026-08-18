@@ -27,6 +27,20 @@ void main() {
     expect(url, contains('kioskToken=kiosk-1'));
   });
 
+  test('withSessionId stamps event station codes and skips operator token', () {
+    final url = SecureImageUrl.withSessionId(
+      '/api/img/generated/abc.jpg',
+      sessionId: 'guest-1',
+      kioskToken: 'op-token',
+      kioskCode: 'K1',
+      eventCode: 'GALA',
+    );
+    expect(url, contains('sessionId=guest-1'));
+    expect(url, contains('kioskCode=K1'));
+    expect(url, contains('eventCode=GALA'));
+    expect(url, isNot(contains('kioskToken=')));
+  });
+
   test('previewUrlFromStepMap returns null when missing', () {
     expect(SecureImageUrl.previewUrlFromStepMap({}), isNull);
   });
