@@ -18,6 +18,8 @@ import '../../views/widgets/bottom_safe_area.dart';
 import '../../views/widgets/falling_starfield_background.dart';
 import '../../views/widgets/centered_max_width.dart';
 import '../../services/theme_manager.dart';
+import '../../services/event_manager.dart';
+import '../../utils/event_theme_skip.dart';
 import 'theme_model.dart';
 import 'theme_preview_screen.dart';
 import 'theme_selection_carousel_page.dart';
@@ -190,7 +192,22 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
       if (themeManager.hasThemes) {
         viewModel.updateFromCache();
       }
-      viewModel.loadThemes();
+      viewModel.loadThemes().then((_) async {
+        if (!mounted) return;
+        final action = resolveEventThemeSkipAction(
+          photoMode: await EventManager().getPhotoModeOverride(),
+          themeCount: viewModel.themes.length,
+        );
+        if (!mounted) return;
+        if (shouldAutoContinueEventTheme(
+          action: action,
+          hasCapturePhoto: _photoFromCapture != null,
+          hasSelectedTheme:
+              (viewModel.armedTheme ?? viewModel.selectedTheme) != null,
+        )) {
+          await _onContinue(context, viewModel);
+        }
+      });
       viewModel.loadLayoutPreference();
     });
   }
