@@ -125,6 +125,12 @@ void main() {
       final device = await service().probeDevice();
       expect(device, isNotNull);
       expect(device!.hasPermission, isFalse);
+      expect(device.toString(), contains('permission: false'));
+    });
+
+    test('a native failure reads as absent rather than propagating', () async {
+      handle((_) async => throw PlatformException(code: 'busy'));
+      expect(await service().probeDevice(), isNull);
     });
   });
 
@@ -206,6 +212,14 @@ void main() {
     test('a missing map degrades to unknown', () async {
       handle((_) async => null);
       expect((await service().status()).state, DirectPtpState.unknown);
+    });
+
+    test('a platform exception becomes an error status, not a throw', () async {
+      handle((_) async => throw PlatformException(code: 'offline'));
+      final status = await service().status();
+      expect(status.state, DirectPtpState.error);
+      expect(status.label, 'Status failed');
+      expect(status.message, contains('offline'));
     });
   });
 
@@ -348,6 +362,94 @@ void main() {
       const b = DirectPtpStatus(state: DirectPtpState.ready, label: 'Ready');
       expect(a, equals(b));
       expect(a.hashCode, equals(b.hashCode));
+    });
+  });
+
+  group('DirectPtpShot.toString', () {
+    test('includes the original path and pixel size', () {
+      const shot = DirectPtpShot(
+        originalPath: '/data/o.JPG',
+        widthPx: 6000,
+        heightPx: 4000,
+        bytes: 12,
+      );
+      expect(shot.toString(), contains('/data/o.JPG'));
+      expect(shot.toString(), contains('6000x4000'));
+    });
+  });
+
+  group('default platform probe', () {
+    test('is unsupported on this VM', () {
+      final camera = DirectPtpCameraService();
+      expect(camera.isSupported, isFalse);
+    });
+  });
+
+  group('setPreferredStack', () {
+    test('persists ptp when the native side answers', () async {
+      handle((call) async {
+        expect(call.method, 'setPreferredStack');
+        expect(call.arguments, {'stack': 'ptp'});
+        return <String, Object?>{'stack': 'ptp', 'changed': true};
+      });
+      final result = await service().setPreferredStack(preferPtp: true);
+      expect(result['stack'], 'ptp');
+      expect(result['changed'], isTrue);
+    });
+
+    test('a missing map still reports the requested stack', () async {
+      handle((_) async => null);
+      final result = await service().setPreferredStack(preferPtp: false);
+      expect(result['stack'], 'edsdk');
+      expect(result['changed'], isFalse);
+    });
+
+    test('a platform exception does not throw', () async {
+      handle((_) async => throw PlatformException(code: 'busy'));
+      final result = await service().setPreferredStack(preferPtp: true);
+      expect(result['stack'], 'ptp');
+      expect(result['changed'], isFalse);
+    });
+
+    test('off Android it reports edsdk without touching the channel', () async {
+      final calls = <String>[];
+      handle((_) async => null, calls: calls);
+      final offAndroid = DirectPtpCameraService(isAndroid: () => false);
+      final result = await offAndroid.setPreferredStack(preferPtp: true);
+      expect(result['stack'], 'edsdk');
+      expect(calls, isEmpty);
+    });
+  });
+
+  group('statusStream', () {
+    test('is empty off Android', () async {
+      final offAndroid = DirectPtpCameraService(isAndroid: () => false);
+      expect(await offAndroid.statusStream().isEmpty, isTrue);
+    });
+
+    test('maps native events and ignores a malformed payload', () async {
+      const statusChannel =
+          EventChannel(DirectPtpCameraService.statusChannelName);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockStreamHandler(
+        statusChannel,
+        MockStreamHandler.inline(
+          onListen: (args, sink) {
+            sink.success(<Object?, Object?>{'state': 'Ready'});
+            sink.success('not-a-map');
+            sink.endOfStream();
+          },
+        ),
+      );
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockStreamHandler(statusChannel, null),
+      );
+
+      final events = await service().statusStream().toList();
+      expect(events, hasLength(2));
+      expect(events.first.state, DirectPtpState.ready);
+      expect(events.last.state, DirectPtpState.unknown);
     });
   });
 }

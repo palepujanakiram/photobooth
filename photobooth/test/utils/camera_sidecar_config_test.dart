@@ -21,6 +21,11 @@ void main() {
         parseCameraConnectionMode('direct_ptp'),
         CameraConnectionMode.directPtp,
       );
+      expect(parseCameraConnectionMode('directptp'), CameraConnectionMode.directPtp);
+      expect(
+        parseCameraConnectionMode('direct-ptp'),
+        CameraConnectionMode.directPtp,
+      );
       expect(parseCameraConnectionMode('ptp'), CameraConnectionMode.directPtp);
       expect(parseCameraConnectionMode(''), isNull);
       expect(parseCameraConnectionMode(null), isNull);
@@ -45,6 +50,34 @@ void main() {
       expect(cfg.shouldShowLivePreview, isTrue);
       expect(cfg.connectionMode, CameraConnectionMode.direct);
       expect(cfg.modeExplicit, isFalse);
+    });
+
+    test('direct_ptp dart-define disables the HTTP sidecar', () {
+      final cfg = CameraSidecarConfig.fromConnectionModeDefine(
+        'direct_ptp',
+        enabled: true,
+        baseUrl: 'http://127.0.0.1:8791',
+        livePreviewEnabled: true,
+      );
+      expect(cfg.enabled, isFalse);
+      expect(cfg.baseUrl, isEmpty);
+      expect(cfg.livePreviewEnabled, isFalse);
+      expect(cfg.connectionMode, CameraConnectionMode.directPtp);
+      expect(cfg.isDirectPtpConnection, isTrue);
+      expect(cfg.modeExplicit, isTrue);
+    });
+
+    test('direct dart-define keeps the localhost sidecar', () {
+      final cfg = CameraSidecarConfig.fromConnectionModeDefine(
+        'direct',
+        enabled: true,
+        baseUrl: 'http://127.0.0.1:8791',
+        livePreviewEnabled: true,
+      );
+      expect(cfg.enabled, isTrue);
+      expect(cfg.baseUrl, 'http://127.0.0.1:8791');
+      expect(cfg.connectionMode, CameraConnectionMode.direct);
+      expect(cfg.modeExplicit, isTrue);
     });
   });
 
@@ -361,6 +394,12 @@ void main() {
       expect(
         cameraConnectionModeIsExplicit(
           AppSettingsModel(cameraConnectionMode: 'pi'),
+        ),
+        isTrue,
+      );
+      expect(
+        cameraConnectionModeIsExplicit(
+          AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
         ),
         isTrue,
       );
