@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cross_file/cross_file.dart';
@@ -22,6 +23,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../fakes/fake_api_service.dart';
 import '../../fixtures/theme_fixtures.dart';
+import '../../helpers/tiny_jpeg.dart';
 
 String _tinyJpegDataUrl() {
   final src = img.Image(width: 4, height: 4);
@@ -68,6 +70,48 @@ void main() {
     expect(vm.canCompose, isTrue);
     expect(vm.selectedFilterId, kDefaultStripFilterId);
     expect(vm.printOrientation, PrintOrientation.portrait);
+  });
+
+  test('FotoFlashbackFilterViewModel hydrates pending capture file paths',
+      () async {
+    final path =
+        '${Directory.systemTemp.path}/ptp_hydrate_test_${DateTime.now().microsecondsSinceEpoch}.jpg';
+    await File(path).writeAsBytes(kTinyJpegBytes);
+
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const [],
+      pendingImageFilePaths: [path],
+      overlayCleanupBuildGate: false,
+    );
+    expect(vm.isHydratingCaptures, isTrue);
+    expect(vm.isSingleClassic, isTrue);
+    expect(vm.canCompose, isFalse);
+
+    for (var i = 0; i < 50 && vm.isHydratingCaptures; i++) {
+      await pumpEventQueue();
+    }
+
+    expect(vm.isHydratingCaptures, isFalse);
+    expect(vm.imageDataUrls, hasLength(1));
+    expect(vm.imageDataUrls.first, startsWith('data:image/jpeg;base64,'));
+    expect(vm.canCompose, isTrue);
+  });
+
+  test('FotoFlashbackFilterViewModel clearCapturePreview drops stale bytes',
+      () {
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      overlayCleanupBuildGate: false,
+    );
+    expect(vm.previewImageDataUrls, isNotEmpty);
+
+    vm.clearCapturePreview();
+
+    expect(vm.previewImageDataUrls, isEmpty);
+    expect(vm.imageDataUrls, isEmpty);
+    expect(vm.canCompose, isFalse);
   });
 
   test('FotoFlashbackFilterViewModel print orientation for 1-shot only', () {

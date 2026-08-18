@@ -28,7 +28,9 @@ import '../../services/kiosk_manager.dart';
 import '../../services/local_camera_service.dart';
 import '../../services/fcm_service.dart';
 import '../../utils/camera_sidecar_config.dart';
+import '../../utils/camera_source_config.dart';
 import '../../utils/canon_usb_permission.dart';
+import '../../utils/canon_stack_sync.dart';
 import '../../utils/classic_photos_enabled_sync.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
@@ -84,7 +86,11 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
 
     if (mounted && defaultTargetPlatform == TargetPlatform.android) {
       final settings = context.read<AppSettingsManager>().settings;
-      if (isDirectCanonSidecarBooth(settings)) {
+      // Stop EDSDK sidecar before PTP touches USB (async settings sync used to race POSE).
+      await syncCanonCameraStackForSettings(settings);
+      if (usesDirectPtpCamera(settings: settings)) {
+        await primeDirectPtpOnTermsLaunch(settings: settings);
+      } else if (isDirectCanonSidecarBooth(settings)) {
         await primeCanonUsbOnTermsLaunch(settings: settings);
       }
       await FcmService.ensurePermissionAndPersistToken();
@@ -103,7 +109,13 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     }
 
     final result = await runTermsCameraPriming(
-      ensurePermission: () => ensureCameraPermission(),
+      ensurePermission: () async {
+        if (!mounted) return false;
+        final settings = context.read<AppSettingsManager>().settings;
+        // Native PTP owns USB — skip CameraX permission so it does not compete with USB.
+        if (usesDirectPtpCamera(settings: settings)) return true;
+        return ensureCameraPermission();
+      },
       preloadCameras: CaptureViewModel.preloadCameras,
       classifyDevice: () async {
         if (!mounted) return null;
@@ -130,12 +142,18 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   Future<bool> _ensureCanonUsbPermissionForTerms() async {
     if (!mounted) return false;
     final settings = context.read<AppSettingsManager>().settings;
+    if (usesDirectPtpCamera(settings: settings)) {
+      return ensureDirectPtpUsbOnTerms(settings: settings);
+    }
     return ensureCanonUsbPermissionForDirectSidecar(settings: settings);
   }
 
   Future<bool> _probeSidecarHealthyForTerms() async {
     if (!mounted) return false;
     final settings = context.read<AppSettingsManager>().settings;
+    if (usesDirectPtpCamera(settings: settings)) {
+      return isDirectPtpReadyForTerms(settings: settings);
+    }
     if (isDirectCanonSidecarBooth(settings)) {
       return warmDirectSidecarAfterUsbGrant(settings: settings);
     }
@@ -516,7 +534,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   String _termsDetectingCamerasMessage() {
     if (!mounted) return AppStrings.termsDetectingCameras;
     final settings = context.read<AppSettingsManager>().settings;
-    if (isDirectCanonSidecarBooth(settings)) {
+    if (isOnDeviceCanonUsbBooth(settings)) {
       return AppStrings.termsDetectingCamerasCanonUsb;
     }
     return AppStrings.termsDetectingCameras;

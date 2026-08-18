@@ -10,11 +10,12 @@ import '../../services/direct_ptp_camera_service.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/capture_session_kind.dart';
 import '../../utils/classic_shot_mode.dart';
+import '../../utils/canon_usb_permission.dart';
 import '../../utils/constants.dart';
-import '../../utils/image_helper.dart';
 import '../../utils/kiosk_page_route.dart';
 import '../../utils/logger.dart';
 import '../../utils/route_args.dart';
+import '../../utils/strip_preview_grade_compress.dart';
 import '../../views/widgets/theme_background.dart';
 import '../fotoflashback/fotoflashback_filter_view.dart';
 import 'direct_ptp_capture_helpers.dart';
@@ -104,11 +105,32 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
       _phase = _DirectPtpPhase.starting;
     });
 
+    final settings = context.read<AppSettingsManager>().settings;
+    final ready = await prepareDirectPtpPoseSession(
+      settings: settings,
+      camera: _camera,
+    );
+    if (!mounted) return;
+    if (!ready) {
+      setState(() {
+        _sessionRunning = false;
+        _error = directPtpErrorMessage('connect_failed');
+      });
+      return;
+    }
+
     final kind = widget.sessionKind;
+    final classicDisplay = kind.isClassic;
     final result = await _camera.runCaptureSession(
       shotCount: clampDirectPtpShotCount(directPtpShotCountFor(kind)),
       countdownSeconds: directPtpCountdownSecondsFor(kind),
       betweenShotSeconds: directPtpBetweenShotSeconds,
+      displayMaxLongEdge: classicDisplay
+          ? kStripPreviewGradeUploadMaxEdge
+          : 1920,
+      displayJpegQuality: classicDisplay
+          ? kStripPreviewGradeUploadJpegQuality
+          : 90,
       titleText: AppStrings.posePageTitle,
       subtitleText: directPtpSubtitleFor(kind),
       cancelText: AppStrings.cancel,
@@ -232,38 +254,27 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
       return;
     }
 
-    final dataUrls = <String>[];
-    for (final file in files) {
-      dataUrls.add(await ImageHelper.encodeImageToBase64(file));
-    }
-    if (!mounted) return;
-
-    if (dataUrls.any((u) => u.trim().isEmpty)) {
-      setState(() {
-        _sessionRunning = false;
-        _error = AppStrings.flashbackFinishEncodeFailed;
-      });
-      return;
-    }
-
     final mode = widget.sessionKind.isClassicFourShot
         ? ClassicShotMode.fourShot
         : ClassicShotMode.single6x4;
     final filterArgs = FlashbackFilterArgs(
       theme: theme,
-      imageDataUrls: dataUrls,
-      // The look screen adopts any in-flight Gemini polish; claiming it is done
-      // here would skip cleanup that never ran.
+      imageDataUrls: const [],
+      pendingImageFilePaths: files.map((f) => f.path).toList(),
+      previewSessionKey: DateTime.now().microsecondsSinceEpoch,
       overlayCleanupAlreadyDone: false,
-      shotCleaned: List<bool>.filled(dataUrls.length, false),
+      shotCleaned: List<bool>.filled(files.length, false),
       classicShotMode: mode,
     );
 
-    // Direct page route, not a named one: named `routes:` entries build a const
-    // screen and drop typed args on Android TV, which strands the look picker.
+    // Navigate immediately — base64 runs on the look screen so the guest is not
+    // stuck on a spinner after the native camera closes.
     await pushReplacementKioskFade<void, void>(
       context,
-      FotoFlashbackFilterScreen(filterArgs: filterArgs),
+      FotoFlashbackFilterScreen(
+        key: ValueKey<int>(filterArgs.previewSessionKey!),
+        filterArgs: filterArgs,
+      ),
       settings: RouteSettings(
         name: AppConstants.kRouteFlashbackFilter,
         arguments: filterArgs,

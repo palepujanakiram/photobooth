@@ -160,6 +160,13 @@ class FlashbackCaptureArgs {
 class FlashbackFilterArgs {
   final ThemeModel theme;
   final List<String> imageDataUrls;
+
+  /// JPEG paths to encode after the look screen is visible (direct PTP classic).
+  ///
+  /// When set, [imageDataUrls] may be empty on entry — avoids blocking navigation
+  /// on base64 while the guest waits on a spinner.
+  final List<String>? pendingImageFilePaths;
+
   /// True when capture already awaited per-shot Gemini scrub.
   final bool overlayCleanupAlreadyDone;
   /// Per-shot scrub success from capture (parallel to [imageDataUrls]).
@@ -167,19 +174,27 @@ class FlashbackFilterArgs {
   /// Classic shot mode for Back → POSE (prefer over inferring from URL count).
   final ClassicShotMode? classicShotMode;
 
+  /// Bumps when a new capture opens the look screen — avoids stale preview widgets.
+  final int? previewSessionKey;
+
   const FlashbackFilterArgs({
     required this.theme,
     required this.imageDataUrls,
+    this.pendingImageFilePaths,
     this.overlayCleanupAlreadyDone = false,
     this.shotCleaned = const [],
     this.classicShotMode,
+    this.previewSessionKey,
   });
+
+  int get _captureCount =>
+      pendingImageFilePaths?.length ?? imageDataUrls.length;
 
   /// Mode used when returning from looks to Classic capture.
   ClassicShotMode get resolvedShotMode {
     final mode = classicShotMode;
     if (mode != null) return mode;
-    return imageDataUrls.length == 1
+    return _captureCount == 1
         ? ClassicShotMode.single6x4
         : ClassicShotMode.fourShot;
   }
@@ -188,8 +203,14 @@ class FlashbackFilterArgs {
     if (args is FlashbackFilterArgs) return args;
     if (args is Map && args['theme'] is ThemeModel) {
       final raw = args['imageDataUrls'] ?? args['images'];
-      if (raw is! List) return null;
-      final urls = raw.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+      final pendingRaw = args['pendingImageFilePaths'];
+      final pending = pendingRaw is List
+          ? pendingRaw.map((e) => e.toString()).where((s) => s.isNotEmpty).toList()
+          : null;
+      if (raw is! List && (pending == null || pending.isEmpty)) return null;
+      final urls = raw is List
+          ? raw.map((e) => e.toString()).where((s) => s.isNotEmpty).toList()
+          : const <String>[];
       final cleanedRaw = args['shotCleaned'];
       final shotCleaned = cleanedRaw is List
           ? cleanedRaw.map((e) => e == true).toList()
@@ -197,6 +218,7 @@ class FlashbackFilterArgs {
       return FlashbackFilterArgs(
         theme: args['theme'] as ThemeModel,
         imageDataUrls: urls,
+        pendingImageFilePaths: pending?.isEmpty == true ? null : pending,
         overlayCleanupAlreadyDone: args['overlayCleanupAlreadyDone'] == true,
         shotCleaned: shotCleaned,
         classicShotMode: parseClassicShotModeArg(args['classicShotMode']),

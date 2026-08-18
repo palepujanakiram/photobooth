@@ -2,15 +2,26 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/app_settings_model.dart';
+import '../services/direct_ptp_camera_service.dart';
 import '../services/local_camera_service.dart';
 import 'camera_sidecar_config.dart';
+import 'camera_source_config.dart';
 import 'canon_sidecar_status_channel.dart';
+import 'canon_stack_sync.dart';
 
 /// True for on-device EDSDK USB booths (not Pi/LAN).
 bool isDirectCanonSidecarBooth(AppSettingsModel? settings) {
   final cfg = resolveCameraSidecarConfig(settings);
   return cfg.isDirectConnection && cfg.isConfigured;
 }
+
+/// True when the native Kotlin PTP stack owns the DSLR (not EDSDK sidecar).
+bool isDirectPtpBooth(AppSettingsModel? settings) =>
+    usesDirectPtpCamera(settings: settings);
+
+/// True for any on-device Canon USB booth (EDSDK sidecar or native PTP).
+bool isOnDeviceCanonUsbBooth(AppSettingsModel? settings) =>
+    isDirectCanonSidecarBooth(settings) || isDirectPtpBooth(settings);
 
 /// Requests Android USB access for a direct Canon EDSDK booth.
 ///
@@ -71,6 +82,129 @@ Future<bool> primeCanonUsbOnTermsLaunch({
   );
   await warmDirectSidecarAfterUsbGrant(settings: settings, client: client);
   return granted;
+}
+
+/// Requests USB access for a direct-PTP booth and opens the PTP session when allowed.
+Future<bool> ensureDirectPtpUsbOnTerms({
+  AppSettingsModel? settings,
+  DirectPtpCameraService? camera,
+}) async {
+  if (defaultTargetPlatform != TargetPlatform.android) return true;
+  if (!isDirectPtpBooth(settings)) return true;
+
+  final service = camera ?? DirectPtpCameraService();
+  if (!service.isSupported) return true;
+  if (!await service.hasUsbHost()) return false;
+
+  final device = await service.probeDevice();
+  if (device == null) return false;
+  if (device.hasPermission) return true;
+
+  final status = await service.connect();
+  return status.state != DirectPtpState.permissionDenied;
+}
+
+/// Poll native PTP while the guest is on Terms (after USB allow).
+Future<bool> warmDirectPtpOnTerms({
+  AppSettingsModel? settings,
+  Duration timeout = const Duration(seconds: 20),
+  Duration pollInterval = const Duration(milliseconds: 500),
+  DirectPtpCameraService? camera,
+}) async {
+  if (defaultTargetPlatform != TargetPlatform.android) return false;
+  if (!isDirectPtpBooth(settings)) return false;
+
+  final service = camera ?? DirectPtpCameraService();
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    final status = await service.status();
+    if (status.state.isOperational) return true;
+
+    final device = await service.probeDevice();
+    if (device != null) {
+      if (device.hasPermission) {
+        final connectStatus = await service.connect();
+        if (connectStatus.state.isOperational) return true;
+      } else {
+        final connectStatus = await service.connect();
+        if (connectStatus.state.isOperational) return true;
+        if (connectStatus.state == DirectPtpState.permissionDenied) {
+          return false;
+        }
+      }
+    }
+    await Future<void>.delayed(pollInterval);
+  }
+  return false;
+}
+
+/// True when direct PTP is connected or USB permission is already held.
+Future<bool> isDirectPtpReadyForTerms({
+  AppSettingsModel? settings,
+  DirectPtpCameraService? camera,
+}) async {
+  if (defaultTargetPlatform != TargetPlatform.android) return false;
+  if (!isDirectPtpBooth(settings)) return false;
+
+  final service = camera ?? DirectPtpCameraService();
+  final status = await service.status();
+  if (status.state.isOperational) return true;
+
+  final device = await service.probeDevice();
+  return device != null && device.hasPermission;
+}
+
+/// First action on Terms for direct-PTP booths: USB allow dialog, then warm-up.
+Future<bool> primeDirectPtpOnTermsLaunch({
+  AppSettingsModel? settings,
+  DirectPtpCameraService? camera,
+}) async {
+  if (!isDirectPtpBooth(settings)) return true;
+  final granted = await ensureDirectPtpUsbOnTerms(
+    settings: settings,
+    camera: camera,
+  );
+  await warmDirectPtpOnTerms(settings: settings, camera: camera);
+  return granted;
+}
+
+/// Syncs PTP vs EDSDK, clears faulted sessions, and connects before POSE capture.
+///
+/// The native capture Activity used to be the first connect attempt; a half-open
+/// session from Terms priming or a waking body then surfaced as connect_failed
+/// until the guest tapped Try again.
+Future<bool> prepareDirectPtpPoseSession({
+  AppSettingsModel? settings,
+  DirectPtpCameraService? camera,
+  Duration timeout = const Duration(seconds: 20),
+  Duration pollInterval = const Duration(milliseconds: 500),
+}) async {
+  if (defaultTargetPlatform != TargetPlatform.android) return false;
+  if (!isDirectPtpBooth(settings)) return true;
+
+  final service = camera ?? DirectPtpCameraService();
+  if (!service.isSupported) return false;
+
+  await syncCanonCameraStackForSettings(settings);
+
+  var status = await service.status();
+  if (status.state.isFault) {
+    await service.disconnect();
+    status = await service.status();
+  }
+  if (status.state.isOperational) return true;
+
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    status = await service.connect();
+    if (status.state.isOperational) return true;
+    if (status.state == DirectPtpState.permissionDenied) return false;
+    if (status.state.isFault) {
+      await service.disconnect();
+    }
+    await Future<void>.delayed(pollInterval);
+  }
+  return false;
 }
 
 /// True when the native sidecar is waiting for USB permission.
