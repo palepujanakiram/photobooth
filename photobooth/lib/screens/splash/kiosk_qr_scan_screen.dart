@@ -25,7 +25,7 @@ class _KioskQrScanScreenState extends State<KioskQrScanScreen> {
     final kiosk = KioskQrPayload.parse(text);
     if (kiosk == null || kiosk.isEmpty) return;
     _handled = true;
-    Navigator.of(context).pop<String>(kiosk);
+    Navigator.of(context).pop<String>(text);
   }
 
   @override

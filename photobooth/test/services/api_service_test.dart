@@ -76,6 +76,32 @@ void main() {
     expect(await api.fetchKioskByCode('bad'), isNull);
   });
 
+  test('fetchEventByCode returns model when valid', () async {
+    adapter.onGet(
+      '/api/event/by-code/WED',
+      (s) => s.reply(200, {
+        'event': {
+          'id': 'e1',
+          'code': 'WED',
+          'name': 'Wedding',
+          'photoMode': 'BOTH',
+          'currentlyActive': true,
+          'themeCount': 2,
+          'frameCount': 1,
+        },
+      }),
+    );
+    final info = await api.fetchEventByCode('wed');
+    expect(info?.code, 'WED');
+    expect(info?.themeCount, 2);
+  });
+
+  test('fetchEventByCode null on empty code or 404', () async {
+    expect(await api.fetchEventByCode('  '), isNull);
+    adapter.onGet('/api/event/by-code/BAD', (s) => s.reply(404, {}));
+    expect(await api.fetchEventByCode('bad'), isNull);
+  });
+
   test('getKioskFrames parses list and wrapper', () async {
     SessionManager().setSessionFromResponse({
       'id': 'sess-1',
