@@ -28,6 +28,7 @@ void main() {
   test('strip capture jpeg quality is higher than default stills', () {
     expect(kStripCapturedPhotoJpegQuality, greaterThan(kCapturedPhotoJpegQuality));
     expect(kStripCapturedPhotoJpegQuality, 92);
+    expect(kDnpPrintJpegQuality, kStripCapturedPhotoJpegQuality);
     expect(
       kStripCapturedPhotoMaxDimension,
       kCapturedPhotoMaxDimension,
