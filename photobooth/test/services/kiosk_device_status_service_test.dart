@@ -554,7 +554,7 @@ void main() {
       expect(snap.dslrSidecar.crashed, isFalse);
     });
 
-    test('DSLR sidecar shows crashed when native state is crashed', () async {
+    test('DSLR sidecar does not show crashed on transient native crash', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
         selphyBridge: _FakeSelphyBridge(),
@@ -581,7 +581,7 @@ void main() {
       );
       expect(snap.dslrSidecar.configured, isTrue);
       expect(snap.dslrSidecar.connected, isTrue);
-      expect(snap.dslrSidecar.crashed, isTrue);
+      expect(snap.dslrSidecar.crashed, isFalse);
     });
 
     test('DSLR sidecar shows crashed when max restarts exceeded', () async {

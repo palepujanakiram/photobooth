@@ -2337,6 +2337,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
     if (await _trySidecarPosePreviewFirst()) return;
 
+    // Direct USB EDSDK: never fall through to tablet CameraX / UVC. A transient
+    // sidecar restart used to poison the client and hang on "Starting camera…"
+    // with the front camera while the DSLR was still on USB.
+    final directService = _captureViewModel.localCameraService;
+    if (directService?.isDirectConnection == true) {
+      directService!.clearRuntimeUnavailable();
+      AppLogger.warning(
+        'POSE: keeping Direct USB EVF (skip CameraX/UVC fallthrough)',
+      );
+      await _startSidecarPosePreviewSession();
+      return;
+    }
+
     // Classic (+ AI without Pi live preview): HDMI/UVC pose, sidecar stills.
 
     var deviceType = _captureViewModel.deviceType ??

@@ -66,10 +66,10 @@ void main() {
   });
 
   group('shouldTreatSidecarNativeStateAsDead', () {
-    test('flags ABI and crash states only', () {
+    test('flags ABI and max_restarts only — crashed is transient', () {
       expect(shouldTreatSidecarNativeStateAsDead('unsupported_abi'), isTrue);
-      expect(shouldTreatSidecarNativeStateAsDead('crashed'), isTrue);
       expect(shouldTreatSidecarNativeStateAsDead('max_restarts'), isTrue);
+      expect(shouldTreatSidecarNativeStateAsDead('crashed'), isFalse);
       expect(shouldTreatSidecarNativeStateAsDead('running'), isFalse);
       expect(shouldTreatSidecarNativeStateAsDead('waiting_usb'), isFalse);
       expect(shouldTreatSidecarNativeStateAsDead('restarting'), isFalse);
@@ -179,16 +179,38 @@ void main() {
       service.dispose();
     });
 
-    test('marks unavailable on crashed and max_restarts', () async {
+    test('does not poison on transient crashed; poisons on max_restarts', () async {
+      // HTTP still up during a brief native restart gap → keep serving.
       final crashed = configuredService();
       expect(
         await sidecarNativeProcessCanServeHttp(
           crashed,
           queryNativeState: () async => 'crashed',
         ),
+        isTrue,
+      );
+      expect(crashed.isConfigured, isTrue);
+      crashed.dispose();
+
+      final crashedDown = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://127.0.0.1:8791',
+          livePreviewEnabled: true,
+          connectionMode: CameraConnectionMode.direct,
+        ),
+        client: MockClient((_) async => throw Exception('Connection refused')),
+      );
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          crashedDown,
+          queryNativeState: () async => 'crashed',
+        ),
         isFalse,
       );
-      crashed.dispose();
+      expect(crashedDown.isConfigured, isTrue);
+      crashedDown.dispose();
+
       final maxed = configuredService();
       expect(
         await sidecarNativeProcessCanServeHttp(
@@ -197,7 +219,24 @@ void main() {
         ),
         isFalse,
       );
+      expect(maxed.isConfigured, isFalse);
       maxed.dispose();
+    });
+
+    test('clears prior poison when native state recovers to running', () async {
+      final service = configuredService();
+      service.markRuntimeUnavailable();
+      expect(service.isConfigured, isFalse);
+      expect(service.hasSidecarEndpoint, isTrue);
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          service,
+          queryNativeState: () async => 'running',
+        ),
+        isTrue,
+      );
+      expect(service.isConfigured, isTrue);
+      service.dispose();
     });
 
     test('Pi/LAN ignores native crash — does not poison remote config', () async {
