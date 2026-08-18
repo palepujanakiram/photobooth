@@ -129,6 +129,43 @@ void main() {
       service.dispose();
     });
 
+    test('poseArm posts /camera/pose-arm', () async {
+      final client = MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/camera/pose-arm');
+        return http.Response(
+          jsonEncode({'ok': true, 'armed': true, 'ttlMs': 25000}),
+          200,
+        );
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await service.poseArm(ttlMs: 25000);
+      service.dispose();
+    });
+
+    test('hasPendingBodyStill reads GET /camera/pose', () async {
+      final client = MockClient((request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/camera/pose');
+        return http.Response(
+          jsonEncode({'ok': true, 'pendingBodyStill': true}),
+          200,
+        );
+      });
+      final service = LocalCameraService(config: config, client: client);
+      expect(await service.hasPendingBodyStill(), isTrue);
+      service.dispose();
+    });
+
+    test('hasPendingBodyStill is false when sidecar is down', () async {
+      final client = MockClient((request) async {
+        return http.Response('no', 503);
+      });
+      final service = LocalCameraService(config: config, client: client);
+      expect(await service.hasPendingBodyStill(), isFalse);
+      service.dispose();
+    });
+
     test('prepareStill posts /camera/prepare-still', () async {
       final client = MockClient((request) async {
         expect(request.method, 'POST');
