@@ -71,6 +71,12 @@ class LocalCameraService {
 
   bool get isConfigured => _config.isConfigured && !_runtimeUnavailable;
 
+  /// True when pose EVF may POST to the sidecar (direct USB retries through a
+  /// transient [markRuntimeUnavailable] while localhost EDSDK recovers).
+  bool get canPollSidecarPreview =>
+      shouldShowLivePreview ||
+      (isDirectConnection && hasSidecarEndpoint);
+
   /// On-device Canon EDSDK at localhost (vs remote Pi/LAN).
   bool get isDirectConnection => _config.isDirectConnection;
 
@@ -215,7 +221,7 @@ class LocalCameraService {
     Duration timeout = const Duration(seconds: 5),
     String? corrId,
   }) async {
-    if (!isConfigured) {
+    if (!canPollSidecarPreview) {
       throw StateError('Camera sidecar is not configured');
     }
     final response = await _client

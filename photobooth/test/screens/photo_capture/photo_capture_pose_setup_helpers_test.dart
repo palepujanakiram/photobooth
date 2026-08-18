@@ -117,21 +117,21 @@ void main() {
     expect(
       shouldKeepDirectSidecarPose(
         isDirectConnection: true,
-        sidecarConfigured: true,
+        hasSidecarEndpoint: true,
       ),
       isTrue,
     );
     expect(
       shouldKeepDirectSidecarPose(
         isDirectConnection: true,
-        sidecarConfigured: false,
+        hasSidecarEndpoint: false,
       ),
       isFalse,
     );
     expect(
       shouldKeepDirectSidecarPose(
         isDirectConnection: false,
-        sidecarConfigured: true,
+        hasSidecarEndpoint: true,
       ),
       isFalse,
     );

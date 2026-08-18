@@ -1,5 +1,6 @@
 import 'dart:async' show unawaited;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart'
     show Colors, Divider, Orientation, Scaffold, CircularProgressIndicator, RouteSettings;
@@ -25,7 +26,9 @@ import '../../services/app_settings_manager.dart';
 import '../../services/api_service.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/local_camera_service.dart';
+import '../../services/fcm_service.dart';
 import '../../utils/camera_sidecar_config.dart';
+import '../../utils/canon_sidecar_status_channel.dart';
 import '../../utils/classic_photos_enabled_sync.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
@@ -70,6 +73,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_primeCaptureScreenOnLaunch());
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        // After Splash USB permission — do not stack notification Allow/Don't allow.
+        unawaited(FcmService.ensurePermissionAndPersistToken());
+      }
     });
   }
 
@@ -111,13 +118,41 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     final service = LocalCameraService(
       config: resolveCameraSidecarConfig(settings),
     );
-    if (!service.isConfigured) return false;
+    if (!service.isConfigured && !service.hasSidecarEndpoint) {
+      service.dispose();
+      return false;
+    }
     try {
-      return await service.isHealthy().timeout(
+      if (service.isDirectConnection) {
+        // Sidecar extracts assets + waits for USB during Splash/Terms — poll
+        // localhost while the guest reads terms instead of a single 3s probe.
+        const attempts = 30;
+        for (var i = 0; i < attempts; i++) {
+          if (await service.isListening()) {
+            service.dispose();
+            return true;
+          }
+          final state = await CanonSidecarStatusChannel.getState().timeout(
+            const Duration(milliseconds: 800),
+            onTimeout: () => 'idle',
+          );
+          if (state == 'running' && await service.isHealthy()) {
+            service.dispose();
+            return true;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+        }
+        service.dispose();
+        return false;
+      }
+      final ok = await service.isHealthy().timeout(
         const Duration(seconds: 3),
         onTimeout: () => false,
       );
+      service.dispose();
+      return ok;
     } on Object {
+      service.dispose();
       return false;
     }
   }

@@ -283,6 +283,19 @@ class KioskDeviceStatusService {
     final transport = config.isPiConnection
         ? KioskDeviceTransport.lan
         : KioskDeviceTransport.usb;
+
+    // Native PTP disables the HTTP sidecar but still owns USB — do not show
+    // "Not configured" on a working direct-PTP booth.
+    if (config.isDirectPtpConnection) {
+      final cameraPresent = await _safeCanonCameraPresent();
+      return KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceDslrSidecar,
+        connected: cameraPresent,
+        configured: true,
+        transport: KioskDeviceTransport.usb,
+      );
+    }
+
     if (!config.isConfigured) {
       return KioskDeviceStatusEntry(
         deviceName: AppStrings.kioskDeviceDslrSidecar,
@@ -305,14 +318,20 @@ class KioskDeviceStatusService {
     final httpHealthy = await healthFuture;
     final nativeState = await nativeStateFuture;
 
-    // Direct: connected = Canon on USB. Pi: connected = sidecar /health ok.
+    // Direct: connected when Canon is on USB **or** localhost EDSDK is serving
+    // EVF (USB list can be empty while the sidecar holds the interface).
+    // Pi: connected = sidecar /health ok.
     // Only max_restarts is a terminal red state — a single `crashed` is the
     // normal gap before CanonSidecarRuntime relaunches (3s).
     final crashed = config.isDirectConnection &&
         !httpHealthy &&
         nativeState == 'max_restarts';
-    final connected =
-        config.isDirectConnection ? cameraPresent : httpHealthy;
+    final sidecarServing = httpHealthy ||
+        nativeState == 'running' ||
+        nativeState == 'waiting_usb';
+    final connected = config.isDirectConnection
+        ? (cameraPresent || sidecarServing)
+        : httpHealthy;
 
     return KioskDeviceStatusEntry(
       deviceName: AppStrings.kioskDeviceDslrSidecar,

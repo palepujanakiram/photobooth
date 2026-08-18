@@ -138,6 +138,20 @@ Future<bool> sidecarNativeProcessCanServeHttp(
   return false;
 }
 
+/// Poll until direct USB EDSDK can serve POSE (asset extract / USB grant race).
+Future<bool> waitForDirectSidecarPoseReady({
+  required Future<bool> Function() canServePosePreview,
+  Duration timeout = const Duration(seconds: 20),
+  Duration pollInterval = const Duration(milliseconds: 500),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    if (await canServePosePreview()) return true;
+    await Future<void>.delayed(pollInterval);
+  }
+  return false;
+}
+
 /// True when the bundled on-device EDSDK process is already running.
 Future<bool> nativeEdsdkSidecarIsRunning(
   Future<String> Function() queryNativeState, {

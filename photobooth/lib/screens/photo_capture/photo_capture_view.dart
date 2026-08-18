@@ -492,6 +492,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _awaitGuestStartClassic = false;
     _flashbackCountdownStarting = true;
     final seconds = captureCountdownSecondsForMode(isFlashbackMultiShot: true);
+    _armSidecarPoseWindow(seconds);
     try {
       Future<void>? sidecarPrepare;
       if (_isUsingUvc) {
@@ -518,6 +519,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             sidecarPrepare = _onClassicCountdownStep(step, sidecarPrepare);
           },
           onCountdownFinished: _armUvcHdmiStillMask,
+          captureNow: _captureNowIfBodyStill,
         );
       } else {
         _captureViewModel.resumeLiveViewAfterSidecarStill = false;
@@ -544,6 +546,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             sidecarPrepare = _onClassicCountdownStep(step, sidecarPrepare);
           },
           onCountdownFinished: _armUvcHdmiStillMask,
+          captureNow: _captureNowIfBodyStill,
         );
       }
     } finally {
@@ -732,6 +735,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       isFlashbackMultiShot: true,
       acceptedShotCount: _stripShots.length,
     );
+    _armSidecarPoseWindow(seconds);
     try {
       Future<void>? sidecarPrepare;
       if (_isUsingUvc) {
@@ -748,6 +752,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             sidecarPrepare = _onClassicCountdownStep(step, sidecarPrepare);
           },
           onCountdownFinished: _armUvcHdmiStillMask,
+          captureNow: _captureNowIfBodyStill,
         );
       } else {
         await _captureViewModel.captureWithCountdown(
@@ -765,6 +770,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             sidecarPrepare = _onClassicCountdownStep(step, sidecarPrepare);
           },
           onCountdownFinished: _armUvcHdmiStillMask,
+          captureNow: _captureNowIfBodyStill,
         );
       }
     } finally {
@@ -988,6 +994,29 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       poseReadyForCountdown: _flashbackCameraReady,
       sidecarStillPrepStarted: _sidecarStillPrepStarted,
     );
+  }
+
+  void _armSidecarPoseWindow(int countdownSeconds) {
+    final service = _captureViewModel.localCameraService;
+    if (service == null || !service.isConfigured) return;
+    unawaited(
+      service.poseArm(
+        ttlMs: (countdownSeconds + 15) * 1000,
+        corrId: _poseCorrId,
+      ),
+    );
+  }
+
+  Future<bool> _captureNowIfBodyStill() async {
+    final service = _captureViewModel.localCameraService;
+    if (service == null || !service.isConfigured) return false;
+    final pending = await service.hasPendingBodyStill();
+    if (pending) {
+      // Body shutter drops LV before countdown-4 prepare-still; treat as armed
+      // so HDMI pose is allowed to POST /camera/capture and adopt the still.
+      _sidecarStillPrepStarted = true;
+    }
+    return pending;
   }
 
   DateTime? _lastHdmiPoseReadyLogAt;
@@ -2281,11 +2310,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!_useSidecarPosePreview) return false;
 
     final service = _captureViewModel.localCameraService;
-    final canServe = await _captureViewModel.sidecarCanServePosePreview();
+    var canServe = await _captureViewModel.sidecarCanServePosePreview();
     if (!mounted) return true;
+    if (!canServe &&
+        service?.isDirectConnection == true &&
+        service!.hasSidecarEndpoint) {
+      canServe = await waitForDirectSidecarPoseReady(
+        canServePosePreview: _captureViewModel.sidecarCanServePosePreview,
+      );
+      if (!mounted) return true;
+    }
     final keepDirect = shouldKeepDirectSidecarPose(
       isDirectConnection: service?.isDirectConnection == true,
-      sidecarConfigured: service?.isConfigured == true,
+      hasSidecarEndpoint: service?.hasSidecarEndpoint == true,
     );
     if (canServe || keepDirect) {
       final started = await _startSidecarPosePreviewSession();
@@ -2307,6 +2344,19 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
 
     if (await _trySidecarPosePreviewFirst()) return;
+
+    // Direct USB EDSDK: never fall through to tablet CameraX / UVC. A transient
+    // sidecar restart used to poison the client and hang on "Starting camera…"
+    // with the front camera while the DSLR was still on USB.
+    final directService = _captureViewModel.localCameraService;
+    if (directService?.isDirectConnection == true) {
+      directService!.clearRuntimeUnavailable();
+      AppLogger.warning(
+        'POSE: keeping Direct USB EVF (skip CameraX/UVC fallthrough)',
+      );
+      await _startSidecarPosePreviewSession();
+      return;
+    }
 
     // Classic (+ AI without Pi live preview): HDMI/UVC pose, sidecar stills.
 
@@ -5545,6 +5595,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     if (_isUsingUvc) {
                       _fotoZenCaptureLocked = true;
                       Future<void>? sidecarPrepare;
+                      _armSidecarPoseWindow(countdownSecs);
                       await viewModel.captureWithCountdown(
                         () async {
                           await _awaitSidecarStillPrepare(sidecarPrepare);
@@ -5557,6 +5608,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                               _onClassicCountdownStep(step, sidecarPrepare);
                         },
                         onCountdownFinished: _armUvcHdmiStillMask,
+                        captureNow: _captureNowIfBodyStill,
                       );
                     } else {
                       _fotoZenCaptureLocked = true;

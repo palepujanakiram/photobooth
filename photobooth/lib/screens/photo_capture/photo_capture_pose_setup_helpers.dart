@@ -103,9 +103,9 @@ bool shouldWaitHdmiSettleAfterCanonLv({
 /// Direct USB: keep Pose on EDSDK EVF (do not fall through to HDMI/UVC).
 bool shouldKeepDirectSidecarPose({
   required bool isDirectConnection,
-  required bool sidecarConfigured,
+  required bool hasSidecarEndpoint,
 }) {
-  return isDirectConnection && sidecarConfigured;
+  return isDirectConnection && hasSidecarEndpoint;
 }
 
 /// GSM omitted `cameraConnectionMode` and a leftover Pi host inferred Pi.

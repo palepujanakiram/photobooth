@@ -486,7 +486,7 @@ class CaptureViewModel extends ChangeNotifier {
       notifyListeners();
       return shouldKeepDirectSidecarPose(
         isDirectConnection: service.isDirectConnection,
-        sidecarConfigured: service.isConfigured,
+        hasSidecarEndpoint: service.hasSidecarEndpoint,
       );
     }
     final healthy = await service.isHealthy();

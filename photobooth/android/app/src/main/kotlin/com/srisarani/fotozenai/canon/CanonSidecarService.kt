@@ -124,9 +124,16 @@ class CanonSidecarService : Service() {
         Thread({
             extractAndStage()
             runtimeReady = true
-            permissionGranted = CanonUsbPermissionManager.requestPermissionIfNeeded(this)
-            ensureUsbOpen()
-            runtime.launch(sidecarAbi)
+            // USB permission dialog must run from a visible Activity — MainActivity
+            // requests on resume. Requesting here races FCM / notification prompts
+            // and can flash-dismiss the Canon allow dialog on first launch.
+            permissionGranted = CanonUsbPermissionManager.hasGrantedPermission(this)
+            if (permissionGranted) {
+                ensureUsbOpen()
+                runtime.launch(sidecarAbi)
+            } else {
+                state = "waiting_usb"
+            }
         }, "canon-stage").start()
     }
 

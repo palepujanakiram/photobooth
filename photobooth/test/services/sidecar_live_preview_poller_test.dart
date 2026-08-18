@@ -89,7 +89,7 @@ void main() {
       service.dispose();
     });
 
-    test('skips when live preview not enabled', () async {
+    test('skips when live preview not enabled on Pi sidecar', () async {
       var posts = 0;
       final client = MockClient((request) async {
         posts++;
@@ -99,6 +99,7 @@ void main() {
         config: const CameraSidecarConfig(
           enabled: true,
           baseUrl: 'http://172.16.4.128:8791',
+          connectionMode: CameraConnectionMode.pi,
         ),
         client: client,
       );
@@ -109,6 +110,37 @@ void main() {
       poller.start();
       await Future<void>.delayed(const Duration(milliseconds: 60));
       expect(posts, 0);
+      poller.dispose();
+      service.dispose();
+    });
+
+    test('direct USB keeps polling after transient runtime unavailable', () async {
+      var posts = 0;
+      final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9, ...List.filled(8, 1)]);
+      final client = MockClient((request) async {
+        posts++;
+        return http.Response.bytes(jpeg, 200);
+      });
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://127.0.0.1:8791',
+          livePreviewEnabled: true,
+          connectionMode: CameraConnectionMode.direct,
+        ),
+        client: client,
+      );
+      service.markRuntimeUnavailable();
+      expect(service.shouldShowLivePreview, isFalse);
+      expect(service.hasSidecarEndpoint, isTrue);
+
+      final poller = SidecarLivePreviewPoller(
+        service: service,
+        interval: const Duration(milliseconds: 20),
+      );
+      poller.start();
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(posts, greaterThan(0));
       poller.dispose();
       service.dispose();
     });
