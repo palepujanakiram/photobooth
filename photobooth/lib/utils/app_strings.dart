@@ -707,4 +707,23 @@ abstract final class AppStrings {
   static const kioskDeviceStatusRefresh = 'Refresh';
   static const noPhotoPrinterConnected =
       'No photo printer connected (DNP or Canon Selphy)';
+
+  static const eventStationTitle = 'Event station';
+  static const eventStationCapture = 'Capture';
+  static const eventStationTheme = 'Theme';
+  static const eventStationPrint = 'Print';
+  static const eventStationCaptureHint =
+      'Photographer: take guest photos. Theme and print happen on other tablets.';
+  static const eventStationThemeHint =
+      'Guest: pick a look for the photo that is waiting.';
+  static const eventStationPrintHint =
+      'Printer: claim transformed photos and print.';
+  static const eventStationChangeRole = 'Change station';
+  static const eventStationNextGuest = 'Capture next guest';
+  static const eventStationWaitingTheme = 'Waiting for a photo to style…';
+  static const eventStationWaitingPrint = 'Waiting for a photo to print…';
+  static const eventStationAssignTheme = 'Use this look';
+  static const eventStationNoThemes = 'No themes available for this event.';
+  static const eventStationPrintNow = 'Print';
+  static const eventStationJobClaimed = 'This job was taken by another station.';
 }

@@ -39,6 +39,7 @@ bool _isPublicApiPath(String path) {
   if (p == '/api/event/verify') return true;
   if (p.startsWith('/api/event/by-code/')) return true;
   if (p.startsWith('/api/events/by-code/')) return true;
+  if (p.startsWith('/api/event/station/')) return true;
 
   // Kiosk-owned resources are guarded server-side; they require the session token.
   return false;

@@ -1,5 +1,8 @@
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
+
+import '../utils/event_station_role.dart';
 
 /// Cached booth event from `/api/event/verify` (additive to [KioskManager]).
 class EventManager {
@@ -9,14 +12,18 @@ class EventManager {
   static const String _kPrefsEventThemeCount = 'event_theme_count';
   static const String _kPrefsEventFrameCount = 'event_frame_count';
   static const String _kPrefsEventName = 'event_name';
+  static const String _kPrefsStationRole = 'event_station_role';
+  static const String _kPrefsDeviceId = 'event_station_device_id';
 
   static String? _cachedCode;
   static String? _cachedPhotoMode;
+  static String? _cachedStationRole;
 
   @visibleForTesting
   static void resetCacheForTests() {
     _cachedCode = null;
     _cachedPhotoMode = null;
+    _cachedStationRole = null;
   }
 
   Future<String?> getEventCode() async {
@@ -60,6 +67,41 @@ class EventManager {
     final prefs = await SharedPreferences.getInstance();
     final v = prefs.getString(_kPrefsEventName)?.trim() ?? '';
     return v.isEmpty ? null : v;
+  }
+
+  Future<bool> isEventBound() async {
+    final code = await getEventCode();
+    return code != null && code.isNotEmpty;
+  }
+
+  Future<String?> getStationRole() async {
+    if (_cachedStationRole != null) {
+      return _cachedStationRole!.isEmpty ? null : _cachedStationRole;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final parsed = EventStationRole.tryParse(prefs.getString(_kPrefsStationRole));
+    _cachedStationRole = parsed ?? '';
+    return parsed;
+  }
+
+  Future<void> setStationRole(String? role) async {
+    final parsed = EventStationRole.tryParse(role);
+    _cachedStationRole = parsed ?? '';
+    final prefs = await SharedPreferences.getInstance();
+    if (parsed == null) {
+      await prefs.remove(_kPrefsStationRole);
+      return;
+    }
+    await prefs.setString(_kPrefsStationRole, parsed);
+  }
+
+  Future<String> getOrCreateDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getString(_kPrefsDeviceId)?.trim() ?? '';
+    if (existing.isNotEmpty) return existing;
+    final id = const Uuid().v4();
+    await prefs.setString(_kPrefsDeviceId, id);
+    return id;
   }
 
   Future<void> setEventCode(String? code) async {
@@ -115,5 +157,7 @@ class EventManager {
     await prefs.remove(_kPrefsEventThemeCount);
     await prefs.remove(_kPrefsEventFrameCount);
     await prefs.remove(_kPrefsEventName);
+    await prefs.remove(_kPrefsStationRole);
+    _cachedStationRole = '';
   }
 }

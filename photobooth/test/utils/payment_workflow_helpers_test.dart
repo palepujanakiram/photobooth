@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/photo_capture/photo_model.dart';
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
+import 'package:photobooth/services/event_manager.dart';
 import 'package:photobooth/services/kiosk_manager.dart';
 import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/payment_workflow_helpers.dart';
@@ -13,6 +14,7 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     KioskManager.resetPaymentOverrideCacheForTests();
+    EventManager.resetCacheForTests();
   });
   group('collectPaymentBeforeGeneration', () {
     test('true only for before_generation', () {
@@ -235,6 +237,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('generate'), findsOneWidget);
     });
+  });
+
+  test('resolvePaymentsEnabled is false when an event is bound', () async {
+    EventManager.resetCacheForTests();
+    await EventManager().setEventCode('GALA');
+    expect(await resolvePaymentsEnabled(), isFalse);
   });
 }
 

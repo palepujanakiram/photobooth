@@ -26,6 +26,7 @@ import '../../views/widgets/animated_slideshow_background.dart'
 import 'app_splash_event_helpers.dart';
 import 'app_splash_input_helpers.dart';
 import 'app_splash_screen_body.dart';
+import '../../utils/event_station_role.dart';
 
 /// Cold start and kiosk management: branded animation, no stacked dialogs.
 class AppSplashScreen extends StatefulWidget {
@@ -260,7 +261,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       );
       final urls = await _loadThemeBackgroundUrls();
       if (!mounted) return;
-      _goToTerms(urls);
+      await _goAfterBind(urls);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -287,6 +288,21 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       );
       return null;
     }
+  }
+
+  Future<void> _goAfterBind(List<String> urls) async {
+    final eventCode = await _event.getEventCode();
+    final role = await _event.getStationRole();
+    if (!mounted) return;
+    final dest = resolveEventPostSplashRoute(
+      eventCode: eventCode,
+      stationRole: role,
+    );
+    if (dest == EventPostSplashRoute.terms) {
+      _goToTerms(urls);
+      return;
+    }
+    Navigator.pushReplacementNamed(context, eventPostSplashRouteName(dest));
   }
 
   /// Bundled slideshow assets load instantly; theme API samples are not used here.
@@ -347,7 +363,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       );
       final urls = await _loadThemeBackgroundUrls();
       if (!mounted) return;
-      _goToTerms(urls);
+      await _goAfterBind(urls);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

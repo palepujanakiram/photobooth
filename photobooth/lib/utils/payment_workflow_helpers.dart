@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../screens/photo_capture/photo_model.dart';
 import '../screens/theme_selection/theme_model.dart';
+import '../services/event_manager.dart';
 import '../services/kiosk_manager.dart';
 import 'constants.dart';
 import 'route_args.dart';
@@ -61,7 +62,9 @@ String resolvePostFrameRoute({
 }
 
 /// Kiosk payment enablement: false override skips all payment screens.
+/// Event-bound booths never collect payment.
 Future<bool> resolvePaymentsEnabled() async {
+  if (await EventManager().isEventBound()) return false;
   final override = await KioskManager().getPaymentEnabledOverride();
   return override ?? true;
 }

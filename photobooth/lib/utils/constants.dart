@@ -390,6 +390,12 @@ class AppConstants {
   static const String kRouteStaffDashboard = '/staff/dashboard';
   static const String kRouteStaffPayments = '/staff/payments';
 
+  /// Event mode: pick Capture / Theme / Print after kiosk+event bind.
+  static const String kRouteEventStation = '/event-station';
+  static const String kRouteEventCaptureStation = '/event-station/capture';
+  static const String kRouteEventThemeStation = '/event-station/theme';
+  static const String kRouteEventPrintStation = '/event-station/print';
+
   // Error Messages
   static const String kErrorCameraPermission = 'Camera permission denied';
   static const String kErrorCameraInitialization =

@@ -38,6 +38,21 @@ void main() {
     expect(await em.getEventName(), 'Gala');
   });
 
+  test('station role and device id persist', () async {
+    final em = EventManager();
+    expect(await em.isEventBound(), isFalse);
+    expect(await em.getStationRole(), isNull);
+    await em.setStationRole('CAPTURE');
+    expect(await em.getStationRole(), 'capture');
+    EventManager.resetCacheForTests();
+    expect(await em.getStationRole(), 'capture');
+    final id = await em.getOrCreateDeviceId();
+    expect(id, isNotEmpty);
+    expect(await em.getOrCreateDeviceId(), id);
+    await em.setStationRole('nope');
+    expect(await em.getStationRole(), isNull);
+  });
+
   test('clearEvent wipes prefs', () async {
     final em = EventManager();
     await em.cacheVerifyResult(
@@ -45,6 +60,7 @@ void main() {
       code: 'PARTY',
       photoMode: 'BOTH',
     );
+    await em.setStationRole('print');
     await em.clearEvent();
     EventManager.resetCacheForTests();
     expect(await em.getEventCode(), isNull);
@@ -53,6 +69,7 @@ void main() {
     expect(await em.getThemeCount(), 0);
     expect(await em.getFrameCount(), 0);
     expect(await em.getEventName(), isNull);
+    expect(await em.getStationRole(), isNull);
   });
 
   test('setEventCode empty and setPhotoModeOverride clear values', () async {

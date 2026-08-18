@@ -46,6 +46,10 @@ void main() {
       expect(requestNeedsKioskSessionToken('/api/event/verify'), isFalse);
       expect(requestNeedsKioskSessionToken('/api/event/by-code/WED'), isFalse);
       expect(requestNeedsKioskSessionToken('/api/events/by-code/WED'), isFalse);
+      expect(
+        requestNeedsKioskSessionToken('/api/event/station/theme-jobs'),
+        isFalse,
+      );
     });
   });
 
