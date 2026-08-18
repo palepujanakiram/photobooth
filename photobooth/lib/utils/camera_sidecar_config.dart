@@ -44,8 +44,10 @@ class CameraSidecarConfig {
 
   bool get isConfigured => enabled && baseUrl.trim().isNotEmpty;
 
+  /// On-device EDSDK USB — only when the sidecar is actually configured.
+  /// A disabled/empty config (Flutter web) must not look like a live USB booth.
   bool get isDirectConnection =>
-      connectionMode == CameraConnectionMode.direct;
+      connectionMode == CameraConnectionMode.direct && isConfigured;
 
   bool get isPiConnection => connectionMode == CameraConnectionMode.pi;
 
@@ -317,8 +319,8 @@ CameraSidecarConfig resolveCameraSidecarConfig(
       enabled: false,
       baseUrl: '',
       livePreviewEnabled: false,
-      connectionMode: CameraConnectionMode.direct,
-      modeExplicit: false,
+      connectionMode: CameraConnectionMode.pi,
+      modeExplicit: true,
     );
   }
   final env = environment ?? CameraSidecarConfig.fromEnvironment();

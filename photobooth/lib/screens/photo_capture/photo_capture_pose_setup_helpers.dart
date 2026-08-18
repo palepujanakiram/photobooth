@@ -100,7 +100,10 @@ bool shouldWaitHdmiSettleAfterCanonLv({
   return !sidecarIsPosePreview;
 }
 
-/// Direct USB: keep Pose on EDSDK EVF (do not fall through to HDMI/UVC).
+/// Direct USB: keep Pose on EDSDK EVF (do not fall through to HDMI/UVC/webcam).
+///
+/// Requires a configured sidecar endpoint. Flutter web disables the localhost
+/// sidecar, so this is false and Pose opens `getUserMedia` instead.
 bool shouldKeepDirectSidecarPose({
   required bool isDirectConnection,
   required bool hasSidecarEndpoint,

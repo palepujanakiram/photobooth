@@ -164,6 +164,16 @@ void main() {
       expect(resolved.enabled, isFalse);
       expect(resolved.baseUrl, isEmpty);
       expect(resolved.isConfigured, isFalse);
+      expect(resolved.isDirectConnection, isFalse);
+    });
+
+    test('disabled direct config is not a live USB connection', () {
+      const cfg = CameraSidecarConfig(
+        enabled: false,
+        baseUrl: 'http://127.0.0.1:8791',
+        connectionMode: CameraConnectionMode.direct,
+      );
+      expect(cfg.isDirectConnection, isFalse);
     });
 
     test('uses fromEnvironment when environment arg omitted', () {

@@ -2339,7 +2339,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   Future<void> _ensureCanonUsbPermissionForPoseSetup() async {
     final service = _captureViewModel.localCameraService;
-    if (service?.isDirectConnection != true) {
+    if (!shouldKeepDirectSidecarPose(
+      isDirectConnection: service?.isDirectConnection == true,
+      hasSidecarEndpoint: service?.hasSidecarEndpoint == true,
+    )) {
       if (mounted) setState(() => _awaitingCanonUsbPermission = false);
       return;
     }
@@ -2373,8 +2376,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     // Direct USB EDSDK: never fall through to tablet CameraX / UVC. A transient
     // sidecar restart used to poison the client and hang on "Starting camera…"
     // with the front camera while the DSLR was still on USB.
+    // Flutter web has no USB sidecar — skip this even if mode defaults to direct.
     final directService = _captureViewModel.localCameraService;
-    if (directService?.isDirectConnection == true) {
+    if (shouldKeepDirectSidecarPose(
+      isDirectConnection: directService?.isDirectConnection == true,
+      hasSidecarEndpoint: directService?.hasSidecarEndpoint == true,
+    )) {
       directService!.clearRuntimeUnavailable();
       AppLogger.warning(
         'POSE: keeping Direct USB EVF (skip CameraX/UVC fallthrough)',
@@ -2605,7 +2612,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Future<void> _resetAndInitializeCamerasBody({bool forceRefresh = false}) async {
     if (!mounted) return;
 
-    if (_captureViewModel.localCameraService?.isDirectConnection == true) {
+    if (shouldKeepDirectSidecarPose(
+      isDirectConnection:
+          _captureViewModel.localCameraService?.isDirectConnection == true,
+      hasSidecarEndpoint:
+          _captureViewModel.localCameraService?.hasSidecarEndpoint == true,
+    )) {
       _expectExternalCaptureSource = true;
       await _ensureCanonUsbPermissionForPoseSetup();
       if (!mounted) return;
@@ -5048,6 +5060,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
               height: cardH,
               child: Stack(
                 fit: StackFit.expand,
+                clipBehavior: kIsWeb ? Clip.none : Clip.hardEdge,
                 children: [
                   ColoredBox(
                     color: Colors.black,
