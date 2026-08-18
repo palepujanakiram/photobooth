@@ -328,7 +328,7 @@ void main() {
         expect(request.url.path, '/camera/capture');
         expect(request.url.queryParameters['download'], '1');
         expect(request.url.queryParameters['maxLongEdge'], '1920');
-        expect(request.url.queryParameters['jpegQuality'], '85');
+        expect(request.url.queryParameters['jpegQuality'], '92');
         expect(request.url.queryParameters['resumeLiveView'], '1');
         expect(request.headers.containsKey('X-Camera-Token'), isFalse);
         return http.Response.bytes(jpeg, 200, headers: {

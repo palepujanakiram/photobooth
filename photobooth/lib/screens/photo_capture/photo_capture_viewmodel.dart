@@ -2208,7 +2208,9 @@ class CaptureViewModel extends ChangeNotifier {
     final sidecarFile = await tryCaptureFromSidecar(
       _localCameraService,
       preferStripPrintQuality: preferStripPrintQuality,
-      preferLivePreviewFrame: usesSidecarLivePreview,
+      preferLivePreviewFrame: shouldPreferSidecarLivePreviewFrameForCapture(
+        sidecarIsPosePreview: usesSidecarLivePreview,
+      ),
       onUsedLivePreviewFrame: () => _lastSidecarUsedLivePreview = true,
       resumeLiveView: resumeLiveViewAfterSidecarStill,
     );

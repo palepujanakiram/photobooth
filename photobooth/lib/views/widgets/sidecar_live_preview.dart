@@ -102,7 +102,7 @@ class _SidecarLivePreviewState extends State<SidecarLivePreview> {
           frame,
           fit: widget.fit,
           gaplessPlayback: true,
-          filterQuality: FilterQuality.low,
+          filterQuality: FilterQuality.medium,
         ),
       );
     }

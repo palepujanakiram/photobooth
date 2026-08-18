@@ -293,6 +293,26 @@ void main() {
     });
   });
 
+  group('shouldPreferSidecarLivePreviewFrameForCapture', () {
+    test('false when sidecar EVF is the pose preview', () {
+      expect(
+        shouldPreferSidecarLivePreviewFrameForCapture(
+          sidecarIsPosePreview: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('true when HDMI/UVC is preview and sidecar only captures', () {
+      expect(
+        shouldPreferSidecarLivePreviewFrameForCapture(
+          sidecarIsPosePreview: false,
+        ),
+        isTrue,
+      );
+    });
+  });
+
   group('waitForDirectSidecarPoseReady', () {
     test('returns true when sidecar becomes ready during poll', () async {
       var calls = 0;

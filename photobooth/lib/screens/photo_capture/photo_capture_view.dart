@@ -4244,7 +4244,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           _captureViewModel.localCameraService,
           resumeLiveView: resumeLvAfterStill,
           preferStripPrintQuality: _captureViewModel.preferStripPrintQuality,
-          preferLivePreviewFrame: _useSidecarPosePreview,
+          preferLivePreviewFrame: shouldPreferSidecarLivePreviewFrameForCapture(
+            sidecarIsPosePreview: _useSidecarPosePreview,
+          ),
           corrId: poseCorr,
         );
         if (sidecar != null) {

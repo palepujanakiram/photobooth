@@ -23,7 +23,7 @@ bool sidecarHttpBodyLooksLikeJpeg(List<int> bytes) {
 const int kSidecarCaptureMaxLongEdge = 1920;
 
 /// JPEG quality for Pi-resized stills.
-const int kSidecarCaptureJpegQuality = 85;
+const int kSidecarCaptureJpegQuality = 92;
 
 /// HTTP client for the booth Pi `fotozen-sidecar` (gphoto2 / FZ200D).
 class LocalCameraService {

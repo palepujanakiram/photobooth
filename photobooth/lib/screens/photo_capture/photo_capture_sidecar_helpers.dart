@@ -456,6 +456,14 @@ Future<XFile> _xFileFromSidecarJpegBytes(Uint8List bytes, String name) async {
   }
 }
 
+/// Sidecar EVF JPEGs are ~960px. Only skip the mechanical still when HDMI is
+/// the pose preview; when EVF is what the guest sees, capture the tethered
+/// still at 1920 long-edge for review and DNP print.
+bool shouldPreferSidecarLivePreviewFrameForCapture({
+  required bool sidecarIsPosePreview,
+}) =>
+    !sidecarIsPosePreview;
+
 /// Persist a DSLR sidecar JPEG for review, baked to match the upright live feed.
 ///
 /// Full-resolution Canon stills (often 20MP+) hang [compute] normalize on
