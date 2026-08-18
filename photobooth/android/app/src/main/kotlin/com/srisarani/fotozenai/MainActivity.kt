@@ -7,6 +7,7 @@ import android.view.KeyEvent
 import com.srisarani.fotozenai.canon.CanonSidecarService
 import com.srisarani.fotozenai.canon.CanonSidecarStatusMethodChannel
 import com.srisarani.fotozenai.canon.CanonUsbPermissionManager
+import com.srisarani.fotozenai.canoncapture.CanonCameraStack
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 
@@ -16,9 +17,12 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         PaymentNotificationChannelSetup.registerIfNeeded(this)
-        CanonSidecarService.start(this)
-        // Handle camera already attached when the app launches.
-        handleUsbIntent(intent)
+        // Only one Canon stack may touch the camera — see CanonCameraStack. Default is
+        // EDSDK; ZenAI direct_ptp persists PTP so cold start skips the sidecar.
+        if (CanonCameraStack.usesEdsdkSidecar(this)) {
+            CanonSidecarService.start(this)
+            handleUsbIntent(intent)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -27,6 +31,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun handleUsbIntent(intent: Intent?) {
+        if (!CanonCameraStack.usesEdsdkSidecar(this)) return
         if (intent?.action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
             CanonUsbPermissionManager.requestPermissionIfNeeded(this)
         }
@@ -39,7 +44,10 @@ class MainActivity : FlutterActivity() {
         DnpUsbMethodChannel.register(flutterEngine, this)
         ReceiptUsbMethodChannel.register(flutterEngine, this)
         SelphyMethodChannel.register(flutterEngine, this)
+        // Both channels register regardless: Dart may query either one's status, and a
+        // channel with no camera behind it answers "not available" rather than hanging.
         CanonSidecarStatusMethodChannel.register(flutterEngine, this)
+        CanonPtpMethodChannel.register(flutterEngine, this)
         hardwareKeysHandler = HardwareKeysHandler.attach(flutterEngine)
     }
 
@@ -47,15 +55,38 @@ class MainActivity : FlutterActivity() {
         super.onResume()
         DnpUsbMethodChannel.onResume(this)
         ReceiptUsbMethodChannel.onResume(this)
-        CanonUsbPermissionManager.requestPermissionIfNeeded(this)
+        if (CanonCameraStack.usesEdsdkSidecar(this)) {
+            CanonUsbPermissionManager.requestPermissionIfNeeded(this)
+        } else {
+            CanonPtpMethodChannel.onResume(this)
+        }
+    }
+
+    override fun onStop() {
+        // Release the DSLR on the way out so a later process kill cannot leave the camera
+        // mid-transaction, which costs a physical power cycle to clear.
+        if (CanonCameraStack.usesPtp(this)) {
+            CanonPtpMethodChannel.onStop()
+        }
+        super.onStop()
     }
 
     override fun onDestroy() {
-        CanonSidecarService.stop(this)
+        if (CanonCameraStack.usesEdsdkSidecar(this)) {
+            CanonSidecarService.stop(this)
+        }
         DnpUsbMethodChannel.onDestroy()
         ReceiptUsbMethodChannel.onDestroy()
         SelphyMethodChannel.onDestroy()
+        CanonPtpMethodChannel.onDestroy()
         super.onDestroy()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        // The native DSLR capture screen returns its shots this way; anything it does not
+        // claim falls through to Flutter's own plugin result handling.
+        if (CanonPtpMethodChannel.onActivityResult(requestCode, resultCode, data)) return
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

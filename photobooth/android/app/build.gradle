@@ -53,6 +53,7 @@ android {
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
+        test.java.srcDirs += 'src/test/kotlin'
     }
 
     defaultConfig {
@@ -106,6 +107,16 @@ android {
         }
     }
 
+    // JVM unit tests for the Kotlin PTP camera stack (src/test/kotlin/.../canon/).
+    // returnDefaultValues lets android.util.Log calls no-op instead of throwing
+    // "not mocked" — the stack logs on paths the tests deliberately exercise.
+    testOptions {
+        unitTests {
+            includeAndroidResources true
+            returnDefaultValues true
+        }
+    }
+
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
             output.outputFileName = "${appName}-${variant.buildType.name}.apk"
@@ -156,5 +167,24 @@ dependencies {
     // Core library desugaring for Java 8+ APIs on older Android versions
     // Required by flutter_local_notifications (version 2.1.4+)
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
+
+    // Declared explicitly for the Canon PTP stack (canon/). Coroutines previously
+    // reached this app only transitively via Firebase; PTP's threading model — one
+    // dispatcher, one thread, strictly serialised transactions — is a correctness
+    // requirement, not something to inherit at whatever version a transitive dep picks.
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0'
+    // ContextCompat.registerReceiver in UsbCameraDiscovery. Reaches the app anyway via the
+    // Flutter embedding; declared so the compile classpath does not depend on that, and so
+    // the camera code stays byte-comparable with the POC it was copied from.
+    implementation 'androidx.core:core-ktx:1.15.0'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'com.google.truth:truth:1.4.4'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0'
+    // Only the canoncapture tests need it: android.graphics.Rect and org.json are stubs
+    // under plain JVM tests (Rect returns 0, JSONObject.toString() returns null), so the
+    // geometry and the capture contract cannot be verified without real implementations.
+    // The PTP stack's own tests are pure logic and do not use it.
+    testImplementation 'org.robolectric:robolectric:4.14.1'
 }
 

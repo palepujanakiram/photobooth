@@ -72,7 +72,30 @@
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/device_filter" />
         </activity>
-        <!-- Canon EDSDK sidecar: manages the native ARM64 camera process. -->
+        <!--
+          Native DSLR capture screen (direct PTP). Not exported: it is only ever started by
+          MainActivity via CanonPtpMethodChannel, and it drives a USB device.
+
+          configChanges mirrors MainActivity so a rotation does not recreate the Activity
+          mid-session — that would drop the shots taken so far and restart live view. The
+          app locks no orientation anywhere, so this screen inherits it too.
+        -->
+        <activity
+            android:name=".canoncapture.CanonCaptureActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:theme="@style/CanonCaptureTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true" />
+
+        <!--
+          Canon EDSDK sidecar: manages the native camera process.
+
+          Declared even when CanonCameraStack.current is PTP — an undeclared service that is
+          never started costs nothing, whereas a missing declaration turns flipping the stack
+          constant into a runtime crash rather than a rebuild. MainActivity gates whether it
+          actually starts.
+        -->
         <service
             android:name=".canon.CanonSidecarService"
             android:exported="false"

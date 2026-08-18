@@ -7,7 +7,7 @@ import 'screens/frame_select/frame_select_view.dart';
 import 'screens/fotoflashback/fotoflashback_capture_view.dart';
 import 'screens/fotoflashback/fotoflashback_filter_view.dart';
 import 'screens/pre_payment/pre_payment_view.dart';
-import 'screens/photo_capture/photo_capture_view.dart';
+import 'screens/photo_capture/capture_screen_factory.dart';
 import 'screens/photo_generate/photo_generate_progress_view.dart';
 import 'screens/photo_generate/photo_generate_view.dart';
 import 'screens/photo_review/photo_review_view.dart';
@@ -23,7 +23,9 @@ import 'screens/theme_selection/theme_selection_view.dart';
 import 'screens/theme_slideshow/theme_slideshow_view.dart';
 import 'screens/thank_you/thank_you_view.dart';
 import 'screens/webview/webview_screen.dart';
+
 import 'utils/constants.dart';
+import 'utils/route_args.dart';
 
 /// Returns all [AppConstants] route names → screen builders, including typed args.
 Map<String, WidgetBuilder> buildAppRoutes() {
@@ -43,7 +45,15 @@ Map<String, WidgetBuilder> buildAppRoutes() {
     AppConstants.kRouteExperienceChoice: (context) =>
         const ExperienceChoiceScreen(),
     AppConstants.kRouteHome: (context) => const ThemeSelectionScreen(),
-    AppConstants.kRouteCapture: (context) => const PhotoCaptureScreen(),
+    AppConstants.kRouteCapture: (context) {
+      final raw = ModalRoute.of(context)?.settings.arguments;
+      final args = raw is CaptureRouteArgs ? raw : null;
+      return buildCaptureScreen(
+        sessionKind: captureSessionKindFor(args),
+        captureArgs: args,
+        context: context,
+      );
+    },
     AppConstants.kRouteFlashbackCapture: (context) =>
         const FotoFlashbackCaptureScreen(),
     AppConstants.kRouteFlashbackFilter: (context) =>

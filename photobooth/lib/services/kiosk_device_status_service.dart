@@ -306,10 +306,11 @@ class KioskDeviceStatusService {
     final nativeState = await nativeStateFuture;
 
     // Direct: connected = Canon on USB. Pi: connected = sidecar /health ok.
-    // crashed = local EDSDK sidecar exited (direct only).
+    // Only max_restarts is a terminal red state — a single `crashed` is the
+    // normal gap before CanonSidecarRuntime relaunches (3s).
     final crashed = config.isDirectConnection &&
         !httpHealthy &&
-        (nativeState == 'crashed' || nativeState == 'max_restarts');
+        nativeState == 'max_restarts';
     final connected =
         config.isDirectConnection ? cameraPresent : httpHealthy;
 

@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Native DSLR capture screen. Plain Views, not Compose: this module is built by AGP 9's
+  com.android.built-in-kotlin with android.builtInKotlin left false globally for still-legacy
+  transitive plugins, and adding the Compose compiler into that arrangement buys nothing the
+  screen actually needs.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    android:keepScreenOn="true">
+
+    <SurfaceView
+        android:id="@+id/canon_live_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <TextView
+        android:id="@+id/canon_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="32dp"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="10dp"
+        android:text="@string/canon_capture_title"
+        android:textColor="@android:color/white"
+        android:textSize="26sp"
+        android:textStyle="bold"
+        android:shadowColor="@android:color/black"
+        android:shadowRadius="6"
+        android:shadowDx="0"
+        android:shadowDy="2" />
+
+    <!-- Pose countdown. Deliberately huge: it has to be readable from where a guest
+         actually stands, which is metres from the screen, not arm's length. -->
+    <TextView
+        android:id="@+id/canon_countdown"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:textColor="@android:color/white"
+        android:textSize="160sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        android:shadowColor="@android:color/black"
+        android:shadowRadius="18"
+        android:shadowDx="0"
+        android:shadowDy="4"
+        tools:text="3" />
+
+    <!-- Strip so far, so guests can see the set building between Classic shots. -->
+    <LinearLayout
+        android:id="@+id/canon_thumbnails"
+        android:layout_width="wrap_content"
+        android:layout_height="110dp"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="96dp"
+        android:orientation="horizontal"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/canon_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal|bottom"
+        android:layout_marginBottom="132dp"
+        android:paddingHorizontal="18dp"
+        android:paddingVertical="8dp"
+        android:text="@string/canon_status_connecting"
+        android:textColor="@android:color/white"
+        android:textSize="18sp"
+        android:shadowColor="@android:color/black"
+        android:shadowRadius="6"
+        android:shadowDx="0"
+        android:shadowDy="2" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="36dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <!--
+          focusable + focusableInTouchMode: the target box reports touch AND d-pad AND
+          leanback, so every control has to be reachable without a screen tap.
+        -->
+        <Button
+            android:id="@+id/canon_cancel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="24dp"
+            android:minWidth="160dp"
+            android:minHeight="56dp"
+            android:focusable="true"
+            android:text="@string/canon_capture_cancel"
+            android:textSize="18sp" />
+
+        <Button
+            android:id="@+id/canon_shutter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="200dp"
+            android:minHeight="56dp"
+            android:enabled="false"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:text="@string/canon_capture_shutter"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</FrameLayout>

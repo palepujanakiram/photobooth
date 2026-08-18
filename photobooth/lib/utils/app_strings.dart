@@ -455,6 +455,37 @@ abstract final class AppStrings {
   static const experienceClassicOneShotPreviewBadge = '1-shot';
   static const flashbackBrand = 'FotoFlashback';
   static const flashbackCaptureTitle = 'FotoFlashback';
+  /// POSE bar title, shared by the Flutter capture scaffold and the direct-PTP
+  /// native screen so switching between them is invisible to a guest.
+  static const posePageTitle = 'POSE';
+
+  /// Default POSE subtitle. Shared by the Flutter capture scaffold and the
+  /// direct-PTP native screen so the two look identical to a guest.
+  static const poseSubtitleDefault =
+      'Step in front of the camera and strike your best look';
+
+  /// Shown while the native DSLR capture screen is coming up.
+  static const directPtpStartingCamera = 'Starting the camera…';
+
+  /// Shown after the shot lands, while it is prepared and uploaded.
+  static const directPtpProcessing = 'Processing your photo…';
+
+  /// The photo is safely on disk but the booth could not move on.
+  static const directPtpContinueFailed =
+      'Your photo was taken, but the booth could not continue. '
+      'Tap Continue to try again.';
+
+  /// Retry action on the direct-PTP capture error state.
+  static const directPtpRetry = 'Try again';
+
+  /// Retries the upload / hand-off without making the guest pose again.
+  static const directPtpContinue = 'Continue';
+
+  /// Discards the captured still and reopens the camera.
+  static const directPtpRetake = 'Retake';
+
+  /// Body label recorded on stills that came from the tethered DSLR.
+  static const directPtpCameraLabel = 'EOS';
   static const flashbackCaptureSubtitle =
       '4 shots · 10s to pose · 8s between shots to rearrange';
   static const flashbackCaptureSubtitleSingle =

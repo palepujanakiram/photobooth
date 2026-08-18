@@ -136,3 +136,6 @@ android/.gradle/8.9/fileChanges/last-build.bin
 android/.gradle/8.9/fileHashes/fileHashes.bin
 android/.gradle/8.9/fileHashes/fileHashes.lock
 android/.gradle/8.9/fileHashes/resourceHashesCache.bin
+
+# NDK/CMake build metadata (regenerated every build; not source).
+**/android/app/.cxx/

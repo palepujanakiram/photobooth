@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Booth-styled native capture screen.
+
+  Mirrors the Flutter capture chrome in photo_capture_view_scaffold.dart so switching
+  between the two is not visible to a guest: centred white "POSE" title at 22sp/w600, a
+  white70 subtitle line beneath it, the accepted-shot strip under that, and a back chevron
+  top-left.
+
+  Shares every view id with activity_canon_capture.xml on purpose — CanonCaptureActivity
+  binds the same ids either way, so the layout can be swapped from
+  CaptureScreenStyle.current without touching the Activity.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    android:keepScreenOn="true">
+
+    <SurfaceView
+        android:id="@+id/canon_live_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Scrim behind the top chrome so white text stays readable over a bright frame. -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="220dp"
+        android:layout_gravity="top"
+        android:background="#66000000" />
+
+    <ImageButton
+        android:id="@+id/canon_back"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="top|start"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="14dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/canon_capture_cancel"
+        android:focusable="true"
+        android:src="@drawable/ic_canon_back" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:layout_marginTop="18dp"
+        android:gravity="center_horizontal"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/canon_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/canon_capture_title_booth"
+            android:textColor="@android:color/white"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/canon_subtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:paddingHorizontal="24dp"
+            android:gravity="center"
+            android:text="@string/canon_capture_subtitle"
+            android:textColor="#B3FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="normal" />
+
+        <!-- Accepted shots, matching the Flutter strip's position under the subtitle. -->
+        <LinearLayout
+            android:id="@+id/canon_thumbnails"
+            android:layout_width="wrap_content"
+            android:layout_height="78dp"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/canon_countdown"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:textColor="@android:color/white"
+        android:textSize="160sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        android:shadowColor="@android:color/black"
+        android:shadowRadius="18"
+        android:shadowDx="0"
+        android:shadowDy="4"
+        tools:text="3" />
+
+    <TextView
+        android:id="@+id/canon_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="120dp"
+        android:gravity="center"
+        android:paddingHorizontal="24dp"
+        android:text="@string/canon_status_connecting"
+        android:textColor="@android:color/white"
+        android:textSize="18sp"
+        android:shadowColor="@android:color/black"
+        android:shadowRadius="8"
+        android:shadowDx="0"
+        android:shadowDy="2" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="32dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/canon_cancel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="20dp"
+            android:minWidth="150dp"
+            android:minHeight="54dp"
+            android:focusable="true"
+            android:text="@string/canon_capture_cancel"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/canon_shutter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="200dp"
+            android:minHeight="54dp"
+            android:enabled="false"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:text="@string/canon_capture_shutter"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</FrameLayout>

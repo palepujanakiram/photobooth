@@ -17,6 +17,11 @@ void main() {
       expect(parseCameraConnectionMode('direct'), CameraConnectionMode.direct);
       expect(parseCameraConnectionMode('usb'), CameraConnectionMode.direct);
       expect(parseCameraConnectionMode('edsdk'), CameraConnectionMode.direct);
+      expect(
+        parseCameraConnectionMode('direct_ptp'),
+        CameraConnectionMode.directPtp,
+      );
+      expect(parseCameraConnectionMode('ptp'), CameraConnectionMode.directPtp);
       expect(parseCameraConnectionMode(''), isNull);
       expect(parseCameraConnectionMode(null), isNull);
     });
@@ -227,6 +232,22 @@ void main() {
       );
       expect(resolved.livePreviewEnabled, isTrue);
       expect(resolved.shouldShowLivePreview, isTrue);
+    });
+
+    test('direct_ptp disables HTTP sidecar so native PTP owns USB', () {
+      final resolved = resolveCameraSidecarConfig(
+        AppSettingsModel(
+          cameraEnabled: true,
+          cameraConnectionMode: 'direct_ptp',
+          cameraSidecarHost: '172.16.4.128',
+        ),
+        environment: localhost,
+      );
+      expect(resolved.enabled, isFalse);
+      expect(resolved.isConfigured, isFalse);
+      expect(resolved.connectionMode, CameraConnectionMode.directPtp);
+      expect(resolved.isDirectPtpConnection, isTrue);
+      expect(resolved.modeExplicit, isTrue);
     });
 
     test('pi mode keeps connectionMode when cameraEnabled false', () {

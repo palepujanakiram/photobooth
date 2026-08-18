@@ -77,12 +77,14 @@ bool isSidecarCameraId(String? cameraId) {
 
 /// Native sidecar states that cannot listen on `127.0.0.1:8791`.
 ///
-/// `unsupported_abi` is x86 / non-ARM. ARM32 and ARM64 Android both ship a
-/// matching EDSDK sidecar. `crashed` / `max_restarts` mean the process exited.
+/// `unsupported_abi` is x86 / non-ARM. `max_restarts` means the process gave up.
+///
+/// Do **not** treat a single `crashed` as terminal: [CanonSidecarRuntime] sets
+/// that (or `restarting`) between exit and the 3s relaunch. Poisoning
+/// [LocalCameraService] on that flicker made Pose drop to CameraX ("Starting
+/// camera…") while splash still showed the USB DSLR as connected.
 bool shouldTreatSidecarNativeStateAsDead(String state) {
-  return state == 'unsupported_abi' ||
-      state == 'crashed' ||
-      state == 'max_restarts';
+  return state == 'unsupported_abi' || state == 'max_restarts';
 }
 
 /// Probes native sidecar lifecycle; marks the Dart client unused when dead.
@@ -102,7 +104,7 @@ Future<bool> sidecarNativeProcessCanServeHttp(
   required Future<String> Function() queryNativeState,
   Duration nativeStateTimeout = const Duration(seconds: 1),
 }) async {
-  if (service == null || !service.isConfigured) return false;
+  if (service == null || !service.hasSidecarEndpoint) return false;
   // Pi/LAN: only the remote HTTP port matters; ignore native EDSDK process.
   if (service.isPiConnection) {
     return service.isListening();
@@ -119,6 +121,15 @@ Future<bool> sidecarNativeProcessCanServeHttp(
   if (shouldTreatSidecarNativeStateAsDead(state)) {
     service.markRuntimeUnavailable();
     return false;
+  }
+  // A prior transient crash may have poisoned the client; clear when the
+  // native process is alive, waiting, or mid-restart.
+  if (state == 'running' ||
+      state == 'waiting_usb' ||
+      state == 'restarting' ||
+      state == 'idle' ||
+      state == 'crashed') {
+    service.clearRuntimeUnavailable();
   }
   if (state == 'running') return true;
   final listening = await service.isListening();

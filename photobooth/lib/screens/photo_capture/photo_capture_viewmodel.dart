@@ -2076,12 +2076,16 @@ class CaptureViewModel extends ChangeNotifier {
   ///
   /// [onCountdownStep] is invoked each second with the displayed value (10…1)
   /// so Classic can start Pi still-prep while guests still see the countdown.
+  ///
+  /// [captureNow] is polled during each second; if it returns true, remaining
+  /// ticks are skipped and [captureAction] runs (photographer shutter).
   Future<void> captureWithCountdown(
     Future<void> Function() captureAction, {
     required bool Function() canStart,
     int? countdownSeconds,
     void Function()? onCountdownFinished,
     void Function(int step)? onCountdownStep,
+    Future<bool> Function()? captureNow,
   }) async {
     if (!canStart() || _isCapturing || _countdownValue != null) {
       return;
@@ -2096,16 +2100,25 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
+      var skipToCapture = false;
       for (var step = _countdownValue!; step >= 1; step--) {
         if (generation != _countdownGeneration || !canStart()) return;
         _countdownValue = step;
         notifyListeners();
         onCountdownStep?.call(step);
-        // Hold every tick including 1 so guests still see live EVF, then shutter.
-        await Future<void>.delayed(const Duration(seconds: 1));
+        final takeNow = await _awaitCountdownTick(
+          generation: generation,
+          captureNow: captureNow,
+        );
+        if (takeNow) {
+          skipToCapture = true;
+          break;
+        }
       }
 
-      if (generation != _countdownGeneration || !canStart()) return;
+      if (generation != _countdownGeneration) return;
+      // Photographer shutter drops LV; [canStart] may flip false — still adopt.
+      if (!skipToCapture && !canStart()) return;
       _countdownValue = null;
       onCountdownFinished?.call();
       notifyListeners();
@@ -2123,6 +2136,25 @@ class CaptureViewModel extends ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  Future<bool> _awaitCountdownTick({
+    required int generation,
+    Future<bool> Function()? captureNow,
+  }) async {
+    if (captureNow == null) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      return false;
+    }
+    const slice = Duration(milliseconds: 200);
+    var waited = 0;
+    while (waited < 1000) {
+      if (generation != _countdownGeneration) return false;
+      if (await captureNow()) return true;
+      await Future<void>.delayed(slice);
+      waited += 200;
+    }
+    return generation == _countdownGeneration && await captureNow();
   }
 
   /// Starts a countdown and then captures a photo.
@@ -2222,6 +2254,29 @@ class CaptureViewModel extends ChangeNotifier {
         details: e.toString(),
       );
     }
+  }
+
+  /// Adopts a still produced outside this ViewModel's own camera pipeline.
+  ///
+  /// Used by the direct-PTP path, where a native Activity owns live view, the
+  /// countdown and the shutter, and hands back finished files. Everything after
+  /// capture — review, upload prep, the strip — is unchanged, so the DSLR reuses
+  /// the flow rather than forking it.
+  ///
+  /// [file] should be the **display derivative**, not the 6000×4000 original: the
+  /// pipeline below this point encodes and decodes it, and a 24MP JPEG is ~96MB
+  /// as a bitmap. The original stays on disk for printing.
+  Future<void> adoptExternalCapture(
+    XFile file, {
+    required String cameraId,
+    bool skipUploadPrep = false,
+  }) async {
+    _lastRawCaptureFromSidecar = false;
+    await _assignCapturedPhotoModel(
+      file,
+      cameraIdOverride: cameraId,
+      skipUploadPrep: skipUploadPrep,
+    );
   }
 
   Future<void> _assignCapturedPhotoModel(

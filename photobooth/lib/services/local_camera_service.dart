@@ -66,6 +66,9 @@ class LocalCameraService {
   bool _runtimeUnavailable = false;
   bool _forceLivePreview = false;
 
+  /// ZenAI / env sidecar URL is set (ignores a transient runtime poison).
+  bool get hasSidecarEndpoint => _config.isConfigured;
+
   bool get isConfigured => _config.isConfigured && !_runtimeUnavailable;
 
   /// On-device Canon EDSDK at localhost (vs remote Pi/LAN).
@@ -96,10 +99,18 @@ class LocalCameraService {
     _forceLivePreview = enabled;
   }
 
-  /// Native sidecar cannot serve HTTP (wrong ABI, crashed). Stop localhost polls.
+  /// Native sidecar cannot serve HTTP (wrong ABI, exhausted restarts).
+  /// Stop localhost polls for this Pose session.
   void markRuntimeUnavailable() {
     _runtimeUnavailable = true;
     _forceLivePreview = false;
+  }
+
+  /// Clears a prior [markRuntimeUnavailable] when the native process recovers
+  /// (e.g. USB permission granted after a warm-up crash).
+  void clearRuntimeUnavailable() {
+    if (!_runtimeUnavailable) return;
+    _runtimeUnavailable = false;
   }
 
   String get livePreviewUrl => _config.livePreviewUrl;
@@ -321,6 +332,55 @@ class LocalCameraService {
       );
     }
     AppLogger.info('Camera sidecar prepare-still ok ms=$ms corr=$id');
+  }
+
+  /// Open a countdown window so a photographer shutter is adopted as this shot.
+  ///
+  /// Best-effort: older sidecars without `/camera/pose-arm` are ignored.
+  Future<void> poseArm({
+    int ttlMs = 25000,
+    String? corrId,
+  }) async {
+    if (!isConfigured) return;
+    final id = corrId ?? newCorrId();
+    try {
+      final response = await _client
+          .post(
+            _uri('/camera/pose-arm'),
+            headers: {
+              ..._headers(corrId: id),
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'ttlMs': ttlMs}),
+          )
+          .timeout(const Duration(seconds: 3));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        AppLogger.warning(
+          'Camera sidecar pose-arm status=${response.statusCode} corr=$id',
+        );
+        return;
+      }
+      AppLogger.info('Camera sidecar pose-arm ok ttlMs=$ttlMs corr=$id');
+    } catch (e) {
+      AppLogger.warning('Camera sidecar pose-arm failed corr=$id: $e');
+    }
+  }
+
+  /// True when the Pi already has a photographer still for this countdown.
+  Future<bool> hasPendingBodyStill({String? corrId}) async {
+    if (!isConfigured) return false;
+    final id = corrId ?? lastCorrId ?? newCorrId();
+    try {
+      final response = await _client
+          .get(_uri('/camera/pose'), headers: _headers(corrId: id))
+          .timeout(const Duration(seconds: 2));
+      if (response.statusCode != 200) return false;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return false;
+      return decoded['pendingBodyStill'] == true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Arms Canon Live View over USB so HDMI → capture card is not blank.

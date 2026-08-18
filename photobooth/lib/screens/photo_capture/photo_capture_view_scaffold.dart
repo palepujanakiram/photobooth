@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../utils/app_strings.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
@@ -94,9 +95,7 @@ class PhotoCaptureScaffold extends StatelessWidget {
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
     final hint = subtitleHint?.trim() ?? '';
-    final subtitle = hint.isNotEmpty
-        ? hint
-        : 'Step in front of the camera and strike your best look';
+    final subtitle = hint.isNotEmpty ? hint : AppStrings.poseSubtitleDefault;
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,

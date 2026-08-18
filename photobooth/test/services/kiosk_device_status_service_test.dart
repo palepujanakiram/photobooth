@@ -554,7 +554,7 @@ void main() {
       expect(snap.dslrSidecar.crashed, isFalse);
     });
 
-    test('DSLR sidecar shows crashed when native state is crashed', () async {
+    test('DSLR sidecar does not show crashed on transient native crash', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,
         selphyBridge: _FakeSelphyBridge(),
@@ -581,7 +581,7 @@ void main() {
       );
       expect(snap.dslrSidecar.configured, isTrue);
       expect(snap.dslrSidecar.connected, isTrue);
-      expect(snap.dslrSidecar.crashed, isTrue);
+      expect(snap.dslrSidecar.crashed, isFalse);
     });
 
     test('DSLR sidecar shows crashed when max restarts exceeded', () async {
@@ -610,6 +610,33 @@ void main() {
         ),
       );
       expect(snap.dslrSidecar.crashed, isTrue);
+    });
+
+    test('DSLR sidecar not crashed when waiting for USB fd', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async => false,
+        querySidecarNativeState: () async => 'waiting_usb',
+        queryCanonCameraPresent: () async => true,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(
+          cameraEnabled: true,
+          cameraConnectionMode: 'direct',
+        ),
+      );
+      expect(snap.dslrSidecar.connected, isTrue);
+      expect(snap.dslrSidecar.crashed, isFalse);
     });
 
     test('DSLR sidecar not crashed when running but camera initialising', () async {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../screens/photo_capture/photo_capture_view.dart';
+import '../screens/photo_capture/capture_screen_factory.dart';
 import '../screens/theme_selection/theme_model.dart';
 import 'app_strings.dart';
 import 'capture_session_kind.dart';
@@ -25,18 +25,20 @@ Widget buildFotoFlashbackCapturePage({
   required CaptureSessionKind sessionKind,
   required CaptureRouteArgs captureArgs,
   bool awaitGuestStart = false,
+  BuildContext? context,
 }) {
   final pageBuilder = debugFotoFlashbackCapturePageBuilder;
   if (pageBuilder != null) {
     return pageBuilder(sessionKind: sessionKind, captureArgs: captureArgs);
   }
-  return PhotoCaptureScreen(
+  return buildCaptureScreen(
     key: ValueKey<String>(
       'pose-${sessionKind.name}-${captureArgs.multiShotTotal}'
       '${awaitGuestStart ? '-await' : ''}',
     ),
     sessionKind: sessionKind,
     captureArgs: captureArgs,
+    context: context,
   );
 }
 
@@ -91,6 +93,7 @@ Future<void> navigateToFotoFlashbackCapture({
     sessionKind: kind,
     captureArgs: args,
     awaitGuestStart: awaitGuestStart,
+    context: context,
   );
   final settings = RouteSettings(
     name: '${AppConstants.kRouteCapture}-${kind.name}',

@@ -10,7 +10,8 @@ import java.lang.ref.WeakReference
  * Exposes Canon sidecar and camera USB state to Flutter for the Device Status screen.
  *
  * Methods:
- *  - `getState`        → String ("idle" | "running" | "crashed" | "max_restarts" | "unsupported_abi")
+ *  - `getState`        → String ("idle" | "running" | "waiting_usb" | "restarting" |
+ *                        "crashed" | "max_restarts" | "unsupported_abi")
  *  - `isCameraPresent` → Boolean (true if Canon DSLR is in the USB device list)
  */
 object CanonSidecarStatusMethodChannel {

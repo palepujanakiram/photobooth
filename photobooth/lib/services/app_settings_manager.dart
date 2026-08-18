@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../models/app_settings_model.dart';
 import '../utils/app_runtime_config.dart';
+import '../utils/canon_stack_sync.dart';
 import '../utils/constants.dart';
 import '../utils/logger.dart';
 import 'alice_inspector.dart';
@@ -89,6 +90,9 @@ class AppSettingsManager extends ChangeNotifier {
         AppRuntimeConfig.instance.applyFromSettings(_settings);
         applyFlutterImageCacheLimits();
         AliceInspector.syncWithRuntimeConfig();
+        // Fire-and-forget: stop/start EDSDK vs PTP to match ZenAI mode.
+        // ignore: unawaited_futures
+        syncCanonCameraStackForSettings(_settings);
       } catch (e, st) {
         _errorMessage = e.toString();
         AppLogger.error(
