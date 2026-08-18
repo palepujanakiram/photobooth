@@ -75,7 +75,7 @@ flutter run --debug --no-enable-impeller
 
 Hot reload does not replace `libcanon_sidecar.so`. Dart-only Pose fixes: press `R` (hot restart).
 
-3. Build release APK (output under `build/app/outputs/flutter-apk/`). **Do not** use plain `flutter build apk` — it skips version sync:
+3. Build release APK (output under `build/app/outputs/flutter-apk/`). **Do not** use plain `flutter build apk` — it skips version sync. Do **not** pass `--no-enable-impeller` to `build apk` (that flag is `flutter run` only). Impeller is disabled in `android/app/src/main/AndroidManifest.xml` for debug and release.
 
 ```bash
 ./scripts/flutter_with_version.sh build apk --release

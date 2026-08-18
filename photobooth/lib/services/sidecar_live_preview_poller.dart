@@ -55,7 +55,8 @@ class SidecarLivePreviewPoller {
 
   Future<void> _tick() async {
     if (_disposed || _paused || _inFlight) return;
-    if (!_service.shouldShowLivePreview) return;
+    final canPoll = _service.canPollSidecarPreview;
+    if (!canPoll) return;
     _inFlight = true;
     try {
       final bytes = await _service.fetchPreviewJpeg(timeout: frameTimeout);

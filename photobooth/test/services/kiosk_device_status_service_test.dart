@@ -519,6 +519,57 @@ void main() {
       expect(snap.dslrSidecar.transport, KioskDeviceTransport.usb);
     });
 
+    test('DSLR direct USB connected when EDSDK serves EVF but USB list is empty',
+        () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async => true,
+        querySidecarNativeState: () async => 'running',
+        queryCanonCameraPresent: () async => false,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(cameraConnectionMode: 'direct'),
+      );
+      expect(snap.dslrSidecar.configured, isTrue);
+      expect(snap.dslrSidecar.connected, isTrue);
+      expect(snap.dslrSidecar.transport, KioskDeviceTransport.usb);
+    });
+
+    test('DSLR direct_ptp shows configured USB and probes camera presence', () async {
+      final service = KioskDeviceStatusService(
+        isAndroid: () => true,
+        selphyBridge: _FakeSelphyBridge(),
+        usbClient: _FakeUsbClient(present: false),
+        receiptBridge: _FakeReceiptBridge(
+          probeResult: const ReceiptPrinterProbeResult(
+            connected: false,
+            transport: ReceiptPrinterTransport.wifi,
+            configured: false,
+          ),
+        ),
+        probeUvcDevices: () async => false,
+        probeDslrSidecar: (_) async => false,
+        querySidecarNativeState: () async => 'idle',
+        queryCanonCameraPresent: () async => true,
+      );
+      final snap = await service.probe(
+        settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+      );
+      expect(snap.dslrSidecar.configured, isTrue);
+      expect(snap.dslrSidecar.connected, isTrue);
+      expect(snap.dslrSidecar.transport, KioskDeviceTransport.usb);
+    });
+
     test('DSLR sidecar probe timeout does not affect USB-connected status', () async {
       final service = KioskDeviceStatusService(
         isAndroid: () => true,

@@ -122,6 +122,10 @@ abstract final class AppStrings {
   /// Non-blocking status on Terms while cameras are enumerated on entry.
   static const termsDetectingCameras = 'Detecting cameras…';
 
+  /// Terms banner while direct Canon USB permission / sidecar warm-up runs.
+  static const termsDetectingCamerasCanonUsb =
+      'Allow USB access for the Canon camera when prompted…';
+
   /// Terms Continue label while camera detection is still running.
   static const termsContinueWhenReady = 'Continue when ready';
 
@@ -201,6 +205,10 @@ abstract final class AppStrings {
   /// Pose UI when a captured still cannot be decoded for review.
   static const captureStillDisplayFailed =
       'Photo saved, but it could not be shown. Retake the shot.';
+
+  /// Shown on POSE when direct Canon USB permission is still pending.
+  static const captureWaitingCanonUsbPermission =
+      'Allow USB access for the Canon camera when prompted, then tap Retry camera.';
 
   /// Shown on POSE when no camera is available but Gallery / Phone QR is enabled.
   static const captureNoCameraUploadHint =

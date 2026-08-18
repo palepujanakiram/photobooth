@@ -66,6 +66,20 @@ class CaptureQueue(
     private val _completed = MutableSharedFlow<Item.Done>(replay = 1, extraBufferCapacity = 64)
     val completed: SharedFlow<Item.Done> = _completed.asSharedFlow()
 
+    /**
+     * Handle of the most recent [Item.Done], for seeding Activity-side dedup.
+     *
+     * Each new [CanonCaptureActivity] starts with an empty `consumedHandles` set, but
+     * `completed` replays the last shot — without seeding, the first shutter of a
+     * retake completes instantly with the previous session's file.
+     */
+    private var lastCompletedHandle: Long? = null
+
+    /** Marks the replayed completion as already consumed (Back → POSE → capture again). */
+    fun seedReplayInto(consumed: MutableSet<Long>) {
+        lastCompletedHandle?.let { consumed += it }
+    }
+
     /** Handles already seen this session. `P-10` deduplication. */
     private val seenHandles = mutableSetOf<Long>()
 
@@ -170,6 +184,7 @@ class CaptureQueue(
 
             val done = Item.Done(item.handle, stored, result.elapsedMs)
             _state.value = done
+            lastCompletedHandle = item.handle
             _completed.tryEmit(done)
         } catch (e: Exception) {
             capturesFailed++

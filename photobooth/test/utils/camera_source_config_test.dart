@@ -107,5 +107,35 @@ void main() {
         isTrue,
       );
     });
+
+    test('honours CAMERA_CONNECTION_MODE=direct_ptp without ZenAI mode', () {
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(),
+          overrideSourceDefine: '',
+          overrideConnectionModeDefine: 'direct_ptp',
+        ),
+        isTrue,
+      );
+    });
+
+    test('explicit dart-define pi/direct never opens PTP', () {
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(),
+          overrideSourceDefine: 'direct_ptp',
+          overrideConnectionModeDefine: 'pi',
+        ),
+        isFalse,
+      );
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(),
+          overrideSourceDefine: 'direct_ptp',
+          overrideConnectionModeDefine: 'direct',
+        ),
+        isFalse,
+      );
+    });
   });
 }

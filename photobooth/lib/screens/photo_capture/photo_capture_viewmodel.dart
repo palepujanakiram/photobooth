@@ -486,7 +486,7 @@ class CaptureViewModel extends ChangeNotifier {
       notifyListeners();
       return shouldKeepDirectSidecarPose(
         isDirectConnection: service.isDirectConnection,
-        sidecarConfigured: service.isConfigured,
+        hasSidecarEndpoint: service.hasSidecarEndpoint,
       );
     }
     final healthy = await service.isHealthy();
@@ -2208,7 +2208,9 @@ class CaptureViewModel extends ChangeNotifier {
     final sidecarFile = await tryCaptureFromSidecar(
       _localCameraService,
       preferStripPrintQuality: preferStripPrintQuality,
-      preferLivePreviewFrame: usesSidecarLivePreview,
+      preferLivePreviewFrame: shouldPreferSidecarLivePreviewFrameForCapture(
+        sidecarIsPosePreview: usesSidecarLivePreview,
+      ),
       onUsedLivePreviewFrame: () => _lastSidecarUsedLivePreview = true,
       resumeLiveView: resumeLiveViewAfterSidecarStill,
     );

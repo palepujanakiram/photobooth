@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../models/strip_models.dart';
@@ -12,6 +13,7 @@ import '../../utils/classic_strip_scrub_coordinator.dart';
 import '../../utils/classic_strip_scrub_helpers.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/image_helper.dart';
 import '../../utils/logger.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/print_size_helpers.dart';
@@ -29,6 +31,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   FotoFlashbackFilterViewModel({
     required this.theme,
     required List<String> imageDataUrls,
+    List<String>? pendingImageFilePaths,
     ApiService? apiService,
     SessionManager? sessionManager,
     bool overlayCleanupAlreadyDone = false,
@@ -36,18 +39,37 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     PrintOrientation? printOrientation,
     /// Test-only override for [AppConstants.kEnableStripOverlayCleanup].
     bool? overlayCleanupBuildGate,
-  })  : _imageDataUrls = List<String>.from(imageDataUrls),
+  })  : _expectedCaptureCount = pendingImageFilePaths?.isNotEmpty == true
+            ? pendingImageFilePaths!.length
+            : imageDataUrls.length,
+        _imageDataUrls = pendingImageFilePaths?.isNotEmpty == true
+            ? <String>[]
+            : List<String>.from(imageDataUrls),
+        _pendingImageFilePaths = pendingImageFilePaths?.isNotEmpty == true
+            ? List<String>.from(pendingImageFilePaths!)
+            : null,
         _api = apiService ?? ApiService(),
         _sessionManager = sessionManager ?? SessionManager(),
         _previewCleaned = overlayCleanupAlreadyDone,
         _printOrientation = printOrientation ?? PrintOrientation.portrait,
         _overlayCleanupBuildGate = overlayCleanupBuildGate,
         _shotCleaned = List<bool>.generate(
-          imageDataUrls.length,
+          pendingImageFilePaths?.isNotEmpty == true
+              ? pendingImageFilePaths!.length
+              : imageDataUrls.length,
           (i) =>
               overlayCleanupAlreadyDone ||
               (i < shotCleaned.length && shotCleaned[i]),
-        );
+        ) {
+    if (_pendingImageFilePaths != null) {
+      unawaited(_hydratePendingCaptureFiles());
+    }
+  }
+
+  final int _expectedCaptureCount;
+  List<String>? _pendingImageFilePaths;
+  bool _hydratingCaptures = false;
+  int _hydrateGeneration = 0;
 
   final ThemeModel theme;
   final List<String> _imageDataUrls;
@@ -90,11 +112,15 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   /// True after at least one look-screen scrub pass finished (success or fail).
   bool _scrubPassCompleted = false;
 
+  /// True while direct-PTP JPEG paths are being read and base64-encoded.
+  bool get isHydratingCaptures => _hydratingCaptures;
+
   /// Raw captures (for compose). Prefer [previewImageDataUrls] for the look UI.
   List<String> get imageDataUrls => List<String>.unmodifiable(_imageDataUrls);
 
   /// Instant browse: capture bytes + Flutter ColorFilters (same matrices as print).
-  List<String> get previewImageDataUrls => imageDataUrls;
+  List<String> get previewImageDataUrls =>
+      _hydratingCaptures || _imageDataUrls.isEmpty ? const [] : imageDataUrls;
 
   /// Always false — Flutter ColorFilter until [lookComposePreviewUrl] is ready.
   bool get previewImagesAreGraded => false;
@@ -118,15 +144,16 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _hasComposableShotCount && _warmingPrintPreview;
 
   /// Classic 1-shot print (portrait 4×6 by default; guest can switch to 6×4).
-  bool get isSingleClassic => _imageDataUrls.length == 1;
+  bool get isSingleClassic => _expectedCaptureCount == 1;
 
   Duration get _composeTimeout => isSingleClassic
       ? AppConstants.kClassicSingleComposeTimeout
       : AppConstants.kClassicStripComposeTimeout;
 
   bool get _hasComposableShotCount =>
-      _imageDataUrls.length == 1 ||
-      _imageDataUrls.length == kStripShotCount;
+      !_hydratingCaptures &&
+      _imageDataUrls.length == _expectedCaptureCount &&
+      (_expectedCaptureCount == 1 || _expectedCaptureCount == kStripShotCount);
 
   StripWysiwygLayout get wysiwygLayout =>
       _catalog?.wysiwyg ?? StripWysiwygLayout.defaults;
@@ -245,6 +272,68 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       if (f.id == _selectedFilterId) return f;
     }
     return null;
+  }
+
+  /// Encodes [pendingImageFilePaths] after navigation (direct PTP classic).
+  Future<void> _hydratePendingCaptureFiles() async {
+    final paths = _pendingImageFilePaths;
+    if (paths == null || paths.isEmpty) return;
+
+    final gen = ++_hydrateGeneration;
+    _imageDataUrls.clear();
+    _hydratingCaptures = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final encoded = <String>[];
+      for (final path in paths) {
+        if (gen != _hydrateGeneration) return;
+        final url = await ImageHelper.encodeImageToBase64(XFile(path));
+        if (gen != _hydrateGeneration) return;
+        encoded.add(url);
+      }
+      if (gen != _hydrateGeneration) return;
+      _imageDataUrls
+        ..clear()
+        ..addAll(encoded);
+      if (classicOverlayCleanupEnabled && !_previewCleaned) {
+        unawaited(preparePreview().then((_) {
+          _scheduleComposePreview(allowLargePayloadWarm: true);
+        }));
+      }
+      _scheduleComposePreview(
+        allowLargePayloadWarm: true,
+        delay: const Duration(milliseconds: 400),
+      );
+    } catch (e, st) {
+      AppLogger.error(
+        'Classic look screen failed to encode capture files',
+        error: e,
+        stackTrace: st,
+      );
+      _errorMessage = AppStrings.flashbackFinishEncodeFailed;
+    } finally {
+      if (gen == _hydrateGeneration) {
+        _hydratingCaptures = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Drops capture bytes so Back → POSE never flashes the previous still.
+  void clearCapturePreview() {
+    _hydrateGeneration++;
+    _composePreviewDebounce?.cancel();
+    _composePreviewDebounce = null;
+    _hydratingCaptures = false;
+    _imageDataUrls.clear();
+    _pendingImageFilePaths = null;
+    _composePreview = null;
+    _composePreviewFingerprint = null;
+    _composeResult = null;
+    _gradedByFilter.clear();
+    _warmingPrintPreview = false;
+    notifyListeners();
   }
 
   Future<void> loadFilters() async {
@@ -929,7 +1018,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
-    _composePreviewDebounce?.cancel();
+    clearCapturePreview();
     super.dispose();
   }
 

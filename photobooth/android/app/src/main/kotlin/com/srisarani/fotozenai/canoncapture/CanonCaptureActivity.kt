@@ -20,6 +20,7 @@ import com.srisarani.fotozenai.canon.CanonLog
 import com.srisarani.fotozenai.canon.capture.CaptureQueue
 import com.srisarani.fotozenai.canon.session.CameraSessionManager
 import com.srisarani.fotozenai.canon.state.ConnectionState
+import com.srisarani.fotozenai.canon.state.isReadyForCapture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -149,6 +150,8 @@ class CanonCaptureActivity : Activity() {
 
             if (!ensureConnected()) return@launch
 
+            seedStaleCaptureReplay()
+
             startLiveView()
             startIdleWatchdog()
 
@@ -243,44 +246,76 @@ class CanonCaptureActivity : Activity() {
 
     /** Connects if needed; finishes the Activity with a typed error if it cannot. */
     private suspend fun ensureConnected(): Boolean {
-        if (CameraSessionManager.state.value.isReadyForCapture()) return true
+        if (CameraSessionManager.state.value.isReadyForCapture) return true
 
-        CameraSessionManager.scanAndConnect(applicationContext)
-        val settled = withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
-            CameraSessionManager.state.first { it.isConnectOutcome() }
-        }
+        clearStalePtpSessionIfNeeded()
 
-        when (settled) {
-            is ConnectionState.Ready, is ConnectionState.RemoteMode -> return true
-            is ConnectionState.PermissionDenied -> finishWith(
-                CaptureSessionContract.Result.error(
-                    CaptureSessionContract.ERROR_PERMISSION_DENIED,
-                    "USB permission was refused for the camera",
-                ),
-            )
+        repeat(2) { attempt ->
+            CameraSessionManager.scanAndConnect(applicationContext)
+            val settled = withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
+                CameraSessionManager.state.first {
+                    it.isConnectOutcome() || it.isReadyForCapture
+                }
+            }
 
-            is ConnectionState.NoDevice, null -> finishWith(
-                CaptureSessionContract.Result.error(
-                    CaptureSessionContract.ERROR_NO_DEVICE,
-                    "No camera found. Check the cable and that the camera is switched on.",
-                ),
-            )
+            when (val state = settled ?: CameraSessionManager.state.value) {
+                is ConnectionState.Ready,
+                is ConnectionState.RemoteMode,
+                is ConnectionState.LiveView,
+                -> return true
 
-            is ConnectionState.NoUsbHostSupport -> finishWith(
-                CaptureSessionContract.Result.error(
-                    CaptureSessionContract.ERROR_CONNECT_FAILED,
-                    "This device cannot host USB",
-                ),
-            )
+                is ConnectionState.PermissionDenied -> finishWith(
+                    CaptureSessionContract.Result.error(
+                        CaptureSessionContract.ERROR_PERMISSION_DENIED,
+                        "USB permission was refused for the camera",
+                    ),
+                )
 
-            else -> finishWith(
-                CaptureSessionContract.Result.error(
-                    CaptureSessionContract.ERROR_CONNECT_FAILED,
-                    describe(settled),
-                ),
-            )
+                is ConnectionState.NoDevice -> finishWith(
+                    CaptureSessionContract.Result.error(
+                        CaptureSessionContract.ERROR_NO_DEVICE,
+                        "No camera found. Check the cable and that the camera is switched on.",
+                    ),
+                )
+
+                is ConnectionState.NoUsbHostSupport -> finishWith(
+                    CaptureSessionContract.Result.error(
+                        CaptureSessionContract.ERROR_CONNECT_FAILED,
+                        "This device cannot host USB",
+                    ),
+                )
+
+                else -> if (attempt == 0) {
+                    CanonLog.w(
+                        "Connect attempt ${attempt + 1} stalled at $state — retrying",
+                    )
+                    CameraSessionManager.disconnectAndAwait()
+                    delay(RETRY_PAUSE_MS)
+                } else {
+                    finishWith(
+                        CaptureSessionContract.Result.error(
+                            CaptureSessionContract.ERROR_CONNECT_FAILED,
+                            describe(state),
+                        ),
+                    )
+                }
+            }
+            if (finished) return false
         }
         return false
+    }
+
+    /** Drops a half-open USB/PTP session so the next scan can start clean. */
+    private suspend fun clearStalePtpSessionIfNeeded() {
+        when (CameraSessionManager.state.value) {
+            is ConnectionState.Error,
+            is ConnectionState.Wedged,
+            is ConnectionState.SessionOpen,
+            is ConnectionState.Opened,
+            -> CameraSessionManager.disconnectAndAwait()
+
+            else -> Unit
+        }
     }
 
     private fun startLiveView() {
@@ -311,6 +346,16 @@ class CanonCaptureActivity : Activity() {
         captureJob = scope.launch { runOneShot() }
     }
 
+    /**
+     * Ignores the SharedFlow replay from the previous capture session.
+     *
+     * See [CaptureQueue.seedReplayInto] — without this, Back → POSE → shutter returns
+     * the last shot's file before the new release finishes.
+     */
+    private fun seedStaleCaptureReplay() {
+        CameraSessionManager.captureQueue?.seedReplayInto(consumedHandles)
+    }
+
     /** Fires one shot and stores it. Returns false when the shot did not land. */
     private suspend fun runOneShot(): Boolean {
         val queue = CameraSessionManager.captureQueue
@@ -326,6 +371,8 @@ class CanonCaptureActivity : Activity() {
 
         setStatus(getString(R.string.canon_status_capturing))
         shutterSound()
+
+        seedStaleCaptureReplay()
 
         // Subscribe BEFORE firing, and UNDISPATCHED so the collector is attached before
         // this line returns. A download can finish faster than a coroutine scheduled the
@@ -518,11 +565,6 @@ class CanonCaptureActivity : Activity() {
         const val CAPTURE_TIMEOUT_MS = 45_000L
     }
 }
-
-private fun ConnectionState.isReadyForCapture(): Boolean =
-    this is ConnectionState.Ready ||
-        this is ConnectionState.RemoteMode ||
-        this is ConnectionState.LiveView
 
 private fun ConnectionState.isConnectOutcome(): Boolean = when (this) {
     is ConnectionState.Ready,

@@ -174,7 +174,7 @@ Future<XFile> writeNormalizedDnpPrintFile(img.Image baked) async {
 
 Future<XFile> _writeNormalizedDnpPrintFile(img.Image baked) async {
   final encoded = Uint8List.fromList(
-    img.encodeJpg(baked, quality: kCapturedPhotoJpegQuality),
+    img.encodeJpg(baked, quality: kDnpPrintJpegQuality),
   );
   final dir = await getTemporaryDirectory();
   final out = File(

@@ -331,5 +331,21 @@ void main() {
       });
       expect(parsed!.classicShotMode, ClassicShotMode.single6x4);
     });
+
+    test('parses pending image file paths for direct PTP hand-off', () {
+      final args = FlashbackFilterArgs(
+        theme: theme,
+        imageDataUrls: const [],
+        pendingImageFilePaths: const ['/data/capture.display.jpg'],
+        classicShotMode: ClassicShotMode.single6x4,
+      );
+      expect(args.resolvedShotMode, ClassicShotMode.single6x4);
+      final parsed = FlashbackFilterArgs.tryParse({
+        'theme': theme,
+        'pendingImageFilePaths': ['/tmp/shot.jpg'],
+      });
+      expect(parsed!.pendingImageFilePaths, ['/tmp/shot.jpg']);
+      expect(parsed.imageDataUrls, isEmpty);
+    });
   });
 }

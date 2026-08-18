@@ -16,8 +16,8 @@ enum CameraConnectionMode {
 /// Canon / Pi sidecar configuration for Flutter capture + pose preview.
 ///
 /// Mode is chosen by ZenAI `cameraConnectionMode`, else
-/// `--dart-define=CAMERA_CONNECTION_MODE=pi|direct`, else inferred from the
-/// admin host (loopback → direct, remote → pi).
+/// `--dart-define=CAMERA_CONNECTION_MODE=pi|direct|direct_ptp`, else inferred
+/// from the admin host (loopback → direct, remote → pi).
 class CameraSidecarConfig {
   const CameraSidecarConfig({
     required this.enabled,
@@ -84,7 +84,26 @@ class CameraSidecarConfig {
   }
 
   static CameraSidecarConfig fromEnvironment() {
-    final fromDefine = parseCameraConnectionMode(cameraConnectionModeDefine);
+    return fromConnectionModeDefine(
+      cameraConnectionModeDefine,
+      enabled: _envFlag(cameraSidecarEnabledDefine),
+      baseUrl: cameraSidecarUrlDefine.trim().replaceAll(RegExp(r'/$'), ''),
+      livePreviewEnabled: _envFlag(cameraSidecarLivePreviewDefine),
+    );
+  }
+
+  /// Builds config from a parsed `CAMERA_CONNECTION_MODE` value.
+  ///
+  /// [CameraConnectionMode.directPtp] disables the HTTP sidecar so native PTP
+  /// owns USB. Used by [fromEnvironment] and tests (dart-defines are const).
+  @visibleForTesting
+  static CameraSidecarConfig fromConnectionModeDefine(
+    String raw, {
+    required bool enabled,
+    required String baseUrl,
+    required bool livePreviewEnabled,
+  }) {
+    final fromDefine = parseCameraConnectionMode(raw);
     if (fromDefine == CameraConnectionMode.directPtp) {
       return const CameraSidecarConfig(
         enabled: false,
@@ -95,9 +114,9 @@ class CameraSidecarConfig {
       );
     }
     return CameraSidecarConfig(
-      enabled: _envFlag(cameraSidecarEnabledDefine),
-      baseUrl: cameraSidecarUrlDefine.trim().replaceAll(RegExp(r'/$'), ''),
-      livePreviewEnabled: _envFlag(cameraSidecarLivePreviewDefine),
+      enabled: enabled,
+      baseUrl: baseUrl,
+      livePreviewEnabled: livePreviewEnabled,
       connectionMode: fromDefine ?? CameraConnectionMode.direct,
       modeExplicit: fromDefine != null,
     );

@@ -293,6 +293,51 @@ void main() {
     });
   });
 
+  group('shouldPreferSidecarLivePreviewFrameForCapture', () {
+    test('false when sidecar EVF is the pose preview', () {
+      expect(
+        shouldPreferSidecarLivePreviewFrameForCapture(
+          sidecarIsPosePreview: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('true when HDMI/UVC is preview and sidecar only captures', () {
+      expect(
+        shouldPreferSidecarLivePreviewFrameForCapture(
+          sidecarIsPosePreview: false,
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('waitForDirectSidecarPoseReady', () {
+    test('returns true when sidecar becomes ready during poll', () async {
+      var calls = 0;
+      final ready = await waitForDirectSidecarPoseReady(
+        canServePosePreview: () async {
+          calls++;
+          return calls >= 3;
+        },
+        timeout: const Duration(seconds: 2),
+        pollInterval: const Duration(milliseconds: 10),
+      );
+      expect(ready, isTrue);
+      expect(calls, 3);
+    });
+
+    test('returns false when sidecar never becomes ready', () async {
+      final ready = await waitForDirectSidecarPoseReady(
+        canServePosePreview: () async => false,
+        timeout: const Duration(milliseconds: 50),
+        pollInterval: const Duration(milliseconds: 10),
+      );
+      expect(ready, isFalse);
+    });
+  });
+
   group('nativeEdsdkSidecarIsRunning', () {
     test('true only for running', () async {
       expect(

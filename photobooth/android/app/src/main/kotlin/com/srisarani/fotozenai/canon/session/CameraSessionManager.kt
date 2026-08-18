@@ -17,6 +17,8 @@ import com.srisarani.fotozenai.canon.ptp.PtpOperation
 import com.srisarani.fotozenai.canon.ptp.PtpSession
 import com.srisarani.fotozenai.canon.ptp.PtpVendorExtension
 import com.srisarani.fotozenai.canon.state.ConnectionState
+import com.srisarani.fotozenai.canon.state.isReadyForCapture
+import com.srisarani.fotozenai.canon.state.label
 import com.srisarani.fotozenai.canon.usb.UsbCameraDiscovery
 import com.srisarani.fotozenai.canon.usb.UsbError
 import kotlinx.coroutines.CoroutineScope
@@ -233,8 +235,15 @@ object CameraSessionManager {
         }
 
         if (opened != null) {
-            CanonLog.d("scanAndConnect ignored - already connected")
-            return
+            if (_state.value.isReadyForCapture) {
+                CanonLog.d("scanAndConnect ignored - already connected")
+                return
+            }
+            CanonLog.w(
+                "scanAndConnect clearing stale session (state=%s)",
+                _state.value.label,
+            )
+            releaseQuietly()
         }
 
         discovery.logAttachedDevices()
@@ -342,6 +351,7 @@ object CameraSessionManager {
         } catch (e: PtpException) {
             CanonLog.e(e, "PTP session failed to open")
             _state.value = ConnectionState.Error(e.message ?: "PTP error", e)
+            releaseQuietly()
         }
     }
 
@@ -393,6 +403,7 @@ object CameraSessionManager {
         } catch (e: PtpException) {
             CanonLog.e(e, "EOS handshake failed - M4 capture cannot work until this passes")
             _state.value = ConnectionState.Error("EOS handshake failed: ${e.message}", e)
+            releaseQuietly()
         }
     }
 
@@ -452,7 +463,12 @@ object CameraSessionManager {
     }
 
     fun disconnect() {
-        scope.launch {
+        scope.launch { disconnectAndAwait() }
+    }
+
+    /** Tears down USB/PTP synchronously — used before a reconnect retry. */
+    suspend fun disconnectAndAwait() {
+        withContext(usbDispatcher) {
             releaseQuietly()
             _state.value = ConnectionState.NoDevice
         }

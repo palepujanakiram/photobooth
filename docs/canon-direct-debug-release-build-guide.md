@@ -108,7 +108,7 @@ adb shell am start -n com.srisarani.fotozenai/.MainActivity
 
 ## 3. Debug (day-to-day)
 
-Impeller **must** be off on this box. Sidecar dart-defines already default to localhost USB; `CAMERA_CONNECTION_MODE=direct` makes that explicit even if GSM mode is blank.
+Impeller **must** be off on this box. Use `--no-enable-impeller` with **`flutter run` only** — `flutter build apk` does not accept that flag. Debug and release APKs disable Impeller in `AndroidManifest.xml` instead. Sidecar dart-defines already default to localhost USB; `CAMERA_CONNECTION_MODE=direct` makes that explicit even if GSM mode is blank.
 
 ### Run on the box
 
@@ -124,7 +124,7 @@ flutter run --debug --no-enable-impeller \
 ```bash
 cd /Users/janakiram/photobooth/photobooth
 flutter pub get
-./scripts/flutter_with_version.sh build apk --debug --no-enable-impeller \
+./scripts/flutter_with_version.sh build apk --debug \
   --dart-define=CAMERA_CONNECTION_MODE=direct
 ```
 
@@ -152,14 +152,14 @@ adb shell am start -n com.srisarani.fotozenai/.MainActivity
 
 ## 4. Release (kiosk APK)
 
-Do **not** use plain `flutter build apk`. Release must sync version + Bugsnag key, and **must** disable Impeller or Pose can be blank/frozen.
+Do **not** use plain `flutter build apk`. Release must sync version + Bugsnag key. Impeller is already off in `AndroidManifest.xml` (do not pass `--no-enable-impeller` to `build apk`).
 
 Put `BUGSNAG_API_KEY` in `photobooth/.env` (copy from `.env.example` if needed).
 
 ```bash
 cd /Users/janakiram/photobooth/photobooth
 flutter pub get
-./scripts/flutter_with_version.sh build apk --release --no-enable-impeller \
+./scripts/flutter_with_version.sh build apk --release \
   --dart-define=CAMERA_CONNECTION_MODE=direct
 ```
 
@@ -224,7 +224,7 @@ EDSDK error **`0x00000021`** = device busy (wrong USB mode or another PC holds t
 | Command | Why |
 |---|---|
 | `flutter build apk` (no wrapper) | Skips version sync; release also skips Bugsnag key |
-| Release **without** `--no-enable-impeller` | Blank/frozen Pose on this Mini PC |
+| Release with `--no-enable-impeller` | Not a `flutter build apk` flag — Impeller is off in AndroidManifest instead |
 | Hot reload after C++/JNI changes | Old sidecar stays running |
 
 **Pi booths:** omit `CAMERA_CONNECTION_MODE=direct` and set GSM `cameraConnectionMode=pi` plus sidecar host/port.
