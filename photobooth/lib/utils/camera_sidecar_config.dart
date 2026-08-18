@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 
 import '../models/app_settings_model.dart';
 
@@ -304,10 +304,23 @@ CameraSidecarConfig _piConfig({
 /// Hybrid resolver: [CameraConnectionMode.pi] uses ZenAI host/port;
 /// [CameraConnectionMode.direct] uses the on-device EDSDK localhost sidecar;
 /// [CameraConnectionMode.directPtp] disables the HTTP sidecar (native PTP owns USB).
+///
+/// Flutter web cannot reach the Mini PC sidecar or USB DSLR, so the browser
+/// always falls through to `getUserMedia` instead of waiting on localhost:8791.
 CameraSidecarConfig resolveCameraSidecarConfig(
   AppSettingsModel? settings, {
   CameraSidecarConfig? environment,
+  @visibleForTesting bool? isWeb,
 }) {
+  if (isWeb ?? kIsWeb) {
+    return const CameraSidecarConfig(
+      enabled: false,
+      baseUrl: '',
+      livePreviewEnabled: false,
+      connectionMode: CameraConnectionMode.direct,
+      modeExplicit: false,
+    );
+  }
   final env = environment ?? CameraSidecarConfig.fromEnvironment();
   final mode = resolveCameraConnectionMode(settings, environment: env);
   final modeExplicit = cameraConnectionModeIsExplicit(settings);

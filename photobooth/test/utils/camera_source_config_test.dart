@@ -119,6 +119,18 @@ void main() {
       );
     });
 
+    test('Flutter web never opens native PTP', () {
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+          overrideSourceDefine: 'direct_ptp',
+          overrideConnectionModeDefine: 'direct_ptp',
+          isWeb: true,
+        ),
+        isFalse,
+      );
+    });
+
     test('explicit dart-define pi/direct never opens PTP', () {
       expect(
         usesDirectPtpCamera(

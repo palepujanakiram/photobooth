@@ -151,6 +151,21 @@ void main() {
       expect(resolved.modeExplicit, isFalse);
     });
 
+    test('disables the localhost sidecar on Flutter web', () {
+      final resolved = resolveCameraSidecarConfig(
+        AppSettingsModel(
+          cameraEnabled: true,
+          cameraConnectionMode: 'direct',
+          cameraSidecarHost: '127.0.0.1',
+        ),
+        environment: localhost,
+        isWeb: true,
+      );
+      expect(resolved.enabled, isFalse);
+      expect(resolved.baseUrl, isEmpty);
+      expect(resolved.isConfigured, isFalse);
+    });
+
     test('uses fromEnvironment when environment arg omitted', () {
       final resolved = resolveCameraSidecarConfig(null);
       final fromEnv = CameraSidecarConfig.fromEnvironment();

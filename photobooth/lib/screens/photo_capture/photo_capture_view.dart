@@ -5041,7 +5041,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                 width: 1.5,
               ),
             ),
-            clipBehavior: Clip.antiAlias,
+            // HtmlElementView (camera_web) is invisible inside Flutter clips.
+            clipBehavior: kIsWeb ? Clip.none : Clip.antiAlias,
             child: SizedBox(
               width: cardW,
               height: cardH,

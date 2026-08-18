@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 
 import '../models/app_settings_model.dart';
 import 'camera_sidecar_config.dart';
@@ -82,11 +82,14 @@ CameraSource resolveCameraSource({
 ///
 /// Order: explicit ZenAI / dart-define [CameraConnectionMode.directPtp], else
 /// `CAMERA_SOURCE=direct_ptp`. Explicit `pi` / `direct` never opens PTP.
+/// Flutter web has no USB PTP, so this is always false in the browser.
 bool usesDirectPtpCamera({
   AppSettingsModel? settings,
   @visibleForTesting String? overrideSourceDefine,
   @visibleForTesting String? overrideConnectionModeDefine,
+  @visibleForTesting bool? isWeb,
 }) {
+  if (isWeb ?? kIsWeb) return false;
   final fromSettings = parseCameraConnectionMode(settings?.cameraConnectionMode);
   if (fromSettings == CameraConnectionMode.directPtp) return true;
   if (fromSettings == CameraConnectionMode.pi ||
