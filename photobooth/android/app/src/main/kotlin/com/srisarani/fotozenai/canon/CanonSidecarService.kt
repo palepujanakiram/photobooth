@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
+import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -22,6 +23,10 @@ import java.io.File
  *  3. Opens the Canon USB device in Java and fork+execs the sidecar so the
  *     usbfs fd is inherited (ProcessBuilder would close it).
  *  4. Tails logs and restarts on unexpected exit.
+ *
+ * The native process is **not** started until [UsbManager.openDevice] yields a
+ * file descriptor — launching without it crash-loops EDSDK and surfaces
+ * "Crashed — restart app" on the splash Device Status row.
  *
  * Flutter [LocalCameraService] connects to http://127.0.0.1:8791.
  */
@@ -96,12 +101,26 @@ class CanonSidecarService : Service() {
             }
         }
 
+    private val usbHotplugReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(
+                context: Context,
+                intent: Intent,
+            ) {
+                when (intent.action) {
+                    UsbManager.ACTION_USB_DEVICE_ATTACHED -> onUsbDeviceAttached()
+                    UsbManager.ACTION_USB_DEVICE_DETACHED -> onUsbDeviceDetached(intent)
+                }
+            }
+        }
+
     override fun onCreate() {
         super.onCreate()
         sidecarAbi = CanonSidecarAbi.resolved()
         createNotificationChannel()
         startForeground(NOTIF_ID, buildNotification())
         registerPermissionReceiver()
+        registerUsbHotplugReceiver()
         Thread({
             extractAndStage()
             runtimeReady = true
@@ -121,7 +140,14 @@ class CanonSidecarService : Service() {
     }
 
     override fun onDestroy() {
-        unregisterReceiver(permissionReceiver)
+        try {
+            unregisterReceiver(permissionReceiver)
+        } catch (_: Exception) {
+        }
+        try {
+            unregisterReceiver(usbHotplugReceiver)
+        } catch (_: Exception) {
+        }
         CanonUsbPermissionManager.unregister(this)
         runtime.stop()
         closeUsbConnection()
@@ -135,7 +161,7 @@ class CanonSidecarService : Service() {
         if (runtime.pid > 0 && hasFd && !runtime.hasUsbFd) {
             Log.i(TAG, "Canon USB fd ready — restarting sidecar so EDSDK can inherit it")
             runtime.stop()
-            runtime.launch(sidecarAbi)
+            runtime.launchAfterUsbReady(sidecarAbi)
             return
         }
         if (runtime.pid > 0) {
@@ -143,7 +169,32 @@ class CanonSidecarService : Service() {
             return
         }
         Log.i(TAG, "Canon USB permission granted — launching sidecar")
-        runtime.launch(sidecarAbi)
+        runtime.launchAfterUsbReady(sidecarAbi)
+    }
+
+    private fun onUsbDeviceAttached() {
+        Log.i(TAG, "USB device attached — requesting Canon permission / launch")
+        permissionGranted = CanonUsbPermissionManager.requestPermissionIfNeeded(this)
+        ensureUsbOpen()
+        if (runtimeReady && runtime.pid <= 0) {
+            runtime.launchAfterUsbReady(sidecarAbi)
+        }
+    }
+
+    private fun onUsbDeviceDetached(intent: Intent) {
+        val device =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+            }
+        if (device == null || !CanonUsbPermissionManager.isCanonDslr(device)) return
+        Log.i(TAG, "Canon USB detached — stopping sidecar until reattached")
+        runtime.stop()
+        closeUsbConnection()
+        permissionGranted = false
+        state = "waiting_usb"
     }
 
     private fun extractAndStage() {
@@ -164,6 +215,19 @@ class CanonSidecarService : Service() {
             registerReceiver(permissionReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(permissionReceiver, filter)
+        }
+    }
+
+    private fun registerUsbHotplugReceiver() {
+        val filter =
+            IntentFilter().apply {
+                addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+                addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(usbHotplugReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(usbHotplugReceiver, filter)
         }
     }
 

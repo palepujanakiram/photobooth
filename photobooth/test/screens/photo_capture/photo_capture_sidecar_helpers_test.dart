@@ -71,6 +71,8 @@ void main() {
       expect(shouldTreatSidecarNativeStateAsDead('crashed'), isTrue);
       expect(shouldTreatSidecarNativeStateAsDead('max_restarts'), isTrue);
       expect(shouldTreatSidecarNativeStateAsDead('running'), isFalse);
+      expect(shouldTreatSidecarNativeStateAsDead('waiting_usb'), isFalse);
+      expect(shouldTreatSidecarNativeStateAsDead('restarting'), isFalse);
       expect(shouldTreatSidecarNativeStateAsDead('idle'), isFalse);
       expect(shouldTreatSidecarNativeStateAsDead(''), isFalse);
     });
