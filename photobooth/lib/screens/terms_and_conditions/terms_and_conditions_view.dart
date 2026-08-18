@@ -29,6 +29,7 @@ import '../../services/local_camera_service.dart';
 import '../../services/fcm_service.dart';
 import '../../utils/camera_sidecar_config.dart';
 import '../../utils/canon_sidecar_status_channel.dart';
+import '../../utils/canon_usb_permission.dart';
 import '../../utils/classic_photos_enabled_sync.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
@@ -106,10 +107,17 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       probeAttachedUvc: hasAttachedUvcDevices,
       // Pi DSLR booth: healthy sidecar is enough to Continue (POSE opens HDMI).
       probeSidecarHealthy: _probeSidecarHealthyForTerms,
+      ensureCanonUsbPermission: _ensureCanonUsbPermissionForTerms,
     );
 
     if (!mounted) return;
     setState(() => _cameraPrimingPhase = result.phase);
+  }
+
+  Future<bool> _ensureCanonUsbPermissionForTerms() async {
+    if (!mounted) return false;
+    final settings = context.read<AppSettingsManager>().settings;
+    return ensureCanonUsbPermissionForDirectSidecar(settings: settings);
   }
 
   Future<bool> _probeSidecarHealthyForTerms() async {
@@ -128,14 +136,17 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
         // localhost while the guest reads terms instead of a single 3s probe.
         const attempts = 30;
         for (var i = 0; i < attempts; i++) {
-          if (await service.isListening()) {
-            service.dispose();
-            return true;
-          }
           final state = await CanonSidecarStatusChannel.getState().timeout(
             const Duration(milliseconds: 800),
             onTimeout: () => 'idle',
           );
+          if (state == 'waiting_usb') {
+            await CanonSidecarStatusChannel.requestUsbPermissionIfNeeded();
+          }
+          if (await service.isListening()) {
+            service.dispose();
+            return true;
+          }
           if (state == 'running' && await service.isHealthy()) {
             service.dispose();
             return true;
@@ -511,6 +522,15 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
+  String _termsDetectingCamerasMessage() {
+    if (!mounted) return AppStrings.termsDetectingCameras;
+    final settings = context.read<AppSettingsManager>().settings;
+    if (resolveCameraSidecarConfig(settings).isDirectConnection) {
+      return AppStrings.termsDetectingCamerasCanonUsb;
+    }
+    return AppStrings.termsDetectingCameras;
+  }
+
   Widget _buildCameraPrimingBanner(
     AppColors appColors,
     TermsLayoutMetrics layout, {
@@ -527,7 +547,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           appColors: appColors,
           layout: layout,
           compact: compact,
-          message: AppStrings.termsDetectingCameras,
+          message: _termsDetectingCamerasMessage(),
           showSpinner: true,
         );
       case TermsCameraPrimingPhase.permissionDenied:

@@ -77,6 +77,7 @@ Future<TermsCameraPrimingResult> runTermsCameraPriming({
   required bool isCameraPlatform,
   Future<bool> Function()? probeAttachedUvc,
   Future<bool> Function()? probeSidecarHealthy,
+  Future<bool> Function()? ensureCanonUsbPermission,
 }) async {
   if (!isCameraPlatform) {
     return const TermsCameraPrimingResult(TermsCameraPrimingPhase.skipped);
@@ -87,6 +88,10 @@ Future<TermsCameraPrimingResult> runTermsCameraPriming({
     return const TermsCameraPrimingResult(
       TermsCameraPrimingPhase.permissionDenied,
     );
+  }
+
+  if (ensureCanonUsbPermission != null) {
+    await ensureCanonUsbPermission();
   }
 
   try {

@@ -39,6 +39,7 @@ import '../../models/strip_models.dart';
 import '../../utils/app_device_type.dart';
 import '../../utils/app_runtime_config.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/canon_usb_permission.dart';
 import '../../utils/capture_session_kind.dart';
 import '../../utils/classic_capture_intent.dart';
 import '../../utils/classic_one_shot_fsm.dart';
@@ -135,6 +136,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   bool _classicSidecarPreviewFallback = false;
   /// UVC/HDMI or Pi still expected — do not show CameraX "no camera" UI.
   bool _expectExternalCaptureSource = false;
+  bool _awaitingCanonUsbPermission = false;
   DateTime? _uvcPreviewReadyAt;
   /// Last Canon LV ensure reported an active Pi hold (shorten HDMI mask).
   bool _canonLvHolding = false;
@@ -924,7 +926,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         classicSession: widget.sessionKind.isClassic,
         sidecarLivePreviewEnabled: _captureViewModel.usesSidecarLivePreview,
         sidecarConfigured:
-            _captureViewModel.localCameraService?.isConfigured == true,
+            _captureViewModel.localCameraService?.hasSidecarEndpoint == true,
         classicSidecarFallback: _classicSidecarPreviewFallback,
       );
 
@@ -2067,7 +2069,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     ClassicStripScrubCoordinator.instance.addListener(_onScrubProgressChanged);
     _tryAdoptTermsPrewarmOnInitIfAllowed();
     _expectExternalCaptureSource =
-        _captureViewModel.localCameraService?.isConfigured == true;
+        _captureViewModel.localCameraService?.hasSidecarEndpoint == true;
     _skipUvcForCameraXSession =
         _captureViewModel.preferEnumeratedCameraPath ||
         CaptureViewModel.hasEnumerationCache;
@@ -2335,7 +2337,30 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     return false;
   }
 
+  Future<void> _ensureCanonUsbPermissionForPoseSetup() async {
+    final service = _captureViewModel.localCameraService;
+    if (service?.isDirectConnection != true) {
+      if (mounted) setState(() => _awaitingCanonUsbPermission = false);
+      return;
+    }
+    _expectExternalCaptureSource = true;
+    if (!mounted) return;
+    setState(() => _awaitingCanonUsbPermission = true);
+    final settings = context.read<AppSettingsManager>().settings;
+    await ensureCanonUsbPermissionForDirectSidecar(settings: settings);
+    if (!mounted) return;
+    await waitForDirectSidecarPoseReady(
+      canServePosePreview: _captureViewModel.sidecarCanServePosePreview,
+      timeout: const Duration(seconds: 12),
+    );
+    if (!mounted) return;
+    final stillWaiting = await canonSidecarAwaitingUsbPermission();
+    setState(() => _awaitingCanonUsbPermission = stillWaiting);
+  }
+
   Future<void> _beginPoseCaptureSetupBody() async {
+    if (!mounted) return;
+    await _ensureCanonUsbPermissionForPoseSetup();
     if (!mounted) return;
     unawaited(
       HardwareKeyService.setEnabled(true).then((_) {
@@ -2580,6 +2605,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Future<void> _resetAndInitializeCamerasBody({bool forceRefresh = false}) async {
     if (!mounted) return;
 
+    if (_captureViewModel.localCameraService?.isDirectConnection == true) {
+      _expectExternalCaptureSource = true;
+      await _ensureCanonUsbPermissionForPoseSetup();
+      if (!mounted) return;
+    }
+
     final kioskUvc =
         kioskShouldTryUvcBeforeCameraX(_captureViewModel.deviceType);
 
@@ -2648,7 +2679,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (kioskShouldSkipCameraXWhenUvcUnavailable(
       deviceType ?? _captureViewModel.deviceType,
       sidecarConfigured:
-          _captureViewModel.localCameraService?.isConfigured == true,
+          _captureViewModel.localCameraService?.hasSidecarEndpoint == true,
     )) {
       AppLogger.warning(
         'POSE: sidecar/kiosk skip CameraX after UVC miss',
@@ -4538,6 +4569,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   String _noCamerasWaitingMessage() {
+    if (_awaitingCanonUsbPermission) {
+      return AppStrings.captureWaitingCanonUsbPermission;
+    }
     if (!_isFlashbackFourShot) return 'Waiting for camera…';
     if (_stripShots.isEmpty) return AppStrings.flashbackGettingReadyNextShot;
     final total = _classicShotCap > 0 ? _classicShotCap : 1;

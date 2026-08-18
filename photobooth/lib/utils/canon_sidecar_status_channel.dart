@@ -26,4 +26,26 @@ class CanonSidecarStatusChannel {
       return false;
     }
   }
+
+  /// True when [UsbManager.hasPermission] is already granted for the Canon DSLR.
+  static Future<bool> hasUsbPermission() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('hasUsbPermission');
+      return result ?? false;
+    } on Object {
+      return false;
+    }
+  }
+
+  /// Shows the system USB allow dialog when needed. Returns true if already
+  /// granted (or no Canon on USB). Requires a visible Activity on Android.
+  static Future<bool> requestUsbPermissionIfNeeded() async {
+    try {
+      final result =
+          await _channel.invokeMethod<bool>('requestUsbPermission');
+      return result ?? false;
+    } on Object {
+      return false;
+    }
+  }
 }
