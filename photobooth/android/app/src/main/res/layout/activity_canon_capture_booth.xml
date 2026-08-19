@@ -152,6 +152,38 @@
                 android:id="@+id/canon_live_view"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
+
+            <!--
+              The just-taken still, shown over the viewfinder during review. Flutter swaps the
+              preview for the captured photo the moment `capturedPhoto` is set; the native
+              screen used to keep live view running, so the guest was asked to "rearrange"
+              while looking at themselves live rather than at the shot they had just taken.
+            -->
+            <ImageView
+                android:id="@+id/canon_review_still"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@string/canon_review_still_description"
+                android:scaleType="fitCenter"
+                android:visibility="gone" />
+
+            <!-- Review-hold banner, bottom-aligned over the still. -->
+            <TextView
+                android:id="@+id/canon_review_banner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom"
+                android:layout_margin="12dp"
+                android:background="@drawable/bg_canon_review_banner"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.3"
+                android:paddingHorizontal="14dp"
+                android:paddingVertical="12dp"
+                android:textColor="@android:color/white"
+                android:textFontWeight="600"
+                android:textSize="16sp"
+                android:visibility="gone"
+                tools:text="Rearrange for Shot 2 of 4  6" />
         </FrameLayout>
 
         <TextView
@@ -164,6 +196,66 @@
             android:text="@string/canon_status_connecting"
             android:textColor="@android:color/white"
             android:textSize="16sp" />
+
+        <!--
+          Upload alternatives, shown before the first shot when the kiosk allows them.
+          Flutter stacks Gallery then Phone QR above the shutter, both secondary; these are
+          hidden by default and revealed by CanonCaptureActivity from the request flags.
+        -->
+        <Button
+            android:id="@+id/canon_gallery"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_canon_secondary_button"
+            android:focusable="true"
+            android:minHeight="56dp"
+            android:paddingHorizontal="24dp"
+            android:text="@string/canon_capture_gallery"
+            android:textAllCaps="false"
+            android:textColor="@color/canon_primary_button_text"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/canon_phone_qr"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_canon_secondary_button"
+            android:focusable="true"
+            android:minHeight="56dp"
+            android:paddingHorizontal="24dp"
+            android:text="@string/canon_capture_phone_qr"
+            android:textAllCaps="false"
+            android:textColor="@color/canon_primary_button_text"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <!--
+          Retake, shown only during review. Sits above the primary because Flutter stacks it
+          that way in _buildCapturedPhotoControlsRow — secondary first, primary underneath.
+        -->
+        <Button
+            android:id="@+id/canon_retake"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_canon_secondary_button"
+            android:focusable="true"
+            android:minHeight="56dp"
+            android:paddingHorizontal="24dp"
+            android:text="@string/canon_capture_retake"
+            android:textAllCaps="false"
+            android:textColor="@color/canon_primary_button_text"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
 
         <!--
           focusable only. focusableInTouchMode would make the first tap merely move focus and
@@ -183,13 +275,13 @@
             android:drawablePadding="10dp"
             android:enabled="false"
             android:focusable="true"
-            android:minHeight="60dp"
+            android:minHeight="56dp"
             android:paddingHorizontal="24dp"
             android:text="@string/canon_capture_shutter"
             android:textAllCaps="false"
-            android:textColor="@android:color/white"
-            android:textFontWeight="600"
-            android:textSize="18sp" />
+            android:textColor="@color/canon_primary_button_text"
+            android:textSize="17sp"
+            android:textStyle="bold" />
 
         <!-- Hidden: Flutter's POSE screen has no cancel button, the back chevron is the way
              out. Kept so CanonCaptureActivity's non-null findViewById still resolves and the
@@ -203,18 +295,56 @@
             android:visibility="gone" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/canon_countdown"
+    <!--
+      Countdown overlay. Flutter dims the whole preview behind it with black at 50% and
+      centres a 150dp grey disc at 80px; the native screen used to draw a bare 160sp numeral
+      straight onto the live view, with no scrim and at twice the size.
+
+      The scrim is its own view rather than a background on the container so it can cover the
+      viewfinder edge-to-edge while the disc stays centred.
+    -->
+    <View
+        android:id="@+id/canon_countdown_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#80000000"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/canon_countdown_group"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:shadowColor="@android:color/black"
-        android:shadowDx="0"
-        android:shadowDy="4"
-        android:shadowRadius="18"
-        android:textColor="@android:color/white"
-        android:textSize="160sp"
-        android:textStyle="bold"
-        android:visibility="gone"
-        tools:text="3" />
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <!--
+          FotoZen only, and only on the first tick — Classic already shows "Shot X of Y" in
+          the subtitle, and repeating it inside the preview is noise.
+        -->
+        <TextView
+            android:id="@+id/canon_countdown_headline"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:gravity="center"
+            android:textColor="#F2FFFFFF"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            tools:text="Be ready for photo" />
+
+        <TextView
+            android:id="@+id/canon_countdown"
+            android:layout_width="150dp"
+            android:layout_height="150dp"
+            android:background="@drawable/bg_canon_countdown_circle"
+            android:elevation="12dp"
+            android:gravity="center"
+            android:textColor="@android:color/white"
+            android:textSize="80sp"
+            android:textStyle="bold"
+            tools:text="3" />
+    </LinearLayout>
 </FrameLayout>

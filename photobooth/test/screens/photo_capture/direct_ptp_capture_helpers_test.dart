@@ -179,4 +179,44 @@ void main() {
       );
     });
   });
+
+  group('review holds', () {
+    // FotoZen must never auto-accept: the Flutter screen only schedules
+    // auto-accept for Classic multi-shot, so 0 here means "wait for a tap".
+    test('FotoZen waits indefinitely for a tap', () {
+      expect(directPtpReviewHoldMsFor(CaptureSessionKind.fotoZen), 0);
+      expect(directPtpFinalReviewHoldMsFor(CaptureSessionKind.fotoZen), 0);
+    });
+
+    test('Classic strip uses the rearrange window mid-strip', () {
+      expect(
+        directPtpReviewHoldMsFor(CaptureSessionKind.classicFourShot),
+        AppConstants.kFlashbackBetweenShotRearrangeDuration.inMilliseconds,
+      );
+    });
+
+    test('Classic strip shortens the hold on the final shot', () {
+      final mid = directPtpReviewHoldMsFor(CaptureSessionKind.classicFourShot);
+      final last =
+          directPtpFinalReviewHoldMsFor(CaptureSessionKind.classicFourShot);
+      expect(
+        last,
+        AppConstants.kFlashbackLastShotReviewDuration.inMilliseconds,
+      );
+      // The point of the final hold: hand off to looks quickly rather than
+      // making the guest wait out a rearrange window with nothing to rearrange.
+      expect(last, lessThan(mid));
+    });
+
+    test('Classic single 6x4 only flashes the still', () {
+      expect(
+        directPtpReviewHoldMsFor(CaptureSessionKind.classicOneShot),
+        AppConstants.kFlashbackSingleShotReviewMs,
+      );
+      expect(
+        directPtpFinalReviewHoldMsFor(CaptureSessionKind.classicOneShot),
+        AppConstants.kFlashbackSingleShotReviewMs,
+      );
+    });
+  });
 }

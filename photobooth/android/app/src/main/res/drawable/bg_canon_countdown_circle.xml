@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Countdown numeral backdrop, matching the Flutter capture screen's countdown circle:
+  a 150dp disc of Colors.grey at 70% alpha (#9E9E9E → #B39E9E9E).
+
+  Flutter draws a soft BoxShadow under it (black 30%, blur 30, spread 10). Android shape
+  drawables have no blur, so the TextView carries an `elevation` instead — same intent,
+  and it is the only way to get a real shadow without a custom View.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#B39E9E9E" />
+</shape>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One strip slot, inflated once per shot up front by CanonCaptureActivity.
+
+  Mirrors _StripThumbSlot in photo_capture_strip_thumbs.dart: a stamp at the 2×6 print cell
+  aspect (592/448 ≈ 1.32, so 85×64), showing either the accepted shot or its 1-based slot
+  number. Flutter renders all slots from the start so a guest can see how many poses are
+  left; the native screen used to append thumbs only as shots landed, which showed progress
+  but never the total.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="85dp"
+    android:layout_height="64dp"
+    android:background="@drawable/bg_canon_thumb_slot_empty">
+
+    <ImageView
+        android:id="@+id/canon_thumb_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_margin="1dp"
+        android:contentDescription="@string/canon_review_still_description"
+        android:scaleType="centerCrop"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/canon_thumb_number"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:textColor="#61FFFFFF"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        tools:text="1" />
+</FrameLayout>

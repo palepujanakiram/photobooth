@@ -20,6 +20,37 @@ int directPtpCountdownSecondsFor(CaptureSessionKind kind) => kind.isClassic
 int get directPtpBetweenShotSeconds =>
     AppConstants.kFlashbackBetweenShotRearrangeDuration.inSeconds;
 
+/// How long the native screen holds a just-taken still before moving on.
+///
+/// **0 means wait indefinitely for a tap**, which is what FotoZen does: the
+/// Flutter capture screen only schedules auto-accept for Classic multi-shot
+/// (see [shouldScheduleFlashbackAutoAccept]), so a FotoZen guest reviews for as
+/// long as they like and presses Continue or Retake.
+///
+/// Classic mirrors [flashbackShotReviewHoldDuration]: the rearrange window
+/// mid-strip, and a 600ms flash for a single 6×4 where there is no next pose to
+/// rearrange for.
+int directPtpReviewHoldMsFor(CaptureSessionKind kind) {
+  if (!kind.isClassic) return 0;
+  if (directPtpShotCountFor(kind) <= 1) {
+    return AppConstants.kFlashbackSingleShotReviewMs;
+  }
+  return AppConstants.kFlashbackBetweenShotRearrangeDuration.inMilliseconds;
+}
+
+/// Hold for the **final** still of a strip, before handing off to the looks
+/// picker. Matches [AppConstants.kFlashbackLastShotReviewDuration].
+///
+/// FotoZen keeps 0 here for the same reason as
+/// [directPtpReviewHoldMsFor] — its single shot is also its last.
+int directPtpFinalReviewHoldMsFor(CaptureSessionKind kind) {
+  if (!kind.isClassic) return 0;
+  if (directPtpShotCountFor(kind) <= 1) {
+    return AppConstants.kFlashbackSingleShotReviewMs;
+  }
+  return AppConstants.kFlashbackLastShotReviewDuration.inMilliseconds;
+}
+
 /// Operator-facing guidance for a native capture failure.
 ///
 /// Deliberately keyed on the stable error **code**, not the message: each code
@@ -84,3 +115,11 @@ String directPtpSubtitleFor(CaptureSessionKind kind) => switch (kind) {
 /// then discarded.
 int clampDirectPtpShotCount(int requested) =>
     requested.clamp(1, kStripShotCount);
+
+/// Upload sources reported by the native screen with
+/// `CaptureSessionContract.STATUS_UPLOAD_REQUESTED`.
+///
+/// Mirrored here rather than compared as bare strings so a rename on either side
+/// is a compile error in Dart instead of a silently-ignored branch.
+const String kDirectPtpUploadSourceGallery = 'gallery';
+const String kDirectPtpUploadSourcePhone = 'phone';

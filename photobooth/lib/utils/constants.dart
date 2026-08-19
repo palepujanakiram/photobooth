@@ -302,6 +302,11 @@ class AppConstants {
   static const Duration kFlashbackLastShotReviewDuration =
       Duration(seconds: 2);
 
+  /// Classic single 6×4: a flash of the still, with no next pose to rearrange
+  /// for. Mirrors `flashbackShotReviewHoldDuration`'s `total <= 1` branch, which
+  /// the Flutter capture screen already applies.
+  static const int kFlashbackSingleShotReviewMs = 600;
+
   /// If HDMI still-mask is armed but shutter never starts, recover quickly
   /// instead of waiting for the long capture watchdog (~35s).
   static const Duration kFlashbackMaskStallSoftFail = Duration(seconds: 4);

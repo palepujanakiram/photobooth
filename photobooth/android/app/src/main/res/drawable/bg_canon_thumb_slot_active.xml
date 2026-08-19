@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The slot being shot next: Colors.amber.shade400 at 2dp. This is the only cue that says
+  "you are here" in a 4-shot strip, which is why Flutter thickens the border as well as
+  recolouring it.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#73000000" />
+    <corners android:radius="6dp" />
+    <stroke android:width="2dp" android:color="#FFCA28" />
+</shape>
