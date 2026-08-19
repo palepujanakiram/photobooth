@@ -4,13 +4,28 @@
 /// look UI (and can LMK). Continue still composes on demand with a timeout.
 bool shouldDeferClassicComposePreviewWarm({
   required List<String> imageDataUrls,
+  bool captureUploadsAlreadyCompact = false,
   int largePayloadChars = 700000,
 }) {
+  if (captureUploadsAlreadyCompact && imageDataUrls.length >= 4) {
+    return false;
+  }
   if (imageDataUrls.length >= 4) return true;
   return classicImagePayloadIsLarge(
     imageDataUrls: imageDataUrls,
     largePayloadChars: largePayloadChars,
   );
+}
+
+/// True when [filePaths] are Direct PTP display derivatives (1600/q90 on disk).
+bool classicCaptureFilesAreCompactDisplayDerivatives({
+  required List<String> filePaths,
+}) {
+  if (filePaths.isEmpty) return false;
+  for (final path in filePaths) {
+    if (!path.toLowerCase().endsWith('.display.jpg')) return false;
+  }
+  return true;
 }
 
 /// True when Continue should skip local Flutter look-bake and let the server
@@ -67,8 +82,10 @@ const int kClassicComposeCompactPayloadChars = 200000;
 /// True when compose uploads are large enough to stall Mini PC Continue.
 bool shouldCompactClassicComposeUploads({
   required List<String> imageDataUrls,
+  bool captureUploadsAlreadyCompact = false,
   int largePayloadChars = kClassicComposeCompactPayloadChars,
 }) {
+  if (captureUploadsAlreadyCompact) return false;
   return classicImagePayloadIsLarge(
     imageDataUrls: imageDataUrls,
     largePayloadChars: largePayloadChars,

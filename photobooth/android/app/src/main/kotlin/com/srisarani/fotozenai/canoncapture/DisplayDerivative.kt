@@ -55,6 +55,9 @@ object DisplayDerivative {
             maxOf(1, Math.round(height * ratio).toInt())
     }
 
+    /** Long edge for the native capture thumbnail strip (reuses derivative decode). */
+    const val THUMBNAIL_LONG_EDGE = 320
+
     data class Result(
         val file: File,
         val widthPx: Int,
@@ -62,7 +65,22 @@ object DisplayDerivative {
         /** Pixel dimensions of the untouched original. */
         val originalWidthPx: Int,
         val originalHeightPx: Int,
+        /** Small bitmap for the multi-shot thumbnail strip; avoids a second file decode. */
+        val thumbnailBitmap: Bitmap? = null,
     )
+
+    /** Downscale [source] for a UI thumbnail without re-reading the derivative JPEG. */
+    fun thumbnailBitmap(
+        source: Bitmap,
+        maxLongEdge: Int = THUMBNAIL_LONG_EDGE,
+    ): Bitmap {
+        val longEdge = maxOf(source.width, source.height)
+        if (longEdge <= maxLongEdge) {
+            return source.copy(Bitmap.Config.ARGB_8888, false)
+        }
+        val (targetW, targetH) = scaledSize(source.width, source.height, maxLongEdge)
+        return Bitmap.createScaledBitmap(source, targetW, targetH, true)
+    }
 
     /**
      * Writes a downscaled JPEG next to [original], as `<name>.display.jpg`.
@@ -111,6 +129,8 @@ object DisplayDerivative {
                 scaled.compress(Bitmap.CompressFormat.JPEG, jpegQuality, stream)
             }
 
+            val thumb = thumbnailBitmap(scaled)
+
             CanonLog.i(
                 "Display derivative: %s %dx%d -> %dx%d (sample=%d, %d bytes)",
                 out.name,
@@ -128,6 +148,7 @@ object DisplayDerivative {
                 heightPx = scaled.height,
                 originalWidthPx = bounds.outWidth,
                 originalHeightPx = bounds.outHeight,
+                thumbnailBitmap = thumb,
             )
         } catch (e: Throwable) {
             // OutOfMemoryError is a Throwable, not an Exception, and is precisely the

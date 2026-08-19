@@ -2,7 +2,6 @@ package com.srisarani.fotozenai.canoncapture
 
 import android.app.Activity
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.media.MediaActionSound
 import android.media.ToneGenerator
@@ -21,6 +20,7 @@ import com.srisarani.fotozenai.canon.capture.CaptureQueue
 import com.srisarani.fotozenai.canon.session.CameraSessionManager
 import com.srisarani.fotozenai.canon.state.ConnectionState
 import com.srisarani.fotozenai.canon.state.isReadyForCapture
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -82,6 +82,11 @@ class CanonCaptureActivity : Activity() {
      * instantly with shot 1's file.
      */
     private val consumedHandles = mutableSetOf<Long>()
+
+    /** USB downloads finished; derivative work may still be in flight. */
+    private var capturesCompleted = 0
+
+    private val derivativeJobs = mutableListOf<Deferred<Unit>>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -232,8 +237,8 @@ class CanonCaptureActivity : Activity() {
     /** Countdown → shot → rearrange, repeated [CaptureSessionContract.Request.shotCount] times. */
     private suspend fun runShotSequence() {
         shutterButton.isEnabled = false
-        while (shots.size < request.shotCount && !finished) {
-            val shotNumber = shots.size + 1
+        while (capturesCompleted < request.shotCount && !finished) {
+            val shotNumber = capturesCompleted + 1
 
             // Between shots, hold on the viewfinder so guests can rearrange. Skipped before
             // the first shot: the countdown is the guest's cue to get into position.
@@ -484,84 +489,89 @@ class CanonCaptureActivity : Activity() {
         }
 
         consumedHandles += completed.handle
-        onCaptured(completed)
+        val isLastCapture = capturesCompleted + 1 >= request.shotCount
+        capturesCompleted++
+
+        // Derivative + thumbnail run off the critical path so rearrange / countdown can
+        // start immediately. The final shot must finish before Flutter receives paths.
+        val derivativeJob = scope.async(Dispatchers.Default) {
+            processCapturedShot(completed, showProcessingStatus = isLastCapture)
+        }
+        derivativeJobs += derivativeJob
+        if (isLastCapture) {
+            derivativeJob.await()
+            derivativeJobs.clear()
+        }
         return true
     }
 
-    private suspend fun onCaptured(done: CaptureQueue.Item.Done) {
-        setStatus(getString(R.string.canon_status_processing))
-
-        val original = done.image.file
-        // Decode off the main thread: even subsampled, this is tens of milliseconds and
-        // would otherwise stutter the viewfinder.
-        val derivative = withContext(Dispatchers.Default) {
-            DisplayDerivative.create(
-                original = original,
-                maxLongEdge = request.displayMaxLongEdge,
-                jpegQuality = request.displayJpegQuality,
-            )
+    private suspend fun processCapturedShot(
+        done: CaptureQueue.Item.Done,
+        showProcessingStatus: Boolean,
+    ) {
+        if (showProcessingStatus) {
+            withContext(Dispatchers.Main.immediate) {
+                setStatus(getString(R.string.canon_status_processing))
+            }
         }
 
-        shots += CaptureSessionContract.Shot(
-            originalPath = original.absolutePath,
-            displayPath = derivative?.file?.absolutePath,
-            widthPx = derivative?.originalWidthPx ?: 0,
-            heightPx = derivative?.originalHeightPx ?: 0,
-            bytes = done.image.sizeBytes,
-            capturedAtMs = System.currentTimeMillis(),
+        val original = done.image.file
+        val derivative = DisplayDerivative.create(
+            original = original,
+            maxLongEdge = request.displayMaxLongEdge,
+            jpegQuality = request.displayJpegQuality,
         )
 
-        CanonLog.i(
-            "Shot %d/%d stored: %s (%d bytes, %dms)",
-            shots.size,
-            request.shotCount,
-            original.name,
-            done.image.sizeBytes,
-            done.elapsedMs,
-        )
-
-        addThumbnail(derivative?.file?.absolutePath)
-
-        // A landed shot is proof the guest is still there, so the idle clock starts over.
-        startIdleWatchdog()
-
-        if (shots.size >= request.shotCount) {
-            finishWith(
-                CaptureSessionContract.Result(
-                    status = CaptureSessionContract.STATUS_COMPLETED,
-                    shots = shots.toList(),
-                ),
+        withContext(Dispatchers.Main.immediate) {
+            shots += CaptureSessionContract.Shot(
+                originalPath = original.absolutePath,
+                displayPath = derivative?.file?.absolutePath,
+                widthPx = derivative?.originalWidthPx ?: 0,
+                heightPx = derivative?.originalHeightPx ?: 0,
+                bytes = done.image.sizeBytes,
+                capturedAtMs = System.currentTimeMillis(),
             )
-        } else if (captureJob?.isActive != true) {
-            // Only hand the button back when nothing is driving the strip. Keyed on the job
-            // rather than on autoStart because runShotSequence continues straight into the
-            // next countdown, and re-enabling mid-strip would offer a press that does nothing.
-            setStatus(
-                getString(R.string.canon_status_ready_format, shots.size + 1, request.shotCount),
+
+            CanonLog.i(
+                "Shot %d/%d stored: %s (%d bytes, %dms)",
+                shots.size,
+                request.shotCount,
+                original.name,
+                done.image.sizeBytes,
+                done.elapsedMs,
             )
-            shutterButton.isEnabled = true
+
+            addThumbnail(derivative?.thumbnailBitmap)
+
+            // A landed shot is proof the guest is still there, so the idle clock starts over.
+            startIdleWatchdog()
+
+            if (shots.size >= request.shotCount) {
+                finishWith(
+                    CaptureSessionContract.Result(
+                        status = CaptureSessionContract.STATUS_COMPLETED,
+                        shots = shots.toList(),
+                    ),
+                )
+            } else if (captureJob?.isActive != true) {
+                // Only hand the button back when nothing is driving the strip. Keyed on the job
+                // rather than on autoStart because runShotSequence continues straight into the
+                // next countdown, and re-enabling mid-strip would offer a press that does nothing.
+                setStatus(
+                    getString(R.string.canon_status_ready_format, shots.size + 1, request.shotCount),
+                )
+                shutterButton.isEnabled = true
+            }
         }
     }
 
     /**
      * Adds the shot to the strip so guests can see the set building.
      *
-     * Decoded small and off the main thread — these come from the display derivative, not
-     * the original, and a thumbnail is never a reason to touch a 6000×4000 file.
+     * Uses the in-memory thumbnail from [DisplayDerivative] — no second file decode.
      */
-    private suspend fun addThumbnail(displayPath: String?) {
-        if (displayPath == null || request.shotCount <= 1) return
-        val bitmap = withContext(Dispatchers.Default) {
-            runCatching {
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(displayPath, bounds)
-                val options = BitmapFactory.Options().apply {
-                    inSampleSize = DisplayDerivative
-                        .sampleSizeFor(bounds.outWidth, bounds.outHeight, THUMBNAIL_LONG_EDGE)
-                }
-                BitmapFactory.decodeFile(displayPath, options)
-            }.getOrNull()
-        } ?: return
+    private fun addThumbnail(bitmap: Bitmap?) {
+        if (bitmap == null || request.shotCount <= 1) return
 
         val view = ImageView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -648,7 +658,6 @@ class CanonCaptureActivity : Activity() {
         /** Pause after a failed shot before retrying, so the body can settle. */
         const val RETRY_PAUSE_MS = 1_500L
 
-        const val THUMBNAIL_LONG_EDGE = 320
         const val THUMBNAIL_WIDTH_PX = 150
         const val THUMBNAIL_GAP_PX = 12
 

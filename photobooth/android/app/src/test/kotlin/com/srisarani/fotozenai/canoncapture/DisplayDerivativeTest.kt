@@ -93,4 +93,11 @@ class DisplayDerivativeTest {
         assertThat(finalH).isEqualTo(1280)
         assertThat(decodedW.toLong() * decodedH).isLessThan(finalW.toLong() * finalH * 4)
     }
+
+    @Test
+    fun `thumbnail bitmap downsamples for strip UI`() {
+        val (w, h) = DisplayDerivative.scaledSize(1600, 1200, DisplayDerivative.THUMBNAIL_LONG_EDGE)
+        assertThat(w).isEqualTo(DisplayDerivative.THUMBNAIL_LONG_EDGE)
+        assertThat(h).isEqualTo(240)
+    }
 }

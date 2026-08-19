@@ -2,7 +2,7 @@ import '../utils/json_parse_helpers.dart';
 import '../utils/constants.dart';
 
 /// Default FotoFlashback look when the API omits / invalidates [filter].
-const String kDefaultStripFilterId = 'classic_warm';
+const String kDefaultStripFilterId = 'clean';
 
 /// Default frame chrome when the API omits / invalidates [frame].
 const String kDefaultStripFrameId = 'classic';
