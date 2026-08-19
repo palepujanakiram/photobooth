@@ -15,14 +15,18 @@ import '../../services/app_settings_manager.dart';
 import '../../services/client_identification.dart';
 import '../../services/customer_session_lifecycle.dart';
 import '../../services/kiosk_manager.dart';
+import '../../services/event_manager.dart';
 import '../../services/kiosk_device_status_service.dart';
 import '../../utils/constants.dart';
+import '../../utils/kiosk_qr_payload.dart';
 import '../../utils/logger.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/animated_slideshow_background.dart'
     show kSlideshowAssetPaths;
+import 'app_splash_event_helpers.dart';
 import 'app_splash_input_helpers.dart';
 import 'app_splash_screen_body.dart';
+import '../../utils/event_station_role.dart';
 
 /// Cold start and kiosk management: branded animation, no stacked dialogs.
 class AppSplashScreen extends StatefulWidget {
@@ -41,9 +45,11 @@ class _AppSplashScreenState extends State<AppSplashScreen>
   late final Animation<double> _scale;
   late final DateTime _splashStart;
   late final TextEditingController _codeController;
+  late final TextEditingController _eventController;
 
   final ApiService _api = ApiService();
   final KioskManager _kiosk = KioskManager();
+  final EventManager _event = EventManager();
 
   bool _busy = false;
   String? _error;
@@ -60,6 +66,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     super.initState();
     _splashStart = DateTime.now();
     _codeController = TextEditingController();
+    _eventController = TextEditingController();
     _logoController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
@@ -76,6 +83,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
   void dispose() {
     _logoController.dispose();
     _codeController.dispose();
+    _eventController.dispose();
     super.dispose();
   }
 
@@ -172,6 +180,8 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       final qp = Uri.base.queryParameters;
       final fromUrl =
           (qp['kioskCode'] ?? qp['code'] ?? '').trim().toUpperCase();
+      final eventFromUrl =
+          (qp['eventCode'] ?? qp['event'] ?? '').trim().toUpperCase();
       if (fromUrl.isNotEmpty) {
         await _kiosk.setKioskCode(fromUrl);
         await endPhotoboothCustomerSessionLogged(
@@ -182,11 +192,19 @@ class _AppSplashScreenState extends State<AppSplashScreen>
           onTimeout: () {},
         );
       }
+      if (eventFromUrl.isNotEmpty) {
+        await _event.setEventCode(eventFromUrl);
+        _eventController.text = eventFromUrl;
+      }
     }
 
     final raw = await _kiosk.getKioskCode();
     final trimmed = (raw ?? '').trim();
+    final storedEvent = await _event.getEventCode();
     if (!mounted) return;
+    if (storedEvent != null && storedEvent.isNotEmpty) {
+      _eventController.text = storedEvent;
+    }
 
     if (trimmed.isEmpty) {
       setState(() {
@@ -220,13 +238,30 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       await _kiosk.setKioskCode(code);
       await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
       await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
+      final eventErr = await bindSplashEventCode(
+        eventManager: _event,
+        fetchEvent: (code, kioskCode) =>
+            _api.fetchEventByCode(code, kioskCode: kioskCode),
+        eventCode: _eventController.text,
+        kioskCode: code,
+      );
+      if (!mounted) return;
+      if (eventErr != null) {
+        setState(() {
+          _bootstrapDone = true;
+          _needsEntry = true;
+          _error = eventErr;
+          _codeController.text = code;
+        });
+        return;
+      }
       await _refreshSettingsForBoundKiosk().timeout(
         const Duration(seconds: 12),
         onTimeout: () {},
       );
       final urls = await _loadThemeBackgroundUrls();
       if (!mounted) return;
-      _goToTerms(urls);
+      await _goAfterBind(urls);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -253,6 +288,21 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       );
       return null;
     }
+  }
+
+  Future<void> _goAfterBind(List<String> urls) async {
+    final eventCode = await _event.getEventCode();
+    final role = await _event.getStationRole();
+    if (!mounted) return;
+    final dest = resolveEventPostSplashRoute(
+      eventCode: eventCode,
+      stationRole: role,
+    );
+    if (dest == EventPostSplashRoute.terms) {
+      _goToTerms(urls);
+      return;
+    }
+    Navigator.pushReplacementNamed(context, eventPostSplashRouteName(dest));
   }
 
   /// Bundled slideshow assets load instantly; theme API samples are not used here.
@@ -295,13 +345,25 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
       await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
       await endPhotoboothCustomerSessionLogged('splash: kiosk code submitted');
+      final eventErr = await bindSplashEventCode(
+        eventManager: _event,
+        fetchEvent: (eventCode, kioskCode) =>
+            _api.fetchEventByCode(eventCode, kioskCode: kioskCode),
+        eventCode: _eventController.text,
+        kioskCode: code,
+      );
+      if (!mounted) return;
+      if (eventErr != null) {
+        setState(() => _error = eventErr);
+        return;
+      }
       await _refreshSettingsForBoundKiosk().timeout(
         const Duration(seconds: 12),
         onTimeout: () {},
       );
       final urls = await _loadThemeBackgroundUrls();
       if (!mounted) return;
-      _goToTerms(urls);
+      await _goAfterBind(urls);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -316,10 +378,15 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       ),
     );
     if (!mounted || code == null) return;
+    final kiosk = KioskQrPayload.parse(code) ?? code.trim().toUpperCase();
+    final event = KioskQrPayload.parseEventCode(code);
     _codeController.value = TextEditingValue(
-      text: code,
-      selection: TextSelection.collapsed(offset: code.length),
+      text: kiosk,
+      selection: TextSelection.collapsed(offset: kiosk.length),
     );
+    if (event != null) {
+      _eventController.text = event;
+    }
     await _submitCode();
   }
 
@@ -328,12 +395,14 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     await _kiosk.clearKioskCode();
     await _kiosk.clearPaymentEnabledOverride();
     await _kiosk.clearClassicPhotosEnabled();
+    await _event.clearEvent();
     await endPhotoboothCustomerSessionLogged('splash: kiosk disconnect');
     if (!mounted) return;
     setState(() {
       _busy = false;
       _storedCode = null;
       _codeController.clear();
+      _eventController.clear();
       _manageEditing = true;
       _error = null;
     });
@@ -561,34 +630,65 @@ class _AppSplashScreenState extends State<AppSplashScreen>
         : 'Point booth camera at the QR on the operator’s phone';
 
     final sideBySide = formMaxWidth >= 360;
-
-    if (sideBySide) {
-      return _kioskOptionPairSideBySide(
-        appColors: appColors,
-        leftTitle: 'Enter code',
-        rightTitle: 'Scan QR',
-        leftSubtitle: enterSubtitle,
-        rightSubtitle: scanSubtitle,
-        leftChild: textField,
-        rightChild: scanTap,
-      );
-    }
+    final kioskRow = sideBySide
+        ? _kioskOptionPairSideBySide(
+            appColors: appColors,
+            leftTitle: 'Enter code',
+            rightTitle: 'Scan QR',
+            leftSubtitle: enterSubtitle,
+            rightSubtitle: scanSubtitle,
+            leftChild: textField,
+            rightChild: scanTap,
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _kioskOptionCard(
+                appColors: appColors,
+                title: 'Enter code',
+                subtitle: enterSubtitle,
+                child: textField,
+              ),
+              const SizedBox(height: 12),
+              _kioskOptionCard(
+                appColors: appColors,
+                title: 'Scan QR',
+                subtitle: scanSubtitle,
+                child: scanTap,
+              ),
+            ],
+          );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _kioskOptionCard(
-          appColors: appColors,
-          title: 'Enter code',
-          subtitle: enterSubtitle,
-          child: textField,
-        ),
+        kioskRow,
         const SizedBox(height: 12),
-        _kioskOptionCard(
-          appColors: appColors,
-          title: 'Scan QR',
-          subtitle: scanSubtitle,
-          child: scanTap,
+        Text(
+          'Have an event code?',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: appColors.secondaryTextColor,
+          ),
+        ),
+        const SizedBox(height: 8),
+        CupertinoTextField(
+          controller: _eventController,
+          placeholder: 'Event code (optional)',
+          enabled: splashCodeFieldEnabled(busy: _busy, showForm: true),
+          textAlign: TextAlign.start,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          autocorrect: false,
+          enableSuggestions: false,
+          textCapitalization: TextCapitalization.characters,
+          keyboardType: TextInputType.visiblePassword,
+          textInputAction: TextInputAction.done,
+          style: TextStyle(fontSize: 17, color: appColors.textColor),
+          onSubmitted: (_) {
+            if (!_busy) unawaited(_submitCode());
+          },
         ),
       ],
     );

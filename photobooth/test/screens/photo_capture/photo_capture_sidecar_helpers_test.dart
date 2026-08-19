@@ -66,11 +66,13 @@ void main() {
   });
 
   group('shouldTreatSidecarNativeStateAsDead', () {
-    test('flags ABI and crash states only', () {
+    test('flags ABI and max_restarts only — crashed is transient', () {
       expect(shouldTreatSidecarNativeStateAsDead('unsupported_abi'), isTrue);
-      expect(shouldTreatSidecarNativeStateAsDead('crashed'), isTrue);
       expect(shouldTreatSidecarNativeStateAsDead('max_restarts'), isTrue);
+      expect(shouldTreatSidecarNativeStateAsDead('crashed'), isFalse);
       expect(shouldTreatSidecarNativeStateAsDead('running'), isFalse);
+      expect(shouldTreatSidecarNativeStateAsDead('waiting_usb'), isFalse);
+      expect(shouldTreatSidecarNativeStateAsDead('restarting'), isFalse);
       expect(shouldTreatSidecarNativeStateAsDead('idle'), isFalse);
       expect(shouldTreatSidecarNativeStateAsDead(''), isFalse);
     });
@@ -177,16 +179,38 @@ void main() {
       service.dispose();
     });
 
-    test('marks unavailable on crashed and max_restarts', () async {
+    test('does not poison on transient crashed; poisons on max_restarts', () async {
+      // HTTP still up during a brief native restart gap → keep serving.
       final crashed = configuredService();
       expect(
         await sidecarNativeProcessCanServeHttp(
           crashed,
           queryNativeState: () async => 'crashed',
         ),
+        isTrue,
+      );
+      expect(crashed.isConfigured, isTrue);
+      crashed.dispose();
+
+      final crashedDown = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://127.0.0.1:8791',
+          livePreviewEnabled: true,
+          connectionMode: CameraConnectionMode.direct,
+        ),
+        client: MockClient((_) async => throw Exception('Connection refused')),
+      );
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          crashedDown,
+          queryNativeState: () async => 'crashed',
+        ),
         isFalse,
       );
-      crashed.dispose();
+      expect(crashedDown.isConfigured, isTrue);
+      crashedDown.dispose();
+
       final maxed = configuredService();
       expect(
         await sidecarNativeProcessCanServeHttp(
@@ -195,7 +219,24 @@ void main() {
         ),
         isFalse,
       );
+      expect(maxed.isConfigured, isFalse);
       maxed.dispose();
+    });
+
+    test('clears prior poison when native state recovers to running', () async {
+      final service = configuredService();
+      service.markRuntimeUnavailable();
+      expect(service.isConfigured, isFalse);
+      expect(service.hasSidecarEndpoint, isTrue);
+      expect(
+        await sidecarNativeProcessCanServeHttp(
+          service,
+          queryNativeState: () async => 'running',
+        ),
+        isTrue,
+      );
+      expect(service.isConfigured, isTrue);
+      service.dispose();
     });
 
     test('Pi/LAN ignores native crash — does not poison remote config', () async {
@@ -249,6 +290,82 @@ void main() {
       // Timeout → idle; HTTP down is warm-up, not terminal poison.
       expect(down.isConfigured, isTrue);
       down.dispose();
+    });
+  });
+
+  group('shouldPreferSidecarLivePreviewFrameForCapture', () {
+    test('false when sidecar EVF is the pose preview', () {
+      expect(
+        shouldPreferSidecarLivePreviewFrameForCapture(
+          sidecarIsPosePreview: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('true when HDMI/UVC is preview and sidecar only captures', () {
+      expect(
+        shouldPreferSidecarLivePreviewFrameForCapture(
+          sidecarIsPosePreview: false,
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('waitForDirectSidecarPoseReady', () {
+    test('returns true when sidecar becomes ready during poll', () async {
+      var calls = 0;
+      final ready = await waitForDirectSidecarPoseReady(
+        canServePosePreview: () async {
+          calls++;
+          return calls >= 3;
+        },
+        timeout: const Duration(seconds: 2),
+        pollInterval: const Duration(milliseconds: 10),
+      );
+      expect(ready, isTrue);
+      expect(calls, 3);
+    });
+
+    test('returns false when sidecar never becomes ready', () async {
+      final ready = await waitForDirectSidecarPoseReady(
+        canServePosePreview: () async => false,
+        timeout: const Duration(milliseconds: 50),
+        pollInterval: const Duration(milliseconds: 10),
+      );
+      expect(ready, isFalse);
+    });
+  });
+
+  group('nativeEdsdkSidecarIsRunning', () {
+    test('true only for running', () async {
+      expect(
+        await nativeEdsdkSidecarIsRunning(() async => 'running'),
+        isTrue,
+      );
+      expect(
+        await nativeEdsdkSidecarIsRunning(() async => 'idle'),
+        isFalse,
+      );
+      expect(
+        await nativeEdsdkSidecarIsRunning(() async => 'crashed'),
+        isFalse,
+      );
+    });
+
+    test('false on timeout or throw', () async {
+      expect(
+        await nativeEdsdkSidecarIsRunning(
+          () => Completer<String>().future,
+          nativeStateTimeout: Duration.zero,
+        ),
+        isFalse,
+      );
+      expect(
+        await nativeEdsdkSidecarIsRunning(() => throw Exception('channel')),
+        isFalse,
+      );
     });
   });
 

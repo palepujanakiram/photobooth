@@ -36,6 +36,10 @@ bool _isPublicApiPath(String path) {
   // App bootstrap content is public.
   if (p == '/api/themes') return true;
   if (p == '/api/settings') return true;
+  if (p == '/api/event/verify') return true;
+  if (p.startsWith('/api/event/by-code/')) return true;
+  if (p.startsWith('/api/events/by-code/')) return true;
+  if (p.startsWith('/api/event/station/')) return true;
 
   // Kiosk-owned resources are guarded server-side; they require the session token.
   return false;

@@ -77,9 +77,15 @@ Future<TermsCameraPrimingResult> runTermsCameraPriming({
   required bool isCameraPlatform,
   Future<bool> Function()? probeAttachedUvc,
   Future<bool> Function()? probeSidecarHealthy,
+  Future<bool> Function()? ensureCanonUsbPermission,
 }) async {
   if (!isCameraPlatform) {
     return const TermsCameraPrimingResult(TermsCameraPrimingPhase.skipped);
+  }
+
+  // Direct Canon USB: show the system allow dialog before CAMERA / FCM compete.
+  if (ensureCanonUsbPermission != null) {
+    await ensureCanonUsbPermission();
   }
 
   final granted = await ensurePermission();

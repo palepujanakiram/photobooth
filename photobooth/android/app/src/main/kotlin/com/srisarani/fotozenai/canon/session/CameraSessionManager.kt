@@ -17,6 +17,8 @@ import com.srisarani.fotozenai.canon.ptp.PtpOperation
 import com.srisarani.fotozenai.canon.ptp.PtpSession
 import com.srisarani.fotozenai.canon.ptp.PtpVendorExtension
 import com.srisarani.fotozenai.canon.state.ConnectionState
+import com.srisarani.fotozenai.canon.state.isReadyForCapture
+import com.srisarani.fotozenai.canon.state.label
 import com.srisarani.fotozenai.canon.usb.UsbCameraDiscovery
 import com.srisarani.fotozenai.canon.usb.UsbError
 import kotlinx.coroutines.CompletableDeferred
@@ -255,15 +257,20 @@ object CameraSessionManager {
         }
 
         if (opened != null) {
-            if (session != null) {
+            if (_state.value.isReadyForCapture) {
                 CanonLog.d("scanAndConnect ignored - already connected")
                 return
             }
-            // Device open but no PTP session: a previous openPtpSession failed after the
+            // Device open but not ready: a previous openPtpSession failed after the
             // interface was already claimed. Returning here would make every later retry -
             // including the operator pressing "Try again" - a no-op, which is what left the
             // booth needing a replug or an app restart to recover (observed 2026-08-18).
-            CanonLog.w("USB device open with no PTP session - releasing before reconnect")
+            // Keyed off state rather than `session != null` because a session object can
+            // outlive a handshake that never reached remote mode.
+            CanonLog.w(
+                "scanAndConnect clearing stale session (state=%s)",
+                _state.value.label,
+            )
             releaseQuietly()
         }
 
@@ -524,7 +531,12 @@ object CameraSessionManager {
     }
 
     fun disconnect() {
-        scope.launch {
+        scope.launch { disconnectAndAwait() }
+    }
+
+    /** Tears down USB/PTP synchronously — used before a reconnect retry. */
+    suspend fun disconnectAndAwait() {
+        withContext(usbDispatcher) {
             releaseQuietly()
             _state.value = ConnectionState.NoDevice
         }

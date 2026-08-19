@@ -122,6 +122,10 @@ abstract final class AppStrings {
   /// Non-blocking status on Terms while cameras are enumerated on entry.
   static const termsDetectingCameras = 'Detecting cameras…';
 
+  /// Terms banner while direct Canon USB permission / sidecar warm-up runs.
+  static const termsDetectingCamerasCanonUsb =
+      'Allow USB access for the Canon camera when prompted…';
+
   /// Terms Continue label while camera detection is still running.
   static const termsContinueWhenReady = 'Continue when ready';
 
@@ -201,6 +205,10 @@ abstract final class AppStrings {
   /// Pose UI when a captured still cannot be decoded for review.
   static const captureStillDisplayFailed =
       'Photo saved, but it could not be shown. Retake the shot.';
+
+  /// Shown on POSE when direct Canon USB permission is still pending.
+  static const captureWaitingCanonUsbPermission =
+      'Allow USB access for the Canon camera when prompted, then tap Retry camera.';
 
   /// Shown on POSE when no camera is available but Gallery / Phone QR is enabled.
   static const captureNoCameraUploadHint =
@@ -699,4 +707,35 @@ abstract final class AppStrings {
   static const kioskDeviceStatusRefresh = 'Refresh';
   static const noPhotoPrinterConnected =
       'No photo printer connected (DNP or Canon Selphy)';
+
+  static const eventStationTitle = 'Event station';
+  static const eventStationCapture = 'Capture';
+  static const eventStationTheme = 'Theme';
+  static const eventStationPrint = 'Print';
+  static const eventStationCaptureHint =
+      'Photographer: take guest photos. Theme and print happen on other tablets.';
+  static const eventStationThemeHint =
+      'Guest: pick a look for the photo that is waiting.';
+  static const eventStationPrintHint =
+      'Printer: claim transformed photos and print.';
+  static const eventStationChangeRole = 'Change station';
+  static const eventStationNextGuest = 'Capture next guest';
+  static const eventStationWaitingTheme = 'Waiting for a photo to style…';
+  static const eventStationWaitingPrint = 'Waiting for a photo to print…';
+  static const eventStationAssignTheme = 'Use this look';
+  static const eventStationNoThemes = 'No themes available for this event.';
+  static const eventStationPrintNow = 'Print';
+  static const eventStationReprint = 'Print another copy';
+  static const eventStationJobClaimed = 'This job was taken by another station.';
+  static const eventStationStatusPending = 'PENDING';
+  static const eventStationStatusClaimed = 'CLAIMED';
+  static const eventStationStatusDone = 'DONE';
+  static const eventStationStyleNext = 'Style next guest';
+  static const eventStationEmptyCaptures = 'No captured photos yet.';
+  static const eventStationEmptyTheme = 'No photos in this status.';
+  static const eventStationEmptyPrint = 'No print jobs in this status.';
+  static const eventStationStatsCaptures = 'Captured';
+  static const eventStationStatsTheme = 'Theme';
+  static const eventStationStatsPrint = 'Print';
+  static const eventStationStatsLegend = 'PENDING / CLAIMED / DONE';
 }

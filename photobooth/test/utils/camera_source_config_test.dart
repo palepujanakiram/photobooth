@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photobooth/models/app_settings_model.dart';
 import 'package:photobooth/utils/camera_source_config.dart';
 
 void main() {
@@ -69,10 +70,98 @@ void main() {
   });
 
   group('usesDirectPtpCamera', () {
-    test('is false without the define, so existing builds are unchanged', () {
-      // This getter is what every capture entry point consults; if it were ever
-      // true by default, every booth would try to open a DSLR it does not have.
-      expect(usesDirectPtpCamera, isFalse);
+    test('honours ZenAI cameraConnectionMode=direct_ptp', () {
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+          overrideSourceDefine: '',
+        ),
+        isTrue,
+      );
+    });
+
+    test('explicit pi/direct never opens PTP even with CAMERA_SOURCE', () {
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(cameraConnectionMode: 'pi'),
+          overrideSourceDefine: 'direct_ptp',
+        ),
+        isFalse,
+      );
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct'),
+          overrideSourceDefine: 'direct_ptp',
+        ),
+        isFalse,
+      );
+    });
+
+    test('falls back to CAMERA_SOURCE when mode is unset', () {
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(),
+          overrideSourceDefine: 'direct_ptp',
+          overrideConnectionModeDefine: '',
+        ),
+        isTrue,
+      );
+    });
+
+    test('honours CAMERA_CONNECTION_MODE=direct_ptp without ZenAI mode', () {
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(),
+          overrideSourceDefine: '',
+          overrideConnectionModeDefine: 'direct_ptp',
+        ),
+        isTrue,
+      );
+    });
+
+    test('Flutter web never opens native PTP', () {
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+          overrideSourceDefine: 'direct_ptp',
+          overrideConnectionModeDefine: 'direct_ptp',
+          isWeb: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('explicit dart-define pi/direct never opens PTP', () {
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(),
+          overrideSourceDefine: 'direct_ptp',
+          overrideConnectionModeDefine: 'pi',
+        ),
+        isFalse,
+      );
+      expect(
+        usesDirectPtpCamera(
+          settings: AppSettingsModel(),
+          overrideSourceDefine: 'direct_ptp',
+          overrideConnectionModeDefine: 'direct',
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('isDirectPtpCameraId', () {
+    test('matches ids minted by the direct-PTP capture screen', () {
+      expect(isDirectPtpCameraId('${kDirectPtpCameraIdPrefix}EOS'), isTrue);
+      expect(isDirectPtpCameraId('  ${kDirectPtpCameraIdPrefix}EOS  '), isTrue);
+    });
+
+    test('rejects sidecar, device and empty ids', () {
+      expect(isDirectPtpCameraId('sidecar:EOS'), isFalse);
+      expect(isDirectPtpCameraId('0'), isFalse);
+      expect(isDirectPtpCameraId(''), isFalse);
+      expect(isDirectPtpCameraId(null), isFalse);
     });
   });
 }

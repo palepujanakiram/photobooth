@@ -1,4 +1,7 @@
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
+
+import '../models/app_settings_model.dart';
+import 'camera_sidecar_config.dart';
 
 /// Where the booth's stills come from.
 ///
@@ -61,52 +64,52 @@ CameraSource cameraSourceFromName(
 /// --dart-define=CAMERA_SOURCE=direct_ptp
 /// ```
 ///
-/// Empty by default, so builds without it behave exactly as before. P5 of the
-/// direct-PTP plan promotes this to per-kiosk config from zenai; this define
-/// stays as the lab override, mirroring `CAMERA_SIDECAR_ENABLED`.
+/// Empty by default. Prefer ZenAI `cameraConnectionMode=direct_ptp` for kiosks;
+/// this define stays as the lab override.
 const String kCameraSourceDefine =
     String.fromEnvironment('CAMERA_SOURCE', defaultValue: '');
 
-/// Camera source published by kiosk configuration, or null before settings load.
-///
-/// ZenAI owns this now (`Connection → Direct PTP (native USB, no EDSDK)` on the kiosk edit
-/// screen). It is cached in a top-level variable rather than read from a provider because
-/// [resolveCameraSource] is called from route builders and plain functions that have no
-/// `BuildContext`, and because the answer must be identical everywhere in the process —
-/// two call sites disagreeing about which POSE screen to open is the failure mode that
-/// [buildCaptureScreen]'s own docstring describes.
-CameraSource? _configuredCameraSource;
-
-/// Publishes the source implied by kiosk settings. Null clears it.
-///
-/// Called when app settings load or change. Only [CameraConnectionMode.directPtp] maps to a
-/// distinct source: Pi and on-device EDSDK are both sidecars behind the Flutter capture
-/// screen, so they leave the source alone and keep whatever the build already used.
-void setConfiguredCameraSource(CameraSource? source) {
-  _configuredCameraSource = source;
-}
-
-/// The configured camera source: kiosk settings first, then the build-time define.
-///
-/// Settings win over the define so a booth can be switched from the ZenAI admin without a
-/// rebuild; the define stays as the lab override for a device that has no kiosk yet.
+/// The configured camera source for this build (dart-define only).
 CameraSource resolveCameraSource({
   @visibleForTesting String? overrideDefine,
-  @visibleForTesting CameraSource? overrideConfigured,
-  @visibleForTesting bool ignoreConfigured = false,
 }) {
-  if (!ignoreConfigured) {
-    final configured = overrideConfigured ?? _configuredCameraSource;
-    if (configured != null) return configured;
-  }
   final raw = overrideDefine ?? kCameraSourceDefine;
   if (raw.trim().isEmpty) return CameraSource.device;
   return cameraSourceFromName(raw);
 }
 
 /// True when the booth should hand capture to the native direct-PTP screen.
-bool get usesDirectPtpCamera =>
-    resolveCameraSource() == CameraSource.directPtp;
+///
+/// Order: explicit ZenAI / dart-define [CameraConnectionMode.directPtp], else
+/// `CAMERA_SOURCE=direct_ptp`. Explicit `pi` / `direct` never opens PTP.
+/// Flutter web has no USB PTP, so this is always false in the browser.
+bool usesDirectPtpCamera({
+  AppSettingsModel? settings,
+  @visibleForTesting String? overrideSourceDefine,
+  @visibleForTesting String? overrideConnectionModeDefine,
+  @visibleForTesting bool? isWeb,
+}) {
+  if (isWeb ?? kIsWeb) return false;
+  final fromSettings = parseCameraConnectionMode(settings?.cameraConnectionMode);
+  if (fromSettings == CameraConnectionMode.directPtp) return true;
+  if (fromSettings == CameraConnectionMode.pi ||
+      fromSettings == CameraConnectionMode.direct) {
+    return false;
+  }
+
+  final fromConnectionDefine = parseCameraConnectionMode(
+    overrideConnectionModeDefine ??
+        CameraSidecarConfig.cameraConnectionModeDefine,
+  );
+  if (fromConnectionDefine == CameraConnectionMode.directPtp) return true;
+  if (fromConnectionDefine == CameraConnectionMode.pi ||
+      fromConnectionDefine == CameraConnectionMode.direct) {
+    return false;
+  }
+
+  return resolveCameraSource(overrideDefine: overrideSourceDefine) ==
+      CameraSource.directPtp;
+}
 
 /// Prefix for camera ids minted by the direct-PTP capture screen, e.g. `ptp:EOS`.
 ///

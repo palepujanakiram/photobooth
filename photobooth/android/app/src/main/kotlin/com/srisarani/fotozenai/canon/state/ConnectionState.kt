@@ -110,6 +110,12 @@ val ConnectionState.isOperational: Boolean
         this is ConnectionState.LiveView ||
         this is ConnectionState.RemoteMode
 
+/** True when the native capture screen can open the viewfinder immediately. */
+val ConnectionState.isReadyForCapture: Boolean
+    get() = this is ConnectionState.Ready ||
+        this is ConnectionState.RemoteMode ||
+        this is ConnectionState.LiveView
+
 /** True when the state warrants a red indicator rather than amber or green. */
 val ConnectionState.isFault: Boolean
     get() = this is ConnectionState.Error ||

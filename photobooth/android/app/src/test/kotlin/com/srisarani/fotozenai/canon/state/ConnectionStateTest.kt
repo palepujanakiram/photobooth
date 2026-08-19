@@ -81,4 +81,13 @@ class ConnectionStateTest {
         )
         all.forEach { assertThat(it.label).isNotEmpty() }
     }
+
+    @Test
+    fun `isReadyForCapture covers ready remote and live view only`() {
+        assertThat(ConnectionState.Ready.isReadyForCapture).isTrue()
+        assertThat(ConnectionState.RemoteMode(null).isReadyForCapture).isTrue()
+        assertThat(ConnectionState.LiveView.isReadyForCapture).isTrue()
+        assertThat(ConnectionState.SessionOpen(null, 1).isReadyForCapture).isFalse()
+        assertThat(ConnectionState.Opened(null, 0, 0, 0, 512).isReadyForCapture).isFalse()
+    }
 }

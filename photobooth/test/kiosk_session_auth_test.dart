@@ -43,6 +43,13 @@ void main() {
     test('does not require token for themes or session create', () {
       expect(requestNeedsKioskSessionToken('/api/themes'), isFalse);
       expect(requestNeedsKioskSessionToken('/api/settings'), isFalse);
+      expect(requestNeedsKioskSessionToken('/api/event/verify'), isFalse);
+      expect(requestNeedsKioskSessionToken('/api/event/by-code/WED'), isFalse);
+      expect(requestNeedsKioskSessionToken('/api/events/by-code/WED'), isFalse);
+      expect(
+        requestNeedsKioskSessionToken('/api/event/station/theme-jobs'),
+        isFalse,
+      );
     });
   });
 

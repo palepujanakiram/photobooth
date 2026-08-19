@@ -12,15 +12,20 @@ import '../utils/exceptions.dart';
 import 'api_generate_metadata_log.dart';
 import 'api_session_patch_json.dart';
 import 'kiosk_manager.dart';
+import 'event_manager.dart';
 import 'session_manager.dart';
 
 /// Themes fetch helpers (Sonar S3776 extractions from [ApiService.getThemes]).
 Future<Map<String, dynamic>> kioskThemesQueryParameters() async {
   final kioskCode = (await KioskManager().getKioskCode())?.trim().toUpperCase();
+  final eventCode = (await EventManager().getEventCode())?.trim().toUpperCase();
   final kioskId = SessionManager().currentSession?.kioskId;
   final qp = <String, dynamic>{'active': true};
   if (kioskCode != null && kioskCode.isNotEmpty) {
     qp['kioskCode'] = kioskCode;
+  }
+  if (eventCode != null && eventCode.isNotEmpty) {
+    qp['eventCode'] = eventCode;
   }
   if (kioskId != null && kioskId.isNotEmpty) {
     qp['kioskId'] = kioskId;

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cross_file/cross_file.dart';
@@ -22,6 +23,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../fakes/fake_api_service.dart';
 import '../../fixtures/theme_fixtures.dart';
+import '../../helpers/tiny_jpeg.dart';
 
 String _tinyJpegDataUrl() {
   final src = img.Image(width: 4, height: 4);
@@ -68,6 +70,112 @@ void main() {
     expect(vm.canCompose, isTrue);
     expect(vm.selectedFilterId, kDefaultStripFilterId);
     expect(vm.printOrientation, PrintOrientation.portrait);
+  });
+
+  test('FotoFlashbackFilterViewModel hydrates pending capture file paths',
+      () async {
+    final path =
+        '${Directory.systemTemp.path}/ptp_hydrate_test_${DateTime.now().microsecondsSinceEpoch}.jpg';
+    await File(path).writeAsBytes(kTinyJpegBytes);
+
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const [],
+      pendingImageFilePaths: [path],
+      overlayCleanupBuildGate: false,
+    );
+    expect(vm.isHydratingCaptures, isTrue);
+    expect(vm.isSingleClassic, isTrue);
+    expect(vm.canCompose, isFalse);
+
+    for (var i = 0; i < 50 && vm.isHydratingCaptures; i++) {
+      await pumpEventQueue();
+    }
+
+    expect(vm.isHydratingCaptures, isFalse);
+    expect(vm.imageDataUrls, hasLength(1));
+    expect(vm.imageDataUrls.first, startsWith('data:image/jpeg;base64,'));
+    expect(vm.canCompose, isTrue);
+  });
+
+  test('FotoFlashbackFilterViewModel hydrate kicks off overlay scrub after encode',
+      () async {
+    final path =
+        '${Directory.systemTemp.path}/ptp_hydrate_scrub_${DateTime.now().microsecondsSinceEpoch}.jpg';
+    await File(path).writeAsBytes(kTinyJpegBytes);
+    SessionManager().setSessionFromResponse(_sessionJson('sess-hydrate-scrub'));
+    final api = _CountingScrubFakeApi();
+
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const [],
+      pendingImageFilePaths: [path],
+      overlayCleanupBuildGate: true,
+      apiService: api,
+    );
+    await vm.loadFilters();
+
+    for (var i = 0; i < 100 && vm.isHydratingCaptures; i++) {
+      await pumpEventQueue();
+    }
+    expect(vm.isHydratingCaptures, isFalse);
+    expect(vm.imageDataUrls, hasLength(1));
+  });
+
+  test('FotoFlashbackFilterViewModel hydrate reports encode failure', () async {
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const [],
+      pendingImageFilePaths: ['/nonexistent/ptp_hydrate_missing.jpg'],
+      overlayCleanupBuildGate: false,
+    );
+
+    for (var i = 0; i < 50 && vm.isHydratingCaptures; i++) {
+      await pumpEventQueue();
+    }
+
+    expect(vm.isHydratingCaptures, isFalse);
+    expect(vm.errorMessage, AppStrings.flashbackFinishEncodeFailed);
+    expect(vm.imageDataUrls, isEmpty);
+  });
+
+  test('FotoFlashbackFilterViewModel clearCapturePreview drops stale bytes',
+      () {
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: [_tinyJpegDataUrl()],
+      overlayCleanupBuildGate: false,
+    );
+    expect(vm.previewImageDataUrls, isNotEmpty);
+
+    vm.clearCapturePreview();
+
+    expect(vm.previewImageDataUrls, isEmpty);
+    expect(vm.imageDataUrls, isEmpty);
+    expect(vm.canCompose, isFalse);
+  });
+
+  test(
+      'FotoFlashbackFilterViewModel clearCapturePreview cancels in-flight hydrate',
+      () async {
+    final dir = await Directory.systemTemp.createTemp('hydrate_cancel_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final path = '${dir.path}/shot.jpg';
+    await File(path).writeAsBytes(kTinyJpegBytes);
+
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const [],
+      pendingImageFilePaths: [path],
+      overlayCleanupBuildGate: false,
+    );
+    expect(vm.isHydratingCaptures, isTrue);
+
+    vm.clearCapturePreview();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(vm.previewImageDataUrls, isEmpty);
+    expect(vm.isHydratingCaptures, isFalse);
   });
 
   test('FotoFlashbackFilterViewModel print orientation for 1-shot only', () {

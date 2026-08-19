@@ -55,6 +55,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
     _viewModel = FotoFlashbackFilterViewModel(
       theme: args.theme,
       imageDataUrls: args.imageDataUrls,
+      pendingImageFilePaths: args.pendingImageFilePaths,
       overlayCleanupAlreadyDone: args.overlayCleanupAlreadyDone,
       shotCleaned: args.shotCleaned,
     );
@@ -84,6 +85,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
       return;
     }
     setState(() => _navigatingBack = true);
+    vm?.clearCapturePreview();
     final theme = args?.theme ?? vm!.theme;
     final mode = args?.resolvedShotMode ??
         (vm!.isSingleClassic
@@ -333,7 +335,33 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                       ],
                       const SizedBox(height: 12),
                       Expanded(
-                        child: _LookPickerBody(
+                        child: viewModel.isHydratingCaptures
+                            ? Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(
+                                      color: appColors.primaryColor,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      AppStrings.directPtpProcessing,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.amber.shade100
+                                            .withValues(alpha: 0.85),
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : KeyedSubtree(
+                          key: ValueKey<int>(
+                            _args?.previewSessionKey ??
+                                viewModel.previewImageDataUrls.length,
+                          ),
+                          child: _LookPickerBody(
                           imageDataUrls: viewModel.previewImageDataUrls,
                           imagesAreGraded: viewModel.previewImagesAreGraded,
                           serverComposePreviewUrl:
@@ -358,6 +386,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           onScribbleUpdate: viewModel.extendScribble,
                           onScribbleEnd: viewModel.endScribble,
                         ),
+                      ),
                       ),
                       const SizedBox(height: 6),
                       _ChipPickerRow(

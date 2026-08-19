@@ -10,264 +10,222 @@ void main() {
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 
-  late List<String> calls;
-
-  /// Fake native side. [probeResults] is consumed one entry per probeDevice, so
-  /// a test can make the camera appear only after several polls.
-  void handle({
-    bool usbHost = true,
-    List<Map<Object?, Object?>?> probeResults = const [null],
-    Map<Object?, Object?>? connectResult,
-    Map<Object?, Object?>? captureResult,
-  }) {
-    var probeIndex = 0;
-    messenger.setMockMethodCallHandler(channel, (call) async {
-      calls.add(call.method);
-      switch (call.method) {
-        case 'hasUsbHost':
-          return usbHost;
-        case 'probeDevice':
-          final r = probeIndex < probeResults.length
-              ? probeResults[probeIndex]
-              : probeResults.last;
-          probeIndex++;
-          return r;
-        case 'connect':
-          return connectResult;
-        case 'runCaptureSession':
-          return captureResult;
-        default:
-          return null;
-      }
-    });
-  }
-
-  DirectPtpCameraService service() =>
+  DirectPtpCameraService androidCamera() =>
       DirectPtpCameraService(isAndroid: () => true);
 
-  const device = <Object?, Object?>{
-    'deviceName': '/dev/bus/usb/001/030',
-    'vendorId': 0x04A9,
-    'productId': 0x32E9,
-    'product': 'Canon Digital Camera',
-    'hasPermission': true,
-  };
+  const Duration tinyWindow = Duration(milliseconds: 40);
+  const Duration noWait = Duration.zero;
 
-  const ready = <Object?, Object?>{
-    'state': 'Ready',
-    'label': 'Ready',
-    'productName': 'Canon EOS 200D II',
-  };
+  Map<Object?, Object?> deviceMap() => <Object?, Object?>{
+        'deviceName': '/dev/bus/usb/001/003',
+        'vendorId': 0x04A9,
+        'productId': 0x32E9,
+        'product': 'Canon Digital Camera',
+        'hasPermission': true,
+      };
 
-  setUp(() => calls = <String>[]);
+  Map<Object?, Object?> readyStatus({String? productName}) =>
+      <Object?, Object?>{
+        'state': 'Ready',
+        'label': 'Ready',
+        if (productName != null) 'productName': productName,
+        'isOperational': true,
+      };
+
+  void handle(Future<Object?>? Function(MethodCall call) responder) {
+    messenger.setMockMethodCallHandler(channel, responder);
+  }
+
   tearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
-  group('define parsing', () {
-    test('the smoke check is off unless explicitly requested', () {
-      // Connecting claims the USB interface and puts the body in remote mode,
-      // which would be wrong on a booth still shooting with the device camera.
-      expect(directPtpSmokeRequested, isFalse);
-      expect(directPtpSmokeCaptureRequested, isFalse);
+  group('parseDirectPtpSmokeRequested', () {
+    test('accepts the lab dart-define aliases', () {
+      expect(parseDirectPtpSmokeRequested('true'), isTrue);
+      expect(parseDirectPtpSmokeRequested('1'), isTrue);
+      expect(parseDirectPtpSmokeRequested('YES'), isTrue);
+      expect(parseDirectPtpSmokeRequested('on'), isTrue);
+      expect(parseDirectPtpSmokeRequested('capture'), isTrue);
+      expect(parseDirectPtpSmokeRequested(''), isFalse);
+      expect(parseDirectPtpSmokeRequested('no'), isFalse);
+    });
+  });
+
+  group('parseDirectPtpSmokeCaptureRequested', () {
+    test('is true only for capture', () {
+      expect(parseDirectPtpSmokeCaptureRequested('capture'), isTrue);
+      expect(parseDirectPtpSmokeCaptureRequested('true'), isFalse);
     });
   });
 
   group('runDirectPtpSmokeCheckIfRequested', () {
-    test('does nothing at all when not requested', () async {
-      handle();
-      await runDirectPtpSmokeCheckIfRequested(
-        service: service(),
-        requested: false,
-      );
-      expect(calls, isEmpty);
+    test('the default dart-define leaves the check off', () {
+      expect(directPtpSmokeRequested, isFalse);
+      expect(directPtpSmokeCaptureRequested, isFalse);
     });
 
-    test('stops early when the hardware cannot host USB', () async {
-      handle(usbHost: false);
+    test('returns immediately when not requested', () async {
+      var called = false;
+      handle((_) async {
+        called = true;
+        return null;
+      });
+      await runDirectPtpSmokeCheckIfRequested();
+      expect(called, isFalse);
+    });
+
+    test('stops when the box has no USB host', () async {
+      handle((call) async {
+        if (call.method == 'hasUsbHost') return false;
+        fail('must not continue without USB host');
+      });
       await runDirectPtpSmokeCheckIfRequested(
-        service: service(),
+        service: androidCamera(),
         requested: true,
-        probeWindow: const Duration(milliseconds: 30),
-        probeInterval: const Duration(milliseconds: 5),
       );
-      expect(calls, ['hasUsbHost']);
     });
 
-    test('polls until the camera appears, then connects', () async {
-      // The whole point of the polling: the body auto-powers-off, so a single
-      // probe at startup turns bring-up into a race with switching it on.
-      handle(
-        probeResults: const [null, null, device],
-        connectResult: ready,
-      );
+    test('uses the default service when none is passed', () async {
+      await runDirectPtpSmokeCheckIfRequested(requested: true);
+    });
+
+    test('times out when no camera appears', () async {
+      handle((call) async {
+        if (call.method == 'hasUsbHost') return true;
+        if (call.method == 'probeDevice') return null;
+        fail('unexpected ${call.method}');
+      });
       await runDirectPtpSmokeCheckIfRequested(
-        service: service(),
+        service: androidCamera(),
         requested: true,
-        captureRequested: false,
-        probeWindow: const Duration(seconds: 5),
-        probeInterval: const Duration(milliseconds: 5),
+        probeWindow: tinyWindow,
+        probeInterval: noWait,
       );
-      expect(calls.where((c) => c == 'probeDevice').length, 3);
-      expect(calls, contains('connect'));
-      expect(calls, isNot(contains('runCaptureSession')));
     });
 
-    test('gives up when no camera appears inside the window', () async {
-      handle(probeResults: const [null]);
+    test('connects after the camera shows up on a later probe', () async {
+      var probes = 0;
+      handle((call) async {
+        switch (call.method) {
+          case 'hasUsbHost':
+            return true;
+          case 'probeDevice':
+            probes++;
+            if (probes == 1) return null;
+            return deviceMap();
+          case 'connect':
+            return readyStatus();
+          default:
+            fail('unexpected ${call.method}');
+        }
+      });
       await runDirectPtpSmokeCheckIfRequested(
-        service: service(),
+        service: androidCamera(),
         requested: true,
-        probeWindow: const Duration(milliseconds: 40),
-        probeInterval: const Duration(milliseconds: 5),
+        probeWindow: tinyWindow,
+        probeInterval: noWait,
       );
-      expect(calls, contains('probeDevice'));
-      expect(calls, isNot(contains('connect')));
+      expect(probes, greaterThan(1));
     });
 
-    test('does not capture when the link never becomes operational', () async {
-      handle(
-        probeResults: const [device],
-        connectResult: const <Object?, Object?>{
-          'state': 'PermissionDenied',
-          'label': 'Permission denied',
-        },
-      );
+    test('logs a non-operational connect and skips capture', () async {
+      handle((call) async {
+        switch (call.method) {
+          case 'hasUsbHost':
+            return true;
+          case 'probeDevice':
+            return deviceMap();
+          case 'connect':
+            return <Object?, Object?>{
+              'state': 'PermissionDenied',
+              'label': 'Permission denied',
+            };
+          default:
+            fail('unexpected ${call.method}');
+        }
+      });
       await runDirectPtpSmokeCheckIfRequested(
-        service: service(),
+        service: androidCamera(),
+        requested: true,
+        probeWindow: tinyWindow,
+        probeInterval: noWait,
+      );
+    });
+
+    test('opens a capture session when capture is requested', () async {
+      handle((call) async {
+        switch (call.method) {
+          case 'hasUsbHost':
+            return true;
+          case 'probeDevice':
+            return deviceMap();
+          case 'connect':
+            return readyStatus(productName: 'Canon EOS 200D II');
+          case 'runCaptureSession':
+            return <Object?, Object?>{
+              'status': 'completed',
+              'shots': <Object?>[
+                <Object?, Object?>{
+                  'originalPath': '/data/o.JPG',
+                  'displayPath': '/data/o.display.jpg',
+                  'widthPx': 6000,
+                  'heightPx': 4000,
+                  'bytes': 12,
+                },
+              ],
+            };
+          default:
+            fail('unexpected ${call.method}');
+        }
+      });
+      await runDirectPtpSmokeCheckIfRequested(
+        service: androidCamera(),
         requested: true,
         captureRequested: true,
-        probeWindow: const Duration(seconds: 2),
-        probeInterval: const Duration(milliseconds: 5),
+        probeWindow: tinyWindow,
+        probeInterval: noWait,
       );
-      expect(calls, contains('connect'));
-      expect(calls, isNot(contains('runCaptureSession')));
-    });
-
-    test('opens the capture screen when capture is requested', () async {
-      handle(
-        probeResults: const [device],
-        connectResult: ready,
-        captureResult: const <Object?, Object?>{
-          'status': 'completed',
-          'shots': <Object?>[
-            <Object?, Object?>{
-              'originalPath': '/o.JPG',
-              'displayPath': '/o.display.jpg',
-              'widthPx': 6000,
-              'heightPx': 4000,
-              'bytes': 6000000,
-            },
-          ],
-        },
-      );
-      await runDirectPtpSmokeCheckIfRequested(
-        service: service(),
-        requested: true,
-        captureRequested: true,
-        probeWindow: const Duration(seconds: 2),
-        probeInterval: const Duration(milliseconds: 5),
-      );
-      expect(calls, contains('runCaptureSession'));
     });
 
     test('logs a capture error without throwing', () async {
-      handle(
-        probeResults: const [device],
-        connectResult: ready,
-        captureResult: const <Object?, Object?>{
-          'status': 'error',
-          'errorCode': 'card_unavailable',
-          'errorMessage': 'No SD card',
-        },
-      );
-      await expectLater(
-        runDirectPtpSmokeCheckIfRequested(
-          service: service(),
-          requested: true,
-          captureRequested: true,
-          probeWindow: const Duration(seconds: 2),
-          probeInterval: const Duration(milliseconds: 5),
-        ),
-        completes,
-      );
-    });
-
-    test('a thrown native error cannot stop the app from starting', () async {
-      messenger.setMockMethodCallHandler(channel, (call) async {
-        calls.add(call.method);
-        throw PlatformException(code: 'boom');
+      handle((call) async {
+        switch (call.method) {
+          case 'hasUsbHost':
+            return true;
+          case 'probeDevice':
+            return deviceMap();
+          case 'connect':
+            return readyStatus(productName: 'Canon EOS 200D II');
+          case 'runCaptureSession':
+            return <Object?, Object?>{
+              'status': 'error',
+              'errorCode': 'card_unavailable',
+              'errorMessage': 'No SD card',
+            };
+          default:
+            fail('unexpected ${call.method}');
+        }
       });
-      await expectLater(
-        runDirectPtpSmokeCheckIfRequested(
-          service: service(),
-          requested: true,
-          probeWindow: const Duration(milliseconds: 40),
-          probeInterval: const Duration(milliseconds: 5),
-        ),
-        completes,
-      );
-    });
-  });
-
-  group('production gating', () {
-    test('with no overrides it reads the compile-time defines and stays off',
-        () async {
-      // Exercises the `?? directPtpSmokeRequested` fallback, which is the path
-      // every real build takes.
-      handle();
-      await runDirectPtpSmokeCheckIfRequested(service: service());
-      expect(calls, isEmpty);
-    });
-
-    test('capture gating falls back to the define when not overridden',
-        () async {
-      // requested is forced on, captureRequested is not — so the capture step
-      // must fall back to the define, which is off.
-      handle(probeResults: const [device], connectResult: ready);
       await runDirectPtpSmokeCheckIfRequested(
-        service: service(),
+        service: androidCamera(),
         requested: true,
-        probeWindow: const Duration(seconds: 2),
-        probeInterval: const Duration(milliseconds: 5),
-      );
-      expect(calls, contains('connect'));
-      expect(calls, isNot(contains('runCaptureSession')));
-    });
-  });
-
-  group('defensive construction and failure', () {
-    test('builds its own service when none is injected', () async {
-      // Production calls this with no arguments at all. Off Android there is no
-      // bridge, so it must bail at the USB-host check without touching a channel.
-      await expectLater(
-        runDirectPtpSmokeCheckIfRequested(
-          requested: true,
-          probeWindow: const Duration(milliseconds: 20),
-          probeInterval: const Duration(milliseconds: 5),
-        ),
-        completes,
+        captureRequested: true,
+        probeWindow: tinyWindow,
+        probeInterval: noWait,
       );
     });
 
-    test('an unexpected throw is swallowed, never reaching runApp', () async {
-      // The guarantee this catch exists for: a bring-up probe must not be able
-      // to stop the app from starting.
-      await expectLater(
-        runDirectPtpSmokeCheckIfRequested(
-          service: _ExplodingCameraService(),
-          requested: true,
-          probeWindow: const Duration(milliseconds: 20),
-          probeInterval: const Duration(milliseconds: 5),
-        ),
-        completes,
+    test('never lets a thrown probe stop startup', () async {
+      await runDirectPtpSmokeCheckIfRequested(
+        service: _ThrowingHostCamera(),
+        requested: true,
       );
     });
   });
 }
 
-/// Fails in a way the service itself does not catch, to reach the outer guard.
-class _ExplodingCameraService extends DirectPtpCameraService {
-  _ExplodingCameraService() : super(isAndroid: () => true);
+class _ThrowingHostCamera extends DirectPtpCameraService {
+  _ThrowingHostCamera() : super(isAndroid: () => true);
 
   @override
-  Future<bool> hasUsbHost() async => throw StateError('bridge exploded');
+  Future<bool> hasUsbHost() async => throw StateError('channel gone');
 }

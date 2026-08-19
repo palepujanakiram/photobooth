@@ -20,6 +20,7 @@ import com.srisarani.fotozenai.canon.CanonLog
 import com.srisarani.fotozenai.canon.capture.CaptureQueue
 import com.srisarani.fotozenai.canon.session.CameraSessionManager
 import com.srisarani.fotozenai.canon.state.ConnectionState
+import com.srisarani.fotozenai.canon.state.isReadyForCapture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -181,7 +182,8 @@ class CanonCaptureActivity : Activity() {
 
             if (!ensureConnected()) return@launch
 
-            discardReplayedCompletions()
+            seedStaleCaptureReplay()
+
             startLiveView()
             startIdleWatchdog()
 
@@ -198,32 +200,6 @@ class CanonCaptureActivity : Activity() {
                 shutterButton.isEnabled = true
             }
         }
-    }
-
-    /**
-     * Marks anything already sitting in the capture queue's replay buffer as consumed.
-     *
-     * [consumedHandles] stops a shot completing twice *within* one session, but the queue
-     * outlives this Activity — it belongs to [CameraSessionManager] — while the set does
-     * not. So a second POSE session started with an empty set and was handed the previous
-     * session's last photo the instant it collected, completing its first shot in
-     * milliseconds with a picture of whoever posed before.
-     *
-     * Observed on hardware 2026-08-18: a 4-shot strip finished `0004_IMG_8262.JPG`, and the
-     * next session's log read `Shot 1/4 stored: 0004_IMG_8262.JPG` — the same file. That is
-     * the "old picture on the preview screen" the booth was showing guests.
-     *
-     * `replayCache` is read rather than collected so nothing is consumed here; this only
-     * records what is stale before the first shot is fired.
-     */
-    private fun discardReplayedCompletions() {
-        val stale = CameraSessionManager.captureQueue?.completed?.replayCache.orEmpty()
-        if (stale.isEmpty()) return
-        stale.forEach { consumedHandles += it.handle }
-        CanonLog.i(
-            "Ignoring %d completion(s) replayed from a previous session",
-            stale.size,
-        )
     }
 
     /**
@@ -310,51 +286,83 @@ class CanonCaptureActivity : Activity() {
 
     /** Connects if needed; finishes the Activity with a typed error if it cannot. */
     private suspend fun ensureConnected(): Boolean {
-        if (CameraSessionManager.state.value.isReadyForCapture()) return true
+        if (CameraSessionManager.state.value.isReadyForCapture) return true
 
-        CameraSessionManager.scanAndConnect(applicationContext)
-        // drop(1) discards the value the StateFlow replays on subscription — the state as it
-        // was *before* the scan above could change it. Without it this whole wait collapsed:
-        // the manager starts at ConnectionState.NoDevice, isConnectOutcome() counts NoDevice
-        // as terminal, so `first` matched that stale value immediately and POSE reported
-        // "No camera found" roughly 90ms in — while the very same connect went on to succeed
-        // seconds later. Observed on hardware 2026-08-18. CanonPtpMethodChannel's connect
-        // already does this; only this copy was missing it.
-        val settled = withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
-            CameraSessionManager.state.drop(1).first { it.isConnectOutcome() }
-        }
+        clearStalePtpSessionIfNeeded()
 
-        when (settled) {
-            is ConnectionState.Ready, is ConnectionState.RemoteMode -> return true
-            is ConnectionState.PermissionDenied -> finishWith(
-                CaptureSessionContract.Result.error(
-                    CaptureSessionContract.ERROR_PERMISSION_DENIED,
-                    "USB permission was refused for the camera",
-                ),
-            )
+        repeat(2) { attempt ->
+            CameraSessionManager.scanAndConnect(applicationContext)
+            // drop(1) discards the value the StateFlow replays on subscription — the state as
+            // it was *before* the scan above could change it. Without it this whole wait
+            // collapsed: the manager sits at ConnectionState.NoDevice, isConnectOutcome()
+            // counts NoDevice as terminal, so `first` matched that stale value immediately and
+            // POSE reported "No camera found" roughly 90ms in — while the very same connect
+            // went on to succeed seconds later. Observed on hardware 2026-08-18.
+            // CanonPtpMethodChannel's connect already does this; only this copy was missing it.
+            val settled = withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
+                CameraSessionManager.state.drop(1).first {
+                    it.isConnectOutcome() || it.isReadyForCapture
+                }
+            }
 
-            is ConnectionState.NoDevice, null -> finishWith(
-                CaptureSessionContract.Result.error(
-                    CaptureSessionContract.ERROR_NO_DEVICE,
-                    "No camera found. Check the cable and that the camera is switched on.",
-                ),
-            )
+            when (val state = settled ?: CameraSessionManager.state.value) {
+                is ConnectionState.Ready,
+                is ConnectionState.RemoteMode,
+                is ConnectionState.LiveView,
+                -> return true
 
-            is ConnectionState.NoUsbHostSupport -> finishWith(
-                CaptureSessionContract.Result.error(
-                    CaptureSessionContract.ERROR_CONNECT_FAILED,
-                    "This device cannot host USB",
-                ),
-            )
+                is ConnectionState.PermissionDenied -> finishWith(
+                    CaptureSessionContract.Result.error(
+                        CaptureSessionContract.ERROR_PERMISSION_DENIED,
+                        "USB permission was refused for the camera",
+                    ),
+                )
 
-            else -> finishWith(
-                CaptureSessionContract.Result.error(
-                    CaptureSessionContract.ERROR_CONNECT_FAILED,
-                    describe(settled),
-                ),
-            )
+                is ConnectionState.NoDevice -> finishWith(
+                    CaptureSessionContract.Result.error(
+                        CaptureSessionContract.ERROR_NO_DEVICE,
+                        "No camera found. Check the cable and that the camera is switched on.",
+                    ),
+                )
+
+                is ConnectionState.NoUsbHostSupport -> finishWith(
+                    CaptureSessionContract.Result.error(
+                        CaptureSessionContract.ERROR_CONNECT_FAILED,
+                        "This device cannot host USB",
+                    ),
+                )
+
+                else -> if (attempt == 0) {
+                    CanonLog.w(
+                        "Connect attempt ${attempt + 1} stalled at $state — retrying",
+                    )
+                    CameraSessionManager.disconnectAndAwait()
+                    delay(RETRY_PAUSE_MS)
+                } else {
+                    finishWith(
+                        CaptureSessionContract.Result.error(
+                            CaptureSessionContract.ERROR_CONNECT_FAILED,
+                            describe(state),
+                        ),
+                    )
+                }
+            }
+            if (finished) return false
         }
         return false
+    }
+
+    /** Drops a half-open USB/PTP session so the next scan can start clean. */
+    private suspend fun clearStalePtpSessionIfNeeded() {
+        when (CameraSessionManager.state.value) {
+            is ConnectionState.Error,
+            is ConnectionState.Wedged,
+            is ConnectionState.SessionOpen,
+            is ConnectionState.Opened,
+            -> CameraSessionManager.disconnectAndAwait()
+
+            else -> Unit
+        }
     }
 
     private fun startLiveView() {
@@ -408,6 +416,26 @@ class CanonCaptureActivity : Activity() {
         captureJob = scope.launch { runShotSequence() }
     }
 
+    /**
+     * Ignores the SharedFlow replay from the previous capture session.
+     *
+     * [consumedHandles] stops a shot completing twice *within* one session, but the queue
+     * outlives this Activity — it belongs to [CameraSessionManager] — while the set does
+     * not. So a second POSE session started with an empty set and was handed the previous
+     * session's last photo the instant it collected, completing its first shot in
+     * milliseconds with a picture of whoever posed before.
+     *
+     * Observed on hardware 2026-08-18: a 4-shot strip finished `0004_IMG_8262.JPG`, and the
+     * next session's log read `Shot 1/4 stored: 0004_IMG_8262.JPG` — the same file. That is
+     * the "old picture on the preview screen" the booth was showing guests.
+     *
+     * See [CaptureQueue.seedReplayInto] — without this, Back → POSE → shutter returns
+     * the last shot's file before the new release finishes.
+     */
+    private fun seedStaleCaptureReplay() {
+        CameraSessionManager.captureQueue?.seedReplayInto(consumedHandles)
+    }
+
     /** Fires one shot and stores it. Returns false when the shot did not land. */
     private suspend fun runOneShot(): Boolean {
         val queue = CameraSessionManager.captureQueue
@@ -423,6 +451,8 @@ class CanonCaptureActivity : Activity() {
 
         setStatus(getString(R.string.canon_status_capturing))
         shutterSound()
+
+        seedStaleCaptureReplay()
 
         // Subscribe BEFORE firing, and UNDISPATCHED so the collector is attached before
         // this line returns. A download can finish faster than a coroutine scheduled the
@@ -634,11 +664,6 @@ class CanonCaptureActivity : Activity() {
         const val DISABLED_ACTION_ALPHA = 0.4f
     }
 }
-
-private fun ConnectionState.isReadyForCapture(): Boolean =
-    this is ConnectionState.Ready ||
-        this is ConnectionState.RemoteMode ||
-        this is ConnectionState.LiveView
 
 private fun ConnectionState.isConnectOutcome(): Boolean = when (this) {
     is ConnectionState.Ready,

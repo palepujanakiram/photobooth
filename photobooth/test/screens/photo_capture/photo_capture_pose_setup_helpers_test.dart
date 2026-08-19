@@ -113,6 +113,79 @@ void main() {
     );
   });
 
+  test('shouldKeepDirectSidecarPose only for configured USB EDSDK', () {
+    expect(
+      shouldKeepDirectSidecarPose(
+        isDirectConnection: true,
+        hasSidecarEndpoint: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldKeepDirectSidecarPose(
+        isDirectConnection: true,
+        hasSidecarEndpoint: false,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldKeepDirectSidecarPose(
+        isDirectConnection: false,
+        hasSidecarEndpoint: true,
+      ),
+      isFalse,
+    );
+  });
+
+  test('shouldSwitchInferredPiToDirect only when Pi was inferred and is down',
+      () {
+    expect(
+      shouldSwitchInferredPiToDirect(
+        isPiConnection: true,
+        modeExplicit: false,
+        piListening: false,
+        nativeSidecarRunning: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldSwitchInferredPiToDirect(
+        isPiConnection: true,
+        modeExplicit: true,
+        piListening: false,
+        nativeSidecarRunning: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldSwitchInferredPiToDirect(
+        isPiConnection: true,
+        modeExplicit: false,
+        piListening: true,
+        nativeSidecarRunning: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldSwitchInferredPiToDirect(
+        isPiConnection: false,
+        modeExplicit: false,
+        piListening: false,
+        nativeSidecarRunning: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldSwitchInferredPiToDirect(
+        isPiConnection: true,
+        modeExplicit: false,
+        piListening: false,
+        nativeSidecarRunning: false,
+      ),
+      isFalse,
+    );
+  });
+
   test('shouldKeepPoseStartingForExternalSource only while a source exists', () {
     expect(
       shouldKeepPoseStartingForExternalSource(

@@ -25,6 +25,7 @@ Widget buildFotoFlashbackCapturePage({
   required CaptureSessionKind sessionKind,
   required CaptureRouteArgs captureArgs,
   bool awaitGuestStart = false,
+  BuildContext? context,
 }) {
   final pageBuilder = debugFotoFlashbackCapturePageBuilder;
   if (pageBuilder != null) {
@@ -37,6 +38,7 @@ Widget buildFotoFlashbackCapturePage({
     ),
     sessionKind: sessionKind,
     captureArgs: captureArgs,
+    context: context,
   );
 }
 
@@ -91,6 +93,7 @@ Future<void> navigateToFotoFlashbackCapture({
     sessionKind: kind,
     captureArgs: args,
     awaitGuestStart: awaitGuestStart,
+    context: context,
   );
   final settings = RouteSettings(
     name: '${AppConstants.kRouteCapture}-${kind.name}',

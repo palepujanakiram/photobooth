@@ -23,7 +23,7 @@ bool sidecarHttpBodyLooksLikeJpeg(List<int> bytes) {
 const int kSidecarCaptureMaxLongEdge = 1920;
 
 /// JPEG quality for Pi-resized stills.
-const int kSidecarCaptureJpegQuality = 85;
+const int kSidecarCaptureJpegQuality = 92;
 
 /// HTTP client for the booth Pi `fotozen-sidecar` (gphoto2 / FZ200D).
 class LocalCameraService {
@@ -40,7 +40,7 @@ class LocalCameraService {
         _captureProgressInterval =
             captureProgressInterval ?? const Duration(seconds: 5);
 
-  final CameraSidecarConfig _config;
+  CameraSidecarConfig _config;
   final http.Client _client;
   final Duration _healthTimeout;
   final Duration _captureTimeout;
@@ -66,13 +66,33 @@ class LocalCameraService {
   bool _runtimeUnavailable = false;
   bool _forceLivePreview = false;
 
+  /// ZenAI / env sidecar URL is set (ignores a transient runtime poison).
+  bool get hasSidecarEndpoint => _config.isConfigured;
+
   bool get isConfigured => _config.isConfigured && !_runtimeUnavailable;
+
+  /// True when pose EVF may POST to the sidecar (direct USB retries through a
+  /// transient [markRuntimeUnavailable] while localhost EDSDK recovers).
+  bool get canPollSidecarPreview =>
+      shouldShowLivePreview ||
+      (isDirectConnection && hasSidecarEndpoint);
 
   /// On-device Canon EDSDK at localhost (vs remote Pi/LAN).
   bool get isDirectConnection => _config.isDirectConnection;
 
   /// Remote Pi gphoto2 sidecar (vs on-device EDSDK).
   bool get isPiConnection => _config.isPiConnection;
+
+  /// True when GSM or dart-define chose the mode (not inferred from host).
+  bool get modeExplicit => _config.modeExplicit;
+
+  /// Point this client at a different sidecar (inferred-Pi → localhost USB).
+  void adoptConfig(CameraSidecarConfig config) {
+    _config = config;
+    _runtimeUnavailable = false;
+    _forceLivePreview = false;
+    _lastHealthyAt = null;
+  }
 
   /// ZenAI `cameraLivePreviewEnabled`, or POSE forcing USB MJPEG (AI + Classic).
   bool get shouldShowLivePreview =>
@@ -85,10 +105,18 @@ class LocalCameraService {
     _forceLivePreview = enabled;
   }
 
-  /// Native sidecar cannot serve HTTP (wrong ABI, crashed). Stop localhost polls.
+  /// Native sidecar cannot serve HTTP (wrong ABI, exhausted restarts).
+  /// Stop localhost polls for this Pose session.
   void markRuntimeUnavailable() {
     _runtimeUnavailable = true;
     _forceLivePreview = false;
+  }
+
+  /// Clears a prior [markRuntimeUnavailable] when the native process recovers
+  /// (e.g. USB permission granted after a warm-up crash).
+  void clearRuntimeUnavailable() {
+    if (!_runtimeUnavailable) return;
+    _runtimeUnavailable = false;
   }
 
   String get livePreviewUrl => _config.livePreviewUrl;
@@ -193,7 +221,7 @@ class LocalCameraService {
     Duration timeout = const Duration(seconds: 5),
     String? corrId,
   }) async {
-    if (!isConfigured) {
+    if (!canPollSidecarPreview) {
       throw StateError('Camera sidecar is not configured');
     }
     final response = await _client

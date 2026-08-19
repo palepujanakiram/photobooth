@@ -1,5 +1,6 @@
 import 'dart:async' show unawaited;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart'
     show Colors, Divider, Orientation, Scaffold, CircularProgressIndicator, RouteSettings;
@@ -25,7 +26,11 @@ import '../../services/app_settings_manager.dart';
 import '../../services/api_service.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/local_camera_service.dart';
+import '../../services/fcm_service.dart';
 import '../../utils/camera_sidecar_config.dart';
+import '../../utils/camera_source_config.dart';
+import '../../utils/canon_usb_permission.dart';
+import '../../utils/canon_stack_sync.dart';
 import '../../utils/classic_photos_enabled_sync.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
@@ -69,20 +74,48 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       _cameraPrimingPhase = TermsCameraPrimingPhase.skipped;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_primeCaptureScreenOnLaunch());
+      unawaited(_launchTermsSetup());
     });
+  }
+
+  /// Canon USB allow → push permission → camera priming (sequential, no dialog races).
+  Future<void> _launchTermsSetup() async {
+    if (mounted && supportsTermsCameraPriming) {
+      setState(() => _cameraPrimingPhase = TermsCameraPrimingPhase.detecting);
+    }
+
+    if (mounted && defaultTargetPlatform == TargetPlatform.android) {
+      final settings = context.read<AppSettingsManager>().settings;
+      // Stop EDSDK sidecar before PTP touches USB (async settings sync used to race POSE).
+      await syncCanonCameraStackForSettings(settings);
+      if (usesDirectPtpCamera(settings: settings)) {
+        await primeDirectPtpOnTermsLaunch(settings: settings);
+      } else if (isDirectCanonSidecarBooth(settings)) {
+        await primeCanonUsbOnTermsLaunch(settings: settings);
+      }
+      await FcmService.ensurePermissionAndPersistToken();
+    }
+
+    await _primeCaptureScreenOnLaunch();
   }
 
   /// Permission, enumeration, and live-camera prewarm while the guest reads terms.
   Future<void> _primeCaptureScreenOnLaunch() async {
     if (!supportsTermsCameraPriming) return;
 
-    if (mounted) {
+    if (mounted &&
+        _cameraPrimingPhase != TermsCameraPrimingPhase.detecting) {
       setState(() => _cameraPrimingPhase = TermsCameraPrimingPhase.detecting);
     }
 
     final result = await runTermsCameraPriming(
-      ensurePermission: () => ensureCameraPermission(),
+      ensurePermission: () async {
+        if (!mounted) return false;
+        final settings = context.read<AppSettingsManager>().settings;
+        // Native PTP owns USB — skip CameraX permission so it does not compete with USB.
+        if (usesDirectPtpCamera(settings: settings)) return true;
+        return ensureCameraPermission();
+      },
       preloadCameras: CaptureViewModel.preloadCameras,
       classifyDevice: () async {
         if (!mounted) return null;
@@ -99,25 +132,47 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       probeAttachedUvc: hasAttachedUvcDevices,
       // Pi DSLR booth: healthy sidecar is enough to Continue (POSE opens HDMI).
       probeSidecarHealthy: _probeSidecarHealthyForTerms,
+      ensureCanonUsbPermission: _ensureCanonUsbPermissionForTerms,
     );
 
     if (!mounted) return;
     setState(() => _cameraPrimingPhase = result.phase);
   }
 
+  Future<bool> _ensureCanonUsbPermissionForTerms() async {
+    if (!mounted) return false;
+    final settings = context.read<AppSettingsManager>().settings;
+    if (usesDirectPtpCamera(settings: settings)) {
+      return ensureDirectPtpUsbOnTerms(settings: settings);
+    }
+    return ensureCanonUsbPermissionForDirectSidecar(settings: settings);
+  }
+
   Future<bool> _probeSidecarHealthyForTerms() async {
     if (!mounted) return false;
     final settings = context.read<AppSettingsManager>().settings;
+    if (usesDirectPtpCamera(settings: settings)) {
+      return isDirectPtpReadyForTerms(settings: settings);
+    }
+    if (isDirectCanonSidecarBooth(settings)) {
+      return warmDirectSidecarAfterUsbGrant(settings: settings);
+    }
     final service = LocalCameraService(
       config: resolveCameraSidecarConfig(settings),
     );
-    if (!service.isConfigured) return false;
+    if (!service.isConfigured && !service.hasSidecarEndpoint) {
+      service.dispose();
+      return false;
+    }
     try {
-      return await service.isHealthy().timeout(
+      final ok = await service.isHealthy().timeout(
         const Duration(seconds: 3),
         onTimeout: () => false,
       );
+      service.dispose();
+      return ok;
     } on Object {
+      service.dispose();
       return false;
     }
   }
@@ -175,6 +230,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           buildCaptureScreen(
             key: ValueKey<Object?>('ai-pose-${prefill ?? 'fresh'}'),
             sessionKind: CaptureSessionKind.fotoZen,
+            context: context,
           ),
           settings: RouteSettings(
             name: '${AppConstants.kRouteCapture}-ai',
@@ -475,6 +531,15 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
+  String _termsDetectingCamerasMessage() {
+    if (!mounted) return AppStrings.termsDetectingCameras;
+    final settings = context.read<AppSettingsManager>().settings;
+    if (isOnDeviceCanonUsbBooth(settings)) {
+      return AppStrings.termsDetectingCamerasCanonUsb;
+    }
+    return AppStrings.termsDetectingCameras;
+  }
+
   Widget _buildCameraPrimingBanner(
     AppColors appColors,
     TermsLayoutMetrics layout, {
@@ -491,7 +556,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           appColors: appColors,
           layout: layout,
           compact: compact,
-          message: AppStrings.termsDetectingCameras,
+          message: _termsDetectingCamerasMessage(),
           showSpinner: true,
         );
       case TermsCameraPrimingPhase.permissionDenied:

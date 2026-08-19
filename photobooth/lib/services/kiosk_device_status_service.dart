@@ -290,9 +290,11 @@ class KioskDeviceStatusService {
     // CanonUsbPermissionManager.findCanonCamera reads UsbManager directly and does not care
     // which stack drives the body.
     if (config.isDirectPtpConnection) {
+      final cameraPresent = await _safeCanonCameraPresent();
       return KioskDeviceStatusEntry(
         deviceName: AppStrings.kioskDeviceDslrSidecar,
-        connected: await _safeCanonCameraPresent(),
+        connected: cameraPresent,
+        configured: true,
         transport: KioskDeviceTransport.usb,
       );
     }
@@ -319,13 +321,20 @@ class KioskDeviceStatusService {
     final httpHealthy = await healthFuture;
     final nativeState = await nativeStateFuture;
 
-    // Direct: connected = Canon on USB. Pi: connected = sidecar /health ok.
-    // crashed = local EDSDK sidecar exited (direct only).
+    // Direct: connected when Canon is on USB **or** localhost EDSDK is serving
+    // EVF (USB list can be empty while the sidecar holds the interface).
+    // Pi: connected = sidecar /health ok.
+    // Only max_restarts is a terminal red state — a single `crashed` is the
+    // normal gap before CanonSidecarRuntime relaunches (3s).
     final crashed = config.isDirectConnection &&
         !httpHealthy &&
-        (nativeState == 'crashed' || nativeState == 'max_restarts');
-    final connected =
-        config.isDirectConnection ? cameraPresent : httpHealthy;
+        nativeState == 'max_restarts';
+    final sidecarServing = httpHealthy ||
+        nativeState == 'running' ||
+        nativeState == 'waiting_usb';
+    final connected = config.isDirectConnection
+        ? (cameraPresent || sidecarServing)
+        : httpHealthy;
 
     return KioskDeviceStatusEntry(
       deviceName: AppStrings.kioskDeviceDslrSidecar,

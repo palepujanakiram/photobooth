@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../services/uvc_session_coordinator.dart';
+import '../../services/event_manager.dart';
 import '../../utils/constants.dart';
+import '../../utils/event_station_role.dart';
 import '../../utils/route_args.dart';
 import '../../utils/web_flow_trace.dart';
 import '../../utils/logger.dart';
@@ -115,10 +117,13 @@ Future<void> handleCapturedPhotoContinue({
   if (!isMounted() || !currentContext.mounted) return;
   final photo = viewModel.capturedPhoto!;
   if (!isMounted() || !currentContext.mounted) return;
-  WebFlowTrace.log('NAV', 'pushReplacementNamed theme-selection start');
+  final eventCapture = await EventManager().isEventBound() &&
+      await EventManager().getStationRole() == EventStationRole.capture;
+  if (!isMounted() || !currentContext.mounted) return;
+  WebFlowTrace.log('NAV', 'pushReplacementNamed after capture start');
   await Navigator.of(currentContext, rootNavigator: true).pushReplacementNamed(
-    AppConstants.kRouteHome,
-    arguments: ThemeSelectionArgs(photo: photo),
+    resolvePostCaptureRoute(eventCaptureStation: eventCapture),
+    arguments: eventCapture ? null : ThemeSelectionArgs(photo: photo),
   );
   WebFlowTrace.log('NAV', 'pushReplacementNamed done');
 }

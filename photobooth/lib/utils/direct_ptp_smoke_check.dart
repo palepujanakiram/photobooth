@@ -21,8 +21,12 @@ import 'logger.dart';
 const String kDirectPtpSmokeDefine =
     String.fromEnvironment('CANON_PTP_SMOKE', defaultValue: '');
 
-bool get directPtpSmokeRequested {
-  final v = kDirectPtpSmokeDefine.trim().toLowerCase();
+bool get directPtpSmokeRequested =>
+    parseDirectPtpSmokeRequested(kDirectPtpSmokeDefine);
+
+@visibleForTesting
+bool parseDirectPtpSmokeRequested(String raw) {
+  final v = raw.trim().toLowerCase();
   return v == '1' || v == 'true' || v == 'yes' || v == 'on' || v == 'capture';
 }
 
@@ -38,7 +42,11 @@ bool get directPtpSmokeRequested {
 /// cosmetic one, so a release build must not be able to reach it even if someone
 /// ships the define by accident.
 bool get directPtpSmokeCaptureRequested =>
-    kDebugMode && kDirectPtpSmokeDefine.trim().toLowerCase() == 'capture';
+    kDebugMode && parseDirectPtpSmokeCaptureRequested(kDirectPtpSmokeDefine);
+
+@visibleForTesting
+bool parseDirectPtpSmokeCaptureRequested(String raw) =>
+    raw.trim().toLowerCase() == 'capture';
 
 /// How long the bring-up check waits for a camera to show up on the bus.
 const Duration _probeWindow = Duration(seconds: 90);
@@ -46,10 +54,10 @@ const Duration _probeInterval = Duration(seconds: 3);
 
 /// Polls until a camera appears, or the window closes.
 Future<DirectPtpDevice?> _awaitDevice(
-  DirectPtpCameraService camera,
-  Duration window,
-  Duration interval,
-) async {
+  DirectPtpCameraService camera, {
+  required Duration window,
+  required Duration interval,
+}) async {
   final deadline = DateTime.now().add(window);
   var announced = false;
   while (DateTime.now().isBefore(deadline)) {
@@ -70,16 +78,12 @@ Future<DirectPtpDevice?> _awaitDevice(
 /// Probes and connects once, logging what the camera reports. Never throws.
 Future<void> runDirectPtpSmokeCheckIfRequested({
   DirectPtpCameraService? service,
-  // These three are compile-time constants in production, which leaves the whole
-  // body unreachable from a test. Overridable so the bring-up path is covered.
   @visibleForTesting bool? requested,
   @visibleForTesting bool? captureRequested,
-  @visibleForTesting Duration? probeWindow,
-  @visibleForTesting Duration? probeInterval,
+  @visibleForTesting Duration probeWindow = _probeWindow,
+  @visibleForTesting Duration probeInterval = _probeInterval,
 }) async {
   if (!(requested ?? directPtpSmokeRequested)) return;
-  final window = probeWindow ?? _probeWindow;
-  final interval = probeInterval ?? _probeInterval;
   final camera = service ?? DirectPtpCameraService();
   try {
     AppLogger.info('[PTP_SMOKE] begin');
@@ -98,10 +102,14 @@ Future<void> runDirectPtpSmokeCheckIfRequested({
     // start turns bring-up into a race between launching the app and switching
     // the camera on. Polling removes the race: switch the camera on whenever,
     // and this picks it up.
-    final device = await _awaitDevice(camera, window, interval);
+    final device = await _awaitDevice(
+      camera,
+      window: probeWindow,
+      interval: probeInterval,
+    );
     if (device == null) {
       AppLogger.warning(
-        '[PTP_SMOKE] no PTP camera appeared within ${window.inSeconds}s — '
+        '[PTP_SMOKE] no PTP camera appeared within ${probeWindow.inSeconds}s — '
         'check the cable, that the camera is switched on, that its USB/connection '
         'menu is not in a mass-storage mode, and that auto power off is disabled',
       );

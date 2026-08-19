@@ -17,12 +17,10 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         PaymentNotificationChannelSetup.registerIfNeeded(this)
-        // Only one Canon stack may touch the camera — see CanonCameraStack. Starting the
-        // EDSDK sidecar here unconditionally would claim the USB interface at app launch and
-        // lock the PTP path out of a camera it is about to be asked to drive.
-        if (CanonCameraStack.usesEdsdkSidecar) {
+        // Only one Canon stack may touch the camera — see CanonCameraStack. Default is
+        // EDSDK; ZenAI direct_ptp persists PTP so cold start skips the sidecar.
+        if (CanonCameraStack.usesEdsdkSidecar(this)) {
             CanonSidecarService.start(this)
-            // Handle camera already attached when the app launches.
             handleUsbIntent(intent)
         }
     }
@@ -33,7 +31,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun handleUsbIntent(intent: Intent?) {
-        if (!CanonCameraStack.usesEdsdkSidecar) return
+        if (!CanonCameraStack.usesEdsdkSidecar(this)) return
         if (intent?.action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
             CanonUsbPermissionManager.requestPermissionIfNeeded(this)
         }
@@ -57,7 +55,7 @@ class MainActivity : FlutterActivity() {
         super.onResume()
         DnpUsbMethodChannel.onResume(this)
         ReceiptUsbMethodChannel.onResume(this)
-        if (CanonCameraStack.usesEdsdkSidecar) {
+        if (CanonCameraStack.usesEdsdkSidecar(this)) {
             CanonUsbPermissionManager.requestPermissionIfNeeded(this)
         } else {
             CanonPtpMethodChannel.onResume(this)
@@ -67,14 +65,14 @@ class MainActivity : FlutterActivity() {
     override fun onStop() {
         // Release the DSLR on the way out so a later process kill cannot leave the camera
         // mid-transaction, which costs a physical power cycle to clear.
-        if (CanonCameraStack.usesPtp) {
+        if (CanonCameraStack.usesPtp(this)) {
             CanonPtpMethodChannel.onStop()
         }
         super.onStop()
     }
 
     override fun onDestroy() {
-        if (CanonCameraStack.usesEdsdkSidecar) {
+        if (CanonCameraStack.usesEdsdkSidecar(this)) {
             CanonSidecarService.stop(this)
         }
         DnpUsbMethodChannel.onDestroy()

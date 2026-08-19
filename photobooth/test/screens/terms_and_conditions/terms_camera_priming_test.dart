@@ -32,6 +32,45 @@ void main() {
       expect(result.allowsContinue, isFalse);
     });
 
+    test('invokes ensureCanonUsbPermission before camera permission', () async {
+      final order = <String>[];
+      await runTermsCameraPriming(
+        ensurePermission: () async {
+          order.add('camera');
+          return true;
+        },
+        preloadCameras: () async {},
+        classifyDevice: () async => AppDeviceType.androidTv,
+        startPrewarm: (_) async {},
+        hasOpenableCamera: (_) => true,
+        isCameraPlatform: true,
+        ensureCanonUsbPermission: () async {
+          order.add('canon_usb');
+          return true;
+        },
+      );
+      expect(order, ['canon_usb', 'camera']);
+    });
+
+    test('invokes ensureCanonUsbPermission when provided', () async {
+      var usbEnsured = false;
+      final result = await runTermsCameraPriming(
+        ensurePermission: () async => true,
+        preloadCameras: () async {},
+        classifyDevice: () async => AppDeviceType.androidTv,
+        startPrewarm: (_) async {},
+        hasOpenableCamera: (_) => true,
+        isCameraPlatform: true,
+        ensureCanonUsbPermission: () async {
+          usbEnsured = true;
+          return true;
+        },
+      );
+
+      expect(usbEnsured, isTrue);
+      expect(result.phase, TermsCameraPrimingPhase.ready);
+    });
+
     test('returns noneFound when enumeration finds no openable camera', () async {
       var prewarmStarted = false;
       var uvcProbed = false;

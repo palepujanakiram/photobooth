@@ -39,6 +39,7 @@ import '../../models/strip_models.dart';
 import '../../utils/app_device_type.dart';
 import '../../utils/app_runtime_config.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/canon_usb_permission.dart';
 import '../../utils/capture_session_kind.dart';
 import '../../utils/classic_capture_intent.dart';
 import '../../utils/classic_one_shot_fsm.dart';
@@ -135,6 +136,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   bool _classicSidecarPreviewFallback = false;
   /// UVC/HDMI or Pi still expected — do not show CameraX "no camera" UI.
   bool _expectExternalCaptureSource = false;
+  bool _awaitingCanonUsbPermission = false;
   DateTime? _uvcPreviewReadyAt;
   /// Last Canon LV ensure reported an active Pi hold (shorten HDMI mask).
   bool _canonLvHolding = false;
@@ -924,7 +926,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         classicSession: widget.sessionKind.isClassic,
         sidecarLivePreviewEnabled: _captureViewModel.usesSidecarLivePreview,
         sidecarConfigured:
-            _captureViewModel.localCameraService?.isConfigured == true,
+            _captureViewModel.localCameraService?.hasSidecarEndpoint == true,
         classicSidecarFallback: _classicSidecarPreviewFallback,
       );
 
@@ -2067,7 +2069,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     ClassicStripScrubCoordinator.instance.addListener(_onScrubProgressChanged);
     _tryAdoptTermsPrewarmOnInitIfAllowed();
     _expectExternalCaptureSource =
-        _captureViewModel.localCameraService?.isConfigured == true;
+        _captureViewModel.localCameraService?.hasSidecarEndpoint == true;
     _skipUvcForCameraXSession =
         _captureViewModel.preferEnumeratedCameraPath ||
         CaptureViewModel.hasEnumerationCache;
@@ -2266,12 +2268,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   Future<bool> _startSidecarPosePreviewSession() async {
     final forced = !_captureViewModel.usesSidecarLivePreview;
+    final direct =
+        _captureViewModel.localCameraService?.isDirectConnection == true;
     if (forced) {
       AppLogger.info(
-        'POSE: forcing Pi USB live preview (skip HDMI/UVC) '
+        'POSE: forcing sidecar USB live preview (skip HDMI/UVC) '
         'kind=${widget.sessionKind.name}',
       );
       _captureViewModel.localCameraService?.setForceLivePreview(true);
+    } else if (direct) {
+      AppLogger.info('POSE using Canon USB EVF live preview');
     } else {
       AppLogger.info('POSE using Pi DSLR sidecar live preview');
     }
@@ -2296,7 +2302,68 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     return true;
   }
 
+  /// Direct USB / Pi live preview: mount EVF before HDMI/UVC.
+  ///
+  /// Returns true when Pose setup should stop (sidecar session started, or
+  /// direct USB should not fall through to a capture card).
+  Future<bool> _trySidecarPosePreviewFirst() async {
+    await _captureViewModel.adoptDirectSidecarIfInferredPiUnreachable();
+    if (!mounted) return true;
+    if (!_useSidecarPosePreview) return false;
+
+    final service = _captureViewModel.localCameraService;
+    var canServe = await _captureViewModel.sidecarCanServePosePreview();
+    if (!mounted) return true;
+    if (!canServe &&
+        service?.isDirectConnection == true &&
+        service!.hasSidecarEndpoint) {
+      canServe = await waitForDirectSidecarPoseReady(
+        canServePosePreview: _captureViewModel.sidecarCanServePosePreview,
+      );
+      if (!mounted) return true;
+    }
+    final keepDirect = shouldKeepDirectSidecarPose(
+      isDirectConnection: service?.isDirectConnection == true,
+      hasSidecarEndpoint: service?.hasSidecarEndpoint == true,
+    );
+    if (canServe || keepDirect) {
+      final started = await _startSidecarPosePreviewSession();
+      if (!mounted) return true;
+      if (started || keepDirect) return true;
+    }
+    AppLogger.warning(
+      'POSE: Canon sidecar not running on this device; using HDMI/UVC preview',
+    );
+    return false;
+  }
+
+  Future<void> _ensureCanonUsbPermissionForPoseSetup() async {
+    final service = _captureViewModel.localCameraService;
+    if (!shouldKeepDirectSidecarPose(
+      isDirectConnection: service?.isDirectConnection == true,
+      hasSidecarEndpoint: service?.hasSidecarEndpoint == true,
+    )) {
+      if (mounted) setState(() => _awaitingCanonUsbPermission = false);
+      return;
+    }
+    _expectExternalCaptureSource = true;
+    if (!mounted) return;
+    setState(() => _awaitingCanonUsbPermission = true);
+    final settings = context.read<AppSettingsManager>().settings;
+    await ensureCanonUsbPermissionForDirectSidecar(settings: settings);
+    if (!mounted) return;
+    await waitForDirectSidecarPoseReady(
+      canServePosePreview: _captureViewModel.sidecarCanServePosePreview,
+      timeout: const Duration(seconds: 12),
+    );
+    if (!mounted) return;
+    final stillWaiting = await canonSidecarAwaitingUsbPermission();
+    setState(() => _awaitingCanonUsbPermission = stillWaiting);
+  }
+
   Future<void> _beginPoseCaptureSetupBody() async {
+    if (!mounted) return;
+    await _ensureCanonUsbPermissionForPoseSetup();
     if (!mounted) return;
     unawaited(
       HardwareKeyService.setEnabled(true).then((_) {
@@ -2304,17 +2371,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }),
     );
 
-    if (_useSidecarPosePreview) {
-      final canServe = await _captureViewModel.sidecarCanServePosePreview();
-      if (!mounted) return;
-      if (canServe) {
-        final started = await _startSidecarPosePreviewSession();
-        if (!mounted) return;
-        if (started) return;
-      }
+    if (await _trySidecarPosePreviewFirst()) return;
+
+    // Direct USB EDSDK: never fall through to tablet CameraX / UVC. A transient
+    // sidecar restart used to poison the client and hang on "Starting camera…"
+    // with the front camera while the DSLR was still on USB.
+    // Flutter web has no USB sidecar — skip this even if mode defaults to direct.
+    final directService = _captureViewModel.localCameraService;
+    if (shouldKeepDirectSidecarPose(
+      isDirectConnection: directService?.isDirectConnection == true,
+      hasSidecarEndpoint: directService?.hasSidecarEndpoint == true,
+    )) {
+      directService!.clearRuntimeUnavailable();
       AppLogger.warning(
-        'POSE: Canon sidecar not running on this device; using HDMI/UVC preview',
+        'POSE: keeping Direct USB EVF (skip CameraX/UVC fallthrough)',
       );
+      await _startSidecarPosePreviewSession();
+      return;
     }
 
     // Classic (+ AI without Pi live preview): HDMI/UVC pose, sidecar stills.
@@ -2539,6 +2612,17 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Future<void> _resetAndInitializeCamerasBody({bool forceRefresh = false}) async {
     if (!mounted) return;
 
+    if (shouldKeepDirectSidecarPose(
+      isDirectConnection:
+          _captureViewModel.localCameraService?.isDirectConnection == true,
+      hasSidecarEndpoint:
+          _captureViewModel.localCameraService?.hasSidecarEndpoint == true,
+    )) {
+      _expectExternalCaptureSource = true;
+      await _ensureCanonUsbPermissionForPoseSetup();
+      if (!mounted) return;
+    }
+
     final kioskUvc =
         kioskShouldTryUvcBeforeCameraX(_captureViewModel.deviceType);
 
@@ -2607,7 +2691,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (kioskShouldSkipCameraXWhenUvcUnavailable(
       deviceType ?? _captureViewModel.deviceType,
       sidecarConfigured:
-          _captureViewModel.localCameraService?.isConfigured == true,
+          _captureViewModel.localCameraService?.hasSidecarEndpoint == true,
     )) {
       AppLogger.warning(
         'POSE: sidecar/kiosk skip CameraX after UVC miss',
@@ -4203,7 +4287,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
           _captureViewModel.localCameraService,
           resumeLiveView: resumeLvAfterStill,
           preferStripPrintQuality: _captureViewModel.preferStripPrintQuality,
-          preferLivePreviewFrame: _useSidecarPosePreview,
+          preferLivePreviewFrame: shouldPreferSidecarLivePreviewFrameForCapture(
+            sidecarIsPosePreview: _useSidecarPosePreview,
+          ),
           corrId: poseCorr,
         );
         if (sidecar != null) {
@@ -4495,6 +4581,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   String _noCamerasWaitingMessage() {
+    if (_awaitingCanonUsbPermission) {
+      return AppStrings.captureWaitingCanonUsbPermission;
+    }
     if (!_isFlashbackFourShot) return 'Waiting for camera…';
     if (_stripShots.isEmpty) return AppStrings.flashbackGettingReadyNextShot;
     final total = _classicShotCap > 0 ? _classicShotCap : 1;
@@ -4964,12 +5053,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                 width: 1.5,
               ),
             ),
-            clipBehavior: Clip.antiAlias,
+            // HtmlElementView (camera_web) is invisible inside Flutter clips.
+            clipBehavior: kIsWeb ? Clip.none : Clip.antiAlias,
             child: SizedBox(
               width: cardW,
               height: cardH,
               child: Stack(
                 fit: StackFit.expand,
+                clipBehavior: kIsWeb ? Clip.none : Clip.hardEdge,
                 children: [
                   ColoredBox(
                     color: Colors.black,

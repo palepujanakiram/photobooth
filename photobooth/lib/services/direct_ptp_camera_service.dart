@@ -510,6 +510,28 @@ class DirectPtpCameraService {
     }
   }
 
+  /// Persists PTP vs EDSDK for cold start and switches the live native stack.
+  ///
+  /// Called after ZenAI settings load so `cameraConnectionMode=direct_ptp`
+  /// stops the EDSDK sidecar before Pose opens the native PTP Activity.
+  Future<Map<String, Object?>> setPreferredStack({
+    required bool preferPtp,
+  }) async {
+    if (!isSupported) {
+      return const {'stack': 'edsdk', 'changed': false};
+    }
+    try {
+      final map = await _channel.invokeMapMethod<String, Object?>(
+        'setPreferredStack',
+        {'stack': preferPtp ? 'ptp' : 'edsdk'},
+      );
+      return map ?? {'stack': preferPtp ? 'ptp' : 'edsdk', 'changed': false};
+    } catch (e) {
+      AppLogger.warning('Direct PTP setPreferredStack failed: $e');
+      return {'stack': preferPtp ? 'ptp' : 'edsdk', 'changed': false};
+    }
+  }
+
   /// Link state as it changes, for status UI that should not poll.
   Stream<DirectPtpStatus> statusStream() {
     if (!isSupported) return const Stream<DirectPtpStatus>.empty();

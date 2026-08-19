@@ -27,6 +27,7 @@ import 'services/file_helper.dart';
 import 'services/alice_inspector.dart';
 import 'services/app_settings_manager.dart';
 import 'firebase_options.dart';
+import 'services/fcm_service.dart';
 import 'services/fcm_token_store.dart';
 import 'services/firebase_messaging_background.dart';
 import 'services/payment_push_coordinator.dart';
@@ -229,45 +230,6 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
       );
   }
 
-  Future<void> _requestFcmPermissionAndPersistToken() async {
-    final perm = await FirebaseMessaging.instance.requestPermission(
-      alert: true,
-      announcement: false,
-      badge: true,
-      carPlay: false,
-      criticalAlert: false,
-      provisional: false,
-      sound: true,
-    );
-    if (kDebugMode) {
-      AppLogger.debug('FCM permission: ${perm.authorizationStatus}');
-    }
-
-    try {
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token != null && token.trim().isNotEmpty) {
-        await FcmTokenStore.save(token);
-      }
-      if (kDebugMode) {
-        AppLogger.debug(
-          token != null
-              ? 'FCM registration token (use in payment init & server): $token'
-              : 'FCM registration token: null',
-        );
-      }
-    } catch (e) {
-      if (kDebugMode) AppLogger.debug('FCM getToken failed: $e');
-    }
-
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-        alert: false,
-        badge: false,
-        sound: false,
-      );
-    }
-  }
-
   Future<void> _deliverFcmColdStartMessageIfAny() async {
     final initial = await FirebaseMessaging.instance.getInitialMessage();
     if (kDebugMode) {
@@ -283,7 +245,11 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
   Future<void> _setupPaymentFcmListeners() async {
     _registerPaymentFcmStreams();
     _logFcmSetupHints();
-    await _requestFcmPermissionAndPersistToken();
+    // On Android cold start, FCM POST_NOTIFICATIONS and Canon USB permission
+    // dialogs compete — defer push permission until the guest reaches Terms.
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      await FcmService.ensurePermissionAndPersistToken();
+    }
     await _deliverFcmColdStartMessageIfAny();
 
     if (mounted) {

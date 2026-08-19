@@ -38,6 +38,18 @@ internal class CanonSidecarRuntime(
         spawnPlan(plan)
     }
 
+    /**
+     * USB permission / openDevice just succeeded. Clear a prior max_restarts
+     * budget so plugging the camera in recovers without force-stopping the app.
+     */
+    fun launchAfterUsbReady(abi: String?) {
+        if (restartCount >= MAX_RESTARTS) {
+            Log.i(TAG, "USB ready — clearing max_restarts budget ($restartCount)")
+            restartCount = 0
+        }
+        launch(abi)
+    }
+
     fun stop() {
         spawnEpoch++
         val runningPid = pid
@@ -101,11 +113,17 @@ internal class CanonSidecarRuntime(
         val path = usbPath()
         val hook = File(plan.glibcDir, CanonSidecarAbi.USB_HOOK_SO)
         val preload = if (hook.exists()) hook.absolutePath else ""
-        if (fd < 0) {
+        // EDSDK/libusb on Android needs the UsbManager-opened usbfs fd inherited
+        // via LD_PRELOAD. Spawning without it burns restart budget and often
+        // aborts the process — leave state as waiting_usb until permission+open.
+        if (fd < 0 || path.isNullOrBlank()) {
             Log.w(
                 TAG,
-                "No USB file descriptor yet — EDSDK cannot open usbfs until permission + openDevice",
+                "Deferring sidecar launch until Canon USB is open " +
+                    "(permission=$permissionGranted usbFd=$fd path=$path)",
             )
+            onState("waiting_usb")
+            return
         }
         Log.i(
             TAG,
@@ -203,8 +221,14 @@ internal class CanonSidecarRuntime(
         if (epoch != spawnEpoch) return
         pid = 0
         hasUsbFd = false
-        onState(if (restartCount >= MAX_RESTARTS) "max_restarts" else "crashed")
-        Log.w(TAG, "canon-sidecar exited with code $code — restarting in 3 s")
+        val terminal = restartCount >= MAX_RESTARTS
+        onState(if (terminal) "max_restarts" else "restarting")
+        Log.w(
+            TAG,
+            "canon-sidecar exited with code $code — " +
+                if (terminal) "max restarts reached" else "restarting in 3 s",
+        )
+        if (terminal) return
         try {
             Thread.sleep(RESTART_DELAY_MS)
         } catch (_: InterruptedException) {

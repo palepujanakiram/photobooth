@@ -33,6 +33,9 @@ object CanonUsbPermissionManager {
 
     private var receiver: BroadcastReceiver? = null
 
+    @Volatile
+    private var permissionRequestInFlight = false
+
     // ── Public API ────────────────────────────────────────────────────────────
 
     /**
@@ -51,8 +54,14 @@ object CanonUsbPermissionManager {
 
         if (usbManager.hasPermission(camera)) {
             Log.i(TAG, "USB permission already granted for ${camera.deviceName}")
+            permissionRequestInFlight = false
             sendPermissionGranted(context)
             return true
+        }
+
+        if (permissionRequestInFlight) {
+            Log.d(TAG, "USB permission dialog already showing for ${camera.deviceName}")
+            return false
         }
 
         registerReceiver(context, usbManager)
@@ -63,6 +72,7 @@ object CanonUsbPermissionManager {
 
         val pi = PendingIntent.getBroadcast(context, 0,
             Intent(ACTION_USB_PERMISSION).setPackage(context.packageName), flags)
+        permissionRequestInFlight = true
         usbManager.requestPermission(camera, pi)
         Log.i(TAG, "USB permission requested for ${camera.deviceName}")
         return false
@@ -155,6 +165,7 @@ object CanonUsbPermissionManager {
                     intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
                 else
                     @Suppress("DEPRECATION") intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                permissionRequestInFlight = false
                 if (granted && device != null) {
                     Log.i(TAG, "USB permission granted for ${device.deviceName}")
                     sendPermissionGranted(ctx)

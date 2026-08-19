@@ -48,7 +48,7 @@ Widget imageFromXFileSized(
       height: height,
       fit: fit,
       alignment: alignment,
-      filterQuality: FilterQuality.none,
+      filterQuality: FilterQuality.high,
     );
   }
 

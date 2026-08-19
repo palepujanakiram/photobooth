@@ -1,43 +1,30 @@
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 
 import '../models/app_settings_model.dart';
-import 'camera_source_config.dart';
 
-/// Where the DSLR sidecar runs for this booth.
+/// Where the DSLR sidecar / native PTP stack runs for this booth.
 ///
 /// - [CameraConnectionMode.pi]: LAN Pi (`fotozen-sidecar` / gphoto2) via ZenAI host/port
 /// - [CameraConnectionMode.direct]: on-device Canon EDSDK at `127.0.0.1:8791`
-/// - [CameraConnectionMode.directPtp]: pure-Kotlin PTP over USB, no sidecar at all
+/// - [CameraConnectionMode.directPtp]: on-device Kotlin PTP + native capture Activity
 enum CameraConnectionMode {
   pi,
   direct,
-
-  /// ZenAI's "Direct PTP (native USB, no EDSDK)".
-  ///
-  /// The odd one out: [pi] and [direct] both speak HTTP to a sidecar and differ only in
-  /// *where* that sidecar runs, so both keep the Flutter capture screen. This one has no
-  /// sidecar to talk to — capture lives in `CanonCaptureActivity` — so it is the only mode
-  /// that changes which POSE screen the booth opens.
-  directPtp;
-
-  /// True when stills come from a tethered DSLR rather than a webcam or capture card.
-  bool get isDslr => true;
-
-  /// True when this mode is served by an HTTP sidecar (Pi or on-device EDSDK).
-  bool get usesSidecar => this == pi || this == direct;
+  directPtp,
 }
 
 /// Canon / Pi sidecar configuration for Flutter capture + pose preview.
 ///
 /// Mode is chosen by ZenAI `cameraConnectionMode`, else
-/// `--dart-define=CAMERA_CONNECTION_MODE=pi|direct`, else inferred from the
-/// admin host (loopback → direct, remote → pi).
+/// `--dart-define=CAMERA_CONNECTION_MODE=pi|direct|direct_ptp`, else inferred
+/// from the admin host (loopback → direct, remote → pi).
 class CameraSidecarConfig {
   const CameraSidecarConfig({
     required this.enabled,
     required this.baseUrl,
     this.livePreviewEnabled = false,
     this.connectionMode = CameraConnectionMode.direct,
+    this.modeExplicit = false,
   });
 
   final bool enabled;
@@ -46,17 +33,24 @@ class CameraSidecarConfig {
   /// When true with [isConfigured], pose UI shows sidecar live view.
   final bool livePreviewEnabled;
 
-  /// Pi LAN vs on-device USB EDSDK.
+  /// Pi LAN vs on-device USB EDSDK vs native PTP.
   final CameraConnectionMode connectionMode;
+
+  /// True when ZenAI `cameraConnectionMode` or dart-define chose the mode.
+  ///
+  /// False when the mode was inferred from a leftover sidecar host — Pose may
+  /// fall back to on-device USB if that Pi is unreachable.
+  final bool modeExplicit;
 
   bool get isConfigured => enabled && baseUrl.trim().isNotEmpty;
 
+  /// On-device EDSDK USB — only when the sidecar is actually configured.
+  /// A disabled/empty config (Flutter web) must not look like a live USB booth.
   bool get isDirectConnection =>
-      connectionMode == CameraConnectionMode.direct;
+      connectionMode == CameraConnectionMode.direct && isConfigured;
 
   bool get isPiConnection => connectionMode == CameraConnectionMode.pi;
 
-  /// Native PTP over USB. No sidecar, so [isConfigured] is always false here.
   bool get isDirectPtpConnection =>
       connectionMode == CameraConnectionMode.directPtp;
 
@@ -92,13 +86,41 @@ class CameraSidecarConfig {
   }
 
   static CameraSidecarConfig fromEnvironment() {
-    final mode = parseCameraConnectionMode(cameraConnectionModeDefine) ??
-        CameraConnectionMode.direct;
-    return CameraSidecarConfig(
+    return fromConnectionModeDefine(
+      cameraConnectionModeDefine,
       enabled: _envFlag(cameraSidecarEnabledDefine),
       baseUrl: cameraSidecarUrlDefine.trim().replaceAll(RegExp(r'/$'), ''),
       livePreviewEnabled: _envFlag(cameraSidecarLivePreviewDefine),
-      connectionMode: mode,
+    );
+  }
+
+  /// Builds config from a parsed `CAMERA_CONNECTION_MODE` value.
+  ///
+  /// [CameraConnectionMode.directPtp] disables the HTTP sidecar so native PTP
+  /// owns USB. Used by [fromEnvironment] and tests (dart-defines are const).
+  @visibleForTesting
+  static CameraSidecarConfig fromConnectionModeDefine(
+    String raw, {
+    required bool enabled,
+    required String baseUrl,
+    required bool livePreviewEnabled,
+  }) {
+    final fromDefine = parseCameraConnectionMode(raw);
+    if (fromDefine == CameraConnectionMode.directPtp) {
+      return const CameraSidecarConfig(
+        enabled: false,
+        baseUrl: '',
+        livePreviewEnabled: false,
+        connectionMode: CameraConnectionMode.directPtp,
+        modeExplicit: true,
+      );
+    }
+    return CameraSidecarConfig(
+      enabled: enabled,
+      baseUrl: baseUrl,
+      livePreviewEnabled: livePreviewEnabled,
+      connectionMode: fromDefine ?? CameraConnectionMode.direct,
+      modeExplicit: fromDefine != null,
     );
   }
 
@@ -135,9 +157,9 @@ class CameraSidecarConfig {
 const int kCameraSidecarDefaultPort = 8791;
 const String kDirectCameraSidecarBaseUrl = 'http://127.0.0.1:8791';
 
-/// Parses `pi` / `direct` (case-insensitive). Unknown / empty → null.
+/// Parses `pi` / `direct` / `direct_ptp` (case-insensitive). Unknown / empty → null.
 CameraConnectionMode? parseCameraConnectionMode(String? raw) {
-  switch ((raw ?? '').trim().toLowerCase()) {
+  switch ((raw ?? '').trim().toLowerCase().replaceAll('-', '_')) {
     case 'pi':
     case 'raspberry':
     case 'raspberry_pi':
@@ -149,35 +171,14 @@ CameraConnectionMode? parseCameraConnectionMode(String? raw) {
     case 'local':
     case 'android':
       return CameraConnectionMode.direct;
-    // ZenAI sends `direct_ptp` (see kiosk-edit.tsx). The rest are tolerated for the same
-    // reason the other arms have aliases: this value arrives from remote kiosk settings,
-    // and a near-miss should not silently drop the booth onto a different camera stack.
     case 'direct_ptp':
     case 'directptp':
-    case 'direct-ptp':
     case 'ptp':
     case 'native_ptp':
       return CameraConnectionMode.directPtp;
     default:
       return null;
   }
-}
-
-/// Publishes the POSE screen implied by kiosk settings. Call whenever settings change.
-///
-/// Only `direct_ptp` maps to a distinct capture screen. Pi and on-device EDSDK both drive
-/// the Flutter capture screen through an HTTP sidecar and differ only in the sidecar's
-/// address, so they clear the override and leave the booth on whatever the build selected —
-/// which keeps those two flows behaving exactly as they do on main.
-///
-/// Applied on every settings load, not once at startup, so an operator switching a kiosk's
-/// connection mode in ZenAI takes effect on the next settings fetch rather than needing the
-/// booth reinstalled.
-void applyCameraSourceFromSettings(AppSettingsModel? settings) {
-  final mode = resolveCameraConnectionMode(settings);
-  setConfiguredCameraSource(
-    mode == CameraConnectionMode.directPtp ? CameraSource.directPtp : null,
-  );
 }
 
 bool isLoopbackCameraHost(String? host) {
@@ -216,6 +217,18 @@ bool _settingsProvideCameraConfig(AppSettingsModel settings) {
       (settings.cameraConnectionMode?.trim().isNotEmpty ?? false);
 }
 
+/// True when ZenAI or dart-define set the mode (do not USB-fallback an
+/// explicit Pi booth).
+bool cameraConnectionModeIsExplicit(AppSettingsModel? settings) {
+  if (parseCameraConnectionMode(settings?.cameraConnectionMode) != null) {
+    return true;
+  }
+  return parseCameraConnectionMode(
+        CameraSidecarConfig.cameraConnectionModeDefine,
+      ) !=
+      null;
+}
+
 /// Resolve mode: admin → dart-define → infer from host → direct default.
 CameraConnectionMode resolveCameraConnectionMode(
   AppSettingsModel? settings, {
@@ -244,6 +257,7 @@ CameraConnectionMode resolveCameraConnectionMode(
 CameraSidecarConfig _directConfig({
   required CameraSidecarConfig env,
   required AppSettingsModel? settings,
+  required bool modeExplicit,
 }) {
   // cameraEnabled in ZenAI gates the Pi/LAN sidecar. On-device EDSDK stays
   // available whenever the bundled sidecar is on — a USB DSLR on the Mini PC
@@ -251,7 +265,7 @@ CameraSidecarConfig _directConfig({
   final enabled = settings?.cameraEnabled == true || env.enabled;
   // Direct USB has no HDMI card path — always show EDSDK EVF for pose.
   // Admin "Show live preview" is for Pi/HDMI hybrid booths only.
-  final live = true;
+  const live = true;
   final base = env.baseUrl.trim().isNotEmpty
       ? env.baseUrl.trim().replaceAll(RegExp(r'/$'), '')
       : kDirectCameraSidecarBaseUrl;
@@ -260,12 +274,13 @@ CameraSidecarConfig _directConfig({
     baseUrl: base,
     livePreviewEnabled: live,
     connectionMode: CameraConnectionMode.direct,
+    modeExplicit: modeExplicit,
   );
 }
 
 CameraSidecarConfig _piConfig({
-  required CameraSidecarConfig env,
   required AppSettingsModel settings,
+  required bool modeExplicit,
 }) {
   final host = settings.cameraSidecarHost?.trim() ?? '';
   final portRaw = settings.cameraSidecarPort;
@@ -285,34 +300,50 @@ CameraSidecarConfig _piConfig({
     baseUrl: baseUrl,
     livePreviewEnabled: settings.cameraLivePreviewEnabled == true,
     connectionMode: CameraConnectionMode.pi,
+    modeExplicit: modeExplicit,
   );
 }
 
 /// Hybrid resolver: [CameraConnectionMode.pi] uses ZenAI host/port;
-/// [CameraConnectionMode.direct] uses the on-device EDSDK localhost sidecar.
+/// [CameraConnectionMode.direct] uses the on-device EDSDK localhost sidecar;
+/// [CameraConnectionMode.directPtp] disables the HTTP sidecar (native PTP owns USB).
+///
+/// Flutter web cannot reach the Mini PC sidecar or USB DSLR, so the browser
+/// always falls through to `getUserMedia` instead of waiting on localhost:8791.
 CameraSidecarConfig resolveCameraSidecarConfig(
   AppSettingsModel? settings, {
   CameraSidecarConfig? environment,
+  @visibleForTesting bool? isWeb,
 }) {
-  final env = environment ?? CameraSidecarConfig.fromEnvironment();
-  final mode = resolveCameraConnectionMode(settings, environment: env);
-
-  if (mode == CameraConnectionMode.directPtp) {
-    // No sidecar exists in this mode — capture is native, over USB. Returning a config
-    // that is deliberately *not* `isConfigured` is what switches off the entire Flutter
-    // sidecar surface in one place: the live-preview poller, the pose warm-up, the
-    // capture-screen sidecar branches and the `/health` probe all key off that flag, so
-    // none of them start polling `127.0.0.1:8791` for a process that was never launched.
+  if (isWeb ?? kIsWeb) {
     return const CameraSidecarConfig(
       enabled: false,
       baseUrl: '',
       livePreviewEnabled: false,
+      connectionMode: CameraConnectionMode.pi,
+      modeExplicit: true,
+    );
+  }
+  final env = environment ?? CameraSidecarConfig.fromEnvironment();
+  final mode = resolveCameraConnectionMode(settings, environment: env);
+  final modeExplicit = cameraConnectionModeIsExplicit(settings);
+
+  if (mode == CameraConnectionMode.directPtp) {
+    return CameraSidecarConfig(
+      enabled: false,
+      baseUrl: '',
+      livePreviewEnabled: false,
       connectionMode: CameraConnectionMode.directPtp,
+      modeExplicit: modeExplicit,
     );
   }
 
   if (mode == CameraConnectionMode.direct) {
-    return _directConfig(env: env, settings: settings);
+    return _directConfig(
+      env: env,
+      settings: settings,
+      modeExplicit: modeExplicit,
+    );
   }
 
   if (settings == null || !_settingsProvideCameraConfig(settings)) {
@@ -322,8 +353,12 @@ CameraSidecarConfig resolveCameraSidecarConfig(
       baseUrl: '',
       livePreviewEnabled: false,
       connectionMode: CameraConnectionMode.pi,
+      modeExplicit: modeExplicit,
     );
   }
 
-  return _piConfig(env: env, settings: settings);
+  return _piConfig(
+    settings: settings,
+    modeExplicit: modeExplicit,
+  );
 }

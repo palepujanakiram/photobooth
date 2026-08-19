@@ -100,6 +100,31 @@ bool shouldWaitHdmiSettleAfterCanonLv({
   return !sidecarIsPosePreview;
 }
 
+/// Direct USB: keep Pose on EDSDK EVF (do not fall through to HDMI/UVC/webcam).
+///
+/// Requires a configured sidecar endpoint. Flutter web disables the localhost
+/// sidecar, so this is false and Pose opens `getUserMedia` instead.
+bool shouldKeepDirectSidecarPose({
+  required bool isDirectConnection,
+  required bool hasSidecarEndpoint,
+}) {
+  return isDirectConnection && hasSidecarEndpoint;
+}
+
+/// GSM omitted `cameraConnectionMode` and a leftover Pi host inferred Pi.
+/// If that Pi is down and on-device EDSDK is running, use USB EVF.
+///
+/// Explicit backend `pi` is never overridden.
+bool shouldSwitchInferredPiToDirect({
+  required bool isPiConnection,
+  required bool modeExplicit,
+  required bool piListening,
+  required bool nativeSidecarRunning,
+}) {
+  if (modeExplicit || !isPiConnection || piListening) return false;
+  return nativeSidecarRunning;
+}
+
 /// Whether POSE may adopt Terms CameraX prewarm on first frame (phones only).
 bool shouldAdoptTermsPrewarmOnPoseInit(AppDeviceType? deviceType) {
   return !kioskShouldTryUvcBeforeCameraX(deviceType);

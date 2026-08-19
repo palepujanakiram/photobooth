@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -63,11 +62,13 @@ void main() {
           enabled: true,
           baseUrl: 'http://127.0.0.1:8791',
           connectionMode: CameraConnectionMode.direct,
+          modeExplicit: true,
         ),
         client: MockClient((_) async => http.Response('{}', 200)),
       );
       expect(direct.isDirectConnection, isTrue);
       expect(direct.isPiConnection, isFalse);
+      expect(direct.modeExplicit, isTrue);
       expect(direct.baseUrlLabel, '127.0.0.1:8791');
       expect(direct.recentlyHealthy, isFalse);
       direct.dispose();
@@ -130,6 +131,36 @@ void main() {
       service.dispose();
     });
 
+    test('adoptConfig switches inferred Pi client to localhost USB', () {
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://172.16.4.128:8791',
+          livePreviewEnabled: false,
+          connectionMode: CameraConnectionMode.pi,
+        ),
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      expect(service.isPiConnection, isTrue);
+      expect(service.modeExplicit, isFalse);
+      expect(service.shouldShowLivePreview, isFalse);
+      service.markRuntimeUnavailable();
+      service.adoptConfig(
+        const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: kDirectCameraSidecarBaseUrl,
+          livePreviewEnabled: true,
+          connectionMode: CameraConnectionMode.direct,
+        ),
+      );
+      expect(service.isDirectConnection, isTrue);
+      expect(service.isConfigured, isTrue);
+      expect(service.shouldShowLivePreview, isTrue);
+      expect(service.baseUrlLabel, '127.0.0.1:8791');
+      expect(service.recentlyHealthy, isFalse);
+      service.dispose();
+    });
+
     test('poseArm posts /camera/pose-arm', () async {
       final client = MockClient((request) async {
         expect(request.method, 'POST');
@@ -144,21 +175,26 @@ void main() {
       service.dispose();
     });
 
-    test('poseArm swallows a non-2xx sidecar response', () async {
-      // Best-effort by design: older sidecars have no /camera/pose-arm, and a
-      // missing arm must never take down the countdown that called it.
-      final client = MockClient((request) async => http.Response('nope', 404));
-      final service = LocalCameraService(config: config, client: client);
-      await expectLater(service.poseArm(ttlMs: 25000), completes);
+    test('poseArm is a no-op when sidecar is not configured', () async {
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(enabled: false, baseUrl: ''),
+        client: MockClient((_) async => fail('pose-arm must not be posted')),
+      );
+      await service.poseArm();
       service.dispose();
     });
 
-    test('poseArm swallows a transport failure', () async {
-      final client = MockClient((request) async {
-        throw const SocketException('sidecar unreachable');
-      });
+    test('poseArm ignores a non-success sidecar status', () async {
+      final client = MockClient((_) async => http.Response('no', 503));
       final service = LocalCameraService(config: config, client: client);
-      await expectLater(service.poseArm(ttlMs: 25000), completes);
+      await service.poseArm(corrId: 'pose-1');
+      service.dispose();
+    });
+
+    test('poseArm swallows network failures', () async {
+      final client = MockClient((_) async => throw Exception('down'));
+      final service = LocalCameraService(config: config, client: client);
+      await service.poseArm();
       service.dispose();
     });
 
@@ -180,6 +216,29 @@ void main() {
       final client = MockClient((request) async {
         return http.Response('no', 503);
       });
+      final service = LocalCameraService(config: config, client: client);
+      expect(await service.hasPendingBodyStill(corrId: 'pose-2'), isFalse);
+      service.dispose();
+    });
+
+    test('hasPendingBodyStill is false when sidecar is not configured',
+        () async {
+      final service = LocalCameraService(
+        config: const CameraSidecarConfig(enabled: false, baseUrl: ''),
+      );
+      expect(await service.hasPendingBodyStill(), isFalse);
+      service.dispose();
+    });
+
+    test('hasPendingBodyStill is false for a non-object JSON body', () async {
+      final client = MockClient((_) async => http.Response('[]', 200));
+      final service = LocalCameraService(config: config, client: client);
+      expect(await service.hasPendingBodyStill(), isFalse);
+      service.dispose();
+    });
+
+    test('hasPendingBodyStill is false when the request throws', () async {
+      final client = MockClient((_) async => throw Exception('timeout'));
       final service = LocalCameraService(config: config, client: client);
       expect(await service.hasPendingBodyStill(), isFalse);
       service.dispose();
@@ -269,7 +328,7 @@ void main() {
         expect(request.url.path, '/camera/capture');
         expect(request.url.queryParameters['download'], '1');
         expect(request.url.queryParameters['maxLongEdge'], '1920');
-        expect(request.url.queryParameters['jpegQuality'], '85');
+        expect(request.url.queryParameters['jpegQuality'], '92');
         expect(request.url.queryParameters['resumeLiveView'], '1');
         expect(request.headers.containsKey('X-Camera-Token'), isFalse);
         return http.Response.bytes(jpeg, 200, headers: {

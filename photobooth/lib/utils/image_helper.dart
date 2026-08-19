@@ -25,6 +25,10 @@ const int kCapturedPhotoJpegQuality = 85;
 const int kStripCapturedPhotoMaxDimension = 1920;
 const int kStripCapturedPhotoJpegQuality = 92;
 
+/// DNP / Selphy photo print encode — match booth still quality (avoid a second
+/// soft 85% pass after a sharp 1920 px sidecar capture).
+const int kDnpPrintJpegQuality = kStripCapturedPhotoJpegQuality;
+
 /// `PATCH /api/sessions/:id` `userImageUrl`: long edge cap and quality (API contract).
 const int kSessionPatchUserImageMaxLongEdgePx = 1536;
 const int kSessionPatchUserImageJpegQuality = 85;
