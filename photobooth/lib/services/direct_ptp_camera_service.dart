@@ -14,6 +14,7 @@ import '../utils/logger.dart';
 enum DirectPtpState {
   noUsbHost,
   noDevice,
+  scanning,
   deviceFound,
   permissionDenied,
   opened,
@@ -52,6 +53,8 @@ DirectPtpState directPtpStateFromName(String? name) {
       return DirectPtpState.noUsbHost;
     case 'NoDevice':
       return DirectPtpState.noDevice;
+    case 'Scanning':
+      return DirectPtpState.scanning;
     case 'DeviceFound':
       return DirectPtpState.deviceFound;
     case 'PermissionDenied':
@@ -283,6 +286,74 @@ class DirectPtpCaptureResult {
       'code: $errorCode)';
 }
 
+/// Launch arguments for a native capture session.
+///
+/// A request object rather than ten named parameters: the argument list crosses
+/// a method channel and grew past what Sonar S107 allows, and the codebase's
+/// convention for that is an `*Input`-style class (see `CaptureScreenIdleInput`).
+/// It also mirrors `CaptureSessionContract.Request` on the Kotlin side, so both
+/// ends of the channel describe the session with the same shape.
+@immutable
+class DirectPtpCaptureRequest {
+  const DirectPtpCaptureRequest({
+    this.shotCount = 1,
+    this.countdownSeconds = 10,
+    this.betweenShotSeconds = 8,
+    this.displayMaxLongEdge = 1920,
+    this.displayJpegQuality = 90,
+    this.idleTimeoutSeconds = 180,
+    this.autoStart = true,
+    this.titleText,
+    this.subtitleText,
+    this.shutterText,
+    this.cancelText,
+  });
+
+  /// Stills to collect. 1 for AI, 4 for a Classic strip.
+  final int shotCount;
+
+  /// Seconds a guest gets to pose before each shot.
+  final int countdownSeconds;
+
+  /// Seconds between strip shots, for guests to rearrange.
+  final int betweenShotSeconds;
+
+  /// Long edge of the display derivative handed back. The original is untouched.
+  final int displayMaxLongEdge;
+  final int displayJpegQuality;
+
+  /// Abandons the session so a walk-away cannot strand the booth.
+  final int idleTimeoutSeconds;
+
+  /// Start the countdown as soon as the camera is ready, with no button press.
+  ///
+  /// True for a fresh pose: a guest standing in front of the booth should not
+  /// have to find anything to press. False on a retake, where the guest has just
+  /// come back from the look picker and a countdown that starts on its own is a
+  /// surprise rather than a cue.
+  final bool autoStart;
+
+  /// Copy, passed in so AppStrings stays the single source of guest-facing words.
+  final String? titleText;
+  final String? subtitleText;
+  final String? shutterText;
+  final String? cancelText;
+
+  Map<String, Object?> toArguments() => <String, Object?>{
+        'shotCount': shotCount,
+        'countdownSeconds': countdownSeconds,
+        'betweenShotSeconds': betweenShotSeconds,
+        'displayMaxLongEdge': displayMaxLongEdge,
+        'displayJpegQuality': displayJpegQuality,
+        'idleTimeoutSeconds': idleTimeoutSeconds,
+        'autoStart': autoStart,
+        'titleText': titleText,
+        'subtitleText': subtitleText,
+        'shutterText': shutterText,
+        'cancelText': cancelText,
+      };
+}
+
 /// Dart side of the direct-PTP DSLR bridge (`CanonPtpMethodChannel`).
 ///
 /// Connection lifecycle only. Capture and live view never cross this channel —
@@ -399,18 +470,9 @@ class DirectPtpCameraService {
   ///
   /// Never throws: a failure arrives as [DirectPtpCaptureStatus.error] with a
   /// code, so the capture flow has one place to handle every outcome.
-  Future<DirectPtpCaptureResult> runCaptureSession({
-    int shotCount = 1,
-    int countdownSeconds = 10,
-    int betweenShotSeconds = 8,
-    int displayMaxLongEdge = 1920,
-    int displayJpegQuality = 90,
-    int idleTimeoutSeconds = 180,
-    String? titleText,
-    String? subtitleText,
-    String? shutterText,
-    String? cancelText,
-  }) async {
+  Future<DirectPtpCaptureResult> runCaptureSession(
+    DirectPtpCaptureRequest request,
+  ) async {
     if (!isSupported) {
       return const DirectPtpCaptureResult(
         status: DirectPtpCaptureStatus.error,
@@ -421,18 +483,7 @@ class DirectPtpCameraService {
     try {
       final map = await _channel.invokeMapMethod<Object?, Object?>(
         'runCaptureSession',
-        <String, Object?>{
-          'shotCount': shotCount,
-          'countdownSeconds': countdownSeconds,
-          'betweenShotSeconds': betweenShotSeconds,
-          'displayMaxLongEdge': displayMaxLongEdge,
-          'displayJpegQuality': displayJpegQuality,
-          'idleTimeoutSeconds': idleTimeoutSeconds,
-          'titleText': titleText,
-          'subtitleText': subtitleText,
-          'shutterText': shutterText,
-          'cancelText': cancelText,
-        },
+        request.toArguments(),
       );
       final result = map == null
           ? const DirectPtpCaptureResult(status: DirectPtpCaptureStatus.unknown)

@@ -150,4 +150,18 @@ void main() {
       );
     });
   });
+
+  group('isDirectPtpCameraId', () {
+    test('matches ids minted by the direct-PTP capture screen', () {
+      expect(isDirectPtpCameraId('${kDirectPtpCameraIdPrefix}EOS'), isTrue);
+      expect(isDirectPtpCameraId('  ${kDirectPtpCameraIdPrefix}EOS  '), isTrue);
+    });
+
+    test('rejects sidecar, device and empty ids', () {
+      expect(isDirectPtpCameraId('sidecar:EOS'), isFalse);
+      expect(isDirectPtpCameraId('0'), isFalse);
+      expect(isDirectPtpCameraId(''), isFalse);
+      expect(isDirectPtpCameraId(null), isFalse);
+    });
+  });
 }

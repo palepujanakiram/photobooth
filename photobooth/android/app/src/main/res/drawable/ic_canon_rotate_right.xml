@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Preview rotation: a square with an arrow curving over it, matching
+     CupertinoIcons.rotate_right on the Flutter capture bar. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="@android:color/white">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M16,9v10H6V9H16M16,7.5H6C5.17,7.5 4.5,8.17 4.5,9v10c0,0.83 0.67,1.5 1.5,1.5h10c0.83,0 1.5,-0.67 1.5,-1.5V9C17.5,8.17 16.83,7.5 16,7.5L16,7.5z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M13.5,2.5V4C16.53,4.48 18.85,7.06 19,10.2h1.5C20.34,6.23 17.36,2.99 13.5,2.5zM12.75,1L9.5,3.25L12.75,5.5V1z" />
+</vector>

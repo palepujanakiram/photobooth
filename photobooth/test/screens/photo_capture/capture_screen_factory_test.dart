@@ -108,4 +108,43 @@ void main() {
       );
     });
   });
+
+  group('buildCaptureScreen forwarding', () {
+    const args = CaptureRouteArgs(
+      returnPhotoOnly: true,
+      multiShotTotal: 4,
+      flashbackTheme: theme,
+      classicShotMode: ClassicShotMode.fourShot,
+    );
+
+    test('session kind and args reach the direct-PTP screen', () {
+      final screen = buildCaptureScreen(
+        sessionKind: CaptureSessionKind.classicFourShot,
+        captureArgs: args,
+        settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+      ) as DirectPtpCaptureScreen;
+      expect(screen.sessionKind, CaptureSessionKind.classicFourShot);
+      expect(screen.captureArgs, same(args));
+    });
+
+    test('session kind and args reach the Flutter screen', () {
+      final screen = buildCaptureScreen(
+        sessionKind: CaptureSessionKind.classicOneShot,
+        captureArgs: args,
+        settings: AppSettingsModel(cameraConnectionMode: 'pi'),
+      ) as PhotoCaptureScreen;
+      expect(screen.sessionKind, CaptureSessionKind.classicOneShot);
+      expect(screen.captureArgs, same(args));
+    });
+
+    test('the key is forwarded so route remounts stay distinguishable', () {
+      const key = ValueKey<String>('pose-1');
+      final screen = buildCaptureScreen(
+        key: key,
+        sessionKind: CaptureSessionKind.fotoZen,
+        settings: AppSettingsModel(cameraConnectionMode: 'pi'),
+      );
+      expect(screen.key, key);
+    });
+  });
 }

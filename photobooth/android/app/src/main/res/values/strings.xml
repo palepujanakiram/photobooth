@@ -12,10 +12,16 @@
     <!-- Booth layout: matches the Flutter capture bar exactly (photo_capture_view_scaffold). -->
     <string name="canon_capture_title_booth">POSE</string>
     <string name="canon_capture_subtitle">Step in front of the camera and strike your best look</string>
-    <string name="canon_capture_shutter">Take photo</string>
+    <string name="canon_capture_shutter">Take shot</string>
     <string name="canon_capture_cancel">Cancel</string>
 
+    <!-- Top-bar actions, mirroring the Flutter capture AppBar's icon row. -->
+    <string name="canon_action_select_camera">Select camera</string>
+    <string name="canon_action_rotate">Rotate preview</string>
+    <string name="canon_action_reconnect">Reconnect camera</string>
+
     <string name="canon_status_connecting">Connecting to camera…</string>
+    <string name="canon_status_reconnecting">Reconnecting to the camera…</string>
     <string name="canon_status_capturing">Hold still…</string>
     <string name="canon_status_processing">Saving photo…</string>
     <string name="canon_status_capture_failed">That shot did not land. Try again.</string>

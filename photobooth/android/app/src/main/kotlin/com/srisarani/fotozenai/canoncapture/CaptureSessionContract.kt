@@ -63,9 +63,13 @@ object CaptureSessionContract {
         /**
          * Start the countdown as soon as the camera is ready, with no button press.
          *
-         * True for the booth: a guest standing in front of a camera should not have to find
-         * and press anything. False leaves the shutter button as the trigger, which is what
-         * bring-up and diagnostics want.
+         * True for a fresh pose: a guest walking up to the booth should not have to find and
+         * press anything.
+         *
+         * Dart passes **false on a retake**. Coming back from the look picker put the guest
+         * straight into a countdown they did not ask for and had no warning of — they had
+         * pressed "back" to change something, not to be photographed again. There the
+         * shutter button is the trigger, and pressing it starts the countdown.
          */
         val autoStart: Boolean = true,
         /** Copy is passed in so AppStrings stays the single source of truth. */

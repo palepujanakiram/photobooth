@@ -174,6 +174,7 @@ CameraConnectionMode? parseCameraConnectionMode(String? raw) {
     case 'direct_ptp':
     case 'directptp':
     case 'ptp':
+    case 'native_ptp':
       return CameraConnectionMode.directPtp;
     default:
       return null;

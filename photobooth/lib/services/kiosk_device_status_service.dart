@@ -284,8 +284,11 @@ class KioskDeviceStatusService {
         ? KioskDeviceTransport.lan
         : KioskDeviceTransport.usb;
 
-    // Native PTP disables the HTTP sidecar but still owns USB — do not show
-    // "Not configured" on a working direct-PTP booth.
+    // Direct PTP has no sidecar, so `isConfigured` is false by construction and the check
+    // below would report "Not configured" for a booth that is configured perfectly well.
+    // Answer it from the USB bus instead, which is the only thing that matters here:
+    // CanonUsbPermissionManager.findCanonCamera reads UsbManager directly and does not care
+    // which stack drives the body.
     if (config.isDirectPtpConnection) {
       final cameraPresent = await _safeCanonCameraPresent();
       return KioskDeviceStatusEntry(

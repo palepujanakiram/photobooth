@@ -16,7 +16,6 @@ import 'app_routes.dart';
 import 'main_error_handlers.dart';
 import 'utils/app_route_observer.dart';
 import 'utils/app_route_tracker.dart';
-import 'utils/direct_ptp_smoke_check.dart';
 import 'utils/memory_pressure_response.dart';
 import 'utils/app_runtime_config.dart';
 import 'utils/constants.dart';
@@ -109,8 +108,6 @@ Future<void> main() async {
 
   final navigatorKey = GlobalKey<NavigatorState>();
   AliceInspector.initialize(navigatorKey);
-
-  unawaited(runDirectPtpSmokeCheckIfRequested());
 
   runApp(PhotoBoothApp(navigatorKey: navigatorKey));
 }

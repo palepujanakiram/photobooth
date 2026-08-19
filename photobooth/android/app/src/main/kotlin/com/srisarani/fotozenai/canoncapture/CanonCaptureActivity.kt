@@ -29,6 +29,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -122,6 +123,7 @@ class CanonCaptureActivity : Activity() {
         cancelButton.setOnClickListener(cancel)
         // Present only in the booth layout, mirroring the Flutter capture bar's back arrow.
         findViewById<View?>(R.id.canon_back)?.setOnClickListener(cancel)
+        bindTopBarActions()
         // The box reports touch AND d-pad; the shutter must be reachable without a screen tap.
         shutterButton.requestFocus()
 
@@ -142,6 +144,36 @@ class CanonCaptureActivity : Activity() {
         startSession()
     }
 
+    /**
+     * Wires the top-bar actions that mirror the Flutter capture AppBar.
+     *
+     * All three are looked up as nullable: the diagnostic layout deliberately has no chrome,
+     * and a hard `findViewById` would crash it rather than simply showing nothing.
+     *
+     * Only *reconnect* has real work to do. On the Flutter screen "select camera" and
+     * "rotate" drive CameraX — choosing between a front/back/UVC device, and re-orienting a
+     * preview whose sensor rotation the plugin reports. Neither exists here: there is one
+     * tethered body, and its live-view frames arrive already upright. They are kept so the
+     * two screens look identical, and disabled so they cannot promise something that will
+     * not happen. See [LiveViewSurfaceRenderer] if rotation ever becomes real.
+     */
+    private fun bindTopBarActions() {
+        findViewById<View?>(R.id.canon_reconnect)?.setOnClickListener {
+            if (captureJob?.isActive == true) return@setOnClickListener
+            setStatus(getString(R.string.canon_status_reconnecting))
+            CanonLog.i("Operator asked for a reconnect from the capture screen")
+            CameraSessionManager.scanAndConnect(applicationContext)
+        }
+        findViewById<View?>(R.id.canon_select_camera)?.apply {
+            isEnabled = false
+            alpha = DISABLED_ACTION_ALPHA
+        }
+        findViewById<View?>(R.id.canon_rotate)?.apply {
+            isEnabled = false
+            alpha = DISABLED_ACTION_ALPHA
+        }
+    }
+
     // ------------------------------------------------------------------ session
 
     private fun startSession() {
@@ -156,7 +188,7 @@ class CanonCaptureActivity : Activity() {
             startIdleWatchdog()
 
             if (request.autoStart) {
-                runShotSequence()
+                startShotSequence()
             } else {
                 setStatus(
                     getString(
@@ -178,6 +210,14 @@ class CanonCaptureActivity : Activity() {
      * nothing else can recover it.
      */
     private fun startIdleWatchdog() {
+        // Restartable, and restarted after every landed shot. It used to be a single timer
+        // from session start, which measured how long the *strip* took rather than how long
+        // the guest had been idle. A 4-shot strip that hits a couple of DeviceBusy releases
+        // takes well over 180s, so the watchdog cancelled a session that was progressing
+        // perfectly well — the native screen returned `cancelled`, Dart took that as "leave
+        // POSE", and three good photos were thrown away with the guest dumped back on the
+        // Terms screen. Observed on hardware 2026-08-18.
+        idleJob?.cancel()
         idleJob = scope.launch {
             delay(request.idleTimeoutSeconds * 1000L)
             CanonLog.w("Capture session idle for %ds — abandoning", request.idleTimeoutSeconds)
@@ -252,8 +292,15 @@ class CanonCaptureActivity : Activity() {
 
         repeat(2) { attempt ->
             CameraSessionManager.scanAndConnect(applicationContext)
+            // drop(1) discards the value the StateFlow replays on subscription — the state as
+            // it was *before* the scan above could change it. Without it this whole wait
+            // collapsed: the manager sits at ConnectionState.NoDevice, isConnectOutcome()
+            // counts NoDevice as terminal, so `first` matched that stale value immediately and
+            // POSE reported "No camera found" roughly 90ms in — while the very same connect
+            // went on to succeed seconds later. Observed on hardware 2026-08-18.
+            // CanonPtpMethodChannel's connect already does this; only this copy was missing it.
             val settled = withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
-                CameraSessionManager.state.first {
+                CameraSessionManager.state.drop(1).first {
                     it.isConnectOutcome() || it.isReadyForCapture
                 }
             }
@@ -340,14 +387,47 @@ class CanonCaptureActivity : Activity() {
 
     // ------------------------------------------------------------------ capture
 
-    private fun onShutter() {
+    /**
+     * "Take shot" starts the countdown, it does not fire the shutter.
+     *
+     * It used to call [runOneShot] directly, so the press *was* the shot — no countdown, no
+     * time to pose. The countdown only ever ran on the auto-start path. Now the press is the
+     * cue and [runShotSequence] owns the rest: countdown, shot, rearrange hold, repeat. One
+     * press therefore runs a whole Classic strip, which is what the guest wants — walking
+     * back to the screen between shots of a 4-shot strip is not a booth experience.
+     */
+    private fun onShutter() = startShotSequence()
+
+    /**
+     * The one and only way a strip starts, whether by auto-start or by the button.
+     *
+     * Both paths must go through here, and [captureJob] must always be the job doing the
+     * work. Auto-start used to call [runShotSequence] inline, leaving `captureJob` null for
+     * the whole strip — so the "hand the button back" branch in [onCaptured] saw no active
+     * job and re-enabled "Take shot" between shots. Pressing it then ran a *second*
+     * sequence against the same camera. On hardware 2026-08-18 that produced a 4-shot strip
+     * whose shutters fired 50ms after the previous shot with the countdowns landing after
+     * the exposures, and a fifth frame taken 22ms after the session had already reported
+     * `completed (4 shots)`.
+     */
+    private fun startShotSequence() {
         if (captureJob?.isActive == true) return
         shutterButton.isEnabled = false
-        captureJob = scope.launch { runOneShot() }
+        captureJob = scope.launch { runShotSequence() }
     }
 
     /**
      * Ignores the SharedFlow replay from the previous capture session.
+     *
+     * [consumedHandles] stops a shot completing twice *within* one session, but the queue
+     * outlives this Activity — it belongs to [CameraSessionManager] — while the set does
+     * not. So a second POSE session started with an empty set and was handed the previous
+     * session's last photo the instant it collected, completing its first shot in
+     * milliseconds with a picture of whoever posed before.
+     *
+     * Observed on hardware 2026-08-18: a 4-shot strip finished `0004_IMG_8262.JPG`, and the
+     * next session's log read `Shot 1/4 stored: 0004_IMG_8262.JPG` — the same file. That is
+     * the "old picture on the preview screen" the booth was showing guests.
      *
      * See [CaptureQueue.seedReplayInto] — without this, Back → POSE → shutter returns
      * the last shot's file before the new release finishes.
@@ -381,7 +461,17 @@ class CanonCaptureActivity : Activity() {
             queue.completed.first { it.handle !in consumedHandles }
         }
 
-        CameraSessionManager.triggerCapture(withAutofocus = true)
+        // Wait for the shutter to actually fire before waiting for an image. A release that
+        // comes back DeviceBusy produces no photo, and treating that as "in flight" cost the
+        // full CAPTURE_TIMEOUT_MS of blank screen per failed attempt — two in a row put a
+        // guest through 106s of nothing before the third try worked (hardware 2026-08-18).
+        if (!CameraSessionManager.triggerCapture(withAutofocus = true).await()) {
+            done.cancel()
+            setStatus(getString(R.string.canon_status_capture_failed))
+            shutterButton.isEnabled = !request.autoStart
+            CanonLog.e("Shutter did not fire; not waiting for an image")
+            return false
+        }
 
         val completed = withTimeoutOrNull(CAPTURE_TIMEOUT_MS) { done.await() }
         done.cancel()
@@ -432,6 +522,9 @@ class CanonCaptureActivity : Activity() {
 
         addThumbnail(derivative?.file?.absolutePath)
 
+        // A landed shot is proof the guest is still there, so the idle clock starts over.
+        startIdleWatchdog()
+
         if (shots.size >= request.shotCount) {
             finishWith(
                 CaptureSessionContract.Result(
@@ -439,7 +532,10 @@ class CanonCaptureActivity : Activity() {
                     shots = shots.toList(),
                 ),
             )
-        } else if (!request.autoStart) {
+        } else if (captureJob?.isActive != true) {
+            // Only hand the button back when nothing is driving the strip. Keyed on the job
+            // rather than on autoStart because runShotSequence continues straight into the
+            // next countdown, and re-enabling mid-strip would offer a press that does nothing.
             setStatus(
                 getString(R.string.canon_status_ready_format, shots.size + 1, request.shotCount),
             )
@@ -563,6 +659,9 @@ class CanonCaptureActivity : Activity() {
          * image is still in its buffer (`P-18`), and the download itself follows.
          */
         const val CAPTURE_TIMEOUT_MS = 45_000L
+
+        /** Matches the Flutter capture bar, which greys unavailable actions rather than hiding them. */
+        const val DISABLED_ACTION_ALPHA = 0.4f
     }
 }
 

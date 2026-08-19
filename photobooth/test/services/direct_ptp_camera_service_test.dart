@@ -258,7 +258,7 @@ void main() {
         };
       });
 
-      final result = await service().runCaptureSession(shotCount: 4);
+      final result = await service().runCaptureSession(const DirectPtpCaptureRequest(shotCount: 4));
 
       expect(result.status, DirectPtpCaptureStatus.completed);
       expect(result.isCompleted, isTrue);
@@ -291,7 +291,7 @@ void main() {
             'shots': <Object?>[],
             'errorMessage': 'Back pressed',
           });
-      final result = await service().runCaptureSession();
+      final result = await service().runCaptureSession(const DirectPtpCaptureRequest());
       expect(result.isCancelled, isTrue);
       expect(result.isCompleted, isFalse);
       expect(result.shots, isEmpty);
@@ -306,7 +306,7 @@ void main() {
             'errorCode': 'card_unavailable',
             'errorMessage': 'No SD card',
           });
-      final result = await service().runCaptureSession();
+      final result = await service().runCaptureSession(const DirectPtpCaptureRequest());
       expect(result.status, DirectPtpCaptureStatus.error);
       expect(result.errorCode, 'card_unavailable');
     });
@@ -317,12 +317,12 @@ void main() {
             'status': 'completed',
             'shots': <Object?>[],
           });
-      expect((await service().runCaptureSession()).isCompleted, isFalse);
+      expect((await service().runCaptureSession(const DirectPtpCaptureRequest())).isCompleted, isFalse);
     });
 
     test('a platform exception becomes an error result, not a throw', () async {
       handle((_) async => throw PlatformException(code: 'boom'));
-      final result = await service().runCaptureSession();
+      final result = await service().runCaptureSession(const DirectPtpCaptureRequest());
       expect(result.status, DirectPtpCaptureStatus.error);
       expect(result.errorCode, 'capture_failed');
     });
@@ -332,7 +332,7 @@ void main() {
       final calls = <String>[];
       handle((_) async => null, calls: calls);
       final offAndroid = DirectPtpCameraService(isAndroid: () => false);
-      final result = await offAndroid.runCaptureSession();
+      final result = await offAndroid.runCaptureSession(const DirectPtpCaptureRequest());
       expect(result.errorCode, 'unsupported_platform');
       expect(calls, isEmpty);
     });
@@ -342,7 +342,7 @@ void main() {
             'status': 'completed',
             'shots': 'not a list',
           });
-      final result = await service().runCaptureSession();
+      final result = await service().runCaptureSession(const DirectPtpCaptureRequest());
       expect(result.shots, isEmpty);
     });
   });
@@ -450,6 +450,66 @@ void main() {
       expect(events, hasLength(2));
       expect(events.first.state, DirectPtpState.ready);
       expect(events.last.state, DirectPtpState.unknown);
+    });
+  });
+
+  group('DirectPtpCaptureRequest', () {
+    test('defaults describe a single AI shot', () {
+      const request = DirectPtpCaptureRequest();
+      final args = request.toArguments();
+      expect(args['shotCount'], 1);
+      expect(args['displayMaxLongEdge'], 1920);
+      expect(args['idleTimeoutSeconds'], 180);
+      // A fresh pose counts down on its own; only a retake waits for the button.
+      expect(args['autoStart'], true);
+    });
+
+    test('every field reaches the channel arguments', () {
+      // Both ends of the channel must agree on the shape; a dropped key here is
+      // a native default silently overriding booth configuration.
+      const request = DirectPtpCaptureRequest(
+        shotCount: 4,
+        countdownSeconds: 10,
+        betweenShotSeconds: 8,
+        displayMaxLongEdge: 1600,
+        displayJpegQuality: 85,
+        idleTimeoutSeconds: 90,
+        autoStart: false,
+        titleText: 'POSE',
+        subtitleText: 'Strike a look',
+        shutterText: 'Snap',
+        cancelText: 'Back',
+      );
+      expect(request.toArguments(), <String, Object?>{
+        'shotCount': 4,
+        'countdownSeconds': 10,
+        'betweenShotSeconds': 8,
+        'displayMaxLongEdge': 1600,
+        'displayJpegQuality': 85,
+        'idleTimeoutSeconds': 90,
+        'autoStart': false,
+        'titleText': 'POSE',
+        'subtitleText': 'Strike a look',
+        'shutterText': 'Snap',
+        'cancelText': 'Back',
+      });
+    });
+
+    test('absent copy stays null rather than an empty string', () {
+      // The native side treats null as "use my own string resource"; an empty
+      // string would blank a guest-facing label instead.
+      final args = const DirectPtpCaptureRequest().toArguments();
+      expect(args['titleText'], isNull);
+      expect(args['cancelText'], isNull);
+    });
+
+    test('the request is usable outside a const context', () {
+      // Production builds it from computed values, not literals, so the
+      // constructor has to work at runtime and not only as a const expression.
+      final request = DirectPtpCaptureRequest(
+        shotCount: DateTime.now().year > 2000 ? 4 : 1,
+      );
+      expect(request.toArguments()['shotCount'], 4);
     });
   });
 }

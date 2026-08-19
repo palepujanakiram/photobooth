@@ -45,6 +45,7 @@ import 'photo_capture_normalize_helpers.dart';
 import 'photo_capture_pose_setup_helpers.dart';
 import 'photo_capture_preview_rotation.dart';
 import 'photo_capture_preprocess_helpers.dart';
+import '../../utils/camera_source_config.dart';
 import 'photo_capture_sidecar_helpers.dart';
 import 'photo_capture_viewmodel_helpers.dart';
 
@@ -2292,8 +2293,14 @@ class CaptureViewModel extends ChangeNotifier {
         _cameraController?.description.name ??
         _currentCamera?.name;
     final photoId = _uuid.v4();
-    if (isSidecarCameraId(cameraId)) {
+    if (isSidecarCameraId(cameraId) || isDirectPtpCameraId(cameraId)) {
       // Live pose uses a portrait theme slot; Canon JPEG is landscape.
+      //
+      // Direct PTP belongs here for exactly the same reason as the sidecar, and was
+      // missing: its id is `ptp:EOS`, so it matched neither this branch nor the
+      // `cameraIdOverride == null` one below. The lock therefore kept whatever the
+      // *previous* session had left in it, and the DSLR still was framed to a stale
+      // portrait aspect on the review screen (observed on hardware 2026-08-18).
       _lockedCaptureCardAspectRatio = null;
     } else if (cameraIdOverride == null) {
       _snapshotLockedCaptureCardAspectFromLivePreview();

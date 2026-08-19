@@ -173,19 +173,40 @@ class EosCapture(
         CanonLog.i("Shutter release (%s)", mode)
 
         try {
+            // Whether the half-press actually engaged, so we only release what we pressed.
+            var afEngaged = false
+
             if (mode == ReleaseMode.WITH_AUTOFOCUS) {
                 // Half press: triggers AF. AF outcome arrives as an event; see C-02.
-                busyRetry { ptp.transact(CanonEosOperation.REMOTE_RELEASE_ON, HALF_PRESS, 0) }
+                //
+                // A busy half-press is survivable and must not cost the shot. This is the
+                // `C-02` case the WITHOUT_AUTOFOCUS mode was written for, finally wired up:
+                // on hardware 2026-08-18 releases were failing on roughly two attempts in
+                // three, each burning the full ~8s busy budget, and the guest simply got no
+                // photo. A frame that might be slightly soft beats no frame at all.
+                afEngaged = runCatching {
+                    busyRetry(stage = "half-press (AF)") {
+                        ptp.transact(CanonEosOperation.REMOTE_RELEASE_ON, HALF_PRESS, 0)
+                    }
+                }.onFailure {
+                    CanonLog.w(it, "Autofocus half-press did not take - firing without AF (C-02)")
+                }.isSuccess
             }
 
             // Full press: fires the shutter.
-            busyRetry { ptp.transact(CanonEosOperation.REMOTE_RELEASE_ON, FULL_PRESS, 0) }
+            busyRetry(stage = "full-press (shutter)") {
+                ptp.transact(CanonEosOperation.REMOTE_RELEASE_ON, FULL_PRESS, 0)
+            }
 
             // Release in reverse order. Leaving the button virtually held down blocks the
             // next capture.
-            busyRetry { ptp.transact(CanonEosOperation.REMOTE_RELEASE_OFF, FULL_PRESS) }
-            if (mode == ReleaseMode.WITH_AUTOFOCUS) {
-                busyRetry { ptp.transact(CanonEosOperation.REMOTE_RELEASE_OFF, HALF_PRESS) }
+            busyRetry(stage = "full-press release") {
+                ptp.transact(CanonEosOperation.REMOTE_RELEASE_OFF, FULL_PRESS)
+            }
+            if (afEngaged) {
+                busyRetry(stage = "half-press release") {
+                    ptp.transact(CanonEosOperation.REMOTE_RELEASE_OFF, HALF_PRESS)
+                }
             }
         } catch (e: PtpException.OperationFailed) {
             if (e.isUnsupported) {
@@ -226,6 +247,12 @@ class EosCapture(
     private suspend fun <T> busyRetry(
         maxAttempts: Int = BUSY_MAX_ATTEMPTS,
         initialDelayMs: Long = 120,
+        // Which of the four stages of a release this is. "EOS_RemoteReleaseOn failed:
+        // DeviceBusy" names the opcode but not the stage, and the two RemoteReleaseOn calls
+        // mean very different things: the half press is autofocus, the full press is the
+        // shutter. A body that will not focus and a body that is still writing the previous
+        // frame need opposite responses, and the log could not tell them apart.
+        stage: String = "release",
         block: () -> T,
     ): T {
         var delayMs = initialDelayMs
@@ -238,7 +265,7 @@ class EosCapture(
                 if (!e.isBusy) throw e
                 lastError = e
                 if (attempt < maxAttempts - 1) {
-                    CanonLog.d("Camera busy, retrying in %dms (attempt %d/%d)", delayMs, attempt + 1, maxAttempts)
+                    CanonLog.i("Camera busy on %s, retrying in %dms (attempt %d/%d)", stage, delayMs, attempt + 1, maxAttempts)
                     delay(delayMs)
                     // Capped growth: the wait we are riding out is bounded (the camera
                     // clears once its pending image is drained), so unbounded doubling
@@ -248,8 +275,9 @@ class EosCapture(
             }
         }
         CanonLog.e(
-            "Camera still busy after %d attempts (~%ds). A previous image is probably still " +
-                "pending download - the camera stays busy until its buffer is drained.",
+            "Camera still busy on %s after %d attempts (~%ds). A previous image is probably " +
+                "still pending download - the camera stays busy until its buffer is drained.",
+            stage,
             maxAttempts,
             BUSY_TOTAL_BUDGET_SECONDS,
         )

@@ -110,3 +110,14 @@ bool usesDirectPtpCamera({
   return resolveCameraSource(overrideDefine: overrideSourceDefine) ==
       CameraSource.directPtp;
 }
+
+/// Prefix for camera ids minted by the direct-PTP capture screen, e.g. `ptp:EOS`.
+///
+/// Mirrors the `sidecar:` prefix that `isSidecarCameraId` matches. Both mean the
+/// same thing downstream — the still came from a tethered DSLR, not from a live
+/// preview surface — and code that special-cases one almost always needs both.
+const String kDirectPtpCameraIdPrefix = 'ptp:';
+
+/// True when [cameraId] identifies the directly tethered DSLR.
+bool isDirectPtpCameraId(String? cameraId) =>
+    (cameraId?.trim() ?? '').startsWith(kDirectPtpCameraIdPrefix);
