@@ -156,57 +156,74 @@ directory before shipping.
 
 ---
 
-## 3. Print resolution is limited by AI generation size, not by the printer
+## 3. Print resolution — Classic is correct; only the AI path is suspect
 
-**Severity:** print quality. Every print is upscaled before it reaches the printer.
+**Status:** partially resolved by measurement 2026-08-19. The original entry claimed every
+print was upscaled. That was wrong for the Classic path and is corrected below.
 
 ### The printer
 
 DNP DS-RX1HS supports **300×300 dpi** (high-speed) and **300×600 dpi** (high-resolution),
-in glossy or matte, on 6"-wide media. Sizes: 3.5×5, 4×6, 5×5, 5×7, 6×6, 6×8, and 2×6
-strips (2-up / 4-up). 4×6 in 12.4 s, ~290 prints/hour.
+glossy or matte, on 6"-wide media. Sizes: 3.5×5, 4×6, 5×5, 5×7, 6×6, 6×8 and 2×6 strips
+(2-up / 4-up). 4×6 in 12.4 s, ~290 prints/hour.
 Sources: [DNP Europe](https://www.dnpphoto.eu/en/product-range/photo-printers/item/655-rx1hs),
 [DNP US](https://dnpphoto.com/en-us/Products/Printers/ds-rx1hs),
 [B&H](https://www.bhphotovideo.com/c/product/1264019-REG/dnp_ds_rx1hs_dye_sublimation_printer.html).
 DNP does not publish raster pixel dimensions; those come from the driver.
 
-### What we already send — this part is correct
+### Measured: what we actually send (Classic print, 2026-08-19)
 
-`DnpPrintSize.kt` targets 300 dpi rasters, matching the open-source `dnpds40` CUPS backend:
+The file handed to the print path was captured off the device mid-job, before
+`file_helper_temp_cleanup` removed it:
 
-| size | raster (w×h) | imageable |
-|---|---|---|
-| 4×6 | 1920 × 1240 | 1844 × 1240 |
-| 5×7 | 1920 × 2138 | 1548 × 2138 |
-| 6×8 | 1920 × 2436 | 1844 × 2436 |
-| 2×6 | 1920 × 1240 | 1844 × 1240 |
+```
+transformed_70addbf8-6a2e-44de-b559-e99bd1ac2fac.jpg
+1200 x 1800 px   2.16 MP   274 KB   JFIF density 72x72
+```
 
-`DnpImageProcessor.prepareBitmap` scales whatever it is given to these dimensions.
+**1200×1800 is exactly 4×6 at 300 dpi — correct.** Against the `DnpPrintSize.SIZE_4X6`
+raster of 1920×1240, `DnpImageProcessor` rotates the portrait source and scales:
 
-### The actual problem
+| axis | source (rotated) | raster | factor |
+|---|---|---|---|
+| long | 1800 | 1920 | 1.067× |
+| short | 1200 | 1240 | 1.033× |
 
-The AI generator emits at most **1536×1024** (landscape), **1024×1536** (portrait) or
-**1024×1024**:
+~6%, which is DNP's bleed margin. Normal and visually irrelevant.
+
+### The 72 dpi tag is cosmetic — do not "fix" it
+
+It is JFIF metadata. `DnpImageProcessor.prepareBitmap` sizes by pixel dimensions and never
+reads the density tag, so rewriting it to 300 would change nothing on paper. The image is a
+genuine 300 dpi 4×6.
+
+### Still open: the AI path
+
+Untested. The generator caps output at 1536×1024 / 1024×1536 / 1024×1024:
 
 ```ts
 // zenai server/lib/aiGenerator.ts
 function resolveOpenAIImageSize(framing): "1024x1024" | "1024x1536" | "1536x1024"
 ```
 
-There is no upscale before serving, and `result_viewmodel_impl.part.dart` prints the
-downloaded generated file directly. So for a 4×6:
+1024×1536 is *below* the 1200×1800 that a 4×6 needs, implying roughly a 17% upscale rather
+than the Classic path's 6%. Whether that reaches the printer at 1024×1536 or is upscaled
+server-side before serving has **not** been measured — do that before acting on it.
 
-- printer raster: 1920 × 1240 = **2.38 MP**
-- best available source: 1536 × 1024 = **1.57 MP**
-- shortfall: **1.25× linear, 1.51× area** — an effective ~240 dpi rather than 300
+### How to measure this again
 
-**The "72 dpi" seen on the file is JFIF metadata, not the print resolution.** It is
-cosmetic: the native path sizes by pixels, not by the density tag. The real loss is the
-pixel shortfall above. Correcting the metadata alone would change nothing.
+The print file lives only briefly. Watch for it on-device during a job:
 
-**Raising the DNP target to 300×600 would not help** while the source is 1536 px wide —
-it would only upscale further. The binding constraint is generation size.
+```bash
+adb shell "run-as com.srisarani.fotozenai sh -c 'D=/data/data/com.srisarani.fotozenai; mkdir -p \$D/files/_printcap; i=0; while [ \$i -lt 1200 ]; do for f in \$(find \$D/cache -maxdepth 2 -type f -name \"transformed_*\" 2>/dev/null); do b=\$(basename \$f); [ -e \$D/files/_printcap/\$b ] || cp \$f \$D/files/_printcap/\$b; done; i=\$((i+1)); sleep 1; done'"
+```
 
-**Fix direction:** raise the generated image resolution (or add a quality upscale step) so
-the source meets or exceeds 1920 px on the long edge before it reaches the print path.
-Worth confirming what the current image model offers above 1536 px, and the cost per image.
+Then pull with `adb exec-out run-as … cat` — **not** `adb shell cat`, which mangles binary.
+A printer does not need to be connected: the download happens before the print attempt.
+
+### Reference: strip pipeline caps
+
+| stage | cap |
+|---|---|
+| Look-picker preview upload | ≤1600 long edge, q90 (`kStripPreviewGradeUploadMaxEdge`) |
+| Classic strip look-bake → print | ≤2400 long edge, q92 (`kStripLookBakeMaxEdge`) |
