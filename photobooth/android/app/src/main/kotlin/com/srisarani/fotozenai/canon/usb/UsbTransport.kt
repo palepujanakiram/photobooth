@@ -316,6 +316,32 @@ class UsbTransport(
         return cleared
     }
 
+    /**
+     * Settles a **freshly claimed** interface without touching either data toggle.
+     *
+     * [recoverFromStall] is the wrong tool on a clean claim, and the reason is the
+     * `1140862976` fault itself. `CLEAR_FEATURE(ENDPOINT_HALT)` sent by hand through
+     * `controlTransfer` resets the *device's* toggle (USB 2.0 §9.4.5) but leaves the host
+     * controller's alone — on Linux only `USBDEVFS_CLEAR_HALT` moves that, and Android
+     * exposes no such call. So clearing a halt that was never set desynchronises the two
+     * sides, and the host silently drops every packet whose toggle no longer matches.
+     *
+     * That is precisely the observed failure: the *head* of the `GetDeviceInfo` data phase
+     * disappears while its tail arrives intact, the response container that follows is
+     * correct and carries the right transaction id, and the two signatures (`after 0B` and
+     * `Container truncated`) alternate with parity. Draining cannot help — nothing is
+     * stale; the bytes are being discarded in flight.
+     *
+     * So on a clean claim we only drain, and leave halt-clearing to an actual stall.
+     */
+    fun settleFreshClaim(): Int {
+        val discarded = drain(RECOVERY_DRAIN_TIMEOUT_MS, RECOVERY_SETTLE_READS)
+        if (discarded > 0) {
+            CanonLog.i("Discarded %dB left over on a freshly claimed interface", discarded)
+        }
+        return discarded
+    }
+
     override fun close() = channel.close()
 
     private companion object {

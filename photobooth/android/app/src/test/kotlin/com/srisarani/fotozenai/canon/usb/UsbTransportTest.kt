@@ -248,4 +248,51 @@ class UsbTransportTest {
         assertThat(result.size).isEqualTo(0)
         assertThat(result.terminatedBy).isEqualTo(UsbTransport.Termination.LENGTH_REACHED)
     }
+
+    // ============================================ fresh claim vs genuine stall recovery
+
+    /**
+     * THE regression test for the `1140862976` fault (open issue #1, root-caused 2026-08-19).
+     *
+     * A freshly claimed interface must be settled by draining **only**. Clearing an endpoint
+     * halt that was never set is not harmless: `CLEAR_FEATURE(ENDPOINT_HALT)` sent by hand
+     * through `controlTransfer` resets the *device's* data toggle (USB 2.0 §9.4.5) while the
+     * host controller's toggle is kernel state that only `USBDEVFS_CLEAR_HALT` moves — and
+     * Android exposes no such call. The two sides then disagree and the host silently drops
+     * the head of the next data phase.
+     *
+     * On hardware that showed up as `GetDeviceInfo` returning only the 97-byte tail of its
+     * own payload, misparsed as a container of length 0x44003000 = 1140862976. Dropping the
+     * unconditional clear took the EOS 200D II from 0/5 connects to 8/8, first attempt.
+     *
+     * So: if anyone ever "helpfully" restores the halt clear here, this fails.
+     */
+    @Test
+    fun `settleFreshClaim drains without touching either data toggle`() {
+        val channel = FakeUsbBulkChannel(packetSize)
+
+        transport(channel).settleFreshClaim()
+
+        assertThat(channel.stallCleared).isFalse()
+        assertThat(channel.deviceReset).isFalse()
+    }
+
+    @Test
+    fun `settleFreshClaim still discards bytes a previous session left behind`() {
+        val channel = FakeUsbBulkChannel(packetSize)
+        channel.enqueueTransfer(bytes(200))
+
+        assertThat(transport(channel).settleFreshClaim()).isEqualTo(200)
+    }
+
+    /** A *genuine* stall still gets the full treatment — that path is unchanged. */
+    @Test
+    fun `recoverFromStall resets the device and clears the halt`() {
+        val channel = FakeUsbBulkChannel(packetSize)
+
+        transport(channel).recoverFromStall()
+
+        assertThat(channel.deviceReset).isTrue()
+        assertThat(channel.stallCleared).isTrue()
+    }
 }

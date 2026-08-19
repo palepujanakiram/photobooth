@@ -353,11 +353,15 @@ object CameraSessionManager {
         val ptp = PtpSession(transport)
 
         try {
-            // U-06 / U-17: if the last session ended uncleanly the endpoints are halted and
-            // may still hold a partial live-view frame. recoverFromStall clears the halt and
-            // drains whatever is left, which is what saves a booth from needing someone to
-            // walk over and replug the camera.
-            transport.recoverFromStall()
+            // U-06 / U-17: if the last session ended uncleanly the endpoints may still hold
+            // a partial live-view frame, so the interface still has to be drained here.
+            //
+            // Drain *only*, deliberately. This used to call recoverFromStall, which clears
+            // the endpoint halt as well — and clearing a halt that was never set is what
+            // caused the `1140862976` misparse it was meant to cure. See
+            // UsbTransport.settleFreshClaim for the toggle argument. A genuine stall is
+            // still cleared, just from the retry path once a transfer has actually failed.
+            transport.settleFreshClaim()
 
             // GetDeviceInfo works before a session is open, so we learn what the body
             // supports before committing to anything.
