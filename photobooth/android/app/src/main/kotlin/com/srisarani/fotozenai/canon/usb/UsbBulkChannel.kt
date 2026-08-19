@@ -49,6 +49,28 @@ interface UsbBulkChannel : Closeable {
      * @return true if both endpoints were cleared.
      */
     fun clearStall(): Boolean
+
+    /**
+     * PTP class-specific **Device Reset Request**, the protocol's own way out of a
+     * desynchronised stream (PIMA 15740 / USB Still Image Capture Device definition, §3.4).
+     *
+     * [clearStall] is not enough on its own, and the reason is worth writing down. A halted
+     * endpoint and a *misaligned* one are different faults. Decoded from a hex dump on
+     * hardware 2026-08-18: after a connect whose `GetDeviceInfo` timed out, the body still
+     * had that reply queued. Draining could not reach it — a bulk IN is host-initiated, so
+     * the device simply NAKs until it has something to say, and it only released the old
+     * payload once the *next* command was written. So every subsequent read was one whole
+     * transfer out of phase, and the first four bytes it landed on, `00 30 00 44`, parse as
+     * length 0x44003000 = 1140862976: the "Container truncated" that looked for a long time
+     * like leftovers in the pipe. Closing and reopening the interface does not clear it
+     * either, because the state lives in the camera, not in the host's handle.
+     *
+     * This request tells the *device* to abandon whatever it was doing and return to its
+     * idle state, which is the only thing that actually resolves it short of a power cycle.
+     *
+     * @return true if the camera acknowledged the reset.
+     */
+    fun resetDevice(): Boolean
 }
 
 /**
@@ -125,6 +147,28 @@ class AndroidUsbBulkChannel(
         return inCleared && outCleared
     }
 
+    override fun resetDevice(): Boolean {
+        if (closed) return false
+        val result = connection.controlTransfer(
+            // Class request, to an interface, host-to-device: 0x21.
+            /* requestType = */ PTP_CLASS_REQUEST_TYPE,
+            /* request = */ PTP_DEVICE_RESET_REQUEST,
+            /* value = */ 0x00,
+            /* index = */ usbInterface.id,
+            /* buffer = */ null,
+            /* length = */ 0,
+            /* timeout = */ CONTROL_TIMEOUT_MS,
+        )
+        if (result < 0) {
+            // Not every body implements it, and that is survivable — the caller still has
+            // the stall clear and the drain. Worth a warning, not a failure.
+            CanonLog.w("PTP Device Reset not accepted (result=%d)", result)
+            return false
+        }
+        CanonLog.i("PTP Device Reset accepted on interface %d", usbInterface.id)
+        return true
+    }
+
     /**
      * Release everything, in order, swallowing nothing silently.
      *
@@ -143,5 +187,11 @@ class AndroidUsbBulkChannel(
 
     private companion object {
         const val CONTROL_TIMEOUT_MS = 1_000
+
+        /** Class request | interface recipient | host-to-device. */
+        const val PTP_CLASS_REQUEST_TYPE = 0x21
+
+        /** PIMA 15740 Device Reset Request. */
+        const val PTP_DEVICE_RESET_REQUEST = 0x66
     }
 }

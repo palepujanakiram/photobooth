@@ -59,8 +59,8 @@ class PtpSession(private val transport: UsbTransport) {
      * `GetDeviceInfo` works before a session is open - that is deliberate in the standard,
      * and it is how we learn what the body supports before committing to anything.
      */
-    fun getDeviceInfo(): PtpDeviceInfo {
-        val result = transact(PtpOperation.GET_DEVICE_INFO)
+    fun getDeviceInfo(timeoutMs: Int? = null): PtpDeviceInfo {
+        val result = transact(PtpOperation.GET_DEVICE_INFO, timeoutMs = timeoutMs)
         val payload = result.data ?: throw PtpException.Malformed("GetDeviceInfo returned no data phase")
         val info = PtpDeviceInfo.parse(payload)
         cachedDeviceInfo = info
@@ -248,8 +248,17 @@ class PtpSession(private val transport: UsbTransport) {
             val remaining = (declaredLength - buffer.size).toInt()
             val rest = transport.readTransfer(expectedLength = remaining)
             if (rest.size != remaining) {
+                // Dump the bytes. This failure has been chased three times on hardware from
+                // the declared length alone (U-17), and that number cannot distinguish the
+                // competing explanations: leftovers from the previous session, a response to
+                // an earlier transaction, or a body that is powering down and replying with
+                // rubbish. The first 32 bytes settle it in one look.
                 throw PtpException.Malformed(
-                    "Container truncated: declared $declaredLength, assembled ${buffer.size + rest.size}",
+                    "Container truncated: declared $declaredLength, " +
+                        "assembled ${buffer.size + rest.size}. " +
+                        "op=0x${operationCode.toString(16)} " +
+                        "expectedTxn=$expectedTransactionId " +
+                        "head=${hexPreview(buffer)} tail=${hexPreview(rest.data)}",
                 )
             }
             buffer += rest.data
@@ -298,6 +307,13 @@ class PtpSession(private val transport: UsbTransport) {
         CanonLog.d("--> %s", container)
     }
 
+    /** First [max] bytes as hex, for failures where the parsed values are meaningless. */
+    private fun hexPreview(bytes: ByteArray, max: Int = HEX_PREVIEW_BYTES): String {
+        if (bytes.isEmpty()) return "<empty>"
+        val shown = bytes.take(max).joinToString(" ") { "%02X".format(it) }
+        return if (bytes.size > max) "$shown … (${bytes.size}B)" else "$shown (${bytes.size}B)"
+    }
+
     private fun logIn(response: PtpContainer, dataBytes: Int, elapsedMs: Long) {
         if (dataBytes > 0) {
             CanonLog.d("<-- %s +%dB data (%dms)", response, dataBytes, elapsedMs)
@@ -307,6 +323,9 @@ class PtpSession(private val transport: UsbTransport) {
     }
 
     private companion object {
+        /** Enough to cover a 12-byte PTP header plus the start of its payload. */
+        const val HEX_PREVIEW_BYTES = 32
+
         /** 0xFFFFFFFF is reserved by the standard. */
         const val MAX_TRANSACTION_ID = 0xFFFFFFFEL
 

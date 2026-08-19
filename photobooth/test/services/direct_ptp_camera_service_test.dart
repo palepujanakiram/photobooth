@@ -244,7 +244,7 @@ void main() {
         };
       });
 
-      final result = await service().runCaptureSession(shotCount: 4);
+      final result = await service().runCaptureSession(const DirectPtpCaptureRequest(shotCount: 4));
 
       expect(result.status, DirectPtpCaptureStatus.completed);
       expect(result.isCompleted, isTrue);
@@ -277,7 +277,7 @@ void main() {
             'shots': <Object?>[],
             'errorMessage': 'Back pressed',
           });
-      final result = await service().runCaptureSession();
+      final result = await service().runCaptureSession(const DirectPtpCaptureRequest());
       expect(result.isCancelled, isTrue);
       expect(result.isCompleted, isFalse);
       expect(result.shots, isEmpty);
@@ -292,7 +292,7 @@ void main() {
             'errorCode': 'card_unavailable',
             'errorMessage': 'No SD card',
           });
-      final result = await service().runCaptureSession();
+      final result = await service().runCaptureSession(const DirectPtpCaptureRequest());
       expect(result.status, DirectPtpCaptureStatus.error);
       expect(result.errorCode, 'card_unavailable');
     });
@@ -303,12 +303,12 @@ void main() {
             'status': 'completed',
             'shots': <Object?>[],
           });
-      expect((await service().runCaptureSession()).isCompleted, isFalse);
+      expect((await service().runCaptureSession(const DirectPtpCaptureRequest())).isCompleted, isFalse);
     });
 
     test('a platform exception becomes an error result, not a throw', () async {
       handle((_) async => throw PlatformException(code: 'boom'));
-      final result = await service().runCaptureSession();
+      final result = await service().runCaptureSession(const DirectPtpCaptureRequest());
       expect(result.status, DirectPtpCaptureStatus.error);
       expect(result.errorCode, 'capture_failed');
     });
@@ -318,7 +318,7 @@ void main() {
       final calls = <String>[];
       handle((_) async => null, calls: calls);
       final offAndroid = DirectPtpCameraService(isAndroid: () => false);
-      final result = await offAndroid.runCaptureSession();
+      final result = await offAndroid.runCaptureSession(const DirectPtpCaptureRequest());
       expect(result.errorCode, 'unsupported_platform');
       expect(calls, isEmpty);
     });
@@ -328,7 +328,7 @@ void main() {
             'status': 'completed',
             'shots': 'not a list',
           });
-      final result = await service().runCaptureSession();
+      final result = await service().runCaptureSession(const DirectPtpCaptureRequest());
       expect(result.shots, isEmpty);
     });
   });
@@ -348,6 +348,160 @@ void main() {
       const b = DirectPtpStatus(state: DirectPtpState.ready, label: 'Ready');
       expect(a, equals(b));
       expect(a.hashCode, equals(b.hashCode));
+    });
+  });
+
+  group('diagnostic strings', () {
+    test('device toString names the ids in hex for log grepping', () {
+      // Logs are matched against the camera's real vid/pid, which every Canon
+      // datasheet and dmesg line prints in hex.
+      const device = DirectPtpDevice(
+        deviceName: '/dev/bus/usb/001/030',
+        vendorId: 0x04A9,
+        productId: 0x32E9,
+        product: 'Canon Digital Camera',
+        hasPermission: true,
+      );
+      final text = device.toString();
+      expect(text, contains('4a9'));
+      expect(text, contains('32e9'));
+      expect(text, contains('Canon Digital Camera'));
+    });
+
+    test('shot toString carries the path and pixel size', () {
+      const shot = DirectPtpShot(
+        originalPath: '/data/0001.JPG',
+        widthPx: 6000,
+        heightPx: 4000,
+        bytes: 6104782,
+      );
+      final text = shot.toString();
+      expect(text, contains('/data/0001.JPG'));
+      expect(text, contains('6000x4000'));
+    });
+  });
+
+  group('failure paths that must degrade rather than throw', () {
+    test('probeDevice returns null when the native side throws', () async {
+      handle((_) async => throw PlatformException(code: 'boom'));
+      expect(await service().probeDevice(), isNull);
+    });
+
+    test('status returns an error state when the native side throws', () async {
+      handle((_) async => throw PlatformException(code: 'boom'));
+      final status = await service().status();
+      expect(status.state, DirectPtpState.error);
+      expect(status.isFault, isTrue);
+    });
+  });
+
+  group('statusStream', () {
+    const statusChannel =
+        EventChannel(DirectPtpCameraService.statusChannelName);
+
+    setUp(() {
+      messenger.setMockStreamHandler(
+        statusChannel,
+        MockStreamHandler.inline(
+          onListen: (arguments, sink) {
+            sink.success(<Object?, Object?>{'state': 'Ready', 'label': 'Ready'});
+            // A non-map event must not blow up a status listener.
+            sink.success('unexpected');
+            sink.endOfStream();
+          },
+        ),
+      );
+    });
+
+    tearDown(() => messenger.setMockStreamHandler(statusChannel, null));
+
+    test('maps native events and tolerates unexpected payloads', () async {
+      final events = await service().statusStream().toList();
+      expect(events, hasLength(2));
+      expect(events.first.state, DirectPtpState.ready);
+      expect(events.last.state, DirectPtpState.unknown);
+    });
+
+    test('is empty off Android rather than opening a channel', () async {
+      final offAndroid = DirectPtpCameraService(isAndroid: () => false);
+      expect(await offAndroid.statusStream().toList(), isEmpty);
+    });
+  });
+
+  group('default construction', () {
+    test('builds its own channels when none are injected', () {
+      // Production path: no constructor arguments at all.
+      final s = DirectPtpCameraService();
+      expect(s, isNotNull);
+    });
+  });
+
+  group('DirectPtpCaptureRequest', () {
+    test('defaults describe a single AI shot', () {
+      const request = DirectPtpCaptureRequest();
+      final args = request.toArguments();
+      expect(args['shotCount'], 1);
+      expect(args['displayMaxLongEdge'], 1920);
+      expect(args['idleTimeoutSeconds'], 180);
+      // A fresh pose counts down on its own; only a retake waits for the button.
+      expect(args['autoStart'], true);
+    });
+
+    test('every field reaches the channel arguments', () {
+      // Both ends of the channel must agree on the shape; a dropped key here is
+      // a native default silently overriding booth configuration.
+      const request = DirectPtpCaptureRequest(
+        shotCount: 4,
+        countdownSeconds: 10,
+        betweenShotSeconds: 8,
+        displayMaxLongEdge: 1600,
+        displayJpegQuality: 85,
+        idleTimeoutSeconds: 90,
+        autoStart: false,
+        titleText: 'POSE',
+        subtitleText: 'Strike a look',
+        shutterText: 'Snap',
+        cancelText: 'Back',
+      );
+      expect(request.toArguments(), <String, Object?>{
+        'shotCount': 4,
+        'countdownSeconds': 10,
+        'betweenShotSeconds': 8,
+        'displayMaxLongEdge': 1600,
+        'displayJpegQuality': 85,
+        'idleTimeoutSeconds': 90,
+        'autoStart': false,
+        'titleText': 'POSE',
+        'subtitleText': 'Strike a look',
+        'shutterText': 'Snap',
+        'cancelText': 'Back',
+      });
+    });
+
+    test('absent copy stays null rather than an empty string', () {
+      // The native side treats null as "use my own string resource"; an empty
+      // string would blank a guest-facing label instead.
+      final args = const DirectPtpCaptureRequest().toArguments();
+      expect(args['titleText'], isNull);
+      expect(args['cancelText'], isNull);
+    });
+  });
+
+  group('runtime construction', () {
+    int runtimeShotCount() => DateTime.now().year > 2000 ? 4 : 1;
+
+    test('the request is usable outside a const context', () {
+      // Production builds it from computed values, not literals, so the
+      // constructor has to work at runtime and not only as a const expression.
+      final request = DirectPtpCaptureRequest(shotCount: runtimeShotCount());
+      expect(request.toArguments()['shotCount'], 4);
+    });
+
+    test('the default platform check runs without an injected override', () {
+      // Exercises the fallback closure, not just the field assignment: off
+      // Android there is no native bridge, so nothing should be attempted.
+      final s = DirectPtpCameraService();
+      expect(s.isSupported, isFalse);
     });
   });
 }

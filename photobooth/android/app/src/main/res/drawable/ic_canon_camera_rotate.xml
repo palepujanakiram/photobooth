@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Select camera": outlined camera body with rotation arrows, matching
+     CupertinoIcons.camera_rotate as drawn on the Flutter capture bar. Outlined, not filled —
+     the Flutter bar's glyphs are all stroke weight, and a filled body read much heavier. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="@android:color/white">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M20,5h-3.17l-1.24,-1.35C15.22,3.24 14.68,3 14.12,3H9.88c-0.56,0 -1.1,0.24 -1.48,0.65L7.17,5H4C2.9,5 2,5.9 2,7v11c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V7C22,5.9 21.1,5 20,5zM20,18H4V7h4.05l1.83,-2h4.24l1.83,2H20V18z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M12,9.5c-0.83,0 -1.58,0.34 -2.12,0.88L11,11.5H7.5V8l1.32,1.32C9.63,8.51 10.76,8 12,8c1.93,0 3.55,1.23 4.16,2.94l-1.42,0.47C14.35,10.31 13.27,9.5 12,9.5zM12,14.5c0.83,0 1.58,-0.34 2.12,-0.88L13,12.5h3.5V16l-1.32,-1.32C14.37,15.49 13.24,16 12,16c-1.93,0 -3.55,-1.23 -4.16,-2.94l1.42,-0.47C9.65,13.69 10.73,14.5 12,14.5z" />
+</vector>

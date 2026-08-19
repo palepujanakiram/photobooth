@@ -86,8 +86,13 @@
         android:orientation="horizontal">
 
         <!--
-          focusable + focusableInTouchMode: the target box reports touch AND d-pad AND
-          leanback, so every control has to be reachable without a screen tap.
+          focusable, but NOT focusableInTouchMode. The target box reports touch AND d-pad AND
+          leanback, so every control has to be reachable without a screen tap — plain
+          `focusable` already gives that, because a d-pad device is not in touch mode.
+
+          focusableInTouchMode additionally made the *first* tap on a touchscreen only move
+          focus, swallowing the click: on the phone the guest had to press "Take photo" twice,
+          once to highlight it and once to fire. Reported from hardware 2026-08-18.
         -->
         <Button
             android:id="@+id/canon_cancel"
@@ -108,7 +113,6 @@
             android:minHeight="56dp"
             android:enabled="false"
             android:focusable="true"
-            android:focusableInTouchMode="true"
             android:text="@string/canon_capture_shutter"
             android:textSize="20sp"
             android:textStyle="bold" />

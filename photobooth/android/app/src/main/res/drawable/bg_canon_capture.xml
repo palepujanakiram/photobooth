@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Matches ThemeBackground(theme: null) from the Flutter capture screen: a top-to-bottom
+  #0D2130 → #0A1628 → #050810 gradient. The Flutter widget also paints an animated falling
+  starfield over this; that needs a custom View to reproduce and is not attempted here, so
+  the native screen is the same colour but static.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:startColor="#0D2130"
+        android:centerColor="#0A1628"
+        android:endColor="#050810"
+        android:type="linear" />
+</shape>

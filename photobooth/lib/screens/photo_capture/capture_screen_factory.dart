@@ -24,8 +24,12 @@ Widget buildCaptureScreen({
   Key? key,
   required CaptureSessionKind sessionKind,
   CaptureRouteArgs? captureArgs,
+  @visibleForTesting CameraSource? source,
 }) {
-  if (usesDirectPtpCamera) {
+  // The source is a compile-time define in production, which leaves the other
+  // branch unreachable from a test; this override exists so both can be covered.
+  final resolved = source ?? resolveCameraSource();
+  if (resolved == CameraSource.directPtp) {
     return DirectPtpCaptureScreen(
       key: key,
       sessionKind: sessionKind,

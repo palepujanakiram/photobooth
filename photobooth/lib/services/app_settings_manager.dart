@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../models/app_settings_model.dart';
 import '../utils/app_runtime_config.dart';
+import '../utils/camera_sidecar_config.dart';
 import '../utils/constants.dart';
 import '../utils/logger.dart';
 import 'alice_inspector.dart';
@@ -63,6 +64,11 @@ class AppSettingsManager extends ChangeNotifier {
     if (!forceRefresh && !kioskChanged && _settings != null) {
       // Keep [AppRuntimeConfig] in sync when callers reuse cached settings.
       AppRuntimeConfig.instance.applyFromSettings(_settings);
+      // Same for the capture source. This branch is the common one after the first
+      // fetch — every later `fetchSettings()` returns through here — so leaving it out
+      // would mean the booth routed to the right POSE screen once and then reverted to
+      // the build default on the next session.
+      applyCameraSourceFromSettings(_settings);
       return;
     }
 
@@ -87,6 +93,11 @@ class AppSettingsManager extends ChangeNotifier {
         _lastFetchedAt = DateTime.now();
         _errorMessage = null;
         AppRuntimeConfig.instance.applyFromSettings(_settings);
+        // Which POSE screen this kiosk opens is configuration, not a build flag. Applied
+        // here so it is set before any capture route is built, and re-applied on every
+        // fetch so switching a kiosk's connection mode in ZenAI takes effect without a
+        // reinstall.
+        applyCameraSourceFromSettings(_settings);
         applyFlutterImageCacheLimits();
         AliceInspector.syncWithRuntimeConfig();
       } catch (e, st) {

@@ -1,14 +1,30 @@
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../models/app_settings_model.dart';
+import 'camera_source_config.dart';
 
 /// Where the DSLR sidecar runs for this booth.
 ///
 /// - [CameraConnectionMode.pi]: LAN Pi (`fotozen-sidecar` / gphoto2) via ZenAI host/port
 /// - [CameraConnectionMode.direct]: on-device Canon EDSDK at `127.0.0.1:8791`
+/// - [CameraConnectionMode.directPtp]: pure-Kotlin PTP over USB, no sidecar at all
 enum CameraConnectionMode {
   pi,
   direct,
+
+  /// ZenAI's "Direct PTP (native USB, no EDSDK)".
+  ///
+  /// The odd one out: [pi] and [direct] both speak HTTP to a sidecar and differ only in
+  /// *where* that sidecar runs, so both keep the Flutter capture screen. This one has no
+  /// sidecar to talk to — capture lives in `CanonCaptureActivity` — so it is the only mode
+  /// that changes which POSE screen the booth opens.
+  directPtp;
+
+  /// True when stills come from a tethered DSLR rather than a webcam or capture card.
+  bool get isDslr => true;
+
+  /// True when this mode is served by an HTTP sidecar (Pi or on-device EDSDK).
+  bool get usesSidecar => this == pi || this == direct;
 }
 
 /// Canon / Pi sidecar configuration for Flutter capture + pose preview.
@@ -39,6 +55,10 @@ class CameraSidecarConfig {
       connectionMode == CameraConnectionMode.direct;
 
   bool get isPiConnection => connectionMode == CameraConnectionMode.pi;
+
+  /// Native PTP over USB. No sidecar, so [isConfigured] is always false here.
+  bool get isDirectPtpConnection =>
+      connectionMode == CameraConnectionMode.directPtp;
 
   /// Live MJPEG preview is requested and sidecar is configured.
   bool get shouldShowLivePreview => isConfigured && livePreviewEnabled;
@@ -129,9 +149,35 @@ CameraConnectionMode? parseCameraConnectionMode(String? raw) {
     case 'local':
     case 'android':
       return CameraConnectionMode.direct;
+    // ZenAI sends `direct_ptp` (see kiosk-edit.tsx). The rest are tolerated for the same
+    // reason the other arms have aliases: this value arrives from remote kiosk settings,
+    // and a near-miss should not silently drop the booth onto a different camera stack.
+    case 'direct_ptp':
+    case 'directptp':
+    case 'direct-ptp':
+    case 'ptp':
+    case 'native_ptp':
+      return CameraConnectionMode.directPtp;
     default:
       return null;
   }
+}
+
+/// Publishes the POSE screen implied by kiosk settings. Call whenever settings change.
+///
+/// Only `direct_ptp` maps to a distinct capture screen. Pi and on-device EDSDK both drive
+/// the Flutter capture screen through an HTTP sidecar and differ only in the sidecar's
+/// address, so they clear the override and leave the booth on whatever the build selected —
+/// which keeps those two flows behaving exactly as they do on main.
+///
+/// Applied on every settings load, not once at startup, so an operator switching a kiosk's
+/// connection mode in ZenAI takes effect on the next settings fetch rather than needing the
+/// booth reinstalled.
+void applyCameraSourceFromSettings(AppSettingsModel? settings) {
+  final mode = resolveCameraConnectionMode(settings);
+  setConfiguredCameraSource(
+    mode == CameraConnectionMode.directPtp ? CameraSource.directPtp : null,
+  );
 }
 
 bool isLoopbackCameraHost(String? host) {
@@ -250,6 +296,20 @@ CameraSidecarConfig resolveCameraSidecarConfig(
 }) {
   final env = environment ?? CameraSidecarConfig.fromEnvironment();
   final mode = resolveCameraConnectionMode(settings, environment: env);
+
+  if (mode == CameraConnectionMode.directPtp) {
+    // No sidecar exists in this mode — capture is native, over USB. Returning a config
+    // that is deliberately *not* `isConfigured` is what switches off the entire Flutter
+    // sidecar surface in one place: the live-preview poller, the pose warm-up, the
+    // capture-screen sidecar branches and the `/health` probe all key off that flag, so
+    // none of them start polling `127.0.0.1:8791` for a process that was never launched.
+    return const CameraSidecarConfig(
+      enabled: false,
+      baseUrl: '',
+      livePreviewEnabled: false,
+      connectionMode: CameraConnectionMode.directPtp,
+    );
+  }
 
   if (mode == CameraConnectionMode.direct) {
     return _directConfig(env: env, settings: settings);

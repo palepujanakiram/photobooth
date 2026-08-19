@@ -79,6 +79,14 @@
           configChanges mirrors MainActivity so a rotation does not recreate the Activity
           mid-session — that would drop the shots taken so far and restart live view. The
           app locks no orientation anywhere, so this screen inherits it too.
+
+          finishOnTaskLaunch / excludeFromRecents keep POSE out of task restore. This is a
+          second Activity in MainActivity's task, and onCreate() unconditionally calls
+          startSession(), which auto-starts the countdown. So if the booth is left or killed
+          while POSE is on top, relaunching from the launcher or Recents restored this screen
+          and began counting down — the guest saw a live viewfinder and a timer before the
+          Terms screen they never accepted. Finishing it on task launch sends the relaunch to
+          MainActivity, which is the only correct entry point for the flow.
         -->
         <activity
             android:name=".canoncapture.CanonCaptureActivity"
@@ -86,6 +94,8 @@
             android:launchMode="singleTop"
             android:theme="@style/CanonCaptureTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:excludeFromRecents="true"
+            android:finishOnTaskLaunch="true"
             android:hardwareAccelerated="true" />
 
         <!--

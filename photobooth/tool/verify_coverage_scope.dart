@@ -196,7 +196,11 @@ void main() {
   for (final line in lcov.readAsLinesSync()) {
     if (line.startsWith('SF:')) {
       flushFile();
-      current = line.substring(3);
+      // Normalise separators: on Windows lcov writes backslashes, but every
+      // ignore pattern above is written with forward slashes (and mirrors
+      // .qlty/qlty.toml, which is POSIX). Without this the gate silently stops
+      // ignoring lib/views/ and friends locally and reports dozens of false gaps.
+      current = line.substring(3).replaceAll(r'\', '/');
       fileLf = 0;
       fileLh = 0;
       uncoveredLines.clear();

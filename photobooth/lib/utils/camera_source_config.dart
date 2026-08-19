@@ -67,10 +67,38 @@ CameraSource cameraSourceFromName(
 const String kCameraSourceDefine =
     String.fromEnvironment('CAMERA_SOURCE', defaultValue: '');
 
-/// The configured camera source for this build.
+/// Camera source published by kiosk configuration, or null before settings load.
+///
+/// ZenAI owns this now (`Connection → Direct PTP (native USB, no EDSDK)` on the kiosk edit
+/// screen). It is cached in a top-level variable rather than read from a provider because
+/// [resolveCameraSource] is called from route builders and plain functions that have no
+/// `BuildContext`, and because the answer must be identical everywhere in the process —
+/// two call sites disagreeing about which POSE screen to open is the failure mode that
+/// [buildCaptureScreen]'s own docstring describes.
+CameraSource? _configuredCameraSource;
+
+/// Publishes the source implied by kiosk settings. Null clears it.
+///
+/// Called when app settings load or change. Only [CameraConnectionMode.directPtp] maps to a
+/// distinct source: Pi and on-device EDSDK are both sidecars behind the Flutter capture
+/// screen, so they leave the source alone and keep whatever the build already used.
+void setConfiguredCameraSource(CameraSource? source) {
+  _configuredCameraSource = source;
+}
+
+/// The configured camera source: kiosk settings first, then the build-time define.
+///
+/// Settings win over the define so a booth can be switched from the ZenAI admin without a
+/// rebuild; the define stays as the lab override for a device that has no kiosk yet.
 CameraSource resolveCameraSource({
   @visibleForTesting String? overrideDefine,
+  @visibleForTesting CameraSource? overrideConfigured,
+  @visibleForTesting bool ignoreConfigured = false,
 }) {
+  if (!ignoreConfigured) {
+    final configured = overrideConfigured ?? _configuredCameraSource;
+    if (configured != null) return configured;
+  }
   final raw = overrideDefine ?? kCameraSourceDefine;
   if (raw.trim().isEmpty) return CameraSource.device;
   return cameraSourceFromName(raw);
@@ -79,3 +107,14 @@ CameraSource resolveCameraSource({
 /// True when the booth should hand capture to the native direct-PTP screen.
 bool get usesDirectPtpCamera =>
     resolveCameraSource() == CameraSource.directPtp;
+
+/// Prefix for camera ids minted by the direct-PTP capture screen, e.g. `ptp:EOS`.
+///
+/// Mirrors the `sidecar:` prefix that `isSidecarCameraId` matches. Both mean the
+/// same thing downstream — the still came from a tethered DSLR, not from a live
+/// preview surface — and code that special-cases one almost always needs both.
+const String kDirectPtpCameraIdPrefix = 'ptp:';
+
+/// True when [cameraId] identifies the directly tethered DSLR.
+bool isDirectPtpCameraId(String? cameraId) =>
+    (cameraId?.trim() ?? '').startsWith(kDirectPtpCameraIdPrefix);

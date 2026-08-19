@@ -283,6 +283,20 @@ class KioskDeviceStatusService {
     final transport = config.isPiConnection
         ? KioskDeviceTransport.lan
         : KioskDeviceTransport.usb;
+
+    // Direct PTP has no sidecar, so `isConfigured` is false by construction and the check
+    // below would report "Not configured" for a booth that is configured perfectly well.
+    // Answer it from the USB bus instead, which is the only thing that matters here:
+    // CanonUsbPermissionManager.findCanonCamera reads UsbManager directly and does not care
+    // which stack drives the body.
+    if (config.isDirectPtpConnection) {
+      return KioskDeviceStatusEntry(
+        deviceName: AppStrings.kioskDeviceDslrSidecar,
+        connected: await _safeCanonCameraPresent(),
+        transport: KioskDeviceTransport.usb,
+      );
+    }
+
     if (!config.isConfigured) {
       return KioskDeviceStatusEntry(
         deviceName: AppStrings.kioskDeviceDslrSidecar,

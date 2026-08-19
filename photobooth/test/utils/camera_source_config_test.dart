@@ -67,4 +67,12 @@ void main() {
       expect(resolveCameraSource(overrideDefine: 'typo'), CameraSource.device);
     });
   });
+
+  group('usesDirectPtpCamera', () {
+    test('is false without the define, so existing builds are unchanged', () {
+      // This getter is what every capture entry point consults; if it were ever
+      // true by default, every booth would try to open a DSLR it does not have.
+      expect(usesDirectPtpCamera, isFalse);
+    });
+  });
 }

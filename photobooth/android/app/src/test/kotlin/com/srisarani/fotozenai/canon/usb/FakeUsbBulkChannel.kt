@@ -124,6 +124,14 @@ class FakeUsbBulkChannel(
         return true
     }
 
+    var deviceReset = false
+        private set
+
+    override fun resetDevice(): Boolean {
+        deviceReset = true
+        return true
+    }
+
     override fun close() {
         closed = true
     }

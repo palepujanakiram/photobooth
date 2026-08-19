@@ -19,6 +19,8 @@ import com.srisarani.fotozenai.canon.ptp.PtpVendorExtension
 import com.srisarani.fotozenai.canon.state.ConnectionState
 import com.srisarani.fotozenai.canon.usb.UsbCameraDiscovery
 import com.srisarani.fotozenai.canon.usb.UsbError
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -125,12 +127,22 @@ object CameraSessionManager {
      *
      * So the resume waits for the queue to finish the transfer. [CAPTURE_DRAIN_TIMEOUT_MS]
      * bounds it: a lost image must not leave the booth without a viewfinder.
+     *
+     * @return completes with whether the shutter actually fired, as soon as that is known.
+     *   The download still finishes asynchronously — that is the point of this method — but
+     *   the *release* outcome has to be reachable by the caller. It used to be swallowed
+     *   here, so a `RemoteReleaseOn` answering `DeviceBusy` looked identical to a shot in
+     *   flight, and the capture screen sat out its full 45s image timeout waiting for a
+     *   photo that was never taken. On hardware 2026-08-18 two failed releases in a row cost
+     *   the guest 106 seconds of blank screen before the third attempt worked.
      */
-    fun triggerCapture(withAutofocus: Boolean = true) {
+    fun triggerCapture(withAutofocus: Boolean = true): Deferred<Boolean> {
+        val released = CompletableDeferred<Boolean>()
         scope.launch {
             val capture = eosCapture
             if (capture == null) {
                 CanonLog.w("Capture requested but no EOS session is active")
+                released.complete(false)
                 return@launch
             }
 
@@ -148,22 +160,32 @@ object CameraSessionManager {
                 kotlinx.coroutines.delay(LIVE_VIEW_SETTLE_BEFORE_RELEASE_MS)
             }
 
-            val released = runCatching {
+            val fired = runCatching {
                 capture.release(
                     if (withAutofocus) EosCapture.ReleaseMode.WITH_AUTOFOCUS
                     else EosCapture.ReleaseMode.WITHOUT_AUTOFOCUS,
                 )
             }.onFailure { CanonLog.e(it, "Shutter release failed") }.isSuccess
 
+            // Publish before draining, not after: the caller needs to stop waiting for an
+            // image the moment we know none is coming, and awaitCaptureDrained below can
+            // itself take seconds.
+            released.complete(fired)
+
             // C-16: hold live view down until the bytes are safely on disk.
-            if (released) awaitCaptureDrained()
+            if (fired) awaitCaptureDrained()
 
             if (liveViewWasRunning) {
                 // Give the body a moment to finish the mirror cycle before re-enabling.
                 kotlinx.coroutines.delay(LIVE_VIEW_RESUME_DELAY_MS)
                 liveView?.start()
             }
+        }.invokeOnCompletion { cause ->
+            // A cancelled or crashed launch must not leave the caller awaiting forever.
+            if (!released.isCompleted) released.complete(false)
+            if (cause != null) CanonLog.w(cause, "Capture coroutine ended before releasing")
         }
+        return released
     }
 
     /**
@@ -233,9 +255,22 @@ object CameraSessionManager {
         }
 
         if (opened != null) {
-            CanonLog.d("scanAndConnect ignored - already connected")
-            return
+            if (session != null) {
+                CanonLog.d("scanAndConnect ignored - already connected")
+                return
+            }
+            // Device open but no PTP session: a previous openPtpSession failed after the
+            // interface was already claimed. Returning here would make every later retry -
+            // including the operator pressing "Try again" - a no-op, which is what left the
+            // booth needing a replug or an app restart to recover (observed 2026-08-18).
+            CanonLog.w("USB device open with no PTP session - releasing before reconnect")
+            releaseQuietly()
         }
+
+        // Publish before looking. See ConnectionState.Scanning: without a distinct value
+        // here, a scan that finds nothing sets NoDevice over NoDevice, which StateFlow
+        // conflates away, and every caller waiting for the outcome waits for its timeout.
+        _state.value = ConnectionState.Scanning
 
         discovery.logAttachedDevices()
         val cameras = discovery.findCameras()
@@ -319,15 +354,7 @@ object CameraSessionManager {
 
             // GetDeviceInfo works before a session is open, so we learn what the body
             // supports before committing to anything.
-            val info = try {
-                ptp.getDeviceInfo()
-            } catch (e: Exception) {
-                // One more stall clear, then one retry. A camera left mid-transaction can
-                // need a second nudge; beyond that it genuinely needs a power cycle.
-                CanonLog.w("First GetDeviceInfo failed (%s) - clearing stall and retrying", e.message)
-                transport.recoverFromStall()
-                ptp.getDeviceInfo()
-            }
+            val info = readDeviceInfoWithRetries(ptp, transport)
             ptp.openSession(1)
             session = ptp
 
@@ -342,7 +369,48 @@ object CameraSessionManager {
         } catch (e: PtpException) {
             CanonLog.e(e, "PTP session failed to open")
             _state.value = ConnectionState.Error(e.message ?: "PTP error", e)
+            // Hand the interface back. connect()'s own catch cannot do it - this block
+            // swallows the exception - so without this the claimed-but-unusable device
+            // survives every retry and only a replug clears it.
+            releaseQuietly()
         }
+    }
+
+    /**
+     * Reads `GetDeviceInfo`, clearing the endpoint between attempts.
+     *
+     * The retry *is* the working path, not a safety net. This body ignores the first PTP
+     * command after `claimInterface` — the read comes back `after 0B`, zero bytes — and the
+     * same command succeeds once the halt is cleared behind it. Sometimes it takes more than
+     * one round, because the reply the body abandoned can surface during the next attempt
+     * and has to be read past first (that is the `1140862976` misparse).
+     *
+     * [FIRST_DEVICE_INFO_TIMEOUT_MS] is short precisely so several rounds are affordable:
+     * the whole loop is bounded by about 5s, against 20s for the single generous attempt it
+     * replaced — which recovered less often.
+     */
+    private fun readDeviceInfoWithRetries(
+        ptp: PtpSession,
+        transport: com.srisarani.fotozenai.canon.usb.UsbTransport,
+    ): PtpDeviceInfo {
+        var last: Exception? = null
+        repeat(DEVICE_INFO_ATTEMPTS) { attempt ->
+            try {
+                return ptp.getDeviceInfo(timeoutMs = FIRST_DEVICE_INFO_TIMEOUT_MS)
+            } catch (e: PtpException) {
+                last = e
+            } catch (e: UsbError) {
+                last = e
+            }
+            CanonLog.w(
+                "GetDeviceInfo attempt %d/%d failed (%s) - clearing endpoint and retrying",
+                attempt + 1,
+                DEVICE_INFO_ATTEMPTS,
+                last?.message,
+            )
+            transport.recoverFromStall()
+        }
+        throw last ?: PtpException.Malformed("GetDeviceInfo failed with no recorded cause")
     }
 
     /**
@@ -393,6 +461,10 @@ object CameraSessionManager {
         } catch (e: PtpException) {
             CanonLog.e(e, "EOS handshake failed - M4 capture cannot work until this passes")
             _state.value = ConnectionState.Error("EOS handshake failed: ${e.message}", e)
+            // The booth cannot capture without remote mode, and leaving the PTP session
+            // live here would keep `session != null`, so the reconnect guard above would
+            // read this as a healthy link and skip the retry.
+            releaseQuietly()
         }
     }
 
@@ -464,6 +536,38 @@ object CameraSessionManager {
      * Leaking either is what produces U-11: works for N reconnect cycles, then stops
      * because file descriptors have run out.
      */
+    /**
+     * Read budget for the **first** `GetDeviceInfo` on a freshly claimed interface.
+     *
+     * Deliberately *short*, which is the opposite of the obvious instinct. A per-read trace
+     * on hardware 2026-08-18 settled what actually happens: this body does not answer its
+     * first PTP command after `claimInterface` at all. The read logged `bulkIn after 0B
+     * timed out after 20000ms` — not a slow reply, **zero bytes for the full budget**. Clear
+     * the endpoint halt afterwards and the identical command succeeds in ~800ms, every time.
+     *
+     * So the first command is really a wake-up that gets swallowed, and the only thing a
+     * generous timeout buys is dead air in front of the guest: raising this to 20s turned a
+     * 5s stall into a 21s one and fixed nothing. Failing fast hands control to the retry in
+     * [openPtpSession], which is the call that works.
+     *
+     * It also limits the damage from the related fault. When that abandoned reply *does*
+     * arrive late it offsets the stream, and the next read lands mid-payload: `peekLength`
+     * sees `00 30 00 44` = 0x44003000 = **1140862976**, the "Container truncated" signature
+     * blamed on stale leftovers since `U-17`. The dump that proved it contained `"0D II"`
+     * and `"3-1.0.1"` — this body's own model and firmware strings.
+     */
+    private const val FIRST_DEVICE_INFO_TIMEOUT_MS = 1_500
+
+    /**
+     * Rounds of "try GetDeviceInfo, clear the endpoint" before giving up.
+     *
+     * Three because two was observably not always enough: on 2026-08-18 a connect recovered
+     * on its second attempt and an otherwise identical one failed with only two available.
+     * At [FIRST_DEVICE_INFO_TIMEOUT_MS] each, three costs ~5s in the worst case and only the
+     * first ~1.5s in the common one.
+     */
+    private const val DEVICE_INFO_ATTEMPTS = 3
+
     /** Mirror-cycle settling time before live view is re-enabled after a capture. */
     private const val LIVE_VIEW_RESUME_DELAY_MS = 400L
 

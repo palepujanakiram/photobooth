@@ -2,82 +2,204 @@
 <!--
   Booth-styled native capture screen.
 
-  Mirrors the Flutter capture chrome in photo_capture_view_scaffold.dart so switching
-  between the two is not visible to a guest: centred white "POSE" title at 22sp/w600, a
-  white70 subtitle line beneath it, the accepted-shot strip under that, and a back chevron
-  top-left.
+  Mirrors the Flutter capture chrome in photo_capture_view_scaffold.dart so switching between
+  the two is not visible to a guest. Matched against a side-by-side screenshot of the real
+  Flutter POSE screen on hardware 2026-08-18, which is where the remaining differences came
+  from — the two had drifted well past "close enough":
 
-  Shares every view id with activity_canon_capture.xml on purpose — CanonCaptureActivity
-  binds the same ids either way, so the layout can be swapped from
-  CaptureScreenStyle.current without touching the Activity.
+    * background   ThemeBackground(theme: null)'s #0D2130 → #0A1628 → #050810 gradient,
+                   not flat black. (Its animated starfield is not reproduced; that needs a
+                   custom View, so the native screen is the same colour but static.)
+    * viewfinder   an inset card with a rounded hairline border, not a full-bleed surface.
+    * primary CTA  one full-width blue pill with a camera glyph, not two grey system buttons
+                   side by side.
+    * cancel       Flutter has no cancel button at all — the back chevron is the way out — so
+                   canon_cancel is kept for id parity but hidden.
+
+  Shares every view id with activity_canon_capture.xml on purpose: CanonCaptureActivity binds
+  the same ids either way, so the layout can be swapped from CaptureScreenStyle.current
+  without touching the Activity.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/black"
+    android:background="@drawable/bg_canon_capture"
     android:keepScreenOn="true">
 
-    <SurfaceView
-        android:id="@+id/canon_live_view"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent" />
-
-    <!-- Scrim behind the top chrome so white text stays readable over a bright frame. -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="220dp"
-        android:layout_gravity="top"
-        android:background="#66000000" />
-
-    <ImageButton
-        android:id="@+id/canon_back"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_gravity="top|start"
-        android:layout_marginStart="8dp"
-        android:layout_marginTop="14dp"
-        android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:contentDescription="@string/canon_capture_cancel"
-        android:focusable="true"
-        android:src="@drawable/ic_canon_back" />
-
-    <LinearLayout
+    <!--
+      Top action bar, mirroring the Flutter AppBar: back chevron left, then camera-select /
+      rotate / reload right. fitsSystemWindows drops the row below the status bar, which is
+      where Flutter's AppBar sits — without it the native title rode ~24dp higher and the
+      switch between screens was visible.
+    -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="top"
-        android:layout_marginTop="18dp"
-        android:gravity="center_horizontal"
-        android:orientation="vertical">
+        android:fitsSystemWindows="true">
 
-        <TextView
-            android:id="@+id/canon_title"
+        <ImageButton
+            android:id="@+id/canon_back"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="top|start"
+            android:layout_marginStart="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/canon_capture_cancel"
+            android:focusable="true"
+            android:src="@drawable/ic_canon_back" />
+
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_marginEnd="4dp"
+            android:orientation="horizontal">
+
+            <ImageButton
+                android:id="@+id/canon_select_camera"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/canon_action_select_camera"
+                android:focusable="true"
+                android:src="@drawable/ic_canon_camera_rotate" />
+
+            <ImageButton
+                android:id="@+id/canon_rotate"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/canon_action_rotate"
+                android:focusable="true"
+                android:src="@drawable/ic_canon_rotate_right" />
+
+            <ImageButton
+                android:id="@+id/canon_reconnect"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/canon_action_reconnect"
+                android:focusable="true"
+                android:src="@drawable/ic_canon_refresh" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <!--
+      Everything below the app bar, stacked the way the Flutter body is: title, subtitle,
+      shot strip, viewfinder card, status line, primary action. A vertical LinearLayout
+      rather than free-floating gravities so the card takes the leftover height (weight=1)
+      exactly as Flutter's Expanded preview does.
+    -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fitsSystemWindows="true"
+        android:orientation="vertical">
+
+        <!-- w600 and w500 rather than bold/normal: the Flutter title is FontWeight.w600 and
+             the subtitle w500, and textStyle="bold" renders w700, which read noticeably
+             heavier side by side. textFontWeight needs API 28; this module's minSdk is 30. -->
+        <TextView
+            android:id="@+id/canon_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="56dp"
+            android:gravity="center"
             android:text="@string/canon_capture_title_booth"
             android:textColor="@android:color/white"
-            android:textSize="22sp"
-            android:textStyle="bold" />
+            android:textFontWeight="600"
+            android:textSize="22sp" />
 
         <TextView
             android:id="@+id/canon_subtitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:paddingHorizontal="24dp"
             android:gravity="center"
+            android:paddingHorizontal="24dp"
             android:text="@string/canon_capture_subtitle"
             android:textColor="#B3FFFFFF"
-            android:textSize="13sp"
-            android:textStyle="normal" />
+            android:textFontWeight="500"
+            android:textSize="13sp" />
 
         <!-- Accepted shots, matching the Flutter strip's position under the subtitle. -->
         <LinearLayout
             android:id="@+id/canon_thumbnails"
             android:layout_width="wrap_content"
             android:layout_height="78dp"
+            android:layout_gravity="center_horizontal"
             android:layout_marginTop="10dp"
             android:orientation="horizontal"
+            android:visibility="gone" />
+
+        <!--
+          Viewfinder card. The SurfaceView itself cannot be clipped to a rounded rect without
+          a TextureView (which would cost a copy per frame — the whole point of the direct-PTP
+          design is not paying that), so the rounding lives in the border drawn over it. At a
+          14dp radius on a dark frame the difference is not visible.
+        -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="14dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_canon_preview_card"
+            android:foreground="@drawable/bg_canon_preview_card_border">
+
+            <SurfaceView
+                android:id="@+id/canon_live_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/canon_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:gravity="center"
+            android:paddingHorizontal="24dp"
+            android:text="@string/canon_status_connecting"
+            android:textColor="@android:color/white"
+            android:textSize="16sp" />
+
+        <!--
+          focusable only. focusableInTouchMode would make the first tap merely move focus and
+          swallow the click, so the guest had to press "Take photo" twice — once to highlight
+          it, once to fire. Plain focusable still keeps it d-pad reachable on the TV box,
+          because a d-pad device is not in touch mode.
+        -->
+        <Button
+            android:id="@+id/canon_shutter"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="20dp"
+            android:background="@drawable/bg_canon_primary_button"
+            android:drawableStart="@drawable/ic_canon_shutter"
+            android:drawablePadding="10dp"
+            android:enabled="false"
+            android:focusable="true"
+            android:minHeight="60dp"
+            android:paddingHorizontal="24dp"
+            android:text="@string/canon_capture_shutter"
+            android:textAllCaps="false"
+            android:textColor="@android:color/white"
+            android:textFontWeight="600"
+            android:textSize="18sp" />
+
+        <!-- Hidden: Flutter's POSE screen has no cancel button, the back chevron is the way
+             out. Kept so CanonCaptureActivity's non-null findViewById still resolves and the
+             two layouts keep identical ids. -->
+        <Button
+            android:id="@+id/canon_cancel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:focusable="true"
+            android:text="@string/canon_capture_cancel"
             android:visibility="gone" />
     </LinearLayout>
 
@@ -86,62 +208,13 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
+        android:shadowColor="@android:color/black"
+        android:shadowDx="0"
+        android:shadowDy="4"
+        android:shadowRadius="18"
         android:textColor="@android:color/white"
         android:textSize="160sp"
         android:textStyle="bold"
         android:visibility="gone"
-        android:shadowColor="@android:color/black"
-        android:shadowRadius="18"
-        android:shadowDx="0"
-        android:shadowDy="4"
         tools:text="3" />
-
-    <TextView
-        android:id="@+id/canon_status"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:layout_marginBottom="120dp"
-        android:gravity="center"
-        android:paddingHorizontal="24dp"
-        android:text="@string/canon_status_connecting"
-        android:textColor="@android:color/white"
-        android:textSize="18sp"
-        android:shadowColor="@android:color/black"
-        android:shadowRadius="8"
-        android:shadowDx="0"
-        android:shadowDy="2" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:layout_marginBottom="32dp"
-        android:gravity="center"
-        android:orientation="horizontal">
-
-        <Button
-            android:id="@+id/canon_cancel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="20dp"
-            android:minWidth="150dp"
-            android:minHeight="54dp"
-            android:focusable="true"
-            android:text="@string/canon_capture_cancel"
-            android:textSize="16sp" />
-
-        <Button
-            android:id="@+id/canon_shutter"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:minWidth="200dp"
-            android:minHeight="54dp"
-            android:enabled="false"
-            android:focusable="true"
-            android:focusableInTouchMode="true"
-            android:text="@string/canon_capture_shutter"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-    </LinearLayout>
 </FrameLayout>

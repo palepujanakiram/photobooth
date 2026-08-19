@@ -179,6 +179,12 @@ class UsbTransport(
             }
 
             val n = channel.bulkIn(buffer, total, request, timeoutMs)
+            // Per-read trace. The "Container truncated: declared 1140862976" failure is
+            // decided entirely by what the *first* read of a transfer returns, and the
+            // container-level dump cannot show whether that was one short read or the tail
+            // of several. Verbose, so it costs nothing until someone asks for it with
+            // `adb shell setprop log.tag.FotozenCanon VERBOSE`.
+            CanonLog.v("bulkIn asked=%d got=%d (total=%d, packet=%d)", request, n, total, packets)
 
             when {
                 n < 0 -> {
@@ -248,16 +254,25 @@ class UsbTransport(
      * in flight; leaving it there offsets every subsequent read by one transfer. M2 calls
      * this whenever a response's transaction ID does not match what was sent.
      *
+     * @param settleReads how many *consecutive* empty reads prove the endpoint is clear.
+     *   One is right for a ZLP, which is either already pending or never coming. It is
+     *   wrong for recovery: see [RECOVERY_SETTLE_READS].
      * @return bytes discarded.
      */
-    fun drain(timeoutMs: Int = config.zlpTimeoutMs): Int {
+    fun drain(timeoutMs: Int = config.zlpTimeoutMs, settleReads: Int = 1): Int {
         if (!channel.isOpen) return 0
         var discarded = 0
         var rounds = 0
+        var consecutiveEmpty = 0
         while (rounds < MAX_DRAIN_ROUNDS && discarded < MAX_DRAIN_BYTES) {
             val n = channel.bulkIn(drainScratch, 0, drainScratch.size, timeoutMs)
             rounds++
-            if (n <= 0) break
+            CanonLog.v("drain read %d (round %d, discarded=%d)", n, rounds, discarded)
+            if (n <= 0) {
+                if (++consecutiveEmpty >= settleReads) break
+                continue
+            }
+            consecutiveEmpty = 0
             discarded += n
         }
         if (discarded > 0) {
@@ -290,8 +305,13 @@ class UsbTransport(
      * otherwise-necessary camera power cycle.
      */
     fun recoverFromStall(): Boolean {
+        // Order matters: reset the *device* first, then clear the host-side halt, then drain.
+        // The reset is what makes the camera abandon a reply it still has queued; doing it
+        // after the drain would leave that reply to surface on the next command, which is
+        // exactly the one-transfer-out-of-phase failure this path exists to prevent.
+        channel.resetDevice()
         val cleared = channel.clearStall()
-        val discarded = drain(RECOVERY_DRAIN_TIMEOUT_MS)
+        val discarded = drain(RECOVERY_DRAIN_TIMEOUT_MS, RECOVERY_SETTLE_READS)
         if (discarded > 0) CanonLog.i("Discarded %dB left over from a previous session", discarded)
         return cleared
     }
@@ -333,6 +353,23 @@ class UsbTransport(
          * over and power-cycle the camera.
          */
         const val RECOVERY_DRAIN_TIMEOUT_MS = 250
+
+        /**
+         * Consecutive empty reads that end a recovery drain.
+         *
+         * One is not enough, observed on hardware 2026-08-18. Reconnecting after a session
+         * that had run produced a stall clear with **nothing discarded**, and the very next
+         * `GetDeviceInfo` read 109 bytes of leftovers — *"Container truncated: declared
+         * 1140862976"* again, the `U-17` signature. The body goes quiet for a moment while
+         * finishing the previous transfer, so the drain's first read came back empty and the
+         * loop concluded the endpoint was clear; the stale bytes arrived a moment later.
+         *
+         * The tell was that a fresh power-on always worked and only a reconnect failed. So
+         * the endpoint has to be quiet *repeatedly*, not once. Costs 3 × 250ms on a genuinely
+         * clean connect, which is paid once per session and is far cheaper than the failure
+         * it prevents: the operator power-cycling the camera mid-event.
+         */
+        const val RECOVERY_SETTLE_READS = 3
         const val DRAIN_BUFFER_BYTES = 16 * 1024
     }
 }

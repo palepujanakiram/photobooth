@@ -15,9 +15,20 @@
       reads as a screen change within the booth flow rather than a switch to another app —
       the Activity sits on top of the Flutter one mid-session.
     -->
-    <style name="CanonCaptureTheme" parent="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+    <!--
+      Not .Fullscreen: the Flutter capture screen keeps the status bar, drawing its content
+      behind a transparent one (extendBodyBehindAppBar + SystemUiOverlayStyle.light). The
+      native screen hid it entirely, so moving between the two made the clock and battery
+      appear and disappear — the one thing CaptureScreenStyle.BOOTH exists to prevent.
+      Transparent bars plus fitsSystemWindows on the chrome reproduces the Flutter layout.
+    -->
+    <style name="CanonCaptureTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>
 

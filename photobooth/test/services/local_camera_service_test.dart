@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -140,6 +141,24 @@ void main() {
       });
       final service = LocalCameraService(config: config, client: client);
       await service.poseArm(ttlMs: 25000);
+      service.dispose();
+    });
+
+    test('poseArm swallows a non-2xx sidecar response', () async {
+      // Best-effort by design: older sidecars have no /camera/pose-arm, and a
+      // missing arm must never take down the countdown that called it.
+      final client = MockClient((request) async => http.Response('nope', 404));
+      final service = LocalCameraService(config: config, client: client);
+      await expectLater(service.poseArm(ttlMs: 25000), completes);
+      service.dispose();
+    });
+
+    test('poseArm swallows a transport failure', () async {
+      final client = MockClient((request) async {
+        throw const SocketException('sidecar unreachable');
+      });
+      final service = LocalCameraService(config: config, client: client);
+      await expectLater(service.poseArm(ttlMs: 25000), completes);
       service.dispose();
     });
 

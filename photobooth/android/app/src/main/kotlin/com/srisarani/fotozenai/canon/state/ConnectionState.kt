@@ -17,6 +17,18 @@ sealed interface ConnectionState {
     /** Host capable, nothing plugged in. The normal idle state. */
     data object NoDevice : ConnectionState
 
+    /**
+     * A discovery pass is in flight. Transient, and never a connect outcome.
+     *
+     * Exists to break `StateFlow` conflation. Callers wait for the *next* terminal state
+     * after asking for a scan, and when nothing is plugged in the scan's result is
+     * [NoDevice] — the value the flow was already sitting on. Setting a StateFlow to the
+     * value it already holds emits nothing, so that wait saw no answer and sat there until
+     * its 30s timeout instead of reporting "no camera" immediately. Publishing this first
+     * guarantees the outcome is a distinct value and therefore always observed.
+     */
+    data object Scanning : ConnectionState
+
     /** A matching device is present but we have not been granted access yet. */
     data class DeviceFound(
         val deviceName: String,
@@ -74,6 +86,7 @@ val ConnectionState.label: String
     get() = when (this) {
         ConnectionState.NoUsbHostSupport -> "USB host unsupported"
         ConnectionState.NoDevice -> "No camera"
+        ConnectionState.Scanning -> "Looking for camera"
         is ConnectionState.DeviceFound -> if (permissionPending) "Awaiting permission" else "Camera found"
         is ConnectionState.PermissionDenied -> "Permission denied"
         is ConnectionState.Opened -> "USB open"

@@ -78,7 +78,7 @@ object CanonPtpMethodChannel {
     private var pendingCaptureResult: MethodChannel.Result? = null
 
     private var statusSink: EventChannel.EventSink? = null
-    private var detachReceiverRegistered = false
+    private var usbReceiversRegistered = false
 
     /**
      * The camera we currently hold, tracked from the state stream.
@@ -112,6 +112,30 @@ object CanonPtpMethodChannel {
             }
             CanonLog.i("Camera detached: %s", held)
             CameraSessionManager.onDeviceDetached(device)
+        }
+    }
+
+    /**
+     * Reconnects when a camera appears on the bus.
+     *
+     * Without this the booth only ever connects when something asks it to — a capture
+     * session starting, or the operator pressing "Try again". That is not enough on real
+     * hardware: an EOS body auto-powers-off after a couple of idle minutes and drops off
+     * the bus, and when it is switched back on nothing told the app, so POSE kept saying
+     * "No camera found" until a human intervened. Observed 2026-08-18, where the device
+     * re-enumerated as 003 → 008 → 012 → 013 across one session.
+     *
+     * Idempotent by way of [CameraSessionManager.scanAndConnect], which no-ops when a
+     * healthy session already exists — so a Selphy or DNP printer attaching on the same hub
+     * costs a discovery pass and nothing more.
+     */
+    private val usbAttachReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) return
+            val ctx = context?.applicationContext ?: appContext ?: return
+            val device = usbDeviceExtra(intent)
+            CanonLog.i("USB device attached: %s — rescanning", device?.deviceName ?: "unknown")
+            CameraSessionManager.scanAndConnect(ctx)
         }
     }
 
@@ -175,15 +199,20 @@ object CanonPtpMethodChannel {
     }
 
     fun onResume(context: Context) {
-        if (detachReceiverRegistered) return
-        val filter = IntentFilter(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        if (usbReceiversRegistered) return
+        registerUsbReceiver(context, usbDetachReceiver, UsbManager.ACTION_USB_DEVICE_DETACHED)
+        registerUsbReceiver(context, usbAttachReceiver, UsbManager.ACTION_USB_DEVICE_ATTACHED)
+        usbReceiversRegistered = true
+    }
+
+    private fun registerUsbReceiver(context: Context, receiver: BroadcastReceiver, action: String) {
+        val filter = IntentFilter(action)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(usbDetachReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             @Suppress("UnspecifiedRegisterReceiverFlag")
-            context.registerReceiver(usbDetachReceiver, filter)
+            context.registerReceiver(receiver, filter)
         }
-        detachReceiverRegistered = true
     }
 
     /**
@@ -213,9 +242,10 @@ object CanonPtpMethodChannel {
     }
 
     fun onDestroy() {
-        if (detachReceiverRegistered) {
+        if (usbReceiversRegistered) {
             runCatching { appContext.unregisterReceiver(usbDetachReceiver) }
-            detachReceiverRegistered = false
+            runCatching { appContext.unregisterReceiver(usbAttachReceiver) }
+            usbReceiversRegistered = false
         }
         // A Dart call still awaiting a capture session must be answered, or the capture
         // flow waits on a Future that can never complete.

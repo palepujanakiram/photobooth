@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../theme_selection/theme_model.dart';
 import '../../services/direct_ptp_camera_service.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/camera_source_config.dart';
 import '../../utils/capture_session_kind.dart';
 import '../../utils/classic_shot_mode.dart';
 import '../../utils/constants.dart';
@@ -94,12 +95,20 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
 
     final kind = widget.sessionKind;
     final result = await _camera.runCaptureSession(
-      shotCount: clampDirectPtpShotCount(directPtpShotCountFor(kind)),
-      countdownSeconds: directPtpCountdownSecondsFor(kind),
-      betweenShotSeconds: directPtpBetweenShotSeconds,
-      titleText: AppStrings.posePageTitle,
-      subtitleText: directPtpSubtitleFor(kind),
-      cancelText: AppStrings.cancel,
+      DirectPtpCaptureRequest(
+        shotCount: clampDirectPtpShotCount(directPtpShotCountFor(kind)),
+        countdownSeconds: directPtpCountdownSecondsFor(kind),
+        betweenShotSeconds: directPtpBetweenShotSeconds,
+        titleText: AppStrings.posePageTitle,
+        subtitleText: directPtpSubtitleFor(kind),
+        cancelText: AppStrings.cancel,
+        // Honour the same flag the Flutter capture screen does. Back from the look
+        // picker returns here to re-shoot, and the native screen was auto-starting
+        // the countdown on arrival — so a guest who tapped back to change a filter
+        // was being photographed again with no warning. Fresh entries leave this
+        // false and still start on their own.
+        autoStart: !(widget.captureArgs?.awaitGuestStart ?? false),
+      ),
     );
 
     if (!mounted) return;
@@ -271,7 +280,8 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
     });
   }
 
-  String get _cameraId => 'ptp:${AppStrings.directPtpCameraLabel}';
+  String get _cameraId =>
+      '$kDirectPtpCameraIdPrefix${AppStrings.directPtpCameraLabel}';
 
   void _leaveCapture() {
     if (!mounted) return;
