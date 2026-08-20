@@ -21,7 +21,7 @@ import '../../utils/camera_sidecar_config.dart';
 import '../../utils/canon_sidecar_status_channel.dart';
 import '../../utils/classic_af_marker_inject.dart';
 import '../../utils/constants.dart';
-import '../../utils/device_classifier.dart';
+import '../../utils/device_camera_fallback.dart';
 import '../../utils/app_device_type.dart';
 import '../../utils/exceptions.dart' as app_exceptions;
 import '../../utils/image_helper.dart';
@@ -488,6 +488,12 @@ class CaptureViewModel extends ChangeNotifier {
       return shouldKeepDirectSidecarPose(
         isDirectConnection: service.isDirectConnection,
         hasSidecarEndpoint: service.hasSidecarEndpoint,
+        preferDeviceCameraFallback: shouldPreferDeviceCameraOverDslr(
+          dslrPathCanServe: false,
+          hasOpenableDeviceCamera: hasOpenableDeviceCaptureCamera(
+            deviceType: _deviceType,
+          ),
+        ),
       );
     }
     final healthy = await service.isHealthy();
@@ -2224,6 +2230,8 @@ class CaptureViewModel extends ChangeNotifier {
     // controller; that path threw cameraNotReady and wedged Classic 4-shot).
     if (shouldRefuseCameraxFallbackWhenSidecarMisses(
       sidecarConfigured: sidecarConfigured,
+      deviceCameraCaptureActive:
+          _cameraController?.value.isInitialized == true,
     )) {
       CaptureFlowLog.event(
         'capture.sidecar_miss_no_camerax',

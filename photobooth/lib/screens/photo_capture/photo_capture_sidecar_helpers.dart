@@ -175,8 +175,12 @@ Future<bool> nativeEdsdkSidecarIsRunning(
 /// and leaves the strip UI stuck after a sidecar miss / dropped JPEG.
 bool shouldRefuseCameraxFallbackWhenSidecarMisses({
   required bool sidecarConfigured,
-}) =>
-    sidecarConfigured;
+  bool deviceCameraCaptureActive = false,
+}) {
+  if (!sidecarConfigured) return false;
+  if (deviceCameraCaptureActive) return false;
+  return true;
+}
 
 /// Best-effort: arm Canon Live View for HDMI/UVC pose (no still).
 ///

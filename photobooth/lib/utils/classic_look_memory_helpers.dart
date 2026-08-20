@@ -7,9 +7,9 @@ bool shouldDeferClassicComposePreviewWarm({
   bool captureUploadsAlreadyCompact = false,
   int largePayloadChars = 700000,
 }) {
-  if (captureUploadsAlreadyCompact && imageDataUrls.length >= 4) {
-    return false;
-  }
+  // 4-shot browse stays on Flutter ColorFilter — idle compose warm flickers the
+  // preview (banner layout shifts + full rebuilds on every filter/sticker tap).
+  // Continue still composes on demand; Direct PTP compact skips re-compact.
   if (imageDataUrls.length >= 4) return true;
   return classicImagePayloadIsLarge(
     imageDataUrls: imageDataUrls,

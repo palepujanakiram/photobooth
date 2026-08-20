@@ -168,6 +168,25 @@ Future<bool> primeDirectPtpOnTermsLaunch({
   return granted;
 }
 
+/// True when a Canon body is attached over USB (native PTP capture may proceed).
+///
+/// Used to fall back to CameraX/UVC when `cameraConnectionMode=direct_ptp` but no
+/// DSLR is plugged in (dev tablets, phones, mis-cabled kiosks).
+Future<bool> isDirectPtpHardwareAvailable({
+  AppSettingsModel? settings,
+  DirectPtpCameraService? camera,
+}) async {
+  if (defaultTargetPlatform != TargetPlatform.android) return false;
+  if (!isDirectPtpBooth(settings)) return false;
+
+  final service = camera ?? DirectPtpCameraService();
+  if (!service.isSupported) return false;
+  if (!await service.hasUsbHost()) return false;
+
+  final device = await service.probeDevice();
+  return device != null;
+}
+
 /// Syncs PTP vs EDSDK, clears faulted sessions, and connects before POSE capture.
 ///
 /// The native capture Activity used to be the first connect attempt; a half-open

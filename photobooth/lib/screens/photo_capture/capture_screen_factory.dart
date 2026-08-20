@@ -7,7 +7,7 @@ import '../../services/app_settings_manager.dart';
 import '../../utils/camera_source_config.dart';
 import '../../utils/capture_session_kind.dart';
 import '../../utils/route_args.dart';
-import 'direct_ptp_capture_view.dart';
+import 'capture_screen_router.dart';
 import 'photo_capture_view.dart';
 
 /// The POSE screen for the configured camera source.
@@ -24,19 +24,24 @@ import 'photo_capture_view.dart';
 ///
 /// Selected by ZenAI `cameraConnectionMode=direct_ptp` or
 /// `--dart-define=CAMERA_SOURCE=direct_ptp`; otherwise [PhotoCaptureScreen].
+/// When PTP is configured but no Canon is attached, falls back to
+/// [PhotoCaptureScreen] via [CaptureScreenRouter].
 Widget buildCaptureScreen({
   Key? key,
   required CaptureSessionKind sessionKind,
   CaptureRouteArgs? captureArgs,
   BuildContext? context,
   @visibleForTesting AppSettingsModel? settings,
+  @visibleForTesting DirectPtpHardwareProbe? hardwareProbe,
 }) {
   final resolvedSettings = settings ?? _settingsFromContext(context);
   if (usesDirectPtpCamera(settings: resolvedSettings)) {
-    return DirectPtpCaptureScreen(
+    return CaptureScreenRouter(
       key: key,
       sessionKind: sessionKind,
       captureArgs: captureArgs,
+      settings: resolvedSettings,
+      hardwareProbe: hardwareProbe,
     );
   }
   return PhotoCaptureScreen(

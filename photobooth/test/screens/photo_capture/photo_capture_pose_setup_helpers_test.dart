@@ -65,6 +65,14 @@ void main() {
       ),
       isTrue,
     );
+    expect(
+      kioskShouldSkipCameraXWhenUvcUnavailable(
+        AppDeviceType.androidTablet,
+        sidecarConfigured: true,
+        preferDeviceCameraFallback: true,
+      ),
+      isFalse,
+    );
   });
 
   test('shouldStartSidecarPreviewAfterUvcMiss when sidecar is configured', () {
@@ -120,6 +128,14 @@ void main() {
         hasSidecarEndpoint: true,
       ),
       isTrue,
+    );
+    expect(
+      shouldKeepDirectSidecarPose(
+        isDirectConnection: true,
+        hasSidecarEndpoint: true,
+        preferDeviceCameraFallback: true,
+      ),
+      isFalse,
     );
     expect(
       shouldKeepDirectSidecarPose(
@@ -200,6 +216,14 @@ void main() {
         sidecarConfigured: true,
       ),
       isTrue,
+    );
+    expect(
+      shouldKeepPoseStartingForExternalSource(
+        uvcWebcamAttached: false,
+        sidecarConfigured: true,
+        preferDeviceCameraFallback: true,
+      ),
+      isFalse,
     );
     expect(
       shouldKeepPoseStartingForExternalSource(

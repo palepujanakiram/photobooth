@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/app_settings_model.dart';
 import 'package:photobooth/screens/photo_capture/capture_screen_factory.dart';
-import 'package:photobooth/screens/photo_capture/direct_ptp_capture_view.dart';
+import 'package:photobooth/screens/photo_capture/capture_screen_router.dart';
 import 'package:photobooth/screens/photo_capture/photo_capture_view.dart';
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
 import 'package:photobooth/utils/capture_session_kind.dart';
@@ -18,13 +18,17 @@ void main() {
     promptText: 'p',
   );
 
+  tearDown(() {
+    directPtpHardwareProbeOverride = null;
+  });
+
   group('buildCaptureScreen', () {
-    test('opens native PTP capture when ZenAI mode is direct_ptp', () {
+    test('returns router when ZenAI mode is direct_ptp', () {
       final screen = buildCaptureScreen(
         sessionKind: CaptureSessionKind.fotoZen,
         settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
       );
-      expect(screen, isA<DirectPtpCaptureScreen>());
+      expect(screen, isA<CaptureScreenRouter>());
     });
 
     test('keeps the Flutter capture screen for USB EDSDK / Pi', () {
@@ -117,12 +121,12 @@ void main() {
       classicShotMode: ClassicShotMode.fourShot,
     );
 
-    test('session kind and args reach the direct-PTP screen', () {
+    test('direct_ptp routes through CaptureScreenRouter with args', () {
       final screen = buildCaptureScreen(
         sessionKind: CaptureSessionKind.classicFourShot,
         captureArgs: args,
         settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
-      ) as DirectPtpCaptureScreen;
+      ) as CaptureScreenRouter;
       expect(screen.sessionKind, CaptureSessionKind.classicFourShot);
       expect(screen.captureArgs, same(args));
     });

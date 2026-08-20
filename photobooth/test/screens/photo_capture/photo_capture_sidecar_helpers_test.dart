@@ -380,6 +380,16 @@ void main() {
         isFalse,
       );
     });
+
+    test('allows CameraX when device camera preview is active', () {
+      expect(
+        shouldRefuseCameraxFallbackWhenSidecarMisses(
+          sidecarConfigured: true,
+          deviceCameraCaptureActive: true,
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('ensureCanonLiveViewForHdmiPose', () {

@@ -61,7 +61,9 @@ bool kioskShouldTryUvcBeforeCameraX(AppDeviceType? deviceType) {
 bool kioskShouldSkipCameraXWhenUvcUnavailable(
   AppDeviceType? deviceType, {
   bool sidecarConfigured = false,
+  bool preferDeviceCameraFallback = false,
 }) {
+  if (preferDeviceCameraFallback) return false;
   if (sidecarConfigured) return true;
   return kioskShouldTryUvcBeforeCameraX(deviceType);
 }
@@ -71,7 +73,9 @@ bool kioskShouldSkipCameraXWhenUvcUnavailable(
 bool shouldKeepPoseStartingForExternalSource({
   required bool uvcWebcamAttached,
   required bool sidecarConfigured,
+  bool preferDeviceCameraFallback = false,
 }) {
+  if (preferDeviceCameraFallback) return false;
   return uvcWebcamAttached || sidecarConfigured;
 }
 
@@ -107,8 +111,11 @@ bool shouldWaitHdmiSettleAfterCanonLv({
 bool shouldKeepDirectSidecarPose({
   required bool isDirectConnection,
   required bool hasSidecarEndpoint,
+  bool preferDeviceCameraFallback = false,
 }) {
-  return isDirectConnection && hasSidecarEndpoint;
+  if (!isDirectConnection || !hasSidecarEndpoint) return false;
+  if (preferDeviceCameraFallback) return false;
+  return true;
 }
 
 /// GSM omitted `cameraConnectionMode` and a leftover Pi host inferred Pi.

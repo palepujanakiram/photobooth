@@ -12,13 +12,13 @@ void main() {
       );
     });
 
-    test('allows warm for compact 4-shot Direct PTP derivatives', () {
+    test('still defers warm for compact 4-shot Direct PTP derivatives', () {
       expect(
         shouldDeferClassicComposePreviewWarm(
           imageDataUrls: List.filled(4, 'data:image/jpeg;base64,abc'),
           captureUploadsAlreadyCompact: true,
         ),
-        isFalse,
+        isTrue,
       );
     });
 

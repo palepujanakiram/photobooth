@@ -246,6 +246,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           ],
                         ),
                       ] else if (!_busy &&
+                          viewModel.isSingleClassic &&
                           viewModel.isWarmingPrintPreview &&
                           viewModel.lookComposePreviewUrl == null) ...[
                         const SizedBox(height: 8),

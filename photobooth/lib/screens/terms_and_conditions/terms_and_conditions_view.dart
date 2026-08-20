@@ -112,8 +112,17 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       ensurePermission: () async {
         if (!mounted) return false;
         final settings = context.read<AppSettingsManager>().settings;
-        // Native PTP owns USB — skip CameraX permission so it does not compete with USB.
-        if (usesDirectPtpCamera(settings: settings)) return true;
+        // Native PTP owns USB only when a Canon is attached — otherwise request
+        // CameraX permission so tablets/phones can fall back to device camera.
+        if (usesDirectPtpCamera(settings: settings) &&
+            await isDirectPtpHardwareAvailable(settings: settings)) {
+          return true;
+        }
+        // Direct EDSDK: skip CameraX permission when localhost sidecar is up.
+        if (isDirectCanonSidecarBooth(settings) &&
+            await _probeSidecarHealthyForTerms()) {
+          return true;
+        }
         return ensureCameraPermission();
       },
       preloadCameras: CaptureViewModel.preloadCameras,
