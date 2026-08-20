@@ -4,6 +4,7 @@ import com.srisarani.fotozenai.canon.ptp.CanonEosOperation
 import com.srisarani.fotozenai.canon.ptp.PtpException
 import com.srisarani.fotozenai.canon.ptp.PtpObjectInfo
 import com.srisarani.fotozenai.canon.ptp.PtpOperation
+import com.srisarani.fotozenai.canon.ptp.PtpResponse
 import com.srisarani.fotozenai.canon.ptp.PtpSession
 import kotlinx.coroutines.delay
 import com.srisarani.fotozenai.canon.CanonLog
@@ -172,49 +173,112 @@ class EosCapture(
     suspend fun release(mode: ReleaseMode = ReleaseMode.WITH_AUTOFOCUS) {
         CanonLog.i("Shutter release (%s)", mode)
 
+        // Tracked so [finally] can un-press whatever we actually pressed. A full-press
+        // that stays DeviceBusy used to throw before RemoteReleaseOff, leaving AF held
+        // and the next strip shot busy forever (hardware 2026-08-20, 200D II).
+        var afEngaged = false
+        var fullPressEngaged = false
         try {
-            // Whether the half-press actually engaged, so we only release what we pressed.
-            var afEngaged = false
-
-            if (mode == ReleaseMode.WITH_AUTOFOCUS) {
-                // Half press: triggers AF. AF outcome arrives as an event; see C-02.
-                //
-                // A busy half-press is survivable and must not cost the shot. This is the
-                // `C-02` case the WITHOUT_AUTOFOCUS mode was written for, finally wired up:
-                // on hardware 2026-08-18 releases were failing on roughly two attempts in
-                // three, each burning the full ~8s busy budget, and the guest simply got no
-                // photo. A frame that might be slightly soft beats no frame at all.
-                afEngaged = runCatching {
-                    busyRetry(stage = "half-press (AF)") {
-                        ptp.transact(CanonEosOperation.REMOTE_RELEASE_ON, HALF_PRESS, 0)
-                    }
-                }.onFailure {
-                    CanonLog.w(it, "Autofocus half-press did not take - firing without AF (C-02)")
-                }.isSuccess
-            }
-
-            // Full press: fires the shutter.
-            busyRetry(stage = "full-press (shutter)") {
-                ptp.transact(CanonEosOperation.REMOTE_RELEASE_ON, FULL_PRESS, 0)
-            }
-
-            // Release in reverse order. Leaving the button virtually held down blocks the
-            // next capture.
-            busyRetry(stage = "full-press release") {
-                ptp.transact(CanonEosOperation.REMOTE_RELEASE_OFF, FULL_PRESS)
-            }
-            if (afEngaged) {
-                busyRetry(stage = "half-press release") {
-                    ptp.transact(CanonEosOperation.REMOTE_RELEASE_OFF, HALF_PRESS)
+            try {
+                if (mode == ReleaseMode.WITH_AUTOFOCUS) {
+                    afEngaged = engageHalfPress()
+                    if (afEngaged) delay(AF_SETTLE_BEFORE_FULL_PRESS_MS)
                 }
+                fullPressEngaged = fireShutter(noAf = !afEngaged)
+                if (!fullPressEngaged) {
+                    CanonLog.w("AF full press stayed busy - trying Completely NonAF")
+                    fullPressEngaged = fireShutter(noAf = true)
+                }
+                if (!fullPressEngaged && afEngaged) {
+                    dropHalfPress()
+                    afEngaged = false
+                    fullPressEngaged = fireShutter(noAf = true)
+                }
+                if (!fullPressEngaged) {
+                    throw PtpException.OperationFailed(
+                        CanonEosOperation.REMOTE_RELEASE_ON,
+                        PtpResponse.DEVICE_BUSY,
+                    )
+                }
+            } catch (e: PtpException.OperationFailed) {
+                if (e.isUnsupported) {
+                    CanonLog.w("RemoteReleaseOn/Off unsupported, falling back to RemoteRelease")
+                    ptp.transact(CanonEosOperation.REMOTE_RELEASE)
+                    return
+                }
+                throw e
             }
+        } finally {
+            releasePressedButtons(fullPressEngaged = fullPressEngaged, afEngaged = afEngaged)
+        }
+    }
+
+    /**
+     * Half press: triggers AF. A busy/failed half-press is survivable (`C-02`) and must
+     * not cost the shot. Unsupported still bubbles so the RemoteRelease fallback can run.
+     */
+    private suspend fun engageHalfPress(): Boolean =
+        runCatching {
+            busyRetry(stage = "half-press (AF)") {
+                ptp.transact(CanonEosOperation.REMOTE_RELEASE_ON, HALF_PRESS, 0)
+            }
+        }.fold(
+            onSuccess = { true },
+            onFailure = { error ->
+                if (error is PtpException.OperationFailed && error.isUnsupported) throw error
+                CanonLog.w(error, "Autofocus half-press did not take - firing without AF (C-02)")
+                false
+            },
+        )
+
+    /**
+     * Full press is EDSDK Completely (`3`). A short budget first so NonAF can run
+     * before the guest waits out the whole ~10s DeviceBusy window.
+     */
+    private suspend fun fireShutter(noAf: Boolean): Boolean =
+        tryEngageFullPress(
+            maxAttempts = if (noAf) BUSY_MAX_ATTEMPTS else FULL_PRESS_WHILE_AF_ATTEMPTS,
+            noAf = noAf,
+        )
+
+    private suspend fun tryEngageFullPress(maxAttempts: Int, noAf: Boolean): Boolean =
+        try {
+            busyRetry(maxAttempts = maxAttempts, stage = "full-press (shutter)") {
+                ptp.transact(
+                    CanonEosOperation.REMOTE_RELEASE_ON,
+                    FULL_PRESS,
+                    if (noAf) RELEASE_NO_AF else RELEASE_AF,
+                )
+            }
+            true
         } catch (e: PtpException.OperationFailed) {
-            if (e.isUnsupported) {
-                CanonLog.w("RemoteReleaseOn/Off unsupported, falling back to RemoteRelease")
-                ptp.transact(CanonEosOperation.REMOTE_RELEASE)
-                return
-            }
-            throw e
+            if (e.isBusy) false else throw e
+        }
+
+    private suspend fun dropHalfPress() {
+        CanonLog.w(
+            "Full press stayed busy after AF - dropping half-press and firing without AF",
+        )
+        runCatching { releaseButton(HALF_PRESS, "half-press release") }
+            .onFailure { CanonLog.w(it, "Could not drop AF half-press") }
+        delay(AF_SETTLE_BEFORE_FULL_PRESS_MS)
+    }
+
+    private suspend fun releasePressedButtons(fullPressEngaged: Boolean, afEngaged: Boolean) {
+        // Reverse order. Leaving the button virtually held down blocks the next capture.
+        if (fullPressEngaged) {
+            runCatching { releaseButton(FULL_PRESS, "full-press release") }
+                .onFailure { CanonLog.w(it, "Could not release full-press") }
+        }
+        if (afEngaged) {
+            runCatching { releaseButton(HALF_PRESS, "half-press release") }
+                .onFailure { CanonLog.w(it, "Could not release half-press") }
+        }
+    }
+
+    private suspend fun releaseButton(press: Long, stage: String) {
+        busyRetry(stage = stage) {
+            ptp.transact(CanonEosOperation.REMOTE_RELEASE_OFF, press)
         }
     }
 
@@ -455,8 +519,19 @@ class EosCapture(
         /** Shutter half-press: triggers autofocus. */
         const val HALF_PRESS = 1L
 
-        /** Shutter full press: fires. */
-        const val FULL_PRESS = 2L
+        /**
+         * Full press: EDSDK `ShutterButton_Completely` / gphoto "Press 3".
+         *
+         * This is **3**, not 2. `RemoteReleaseOn(2)` is a valid gphoto "full press" on
+         * some bodies, but on the 200D II it answers DeviceBusy forever — with or without
+         * AF held (hardware 2026-08-20). 3 is the bitfield (half|full) the sidecar already
+         * uses via EDSDK, and it is the opcode that actually fires the shutter.
+         */
+        const val FULL_PRESS = 3L
+
+        /** Second RemoteReleaseOn parameter: 0 = AF, 1 = no AF (gphoto / EDSDK NonAF). */
+        const val RELEASE_AF = 0L
+        const val RELEASE_NO_AF = 1L
 
         // EOS_PCHDDCapacity parameters, following libgphoto2. The numbers are a declared
         // free-space fiction; they only have to be non-zero and plausible.
@@ -475,5 +550,19 @@ class EosCapture(
         const val BUSY_MAX_ATTEMPTS = 12
         const val BUSY_MAX_DELAY_MS = 1_000L
         const val BUSY_TOTAL_BUDGET_SECONDS = 10
+
+        /**
+         * Full-press attempts while the half-press is still held.
+         *
+         * Observed 2026-08-20: after a successful AF half-press the 200D II answered
+         * DeviceBusy on every full-press for the whole 12-attempt budget, then live view
+         * restarted with AF still down. Five tries is ~1s — long enough for a brief
+         * settle, short enough to fall back to no-AF before the guest thinks the booth
+         * hung.
+         */
+        const val FULL_PRESS_WHILE_AF_ATTEMPTS = 5
+
+        /** Pause after AF so the body can finish focusing before the full press. */
+        const val AF_SETTLE_BEFORE_FULL_PRESS_MS = 400L
     }
 }

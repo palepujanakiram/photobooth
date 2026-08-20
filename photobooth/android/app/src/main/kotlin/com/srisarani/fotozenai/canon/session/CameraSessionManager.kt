@@ -595,9 +595,11 @@ object CameraSessionManager {
      * repeated until the ~10s budget expired, with no photo taken — a shutter button that
      * silently does nothing, which is `P-18`'s symptom from a different cause.
      *
-     * Matched to [LIVE_VIEW_RESUME_DELAY_MS]: the same mirror cycle, in the other direction.
+     * Longer than [LIVE_VIEW_RESUME_DELAY_MS]: teardown is slower than resume on this
+     * body. 400ms still raced the mirror (hardware 2026-08-20) — AF half-press succeeded
+     * and the full press stayed DeviceBusy for the whole retry budget.
      */
-    private const val LIVE_VIEW_SETTLE_BEFORE_RELEASE_MS = 400L
+    private const val LIVE_VIEW_SETTLE_BEFORE_RELEASE_MS = 800L
 
     /**
      * How long to hold live view down waiting for the shot to reach disk (`C-16`).
