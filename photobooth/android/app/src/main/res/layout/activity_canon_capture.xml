@@ -41,7 +41,7 @@
         android:textColor="@android:color/white"
         android:textSize="16sp"
         android:visibility="gone"
-        tools:text="Rearrange for Shot 2 of 4  6" />
+        tools:text="Rearrange for shot 2 of 4 — 6s" />
 
     <TextView
         android:id="@+id/canon_title"

@@ -528,7 +528,7 @@ abstract final class AppStrings {
       'Get ready — Shot $current of $total';
 
   static String flashbackRearrangeForShot(int current, int total) =>
-      'Rearrange for Shot $current of $total';
+      'Rearrange for shot $current of $total';
 
   /// HDMI mask armed but shutter never began — soft-fail snackbar.
   static const captureMaskStallRetry =
@@ -552,7 +552,10 @@ abstract final class AppStrings {
       base = flashbackGettingReadyNextShot;
     }
     if (secondsLeft <= 0) return base;
-    return '$base  $secondsLeft';
+    if (isLastShot) {
+      return 'Looking good! Continuing in ${secondsLeft}s…';
+    }
+    return '$base — ${secondsLeft}s';
   }
 
   static const flashbackFilterTitle = 'Pick your look';

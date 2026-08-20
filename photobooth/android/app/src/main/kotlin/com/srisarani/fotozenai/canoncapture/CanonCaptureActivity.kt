@@ -432,22 +432,28 @@ class CanonCaptureActivity : Activity() {
         }
     }
 
-    /** Mirrors `AppStrings.flashbackReviewHoldStatus`: copy, then seconds when any remain. */
+    /** Mirrors [AppStrings.flashbackReviewHoldStatus]. */
     private fun reviewBannerText(deadlineMs: Long, isLast: Boolean, isStrip: Boolean): String {
-        val base = if (isLast || !isStrip) {
-            getString(R.string.canon_review_last_shot)
-        } else {
+        val secondsLeft = ((deadlineMs - System.currentTimeMillis() + 999) / 1000).toInt()
+        return if (isLast || !isStrip) {
+            if (secondsLeft <= 0) {
+                getString(R.string.canon_review_last_shot)
+            } else {
+                getString(R.string.canon_review_last_shot_countdown_format, secondsLeft)
+            }
+        } else if (secondsLeft <= 0) {
             getString(
                 R.string.canon_review_rearrange_format,
                 shots.size + 1,
                 request.shotCount,
             )
-        }
-        val secondsLeft = ((deadlineMs - System.currentTimeMillis() + 999) / 1000).toInt()
-        return if (secondsLeft <= 0) {
-            base
         } else {
-            getString(R.string.canon_review_countdown_format, base, secondsLeft)
+            getString(
+                R.string.canon_review_rearrange_countdown_format,
+                shots.size + 1,
+                request.shotCount,
+                secondsLeft,
+            )
         }
     }
 

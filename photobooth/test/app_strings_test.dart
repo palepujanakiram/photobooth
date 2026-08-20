@@ -54,7 +54,7 @@ void main() {
     expect(AppStrings.resultPrintSheetsLine(4), '4 prints total');
     expect(
       AppStrings.flashbackReviewHoldStatus(isLastShot: false, secondsLeft: 8),
-      'Rearrange for the next pose…  8',
+      'Rearrange for the next pose… — 8s',
     );
     expect(
       AppStrings.flashbackReviewHoldStatus(
@@ -63,11 +63,11 @@ void main() {
         nextShot: 2,
         total: 4,
       ),
-      'Rearrange for Shot 2 of 4  8',
+      'Rearrange for shot 2 of 4 — 8s',
     );
     expect(
       AppStrings.flashbackReviewHoldStatus(isLastShot: true, secondsLeft: 3),
-      'Looking good! Continuing soon…  3',
+      'Looking good! Continuing in 3s…',
     );
     expect(
       AppStrings.flashbackReviewHoldStatus(isLastShot: false, secondsLeft: 0),

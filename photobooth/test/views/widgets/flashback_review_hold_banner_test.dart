@@ -22,14 +22,14 @@ void main() {
     );
 
     final text = (find
-            .textContaining('Rearrange for Shot 2 of 4')
+            .textContaining('Rearrange for shot 2 of 4')
             .evaluate()
             .single
             .widget as Text)
         .data!;
-    expect(text, contains('Rearrange for Shot 2 of 4'));
+    expect(text, contains('Rearrange for shot 2 of 4'));
     final seconds =
-        int.parse(RegExp(r'(\d+)\s*$').firstMatch(text)!.group(1)!);
+        int.parse(RegExp(r'(\d+)s').firstMatch(text)!.group(1)!);
     expect(seconds, inInclusiveRange(7, 8));
   });
 
@@ -45,7 +45,7 @@ void main() {
       ),
     );
     expect(
-      find.textContaining(AppStrings.flashbackReviewLastShot),
+      find.textContaining('Looking good! Continuing in'),
       findsOneWidget,
     );
   });
