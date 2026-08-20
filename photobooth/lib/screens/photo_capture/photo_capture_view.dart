@@ -2617,7 +2617,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final uvcAttached = await hasAttachedUvcDevices();
     if (!mounted) return true;
 
-    if (!classic && !uvcAttached && !sidecarConfigured) {
+    if (shouldFotoZenFallThroughToDeviceCameraAfterUvcMiss(
+      isClassic: classic,
+      uvcAttached: uvcAttached,
+      sidecarConfigured: sidecarConfigured,
+    )) {
+      // Unlock tablet CameraX (prefer-device) before the skip-CameraX gate.
+      _markDeviceCameraFallbackIfNeeded(dslrPathCanServe: false);
       return false;
     }
 

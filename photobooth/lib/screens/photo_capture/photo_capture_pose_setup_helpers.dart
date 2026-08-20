@@ -96,6 +96,19 @@ bool shouldSkipUvcProbeForSidecarPose({
   return sidecarConfigured && !uvcWebcamAttached;
 }
 
+/// FotoZen after UVC miss with no DSLR/UVC: fall through to CameraX.
+///
+/// Classic continues the fuller recover path (sidecar poll / prefer-device).
+/// FotoZen used to return here without marking prefer-device, so tablets hit
+/// [kioskShouldSkipCameraXWhenUvcUnavailable] and never opened CameraX.
+bool shouldFotoZenFallThroughToDeviceCameraAfterUvcMiss({
+  required bool isClassic,
+  required bool uvcAttached,
+  required bool sidecarConfigured,
+}) {
+  return !isClassic && !uvcAttached && !sidecarConfigured;
+}
+
 /// HDMI settle waits for the capture card to leave the body LCD.
 /// USB EVF MJPEG is already the pose preview — skip that pause.
 bool shouldWaitHdmiSettleAfterCanonLv({

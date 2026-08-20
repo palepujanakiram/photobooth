@@ -75,6 +75,41 @@ void main() {
     );
   });
 
+  test('shouldFotoZenFallThroughToDeviceCameraAfterUvcMiss', () {
+    expect(
+      shouldFotoZenFallThroughToDeviceCameraAfterUvcMiss(
+        isClassic: false,
+        uvcAttached: false,
+        sidecarConfigured: false,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldFotoZenFallThroughToDeviceCameraAfterUvcMiss(
+        isClassic: true,
+        uvcAttached: false,
+        sidecarConfigured: false,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldFotoZenFallThroughToDeviceCameraAfterUvcMiss(
+        isClassic: false,
+        uvcAttached: false,
+        sidecarConfigured: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldFotoZenFallThroughToDeviceCameraAfterUvcMiss(
+        isClassic: false,
+        uvcAttached: true,
+        sidecarConfigured: false,
+      ),
+      isFalse,
+    );
+  });
+
   test('shouldStartSidecarPreviewAfterUvcMiss when sidecar is configured', () {
     expect(
       shouldStartSidecarPreviewAfterUvcMiss(sidecarConfigured: true),
