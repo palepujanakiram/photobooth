@@ -60,7 +60,11 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
           (i) =>
               overlayCleanupAlreadyDone ||
               (i < shotCleaned.length && shotCleaned[i]),
-        ) {
+        ),
+        _captureUploadsAlreadyCompact = pendingImageFilePaths != null &&
+            classicCaptureFilesAreCompactDisplayDerivatives(
+              filePaths: pendingImageFilePaths,
+            ) {
     if (_pendingImageFilePaths != null) {
       unawaited(_hydratePendingCaptureFiles());
     }
@@ -70,6 +74,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   List<String>? _pendingImageFilePaths;
   bool _hydratingCaptures = false;
   int _hydrateGeneration = 0;
+  final bool _captureUploadsAlreadyCompact;
 
   final ThemeModel theme;
   final List<String> _imageDataUrls;
@@ -285,17 +290,19 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
     try {
-      final encoded = <String>[];
-      for (final path in paths) {
-        if (gen != _hydrateGeneration) return;
-        final url = await ImageHelper.encodeImageToBase64(XFile(path));
-        if (gen != _hydrateGeneration) return;
-        encoded.add(url);
-      }
+      final encoded = await Future.wait(
+        paths.map((path) async {
+          if (gen != _hydrateGeneration) return null;
+          return await ImageHelper.encodeImageToBase64(XFile(path));
+        }),
+      );
       if (gen != _hydrateGeneration) return;
+      if (encoded.any((url) => url == null) || encoded.length != paths.length) {
+        return;
+      }
       _imageDataUrls
         ..clear()
-        ..addAll(encoded);
+        ..addAll(encoded.cast<String>());
       if (classicOverlayCleanupEnabled && !_previewCleaned) {
         unawaited(preparePreview().then((_) {
           _scheduleComposePreview(allowLargePayloadWarm: true);
@@ -813,8 +820,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     final alreadyReady = _composePreview != null &&
         _composePreviewFingerprint == fingerprint &&
         (_composePreview!.printImageUrl.trim().isNotEmpty);
-    final deferWarm =
-        shouldDeferClassicComposePreviewWarm(imageDataUrls: _imageDataUrls);
+    final deferWarm = shouldDeferClassicComposePreviewWarm(
+      imageDataUrls: _imageDataUrls,
+      captureUploadsAlreadyCompact: _captureUploadsAlreadyCompact,
+    );
     if (!alreadyReady && !deferWarm) {
       // Start / join idle warm before flipping [_composing] (warm bails if composing).
       var warm = _composeWarmInFlight;
@@ -931,7 +940,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     if (!_hasComposableShotCount) return;
     // 4-shot / huge payloads: never background-warm. Sequential bake + compose
     // of strip-quality JPEGs freezes / LMKs Mini PC Pick-a-look (felt "stuck").
-    if (shouldDeferClassicComposePreviewWarm(imageDataUrls: _imageDataUrls)) {
+    if (shouldDeferClassicComposePreviewWarm(
+      imageDataUrls: _imageDataUrls,
+      captureUploadsAlreadyCompact: _captureUploadsAlreadyCompact,
+    )) {
       _composePreviewDebounce?.cancel();
       return;
     }
@@ -991,6 +1003,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     // 4-shot) to 1600/q90 so Mini PC POST is not four full EVF JPEGs.
     final images = shouldCompactClassicComposeUploads(
       imageDataUrls: _imageDataUrls,
+      captureUploadsAlreadyCompact: _captureUploadsAlreadyCompact,
     )
         ? await compressDataUrlsForStripPreviewGrade(_imageDataUrls)
         : List<String>.from(_imageDataUrls);

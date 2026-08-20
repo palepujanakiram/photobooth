@@ -720,61 +720,87 @@ class CanonCaptureActivity : Activity() {
         }
 
         consumedHandles += completed.handle
-        onCaptured(completed)
+        val isLastCapture = shots.size + 1 >= request.shotCount
+
+        // Off the main thread, but **awaited** — the one place this merge could not keep
+        // main's shape.
+        //
+        // origin/main fires the derivative as a detached `scope.async` and only awaits it on
+        // the final shot, to "overlap native display derivatives with rearrange". That
+        // overlap has nothing left to overlap with: the rearrange window is now the review,
+        // and the review *shows the still*, so its derivative is needed immediately rather
+        // than at leisure. Leaving it detached meant `shots` was still empty when
+        // reviewLastShot() read it, so the guest reviewed a blank card.
+        //
+        // Awaiting also removes the `capturesCompleted` counter main added to track "USB
+        // done, derivative maybe not". With the await, `shots.size` is authoritative again —
+        // which retake needs, because dropLastShot() shrinks `shots` and a separate counter
+        // would drift from it and mis-terminate the strip.
+        //
+        // The decode still runs on Dispatchers.Default, so the viewfinder does not stutter;
+        // the cost is ~250ms before the still appears, which is not perceptible.
+        withContext(Dispatchers.Default) {
+            processCapturedShot(completed, showProcessingStatus = isLastCapture)
+        }
         return true
     }
 
-    private suspend fun onCaptured(done: CaptureQueue.Item.Done) {
-        setStatus(getString(R.string.canon_status_processing))
-
-        val original = done.image.file
-        // Decode off the main thread: even subsampled, this is tens of milliseconds and
-        // would otherwise stutter the viewfinder.
-        val derivative = withContext(Dispatchers.Default) {
-            DisplayDerivative.create(
-                original = original,
-                maxLongEdge = request.displayMaxLongEdge,
-                jpegQuality = request.displayJpegQuality,
-            )
+    private suspend fun processCapturedShot(
+        done: CaptureQueue.Item.Done,
+        showProcessingStatus: Boolean,
+    ) {
+        if (showProcessingStatus) {
+            withContext(Dispatchers.Main.immediate) {
+                setStatus(getString(R.string.canon_status_processing))
+            }
         }
 
-        shots += CaptureSessionContract.Shot(
-            originalPath = original.absolutePath,
-            displayPath = derivative?.file?.absolutePath,
-            widthPx = derivative?.originalWidthPx ?: 0,
-            heightPx = derivative?.originalHeightPx ?: 0,
-            bytes = done.image.sizeBytes,
-            capturedAtMs = System.currentTimeMillis(),
+        val original = done.image.file
+        val derivative = DisplayDerivative.create(
+            original = original,
+            maxLongEdge = request.displayMaxLongEdge,
+            jpegQuality = request.displayJpegQuality,
         )
 
-        CanonLog.i(
-            "Shot %d/%d stored: %s (%d bytes, %dms)",
-            shots.size,
-            request.shotCount,
-            original.name,
-            done.image.sizeBytes,
-            done.elapsedMs,
-        )
-
-        addThumbnail(derivative?.file?.absolutePath)
-
-        // A landed shot is proof the guest is still there, so the idle clock starts over.
-        startIdleWatchdog()
-
-        // Deliberately does NOT finish the session on the last shot any more.
-        //
-        // [runShotSequence] owns completion now, because the final still has to sit in review
-        // first — Flutter holds it for kFlashbackLastShotReviewDuration with Retake and
-        // "Pick a look" available, and finishing here skipped that entirely: the guest never
-        // saw their last shot and could not retake it.
-        if (shots.size < request.shotCount && captureJob?.isActive != true) {
-            // Only hand the button back when nothing is driving the strip. Keyed on the job
-            // rather than on autoStart because runShotSequence continues straight into the
-            // next countdown, and re-enabling mid-strip would offer a press that does nothing.
-            setStatus(
-                getString(R.string.canon_status_ready_format, shots.size + 1, request.shotCount),
+        withContext(Dispatchers.Main.immediate) {
+            shots += CaptureSessionContract.Shot(
+                originalPath = original.absolutePath,
+                displayPath = derivative?.file?.absolutePath,
+                widthPx = derivative?.originalWidthPx ?: 0,
+                heightPx = derivative?.originalHeightPx ?: 0,
+                bytes = done.image.sizeBytes,
+                capturedAtMs = System.currentTimeMillis(),
             )
-            shutterButton.isEnabled = true
+
+            CanonLog.i(
+                "Shot %d/%d stored: %s (%d bytes, %dms)",
+                shots.size,
+                request.shotCount,
+                original.name,
+                done.image.sizeBytes,
+                done.elapsedMs,
+            )
+
+            addThumbnail(derivative?.thumbnailBitmap)
+
+            // A landed shot is proof the guest is still there, so the idle clock starts over.
+            startIdleWatchdog()
+
+            // Deliberately does NOT finish the session on the last shot.
+            //
+            // [runShotSequence] owns completion, because the final still has to sit in
+            // review first with Retake and "Pick a look" available. Finishing here returned
+            // to Dart the instant the shot landed, so the guest never saw their last shot
+            // and could not retake it.
+            if (shots.size < request.shotCount && captureJob?.isActive != true) {
+                // Only hand the button back when nothing is driving the strip. Keyed on the job
+                // rather than on autoStart because runShotSequence continues straight into the
+                // next countdown, and re-enabling mid-strip would offer a press that does nothing.
+                setStatus(
+                    getString(R.string.canon_status_ready_format, shots.size + 1, request.shotCount),
+                )
+                shutterButton.isEnabled = true
+            }
         }
     }
 
@@ -832,27 +858,15 @@ class CanonCaptureActivity : Activity() {
     /**
      * Fills the slot for the shot just taken.
      *
-     * Decoded small and off the main thread — these come from the display derivative, not
-     * the original, and a thumbnail is never a reason to touch a 6000×4000 file.
+     * Uses the in-memory thumbnail from [DisplayDerivative] — no second file decode.
      */
-    private suspend fun addThumbnail(displayPath: String?) {
+    private fun addThumbnail(bitmap: Bitmap?) {
         if (request.shotCount <= 1) return
-        val index = shots.size - 1
-        val slot = thumbnailStrip.getChildAt(index) ?: return
+        val slot = thumbnailStrip.getChildAt(shots.size - 1) ?: return
+        // Repaint borders even when the bitmap is missing: the slot still has to stop being
+        // the active one, or the amber ring would sit on a pose already shot.
         refreshThumbnailStates()
-        if (displayPath == null) return
-
-        val bitmap = withContext(Dispatchers.Default) {
-            runCatching {
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(displayPath, bounds)
-                val options = BitmapFactory.Options().apply {
-                    inSampleSize = DisplayDerivative
-                        .sampleSizeFor(bounds.outWidth, bounds.outHeight, THUMBNAIL_LONG_EDGE)
-                }
-                BitmapFactory.decodeFile(displayPath, options)
-            }.getOrNull()
-        } ?: return
+        if (bitmap == null) return
 
         slot.findViewById<ImageView>(R.id.canon_thumb_image).apply {
             setImageBitmap(bitmap)
@@ -950,7 +964,12 @@ class CanonCaptureActivity : Activity() {
         /** Banner refresh while a review hold counts down; Flutter ticks at 200ms. */
         const val REVIEW_TICK_MS = 200L
 
-        const val THUMBNAIL_LONG_EDGE = 320
+        /**
+         * Gap between strip slots. Slot *size* now comes from view_canon_thumb_slot.xml, so
+         * main's THUMBNAIL_WIDTH_PX / THUMBNAIL_GAP_PX are gone with the views they sized,
+         * and THUMBNAIL_LONG_EDGE with the file re-decode that DisplayDerivative's in-memory
+         * thumbnail replaced.
+         */
         const val THUMBNAIL_GAP_DP = 10
 
         /** Colors.amber.shade200 and Colors.white38 from _StripThumbSlot. */

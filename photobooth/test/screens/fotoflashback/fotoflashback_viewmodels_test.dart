@@ -470,7 +470,7 @@ void main() {
     expect(vm.filters, isEmpty);
     expect(vm.selectedFilter, isNull);
     await vm.loadFilters();
-    expect(vm.filters, hasLength(2));
+    expect(vm.filters, hasLength(3));
     expect(vm.frames, hasLength(2));
     expect(vm.stickers, hasLength(2));
     expect(vm.selectedFilter?.id, kDefaultStripFilterId);
@@ -1396,6 +1396,12 @@ class _StripFakeApi extends FakeApiService {
         'enableSurpriseMeAi': false,
       },
       'filters': [
+        {
+          'id': 'clean',
+          'name': 'Clean',
+          'description': 'No grade',
+          'cssFilter': 'none',
+        },
         {
           'id': 'classic_warm',
           'name': 'Classic Warm',

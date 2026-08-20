@@ -12,6 +12,16 @@ void main() {
       );
     });
 
+    test('allows warm for compact 4-shot Direct PTP derivatives', () {
+      expect(
+        shouldDeferClassicComposePreviewWarm(
+          imageDataUrls: List.filled(4, 'data:image/jpeg;base64,abc'),
+          captureUploadsAlreadyCompact: true,
+        ),
+        isFalse,
+      );
+    });
+
     test('defers when base64 payload is large', () {
       expect(
         shouldDeferClassicComposePreviewWarm(
@@ -115,6 +125,16 @@ void main() {
       );
     });
 
+    test('skips when capture already compact', () {
+      expect(
+        shouldCompactClassicComposeUploads(
+          imageDataUrls: List.filled(4, 'x' * 60000),
+          captureUploadsAlreadyCompact: true,
+        ),
+        isFalse,
+      );
+    });
+
     test('compacts large 4-shot payloads', () {
       expect(
         shouldCompactClassicComposeUploads(
@@ -129,6 +149,36 @@ void main() {
     test('is false for small payloads', () {
       expect(
         classicImagePayloadIsLarge(imageDataUrls: ['tiny']),
+        isFalse,
+      );
+    });
+  });
+
+  group('classicCaptureFilesAreCompactDisplayDerivatives', () {
+    test('is true for display derivative paths', () {
+      expect(
+        classicCaptureFilesAreCompactDisplayDerivatives(
+          filePaths: [
+            '/tmp/shot1.display.jpg',
+            '/tmp/shot2.display.jpg',
+          ],
+        ),
+        isTrue,
+      );
+    });
+
+    test('is false when any path is not a display derivative', () {
+      expect(
+        classicCaptureFilesAreCompactDisplayDerivatives(
+          filePaths: ['/tmp/shot1.display.jpg', '/tmp/shot2.jpg'],
+        ),
+        isFalse,
+      );
+    });
+
+    test('is false for empty paths', () {
+      expect(
+        classicCaptureFilesAreCompactDisplayDerivatives(filePaths: []),
         isFalse,
       );
     });
