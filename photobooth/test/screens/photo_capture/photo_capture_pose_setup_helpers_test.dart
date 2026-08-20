@@ -64,7 +64,15 @@ void main() {
         AppDeviceType.androidPhone,
         sidecarConfigured: true,
       ),
-      isTrue,
+      isFalse,
+    );
+    expect(
+      kioskShouldSkipCameraXWhenUvcUnavailable(
+        AppDeviceType.androidTablet,
+        sidecarConfigured: true,
+        hasOpenableDeviceCamera: true,
+      ),
+      isFalse,
     );
     expect(
       kioskShouldSkipCameraXWhenUvcUnavailable(
@@ -157,13 +165,21 @@ void main() {
     );
   });
 
-  test('shouldKeepDirectSidecarPose only for configured USB EDSDK', () {
+  test('shouldKeepDirectSidecarPose only for configured USB EDSDK with a body', () {
     expect(
       shouldKeepDirectSidecarPose(
         isDirectConnection: true,
         hasSidecarEndpoint: true,
       ),
       isTrue,
+    );
+    expect(
+      shouldKeepDirectSidecarPose(
+        isDirectConnection: true,
+        hasSidecarEndpoint: true,
+        canonUsbPresent: false,
+      ),
+      isFalse,
     );
     expect(
       shouldKeepDirectSidecarPose(
@@ -184,6 +200,41 @@ void main() {
       shouldKeepDirectSidecarPose(
         isDirectConnection: false,
         hasSidecarEndpoint: true,
+      ),
+      isFalse,
+    );
+  });
+
+  test('sidecarConfiguredForExternalPose requires Canon USB for direct mode', () {
+    expect(
+      sidecarConfiguredForExternalPose(
+        sidecarConfigured: true,
+        isDirectConnection: true,
+        canonUsbPresent: false,
+      ),
+      isFalse,
+    );
+    expect(
+      sidecarConfiguredForExternalPose(
+        sidecarConfigured: true,
+        isDirectConnection: true,
+        canonUsbPresent: true,
+      ),
+      isTrue,
+    );
+    expect(
+      sidecarConfiguredForExternalPose(
+        sidecarConfigured: true,
+        isDirectConnection: false,
+        canonUsbPresent: false,
+      ),
+      isTrue,
+    );
+    expect(
+      sidecarConfiguredForExternalPose(
+        sidecarConfigured: false,
+        isDirectConnection: false,
+        canonUsbPresent: true,
       ),
       isFalse,
     );
@@ -437,6 +488,88 @@ void main() {
       shouldSkipClientFaceDetectionForUpload(
         deviceType: AppDeviceType.androidPhone,
         cameraId: 'sidecar:FZ200D',
+      ),
+      isTrue,
+    );
+  });
+
+  test('shouldSkipCameraXForSidecarEvf only when EVF is the live path', () {
+    expect(
+      shouldSkipCameraXForSidecarEvf(
+        usesSidecarLivePreview: true,
+        preferDeviceCameraCapture: false,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldSkipCameraXForSidecarEvf(
+        usesSidecarLivePreview: true,
+        preferDeviceCameraCapture: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldSkipCameraXForSidecarEvf(
+        usesSidecarLivePreview: false,
+        preferDeviceCameraCapture: false,
+      ),
+      isFalse,
+    );
+  });
+
+  test('poseCaptureIsReady uses CameraX when the controller is live', () {
+    expect(
+      poseCaptureIsReady(
+        preferDeviceCameraCapture: false,
+        usesSidecarLivePreview: true,
+        sidecarPreviewReady: false,
+        cameraControllerInitialized: true,
+        isDesktopCaptureMode: false,
+        isLoadingCameras: false,
+      ),
+      isTrue,
+    );
+    expect(
+      poseCaptureIsReady(
+        preferDeviceCameraCapture: false,
+        usesSidecarLivePreview: true,
+        sidecarPreviewReady: false,
+        cameraControllerInitialized: false,
+        isDesktopCaptureMode: false,
+        isLoadingCameras: false,
+      ),
+      isFalse,
+    );
+    expect(
+      poseCaptureIsReady(
+        preferDeviceCameraCapture: false,
+        usesSidecarLivePreview: true,
+        sidecarPreviewReady: true,
+        cameraControllerInitialized: false,
+        isDesktopCaptureMode: false,
+        isLoadingCameras: false,
+      ),
+      isTrue,
+    );
+    expect(
+      poseCaptureIsReady(
+        preferDeviceCameraCapture: true,
+        usesSidecarLivePreview: true,
+        sidecarPreviewReady: false,
+        cameraControllerInitialized: false,
+        isDesktopCaptureMode: false,
+        isLoadingCameras: false,
+      ),
+      isFalse,
+    );
+    expect(
+      poseCaptureIsReady(
+        preferDeviceCameraCapture: false,
+        usesSidecarLivePreview: false,
+        sidecarPreviewReady: false,
+        cameraControllerInitialized: false,
+        isDesktopCaptureMode: true,
+        isLoadingCameras: false,
       ),
       isTrue,
     );

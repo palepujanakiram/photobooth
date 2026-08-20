@@ -55,17 +55,20 @@ bool kioskShouldTryUvcBeforeCameraX(AppDeviceType? deviceType) {
 /// Kiosk TV/tablet boxes often have zero Camera2 cameras. Calling
 /// [availableCameras] then makes CameraX retry until ANR.
 ///
-/// Sidecar DSLR pose must skip CameraX too — even when the box is classified
-/// as a phone. After shutter, USB re-enumeration used to call
-/// [CaptureViewModel.resetAndInitializeCameras] and wipe the review still.
+/// Phones and any device that already enumerated a CameraX camera must not
+/// skip — otherwise POSE waits on Canon localhost `:8791` instead of the
+/// front camera. Sidecar EVF is used only when a Canon body is actually on USB
+/// ([sidecarConfigured] after [sidecarConfiguredForExternalPose]).
 bool kioskShouldSkipCameraXWhenUvcUnavailable(
   AppDeviceType? deviceType, {
   bool sidecarConfigured = false,
   bool preferDeviceCameraFallback = false,
+  bool hasOpenableDeviceCamera = false,
 }) {
   if (preferDeviceCameraFallback) return false;
-  if (sidecarConfigured) return true;
-  return kioskShouldTryUvcBeforeCameraX(deviceType);
+  if (hasOpenableDeviceCamera) return false;
+  if (!kioskShouldTryUvcBeforeCameraX(deviceType)) return false;
+  return sidecarConfigured || kioskShouldTryUvcBeforeCameraX(deviceType);
 }
 
 /// Keep the POSE "Starting camera…" wait only while a UVC webcam is attached
@@ -117,17 +120,34 @@ bool shouldWaitHdmiSettleAfterCanonLv({
   return !sidecarIsPosePreview;
 }
 
+/// Direct USB EDSDK is a live pose source only when a Canon body is on USB.
+///
+/// Android defaults to localhost `:8791` even on phones. Treating that as
+/// "configured" made POSE wait for Canon instead of the front camera.
+bool sidecarConfiguredForExternalPose({
+  required bool sidecarConfigured,
+  required bool isDirectConnection,
+  required bool canonUsbPresent,
+}) {
+  if (!sidecarConfigured) return false;
+  if (isDirectConnection) return canonUsbPresent;
+  return true;
+}
+
 /// Direct USB: keep Pose on EDSDK EVF (do not fall through to HDMI/UVC/webcam).
 ///
-/// Requires a configured sidecar endpoint. Flutter web disables the localhost
-/// sidecar, so this is false and Pose opens `getUserMedia` instead.
+/// Requires a configured sidecar endpoint **and** a Canon on USB. Flutter web
+/// disables the localhost sidecar, so this is false and Pose opens
+/// `getUserMedia` instead. iOS disables direct EDSDK the same way.
 bool shouldKeepDirectSidecarPose({
   required bool isDirectConnection,
   required bool hasSidecarEndpoint,
   bool preferDeviceCameraFallback = false,
+  bool canonUsbPresent = true,
 }) {
   if (!isDirectConnection || !hasSidecarEndpoint) return false;
   if (preferDeviceCameraFallback) return false;
+  if (!canonUsbPresent) return false;
   return true;
 }
 
@@ -208,4 +228,33 @@ bool shouldSkipClientFaceDetectionForUpload({
   if (cameraId?.startsWith('sidecar:') == true) return true;
   if (AppConstants.kLowMemoryKioskMode) return true;
   return kioskShouldTryUvcBeforeCameraX(deviceType);
+}
+
+/// CameraX is the live path — do not skip enumeration/open for sidecar EVF.
+bool shouldSkipCameraXForSidecarEvf({
+  required bool usesSidecarLivePreview,
+  required bool preferDeviceCameraCapture,
+}) {
+  return usesSidecarLivePreview && !preferDeviceCameraCapture;
+}
+
+/// Whether POSE countdown/shutter may start for the active preview path.
+///
+/// Default Android sidecar config enables Pi/USB EVF, but phones without a
+/// Canon body show CameraX. Waiting on sidecar preview-ready in that case
+/// makes Capture taps no-op.
+bool poseCaptureIsReady({
+  required bool preferDeviceCameraCapture,
+  required bool usesSidecarLivePreview,
+  required bool sidecarPreviewReady,
+  required bool cameraControllerInitialized,
+  required bool isDesktopCaptureMode,
+  required bool isLoadingCameras,
+}) {
+  if (isDesktopCaptureMode) return !isLoadingCameras;
+  if (preferDeviceCameraCapture || cameraControllerInitialized) {
+    return cameraControllerInitialized;
+  }
+  if (usesSidecarLivePreview) return sidecarPreviewReady;
+  return false;
 }

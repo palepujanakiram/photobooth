@@ -41,6 +41,7 @@ import '../../models/strip_models.dart';
 import '../../utils/app_device_type.dart';
 import '../../utils/app_runtime_config.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/canon_sidecar_status_channel.dart';
 import '../../utils/canon_usb_permission.dart';
 import '../../utils/capture_session_kind.dart';
 import '../../utils/classic_capture_intent.dart';
@@ -146,6 +147,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   /// Sidecar/DSLR configured but unavailable — use built-in CameraX instead.
   bool _preferDeviceCameraCapture = false;
   bool _awaitingCanonUsbPermission = false;
+  /// Direct USB Canon body is actually in [UsbManager] (not just localhost sidecar).
+  bool _canonUsbPresent = false;
   DateTime? _uvcPreviewReadyAt;
   /// Last Canon LV ensure reported an active Pi hold (shorten HDMI mask).
   bool _canonLvHolding = false;
@@ -934,10 +937,31 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   bool get _useSidecarPosePreview => shouldUseSidecarPosePreview(
         classicSession: widget.sessionKind.isClassic,
         sidecarLivePreviewEnabled: _captureViewModel.usesSidecarLivePreview,
-        sidecarConfigured:
-            _captureViewModel.localCameraService?.hasSidecarEndpoint == true,
+        sidecarConfigured: _sidecarConfiguredForPose(),
         classicSidecarFallback: _classicSidecarPreviewFallback,
       );
+
+  bool _sidecarConfiguredForPose({bool useEndpoint = false}) {
+    final service = _captureViewModel.localCameraService;
+    return sidecarConfiguredForExternalPose(
+      sidecarConfigured: useEndpoint
+          ? service?.hasSidecarEndpoint == true
+          : service?.isConfigured == true,
+      isDirectConnection: service?.isDirectConnection == true,
+      canonUsbPresent: _canonUsbPresent,
+    );
+  }
+
+  bool _keepDirectCanonPose() {
+    return shouldKeepDirectSidecarPose(
+      isDirectConnection:
+          _captureViewModel.localCameraService?.isDirectConnection == true,
+      hasSidecarEndpoint:
+          _captureViewModel.localCameraService?.hasSidecarEndpoint == true,
+      preferDeviceCameraFallback: _preferDeviceCameraCapture,
+      canonUsbPresent: _canonUsbPresent,
+    );
+  }
 
   bool get _isFlashbackSingleShot => widget.sessionKind.isClassicOneShot;
 
@@ -964,8 +988,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       uvcControllerReady: _uvcReadyForCapture,
       captureInFlight: _uvcCaptureInFlight,
       previewWarmupActive: _uvcPreviewWarmupActive,
-      sidecarConfigured:
-          _captureViewModel.localCameraService?.isConfigured == true,
+      sidecarConfigured: _sidecarConfiguredForPose(),
       canonLvHolding: _canonLvHolding,
     );
     // Throttle — this getter is polled from the VM tick.
@@ -1033,8 +1056,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   DateTime? _lastHdmiPoseReadyLogAt;
 
   void _armUvcHdmiStillMask() {
-    final sidecarConfigured =
-        _captureViewModel.localCameraService?.isConfigured == true;
+    final sidecarConfigured = _sidecarConfiguredForPose();
     // Sidecar DSLR: keep HDMI live — do not swap to a black "Setting up camera"
     // card. Track prep for shutter gates / soft-fail only.
     if (sidecarConfigured) {
@@ -2077,8 +2099,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _captureViewModel.addListener(_onCaptureViewModelStateChanged);
     ClassicStripScrubCoordinator.instance.addListener(_onScrubProgressChanged);
     _tryAdoptTermsPrewarmOnInitIfAllowed();
-    _expectExternalCaptureSource =
-        _captureViewModel.localCameraService?.hasSidecarEndpoint == true;
+    _expectExternalCaptureSource = false;
     _skipUvcForCameraXSession =
         _captureViewModel.preferEnumeratedCameraPath ||
         CaptureViewModel.hasEnumerationCache;
@@ -2130,13 +2151,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final deviceType = _captureViewModel.deviceType ??
-          CaptureViewModel.prewarmedDeviceType;
-      if (_captureViewModel.isReady &&
-          !kioskShouldTryUvcBeforeCameraX(deviceType)) {
-        unawaited(_finishPrewarmPoseSetup());
-        return;
-      }
       _schedulePoseSetupAfterTransition();
     });
   }
@@ -2341,12 +2355,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     // HTTP/process up ≠ DSLR attached. Prefer CameraX whenever the body cannot
     // serve EVF and Terms already enumerated a tablet/phone camera.
     final deviceFallbackPreferred = _deviceCameraFallbackPreferred(
-      dslrPathCanServe: false,
+      dslrPathCanServe: _canonUsbPresent,
     );
     final keepDirect = shouldKeepDirectSidecarPose(
       isDirectConnection: service?.isDirectConnection == true,
       hasSidecarEndpoint: service?.hasSidecarEndpoint == true,
       preferDeviceCameraFallback: deviceFallbackPreferred,
+      canonUsbPresent: _canonUsbPresent,
     );
     if (canServe || keepDirect) {
       final started = await _startSidecarPosePreviewSession();
@@ -2373,12 +2388,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   }
 
   Future<void> _ensureCanonUsbPermissionForPoseSetup() async {
-    final service = _captureViewModel.localCameraService;
-    if (!shouldKeepDirectSidecarPose(
-      isDirectConnection: service?.isDirectConnection == true,
-      hasSidecarEndpoint: service?.hasSidecarEndpoint == true,
-      preferDeviceCameraFallback: _preferDeviceCameraCapture,
-    )) {
+    if (!_keepDirectCanonPose()) {
       if (mounted) setState(() => _awaitingCanonUsbPermission = false);
       return;
     }
@@ -2401,7 +2411,15 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!mounted) return;
     _preferDeviceCameraCapture = false;
     _captureViewModel.setPreferDeviceCameraCapture(false);
-    await _ensureCanonUsbPermissionForPoseSetup();
+    _canonUsbPresent = await CanonSidecarStatusChannel.isCameraPresent();
+    if (!mounted) return;
+    final isPi =
+        _captureViewModel.localCameraService?.isPiConnection == true;
+    if (_canonUsbPresent || isPi) {
+      await _ensureCanonUsbPermissionForPoseSetup();
+    } else {
+      _markDeviceCameraFallbackIfNeeded(dslrPathCanServe: false);
+    }
     if (!mounted) return;
     unawaited(
       HardwareKeyService.setEnabled(true).then((_) {
@@ -2409,24 +2427,22 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }),
     );
 
-    if (await _trySidecarPosePreviewFirst()) return;
+    if (_canonUsbPresent || isPi) {
+      if (await _trySidecarPosePreviewFirst()) return;
+    }
 
     // Direct USB EDSDK: never fall through to tablet CameraX / UVC. A transient
     // sidecar restart used to poison the client and hang on "Starting camera…"
     // with the front camera while the DSLR was still on USB.
     // Flutter web has no USB sidecar — skip this even if mode defaults to direct.
     final directService = _captureViewModel.localCameraService;
-    final keepDirectPose = shouldKeepDirectSidecarPose(
-      isDirectConnection: directService?.isDirectConnection == true,
-      hasSidecarEndpoint: directService?.hasSidecarEndpoint == true,
-      preferDeviceCameraFallback: _preferDeviceCameraCapture,
-    );
+    final keepDirectPose = _keepDirectCanonPose();
     if (keepDirectPose) {
       // Process may be up with no body — fall through to CameraX when available.
       final healthy = await directService?.isHealthy() == true;
       if (!mounted) return;
       if (!shouldPreferDeviceCameraOverDslr(
-        dslrPathCanServe: healthy,
+        dslrPathCanServe: healthy || _canonUsbPresent,
         hasOpenableDeviceCamera: hasOpenableDeviceCaptureCamera(
           deviceType: _poseDeviceTypeForFallback(),
         ),
@@ -2461,6 +2477,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     if (deviceType == null) {
+      if (!mounted) return;
       try {
         deviceType = await DeviceClassifier.getDeviceType(context).timeout(
           const Duration(seconds: 3),
@@ -2472,42 +2489,34 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     final kioskUvc = kioskShouldTryUvcBeforeCameraX(deviceType);
-    final sidecarConfigured =
-        _captureViewModel.localCameraService?.isConfigured == true;
-    if (kioskUvc && sidecarConfigured) {
-      final uvcAttached = await hasAttachedUvcDevices();
-      if (!mounted) return;
-      if (shouldSkipUvcProbeForSidecarPose(
-        sidecarConfigured: sidecarConfigured,
-        uvcWebcamAttached: uvcAttached,
-      )) {
-        final started = await _startSidecarPosePreviewSession();
-        if (!mounted) return;
-        final healthy = started &&
-            (_captureViewModel.sidecarPreviewReady ||
-                await _captureViewModel.localCameraService?.isHealthy() == true);
-        if (!mounted) return;
-        if (shouldCommitToSidecarPoseSession(
-          sidecarReadyOrHealthy: healthy,
-          hasOpenableDeviceCamera: hasOpenableDeviceCaptureCamera(
-            deviceType: _poseDeviceTypeForFallback(),
-          ),
-          keepDirectWithoutDeviceFallback: shouldKeepDirectSidecarPose(
-            isDirectConnection:
-                _captureViewModel.localCameraService?.isDirectConnection ==
-                    true,
-            hasSidecarEndpoint:
-                _captureViewModel.localCameraService?.hasSidecarEndpoint ==
-                    true,
-            preferDeviceCameraFallback: _preferDeviceCameraCapture,
-          ),
+    final sidecarConfigured = _sidecarConfiguredForPose();
+    final uvcAttached = defaultTargetPlatform == TargetPlatform.android
+        ? await hasAttachedUvcDevices()
+        : false;
+    if (!mounted) return;
+    if (sidecarConfigured &&
+        shouldSkipUvcProbeForSidecarPose(
+          sidecarConfigured: sidecarConfigured,
+          uvcWebcamAttached: uvcAttached,
         )) {
-          return;
-        }
-        _markDeviceCameraFallbackIfNeeded(dslrPathCanServe: false);
+      final started = await _startSidecarPosePreviewSession();
+      if (!mounted) return;
+      final healthy = started &&
+          (_captureViewModel.sidecarPreviewReady ||
+              await _captureViewModel.localCameraService?.isHealthy() == true);
+      if (!mounted) return;
+      if (shouldCommitToSidecarPoseSession(
+        sidecarReadyOrHealthy: healthy,
+        hasOpenableDeviceCamera: hasOpenableDeviceCaptureCamera(
+          deviceType: _poseDeviceTypeForFallback(),
+        ),
+        keepDirectWithoutDeviceFallback: _keepDirectCanonPose(),
+      )) {
+        return;
       }
+      _markDeviceCameraFallbackIfNeeded(dslrPathCanServe: false);
     }
-    if (kioskUvc) {
+    if (uvcAttached || kioskUvc) {
       _skipUvcForCameraXSession = false;
       await _releaseCameraXForUvcSession();
       if (!_uvcFeedIsHealthy) {
@@ -2536,15 +2545,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         }
         if (kioskShouldSkipCameraXWhenUvcUnavailable(
           deviceType,
-          sidecarConfigured:
-              _captureViewModel.localCameraService?.isConfigured == true,
+          sidecarConfigured: sidecarConfigured,
           preferDeviceCameraFallback: _preferDeviceCameraCapture,
+          hasOpenableDeviceCamera: hasOpenableDeviceCaptureCamera(
+            deviceType: _poseDeviceTypeForFallback(),
+          ),
         )) {
           AppLogger.warning(
             'POSE: no UVC webcam on kiosk; skipping CameraX enumeration',
           );
-          _expectExternalCaptureSource =
-              _captureViewModel.localCameraService?.isConfigured == true;
+          _expectExternalCaptureSource = sidecarConfigured;
           await _finishPrewarmPoseSetup();
           _clearPoseStartingSpinner();
           return;
@@ -2602,7 +2612,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Future<bool> _recoverClassicPoseAfterUvcOpenFailed() async {
     final classic = widget.sessionKind.isClassic;
     final sidecar = _captureViewModel.localCameraService;
-    final sidecarConfigured = sidecar?.isConfigured == true;
+    final sidecarConfigured = _sidecarConfiguredForPose();
     final uvcAttached = await hasAttachedUvcDevices();
     if (!mounted) return true;
 
@@ -2712,14 +2722,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   Future<void> _resetAndInitializeCamerasBody({bool forceRefresh = false}) async {
     if (!mounted) return;
+    _canonUsbPresent = await CanonSidecarStatusChannel.isCameraPresent();
+    if (!mounted) return;
 
-    if (shouldKeepDirectSidecarPose(
-      isDirectConnection:
-          _captureViewModel.localCameraService?.isDirectConnection == true,
-      hasSidecarEndpoint:
-          _captureViewModel.localCameraService?.hasSidecarEndpoint == true,
-      preferDeviceCameraFallback: _preferDeviceCameraCapture,
-    )) {
+    if (_keepDirectCanonPose()) {
       _expectExternalCaptureSource = true;
       await _ensureCanonUsbPermissionForPoseSetup();
       if (!mounted) return;
@@ -2792,9 +2798,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
     if (kioskShouldSkipCameraXWhenUvcUnavailable(
       deviceType ?? _captureViewModel.deviceType,
-      sidecarConfigured:
-          _captureViewModel.localCameraService?.hasSidecarEndpoint == true,
+      sidecarConfigured: _sidecarConfiguredForPose(useEndpoint: true),
       preferDeviceCameraFallback: _preferDeviceCameraCapture,
+      hasOpenableDeviceCamera: hasOpenableDeviceCaptureCamera(
+        deviceType: deviceType ?? _poseDeviceTypeForFallback(),
+      ),
     )) {
       AppLogger.warning(
         'POSE: sidecar/kiosk skip CameraX after UVC miss',
@@ -2818,7 +2826,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     final camerasEmpty = _captureViewModel.availableCameras.isEmpty;
     final forceUvcRetry = widget.sessionKind.isClassic ||
         _expectExternalCaptureSource ||
-        (_captureViewModel.localCameraService?.isConfigured == true);
+        _sidecarConfiguredForPose();
     final skipUvcProbe = !shouldProbeUvcAfterNoCameraX(
       photoUploadAllowed: uploadAllowed,
       camerasEmpty: camerasEmpty,
@@ -3024,9 +3032,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (!mounted) return;
     if (kioskShouldSkipCameraXWhenUvcUnavailable(
       _captureViewModel.deviceType,
-      sidecarConfigured:
-          _captureViewModel.localCameraService?.isConfigured == true,
+      sidecarConfigured: _sidecarConfiguredForPose(),
       preferDeviceCameraFallback: _preferDeviceCameraCapture,
+      hasOpenableDeviceCamera: hasOpenableDeviceCaptureCamera(
+        deviceType: _poseDeviceTypeForFallback(),
+      ),
     )) {
       return;
     }
@@ -5461,9 +5471,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         );
       }
     }
-    return RepaintBoundary(
-      key: _pluginPreviewBoundaryKey,
-      child: framed,
+    return IgnorePointer(
+      child: RepaintBoundary(
+        key: _pluginPreviewBoundaryKey,
+        child: framed,
+      ),
     );
   }
 
@@ -5837,7 +5849,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     _flashbackCountdownStarting ||
                     (_isFlashbackSingleShot &&
                         !classicOneShotMayStartCountdown(_oneShotPhase)) ||
-                    (_isUsingUvc && !_uvcReadyForCapture))
+                    (_isUsingUvc && !_uvcReadyForCapture) ||
+                    (!_isUsingUvc && !viewModel.isReady))
                 ? null
                 : () async {
                     if (_isFlashbackSingleShot) {

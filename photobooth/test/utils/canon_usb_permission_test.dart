@@ -87,6 +87,7 @@ void main() {
       addTearDown(() => debugDefaultTargetPlatformOverride = null);
       var requested = false;
       messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'isCameraPresent') return true;
         if (call.method == 'hasUsbPermission') return false;
         if (call.method == 'requestUsbPermission') {
           requested = true;
@@ -105,6 +106,31 @@ void main() {
       );
       expect(ok, isTrue);
       expect(requested, isTrue);
+    });
+
+    test('skips USB request when no Canon body is attached', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      var requested = false;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'isCameraPresent') return false;
+        if (call.method == 'requestUsbPermission') {
+          requested = true;
+          return false;
+        }
+        return null;
+      });
+
+      final ok = await ensureCanonUsbPermissionForDirectSidecar(
+        config: const CameraSidecarConfig(
+          enabled: true,
+          baseUrl: 'http://127.0.0.1:8791',
+          livePreviewEnabled: true,
+          connectionMode: CameraConnectionMode.direct,
+        ),
+      );
+      expect(ok, isTrue);
+      expect(requested, isFalse);
     });
   });
 
@@ -125,6 +151,7 @@ void main() {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'isCameraPresent') return true;
       if (call.method == 'getState') {
         await Future<void>.delayed(const Duration(seconds: 2));
         return 'running';
@@ -152,6 +179,7 @@ void main() {
     var usbRequests = 0;
     var healthCalls = 0;
     messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'isCameraPresent') return true;
       if (call.method == 'getState') return 'waiting_usb';
       if (call.method == 'requestUsbPermission') {
         usbRequests++;
@@ -185,6 +213,7 @@ void main() {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'isCameraPresent') return true;
       if (call.method == 'getState') return 'running';
       return null;
     });
@@ -207,10 +236,98 @@ void main() {
     expect(ok, isTrue);
   });
 
+  test('warmDirectSidecarAfterUsbGrant returns false when no Canon is attached',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'isCameraPresent') return false;
+      return null;
+    });
+    final ok = await warmDirectSidecarAfterUsbGrant(
+      config: const CameraSidecarConfig(
+        enabled: true,
+        baseUrl: 'http://127.0.0.1:8791',
+        livePreviewEnabled: true,
+        connectionMode: CameraConnectionMode.direct,
+      ),
+      timeout: const Duration(milliseconds: 50),
+      pollInterval: const Duration(milliseconds: 5),
+    );
+    expect(ok, isFalse);
+  });
+
+  test('isDirectCanonHardwareAvailable is false without a USB body', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'isCameraPresent') return false;
+      return null;
+    });
+    expect(
+      await isDirectCanonHardwareAvailable(
+        settings: AppSettingsModel(cameraConnectionMode: 'direct'),
+      ),
+      isFalse,
+    );
+    expect(
+      await isDirectCanonHardwareAvailable(
+        settings: AppSettingsModel(
+          cameraConnectionMode: 'pi',
+          cameraEnabled: true,
+          cameraSidecarHost: '10.0.0.5',
+        ),
+      ),
+      isFalse,
+    );
+  });
+
+  test('isDirectCanonHardwareAvailable is true when USB Canon is present', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'isCameraPresent') return true;
+      return null;
+    });
+    expect(
+      await isDirectCanonHardwareAvailable(
+        settings: AppSettingsModel(cameraConnectionMode: 'direct'),
+      ),
+      isTrue,
+    );
+    expect(await isDirectCanonHardwareAvailable(), isTrue);
+  });
+
+  test('isDirectCanonHardwareAvailable is false off Android', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    expect(await isDirectCanonHardwareAvailable(), isFalse);
+  });
+
+  test('primeCanonUsbOnTermsLaunch no-ops when no Canon is attached', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    var requested = false;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'isCameraPresent') return false;
+      if (call.method == 'requestUsbPermission') {
+        requested = true;
+        return false;
+      }
+      return null;
+    });
+    final ok = await primeCanonUsbOnTermsLaunch(
+      settings: AppSettingsModel(cameraConnectionMode: 'direct'),
+    );
+    expect(ok, isTrue);
+    expect(requested, isFalse);
+  });
+
   test('primeCanonUsbOnTermsLaunch warms direct sidecar after USB grant', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'isCameraPresent') return true;
       if (call.method == 'hasUsbPermission') return true;
       if (call.method == 'getState') return 'running';
       return null;

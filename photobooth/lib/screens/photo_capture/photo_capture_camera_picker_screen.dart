@@ -302,17 +302,7 @@ class _PhotoCaptureCameraPickerScreenState
     }
 
     if (devices.isEmpty) {
-      return <Widget>[
-        ListTile(
-          title: const Text(AppStrings.cameraPickerUsbCameraTitle),
-          subtitle: Text(
-            _uvcDebugLine == null
-                ? AppStrings.cameraPickerUsbNoDevices
-                : '${AppStrings.cameraPickerUsbNoDevices}\n$_uvcDebugLine',
-          ),
-        ),
-        const Divider(height: 1),
-      ];
+      return const <Widget>[];
     }
 
     final selected = widget.selectedUvcDevice;

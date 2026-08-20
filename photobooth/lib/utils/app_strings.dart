@@ -123,11 +123,7 @@ abstract final class AppStrings {
   static const cameraPickerRefreshing = 'Looking for cameras…';
 
   /// Non-blocking status on Terms while cameras are enumerated on entry.
-  static const termsDetectingCameras = 'Detecting cameras…';
-
-  /// Terms banner while direct Canon USB permission / sidecar warm-up runs.
-  static const termsDetectingCamerasCanonUsb =
-      'Allow USB access for the Canon camera when prompted…';
+  static const termsDetectingCameras = 'Getting the camera ready…';
 
   /// Terms Continue label while camera detection is still running.
   static const termsContinueWhenReady = 'Continue when ready';
@@ -146,31 +142,13 @@ abstract final class AppStrings {
   static const kioskSettingsRefreshFailed =
       'Kiosk settings refresh failed; using cache';
 
-  /// Terms banner when no camera is available after enumeration.
-  static const termsNoCameraDetected =
-      'No camera detected. Connect a USB camera and tap Retry.';
+  /// Terms banner when camera is missing, permission was denied, or detection failed.
+  static const termsCameraUnavailable =
+      'Camera is not available. Tap Retry.';
 
-  /// Terms banner when no camera but Gallery / Phone QR upload is enabled.
-  static const termsNoCameraDetectedUploadOk =
-      'No camera detected. You can continue and upload a photo instead, or tap '
-      'Retry after connecting a camera.';
-
-  /// Terms banner when camera permission was denied.
-  static const termsCameraPermissionDenied =
-      'Camera permission is required. Enable it in Settings, then tap Retry.';
-
-  /// Terms banner when permission denied but upload alternatives are enabled.
-  static const termsCameraPermissionDeniedUploadOk =
-      'Camera permission is off. You can continue and upload a photo instead, '
-      'or enable camera in Settings and tap Retry.';
-
-  /// Terms banner when camera priming failed unexpectedly.
-  static const termsCameraDetectionFailed =
-      'Could not detect cameras. Tap Retry.';
-
-  /// Terms banner when detection failed but upload alternatives are enabled.
-  static const termsCameraDetectionFailedUploadOk =
-      'Could not detect cameras. You can continue and upload a photo instead, '
+  /// Same as [termsCameraUnavailable] when Gallery / Phone QR upload is enabled.
+  static const termsCameraUnavailableUploadOk =
+      'Camera is not available. You can continue and upload a photo instead, '
       'or tap Retry.';
 
   /// Retry action on Terms camera status banner.
