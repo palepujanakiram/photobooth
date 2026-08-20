@@ -112,9 +112,12 @@ abstract final class AppStrings {
       'Refresh. If it still does not appear, this tablet may not expose USB '
       'cameras to the system camera API.';
 
-  /// Shown when camera enumeration returns an empty list.
-  static const cameraPickerNoCameras =
-      'No cameras found. Connect a USB camera and tap Refresh.';
+  /// POSE and Select Camera when no built-in or external camera is attached.
+  static const noCameraConnected = 'No Camera Connected';
+
+  /// Web-only empty enumeration (browser permission / Gallery fallback).
+  static const noCameraDetectedWeb =
+      'No camera detected. Allow camera access in the browser, or use Gallery if enabled.';
 
   /// Shown while re-enumerating cameras in the picker.
   static const cameraPickerRefreshing = 'Looking for cameras…';

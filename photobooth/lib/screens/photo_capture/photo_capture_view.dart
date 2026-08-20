@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
@@ -22,6 +23,7 @@ import 'photo_capture_hdmi_pose_helpers.dart';
 import 'photo_capture_sidecar_helpers.dart';
 import 'photo_capture_desktop_body.dart';
 import 'photo_capture_body_phase.dart';
+import 'photo_capture_switch_freeze_helpers.dart';
 import 'photo_capture_view_aspect.dart';
 import 'photo_capture_view_handlers.dart';
 import 'photo_capture_exit_handlers.dart';
@@ -109,6 +111,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   bool _uvcShutterKeysEnabled = false;
   bool _uvcCaptureInFlight = false;
   final GlobalKey _sidecarPreviewKey = GlobalKey();
+  final GlobalKey _sidecarPreviewBoundaryKey = GlobalKey();
+  final GlobalKey _pluginPreviewBoundaryKey = GlobalKey();
+  ui.Image? _cameraSwitchFreezeImage;
+  bool _cameraSwitchInFlight = false;
   /// Opaque HDMI mask from countdown end through still assign (status LCD).
   bool _uvcHdmiStillMaskArmed = false;
   /// True once sidecar [prepareStill] / still-mask starts — LV is intentionally
@@ -2198,7 +2204,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     });
   }
 
-  /// Defers camera work until the route transition finishes (smoother POSE entry).
+  /// Starts camera setup on the first frame so POSE does not idle on
+  /// "Starting camera…" while the route animation finishes.
   void _schedulePoseSetupAfterTransition() {
     if (!mounted) return;
 
@@ -2222,30 +2229,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return;
     }
 
-    // Android TV launchers: skip waiting on route animation (often never completes).
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => beginSetupOnce());
-      setupFallback = Timer(const Duration(seconds: 1), beginSetupOnce);
-      return;
-    }
-
-    final animation = ModalRoute.of(context)?.animation;
-    if (animation != null && !animation.isCompleted) {
-      void onStatus(AnimationStatus status) {
-        if (status == AnimationStatus.completed) {
-          animation.removeStatusListener(onStatus);
-          beginSetupOnce();
-        }
-      }
-      animation.addStatusListener(onStatus);
-      setupFallback = Timer(const Duration(seconds: 3), () {
-        animation.removeStatusListener(onStatus);
-        beginSetupOnce();
-      });
-      return;
-    }
-
+    // Open the camera on the first frame. Waiting for the iOS route animation
+    // left POSE on "Starting camera…" for 1–2s after the screen was already visible.
     WidgetsBinding.instance.addPostFrameCallback((_) => beginSetupOnce());
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      setupFallback = Timer(const Duration(seconds: 1), beginSetupOnce);
+    }
   }
 
   Future<void> _beginPoseCaptureSetup() async {
@@ -3089,6 +3078,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (_uvcShutterKeysEnabled) {
       HardwareKeyService.setUvcShutterKeysEnabled(false);
     }
+    _disposeCameraSwitchFreezeFrame();
     unawaited(
       _disposeUvc().catchError((Object e, StackTrace st) {
         AppLogger.error('UVC dispose failed on screen dispose', error: e, stackTrace: st);
@@ -3985,22 +3975,111 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     BuildContext context,
     CaptureViewModel viewModel,
   ) async {
-    final picked = await Navigator.of(context).push<Object?>(
+    final navigator = Navigator.of(context);
+    await _captureCameraSwitchFreezeFrame();
+    if (!mounted) return;
+    final picked = await navigator.push<Object?>(
       MaterialPageRoute<Object?>(
-        builder: (_) => PhotoCaptureCameraPickerScreen(viewModel: viewModel),
+        builder: (_) => PhotoCaptureCameraPickerScreen(
+          viewModel: viewModel,
+          selectedUvcDevice: _uvcDevice,
+        ),
       ),
     );
-    if (!mounted || picked == null) return;
+    if (!mounted || picked == null) {
+      _disposeCameraSwitchFreezeFrame();
+      return;
+    }
 
     if (picked is CameraDescription) {
-      await _disposeUvc();
-      await viewModel.switchCamera(picked);
+      await _runCameraSwitch(() async {
+        if (_isUsingUvc) {
+          await _disposeUvc();
+        }
+        if (!mounted) return;
+        await viewModel.switchCamera(picked);
+      });
       return;
     }
 
     if (picked is UvcCameraDevice) {
-      await _ensureUvcDeviceBound(picked);
+      await _runCameraSwitch(() => _ensureUvcDeviceBound(picked));
     }
+  }
+
+  GlobalKey get _cameraSwitchFreezeKey => cameraSwitchFreezeBoundaryKey(
+        useSidecarPosePreview: _useSidecarPosePreview,
+        isUsingUvc: _isUsingUvc,
+        sidecarKey: _sidecarPreviewBoundaryKey,
+        uvcKey: _uvcPreviewBoundaryKey,
+        pluginKey: _pluginPreviewBoundaryKey,
+      );
+
+  bool get _showCameraSwitchFreezeFrame => shouldShowCameraSwitchFreezeFrame(
+        hasFreezeFrame: _cameraSwitchFreezeImage != null,
+        switchInProgress: _cameraSwitchInFlight,
+        hasCapturedPhoto: _captureViewModel.capturedPhoto != null,
+        isSelectingFromGallery: _captureViewModel.isSelectingFromGallery,
+      );
+
+  Future<void> _captureCameraSwitchFreezeFrame() async {
+    final image = await captureRepaintBoundaryImage(
+      boundaryKey: _cameraSwitchFreezeKey,
+    );
+    if (!mounted) {
+      image?.dispose();
+      return;
+    }
+    _cameraSwitchFreezeImage?.dispose();
+    _cameraSwitchFreezeImage = image;
+  }
+
+  void _disposeCameraSwitchFreezeFrame() {
+    _cameraSwitchFreezeImage?.dispose();
+    _cameraSwitchFreezeImage = null;
+  }
+
+  Future<void> _runCameraSwitch(Future<void> Function() action) async {
+    _cameraSwitchInFlight = true;
+    if (mounted) setState(() {});
+    await Future<void>.delayed(Duration.zero);
+    try {
+      await action();
+    } finally {
+      _cameraSwitchInFlight = false;
+      _disposeCameraSwitchFreezeFrame();
+      if (mounted) setState(() {});
+    }
+  }
+
+  Widget _buildCameraSwitchFreezePreview() {
+    final image = _cameraSwitchFreezeImage;
+    if (image == null) {
+      return _buildStartingCameraState();
+    }
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ColoredBox(
+          color: Colors.black,
+          child: RawImage(image: image, fit: BoxFit.cover),
+        ),
+        const Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: EdgeInsets.only(bottom: 16),
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white70,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Size? _uvcPreviewDisplaySize(CaptureViewModel viewModel) {
@@ -4619,14 +4698,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (!allowGallery) ...[
+            if (!allowGallery && _awaitingCanonUsbPermission) ...[
               const CircularProgressIndicator(color: Colors.white),
               const SizedBox(height: 16),
             ],
             Text(
-              allowGallery
-                  ? AppStrings.captureNoCameraUploadHint
-                  : _noCamerasWaitingMessage(),
+              _noCamerasGuestMessage(),
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.85),
                 fontSize: 15,
@@ -4695,15 +4772,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
   }
 
-  String _noCamerasWaitingMessage() {
+  String _noCamerasGuestMessage() {
     if (_awaitingCanonUsbPermission) {
       return AppStrings.captureWaitingCanonUsbPermission;
     }
-    if (!_isFlashbackFourShot) return 'Waiting for camera…';
-    if (_stripShots.isEmpty) return AppStrings.flashbackGettingReadyNextShot;
-    final total = _classicShotCap > 0 ? _classicShotCap : 1;
-    final next = (_stripShots.length + 1).clamp(1, total);
-    return AppStrings.flashbackGetReadyForShot(next, total);
+    if (_isFlashbackFourShot && _stripShots.isNotEmpty) {
+      final total = _classicShotCap > 0 ? _classicShotCap : 1;
+      final next = (_stripShots.length + 1).clamp(1, total);
+      return AppStrings.flashbackGetReadyForShot(next, total);
+    }
+    return AppStrings.noCameraConnected;
   }
 
   String _classicMidStripReadyMessage() {
@@ -4817,6 +4895,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         !viewModel.isReady &&
         !viewModel.isLoadingCameras &&
         !viewModel.isInitializing;
+    if (_showCameraSwitchFreezeFrame) return false;
     return isCapturePreviewStarting(
       hasCapturedPhoto: viewModel.capturedPhoto != null,
       isDesktopCaptureMode: viewModel.isDesktopCaptureMode,
@@ -4907,45 +4986,52 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         body = _buildCaptureFatalErrorState(context, viewModel);
       case CaptureBodyPhase.live:
         final hasCapturedPhoto = viewModel.capturedPhoto != null;
+        final previewKind = resolveCaptureLivePreviewKind(
+          isSelectingFromGallery: viewModel.isSelectingFromGallery,
+          hasCapturedPhoto: hasCapturedPhoto,
+          showSwitchFreeze: _showCameraSwitchFreezeFrame,
+          useSidecarPosePreview: _useSidecarPosePreview &&
+              viewModel.localCameraService != null,
+          isUsingUvc: _isUsingUvc,
+          hasCameraController: viewModel.cameraController != null,
+        );
         final Widget previewWidget;
-        if (viewModel.isSelectingFromGallery) {
-          previewWidget = buildGallerySelectionPlaceholder();
-        } else if (hasCapturedPhoto) {
-          // Review still — never mount CameraPreview without a controller.
-          previewWidget = const SizedBox.shrink();
-        } else if (_useSidecarPosePreview &&
-            viewModel.localCameraService != null) {
-          previewWidget = _isUvcSavingStill(viewModel) &&
-                  !viewModel.isCountingDown
-              ? _uvcSavingPhotoCard(
-                  message: _stillInProgressLabel(viewModel),
-                  // Countdown overlay already owns the center; avoid a second spinner.
-                  showSpinner: !viewModel.isCountingDown,
-                )
-              : RepaintBoundary(
-                  child: SidecarLivePreview(
-                    key: _sidecarPreviewKey,
-                    service: viewModel.localCameraService!,
-                    paused: viewModel.isCapturing || _uvcCaptureInFlight,
-                    onFirstFrame: viewModel.markSidecarPreviewReady,
-                    // Same framing as the review still (no cover-crop zoom).
-                    fit: BoxFit.contain,
-                  ),
-                );
-        } else if (_isUsingUvc) {
-          previewWidget = _buildUvcPreview(context, viewModel);
-        } else if (viewModel.cameraController == null) {
-          // Controller briefly null during re-init — never flash Gallery CTAs.
-          // "Get ready" copy is only for mid-strip 4-shot remounts (not Classic 1-shot).
-          previewWidget = midStripRemount
-              ? _buildStartingCameraState(
-                  message: _classicMidStripReadyMessage(),
-                )
-              : _buildStartingCameraState(
-                  message: AppStrings.captureStartingPreview,
-                );
-        } else {
-          previewWidget = _buildCameraPreviewWithRotation(context, viewModel);
+        switch (previewKind) {
+          case CaptureLivePreviewKind.gallery:
+            previewWidget = buildGallerySelectionPlaceholder();
+          case CaptureLivePreviewKind.capturedStill:
+            previewWidget = const SizedBox.shrink();
+          case CaptureLivePreviewKind.switchFreeze:
+            previewWidget = _buildCameraSwitchFreezePreview();
+          case CaptureLivePreviewKind.sidecar:
+            previewWidget = _isUvcSavingStill(viewModel) &&
+                    !viewModel.isCountingDown
+                ? _uvcSavingPhotoCard(
+                    message: _stillInProgressLabel(viewModel),
+                    showSpinner: !viewModel.isCountingDown,
+                  )
+                : RepaintBoundary(
+                    key: _sidecarPreviewBoundaryKey,
+                    child: SidecarLivePreview(
+                      key: _sidecarPreviewKey,
+                      service: viewModel.localCameraService!,
+                      paused: viewModel.isCapturing || _uvcCaptureInFlight,
+                      onFirstFrame: viewModel.markSidecarPreviewReady,
+                      fit: BoxFit.contain,
+                    ),
+                  );
+          case CaptureLivePreviewKind.uvc:
+            previewWidget = _buildUvcPreview(context, viewModel);
+          case CaptureLivePreviewKind.startingPlaceholder:
+            previewWidget = midStripRemount
+                ? _buildStartingCameraState(
+                    message: _classicMidStripReadyMessage(),
+                  )
+                : _buildStartingCameraState(
+                    message: AppStrings.captureStartingPreview,
+                  );
+          case CaptureLivePreviewKind.pluginCamera:
+            previewWidget = _buildCameraPreviewWithRotation(context, viewModel);
         }
         phaseKey = hasCapturedPhoto ? 'captured' : 'live';
         body = Padding(
@@ -5345,34 +5431,39 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     final preview = _buildPlatformPreview(context, viewModel, controller);
+    final Widget framed;
     if (!controller.value.isInitialized) {
-      return preview;
+      framed = preview;
+    } else {
+      final effectiveQuarterTurns =
+          (viewModel.previewAutoQuarterTurns +
+                  (viewModel.previewRotationDegrees ~/ 90) % 4) %
+              4;
+
+      // CameraPreview already inverts aspect for portrait and applies Android
+      // RotatedBox. Wrapping it in sensor (landscape) AspectRatio squashes phones.
+      if (effectiveQuarterTurns == 0) {
+        final isLandscapeUi =
+            MediaQuery.orientationOf(context) == Orientation.landscape;
+        framed = buildCoverCameraPreview(
+          cameraPreview: preview,
+          displayAspectRatio: cameraPreviewDisplayAspectRatio(
+            controllerAspectRatio: controller.value.aspectRatio,
+            isLandscapeUi: isLandscapeUi,
+          ),
+        );
+      } else {
+        framed = buildRotatedCoverPreview(
+          preview: preview,
+          effectiveQuarterTurns: effectiveQuarterTurns,
+          baseAspectRatio: controller.value.aspectRatio,
+          frameSize: controller.value.previewSize,
+        );
+      }
     }
-
-    final effectiveQuarterTurns =
-        (viewModel.previewAutoQuarterTurns +
-                (viewModel.previewRotationDegrees ~/ 90) % 4) %
-            4;
-
-    // CameraPreview already inverts aspect for portrait and applies Android
-    // RotatedBox. Wrapping it in sensor (landscape) AspectRatio squashes phones.
-    if (effectiveQuarterTurns == 0) {
-      final isLandscapeUi =
-          MediaQuery.orientationOf(context) == Orientation.landscape;
-      return buildCoverCameraPreview(
-        cameraPreview: preview,
-        displayAspectRatio: cameraPreviewDisplayAspectRatio(
-          controllerAspectRatio: controller.value.aspectRatio,
-          isLandscapeUi: isLandscapeUi,
-        ),
-      );
-    }
-
-    return buildRotatedCoverPreview(
-      preview: preview,
-      effectiveQuarterTurns: effectiveQuarterTurns,
-      baseAspectRatio: controller.value.aspectRatio,
-      frameSize: controller.value.previewSize,
+    return RepaintBoundary(
+      key: _pluginPreviewBoundaryKey,
+      child: framed,
     );
   }
 

@@ -67,4 +67,26 @@ module PhotoboothFastfile
   def app_store_connect_issuer_id_missing?(issuer_id)
     issuer_id.nil? || issuer_id.empty? || issuer_id.include?('your_app_store_connect_issuer_id')
   end
+
+  # CFBundleVersion / versionCode must keep rising across date-based marketing versions.
+  def next_store_build_number(latest_store:, local_build: 0)
+    [latest_store.to_i, local_build.to_i].max + 1
+  end
+
+  # bundle exec injects these so Homebrew `pod` looks "broken" to Flutter.
+  BUNDLER_ENV_UNSET_KEYS = %w[
+    BUNDLE_GEMFILE
+    BUNDLE_BIN_PATH
+    BUNDLER_SETUP
+    BUNDLER_VERSION
+    RUBYOPT
+    RUBYLIB
+    GEM_HOME
+    GEM_PATH
+  ].freeze
+
+  def unbundled_flutter_command(inner)
+    unset = BUNDLER_ENV_UNSET_KEYS.map { |key| "-u #{key}" }.join(' ')
+    "env #{unset} SKIP_VERSION_SYNC=1 #{inner}"
+  end
 end

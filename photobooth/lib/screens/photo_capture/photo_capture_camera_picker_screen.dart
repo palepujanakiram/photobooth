@@ -11,6 +11,7 @@ import '../../services/uvc_device_event_hub.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/logger.dart';
 import 'photo_capture_camera_selection_helpers.dart';
+import 'photo_capture_uvc_device_helpers.dart';
 import 'photo_capture_viewmodel.dart';
 
 /// Camera list with force-refresh on open and a manual refresh action.
@@ -18,9 +19,11 @@ class PhotoCaptureCameraPickerScreen extends StatefulWidget {
   const PhotoCaptureCameraPickerScreen({
     super.key,
     required this.viewModel,
+    this.selectedUvcDevice,
   });
 
   final CaptureViewModel viewModel;
+  final UvcCameraDevice? selectedUvcDevice;
 
   @override
   State<PhotoCaptureCameraPickerScreen> createState() =>
@@ -37,14 +40,24 @@ class _PhotoCaptureCameraPickerScreenState
   @override
   void initState() {
     super.initState();
+    widget.viewModel.addListener(_onViewModel);
     _attachUvcDeviceEvents();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_refreshCameras());
     });
   }
 
+  void _onViewModel() {
+    if (mounted) setState(() {});
+  }
+
+  void _stopListeningToViewModel() {
+    widget.viewModel.removeListener(_onViewModel);
+  }
+
   @override
   void dispose() {
+    _stopListeningToViewModel();
     _uvcRefreshDebounce?.cancel();
     _uvcRefreshDebounce = null;
     _uvcDeviceEventsSub?.cancel();
@@ -146,62 +159,62 @@ class _PhotoCaptureCameraPickerScreenState
   void _selectCamera(CameraDescription camera) {
     final vm = widget.viewModel;
     if (vm.currentCamera?.name == camera.name) return;
+    _stopListeningToViewModel();
     Navigator.pop(context, camera);
   }
 
   void _selectUvcDevice(UvcCameraDevice device) {
+    _stopListeningToViewModel();
     Navigator.pop(context, device);
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: widget.viewModel,
-      builder: (context, _) {
-        final vm = widget.viewModel;
-        final uniqueCameras = uniqueCamerasByDisplayName(
-          vm.availableCameras,
-          vm.getCameraDisplayName,
-        );
-        final usbHint = cameraPickerUsbHint(
-          deviceType: vm.deviceType,
-          cameras: vm.availableCameras,
-        );
-        final isRefreshing = vm.isLoadingCameras;
+    final vm = widget.viewModel;
+    final uniqueCameras = uniqueCamerasByDisplayName(
+      vm.availableCameras,
+      vm.getCameraDisplayName,
+    );
+    final usbHint = cameraPickerUsbHint(
+      deviceType: vm.deviceType,
+      cameras: vm.availableCameras,
+    );
+    final isRefreshing = vm.isLoadingCameras;
 
-        return Scaffold(
-          appBar: AppBar(
-            centerTitle: true,
-            title: const Text(AppStrings.selectCameraTitle),
-            leading: IconButton(
-              icon: const Icon(CupertinoIcons.xmark),
-              onPressed: () => Navigator.pop(context),
-            ),
-            actions: [
-              IconButton(
-                icon: isRefreshing
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(CupertinoIcons.arrow_clockwise),
-                tooltip: AppStrings.refreshCameras,
-                onPressed: isRefreshing ? null : () => unawaited(_refreshCameras()),
-              ),
-            ],
+    return Scaffold(
+      appBar: AppBar(
+        centerTitle: true,
+        title: const Text(AppStrings.selectCameraTitle),
+        leading: IconButton(
+          icon: const Icon(CupertinoIcons.xmark),
+          onPressed: () {
+            _stopListeningToViewModel();
+            Navigator.pop(context);
+          },
+        ),
+        actions: [
+          IconButton(
+            icon: isRefreshing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(CupertinoIcons.arrow_clockwise),
+            tooltip: AppStrings.refreshCameras,
+            onPressed: isRefreshing ? null : () => unawaited(_refreshCameras()),
           ),
-          body: SafeArea(
-            child: _buildBody(
-              uniqueCameras: uniqueCameras,
-              usbHint: usbHint,
-              isRefreshing: isRefreshing,
-              currentCameraName: vm.currentCamera?.name,
-              displayNameFor: vm.getCameraDisplayName,
-            ),
-          ),
-        );
-      },
+        ],
+      ),
+      body: SafeArea(
+        child: _buildBody(
+          uniqueCameras: uniqueCameras,
+          usbHint: usbHint,
+          isRefreshing: isRefreshing,
+          currentCameraName: vm.currentCamera?.name,
+          displayNameFor: vm.getCameraDisplayName,
+        ),
+      ),
     );
   }
 
@@ -229,28 +242,20 @@ class _PhotoCaptureCameraPickerScreenState
       padding: const EdgeInsets.only(bottom: 24),
       children: [
         if (usbHint != null) _buildHintBanner(usbHint),
-        ..._buildUvcSection(),
-        if (uniqueCameras.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              AppStrings.cameraPickerNoCameras,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-          )
-        else
+        ..._buildUvcSection(enumeratedCamerasEmpty: uniqueCameras.isEmpty),
+        if (uniqueCameras.isEmpty &&
+            defaultTargetPlatform != TargetPlatform.android)
+          _noCameraConnectedLabel()
+        else if (uniqueCameras.isNotEmpty)
           ...uniqueCameras.map((camera) {
-            final isActive = currentCameraName == camera.name;
-            final displayName = displayNameFor(camera);
+            final isActive = isPickerEnumeratedCameraChecked(
+              cameraName: camera.name,
+              currentCameraName: currentCameraName,
+              uvcPreviewActive: widget.selectedUvcDevice != null,
+            );
             return ListTile(
-              title: Text(displayName),
-              leading: isActive
-                  ? const Icon(
-                      CupertinoIcons.checkmark_circle_fill,
-                      color: Colors.blue,
-                    )
-                  : null,
+              title: Text(displayNameFor(camera)),
+              leading: _selectedCheckIcon(isActive),
               onTap: () => _selectCamera(camera),
             );
           }),
@@ -258,7 +263,7 @@ class _PhotoCaptureCameraPickerScreenState
     );
   }
 
-  List<Widget> _buildUvcSection() {
+  List<Widget> _buildUvcSection({required bool enumeratedCamerasEmpty}) {
     if (defaultTargetPlatform != TargetPlatform.android) return const <Widget>[];
     _uvcDevicesFuture ??= _loadUvcDevices();
 
@@ -266,31 +271,82 @@ class _PhotoCaptureCameraPickerScreenState
       FutureBuilder<Map<String, UvcCameraDevice>>(
         future: _uvcDevicesFuture,
         builder: (context, snap) {
+          if (enumeratedCamerasEmpty &&
+              snap.connectionState != ConnectionState.done) {
+            return const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
           final devices = snap.data ?? const <String, UvcCameraDevice>{};
-          final hasDevices = devices.isNotEmpty;
           return Column(
-            children: [
-              ListTile(
-                title: const Text(AppStrings.cameraPickerUsbCameraTitle),
-                subtitle: hasDevices
-                    ? Text('${devices.length} device(s) detected')
-                    : Text(
-                        _uvcDebugLine == null
-                            ? AppStrings.cameraPickerUsbNoDevices
-                            : '${AppStrings.cameraPickerUsbNoDevices}\n$_uvcDebugLine',
-                      ),
-                trailing: const Icon(CupertinoIcons.chevron_right),
-                enabled: hasDevices,
-                onTap: !hasDevices
-                    ? null
-                    : () => _selectUvcDevice(devices.values.first),
-              ),
-              const Divider(height: 1),
-            ],
+            children: _uvcSectionTiles(
+              devices: devices,
+              enumeratedCamerasEmpty: enumeratedCamerasEmpty,
+            ),
           );
         },
       ),
     ];
+  }
+
+  List<Widget> _uvcSectionTiles({
+    required Map<String, UvcCameraDevice> devices,
+    required bool enumeratedCamerasEmpty,
+  }) {
+    if (shouldShowNoCameraConnectedMessage(
+      enumeratedCamerasEmpty: enumeratedCamerasEmpty,
+      uvcDevicesEmpty: devices.isEmpty,
+    )) {
+      return <Widget>[_noCameraConnectedLabel()];
+    }
+
+    if (devices.isEmpty) {
+      return <Widget>[
+        ListTile(
+          title: const Text(AppStrings.cameraPickerUsbCameraTitle),
+          subtitle: Text(
+            _uvcDebugLine == null
+                ? AppStrings.cameraPickerUsbNoDevices
+                : '${AppStrings.cameraPickerUsbNoDevices}\n$_uvcDebugLine',
+          ),
+        ),
+        const Divider(height: 1),
+      ];
+    }
+
+    final selected = widget.selectedUvcDevice;
+    return <Widget>[
+      for (final device in devices.values)
+        ListTile(
+          title: Text(device.name),
+          subtitle: const Text(AppStrings.cameraPickerUsbCameraTitle),
+          leading: _selectedCheckIcon(
+            selected != null && uvcDeviceMatches(selected, device),
+          ),
+          onTap: () => _selectUvcDevice(device),
+        ),
+      const Divider(height: 1),
+    ];
+  }
+
+  Widget _noCameraConnectedLabel() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Text(
+        AppStrings.noCameraConnected,
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodyLarge,
+      ),
+    );
+  }
+
+  Widget? _selectedCheckIcon(bool isActive) {
+    if (!isActive) return null;
+    return const Icon(
+      CupertinoIcons.checkmark_circle_fill,
+      color: Colors.blue,
+    );
   }
 
   Widget _buildHintBanner(String message) {

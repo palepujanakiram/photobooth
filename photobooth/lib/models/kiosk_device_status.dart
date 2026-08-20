@@ -18,7 +18,8 @@ class KioskDeviceStatusEntry {
   final String deviceName;
   final bool connected;
 
-  /// When false (e.g. receipt printer disabled), UI shows "Not configured".
+  /// When false (e.g. receipt printer disabled). Guest UI still shows
+  /// "Not connected" rather than a separate configured state.
   final bool configured;
 
   /// True when the sidecar process started but exited unexpectedly.

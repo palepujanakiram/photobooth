@@ -2,6 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
+import '../../utils/app_strings.dart';
+
+/// Guest copy when camera enumeration returns an empty list.
+String emptyCameraEnumerationMessage({required bool isWeb}) {
+  if (isWeb) return AppStrings.noCameraDetectedWeb;
+  return AppStrings.noCameraConnected;
+}
+
 /// User-facing message for camera enumeration / open failures.
 String cameraLoadFailureMessage(Object error) {
   if (error is TimeoutException) {
@@ -13,7 +21,7 @@ String cameraLoadFailureMessage(Object error) {
   final text = error.toString().toLowerCase();
   if (text.contains('available cameras: 0') ||
       text.contains('cameraunavailable')) {
-    return 'No camera detected. Connect a camera or use Gallery if enabled.';
+    return AppStrings.noCameraConnected;
   }
   if (text.contains('failed to open camera')) {
     return 'Camera is unavailable. Try again or select another camera.';
@@ -29,7 +37,7 @@ String _platformCameraFailureMessage(PlatformException error) {
   if (text.contains('available cameras: 0') ||
       text.contains('cameraunavailable') ||
       text.contains('executionexception')) {
-    return 'No camera detected. Connect a camera or use Gallery if enabled.';
+    return AppStrings.noCameraConnected;
   }
   if (text.contains('failed to open camera') ||
       text.contains('illegalstateexception')) {

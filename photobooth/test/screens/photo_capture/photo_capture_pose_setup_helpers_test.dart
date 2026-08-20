@@ -16,8 +16,9 @@ void main() {
     );
   });
 
-  test('shouldAdoptTermsPrewarmOnPoseInit on phones only', () {
+  test('shouldAdoptTermsPrewarmOnPoseInit on phones including iOS', () {
     expect(shouldAdoptTermsPrewarmOnPoseInit(AppDeviceType.androidPhone), isTrue);
+    expect(shouldAdoptTermsPrewarmOnPoseInit(AppDeviceType.iosPhone), isTrue);
     expect(shouldAdoptTermsPrewarmOnPoseInit(AppDeviceType.androidTv), isFalse);
     expect(shouldAdoptTermsPrewarmOnPoseInit(null), isTrue);
   });

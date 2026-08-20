@@ -27,6 +27,8 @@ void main() {
     expect(AppStrings.themeSelectionContinuing, isNotEmpty);
     expect(AppStrings.sidecarLivePreviewConnecting, isNotEmpty);
     expect(AppStrings.sidecarLivePreviewUnavailable, isNotEmpty);
+    expect(AppStrings.noCameraConnected, 'No Camera Connected');
+    expect(AppStrings.noCameraDetectedWeb, isNotEmpty);
     expect(AppStrings.captureStillDisplayFailed, isNotEmpty);
     expect(AppStrings.kioskDeviceDslrSidecar, isNotEmpty);
     expect(AppStrings.kioskDeviceTransportLan, isNotEmpty);

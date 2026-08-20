@@ -165,7 +165,12 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Opens the live CameraX feed during Terms idle time so POSE can adopt instantly.
   static Future<void> prewarmLiveCamera({AppDeviceType? deviceType}) async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (!canPrewarmLiveCameraOnPlatform(
+      isWeb: kIsWeb,
+      platform: defaultTargetPlatform,
+    )) {
+      return;
+    }
     if (_prewarmedController?.value.isInitialized == true) return;
     if (_prewarmInFlight != null) {
       await _prewarmInFlight;
@@ -1017,38 +1022,11 @@ class CaptureViewModel extends ChangeNotifier {
   }
 
   CameraDescription _pickDefaultCamera(List<CameraDescription> cameras) {
-    return _pickDefaultCameraFromList(cameras);
-  }
-
-  static CameraDescription _pickDefaultCameraFromList(
-    List<CameraDescription> cameras,
-  ) {
-    if (cameras.isEmpty) {
-      throw StateError('No cameras available');
-    }
-    final byName = cameras
-        .where((c) => looksLikeExternalCameraName(c.name))
-        .toList();
-    if (byName.isNotEmpty) {
-      return byName.first;
-    }
-    final byDirection = cameras
-        .where((c) => c.lensDirection == CameraLensDirection.external)
-        .toList();
-    if (byDirection.isNotEmpty) {
-      return byDirection.first;
-    }
-    final fronts = cameras
-        .where((c) => c.lensDirection == CameraLensDirection.front)
-        .toList();
-    final backs =
-        cameras.where((c) => c.lensDirection == CameraLensDirection.back).toList();
-    if (fronts.isNotEmpty && backs.isNotEmpty) {
-      return fronts.first;
-    }
-    if (fronts.isNotEmpty) return fronts.first;
-    if (backs.isNotEmpty) return backs.first;
-    return cameras.first;
+    return pickPreferredCaptureCamera(
+      cameras: cameras,
+      deviceType: _deviceType,
+      looksLikeExternalName: _looksLikeExternalCameraName,
+    );
   }
 
   /// Transfers the Terms-screen prewarm into this screen instance.
@@ -1101,7 +1079,7 @@ class CaptureViewModel extends ChangeNotifier {
       looksLikeExternalCameraName(name);
 
   /// Set device type from UI (from [DeviceClassifier.getDeviceType]).
-  /// Used to filter cameras: tablet/TV → external first with built-in fallback.
+  /// Used for preview rotation and kiosk USB-first preload.
   void setDeviceType(AppDeviceType? type) {
     final changed = _deviceType != type;
     _deviceType = type;
@@ -1138,9 +1116,7 @@ class CaptureViewModel extends ChangeNotifier {
     );
     _availableCameras = filtered;
     if (filtered.isEmpty) {
-      _errorMessage = kIsWeb
-          ? 'No camera detected. Allow camera access in the browser, or use Gallery if enabled.'
-          : 'No cameras available';
+      _errorMessage = emptyCameraEnumerationMessage(isWeb: kIsWeb);
       unawaited(
         reportCameraNotFound(
           reason: 'No cameras detected',
@@ -1193,7 +1169,7 @@ class CaptureViewModel extends ChangeNotifier {
   Future<bool> _ensureAndroidCameraPermission({
     bool requestIfNeeded = false,
   }) async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+    if (kIsWeb || !isNativeMobileCameraPlatform) {
       return true;
     }
     final granted = await ensureCameraPermission(
@@ -1226,9 +1202,7 @@ class CaptureViewModel extends ChangeNotifier {
 
   void _assignEnumeratedCameras(List<CameraDescription> allCameras) {
     if (allCameras.isEmpty) {
-      _errorMessage = kIsWeb
-          ? 'No camera detected. Allow camera access in the browser, or use Gallery if enabled.'
-          : 'No cameras available';
+      _errorMessage = emptyCameraEnumerationMessage(isWeb: kIsWeb);
       unawaited(_reportEmptyCameraEnumeration());
     } else {
       _markCameraAvailabilityRestored();
@@ -1779,6 +1753,9 @@ class CaptureViewModel extends ChangeNotifier {
     CameraDescription cameraToUse,
     CameraDescription camera,
   ) async {
+    if (!shouldUseFastCameraDescriptionSwitch(defaultTargetPlatform)) {
+      return false;
+    }
     final ctrl = _cameraController;
     if (ctrl == null || !ctrl.value.isInitialized) return false;
     try {
@@ -1805,6 +1782,7 @@ class CaptureViewModel extends ChangeNotifier {
     _cameraController = null;
     _cameraGeneration++;
     notifyListeners();
+    await Future<void>.delayed(Duration.zero);
     try {
       ctrl.removeListener(_onCameraControllerUpdate);
       await ctrl.dispose();
@@ -1964,6 +1942,10 @@ class CaptureViewModel extends ChangeNotifier {
     }
 
     try {
+      if (notifyInitializing) {
+        await Future<void>.delayed(Duration.zero);
+        if (_disposed) return;
+      }
       _minZoom = null;
       _maxZoom = null;
       _currentZoom = 1.0;
