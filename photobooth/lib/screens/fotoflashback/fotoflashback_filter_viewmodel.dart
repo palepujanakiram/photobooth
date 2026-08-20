@@ -75,6 +75,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   bool _hydratingCaptures = false;
   int _hydrateGeneration = 0;
   final bool _captureUploadsAlreadyCompact;
+  List<Uint8List> _lookPreviewJpegBytes = [];
 
   final ThemeModel theme;
   final List<String> _imageDataUrls;
@@ -119,6 +120,13 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   /// True while direct-PTP JPEG paths are being read and base64-encoded.
   bool get isHydratingCaptures => _hydratingCaptures;
+
+  /// File bytes for the look strip. Direct PTP fills this before base64 so the
+  /// picker does not decode huge data-URLs (SDK already arrives with data-URLs).
+  List<Uint8List> get lookPreviewJpegBytes =>
+      List<Uint8List>.unmodifiable(_lookPreviewJpegBytes);
+
+  bool get hasLookPreviewJpegBytes => _lookPreviewJpegBytes.isNotEmpty;
 
   /// Raw captures (for compose). Prefer [previewImageDataUrls] for the look UI.
   List<String> get imageDataUrls => List<String>.unmodifiable(_imageDataUrls);
@@ -280,29 +288,41 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   }
 
   /// Encodes [pendingImageFilePaths] after navigation (direct PTP classic).
+  ///
+  /// Looks paint from the JPEG bytes as soon as they are on disk. Base64 is
+  /// only for compose/scrub — swapping the strip onto data-URLs is what made
+  /// PTP flicker while the SDK path (already data-URLs) stayed still.
   Future<void> _hydratePendingCaptureFiles() async {
     final paths = _pendingImageFilePaths;
     if (paths == null || paths.isEmpty) return;
 
     final gen = ++_hydrateGeneration;
     _imageDataUrls.clear();
+    _lookPreviewJpegBytes = [];
     _hydratingCaptures = true;
     _errorMessage = null;
     notifyListeners();
     try {
+      final jpegBytes = <Uint8List>[];
+      for (final path in paths) {
+        if (gen != _hydrateGeneration) return;
+        final bytes = await XFile(path).readAsBytes();
+        if (bytes.isEmpty) {
+          throw Exception(AppStrings.imageFileEmpty);
+        }
+        jpegBytes.add(bytes);
+      }
+      if (gen != _hydrateGeneration) return;
+      _lookPreviewJpegBytes = jpegBytes;
+      notifyListeners();
+
       final encoded = await Future.wait(
-        paths.map((path) async {
-          if (gen != _hydrateGeneration) return null;
-          return await ImageHelper.encodeImageToBase64(XFile(path));
-        }),
+        jpegBytes.map(ImageHelper.encodeBytesToBase64DataUrl),
       );
       if (gen != _hydrateGeneration) return;
-      if (encoded.any((url) => url == null) || encoded.length != paths.length) {
-        return;
-      }
       _imageDataUrls
         ..clear()
-        ..addAll(encoded.cast<String>());
+        ..addAll(encoded);
       if (classicOverlayCleanupEnabled && !_previewCleaned) {
         unawaited(preparePreview().then((_) {
           _scheduleComposePreview(allowLargePayloadWarm: true);
@@ -334,6 +354,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _composePreviewDebounce = null;
     _hydratingCaptures = false;
     _imageDataUrls.clear();
+    _lookPreviewJpegBytes = [];
     _pendingImageFilePaths = null;
     _composePreview = null;
     _composePreviewFingerprint = null;

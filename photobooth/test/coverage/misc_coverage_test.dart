@@ -168,6 +168,10 @@ void main() {
   test('ImageHelper encodeImageToBase64 and rotate', () async {
     final url = await ImageHelper.encodeImageToBase64(tinyJpegXFile());
     expect(url, startsWith('data:image/jpeg'));
+    final fromBytes = await ImageHelper.encodeBytesToBase64DataUrl(
+      kTinyJpegBytes,
+    );
+    expect(fromBytes, startsWith('data:image/jpeg;base64,'));
   });
 
   test('secure_image_url and theme urls', () {

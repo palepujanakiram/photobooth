@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -335,7 +336,8 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                       ],
                       const SizedBox(height: 12),
                       Expanded(
-                        child: viewModel.isHydratingCaptures
+                        child: viewModel.isHydratingCaptures &&
+                                !viewModel.hasLookPreviewJpegBytes
                             ? Center(
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
@@ -363,6 +365,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           ),
                           child: _LookPickerBody(
                           imageDataUrls: viewModel.previewImageDataUrls,
+                          imageJpegBytes: viewModel.lookPreviewJpegBytes,
                           imagesAreGraded: viewModel.previewImagesAreGraded,
                           serverComposePreviewUrl:
                               viewModel.lookComposePreviewUrl,
@@ -457,6 +460,7 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
 class _LookPickerBody extends StatelessWidget {
   const _LookPickerBody({
     required this.imageDataUrls,
+    this.imageJpegBytes = const [],
     required this.imagesAreGraded,
     this.serverComposePreviewUrl,
     this.isRefreshingComposePreview = false,
@@ -481,6 +485,7 @@ class _LookPickerBody extends StatelessWidget {
   });
 
   final List<String> imageDataUrls;
+  final List<Uint8List> imageJpegBytes;
   final bool imagesAreGraded;
   final String? serverComposePreviewUrl;
   final bool isRefreshingComposePreview;
@@ -511,7 +516,9 @@ class _LookPickerBody extends StatelessWidget {
         if (panelH <= 0) return const SizedBox.shrink();
 
         // Dual-strip chrome → tall 2×6; sheet → portrait 4×6; 1-shot → L/P.
-        final single = imageDataUrls.length == 1;
+        final shotCount =
+            imageJpegBytes.isNotEmpty ? imageJpegBytes.length : imageDataUrls.length;
+        final single = shotCount == 1;
         final sheet = !single && isStripSheetLayout(frameId);
         final aspect = single
             ? (printOrientation == PrintOrientation.portrait
@@ -535,6 +542,7 @@ class _LookPickerBody extends StatelessWidget {
             children: [
               FotoFlashbackStripPreview(
                 imageDataUrls: imageDataUrls,
+                imageJpegBytes: imageJpegBytes,
                 imagesAreGraded: imagesAreGraded,
                 serverComposePreviewUrl: serverComposePreviewUrl,
                 isRefreshingComposePreview: isRefreshingComposePreview,

@@ -93,6 +93,8 @@ void main() {
     }
 
     expect(vm.isHydratingCaptures, isFalse);
+    expect(vm.hasLookPreviewJpegBytes, isTrue);
+    expect(vm.lookPreviewJpegBytes, hasLength(1));
     expect(vm.imageDataUrls, hasLength(1));
     expect(vm.imageDataUrls.first, startsWith('data:image/jpeg;base64,'));
     expect(vm.canCompose, isTrue);
