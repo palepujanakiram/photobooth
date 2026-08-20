@@ -367,6 +367,15 @@ class CanonCaptureActivity : Activity() {
 
         showReviewStill(shots.lastOrNull()?.displayPath)
 
+        // The still on screen *is* the saved photo, so any progress line under it is stale by
+        // definition. On the final shot processCapturedShot() sets "Saving photo…" and nothing
+        // clears it: the only later setStatus() is behind `shots.size < request.shotCount`,
+        // false for the last shot. A 1-shot guest therefore reviewed their photo under a label
+        // claiming it was still saving — and with holdMs 0 the review banner is hidden too, so
+        // that stale line was the only text on the card and read as a hang. Reported from the
+        // Android box as "saving photo is always visible"; reproduced on the phone 2026-08-20.
+        clearStatus()
+
         retakeButton.text = getString(
             if (isStrip) R.string.canon_capture_retake_last else R.string.canon_capture_retake,
         )
@@ -941,6 +950,17 @@ class CanonCaptureActivity : Activity() {
     private fun setStatus(text: String) {
         statusText.text = text
         statusText.visibility = View.VISIBLE
+    }
+
+    /**
+     * Hides the progress line.
+     *
+     * GONE rather than blank so the review buttons take back the vertical space instead of
+     * sitting under an empty gap — [setStatus] flips it back on for the next countdown.
+     */
+    private fun clearStatus() {
+        statusText.text = ""
+        statusText.visibility = View.GONE
     }
 
     private fun describe(state: ConnectionState?): String = when (state) {

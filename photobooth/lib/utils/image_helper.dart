@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:camera/camera.dart';
 import '../services/file_helper.dart';
+import 'logger.dart';
 import 'image_helper_channel_fix.dart';
 import 'image_helper_encode.dart';
 import 'session_user_image_validation.dart';
@@ -716,7 +717,37 @@ class ImageHelper {
   /// Contract: **`data:image/jpeg;base64,...`** only, long edge ≤ **1536** px,
   /// JPEG quality **85**, size checked against [SessionUserImageValidation] after encode.
   /// Heavy work runs in a [compute] isolate (web + native).
+  /// Reports what actually goes on the wire for a session PATCH.
+  ///
+  /// Deliberately one greppable line with both ends of the encode: the file on
+  /// disk, the base64 payload, and which branch produced it. Diagnosing the
+  /// direct-PTP upload timeouts meant inferring all three from capture-side logs
+  /// and a status string — the branch, which is the whole difference between a
+  /// 50ms read and a multi-second decode on a TV box, was never recorded at all.
+  ///
+  /// `sourceBytes` is the JPEG on disk; `payload` is ~4/3 of the JPEG it encodes,
+  /// so on the trusted branch the two track each other and on the resized branch
+  /// payload is the one that matters.
+  static void _logUploadPayload({
+    required String path,
+    required String branch,
+    required int sourceBytes,
+    required int dataUrlChars,
+    required DateTime startedAt,
+  }) {
+    final payloadBytes = (dataUrlChars * 3 / 4).round();
+    final ms = DateTime.now().difference(startedAt).inMilliseconds;
+    AppLogger.info(
+      '[UPLOAD_PAYLOAD] branch=$branch '
+      'source=${formatFileSize(sourceBytes)} '
+      'payload=${formatFileSize(payloadBytes)} '
+      'chars=$dataUrlChars encodeMs=$ms '
+      'file=${path.split('/').last}',
+    );
+  }
+
   static Future<String> encodeImageForUpload(XFile imageFile) async {
+    final startedAt = DateTime.now();
     if (!kIsWeb) {
       final path = imageFile.path;
       if (path.isNotEmpty && await File(path).exists()) {
@@ -734,11 +765,19 @@ class ImageHelper {
               'ENCODE_IMPL',
               'trusted_normalized_done outLen=${trusted.length}',
             );
+            _logUploadPayload(
+              path: path,
+              branch: 'trusted',
+              sourceBytes: bytes.length,
+              dataUrlChars: trusted.length,
+              startedAt: startedAt,
+            );
             SessionUserImageValidation.assertValidForSessionPatch(trusted);
             return trusted;
           }
         }
         WebFlowTrace.log('ENCODE_IMPL', 'branch path_isolate');
+        final sourceBytes = await File(path).length();
         final out = await compute(
           _encodeSessionPatchUserImageUrlFromPathIsolate,
           path,
@@ -749,6 +788,13 @@ class ImageHelper {
           ),
         );
         WebFlowTrace.log('ENCODE_IMPL', 'path_isolate_done outLen=${out.length}');
+        _logUploadPayload(
+          path: path,
+          branch: 'resized',
+          sourceBytes: sourceBytes,
+          dataUrlChars: out.length,
+          startedAt: startedAt,
+        );
         SessionUserImageValidation.assertValidForSessionPatch(out);
         return out;
       }

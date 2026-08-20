@@ -41,11 +41,32 @@ String? tryReuseNormalizedJpegForSessionPatch(Uint8List bytes) {
   return url;
 }
 
-/// App temp capture from [ImageHelper.normalizeAndSaveCapturedPhoto] or Pi sidecar.
+/// Suffix written by the native `DisplayDerivative` for a direct-PTP capture.
+///
+/// Matched as a **suffix, not a directory**, on purpose: the direct-PTP capture
+/// folder (`<files>/captures/<sessionId>/`) holds the untouched ~7 MB camera
+/// original next to its derivative, and trusting the folder would hand a
+/// 6000×4000 JPEG straight to the session PATCH. Only this suffix carries the
+/// 1920/q90 guarantee.
+const String kNativeDisplayDerivativeSuffix = '.display.jpg';
+
+/// App temp capture from [ImageHelper.normalizeAndSaveCapturedPhoto], Pi
+/// sidecar, or the native direct-PTP display derivative.
 bool isAppNormalizedCapturePath(String path) {
   if (path.isEmpty) return false;
   final lower = path.toLowerCase();
   if (!lower.endsWith('.jpg') && !lower.endsWith('.jpeg')) return false;
+  // Direct-PTP stills are bounded to 1920 long edge at q90 by `DisplayDerivative`
+  // (Android BitmapFactory + Bitmap.compress, hardware-backed), written expressly
+  // as the review/upload copy while the original never crosses into Dart.
+  //
+  // Missing from this predicate, direct PTP was the *only* source falling through
+  // to the pure-Dart decode → cubic resize → JPEG re-encode. That runs inside the
+  // 90s AppConstants.kSessionUploadTimeout wrapping _ensureUploadBase64Ready, and
+  // on an Android TV box it blew through it — surfacing as "Upload took too long,
+  // check your connection" on a healthy camera and a healthy network. EDSDK and Pi
+  // never showed it because `/sidecar/` already short-circuits the same work.
+  if (lower.endsWith(kNativeDisplayDerivativeSuffix)) return true;
   // Sidecar stills are already ~1920 JPEG from gphoto — never re-decode with
   // Dart `image` (corrupts Canon → green static on YOU / Gemini input).
   return lower.contains('/photos/photo_') || lower.contains('/sidecar/');

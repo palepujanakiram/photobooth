@@ -27,6 +27,47 @@ void main() {
     expect(isAppNormalizedCapturePath('/tmp/tiny.jpg'), isFalse);
   });
 
+  group('native direct-PTP display derivative', () {
+    const dir = '/data/user/0/app/files/captures/sess-42';
+
+    // Regression, hardware 2026-08-20. Direct PTP was the only capture source
+    // whose paths missed this predicate, so it alone paid the pure-Dart
+    // decode → cubic resize → re-encode. That work sits inside the 90s
+    // kSessionUploadTimeout around _ensureUploadBase64Ready and overran it on an
+    // Android TV box: "Upload took too long, check your connection", with the
+    // camera and network both fine. EDSDK/Pi were unaffected — `/sidecar/`
+    // already short-circuited it.
+    test('the derivative is trusted, so the box never re-encodes it', () {
+      expect(
+        isAppNormalizedCapturePath('$dir/0001_IMG_8309.display.jpg'),
+        isTrue,
+      );
+    });
+
+    // The single most important case here. The derivative lives in the *same*
+    // folder as the untouched ~7MB camera original, so a directory-based match
+    // would send a 6000x4000 JPEG verbatim into the session PATCH — worse than
+    // the bug being fixed. The original must keep taking the resize path.
+    test('the full-res original beside it is NOT trusted', () {
+      expect(isAppNormalizedCapturePath('$dir/0001_IMG_8309.JPG'), isFalse);
+      expect(isAppNormalizedCapturePath('$dir/0002_IMG_8310.jpg'), isFalse);
+    });
+
+    test('matching is case-insensitive, as the rest of the predicate is', () {
+      expect(
+        isAppNormalizedCapturePath('$dir/0001_IMG_8309.DISPLAY.JPG'),
+        isTrue,
+      );
+    });
+
+    test('the suffix constant is what the native side actually writes', () {
+      // DisplayDerivative.create() builds "${nameWithoutExtension}.display.jpg".
+      // If that name ever changes, this predicate silently stops matching and the
+      // TV box regresses to the timeout — so pin the string.
+      expect(kNativeDisplayDerivativeSuffix, '.display.jpg');
+    });
+  });
+
   test('tryReuseNormalizedJpegForSessionPatch accepts small jpeg', () {
     final reused = tryReuseNormalizedJpegForSessionPatch(kTinyJpegBytes);
     expect(reused, isNotNull);
