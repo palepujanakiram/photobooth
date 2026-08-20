@@ -2326,6 +2326,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (_deviceCameraFallbackPreferred(dslrPathCanServe: dslrPathCanServe)) {
       _preferDeviceCameraCapture = true;
       _expectExternalCaptureSource = false;
+      _classicSidecarPreviewFallback = false;
+      // Undo EVF force from a failed sidecar start so POSE UI / shutter use CameraX.
+      _captureViewModel.localCameraService?.setForceLivePreview(false);
       _captureViewModel.setPreferDeviceCameraCapture(true);
     }
   }
@@ -2346,19 +2349,34 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       );
       if (!mounted) return true;
     }
+    // HTTP/process up ≠ DSLR attached. Prefer CameraX whenever the body cannot
+    // serve EVF and Terms already enumerated a tablet/phone camera.
+    final deviceFallbackPreferred = _deviceCameraFallbackPreferred(
+      dslrPathCanServe: false,
+    );
     final keepDirect = shouldKeepDirectSidecarPose(
       isDirectConnection: service?.isDirectConnection == true,
       hasSidecarEndpoint: service?.hasSidecarEndpoint == true,
-      preferDeviceCameraFallback: _deviceCameraFallbackPreferred(
-        dslrPathCanServe: canServe,
-      ),
+      preferDeviceCameraFallback: deviceFallbackPreferred,
     );
     if (canServe || keepDirect) {
       final started = await _startSidecarPosePreviewSession();
       if (!mounted) return true;
-      if (started || keepDirect) return true;
+      final healthy = started &&
+          (_captureViewModel.sidecarPreviewReady ||
+              await service?.isHealthy() == true);
+      if (!mounted) return true;
+      if (shouldCommitToSidecarPoseSession(
+        sidecarReadyOrHealthy: healthy,
+        hasOpenableDeviceCamera: hasOpenableDeviceCaptureCamera(
+          deviceType: _poseDeviceTypeForFallback(),
+        ),
+        keepDirectWithoutDeviceFallback: keepDirect,
+      )) {
+        return true;
+      }
     }
-    _markDeviceCameraFallbackIfNeeded(dslrPathCanServe: canServe);
+    _markDeviceCameraFallbackIfNeeded(dslrPathCanServe: false);
     AppLogger.warning(
       'POSE: Canon sidecar not running on this device; using HDMI/UVC preview',
     );
@@ -2409,17 +2427,29 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     // with the front camera while the DSLR was still on USB.
     // Flutter web has no USB sidecar — skip this even if mode defaults to direct.
     final directService = _captureViewModel.localCameraService;
-    if (shouldKeepDirectSidecarPose(
+    final keepDirectPose = shouldKeepDirectSidecarPose(
       isDirectConnection: directService?.isDirectConnection == true,
       hasSidecarEndpoint: directService?.hasSidecarEndpoint == true,
       preferDeviceCameraFallback: _preferDeviceCameraCapture,
-    )) {
-      directService!.clearRuntimeUnavailable();
-      AppLogger.warning(
-        'POSE: keeping Direct USB EVF (skip CameraX/UVC fallthrough)',
-      );
-      await _startSidecarPosePreviewSession();
-      return;
+    );
+    if (keepDirectPose) {
+      // Process may be up with no body — fall through to CameraX when available.
+      final healthy = await directService?.isHealthy() == true;
+      if (!mounted) return;
+      if (!shouldPreferDeviceCameraOverDslr(
+        dslrPathCanServe: healthy,
+        hasOpenableDeviceCamera: hasOpenableDeviceCaptureCamera(
+          deviceType: _poseDeviceTypeForFallback(),
+        ),
+      )) {
+        directService!.clearRuntimeUnavailable();
+        AppLogger.warning(
+          'POSE: keeping Direct USB EVF (skip CameraX/UVC fallthrough)',
+        );
+        await _startSidecarPosePreviewSession();
+        return;
+      }
+      _markDeviceCameraFallbackIfNeeded(dslrPathCanServe: false);
     }
 
     // Classic (+ AI without Pi live preview): HDMI/UVC pose, sidecar stills.
@@ -2464,7 +2494,28 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       )) {
         final started = await _startSidecarPosePreviewSession();
         if (!mounted) return;
-        if (started) return;
+        final healthy = started &&
+            (_captureViewModel.sidecarPreviewReady ||
+                await _captureViewModel.localCameraService?.isHealthy() == true);
+        if (!mounted) return;
+        if (shouldCommitToSidecarPoseSession(
+          sidecarReadyOrHealthy: healthy,
+          hasOpenableDeviceCamera: hasOpenableDeviceCaptureCamera(
+            deviceType: _poseDeviceTypeForFallback(),
+          ),
+          keepDirectWithoutDeviceFallback: shouldKeepDirectSidecarPose(
+            isDirectConnection:
+                _captureViewModel.localCameraService?.isDirectConnection ==
+                    true,
+            hasSidecarEndpoint:
+                _captureViewModel.localCameraService?.hasSidecarEndpoint ==
+                    true,
+            preferDeviceCameraFallback: _preferDeviceCameraCapture,
+          ),
+        )) {
+          return;
+        }
+        _markDeviceCameraFallbackIfNeeded(dslrPathCanServe: false);
       }
     }
     if (kioskUvc) {

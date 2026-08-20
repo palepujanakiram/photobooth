@@ -493,6 +493,9 @@ class CaptureViewModel extends ChangeNotifier {
         listening = await service.isListening();
       }
     }
+    final hasDeviceCamera = hasOpenableDeviceCaptureCamera(
+      deviceType: _deviceType,
+    );
     if (!listening) {
       notifyListeners();
       return shouldKeepDirectSidecarPose(
@@ -500,17 +503,26 @@ class CaptureViewModel extends ChangeNotifier {
         hasSidecarEndpoint: service.hasSidecarEndpoint,
         preferDeviceCameraFallback: shouldPreferDeviceCameraOverDslr(
           dslrPathCanServe: false,
-          hasOpenableDeviceCamera: hasOpenableDeviceCaptureCamera(
-            deviceType: _deviceType,
-          ),
+          hasOpenableDeviceCamera: hasDeviceCamera,
         ),
       );
     }
     final healthy = await service.isHealthy();
     if (healthy) {
       markSidecarPreviewReady();
+      return true;
     }
-    return true;
+    // HTTP up / process running but no body — do not claim EVF ready when the
+    // tablet has CameraX; Classic already recovered via isHealthy elsewhere.
+    notifyListeners();
+    return shouldKeepDirectSidecarPose(
+      isDirectConnection: service.isDirectConnection,
+      hasSidecarEndpoint: service.hasSidecarEndpoint,
+      preferDeviceCameraFallback: shouldPreferDeviceCameraOverDslr(
+        dslrPathCanServe: false,
+        hasOpenableDeviceCamera: hasDeviceCamera,
+      ),
+    );
   }
 
   CameraController? get cameraController => _cameraController;

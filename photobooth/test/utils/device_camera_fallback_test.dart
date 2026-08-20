@@ -39,6 +39,52 @@ void main() {
     });
   });
 
+  group('shouldCommitToSidecarPoseSession', () {
+    test('commits when sidecar EVF is healthy', () {
+      expect(
+        shouldCommitToSidecarPoseSession(
+          sidecarReadyOrHealthy: true,
+          hasOpenableDeviceCamera: true,
+          keepDirectWithoutDeviceFallback: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('falls through to CameraX when process is up but body missing', () {
+      expect(
+        shouldCommitToSidecarPoseSession(
+          sidecarReadyOrHealthy: false,
+          hasOpenableDeviceCamera: true,
+          keepDirectWithoutDeviceFallback: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('keeps Direct EVF when no device camera is available', () {
+      expect(
+        shouldCommitToSidecarPoseSession(
+          sidecarReadyOrHealthy: false,
+          hasOpenableDeviceCamera: false,
+          keepDirectWithoutDeviceFallback: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('does not keep blank EVF without keepDirect or health', () {
+      expect(
+        shouldCommitToSidecarPoseSession(
+          sidecarReadyOrHealthy: false,
+          hasOpenableDeviceCamera: false,
+          keepDirectWithoutDeviceFallback: false,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('hasOpenableDeviceCaptureCamera', () {
     test('delegates to CaptureViewModel enumeration cache', () {
       CaptureViewModel.resetCameraCacheForTest();

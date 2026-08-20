@@ -13,3 +13,19 @@ bool shouldPreferDeviceCameraOverDslr({
 }) {
   return !dslrPathCanServe && hasOpenableDeviceCamera;
 }
+
+/// Keep sidecar EVF only when the DSLR is actually usable — or when there is
+/// no CameraX fallback (Direct USB warm-up / waiting for the body).
+///
+/// EDSDK `running` / HTTP listening alone is not enough: AI live-preview used
+/// to commit to a blank EVF while Classic later recovered via health checks and
+/// opened the tablet camera.
+bool shouldCommitToSidecarPoseSession({
+  required bool sidecarReadyOrHealthy,
+  required bool hasOpenableDeviceCamera,
+  required bool keepDirectWithoutDeviceFallback,
+}) {
+  if (sidecarReadyOrHealthy) return true;
+  if (hasOpenableDeviceCamera) return false;
+  return keepDirectWithoutDeviceFallback;
+}
