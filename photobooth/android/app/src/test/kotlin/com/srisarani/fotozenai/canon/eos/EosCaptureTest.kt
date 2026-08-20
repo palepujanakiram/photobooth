@@ -321,6 +321,36 @@ class EosCaptureTest {
         assertThat(nonAf.parameter(1)).isEqualTo(1L)
     }
 
+    /**
+     * With no AF held the first full press is already NonAF, so there is no second,
+     * different attempt to make. Retrying it anyway burned a whole extra ~7.5s busy
+     * budget on the operation that had just failed - ~15s of the guest staring at a
+     * booth that had already given up.
+     */
+    @Test
+    fun `busy full press without AF does not retry the same NonAF press`() = runTest {
+        val rig = Rig()
+        val busyMaxAttempts = 12 // EosCapture.BUSY_MAX_ATTEMPTS (private companion)
+        repeat(busyMaxAttempts) { rig.fail(PtpResponse.DEVICE_BUSY) }
+
+        var thrown: PtpException.OperationFailed? = null
+        try {
+            rig.capture.release(EosCapture.ReleaseMode.WITHOUT_AUTOFOCUS)
+        } catch (e: PtpException.OperationFailed) {
+            thrown = e
+        }
+        assertThat(thrown?.responseCode).isEqualTo(PtpResponse.DEVICE_BUSY)
+
+        val fullPresses = rig.commands().filter {
+            it.code == CanonEosOperation.REMOTE_RELEASE_ON
+        }
+        assertThat(fullPresses).hasSize(busyMaxAttempts)
+        assertThat(fullPresses.map { it.parameter(0) }.toSet()).containsExactly(3L)
+        // Nothing engaged, so the finally block must not un-press anything.
+        assertThat(rig.commands().map { it.code })
+            .doesNotContain(CanonEosOperation.REMOTE_RELEASE_OFF)
+    }
+
     // ================================================================ download
 
     @Test

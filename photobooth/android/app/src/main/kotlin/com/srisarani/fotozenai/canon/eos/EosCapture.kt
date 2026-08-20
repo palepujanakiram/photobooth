@@ -185,7 +185,10 @@ class EosCapture(
                     if (afEngaged) delay(AF_SETTLE_BEFORE_FULL_PRESS_MS)
                 }
                 fullPressEngaged = fireShutter(noAf = !afEngaged)
-                if (!fullPressEngaged) {
+                // Only a *different* attempt is worth making. Without AF held the first
+                // call was already NonAF, and re-running it burns a second ~7.5s budget
+                // on the operation that just failed - the guest waits ~15s for nothing.
+                if (!fullPressEngaged && afEngaged) {
                     CanonLog.w("AF full press stayed busy - trying Completely NonAF")
                     fullPressEngaged = fireShutter(noAf = true)
                 }
