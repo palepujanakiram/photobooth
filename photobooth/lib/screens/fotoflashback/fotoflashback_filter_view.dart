@@ -221,45 +221,12 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           ),
                         ),
                       ],
-                      if (!_busy && viewModel.isPreparingPreview) ...[
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.amber.shade300,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              AppStrings.flashbackPreparingPreview,
-                              style: TextStyle(
-                                color: Colors.amber.shade100
-                                    .withValues(alpha: 0.85),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ] else if (!_busy &&
-                          viewModel.isWarmingPrintPreview &&
-                          viewModel.lookComposePreviewUrl == null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          AppStrings.flashbackWarmingPrintPreview,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.amber.shade100.withValues(alpha: 0.55),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
+                      _LookPickerStatusSlot(
+                        showPreparing: !_busy && viewModel.isPreparingPreview,
+                        showWarmingPrintMatch: !_busy &&
+                            viewModel.isWarmingPrintPreview &&
+                            viewModel.lookComposePreviewUrl == null,
+                      ),
                       if (!_busy &&
                           viewModel.classicOverlayCleanupEnabled &&
                           viewModel.scrubDotStatuses.isNotEmpty) ...[
@@ -367,9 +334,6 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
                           imageDataUrls: viewModel.previewImageDataUrls,
                           imageJpegBytes: viewModel.lookPreviewJpegBytes,
                           imagesAreGraded: viewModel.previewImagesAreGraded,
-                          serverComposePreviewUrl:
-                              viewModel.lookComposePreviewUrl,
-                          isRefreshingComposePreview: false,
                           layout: viewModel.wysiwygLayout,
                           filterId: viewModel.selectedFilterId,
                           frameId: viewModel.selectedFrameId,
@@ -456,14 +420,78 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
   }
 }
 
+/// Always occupies one status line so "Preparing print match…" (and polish)
+/// can appear without shifting chips / strip below.
+class _LookPickerStatusSlot extends StatelessWidget {
+  const _LookPickerStatusSlot({
+    required this.showPreparing,
+    required this.showWarmingPrintMatch,
+  });
+
+  final bool showPreparing;
+  final bool showWarmingPrintMatch;
+
+  /// Gap + 11pt warming line (taller polish row still fits).
+  static const double _height = 32;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: _height,
+      width: double.infinity,
+      child: Align(
+        alignment: Alignment.center,
+        child: _statusChild(),
+      ),
+    );
+  }
+
+  Widget _statusChild() {
+    if (showPreparing) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.amber.shade300,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            AppStrings.flashbackPreparingPreview,
+            style: TextStyle(
+              color: Colors.amber.shade100.withValues(alpha: 0.85),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      );
+    }
+    if (showWarmingPrintMatch) {
+      return Text(
+        AppStrings.flashbackWarmingPrintPreview,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: Colors.amber.shade100.withValues(alpha: 0.55),
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+}
+
 /// Strip (left) + looks (right), top-aligned and height-matched.
 class _LookPickerBody extends StatelessWidget {
   const _LookPickerBody({
     required this.imageDataUrls,
     this.imageJpegBytes = const [],
     required this.imagesAreGraded,
-    this.serverComposePreviewUrl,
-    this.isRefreshingComposePreview = false,
     required this.layout,
     required this.filterId,
     required this.frameId,
@@ -487,8 +515,6 @@ class _LookPickerBody extends StatelessWidget {
   final List<String> imageDataUrls;
   final List<Uint8List> imageJpegBytes;
   final bool imagesAreGraded;
-  final String? serverComposePreviewUrl;
-  final bool isRefreshingComposePreview;
   final StripWysiwygLayout layout;
   final String filterId;
   final String frameId;
@@ -544,8 +570,6 @@ class _LookPickerBody extends StatelessWidget {
                 imageDataUrls: imageDataUrls,
                 imageJpegBytes: imageJpegBytes,
                 imagesAreGraded: imagesAreGraded,
-                serverComposePreviewUrl: serverComposePreviewUrl,
-                isRefreshingComposePreview: isRefreshingComposePreview,
                 layout: layout,
                 filterId: filterId,
                 frameId: frameId,

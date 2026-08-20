@@ -56,8 +56,8 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   /// When true, [imageDataUrls] are already Sharp-graded — skip ColorFilter.
   final bool imagesAreGraded;
 
-  /// Classic 1-shot: server compose JPEG (filter + frame burned in). When set,
-  /// this is the same artifact as Your prints / DNP — skip Flutter chrome.
+  /// Classic 1-shot: server compose JPEG. Look picker does not pass this — the
+  /// print twin is for Continue / Result. Widget tests may still set it.
   final String? serverComposePreviewUrl;
   final bool isRefreshingComposePreview;
 

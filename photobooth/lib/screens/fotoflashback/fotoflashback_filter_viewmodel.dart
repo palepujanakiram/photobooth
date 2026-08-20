@@ -135,11 +135,13 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   List<String> get previewImageDataUrls =>
       _hydratingCaptures || _imageDataUrls.isEmpty ? const [] : imageDataUrls;
 
-  /// Always false — Flutter ColorFilter until [lookComposePreviewUrl] is ready.
+  /// Always false on Pick-a-look — ColorFilter / disk JPEGs only. The print
+  /// twin is kept for Continue / Result via [lookComposePreviewUrl].
   bool get previewImagesAreGraded => false;
 
-  /// Exact print JPEG once background warm finishes (server compose).
-  /// Null while warming → UI keeps instant ColorFilter (same matrices).
+  /// Server compose JPEG for Continue / Your prints / DNP. Not shown on this
+  /// screen (ColorFilter browse stays put). Null until background warm finishes
+  /// or Continue composes.
   String? get lookComposePreviewUrl {
     final url = _composePreview?.printImageUrl.trim() ?? '';
     if (url.isEmpty) return null;
