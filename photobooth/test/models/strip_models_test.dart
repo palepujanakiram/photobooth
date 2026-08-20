@@ -162,6 +162,7 @@ void main() {
       'runId': 'run-strip-1',
     });
     expect(result.printImageUrl, 'https://example.com/b.jpg');
+    expect(result.singleStripPreviewUrl, 'https://example.com/a.jpg');
     expect(result.filter, 'candy_pop');
     expect(result.frame, 'noir');
     expect(result.sticker, 'sparkles');

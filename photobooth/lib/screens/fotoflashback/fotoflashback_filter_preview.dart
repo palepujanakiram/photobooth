@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/strip_models.dart';
 import '../../utils/strip_look_color_matrices.dart';
+import '../../utils/strip_photo_cell_layout.dart';
 import '../../views/widgets/cached_network_image.dart';
 import 'fotoflashback_look_picker_layout.dart';
 import 'fotoflashback_sheet_layout_view_widgets.dart';
@@ -106,7 +107,9 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final wysiwyg = layout ?? StripWysiwygLayout.defaults;
     final composeUrl = serverComposePreviewUrl?.trim() ?? '';
-    if (imageDataUrls.length == 1 && composeUrl.isNotEmpty) {
+    if (composeUrl.isNotEmpty &&
+        (imageDataUrls.length == 1 ||
+            imageDataUrls.length == kStripShotCount)) {
       return SizedBox(
         width: width,
         height: height,
@@ -361,21 +364,33 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
       accentStrokeRatio: wysiwyg.accentStrokeRatio,
       noirAccentStrokeRatio: wysiwyg.noirAccentStrokeRatio,
     );
-    final pad = width * chrome.borderRatio;
-    // Filmstrip print uses contain so faces aren't cropped into the rails.
+    final cells = computeStripPhotoCellRects(
+      frameId: frameId,
+      stripWidth: width,
+      stripHeight: height,
+      layout: wysiwyg,
+    );
+    final borderPad = stripChromeBorderPad(
+      frameId: frameId,
+      stripWidth: width,
+      layout: wysiwyg,
+    );
     final photoFit =
-        chrome.showFilmstripSprockets ? BoxFit.contain : BoxFit.cover;
+        stripPhotoCellUsesContainFit(frameId) ? BoxFit.contain : BoxFit.cover;
+    final letterbox = stripPhotoCellLetterboxColor(frameId);
     final cacheW = flashbackLookPreviewCacheWidth(
       layoutWidth: width,
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
     );
-    final photoColumn = Column(
+    final photoStack = Stack(
+      clipBehavior: Clip.hardEdge,
       children: [
         for (var i = 0; i < kStripShotCount; i++)
-          Expanded(
+          Positioned.fromRect(
+            rect: cells[i].rect,
             child: images.length > i && images[i] != null
                 ? ColoredBox(
-                    color: Colors.black,
+                    color: letterbox,
                     child: _lookPreviewPhoto(
                       bytes: images[i]!,
                       fit: photoFit,
@@ -383,7 +398,7 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
                       imageKey: i,
                     ),
                   )
-                : const ColoredBox(color: Colors.black12),
+                : ColoredBox(color: Colors.black12),
           ),
       ],
     );
@@ -396,20 +411,17 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.hardEdge,
         children: [
-          Padding(
-            padding: EdgeInsets.all(pad),
-            child: imagesAreGraded
-                ? photoColumn
-                : ColorFiltered(
-                    colorFilter: stripPreviewColorFilter(filterId),
-                    child: photoColumn,
-                  ),
-          ),
+          imagesAreGraded
+              ? photoStack
+              : ColorFiltered(
+                  colorFilter: stripPreviewColorFilter(filterId),
+                  child: photoStack,
+                ),
           StripChromeOverlay(
             look: chrome,
             width: width,
             height: height,
-            borderPad: pad,
+            borderPad: borderPad,
           ),
           if (frameOverlayUrl != null && frameOverlayUrl!.isNotEmpty)
             Positioned.fill(

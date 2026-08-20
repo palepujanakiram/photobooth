@@ -1168,14 +1168,19 @@ class CaptureViewModel extends ChangeNotifier {
 
   void _markCameraAvailabilityRestored() => markCameraAvailabilityRestored();
 
-  Future<bool> _ensureAndroidCameraPermission() async {
+  Future<bool> _ensureAndroidCameraPermission({
+    bool requestIfNeeded = false,
+  }) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return true;
     }
-    final granted = await ensureCameraPermission(requestIfNeeded: false);
+    final granted = await ensureCameraPermission(
+      requestIfNeeded: requestIfNeeded,
+    );
     if (granted) return true;
     AppLogger.debug(
-      '📷 Camera permission not granted (prompted on Terms screen)',
+      '📷 Camera permission not granted '
+      '(requestIfNeeded=$requestIfNeeded)',
     );
     _errorMessage = 'Camera permission is required to detect and use cameras.';
     unawaited(
@@ -1512,7 +1517,9 @@ class CaptureViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      if (!await _ensureAndroidCameraPermission()) {
+      if (!await _ensureAndroidCameraPermission(
+        requestIfNeeded: forceRefresh || _cachedAvailableCameras == null,
+      )) {
         return;
       }
 

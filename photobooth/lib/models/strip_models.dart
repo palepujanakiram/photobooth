@@ -673,6 +673,13 @@ class StripComposeResult {
   /// Transformation run id for forensics / View details (`GET /api/generation-runs/:id`).
   final String? runId;
 
+  /// Single 2×6 strip JPEG from compose (600×1800); dual sheet is [stripCompositeUrl].
+  String get singleStripPreviewUrl {
+    final direct = imageUrl.trim();
+    if (direct.isNotEmpty) return direct;
+    return '';
+  }
+
   /// URL to download for printing — dual-strip uses composite; 1-shot 6×4 uses [imageUrl].
   String get printImageUrl {
     if (_usesSingleSheetPrint) {

@@ -133,10 +133,12 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   /// Exact print JPEG once background warm finishes (server compose).
   /// Null while warming → UI keeps instant ColorFilter (same matrices).
   String? get lookComposePreviewUrl {
-    final url = _composePreview?.printImageUrl.trim() ?? '';
-    if (url.isEmpty) return null;
+    final preview = isSingleClassic
+        ? (_composePreview?.printImageUrl.trim() ?? '')
+        : (_composePreview?.singleStripPreviewUrl ?? '');
+    if (preview.isEmpty) return null;
     if (_composePreviewFingerprint != _lookComposeFingerprint()) return null;
-    return url;
+    return preview;
   }
 
   bool get isRefreshingComposePreview => false;
