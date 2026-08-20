@@ -132,6 +132,17 @@ abstract final class AppStrings {
   /// Full-screen overlay while the session API runs after Terms accept.
   static const termsCreatingSession = 'Creating session…';
 
+  /// Overlay on Terms Start while `/api/settings` and kiosk flags refresh.
+  static const termsRefreshingSettings = 'Updating booth settings…';
+
+  /// Log when splash / Start settings fetch exceeds [kKioskSettingsRefreshTimeout].
+  static const kioskSettingsRefreshTimedOut =
+      'Kiosk settings refresh timed out; using cache';
+
+  /// Log when splash / Start settings fetch throws; guest continues on cache.
+  static const kioskSettingsRefreshFailed =
+      'Kiosk settings refresh failed; using cache';
+
   /// Terms banner when no camera is available after enumeration.
   static const termsNoCameraDetected =
       'No camera detected. Connect a USB camera and tap Retry.';

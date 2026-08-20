@@ -27,6 +27,7 @@ import 'app_splash_event_helpers.dart';
 import 'app_splash_input_helpers.dart';
 import 'app_splash_screen_body.dart';
 import '../../utils/event_station_role.dart';
+import '../../utils/kiosk_runtime_refresh.dart';
 
 /// Cold start and kiosk management: branded animation, no stacked dialogs.
 class AppSplashScreen extends StatefulWidget {
@@ -95,15 +96,15 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     }
   }
 
-  /// Reload `/api/settings?kiosk=` so guest prices match this kiosk, not the
-  /// account defaults cached at app start (before a code was bound).
-  Future<void> _refreshSettingsForBoundKiosk() async {
+  /// Reload `/api/settings?kiosk=` so guest prices and flags match this kiosk.
+  Future<void> _refreshSettingsForBoundKiosk({
+    Duration timeout = kKioskSettingsRefreshTimeout,
+  }) async {
     if (!mounted) return;
-    try {
-      await context.read<AppSettingsManager>().fetchSettings(forceRefresh: true);
-    } catch (_) {
-      // Non-fatal — next screen may retry; UI falls back to defaults.
-    }
+    await refreshBoundKioskAppSettings(
+      settings: context.read<AppSettingsManager>(),
+      timeout: timeout,
+    );
   }
 
   /// Re-probe DNP / receipt / USB / DSLR. When [forceSettingsRefresh] is true
@@ -116,8 +117,8 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     setState(() => _deviceStatusLoading = true);
     try {
       if (forceSettingsRefresh) {
-        await _refreshSettingsForBoundKiosk().timeout(
-          const Duration(seconds: 8),
+        await _refreshSettingsForBoundKiosk(
+          timeout: const Duration(seconds: 8),
         );
         if (!mounted) return;
       }
@@ -187,10 +188,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
         await endPhotoboothCustomerSessionLogged(
           'splash: web kiosk code from URL',
         );
-        await _refreshSettingsForBoundKiosk().timeout(
-          const Duration(seconds: 12),
-          onTimeout: () {},
-        );
+        await _refreshSettingsForBoundKiosk();
       }
       if (eventFromUrl.isNotEmpty) {
         await _event.setEventCode(eventFromUrl);
@@ -255,10 +253,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
         });
         return;
       }
-      await _refreshSettingsForBoundKiosk().timeout(
-        const Duration(seconds: 12),
-        onTimeout: () {},
-      );
+      await _refreshSettingsForBoundKiosk();
       final urls = await _loadThemeBackgroundUrls();
       if (!mounted) return;
       await _goAfterBind(urls);
@@ -357,10 +352,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
         setState(() => _error = eventErr);
         return;
       }
-      await _refreshSettingsForBoundKiosk().timeout(
-        const Duration(seconds: 12),
-        onTimeout: () {},
-      );
+      await _refreshSettingsForBoundKiosk();
       final urls = await _loadThemeBackgroundUrls();
       if (!mounted) return;
       await _goAfterBind(urls);

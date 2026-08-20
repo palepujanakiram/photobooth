@@ -31,7 +31,7 @@ import '../../utils/camera_sidecar_config.dart';
 import '../../utils/camera_source_config.dart';
 import '../../utils/canon_usb_permission.dart';
 import '../../utils/canon_stack_sync.dart';
-import '../../utils/classic_photos_enabled_sync.dart';
+import '../../utils/kiosk_runtime_refresh.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/app_colors.dart';
@@ -56,15 +56,22 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   late TermsAndConditionsViewModel _viewModel;
   bool _redirectingToSplash = false;
   bool _navigatingToCapture = false;
+  bool _startingExperience = false;
   Object? _capturePrefillPhoto;
   TermsCameraPrimingPhase _cameraPrimingPhase = TermsCameraPrimingPhase.detecting;
 
   bool _canStartExperience(bool photoUploadAllowed) =>
       !_navigatingToCapture &&
+      !_startingExperience &&
       termsCameraPrimingAllowsContinue(
         phase: _cameraPrimingPhase,
         photoUploadAllowed: photoUploadAllowed,
       );
+
+  String _termsStartOverlayText(bool isSubmitting) {
+    if (isSubmitting) return AppStrings.termsCreatingSession;
+    return AppStrings.termsRefreshingSettings;
+  }
 
   @override
   void initState() {
@@ -211,20 +218,33 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   }
 
   Future<void> _handleAccept() async {
+    if (_startingExperience) return;
+    setState(() => _startingExperience = true);
+    try {
+      await _startExperienceAfterRuntimeRefresh();
+    } finally {
+      if (mounted && !_navigatingToCapture) {
+        setState(() => _startingExperience = false);
+      }
+    }
+  }
+
+  /// Pull latest ZenAI settings + Classic flag, then create the guest session.
+  Future<void> _startExperienceAfterRuntimeRefresh() async {
+    final runtime = await refreshKioskRuntimeConfig(
+      settings: context.read<AppSettingsManager>(),
+      api: ApiService(),
+      kiosk: KioskManager(),
+    );
+    if (!mounted) return;
+
     final success =
         await _viewModel.acceptTermsAndCreateSession(_viewModel.kioskCode);
 
     if (success && mounted) {
       // Keep camera prewarm alive for the AI capture path.
       _navigatingToCapture = true;
-      // Re-fetch kiosk flag — splash-only cache stays stale on long-running TVs
-      // after Classic is enabled in admin.
-      final classicEnabled = await syncClassicPhotosEnabled(
-        api: ApiService(),
-        kiosk: KioskManager(),
-      );
-      if (!mounted) return;
-      if (classicEnabled) {
+      if (runtime.classicPhotosEnabled) {
         await pushReplacementKioskFade<void, void>(
           context,
           ExperienceChoiceScreen(capturePrefillPhoto: _capturePrefillPhoto),
@@ -365,12 +385,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
               // Session API overlay only — camera is prepared on Terms before Continue.
               Consumer<TermsAndConditionsViewModel>(
                 builder: (context, viewModel, child) {
-                  if (!viewModel.isSubmitting) {
+                  if (!viewModel.isSubmitting && !_startingExperience) {
                     return const SizedBox.shrink();
                   }
                   return Positioned.fill(
                     child: FullScreenLoader(
-                      text: AppStrings.termsCreatingSession,
+                      text: _termsStartOverlayText(viewModel.isSubmitting),
                       loaderColor: Colors.blue,
                       elapsedSeconds: viewModel.elapsedSeconds,
                     ),
@@ -801,7 +821,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
               : CupertinoColors.systemGrey,
           borderRadius: BorderRadius.circular(12),
           onPressed: canSubmit ? _handleAccept : null,
-          child: viewModel.isSubmitting
+          child: viewModel.isSubmitting || _startingExperience
               ? const CupertinoActivityIndicator(
                   color: CupertinoColors.white,
                 )
