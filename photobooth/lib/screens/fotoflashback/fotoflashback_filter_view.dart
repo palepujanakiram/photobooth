@@ -58,6 +58,8 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
       pendingImageFilePaths: args.pendingImageFilePaths,
       overlayCleanupAlreadyDone: args.overlayCleanupAlreadyDone,
       shotCleaned: args.shotCleaned,
+      enableOsdScrub:
+          context.read<AppSettingsManager>().settings?.enableOsdScrub,
     );
     unawaited(_viewModel!.loadFilters());
     unawaited(_loadCta());

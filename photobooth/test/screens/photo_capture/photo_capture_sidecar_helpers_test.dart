@@ -392,6 +392,49 @@ void main() {
     });
   });
 
+  group('shouldSkipSidecarStillForDeviceCamera', () {
+    test('skips when preferDeviceCameraCapture is set', () {
+      expect(
+        shouldSkipSidecarStillForDeviceCamera(
+          preferDeviceCameraCapture: true,
+          cameraXInitialized: false,
+          usesSidecarLivePreview: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('skips when CameraX is live and sidecar is not the pose preview', () {
+      expect(
+        shouldSkipSidecarStillForDeviceCamera(
+          preferDeviceCameraCapture: false,
+          cameraXInitialized: true,
+          usesSidecarLivePreview: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('keeps sidecar stills for EVF / HDMI Pi booths', () {
+      expect(
+        shouldSkipSidecarStillForDeviceCamera(
+          preferDeviceCameraCapture: false,
+          cameraXInitialized: false,
+          usesSidecarLivePreview: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldSkipSidecarStillForDeviceCamera(
+          preferDeviceCameraCapture: false,
+          cameraXInitialized: false,
+          usesSidecarLivePreview: false,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('ensureCanonLiveViewForHdmiPose', () {
     test('no-ops when service null or not configured', () async {
       expect(

@@ -2326,6 +2326,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (_deviceCameraFallbackPreferred(dslrPathCanServe: dslrPathCanServe)) {
       _preferDeviceCameraCapture = true;
       _expectExternalCaptureSource = false;
+      _captureViewModel.setPreferDeviceCameraCapture(true);
     }
   }
 
@@ -2392,6 +2393,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   Future<void> _beginPoseCaptureSetupBody() async {
     if (!mounted) return;
     _preferDeviceCameraCapture = false;
+    _captureViewModel.setPreferDeviceCameraCapture(false);
     await _ensureCanonUsbPermissionForPoseSetup();
     if (!mounted) return;
     unawaited(

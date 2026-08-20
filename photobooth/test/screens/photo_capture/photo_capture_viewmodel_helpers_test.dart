@@ -16,7 +16,8 @@ void main() {
     sensorOrientation: 90,
   );
 
-  test('androidStreamFallbackCaptureEligible is true for external and Android TV', () {
+  test('androidStreamFallbackCaptureEligible is true for external, TV, tablet',
+      () {
     expect(
       androidStreamFallbackCaptureEligible(
         camera: external,
@@ -28,6 +29,13 @@ void main() {
       androidStreamFallbackCaptureEligible(
         camera: back,
         deviceType: AppDeviceType.androidTv,
+      ),
+      isTrue,
+    );
+    expect(
+      androidStreamFallbackCaptureEligible(
+        camera: back,
+        deviceType: AppDeviceType.androidTablet,
       ),
       isTrue,
     );
@@ -72,19 +80,40 @@ void main() {
     expect(
       takePictureTimeoutForDevice(
         camera: back,
+        deviceType: AppDeviceType.androidTablet,
+      ),
+      const Duration(seconds: 4),
+    );
+    expect(
+      takePictureTimeoutForDevice(
+        camera: back,
         deviceType: AppDeviceType.androidPhone,
       ),
       const Duration(seconds: 12),
     );
   });
 
-  test('preferImmediateStreamFallbackAfterStillFailure is TV-only', () {
+  test('preferImmediateStreamFallbackAfterStillFailure for TV and tablet', () {
     expect(
       preferImmediateStreamFallbackAfterStillFailure(
         camera: external,
         deviceType: AppDeviceType.androidTv,
       ),
       isTrue,
+    );
+    expect(
+      preferImmediateStreamFallbackAfterStillFailure(
+        camera: back,
+        deviceType: AppDeviceType.androidTablet,
+      ),
+      isTrue,
+    );
+    expect(
+      preferImmediateStreamFallbackAfterStillFailure(
+        camera: external,
+        deviceType: AppDeviceType.androidTablet,
+      ),
+      isFalse,
     );
     expect(
       preferImmediateStreamFallbackAfterStillFailure(

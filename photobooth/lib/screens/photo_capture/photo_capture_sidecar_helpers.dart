@@ -182,6 +182,22 @@ bool shouldRefuseCameraxFallbackWhenSidecarMisses({
   return true;
 }
 
+/// Skip Pi/EDSDK still when POSE is already on the built-in CameraX path.
+///
+/// Tablets/phones configured for `pi`/`direct` but without a DSLR still have a
+/// configured [LocalCameraService]. Calling [tryCaptureFromSidecar] first waits
+/// on dead prepare-still / capture HTTP (~8–20s+) before takePicture — guests
+/// see a TimeoutException and no still.
+bool shouldSkipSidecarStillForDeviceCamera({
+  required bool preferDeviceCameraCapture,
+  required bool cameraXInitialized,
+  required bool usesSidecarLivePreview,
+}) {
+  if (preferDeviceCameraCapture) return true;
+  if (cameraXInitialized && !usesSidecarLivePreview) return true;
+  return false;
+}
+
 /// Best-effort: arm Canon Live View for HDMI/UVC pose (no still).
 ///
 /// Pose uses the capture card; LV must stay on over USB or HDMI falls back to

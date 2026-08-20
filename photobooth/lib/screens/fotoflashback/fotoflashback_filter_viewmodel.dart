@@ -39,6 +39,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     PrintOrientation? printOrientation,
     /// Test-only override for [AppConstants.kEnableStripOverlayCleanup].
     bool? overlayCleanupBuildGate,
+    /// From [AppSettingsModel.enableOsdScrub] (kiosk / GSM). When set, wins
+    /// over the strip catalog so Pick a look honors admin OFF.
+    bool? enableOsdScrub,
   })  : _expectedCaptureCount = pendingImageFilePaths?.isNotEmpty == true
             ? pendingImageFilePaths!.length
             : imageDataUrls.length,
@@ -53,6 +56,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         _previewCleaned = overlayCleanupAlreadyDone,
         _printOrientation = printOrientation ?? PrintOrientation.portrait,
         _overlayCleanupBuildGate = overlayCleanupBuildGate,
+        _enableOsdScrubFromSettings = enableOsdScrub,
         _shotCleaned = List<bool>.generate(
           pendingImageFilePaths?.isNotEmpty == true
               ? pendingImageFilePaths!.length
@@ -82,6 +86,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   final SessionManager _sessionManager;
   PrintOrientation _printOrientation;
   final bool? _overlayCleanupBuildGate;
+  final bool? _enableOsdScrubFromSettings;
 
   StripFiltersCatalog? _catalog;
   String _selectedFilterId = kDefaultStripFilterId;
@@ -167,13 +172,20 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   StripFiltersCatalog? get catalog => _catalog;
 
-  /// Admin master switch from strip catalog + build kill-switch.
+  /// Admin master switch from kiosk/GSM settings (preferred) or strip catalog.
   bool get classicOverlayCleanupEnabled {
     final gate =
         _overlayCleanupBuildGate ?? AppConstants.kEnableStripOverlayCleanup;
     if (!gate) return false;
-    // Match [classicOverlayScrubEnabled]: unset admin value defaults to ON.
-    return (_catalog?.enableOsdScrub) != false;
+    // Explicit kiosk setting wins — Pick a look used to ignore it and only
+    // read the catalog (`!= false`), so OFF in settings still showed polish.
+    if (_enableOsdScrubFromSettings != null) {
+      return classicOverlayScrubEnabled(_enableOsdScrubFromSettings);
+    }
+    // Catalog not loaded yet: stay OFF so we do not flash "Polishing photos…".
+    final catalog = _catalog;
+    if (catalog == null) return false;
+    return classicOverlayScrubEnabled(catalog.enableOsdScrub);
   }
 
   List<StripFilter> get filters => _catalog?.filters ?? const [];

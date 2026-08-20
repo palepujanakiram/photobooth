@@ -76,6 +76,14 @@ void main() {
     );
     expect(
       captureResolutionPreset(
+        deviceType: AppDeviceType.androidTablet,
+        isExternal: false,
+        preferPrintQuality: true,
+      ),
+      ResolutionPreset.high,
+    );
+    expect(
+      captureResolutionPreset(
         deviceType: AppDeviceType.androidPhone,
         isExternal: false,
         preferPrintQuality: true,
@@ -96,6 +104,13 @@ void main() {
       captureStreamFormat(
         deviceType: AppDeviceType.androidPhone,
         isExternal: true,
+      ),
+      ImageFormatGroup.yuv420,
+    );
+    expect(
+      captureStreamFormat(
+        deviceType: AppDeviceType.androidTablet,
+        isExternal: false,
       ),
       ImageFormatGroup.yuv420,
     );

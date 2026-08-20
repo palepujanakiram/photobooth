@@ -538,6 +538,34 @@ void main() {
     expect(api.lastCleanOverlays, isFalse);
   });
 
+  test('FotoFlashbackFilterViewModel kiosk scrub OFF beats catalog ON', () async {
+    final api = _StripFakeApi(enableOsdScrub: true);
+    SessionManager().setSessionFromResponse(_sessionJson('sess-scrub-settings-off'));
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: api,
+      overlayCleanupBuildGate: true,
+      enableOsdScrub: false,
+    );
+    await vm.loadFilters();
+    expect(vm.classicOverlayCleanupEnabled, isFalse);
+    expect(vm.isPreparingPreview, isFalse);
+    await vm.preparePreview();
+    expect(vm.isPreparingPreview, isFalse);
+    expect(vm.imageDataUrls.any((u) => u.endsWith('_clean')), isFalse);
+  });
+
+  test('FotoFlashbackFilterViewModel stays scrub-off before catalog loads', () {
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: _StripFakeApi(enableOsdScrub: true),
+      overlayCleanupBuildGate: true,
+    );
+    expect(vm.classicOverlayCleanupEnabled, isFalse);
+  });
+
   test('FotoFlashbackFilterViewModel scribble draw/undo/clear', () {
     final vm = FotoFlashbackFilterViewModel(
       theme: stripTheme,
@@ -874,6 +902,7 @@ void main() {
       apiService: api,
       shotCleaned: const [false, false, false, false],
       overlayCleanupBuildGate: true,
+      enableOsdScrub: true,
     );
     await vm.preparePreview();
     expect(vm.previewCleaned, isFalse);
@@ -1034,6 +1063,7 @@ void main() {
         apiService: api,
         shotCleaned: const [false, false, false, false],
         overlayCleanupBuildGate: true,
+        enableOsdScrub: true,
       );
       unawaited(vm.preparePreview());
       async.elapse(const Duration(seconds: 45));

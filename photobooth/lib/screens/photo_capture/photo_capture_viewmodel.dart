@@ -399,6 +399,16 @@ class CaptureViewModel extends ChangeNotifier {
   bool get usesSidecarLivePreview =>
       _localCameraService?.shouldShowLivePreview == true;
 
+  /// POSE fell back to built-in CameraX — shutter must not wait on dead Pi/EDSDK.
+  bool _preferDeviceCameraCapture = false;
+  bool get preferDeviceCameraCapture => _preferDeviceCameraCapture;
+
+  void setPreferDeviceCameraCapture(bool value) {
+    if (_preferDeviceCameraCapture == value) return;
+    _preferDeviceCameraCapture = value;
+    notifyListeners();
+  }
+
   bool _sidecarPreviewReady = false;
 
   /// First live frame arrived (or health probe succeeded).
@@ -2219,6 +2229,24 @@ class CaptureViewModel extends ChangeNotifier {
   Future<XFile> _obtainRawCaptureFile() async {
     final sidecarConfigured = _localCameraService?.isConfigured == true;
     _lastSidecarUsedLivePreview = false;
+    final skipSidecar = shouldSkipSidecarStillForDeviceCamera(
+      preferDeviceCameraCapture: _preferDeviceCameraCapture,
+      cameraXInitialized: _cameraController?.value.isInitialized == true,
+      usesSidecarLivePreview: usesSidecarLivePreview,
+    );
+    if (skipSidecar) {
+      CaptureFlowLog.event(
+        'capture.skip_sidecar_device_camera',
+        fields: {
+          'prefer_device': _preferDeviceCameraCapture,
+          'camerax': _cameraController?.value.isInitialized == true,
+          'session': _sessionManager.sessionId,
+        },
+        webFlow: true,
+      );
+      _lastRawCaptureFromSidecar = false;
+      return _obtainRawCaptureViaTakePicturePreferred();
+    }
     final sidecarFile = await tryCaptureFromSidecar(
       _localCameraService,
       preferStripPrintQuality: preferStripPrintQuality,

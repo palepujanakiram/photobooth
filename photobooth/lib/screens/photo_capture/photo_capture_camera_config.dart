@@ -26,6 +26,11 @@ ResolutionPreset captureResolutionPreset({
   if (deviceType == AppDeviceType.androidTv) {
     return ResolutionPreset.medium;
   }
+  // Tablets: keep ImageCapture reliable — max/veryHigh often hangs takePicture
+  // on mid-range SoCs while preview still works.
+  if (deviceType == AppDeviceType.androidTablet && !isExternal) {
+    return ResolutionPreset.high;
+  }
   if (isExternal) {
     return preferPrintQuality
         ? ResolutionPreset.veryHigh
@@ -44,6 +49,8 @@ ImageFormatGroup captureStreamFormat({
 }) {
   final useYuv = !kIsWeb &&
       defaultTargetPlatform == TargetPlatform.android &&
-      (deviceType == AppDeviceType.androidTv || isExternal);
+      (deviceType == AppDeviceType.androidTv ||
+          deviceType == AppDeviceType.androidTablet ||
+          isExternal);
   return useYuv ? ImageFormatGroup.yuv420 : ImageFormatGroup.jpeg;
 }

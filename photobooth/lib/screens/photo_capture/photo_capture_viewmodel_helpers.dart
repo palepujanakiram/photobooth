@@ -82,7 +82,9 @@ bool androidStreamFallbackCaptureEligible({
   if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return false;
   if (camera == null) return false;
   final isExternal = isExternalCaptureCamera(camera, looksLikeExternalCameraName);
-  return isExternal || deviceType == AppDeviceType.androidTv;
+  return isExternal ||
+      deviceType == AppDeviceType.androidTv ||
+      deviceType == AppDeviceType.androidTablet;
 }
 
 /// Android TV: skip multi-second takePicture recovery — fall back to stream grab
@@ -94,11 +96,18 @@ bool preferImmediateStreamFallbackAfterStillFailure({
   required CameraDescription? camera,
   required AppDeviceType? deviceType,
 }) {
-  if (deviceType != AppDeviceType.androidTv) return false;
-  return androidStreamFallbackCaptureEligible(
-    camera: camera,
-    deviceType: deviceType,
-  );
+  if (deviceType == AppDeviceType.androidTv) {
+    return androidStreamFallbackCaptureEligible(
+      camera: camera,
+      deviceType: deviceType,
+    );
+  }
+  // Tablet built-in: takePicture often hangs while preview works — grab a
+  // stream frame instead of a second 12s ImageCapture retry.
+  if (deviceType == AppDeviceType.androidTablet && camera != null) {
+    return !isExternalCaptureCamera(camera, looksLikeExternalCameraName);
+  }
+  return false;
 }
 
 /// Shorter still timeout on Android TV so stream fallback starts within a few seconds.
