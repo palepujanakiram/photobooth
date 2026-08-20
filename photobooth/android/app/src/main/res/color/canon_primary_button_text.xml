@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Primary button label colour, matching ElevatedButton.styleFrom in
+  photo_capture_view_handlers.dart: white enabled, Colors.white70 (#B3FFFFFF) disabled.
+
+  A flat android:textColor cannot express the disabled state, which is why the button kept
+  full-strength white text on a greyed background.
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false" android:color="#B3FFFFFF" />
+    <item android:color="@android:color/white" />
+</selector>

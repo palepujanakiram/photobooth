@@ -28,4 +28,29 @@
     <string name="canon_status_ready_format">Ready — shot %1$d of %2$d</string>
     <string name="canon_status_pose_format">Get ready — shot %1$d of %2$d</string>
     <string name="canon_status_rearrange_format">Rearrange for shot %1$d of %2$d — %3$ds</string>
+
+    <!--
+      Post-shot review. Copy is taken verbatim from AppStrings so the native and Flutter
+      capture screens read identically — flashbackRetakeLast, flashbackNextShot,
+      flashbackContinueLooks, flashbackReviewLastShot and flashbackRearrangeForShot.
+      Note the capital S in "Shot": AppStrings.flashbackRearrangeForShot capitalises it,
+      while canon_status_rearrange_format above does not.
+    -->
+    <string name="canon_capture_retake">Retake</string>
+    <string name="canon_capture_retake_last">Retake last</string>
+    <string name="canon_capture_next_shot">Next shot</string>
+    <string name="canon_capture_pick_look">Pick a look</string>
+    <string name="canon_capture_continue">Continue</string>
+    <string name="canon_review_last_shot">Looking good! Continuing soon…</string>
+    <string name="canon_review_rearrange_format">Rearrange for Shot %1$d of %2$d</string>
+    <!-- Banner text plus the seconds remaining, matching flashbackReviewHoldStatus. -->
+    <string name="canon_review_countdown_format">%1$s  %2$d</string>
+    <string name="canon_review_still_description">Your last shot</string>
+
+    <!-- Upload alternatives, copy from AppStrings.galleryButtonLabel / phoneUploadButtonLabel. -->
+    <string name="canon_capture_gallery">Gallery</string>
+    <string name="canon_capture_phone_qr">Phone QR</string>
+
+    <!-- AppStrings.captureCountdownIntro; FotoZen only, first tick only. -->
+    <string name="canon_countdown_intro">Be ready for photo</string>
 </resources>

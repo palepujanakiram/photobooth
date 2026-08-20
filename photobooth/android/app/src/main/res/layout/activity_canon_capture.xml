@@ -17,6 +17,32 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!--
+      Review views. Plain here on purpose — this layout is the bring-up screen, where nothing
+      should compete with the viewfinder. They exist mainly so CanonCaptureActivity's
+      findViewById resolves under both styles (see CaptureScreenStyle).
+    -->
+    <ImageView
+        android:id="@+id/canon_review_still"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/canon_review_still_description"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/canon_review_banner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="120dp"
+        android:gravity="center"
+        android:padding="12dp"
+        android:textColor="@android:color/white"
+        android:textSize="16sp"
+        android:visibility="gone"
+        tools:text="Rearrange for Shot 2 of 4  6" />
+
     <TextView
         android:id="@+id/canon_title"
         android:layout_width="wrap_content"
@@ -33,6 +59,40 @@
         android:shadowRadius="6"
         android:shadowDx="0"
         android:shadowDy="2" />
+
+    <!--
+      Countdown chrome. The scrim, group and headline exist so CanonCaptureActivity binds the
+      same ids under both styles (see CaptureScreenStyle); this layout keeps the bare numeral
+      because nothing should dim the viewfinder while bringing hardware up.
+    -->
+    <View
+        android:id="@+id/canon_countdown_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#80000000"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/canon_countdown_group"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/canon_countdown_headline"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:gravity="center"
+            android:textColor="#F2FFFFFF"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            tools:text="Be ready for photo" />
+    </LinearLayout>
 
     <!-- Pose countdown. Deliberately huge: it has to be readable from where a guest
          actually stands, which is metres from the screen, not arm's length. -->
@@ -104,6 +164,42 @@
             android:focusable="true"
             android:text="@string/canon_capture_cancel"
             android:textSize="18sp" />
+
+        <Button
+            android:id="@+id/canon_gallery"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="24dp"
+            android:minWidth="160dp"
+            android:minHeight="56dp"
+            android:focusable="true"
+            android:text="@string/canon_capture_gallery"
+            android:textSize="18sp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/canon_phone_qr"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="24dp"
+            android:minWidth="160dp"
+            android:minHeight="56dp"
+            android:focusable="true"
+            android:text="@string/canon_capture_phone_qr"
+            android:textSize="18sp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/canon_retake"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="24dp"
+            android:minWidth="160dp"
+            android:minHeight="56dp"
+            android:focusable="true"
+            android:text="@string/canon_capture_retake"
+            android:textSize="18sp"
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/canon_shutter"

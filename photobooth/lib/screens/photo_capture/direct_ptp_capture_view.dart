@@ -16,7 +16,8 @@ import '../../utils/constants.dart';
 import '../../utils/kiosk_page_route.dart';
 import '../../utils/logger.dart';
 import '../../utils/route_args.dart';
-import '../../utils/strip_preview_grade_compress.dart';
+import '../../utils/strip_look_matrix_bake.dart';
+import 'photo_capture_phone_upload_sheet.dart';
 import '../../views/widgets/theme_background.dart';
 import '../fotoflashback/fotoflashback_filter_view.dart';
 import 'direct_ptp_capture_helpers.dart';
@@ -127,12 +128,35 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
         shotCount: clampDirectPtpShotCount(directPtpShotCountFor(kind)),
         countdownSeconds: directPtpCountdownSecondsFor(kind),
         betweenShotSeconds: directPtpBetweenShotSeconds,
-        displayMaxLongEdge: classicDisplay
-            ? kStripPreviewGradeUploadMaxEdge
-            : 1920,
-        displayJpegQuality: classicDisplay
-            ? kStripPreviewGradeUploadJpegQuality
-            : 90,
+        // Size the derivative for the *print*, not for the look picker.
+        //
+        // This used to ask for kStripPreviewGradeUploadMaxEdge (1600), which is the
+        // cap for look-picker preview *uploads* — a screen-sizing concern that has no
+        // business governing print quality. It leaked into the print because
+        // _handleShots hands the derivative, never the 6000x4000 original, to
+        // everything downstream (decoding the original costs ~96MB per shot as a
+        // bitmap, so that part is deliberate and stays).
+        //
+        // The consequence: a 4x6 at 300 dpi wants 1800 on the long edge and the DNP
+        // raster is 1920x1240, so a 1600px derivative was upscaled ~1.2x — about 250
+        // effective dpi. Measured on hardware 2026-08-19: the file handed to the
+        // printer came back 1800x1200, carrying detail from a 1600px source.
+        //
+        // kStripLookBakeMaxEdge (2400) is the right cap and already says why:
+        // "DNP 4x6 at ~300 dpi is ~1800 on the long edge; 2400 keeps print sharp".
+        // At 2400x1600 a bitmap is ~15MB, well inside budget.
+        displayMaxLongEdge: classicDisplay ? kStripLookBakeMaxEdge : 1920,
+        displayJpegQuality: classicDisplay ? kStripLookBakeJpegQuality : 90,
+        // Review behaviour is decided here, not natively: only Dart knows whether
+        // this is FotoZen (review until the guest taps) or a Classic strip (timed
+        // rearrange window). See directPtpReviewHoldMsFor.
+        reviewHoldMs: directPtpReviewHoldMsFor(kind),
+        finalReviewHoldMs: directPtpFinalReviewHoldMsFor(kind),
+        // Same gate the Flutter capture screen applies, so uploads appear on
+        // exactly the booths that have them enabled.
+        allowGalleryUpload: settings?.photoUploadAllowed == true,
+        allowPhoneUpload: settings?.photoUploadAllowed == true,
+        showCountdownHeadline: directPtpShowCountdownHeadlineFor(kind),
         titleText: AppStrings.posePageTitle,
         subtitleText: directPtpSubtitleFor(kind),
         cancelText: AppStrings.cancel,
@@ -153,6 +177,11 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
       return;
     }
 
+    if (result.isUploadRequested) {
+      await _handleUploadRequest(result.uploadSource);
+      return;
+    }
+
     if (!directPtpResultIsUsable(result, kind)) {
       setState(() {
         _sessionRunning = false;
@@ -165,6 +194,52 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
     }
 
     await _handleShots(result);
+  }
+
+  /// Runs the upload the guest picked on the native screen, then moves on.
+  ///
+  /// Deliberately calls the **same** code the Flutter capture screen calls —
+  /// [showPhoneUploadQrSheet] is already a top-level function taking a
+  /// [CaptureViewModel], and Gallery reduces to [CaptureViewModel.selectFromGallery].
+  /// The Flutter screen wraps that call in preview teardown/restore, which is a
+  /// CameraX/UVC concern this screen does not have: the native Activity owned the
+  /// camera and has already exited, so there is no preview to pause.
+  ///
+  /// A picked photo continues down the normal upload → theme-selection path. A
+  /// cancelled sheet reopens the camera, which costs a live-view teardown and
+  /// reconnect — the blink that comes with letting Dart own the upload.
+  Future<void> _handleUploadRequest(String? source) async {
+    if (mounted) setState(() => _phase = _DirectPtpPhase.processing);
+
+    if (source == kDirectPtpUploadSourceGallery) {
+      await _captureViewModel.selectFromGallery();
+    } else {
+      if (!mounted) return;
+      await showPhoneUploadQrSheet(
+        context: context,
+        viewModel: _captureViewModel,
+      );
+    }
+    if (!mounted) return;
+
+    final picked = _captureViewModel.capturedPhoto;
+    if (picked == null) {
+      // Backed out of the picker or the sheet: put them back in front of the
+      // camera rather than stranding them on a spinner.
+      setState(() => _sessionRunning = false);
+      await _runSession();
+      return;
+    }
+
+    // An uploaded photo has to re-enter the flow the guest actually chose.
+    // Continuing unconditionally sent every upload down the FotoZen path —
+    // upload → theme selection — so a Classic guest who picked from Gallery was
+    // dropped into the AI workflow instead of the look picker.
+    if (widget.sessionKind.isClassic) {
+      await _finishClassic(<XFile>[picked.imageFile]);
+      return;
+    }
+    await _continueWithCapturedPhoto();
   }
 
   Future<void> _handleShots(DirectPtpCaptureResult result) async {

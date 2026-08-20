@@ -475,6 +475,11 @@ void main() {
         displayJpegQuality: 85,
         idleTimeoutSeconds: 90,
         autoStart: false,
+        reviewHoldMs: 8000,
+        allowGalleryUpload: true,
+        allowPhoneUpload: true,
+        showCountdownHeadline: true,
+        finalReviewHoldMs: 2000,
         titleText: 'POSE',
         subtitleText: 'Strike a look',
         shutterText: 'Snap',
@@ -488,6 +493,11 @@ void main() {
         'displayJpegQuality': 85,
         'idleTimeoutSeconds': 90,
         'autoStart': false,
+        'reviewHoldMs': 8000,
+        'allowGalleryUpload': true,
+        'allowPhoneUpload': true,
+        'showCountdownHeadline': true,
+        'finalReviewHoldMs': 2000,
         'titleText': 'POSE',
         'subtitleText': 'Strike a look',
         'shutterText': 'Snap',
@@ -510,6 +520,41 @@ void main() {
         shotCount: DateTime.now().year > 2000 ? 4 : 1,
       );
       expect(request.toArguments()['shotCount'], 4);
+    });
+  });
+
+  group('upload_requested result', () {
+    // Neither success nor failure: no shots, but the guest is still mid-flow and
+    // Dart owes them the upload they asked for.
+    test('parses the status and source', () {
+      final result = DirectPtpCaptureResult.fromMap(<Object?, Object?>{
+        'status': 'upload_requested',
+        'uploadSource': 'gallery',
+      });
+      expect(result.status, DirectPtpCaptureStatus.uploadRequested);
+      expect(result.isUploadRequested, isTrue);
+      expect(result.uploadSource, 'gallery');
+      expect(result.shots, isEmpty);
+    });
+
+    test('is neither completed nor cancelled', () {
+      final result = DirectPtpCaptureResult.fromMap(<Object?, Object?>{
+        'status': 'upload_requested',
+        'uploadSource': 'phone',
+      });
+      // isCompleted requires shots, and treating this as cancelled would drop the
+      // guest out of POSE instead of opening the QR sheet.
+      expect(result.isCompleted, isFalse);
+      expect(result.isCancelled, isFalse);
+      expect(result.uploadSource, 'phone');
+    });
+
+    test('an unknown source still reports uploadRequested', () {
+      final result = DirectPtpCaptureResult.fromMap(<Object?, Object?>{
+        'status': 'upload_requested',
+      });
+      expect(result.isUploadRequested, isTrue);
+      expect(result.uploadSource, isNull);
     });
   });
 }

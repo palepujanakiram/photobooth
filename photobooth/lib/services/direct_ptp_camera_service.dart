@@ -178,7 +178,13 @@ class DirectPtpDevice {
 }
 
 /// How a native capture session ended.
-enum DirectPtpCaptureStatus { completed, cancelled, error, unknown }
+/// How a native capture session ended.
+///
+/// [uploadRequested] is neither success nor failure: the guest chose Gallery or
+/// Phone QR instead of the shutter, so there are no shots but they are still
+/// mid-flow. Dart runs the upload, because both already exist here — see
+/// CaptureSessionContract.STATUS_UPLOAD_REQUESTED.
+enum DirectPtpCaptureStatus { completed, cancelled, error, uploadRequested, unknown }
 
 DirectPtpCaptureStatus _captureStatusFromName(String? name) {
   switch (name) {
@@ -186,6 +192,8 @@ DirectPtpCaptureStatus _captureStatusFromName(String? name) {
       return DirectPtpCaptureStatus.completed;
     case 'cancelled':
       return DirectPtpCaptureStatus.cancelled;
+    case 'upload_requested':
+      return DirectPtpCaptureStatus.uploadRequested;
     case 'error':
       return DirectPtpCaptureStatus.error;
     default:
@@ -249,6 +257,7 @@ class DirectPtpCaptureResult {
     this.shots = const <DirectPtpShot>[],
     this.errorCode,
     this.errorMessage,
+    this.uploadSource,
   });
 
   factory DirectPtpCaptureResult.fromMap(Map<Object?, Object?> map) {
@@ -264,6 +273,7 @@ class DirectPtpCaptureResult {
       shots: shots,
       errorCode: map['errorCode'] as String?,
       errorMessage: map['errorMessage'] as String?,
+      uploadSource: map['uploadSource'] as String?,
     );
   }
 
@@ -276,9 +286,16 @@ class DirectPtpCaptureResult {
   final String? errorCode;
   final String? errorMessage;
 
+  /// `gallery` or `phone` when [status] is [DirectPtpCaptureStatus.uploadRequested].
+  final String? uploadSource;
+
   bool get isCompleted =>
       status == DirectPtpCaptureStatus.completed && shots.isNotEmpty;
   bool get isCancelled => status == DirectPtpCaptureStatus.cancelled;
+
+  /// The guest asked for Gallery or Phone QR instead of the shutter.
+  bool get isUploadRequested =>
+      status == DirectPtpCaptureStatus.uploadRequested;
 
   @override
   String toString() =>
@@ -303,6 +320,11 @@ class DirectPtpCaptureRequest {
     this.displayJpegQuality = 90,
     this.idleTimeoutSeconds = 180,
     this.autoStart = true,
+    this.reviewHoldMs = 0,
+    this.finalReviewHoldMs = 0,
+    this.allowGalleryUpload = false,
+    this.allowPhoneUpload = false,
+    this.showCountdownHeadline = false,
     this.titleText,
     this.subtitleText,
     this.shutterText,
@@ -333,6 +355,35 @@ class DirectPtpCaptureRequest {
   /// surprise rather than a cue.
   final bool autoStart;
 
+  /// How long the just-taken still is held for review, with Retake and the
+  /// primary action, before the native screen moves on by itself.
+  ///
+  /// **0 waits indefinitely for a tap.** Dart owns this because only Dart knows
+  /// the flow, and the three cases genuinely differ — see
+  /// [flashbackShotReviewHoldDuration] and [shouldScheduleFlashbackAutoAccept],
+  /// which the Flutter capture screen uses for exactly the same decision:
+  ///
+  /// - FotoZen single shot — 0. Flutter never auto-accepts here.
+  /// - Classic strip, mid-strip — [AppConstants.kFlashbackBetweenShotRearrangeDuration].
+  /// - Classic single 6×4 — 600ms, effectively a flash of the still.
+  final int reviewHoldMs;
+
+  /// Review hold for the **final** shot of a strip
+  /// ([AppConstants.kFlashbackLastShotReviewDuration], 2s today).
+  final int finalReviewHoldMs;
+
+  /// Offer Gallery / Phone QR alongside the shutter.
+  ///
+  /// Both are gated on `settings.photoUploadAllowed`, exactly as the Flutter
+  /// capture screen gates them, so a booth with uploads switched off does not
+  /// grow the buttons just because it moved to the native screen.
+  final bool allowGalleryUpload;
+  final bool allowPhoneUpload;
+
+  /// Show the "Be ready for photo" headline over the countdown. FotoZen only,
+  /// mirroring `showAiIntro` in the Flutter capture screen.
+  final bool showCountdownHeadline;
+
   /// Copy, passed in so AppStrings stays the single source of guest-facing words.
   final String? titleText;
   final String? subtitleText;
@@ -347,6 +398,11 @@ class DirectPtpCaptureRequest {
         'displayJpegQuality': displayJpegQuality,
         'idleTimeoutSeconds': idleTimeoutSeconds,
         'autoStart': autoStart,
+        'reviewHoldMs': reviewHoldMs,
+        'finalReviewHoldMs': finalReviewHoldMs,
+        'allowGalleryUpload': allowGalleryUpload,
+        'allowPhoneUpload': allowPhoneUpload,
+        'showCountdownHeadline': showCountdownHeadline,
         'titleText': titleText,
         'subtitleText': subtitleText,
         'shutterText': shutterText,

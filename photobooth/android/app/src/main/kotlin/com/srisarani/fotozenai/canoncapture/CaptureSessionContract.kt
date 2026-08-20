@@ -23,6 +23,24 @@ object CaptureSessionContract {
     const val STATUS_CANCELLED = "cancelled"
     const val STATUS_ERROR = "error"
 
+    /**
+     * The guest chose Gallery or Phone QR instead of the shutter.
+     *
+     * Not an error and not a cancel: the session ends with no shots, but the guest is still
+     * mid-flow and Dart should hand them the upload they asked for.
+     *
+     * The native screen deliberately does **not** implement either upload. Phone QR calls
+     * `/api/kiosk/upload-links` and polls for the result, which lives in `ApiService`, and
+     * Gallery is one `viewModel.selectFromGallery()` away on the Dart side. Reimplementing
+     * them in Kotlin would duplicate backend and polling logic that already exists and would
+     * be free to drift from the Flutter capture screen. So the Activity reports the intent
+     * and gets out of the way — see [UPLOAD_SOURCE_GALLERY] / [UPLOAD_SOURCE_PHONE].
+     */
+    const val STATUS_UPLOAD_REQUESTED = "upload_requested"
+
+    const val UPLOAD_SOURCE_GALLERY = "gallery"
+    const val UPLOAD_SOURCE_PHONE = "phone"
+
     // Error codes, kept distinct so each maps to a different operator action.
     const val ERROR_NO_DEVICE = "no_device"
     const val ERROR_PERMISSION_DENIED = "permission_denied"
@@ -72,6 +90,38 @@ object CaptureSessionContract {
          * shutter button is the trigger, and pressing it starts the countdown.
          */
         val autoStart: Boolean = true,
+        /**
+         * How long the just-taken still is shown, with Retake and the primary action, before
+         * the session moves on by itself. **0 waits indefinitely for a tap.**
+         *
+         * Dart owns this because only Dart knows the flow, and the three cases genuinely
+         * differ (see `flashbackShotReviewHoldDuration` / `shouldScheduleFlashbackAutoAccept`):
+         *
+         * - FotoZen single shot — **0**. Flutter never auto-accepts here; the guest reviews
+         *   for as long as they like and taps Continue or Retake.
+         * - Classic strip, mid-strip — 8000ms, the rearrange window.
+         * - Classic single 6×4 — 600ms, effectively a flash of the still.
+         */
+        val reviewHoldMs: Int = 0,
+        /** Review hold for the **final** shot of a strip; Flutter uses 2s. */
+        val finalReviewHoldMs: Int = 0,
+        /**
+         * Whether to offer Gallery / Phone QR alongside the shutter.
+         *
+         * Both are gated on `settings.photoUploadAllowed` on the Flutter capture screen, so
+         * they are passed in rather than assumed: a booth with uploads switched off must not
+         * grow the buttons just because it moved to the native screen.
+         */
+        val allowGalleryUpload: Boolean = false,
+        val allowPhoneUpload: Boolean = false,
+        /**
+         * Show the "Be ready for photo" headline over the countdown.
+         *
+         * FotoZen only, mirroring `showAiIntro` in _buildCountdownOverlay. Passed rather
+         * than inferred from shotCount: a Classic 1-shot also has shotCount == 1, so
+         * inferring showed it a headline Flutter deliberately withholds.
+         */
+        val showCountdownHeadline: Boolean = false,
         /** Copy is passed in so AppStrings stays the single source of truth. */
         val titleText: String? = null,
         val subtitleText: String? = null,
@@ -86,6 +136,11 @@ object CaptureSessionContract {
             put("displayJpegQuality", displayJpegQuality)
             put("idleTimeoutSeconds", idleTimeoutSeconds)
             put("autoStart", autoStart)
+            put("reviewHoldMs", reviewHoldMs)
+            put("finalReviewHoldMs", finalReviewHoldMs)
+            put("allowGalleryUpload", allowGalleryUpload)
+            put("allowPhoneUpload", allowPhoneUpload)
+            put("showCountdownHeadline", showCountdownHeadline)
             put("titleText", titleText ?: JSONObject.NULL)
             put("subtitleText", subtitleText ?: JSONObject.NULL)
             put("shutterText", shutterText ?: JSONObject.NULL)
@@ -112,6 +167,12 @@ object CaptureSessionContract {
                             .optInt("idleTimeoutSeconds", 180)
                             .coerceIn(10, 3600),
                         autoStart = json.optBoolean("autoStart", true),
+                        reviewHoldMs = json.optInt("reviewHoldMs", 0),
+                        finalReviewHoldMs = json.optInt("finalReviewHoldMs", 0),
+                        allowGalleryUpload = json.optBoolean("allowGalleryUpload", false),
+                        allowPhoneUpload = json.optBoolean("allowPhoneUpload", false),
+                        showCountdownHeadline =
+                            json.optBoolean("showCountdownHeadline", false),
                         titleText = json.optNullableString("titleText"),
                         subtitleText = json.optNullableString("subtitleText"),
                         shutterText = json.optNullableString("shutterText"),
@@ -142,6 +203,18 @@ object CaptureSessionContract {
                         args["idleTimeoutSeconds"] as? Int ?: defaults.idleTimeoutSeconds
                         ).coerceIn(10, 3600),
                     autoStart = args["autoStart"] as? Boolean ?: defaults.autoStart,
+                    reviewHoldMs = (
+                        args["reviewHoldMs"] as? Int ?: defaults.reviewHoldMs
+                        ).coerceIn(0, 120_000),
+                    finalReviewHoldMs = (
+                        args["finalReviewHoldMs"] as? Int ?: defaults.finalReviewHoldMs
+                        ).coerceIn(0, 120_000),
+                    allowGalleryUpload = args["allowGalleryUpload"] as? Boolean
+                        ?: defaults.allowGalleryUpload,
+                    showCountdownHeadline = args["showCountdownHeadline"] as? Boolean
+                        ?: defaults.showCountdownHeadline,
+                    allowPhoneUpload = args["allowPhoneUpload"] as? Boolean
+                        ?: defaults.allowPhoneUpload,
                     titleText = args["titleText"] as? String,
                     subtitleText = args["subtitleText"] as? String,
                     shutterText = args["shutterText"] as? String,
@@ -176,12 +249,15 @@ object CaptureSessionContract {
         val shots: List<Shot> = emptyList(),
         val errorCode: String? = null,
         val errorMessage: String? = null,
+        /** Which upload the guest asked for; only set with [STATUS_UPLOAD_REQUESTED]. */
+        val uploadSource: String? = null,
     ) {
         fun toJson(): String = JSONObject().apply {
             put("status", status)
             put("shots", JSONArray().also { array -> shots.forEach { array.put(it.toJson()) } })
             put("errorCode", errorCode ?: JSONObject.NULL)
             put("errorMessage", errorMessage ?: JSONObject.NULL)
+            put("uploadSource", uploadSource ?: JSONObject.NULL)
         }.toString()
 
         fun toIntent(): Intent = Intent().putExtra(EXTRA_RESULT, toJson())
@@ -201,11 +277,15 @@ object CaptureSessionContract {
             },
             "errorCode" to errorCode,
             "errorMessage" to errorMessage,
+            "uploadSource" to uploadSource,
         )
 
         companion object {
             fun cancelled(reason: String) =
                 Result(STATUS_CANCELLED, errorMessage = reason)
+
+            fun uploadRequested(source: String) =
+                Result(STATUS_UPLOAD_REQUESTED, uploadSource = source)
 
             fun error(code: String, message: String) =
                 Result(STATUS_ERROR, errorCode = code, errorMessage = message)
@@ -239,6 +319,7 @@ object CaptureSessionContract {
                         shots = shots,
                         errorCode = json.optNullableString("errorCode"),
                         errorMessage = json.optNullableString("errorMessage"),
+                        uploadSource = json.optNullableString("uploadSource"),
                     )
                 }.getOrElse { cancelled("Malformed capture result: ${it.message}") }
             }
