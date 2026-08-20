@@ -156,6 +156,7 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
         // exactly the booths that have them enabled.
         allowGalleryUpload: settings?.photoUploadAllowed == true,
         allowPhoneUpload: settings?.photoUploadAllowed == true,
+        showCountdownHeadline: directPtpShowCountdownHeadlineFor(kind),
         titleText: AppStrings.posePageTitle,
         subtitleText: directPtpSubtitleFor(kind),
         cancelText: AppStrings.cancel,
@@ -221,11 +222,21 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
     }
     if (!mounted) return;
 
-    if (_captureViewModel.capturedPhoto == null) {
+    final picked = _captureViewModel.capturedPhoto;
+    if (picked == null) {
       // Backed out of the picker or the sheet: put them back in front of the
       // camera rather than stranding them on a spinner.
       setState(() => _sessionRunning = false);
       await _runSession();
+      return;
+    }
+
+    // An uploaded photo has to re-enter the flow the guest actually chose.
+    // Continuing unconditionally sent every upload down the FotoZen path —
+    // upload → theme selection — so a Classic guest who picked from Gallery was
+    // dropped into the AI workflow instead of the look picker.
+    if (widget.sessionKind.isClassic) {
+      await _finishClassic(<XFile>[picked.imageFile]);
       return;
     }
     await _continueWithCapturedPhoto();

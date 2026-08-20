@@ -250,7 +250,6 @@ class CanonCaptureActivity : Activity() {
 
     /** Countdown → shot → rearrange, repeated [CaptureSessionContract.Request.shotCount] times. */
     private suspend fun runShotSequence() {
-        hideUploadActions()
         shutterButton.isEnabled = false
         while (shots.size < request.shotCount && !finished) {
             val shotNumber = shots.size + 1
@@ -267,6 +266,9 @@ class CanonCaptureActivity : Activity() {
                 delay(RETRY_PAUSE_MS)
                 continue
             }
+
+            // A shot has landed, so the upload alternatives go.
+            refreshUploadActions()
 
             // Review the still just taken. This replaces the old holdForRearrange, which ran
             // *before* the next countdown and showed live view — so the guest was told to
@@ -301,12 +303,11 @@ class CanonCaptureActivity : Activity() {
      * have. Accepted deliberately; keeping the Activity alive behind a Dart overlay is much
      * more machinery for a transition most guests will not see twice.
      *
-     * Hidden once shooting starts: they only make sense in place of the *first* shot, and
-     * offering "upload a photo" midway through a strip would strand the shots already taken.
+     * Visibility is [refreshUploadActions]' job — they stay up through the first countdown
+     * and go once a shot actually lands.
      */
     private fun bindUploadActions() {
-        galleryButton.visibility = if (request.allowGalleryUpload) View.VISIBLE else View.GONE
-        phoneQrButton.visibility = if (request.allowPhoneUpload) View.VISIBLE else View.GONE
+        refreshUploadActions()
         galleryButton.setOnClickListener {
             finishWith(
                 CaptureSessionContract.Result.uploadRequested(
@@ -323,10 +324,24 @@ class CanonCaptureActivity : Activity() {
         }
     }
 
-    /** Upload alternatives replace the first shot, so they go once a shot is on the way. */
-    private fun hideUploadActions() {
-        galleryButton.visibility = View.GONE
-        phoneQrButton.visibility = View.GONE
+    /**
+     * Uploads are offered only until the first shot lands.
+     *
+     * Mirrors `capturePhotoUploadActionsAllowed`, whose gate is
+     * `classicFourShotInProgress = isClassicFourShot && _stripShots.isNotEmpty` — so they
+     * *are* offered on a 4-shot strip, but only before shot 1, because "a gallery pick
+     * cannot break strip indexing / remount" once the set has started.
+     *
+     * Keyed on `shots` rather than on the sequence having started, so they stay up through
+     * the first countdown exactly as they do on the Flutter screen, and come back if a
+     * retake empties the strip again.
+     */
+    private fun refreshUploadActions() {
+        val beforeFirstShot = shots.isEmpty()
+        galleryButton.visibility =
+            if (request.allowGalleryUpload && beforeFirstShot) View.VISIBLE else View.GONE
+        phoneQrButton.visibility =
+            if (request.allowPhoneUpload && beforeFirstShot) View.VISIBLE else View.GONE
     }
 
     private enum class ReviewOutcome { ACCEPT, RETAKE }
@@ -441,6 +456,7 @@ class CanonCaptureActivity : Activity() {
         // Empty the slot rather than removing it: the strip is a fixed set of poses, and
         // dropping a view would shrink it, making a 4-shot strip look like a 3-shot one.
         clearThumbnailAt(shots.size)
+        refreshUploadActions()
     }
 
     private suspend fun showReviewStill(displayPath: String?) {
@@ -470,10 +486,10 @@ class CanonCaptureActivity : Activity() {
     }
 
     private suspend fun runCountdown(shotNumber: Int) {
-        // The headline is FotoZen-only and only on the first tick: a Classic strip already
-        // says "shot X of Y" in the subtitle, and repeating it over the preview is noise.
+        // FotoZen only, and only on the first tick: Classic already says "shot X of Y" in the
+        // subtitle and the status line, so repeating it over the preview is noise.
         // Mirrors `showAiIntro` in _buildCountdownOverlay.
-        val showHeadline = request.shotCount <= 1
+        val showHeadline = request.showCountdownHeadline
         countdownHeadline.text = getString(R.string.canon_countdown_intro)
 
         for (remaining in request.countdownSeconds downTo 1) {

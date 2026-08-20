@@ -22,34 +22,55 @@ int get directPtpBetweenShotSeconds =>
 
 /// How long the native screen holds a just-taken still before moving on.
 ///
-/// **0 means wait indefinitely for a tap**, which is what FotoZen does: the
-/// Flutter capture screen only schedules auto-accept for Classic multi-shot
-/// (see [shouldScheduleFlashbackAutoAccept]), so a FotoZen guest reviews for as
-/// long as they like and presses Continue or Retake.
+/// **0 means wait indefinitely for a tap**, and that is the case for every flow
+/// except the Classic 4-shot strip.
 ///
-/// Classic mirrors [flashbackShotReviewHoldDuration]: the rearrange window
-/// mid-strip, and a 600ms flash for a single 6×4 where there is no next pose to
-/// rearrange for.
+/// The rule comes from [shouldScheduleFlashbackAutoAccept], which only schedules
+/// auto-accept when `isFlashbackMultiShot` — and that is
+/// `sessionKind.isClassicFourShot`, four-shot **only**, not "any Classic". So a
+/// FotoZen guest *and* a Classic 1-shot guest both review for as long as they
+/// like and press Continue / Pick a look or Retake.
+///
+/// `flashbackShotReviewHoldDuration`'s `total <= 1` branch (600ms) looks like it
+/// contradicts this, but it is unreachable: its only caller runs after the
+/// auto-accept check, by which point `total` is the 4-shot cap. Mapping Classic
+/// 1-shot onto it made the native screen blink past the review in ~600ms with no
+/// chance to retake — caught on hardware 2026-08-20.
 int directPtpReviewHoldMsFor(CaptureSessionKind kind) {
-  if (!kind.isClassic) return 0;
-  if (directPtpShotCountFor(kind) <= 1) {
-    return AppConstants.kFlashbackSingleShotReviewMs;
-  }
+  if (!kind.isClassicFourShot) return 0;
   return AppConstants.kFlashbackBetweenShotRearrangeDuration.inMilliseconds;
 }
 
 /// Hold for the **final** still of a strip, before handing off to the looks
-/// picker. Matches [AppConstants.kFlashbackLastShotReviewDuration].
+/// picker.
 ///
-/// FotoZen keeps 0 here for the same reason as
-/// [directPtpReviewHoldMsFor] — its single shot is also its last.
+/// **Deliberately 8s, not Flutter's 2s.** The Flutter screen uses
+/// [AppConstants.kFlashbackLastShotReviewDuration] here, which gives the guest
+/// about two seconds on their fourth shot before the look picker takes over —
+/// long enough to see it, too short to decide it needs retaking. On the native
+/// screen the last shot gets the same rearrange window as the others, so
+/// "Retake last" is actually reachable on the shot most likely to need it.
+///
+/// A product decision, not a parity gap: if the two screens are ever compared
+/// side by side this is the difference that will show up, and it is intended.
+///
+/// Everything that is not a 4-shot strip keeps 0 — see [directPtpReviewHoldMsFor].
 int directPtpFinalReviewHoldMsFor(CaptureSessionKind kind) {
-  if (!kind.isClassic) return 0;
-  if (directPtpShotCountFor(kind) <= 1) {
-    return AppConstants.kFlashbackSingleShotReviewMs;
-  }
-  return AppConstants.kFlashbackLastShotReviewDuration.inMilliseconds;
+  if (!kind.isClassicFourShot) return 0;
+  return AppConstants.kFlashbackBetweenShotRearrangeDuration.inMilliseconds;
 }
+
+/// Whether the countdown shows the "Be ready for photo" headline.
+///
+/// FotoZen only. Mirrors `showAiIntro` in `_buildCountdownOverlay`, which is
+/// `!_isClassicPose` — Classic already says "shot X of Y" in the subtitle and
+/// the status line, so repeating it over the preview is noise.
+///
+/// Passed explicitly rather than inferred from `shotCount`: a Classic 1-shot
+/// also has `shotCount == 1`, so inferring showed it the headline that Flutter
+/// deliberately withholds.
+bool directPtpShowCountdownHeadlineFor(CaptureSessionKind kind) =>
+    !kind.isClassic;
 
 /// Operator-facing guidance for a native capture failure.
 ///

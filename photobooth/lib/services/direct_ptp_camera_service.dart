@@ -324,6 +324,7 @@ class DirectPtpCaptureRequest {
     this.finalReviewHoldMs = 0,
     this.allowGalleryUpload = false,
     this.allowPhoneUpload = false,
+    this.showCountdownHeadline = false,
     this.titleText,
     this.subtitleText,
     this.shutterText,
@@ -379,6 +380,10 @@ class DirectPtpCaptureRequest {
   final bool allowGalleryUpload;
   final bool allowPhoneUpload;
 
+  /// Show the "Be ready for photo" headline over the countdown. FotoZen only,
+  /// mirroring `showAiIntro` in the Flutter capture screen.
+  final bool showCountdownHeadline;
+
   /// Copy, passed in so AppStrings stays the single source of guest-facing words.
   final String? titleText;
   final String? subtitleText;
@@ -397,6 +402,7 @@ class DirectPtpCaptureRequest {
         'finalReviewHoldMs': finalReviewHoldMs,
         'allowGalleryUpload': allowGalleryUpload,
         'allowPhoneUpload': allowPhoneUpload,
+        'showCountdownHeadline': showCountdownHeadline,
         'titleText': titleText,
         'subtitleText': subtitleText,
         'shutterText': shutterText,

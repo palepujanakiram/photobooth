@@ -114,6 +114,14 @@ object CaptureSessionContract {
          */
         val allowGalleryUpload: Boolean = false,
         val allowPhoneUpload: Boolean = false,
+        /**
+         * Show the "Be ready for photo" headline over the countdown.
+         *
+         * FotoZen only, mirroring `showAiIntro` in _buildCountdownOverlay. Passed rather
+         * than inferred from shotCount: a Classic 1-shot also has shotCount == 1, so
+         * inferring showed it a headline Flutter deliberately withholds.
+         */
+        val showCountdownHeadline: Boolean = false,
         /** Copy is passed in so AppStrings stays the single source of truth. */
         val titleText: String? = null,
         val subtitleText: String? = null,
@@ -132,6 +140,7 @@ object CaptureSessionContract {
             put("finalReviewHoldMs", finalReviewHoldMs)
             put("allowGalleryUpload", allowGalleryUpload)
             put("allowPhoneUpload", allowPhoneUpload)
+            put("showCountdownHeadline", showCountdownHeadline)
             put("titleText", titleText ?: JSONObject.NULL)
             put("subtitleText", subtitleText ?: JSONObject.NULL)
             put("shutterText", shutterText ?: JSONObject.NULL)
@@ -162,6 +171,8 @@ object CaptureSessionContract {
                         finalReviewHoldMs = json.optInt("finalReviewHoldMs", 0),
                         allowGalleryUpload = json.optBoolean("allowGalleryUpload", false),
                         allowPhoneUpload = json.optBoolean("allowPhoneUpload", false),
+                        showCountdownHeadline =
+                            json.optBoolean("showCountdownHeadline", false),
                         titleText = json.optNullableString("titleText"),
                         subtitleText = json.optNullableString("subtitleText"),
                         shutterText = json.optNullableString("shutterText"),
@@ -200,6 +211,8 @@ object CaptureSessionContract {
                         ).coerceIn(0, 120_000),
                     allowGalleryUpload = args["allowGalleryUpload"] as? Boolean
                         ?: defaults.allowGalleryUpload,
+                    showCountdownHeadline = args["showCountdownHeadline"] as? Boolean
+                        ?: defaults.showCountdownHeadline,
                     allowPhoneUpload = args["allowPhoneUpload"] as? Boolean
                         ?: defaults.allowPhoneUpload,
                     titleText = args["titleText"] as? String,

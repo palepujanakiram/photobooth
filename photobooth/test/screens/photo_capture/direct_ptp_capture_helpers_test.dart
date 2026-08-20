@@ -195,27 +195,55 @@ void main() {
       );
     });
 
-    test('Classic strip shortens the hold on the final shot', () {
+    // Deliberately NOT Flutter's kFlashbackLastShotReviewDuration (2s): the last
+    // shot gets the same window as the others so "Retake last" is reachable on
+    // the shot most likely to need it. Product decision, not a parity gap — if
+    // this ever gets "fixed" back to 2s, that is a regression.
+    test('Classic strip gives the final shot the full rearrange window', () {
       final mid = directPtpReviewHoldMsFor(CaptureSessionKind.classicFourShot);
       final last =
           directPtpFinalReviewHoldMsFor(CaptureSessionKind.classicFourShot);
       expect(
         last,
-        AppConstants.kFlashbackLastShotReviewDuration.inMilliseconds,
+        AppConstants.kFlashbackBetweenShotRearrangeDuration.inMilliseconds,
       );
-      // The point of the final hold: hand off to looks quickly rather than
-      // making the guest wait out a rearrange window with nothing to rearrange.
-      expect(last, lessThan(mid));
+      expect(last, mid);
     });
 
-    test('Classic single 6x4 only flashes the still', () {
-      expect(
-        directPtpReviewHoldMsFor(CaptureSessionKind.classicOneShot),
-        AppConstants.kFlashbackSingleShotReviewMs,
-      );
+    // Regression, caught on hardware 2026-08-20. This was mapped onto
+    // flashbackShotReviewHoldDuration's 600ms `total <= 1` branch, so the review
+    // blinked past in ~600ms with no chance to retake. That branch is unreachable
+    // in Flutter: shouldScheduleFlashbackAutoAccept gates on isFlashbackMultiShot,
+    // which is isClassicFourShot **only**, so a Classic 1-shot waits for a tap
+    // exactly as FotoZen does.
+    test('Classic single 6x4 waits for a tap, like FotoZen', () {
+      expect(directPtpReviewHoldMsFor(CaptureSessionKind.classicOneShot), 0);
       expect(
         directPtpFinalReviewHoldMsFor(CaptureSessionKind.classicOneShot),
-        AppConstants.kFlashbackSingleShotReviewMs,
+        0,
+      );
+    });
+  });
+
+  group('countdown headline', () {
+    // `showAiIntro` in _buildCountdownOverlay is `!_isClassicPose`, so Classic
+    // never shows it. Inferring from shotCount got this wrong: a Classic 1-shot
+    // also has shotCount == 1.
+    test('FotoZen shows it', () {
+      expect(
+        directPtpShowCountdownHeadlineFor(CaptureSessionKind.fotoZen),
+        isTrue,
+      );
+    });
+
+    test('neither Classic flow shows it', () {
+      expect(
+        directPtpShowCountdownHeadlineFor(CaptureSessionKind.classicOneShot),
+        isFalse,
+      );
+      expect(
+        directPtpShowCountdownHeadlineFor(CaptureSessionKind.classicFourShot),
+        isFalse,
       );
     });
   });
