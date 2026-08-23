@@ -220,134 +220,136 @@ object EosEventParser {
     fun parse(payload: ByteArray): List<EosEvent> {
         val events = mutableListOf<EosEvent>()
         val reader = PtpReader(payload)
-
         while (reader.remaining >= RECORD_HEADER_SIZE) {
-            val recordStart = reader.position
-
-            val size = try {
-                reader.u32()
-            } catch (e: Exception) {
-                CanonLog.w("Event array truncated at offset %d", recordStart)
-                break
+            when (val record = readNextRecord(reader, events.size)) {
+                RecordRead.End -> break
+                RecordRead.Skip -> continue
+                is RecordRead.Item -> events.add(record.event)
             }
-
-            // size == 0 is the documented terminator.
-            if (size == 0L) break
-
-            if (size < RECORD_HEADER_SIZE || size > MAX_RECORD_SIZE) {
-                CanonLog.e(
-                    "Implausible EOS event record size %d at offset %d - stopping. " +
-                        "Decoded %d event(s) before this.",
-                    size,
-                    recordStart,
-                    events.size,
-                )
-                break
-            }
-
-            val type = try {
-                reader.u32().toInt()
-            } catch (e: Exception) {
-                break
-            }
-
-            // Observed on a real 200D II: the body emits 8-byte records with type 0 as
-            // padding between real events, several per poll. They carry nothing. Skipping
-            // them silently keeps the log readable - logging them as "unknown" buried the
-            // events that actually mattered.
-            if (type == 0) {
-                val skip = (size - RECORD_HEADER_SIZE).toInt()
-                if (skip in 1..reader.remaining) reader.skip(skip)
-                continue
-            }
-
-            val payloadSize = (size - RECORD_HEADER_SIZE).toInt()
-            if (payloadSize > reader.remaining) {
-                CanonLog.w(
-                    "EOS event %s declares %dB payload but only %dB remain - stopping",
-                    EosEventCode.name(type),
-                    payloadSize,
-                    reader.remaining,
-                )
-                break
-            }
-
-            val recordPayload = if (payloadSize > 0) reader.bytes(payloadSize) else ByteArray(0)
-
-            val event = try {
-                decode(type, recordPayload)
-            } catch (e: Exception) {
-                // A decode failure must never kill the loop. Keep the raw bytes so the
-                // record can be understood later from a committed log.
-                CanonLog.w(e, "Failed to decode %s, keeping raw", EosEventCode.name(type))
-                EosEvent.Unknown(type, recordPayload)
-            }
-
-            events.add(event)
         }
-
         return events
+    }
+
+    private fun readNextRecord(reader: PtpReader, decodedSoFar: Int): RecordRead {
+        val recordStart = reader.position
+        val size = readU32OrNull(reader) ?: run {
+            CanonLog.w("Event array truncated at offset %d", recordStart)
+            return RecordRead.End
+        }
+        if (size == 0L) return RecordRead.End
+        if (size < RECORD_HEADER_SIZE || size > MAX_RECORD_SIZE) {
+            CanonLog.e(
+                "Implausible EOS event record size %d at offset %d - stopping. " +
+                    "Decoded %d event(s) before this.",
+                size,
+                recordStart,
+                decodedSoFar,
+            )
+            return RecordRead.End
+        }
+        val type = readU32OrNull(reader)?.toInt() ?: return RecordRead.End
+        if (type == 0) {
+            // Observed on a real 200D II: 8-byte type-0 records are padding.
+            val skip = (size - RECORD_HEADER_SIZE).toInt()
+            if (skip in 1..reader.remaining) reader.skip(skip)
+            return RecordRead.Skip
+        }
+        return readTypedRecord(reader, type, size)
+    }
+
+    private fun readTypedRecord(reader: PtpReader, type: Int, size: Long): RecordRead {
+        val payloadSize = (size - RECORD_HEADER_SIZE).toInt()
+        if (payloadSize > reader.remaining) {
+            CanonLog.w(
+                "EOS event %s declares %dB payload but only %dB remain - stopping",
+                EosEventCode.name(type),
+                payloadSize,
+                reader.remaining,
+            )
+            return RecordRead.End
+        }
+        val recordPayload = if (payloadSize > 0) reader.bytes(payloadSize) else ByteArray(0)
+        val event = try {
+            decode(type, recordPayload)
+        } catch (e: Exception) {
+            CanonLog.w(e, "Failed to decode %s, keeping raw", EosEventCode.name(type))
+            EosEvent.Unknown(type, recordPayload)
+        }
+        return RecordRead.Item(event)
     }
 
     private fun decode(type: Int, payload: ByteArray): EosEvent {
         val r = PtpReader(payload)
         return when (type) {
-            EosEventCode.OBJECT_ADDED_EX -> EosEvent.ObjectAdded(
-                objectHandle = r.u32(),
-                storageId = r.u32(),
-                objectFormat = r.u32().toInt(),
-                sizeBytes = run { r.u32(); r.u32() }, // skip a reserved field, then size
-                filename = readCString(r),
-            )
-
-            // The variant a 200D II actually sends. Layout decoded from hardware - see the
-            // constant's docs. Carries no filename, so the capture queue resolves it with
-            // GetObjectInfo when it needs one.
-            EosEventCode.OBJECT_ADDED_EX64 -> {
-                val handle = r.u32()
-                val format = r.u32().toInt()
-                r.u32() // reserved
-                val size = r.u64()
-                val parent = r.u32()
-                EosEvent.ObjectAdded(
-                    objectHandle = handle,
-                    storageId = parent,
-                    objectFormat = format,
-                    sizeBytes = size,
-                    filename = "", // not present in this variant
-                    code = EosEventCode.OBJECT_ADDED_EX64,
-                )
-            }
-
+            EosEventCode.OBJECT_ADDED_EX -> decodeObjectAddedEx(r)
+            EosEventCode.OBJECT_ADDED_EX64 -> decodeObjectAddedEx64(r)
             EosEventCode.REQUEST_OBJECT_TRANSFER -> EosEvent.ObjectTransferRequested(
                 objectHandle = r.u32(),
-                sizeBytes = run { r.u32(); r.u32(); r.u32() },
+                sizeBytes = run {
+                    r.u32()
+                    r.u32()
+                    r.u32()
+                },
                 filename = readCString(r),
             )
-
             EosEventCode.PROP_VALUE_CHANGED -> EosEvent.PropertyChanged(
                 propertyCode = r.u32().toInt(),
                 rawValue = if (r.hasRemaining()) r.bytes(r.remaining) else ByteArray(0),
             )
-
             EosEventCode.AVAIL_LIST_CHANGED -> EosEvent.AvailableValuesChanged(
                 propertyCode = r.u32().toInt(),
             )
-
             EosEventCode.CAMERA_STATUS_CHANGED -> EosEvent.CameraStatusChanged(status = r.u32())
-
             EosEventCode.AF_RESULT -> EosEvent.AfResult(result = r.u32())
-
             EosEventCode.WILL_SOON_SHUTDOWN -> EosEvent.WillSoonShutdown()
-
             EosEventCode.STORAGE_STATUS_CHANGED,
             EosEventCode.STORAGE_INFO_CHANGED,
             EosEventCode.STORE_ADDED,
             EosEventCode.STORE_REMOVED,
             -> EosEvent.StorageChanged(type)
-
             else -> EosEvent.Unknown(type, payload)
         }
+    }
+
+    private fun decodeObjectAddedEx(r: PtpReader): EosEvent.ObjectAdded =
+        EosEvent.ObjectAdded(
+            objectHandle = r.u32(),
+            storageId = r.u32(),
+            objectFormat = r.u32().toInt(),
+            sizeBytes = run {
+                r.u32()
+                r.u32()
+            },
+            filename = readCString(r),
+        )
+
+    private fun decodeObjectAddedEx64(r: PtpReader): EosEvent.ObjectAdded {
+        val handle = r.u32()
+        val format = r.u32().toInt()
+        r.u32()
+        val size = r.u64()
+        val parent = r.u32()
+        return EosEvent.ObjectAdded(
+            objectHandle = handle,
+            storageId = parent,
+            objectFormat = format,
+            sizeBytes = size,
+            filename = "",
+            code = EosEventCode.OBJECT_ADDED_EX64,
+        )
+    }
+
+    private fun readU32OrNull(reader: PtpReader): Long? =
+        try {
+            reader.u32()
+        } catch (_: Exception) {
+            null
+        }
+
+    private sealed class RecordRead {
+        object End : RecordRead()
+        object Skip : RecordRead()
+        data class Item(val event: EosEvent) : RecordRead()
     }
 
     /**

@@ -253,6 +253,9 @@ class EosCaptureTest {
     @Test
     fun `release falls back to RemoteRelease when On-Off is unsupported`() = runTest {
         val rig = Rig()
+        // C-02: a failed half-press is swallowed and the full press still runs.
+        // The fallback only fires when the *shutter* opcode is unsupported.
+        rig.fail(PtpResponse.OPERATION_NOT_SUPPORTED)
         rig.fail(PtpResponse.OPERATION_NOT_SUPPORTED)
         rig.ok()
 

@@ -185,7 +185,7 @@ class EosCapture(
                 // three, each burning the full ~8s busy budget, and the guest simply got no
                 // photo. A frame that might be slightly soft beats no frame at all.
                 afEngaged = runCatching {
-                    busyRetry(stage = "half-press (AF)") {
+                    busyRetry(BusyRetryPolicy(stage = "half-press (AF)")) {
                         ptp.transact(CanonEosOperation.REMOTE_RELEASE_ON, HALF_PRESS, 0)
                     }
                 }.onFailure {
@@ -194,17 +194,17 @@ class EosCapture(
             }
 
             // Full press: fires the shutter.
-            busyRetry(stage = "full-press (shutter)") {
+            busyRetry(BusyRetryPolicy(stage = "full-press (shutter)")) {
                 ptp.transact(CanonEosOperation.REMOTE_RELEASE_ON, FULL_PRESS, 0)
             }
 
             // Release in reverse order. Leaving the button virtually held down blocks the
             // next capture.
-            busyRetry(stage = "full-press release") {
+            busyRetry(BusyRetryPolicy(stage = "full-press release")) {
                 ptp.transact(CanonEosOperation.REMOTE_RELEASE_OFF, FULL_PRESS)
             }
             if (afEngaged) {
-                busyRetry(stage = "half-press release") {
+                busyRetry(BusyRetryPolicy(stage = "half-press release")) {
                     ptp.transact(CanonEosOperation.REMOTE_RELEASE_OFF, HALF_PRESS)
                 }
             }
@@ -244,28 +244,39 @@ class EosCapture(
      * `delay` yields the thread, so the download runs during the wait and the busy state
      * actually clears.
      */
+    /**
+     * Which of the four stages of a release this is. "EOS_RemoteReleaseOn failed:
+     * DeviceBusy" names the opcode but not the stage, and the two RemoteReleaseOn calls
+     * mean very different things: the half press is autofocus, the full press is the
+     * shutter.
+     */
+    private data class BusyRetryPolicy(
+        val stage: String,
+        val maxAttempts: Int = BUSY_MAX_ATTEMPTS,
+        val initialDelayMs: Long = 120,
+    )
+
     private suspend fun <T> busyRetry(
-        maxAttempts: Int = BUSY_MAX_ATTEMPTS,
-        initialDelayMs: Long = 120,
-        // Which of the four stages of a release this is. "EOS_RemoteReleaseOn failed:
-        // DeviceBusy" names the opcode but not the stage, and the two RemoteReleaseOn calls
-        // mean very different things: the half press is autofocus, the full press is the
-        // shutter. A body that will not focus and a body that is still writing the previous
-        // frame need opposite responses, and the log could not tell them apart.
-        stage: String = "release",
+        policy: BusyRetryPolicy,
         block: () -> T,
     ): T {
-        var delayMs = initialDelayMs
+        var delayMs = policy.initialDelayMs
         var lastError: PtpException.OperationFailed? = null
 
-        repeat(maxAttempts) { attempt ->
+        repeat(policy.maxAttempts) { attempt ->
             try {
                 return block()
             } catch (e: PtpException.OperationFailed) {
                 if (!e.isBusy) throw e
                 lastError = e
-                if (attempt < maxAttempts - 1) {
-                    CanonLog.i("Camera busy on %s, retrying in %dms (attempt %d/%d)", stage, delayMs, attempt + 1, maxAttempts)
+                if (attempt < policy.maxAttempts - 1) {
+                    CanonLog.i(
+                        "Camera busy on %s, retrying in %dms (attempt %d/%d)",
+                        policy.stage,
+                        delayMs,
+                        attempt + 1,
+                        policy.maxAttempts,
+                    )
                     delay(delayMs)
                     // Capped growth: the wait we are riding out is bounded (the camera
                     // clears once its pending image is drained), so unbounded doubling
@@ -277,8 +288,8 @@ class EosCapture(
         CanonLog.e(
             "Camera still busy on %s after %d attempts (~%ds). A previous image is probably " +
                 "still pending download - the camera stays busy until its buffer is drained.",
-            stage,
-            maxAttempts,
+            policy.stage,
+            policy.maxAttempts,
             BUSY_TOTAL_BUDGET_SECONDS,
         )
         throw lastError ?: IllegalStateException("busyRetry exhausted without an error")

@@ -2,9 +2,9 @@ package com.srisarani.fotozenai.canon.eos
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import com.srisarani.fotozenai.canon.CanonLog
 import com.srisarani.fotozenai.canon.ptp.CanonEosOperation
 import com.srisarani.fotozenai.canon.ptp.PtpException
-import com.srisarani.fotozenai.canon.ptp.PtpReader
 import com.srisarani.fotozenai.canon.ptp.PtpSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -18,111 +18,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import com.srisarani.fotozenai.canon.CanonLog
-
-/**
- * Block types inside a viewfinder-data payload.
- *
- * ⚠️ Transcribed; only [JPEG_IMAGE] is confirmed by use. The others are named so the
- * parser can skip them knowingly rather than treating them as corruption.
- */
-object EvfBlockType {
-    /** The actual JPEG frame. The only block we currently consume. */
-    const val JPEG_IMAGE = 1
-    const val HISTOGRAM_Y = 2
-    const val HISTOGRAM_R = 3
-    const val HISTOGRAM_G = 4
-    const val HISTOGRAM_B = 5
-    const val ZOOM_RECT = 6
-    const val FOCUS_INFO = 8
-    const val CROP_RECT = 11
-}
-
-/** Values for [EosProperty.EVF_OUTPUT_DEVICE]. ⚠️ VERIFY against `ptp.h`. */
-object EvfOutputDevice {
-    const val OFF = 0
-    const val CAMERA_TFT = 1
-
-    /**
-     * Route live view to the host over USB **only**.
-     *
-     * > ⚠️ `C-19`, observed on hardware 2026-08-14: with PC-only routing the 200D II blanks
-     * > its rear screen and displays **"Busy"** for as long as live view runs. To anyone
-     * > standing at the booth the camera looks hung. It is not — but it is indistinguishable
-     * > from hung, and a guest or operator will start pressing things.
-     */
-    const val PC = 2
-
-    /**
-     * Route to the camera's screen **and** the host.
-     *
-     * Preferred for a booth: frames still stream over USB, and the body keeps a live
-     * viewfinder instead of the "Busy" placard. This is the same escalation the
-     * `fotozen-sidecar` gphoto2 path uses (`output=TFT + PC`) after plain PC routing
-     * misbehaves.
-     */
-    const val CAMERA_TFT_AND_PC = CAMERA_TFT or PC
-}
-
-/**
- * Parses a Canon viewfinder-data payload.
- *
- * ## The payload is NOT a bare JPEG
- *
- * The plan calls this out and it is the first thing that trips people up. The response is
- * a sequence of length-prefixed blocks, structurally identical to the EOS event array:
- *
- * ```
- * u32 size    total block length INCLUDING these 8 header bytes
- * u32 type    EvfBlockType - 1 is the JPEG frame
- * ...         payload, (size - 8) bytes
- * ```
- *
- * A single response can carry the frame plus histograms, a zoom rectangle and focus
- * information. Handing the whole payload to `BitmapFactory` produces null, and the obvious
- * next guess — skipping a fixed header — breaks as soon as the camera includes a different
- * mix of blocks.
- *
- * Pure and Android-free so it is unit tested; the bitmap decode sits on top.
- */
-object EvfFrameParser {
-
-    private const val BLOCK_HEADER_SIZE = 8
-    private const val MAX_BLOCK_SIZE = 32 * 1024 * 1024
-
-    /** Every block found, in order. */
-    fun parseBlocks(payload: ByteArray): List<Pair<Int, ByteArray>> {
-        val blocks = mutableListOf<Pair<Int, ByteArray>>()
-        val reader = PtpReader(payload)
-
-        while (reader.remaining >= BLOCK_HEADER_SIZE) {
-            val size = try { reader.u32() } catch (e: Exception) { break }
-            if (size == 0L) break
-            if (size < BLOCK_HEADER_SIZE || size > MAX_BLOCK_SIZE) {
-                CanonLog.w("Implausible EVF block size %d - stopping", size)
-                break
-            }
-
-            val type = try { reader.u32().toInt() } catch (e: Exception) { break }
-            val dataSize = (size - BLOCK_HEADER_SIZE).toInt()
-            if (dataSize > reader.remaining) {
-                CanonLog.w("EVF block type %d declares %dB but %dB remain", type, dataSize, reader.remaining)
-                break
-            }
-
-            blocks += type to (if (dataSize > 0) reader.bytes(dataSize) else ByteArray(0))
-        }
-        return blocks
-    }
-
-    /** Extracts just the JPEG frame, or null if this response carried none. */
-    fun extractJpeg(payload: ByteArray): ByteArray? =
-        parseBlocks(payload).firstOrNull { it.first == EvfBlockType.JPEG_IMAGE }?.second
-
-    /** True when the bytes start with a JPEG SOI marker. A cheap sanity check. */
-    fun looksLikeJpeg(bytes: ByteArray): Boolean =
-        bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()
-}
 
 /**
  * Live view streaming.
@@ -132,7 +27,7 @@ object EvfFrameParser {
  * The plan is explicit: drop frames rather than queue when decode falls behind. A queued
  * live view drifts further behind real time the longer it runs, which is worse than
  * useless for framing a shot - the user aims at where the subject *was*.
- * [currentFrame] is a `StateFlow` holding only the newest frame, so a slow consumer
+ * [currentFrame] is a `SharedFlow` holding only the newest frame, so a slow consumer
  * naturally misses intermediate frames instead of delaying the stream.
  *
  * ## Bitmap reuse
@@ -163,7 +58,6 @@ class EosLiveView(
         val frameIntervalMs: Long = 8,
         /** Consecutive failures before giving up on the stream. */
         val maxConsecutiveFailures: Int = 15,
-
         /**
          * How long the camera may answer `NotReady` before we call live view broken (`P-21`).
          *
@@ -248,64 +142,82 @@ class EosLiveView(
             var framesToDiscard = DISCARD_AFTER_ENABLE
 
             while (isActive) {
-                try {
-                    val payload = fetchFrame()
-                    if (payload != null) {
-                        consecutiveFailures = 0
-                        if (framesToDiscard > 0) {
-                            framesToDiscard--
-                        } else {
-                            decodeInto(payload)
-                        }
-                    }
-                } catch (e: PtpException.OperationFailed) {
-                    // P-21: DeviceBusy *and* Canon's NotReady (0xA102) are both routine here
-                    // - the camera is mid-something or still spinning live view up. Neither
-                    // is a failure. Counting NotReady was fatal at this poll rate: 15
-                    // "failures" elapse in ~120ms, so the stream gave up long before the
-                    // mirror had even finished flipping.
-                    if (!e.isTransient) {
-                        consecutiveFailures++
-                        lastFailure = e
-                    }
-                } catch (e: Exception) {
-                    consecutiveFailures++
-                    lastFailure = e
-                }
-
-                // P-21: NotReady no longer counts as a failure, so a camera that never wakes
-                // would otherwise spin here forever showing a black rectangle. Bound the
-                // warm-up: if not one frame has arrived by now, say so instead of pretending.
-                if (framesReceived == 0L &&
-                    System.currentTimeMillis() - startedAtMillis > config.warmUpTimeoutMs
-                ) {
-                    CanonLog.e(
-                        lastFailure,
-                        "Live view produced no frames within %dms - giving up. " +
-                            "Check the mode dial and the photo/movie lever.",
-                        config.warmUpTimeoutMs,
-                    )
-                    _isRunning.value = false
+                val tick = pollOnce(framesToDiscard, consecutiveFailures)
+                framesToDiscard = tick.framesToDiscard
+                consecutiveFailures = tick.consecutiveFailures
+                lastFailure = tick.lastFailure ?: lastFailure
+                if (shouldStop(startedAtMillis, consecutiveFailures, lastFailure)) {
                     return@launch
                 }
-
-                if (consecutiveFailures >= config.maxConsecutiveFailures) {
-                    // C-19: the reason used to be swallowed entirely, so a stream that died
-                    // after ~55 good frames was indistinguishable from one that never
-                    // started. Report what the camera actually said.
-                    CanonLog.e(
-                        lastFailure,
-                        "Live view stopping after %d consecutive failures (%d good frames first)",
-                        consecutiveFailures,
-                        framesReceived,
-                    )
-                    _isRunning.value = false
-                    return@launch
-                }
-
                 delay(config.frameIntervalMs)
             }
         }
+    }
+
+    private fun pollOnce(framesToDiscard: Int, consecutiveFailures: Int): PollTick {
+        return try {
+            val payload = fetchFrame()
+            if (payload != null) {
+                acceptFrame(payload, framesToDiscard)
+            } else {
+                PollTick(framesToDiscard, consecutiveFailures, lastFailure = null)
+            }
+        } catch (e: PtpException.OperationFailed) {
+            // P-21: DeviceBusy *and* Canon's NotReady (0xA102) are both routine here
+            // - the camera is mid-something or still spinning live view up. Neither
+            // is a failure. Counting NotReady was fatal at this poll rate: 15
+            // "failures" elapse in ~120ms, so the stream gave up long before the
+            // mirror had even finished flipping.
+            if (e.isTransient) {
+                PollTick(framesToDiscard, consecutiveFailures, lastFailure = null)
+            } else {
+                PollTick(framesToDiscard, consecutiveFailures + 1, lastFailure = e)
+            }
+        } catch (e: Exception) {
+            PollTick(framesToDiscard, consecutiveFailures + 1, lastFailure = e)
+        }
+    }
+
+    private fun acceptFrame(payload: ByteArray, framesToDiscard: Int): PollTick {
+        if (framesToDiscard > 0) {
+            return PollTick(framesToDiscard - 1, consecutiveFailures = 0, lastFailure = null)
+        }
+        decodeInto(payload)
+        return PollTick(0, consecutiveFailures = 0, lastFailure = null)
+    }
+
+    private fun shouldStop(
+        startedAtMillis: Long,
+        consecutiveFailures: Int,
+        lastFailure: Exception?,
+    ): Boolean {
+        if (framesReceived == 0L &&
+            System.currentTimeMillis() - startedAtMillis > config.warmUpTimeoutMs
+        ) {
+            // P-21: NotReady no longer counts as a failure, so a camera that never wakes
+            // would otherwise spin here forever showing a black rectangle.
+            CanonLog.e(
+                lastFailure,
+                "Live view produced no frames within %dms - giving up. " +
+                    "Check the mode dial and the photo/movie lever.",
+                config.warmUpTimeoutMs,
+            )
+            _isRunning.value = false
+            return true
+        }
+        if (consecutiveFailures >= config.maxConsecutiveFailures) {
+            // C-19: the reason used to be swallowed entirely, so a stream that died
+            // after ~55 good frames was indistinguishable from one that never started.
+            CanonLog.e(
+                lastFailure,
+                "Live view stopping after %d consecutive failures (%d good frames first)",
+                consecutiveFailures,
+                framesReceived,
+            )
+            _isRunning.value = false
+            return true
+        }
+        return false
     }
 
     private fun fetchFrame(): ByteArray? {
@@ -323,53 +235,57 @@ class EosLiveView(
             framesDropped++
             return
         }
-
-        val options = BitmapFactory.Options().apply {
-            inScaled = false
-            inPreferredConfig = Bitmap.Config.RGB_565 // half the memory; ample for a viewfinder
-            inMutable = true
-            // Reuse the previous allocation. Per-frame allocation makes 15fps unreachable.
-            reusableBitmap?.let { inBitmap = it }
-        }
-
-        val bitmap = try {
-            BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, options)
-        } catch (e: IllegalArgumentException) {
-            // inBitmap could not be reused (size changed). Retry without it.
-            reusableBitmap = null
-            runCatching {
-                BitmapFactory.decodeByteArray(
-                    jpeg, 0, jpeg.size,
-                    BitmapFactory.Options().apply {
-                        inScaled = false
-                        inPreferredConfig = Bitmap.Config.RGB_565
-                        inMutable = true
-                    },
-                )
-            }.getOrNull()
-        }
-
-        if (bitmap == null) {
+        val bitmap = decodeJpeg(jpeg) ?: run {
             framesDropped++
             return
         }
-
         reusableBitmap = bitmap
         framesReceived++
+        recordFps()
+        // tryEmit, never emit: a suspending emit would stall the poll loop behind a slow
+        // consumer, which is the stall this class is built to avoid.
+        _currentFrame.tryEmit(bitmap)
+    }
 
+    private fun decodeJpeg(jpeg: ByteArray): Bitmap? {
+        val options = reuseOptions()
+        return try {
+            BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, options)
+        } catch (_: IllegalArgumentException) {
+            // inBitmap could not be reused (size changed). Retry without it.
+            reusableBitmap = null
+            runCatching {
+                BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, freshOptions())
+            }.getOrNull()
+        }
+    }
+
+    private fun reuseOptions(): BitmapFactory.Options =
+        freshOptions().apply {
+            reusableBitmap?.let { inBitmap = it }
+        }
+
+    private fun freshOptions(): BitmapFactory.Options =
+        BitmapFactory.Options().apply {
+            inScaled = false
+            inPreferredConfig = Bitmap.Config.RGB_565 // half the memory; ample for a viewfinder
+            inMutable = true
+        }
+
+    private fun recordFps() {
         val now = System.currentTimeMillis()
         if (lastFrameAtMillis > 0) {
             val delta = now - lastFrameAtMillis
             if (delta > 0) {
-                // Exponential moving average - a per-frame instantaneous figure is too noisy to read.
-                measuredFps = if (measuredFps == 0.0) 1000.0 / delta else measuredFps * 0.9 + (1000.0 / delta) * 0.1
+                // Exponential moving average - a per-frame instantaneous figure is too noisy.
+                measuredFps = if (measuredFps == 0.0) {
+                    1000.0 / delta
+                } else {
+                    measuredFps * 0.9 + (1000.0 / delta) * 0.1
+                }
             }
         }
         lastFrameAtMillis = now
-
-        // tryEmit, never emit: a suspending emit would stall the poll loop behind a slow
-        // consumer, which is the stall this class is built to avoid.
-        _currentFrame.tryEmit(bitmap)
     }
 
     /**
@@ -399,6 +315,12 @@ class EosLiveView(
 
     fun summary(): String =
         "frames=%d dropped=%d fps=%.1f".format(framesReceived, framesDropped, measuredFps)
+
+    private data class PollTick(
+        val framesToDiscard: Int,
+        val consecutiveFailures: Int,
+        val lastFailure: Exception?,
+    )
 
     private companion object {
         /** Request flag used by libgphoto2 for EOS viewfinder data. ⚠️ VERIFY. */
