@@ -82,6 +82,21 @@ void main() {
       KioskOfflineUx.shouldSkipUpiPrePayment(sessionOffline: false),
       isFalse,
     );
+    expect(
+      KioskOfflineUx.shouldSkipGeminiPreprocess(sessionOffline: true),
+      isTrue,
+    );
+    expect(
+      KioskOfflineUx.shouldSkipGeminiPreprocess(sessionOffline: false),
+      isFalse,
+    );
+    expect(
+      KioskOfflineUx.shouldSkipGeminiPreprocess(
+        sessionOffline: false,
+        error: ApiException(AppConstants.kErrorNetwork),
+      ),
+      isTrue,
+    );
   });
 
   test('shouldUseLocalStripLook ignores online timeouts and 4xx', () {

@@ -37,6 +37,13 @@ abstract final class KioskOfflineUx {
   static bool shouldSkipUpiPrePayment({required bool sessionOffline}) =>
       sessionOffline;
 
+  /// Skip Fly `/api/preprocess-image` (Gemini). Use on-device face count.
+  static bool shouldSkipGeminiPreprocess({
+    required bool sessionOffline,
+    Object? error,
+  }) =>
+      shouldSkipAiGeneration(sessionOffline: sessionOffline, error: error);
+
   /// 4-shot local look instead of Fly `composeStrip`.
   ///
   /// Online compose timeouts stay failures (existing UX). Network / 5xx

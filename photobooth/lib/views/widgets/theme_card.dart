@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import '../../screens/theme_selection/theme_model.dart';
 import '../../utils/theme_image_urls.dart';
+import '../../services/image_cache_source.dart';
 import 'cached_network_image.dart';
 
 class ThemeCard extends StatelessWidget {
@@ -88,6 +89,7 @@ class ThemeCard extends StatelessWidget {
               child: imageUrl.isNotEmpty
                   ? CachedNetworkImage(
                       imageUrl: imageUrl,
+                      cacheKey: catalogCacheKeyForTheme(theme.id),
                       fit: BoxFit.cover,
                       width: double.infinity,
                       height: double.infinity,

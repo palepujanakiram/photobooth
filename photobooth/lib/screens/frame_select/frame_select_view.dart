@@ -13,6 +13,7 @@ import '../../utils/route_args.dart';
 import '../../utils/secure_image_url.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/cached_network_image.dart';
+import '../../services/image_cache_source.dart';
 import '../../views/widgets/centered_max_width.dart';
 import '../../views/widgets/leading_with_alice.dart' show AppBarAliceAction;
 import '../../views/widgets/theme_background.dart';
@@ -427,6 +428,7 @@ class _FrameTile extends StatelessWidget {
                       ),
                       CachedNetworkImage(
                         imageUrl: overlayUrl,
+                        cacheKey: catalogCacheKeyForFrame(frame.id),
                         fit: BoxFit.contain,
                         filterQuality: FilterQuality.medium,
                         placeholder: const ColoredBox(color: Colors.transparent),

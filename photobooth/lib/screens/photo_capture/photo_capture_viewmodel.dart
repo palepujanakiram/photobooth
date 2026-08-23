@@ -30,6 +30,7 @@ import '../../utils/uvc_capture_config.dart';
 import 'camera_description_label.dart';
 import 'photo_capture_camera_selection_helpers.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/kiosk_offline_ux.dart';
 import '../../utils/capture_flow_log.dart';
 import '../../utils/logger.dart';
 import '../../utils/error_reporting_helpers.dart';
@@ -3543,6 +3544,13 @@ class CaptureViewModel extends ChangeNotifier {
       'PREPROCESS',
       'immediate personCount=$immediateCount kIsWeb=$kIsWeb',
     );
+
+    if (KioskOfflineUx.shouldSkipGeminiPreprocess(
+      sessionOffline: _sessionManager.isOfflineSession,
+    )) {
+      WebFlowTrace.log('PREPROCESS', 'skipped_offline');
+      return;
+    }
 
     WebFlowTrace.log('PREPROCESS', 'preprocessImage_fire_and_forget');
     unawaited(

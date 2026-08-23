@@ -5,6 +5,7 @@ import 'package:photobooth/services/api_service.dart';
 import 'package:photobooth/services/session_manager.dart';
 import '../../fakes/fake_api_service.dart';
 import 'package:photobooth/utils/print_orientation.dart';
+import 'package:photobooth/services/local_session_skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ignore_for_file: avoid_redundant_argument_values
@@ -114,6 +115,26 @@ void main() {
   });
 
   group('ensureAuthoritativePersonCount', () {
+    test('skips Fly preprocess when the session is offline', () async {
+      final sm = SessionManager();
+      sm.setSessionFromResponse({
+        ..._sessionJson('sess-off'),
+        kKioskSessionOfflineKey: true,
+      });
+      var preprocessCalls = 0;
+      await ensureAuthoritativePersonCount(
+        sessionManager: sm,
+        apiService: ApiService(),
+        sessionId: 'sess-off',
+        preprocessFn: (_) async {
+          preprocessCalls++;
+          return const PreprocessImageResult(success: true, personCount: 9);
+        },
+      );
+      expect(preprocessCalls, 0);
+      expect(sm.personCount, isNull);
+    });
+
     test('skips preprocess when session already has a group count', () async {
       final sm = SessionManager();
       sm.setSessionFromResponse({
