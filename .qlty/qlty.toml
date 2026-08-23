@@ -19,6 +19,9 @@ exclude_patterns = [
   # Vendored / path dependency packages (not app code — see photobooth/pubspec.yaml)
   "**/photobooth/packages/**",
   "photobooth/packages/**",
+  # Vendored cpp-httplib (header-only third party). Do not analyze or grade it.
+  "canon_sidecar/src/httplib.h",
+  "**/httplib.h",
   "*_min.*",
   "*-min.*",
   "*.min.*",
