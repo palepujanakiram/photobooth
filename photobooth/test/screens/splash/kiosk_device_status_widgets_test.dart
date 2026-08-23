@@ -30,7 +30,7 @@ void main() {
     expect(find.byIcon(CupertinoIcons.checkmark_circle_fill), findsOneWidget);
   });
 
-  testWidgets('KioskDeviceStatusRow shows not configured warning', (tester) async {
+  testWidgets('KioskDeviceStatusRow shows not connected warning', (tester) async {
     const entry = KioskDeviceStatusEntry(
       deviceName: AppStrings.kioskDeviceReceiptPrinter,
       connected: false,
@@ -50,8 +50,12 @@ void main() {
       ),
     );
     expect(
-      find.textContaining(AppStrings.kioskDeviceNotConfigured),
+      find.textContaining(AppStrings.kioskDeviceNotConnected),
       findsOneWidget,
+    );
+    expect(
+      find.textContaining(AppStrings.kioskDeviceNotConfigured),
+      findsNothing,
     );
     expect(
       find.byIcon(CupertinoIcons.exclamationmark_circle_fill),
@@ -82,6 +86,31 @@ void main() {
     );
     expect(find.textContaining(AppStrings.kioskDeviceCrashed), findsOneWidget);
     expect(find.byIcon(CupertinoIcons.xmark_circle_fill), findsOneWidget);
+  });
+
+  testWidgets('KioskDeviceStatusRow shows not connected for unconfigured DSLR', (
+    tester,
+  ) async {
+    const entry = KioskDeviceStatusEntry(
+      deviceName: AppStrings.kioskDeviceDslrSidecar,
+      connected: false,
+      configured: false,
+      transport: KioskDeviceTransport.usb,
+    );
+    await tester.pumpWidget(
+      CupertinoApp(
+        home: Builder(
+          builder: (context) {
+            return KioskDeviceStatusRow(
+              entry: entry,
+              appColors: AppColors.of(context),
+            );
+          },
+        ),
+      ),
+    );
+    expect(find.textContaining(AppStrings.kioskDeviceNotConnected), findsOneWidget);
+    expect(find.textContaining(AppStrings.kioskDeviceNotConfigured), findsNothing);
   });
 
   testWidgets('KioskDeviceStatusPanel shows DSLR USB row', (tester) async {
@@ -129,7 +158,22 @@ void main() {
       ),
     );
     expect(find.textContaining(AppStrings.kioskDeviceDslrSidecar), findsOneWidget);
-    expect(find.textContaining(AppStrings.kioskDeviceSelphyPrinter), findsOneWidget);
+    expect(find.textContaining(AppStrings.kioskDeviceSelphyPrinter), findsNothing);
+    expect(find.textContaining(AppStrings.kioskDeviceUsbCamera), findsNothing);
+    expect(find.textContaining(AppStrings.kioskDeviceDnpPrinter), findsOneWidget);
+    expect(find.textContaining(AppStrings.kioskDeviceReceiptPrinter), findsOneWidget);
+    expect(
+      find.textContaining(
+        '${AppStrings.kioskDeviceDnpPrinter}  ${AppStrings.kioskDeviceConnected}  ${AppStrings.kioskDeviceTransportUsb}',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(
+        '${AppStrings.kioskDeviceReceiptPrinter}  ${AppStrings.kioskDeviceNotConnected}  ${AppStrings.kioskDeviceTransportUsb}',
+      ),
+      findsOneWidget,
+    );
     // DSLR row includes "Connected" and "USB" — verify the full combined text.
     expect(
       find.textContaining(

@@ -415,6 +415,17 @@ void main() {
       );
     });
 
+    test('skips when CameraX is live even if sidecar EVF flag is on', () {
+      expect(
+        shouldSkipSidecarStillForDeviceCamera(
+          preferDeviceCameraCapture: false,
+          cameraXInitialized: true,
+          usesSidecarLivePreview: true,
+        ),
+        isTrue,
+      );
+    });
+
     test('keeps sidecar stills for EVF / HDMI Pi booths', () {
       expect(
         shouldSkipSidecarStillForDeviceCamera(

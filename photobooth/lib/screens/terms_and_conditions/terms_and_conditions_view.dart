@@ -125,8 +125,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             await isDirectPtpHardwareAvailable(settings: settings)) {
           return true;
         }
-        // Direct EDSDK: skip CameraX permission when localhost sidecar is up.
+        // Direct EDSDK: skip CameraX permission only when a Canon body is on USB.
         if (isDirectCanonSidecarBooth(settings) &&
+            await isDirectCanonHardwareAvailable(settings: settings) &&
             await _probeSidecarHealthyForTerms()) {
           return true;
         }
@@ -560,15 +561,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
-  String _termsDetectingCamerasMessage() {
-    if (!mounted) return AppStrings.termsDetectingCameras;
-    final settings = context.read<AppSettingsManager>().settings;
-    if (isOnDeviceCanonUsbBooth(settings)) {
-      return AppStrings.termsDetectingCamerasCanonUsb;
-    }
-    return AppStrings.termsDetectingCameras;
-  }
-
   Widget _buildCameraPrimingBanner(
     AppColors appColors,
     TermsLayoutMetrics layout, {
@@ -585,37 +577,23 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           appColors: appColors,
           layout: layout,
           compact: compact,
-          message: _termsDetectingCamerasMessage(),
+          message: termsCameraPrimingBannerMessage(
+            phase: _cameraPrimingPhase,
+            photoUploadAllowed: uploadOk,
+          ),
           showSpinner: true,
         );
       case TermsCameraPrimingPhase.permissionDenied:
-        return _buildCameraPrimingStatusRow(
-          appColors: appColors,
-          layout: layout,
-          compact: compact,
-          message: uploadOk
-              ? AppStrings.termsCameraPermissionDeniedUploadOk
-              : AppStrings.termsCameraPermissionDenied,
-          showRetry: true,
-        );
       case TermsCameraPrimingPhase.noneFound:
-        return _buildCameraPrimingStatusRow(
-          appColors: appColors,
-          layout: layout,
-          compact: compact,
-          message: uploadOk
-              ? AppStrings.termsNoCameraDetectedUploadOk
-              : AppStrings.termsNoCameraDetected,
-          showRetry: true,
-        );
       case TermsCameraPrimingPhase.failed:
         return _buildCameraPrimingStatusRow(
           appColors: appColors,
           layout: layout,
           compact: compact,
-          message: uploadOk
-              ? AppStrings.termsCameraDetectionFailedUploadOk
-              : AppStrings.termsCameraDetectionFailed,
+          message: termsCameraPrimingBannerMessage(
+            phase: _cameraPrimingPhase,
+            photoUploadAllowed: uploadOk,
+          ),
           showRetry: true,
         );
     }

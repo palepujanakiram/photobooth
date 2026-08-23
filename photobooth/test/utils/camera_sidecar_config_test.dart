@@ -167,6 +167,50 @@ void main() {
       expect(resolved.isDirectConnection, isFalse);
     });
 
+    test('disables the localhost sidecar on iOS', () {
+      final resolved = resolveCameraSidecarConfig(
+        AppSettingsModel(
+          cameraEnabled: true,
+          cameraConnectionMode: 'direct',
+          cameraSidecarHost: '127.0.0.1',
+        ),
+        environment: localhost,
+        isIos: true,
+      );
+      expect(resolved.enabled, isFalse);
+      expect(resolved.baseUrl, isEmpty);
+      expect(resolved.isConfigured, isFalse);
+      expect(resolved.shouldShowLivePreview, isFalse);
+      expect(resolved.connectionMode, CameraConnectionMode.direct);
+    });
+
+    test('null settings on iOS disable the default localhost sidecar', () {
+      final resolved = resolveCameraSidecarConfig(
+        null,
+        environment: localhost,
+        isIos: true,
+      );
+      expect(resolved.enabled, isFalse);
+      expect(resolved.isConfigured, isFalse);
+    });
+
+    test('keeps Pi LAN sidecar on iOS when ZenAI provides a host', () {
+      final resolved = resolveCameraSidecarConfig(
+        AppSettingsModel(
+          cameraEnabled: true,
+          cameraConnectionMode: 'pi',
+          cameraSidecarHost: '192.168.2.50',
+          cameraSidecarPort: 8791,
+          cameraLivePreviewEnabled: true,
+        ),
+        environment: localhost,
+        isIos: true,
+      );
+      expect(resolved.enabled, isTrue);
+      expect(resolved.baseUrl, 'http://192.168.2.50:8791');
+      expect(resolved.connectionMode, CameraConnectionMode.pi);
+    });
+
     test('disabled direct config is not a live USB connection', () {
       const cfg = CameraSidecarConfig(
         enabled: false,

@@ -1,4 +1,5 @@
 import '../../utils/app_device_type.dart';
+import '../../utils/app_strings.dart';
 
 /// Camera preparation phase while the guest reads Terms.
 enum TermsCameraPrimingPhase {
@@ -160,5 +161,25 @@ Future<bool> _probeOrFalse(Future<bool> Function()? probe) async {
     return await probe();
   } on Object {
     return false;
+  }
+}
+
+/// Guest-facing Terms camera banner. One detecting line, one unavailable line.
+String termsCameraPrimingBannerMessage({
+  required TermsCameraPrimingPhase phase,
+  required bool photoUploadAllowed,
+}) {
+  switch (phase) {
+    case TermsCameraPrimingPhase.skipped:
+    case TermsCameraPrimingPhase.ready:
+      return '';
+    case TermsCameraPrimingPhase.detecting:
+      return AppStrings.termsDetectingCameras;
+    case TermsCameraPrimingPhase.permissionDenied:
+    case TermsCameraPrimingPhase.noneFound:
+    case TermsCameraPrimingPhase.failed:
+      return photoUploadAllowed
+          ? AppStrings.termsCameraUnavailableUploadOk
+          : AppStrings.termsCameraUnavailable;
   }
 }

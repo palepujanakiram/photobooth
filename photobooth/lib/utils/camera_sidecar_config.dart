@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb, visibleForTesting;
 
 import '../models/app_settings_model.dart';
 
@@ -208,6 +209,24 @@ String buildCameraSidecarBaseUrl({
   return '$origin${normalized.replaceAll(RegExp(r'/$'), '')}';
 }
 
+bool get _runningOnIos {
+  if (kIsWeb) return false;
+  return defaultTargetPlatform == TargetPlatform.iOS;
+}
+
+CameraSidecarConfig _disabledSidecarConfig({
+  required CameraConnectionMode connectionMode,
+  required bool modeExplicit,
+}) {
+  return CameraSidecarConfig(
+    enabled: false,
+    baseUrl: '',
+    livePreviewEnabled: false,
+    connectionMode: connectionMode,
+    modeExplicit: modeExplicit,
+  );
+}
+
 bool _settingsProvideCameraConfig(AppSettingsModel settings) {
   return settings.cameraEnabled != null ||
       (settings.cameraSidecarHost?.trim().isNotEmpty ?? false) ||
@@ -310,16 +329,18 @@ CameraSidecarConfig _piConfig({
 ///
 /// Flutter web cannot reach the Mini PC sidecar or USB DSLR, so the browser
 /// always falls through to `getUserMedia` instead of waiting on localhost:8791.
+///
+/// iPhone / iPad have no bundled EDSDK sidecar either — localhost `:8791`
+/// would skip CameraX/AVFoundation and show "DSLR live preview unavailable."
+/// A ZenAI **Pi** host on the LAN is still allowed on iOS.
 CameraSidecarConfig resolveCameraSidecarConfig(
   AppSettingsModel? settings, {
   CameraSidecarConfig? environment,
   @visibleForTesting bool? isWeb,
+  @visibleForTesting bool? isIos,
 }) {
   if (isWeb ?? kIsWeb) {
-    return const CameraSidecarConfig(
-      enabled: false,
-      baseUrl: '',
-      livePreviewEnabled: false,
+    return _disabledSidecarConfig(
       connectionMode: CameraConnectionMode.pi,
       modeExplicit: true,
     );
@@ -329,16 +350,19 @@ CameraSidecarConfig resolveCameraSidecarConfig(
   final modeExplicit = cameraConnectionModeIsExplicit(settings);
 
   if (mode == CameraConnectionMode.directPtp) {
-    return CameraSidecarConfig(
-      enabled: false,
-      baseUrl: '',
-      livePreviewEnabled: false,
+    return _disabledSidecarConfig(
       connectionMode: CameraConnectionMode.directPtp,
       modeExplicit: modeExplicit,
     );
   }
 
   if (mode == CameraConnectionMode.direct) {
+    if (isIos ?? _runningOnIos) {
+      return _disabledSidecarConfig(
+        connectionMode: CameraConnectionMode.direct,
+        modeExplicit: modeExplicit,
+      );
+    }
     return _directConfig(
       env: env,
       settings: settings,

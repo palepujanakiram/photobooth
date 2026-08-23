@@ -10,6 +10,7 @@ bool looksLikeExternalCameraName(String name) {
   if (name.length > 30 && name.contains('-')) return true;
   return lower.contains('webcam') ||
       lower.contains('usb') ||
+      lower.contains('hdmi') ||
       lower.contains('external');
 }
 

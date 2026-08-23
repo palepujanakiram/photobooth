@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/terms_and_conditions/terms_camera_priming.dart';
 import 'package:photobooth/utils/app_device_type.dart';
+import 'package:photobooth/utils/app_strings.dart';
 
 void main() {
   group('runTermsCameraPriming', () {
@@ -316,6 +317,53 @@ void main() {
           photoUploadAllowed: true,
         ),
         isTrue,
+      );
+    });
+  });
+
+  group('termsCameraPrimingBannerMessage', () {
+    test('uses one detecting line and one unavailable line', () {
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.detecting,
+          photoUploadAllowed: false,
+        ),
+        AppStrings.termsDetectingCameras,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.noneFound,
+          photoUploadAllowed: false,
+        ),
+        AppStrings.termsCameraUnavailable,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.permissionDenied,
+          photoUploadAllowed: true,
+        ),
+        AppStrings.termsCameraUnavailableUploadOk,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.failed,
+          photoUploadAllowed: false,
+        ),
+        AppStrings.termsCameraUnavailable,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.ready,
+          photoUploadAllowed: false,
+        ),
+        isEmpty,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.skipped,
+          photoUploadAllowed: true,
+        ),
+        isEmpty,
       );
     });
   });

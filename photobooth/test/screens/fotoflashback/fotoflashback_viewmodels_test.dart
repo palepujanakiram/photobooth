@@ -1088,6 +1088,7 @@ void main() {
         apiService: api,
         shotCleaned: const [false, false, false, false],
         overlayCleanupBuildGate: true,
+        enableOsdScrub: true,
       );
       late GeneratedImage? image;
       unawaited(vm.compose().then((v) => image = v));

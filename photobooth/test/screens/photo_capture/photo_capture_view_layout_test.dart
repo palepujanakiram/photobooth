@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/photo_capture/photo_capture_view_layout.dart';
 import 'package:photobooth/utils/constants.dart';
+import 'package:photobooth/views/widgets/bottom_safe_area.dart';
 
 void main() {
   test('capturePreviewCardSizeFractions landscape vs portrait phone', () {
@@ -73,5 +74,49 @@ void main() {
     expect(tv.$2, AppConstants.kCapturePreviewCardMaxHeightLandscape);
     // 32\" must not grow past the Pad-era absolute ceiling.
     expect(tv.$1, lessThanOrEqualTo(padConstraints.maxWidth));
+  });
+
+  test('captureScaffoldBottomInset lifts Capture above Android nav bar', () {
+    expect(
+      captureScaffoldBottomInset(
+        paddingBottom: 0,
+        viewPaddingBottom: 0,
+        isAndroid: true,
+      ),
+      kBottomSafeAreaMinInset + kCaptureActionsNavGap,
+    );
+    expect(
+      captureScaffoldBottomInset(
+        paddingBottom: 0,
+        viewPaddingBottom: 48,
+        isAndroid: true,
+      ),
+      48 + kCaptureActionsNavGap,
+    );
+    expect(
+      captureScaffoldBottomInset(
+        paddingBottom: 0,
+        viewPaddingBottom: 80,
+        isAndroid: true,
+      ),
+      80 + kCaptureActionsNavGap,
+    );
+    expect(
+      captureScaffoldBottomInset(
+        paddingBottom: 0,
+        viewPaddingBottom: 48,
+        systemGestureInsetBottom: 16,
+        isAndroid: true,
+      ),
+      48 + kCaptureActionsNavGap,
+    );
+    expect(
+      captureScaffoldBottomInset(
+        paddingBottom: 34,
+        viewPaddingBottom: 34,
+        isAndroid: false,
+      ),
+      34 + kCaptureActionsNavGap,
+    );
   });
 }
