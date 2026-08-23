@@ -12,6 +12,7 @@ import 'package:photobooth/screens/fotoflashback/fotoflashback_capture_viewmodel
 import 'package:photobooth/screens/fotoflashback/fotoflashback_filter_viewmodel.dart';
 import 'package:photobooth/screens/photo_capture/photo_model.dart';
 import 'package:photobooth/screens/photo_generate/photo_generate_viewmodel.dart';
+import 'package:photobooth/services/local_guest_media_write.dart';
 import 'package:photobooth/services/session_manager.dart';
 import 'package:photobooth/services/local_session_skeleton.dart';
 import 'package:photobooth/utils/app_strings.dart';
@@ -42,6 +43,9 @@ void main() {
     SessionManager().clearSession();
     FotoFlashbackFilterViewModel.composeWarmJoinTimeoutForTest =
         const Duration(seconds: 45);
+    debugGuestMediaFetchBytes = (_) async {
+      throw StateError('skip remote persist in unit tests');
+    };
   });
 
   tearDown(() {
@@ -49,6 +53,7 @@ void main() {
     SessionManager().clearSession();
     FotoFlashbackFilterViewModel.composeWarmJoinTimeoutForTest =
         const Duration(seconds: 45);
+    debugGuestMediaFetchBytes = null;
   });
 
   final stripTheme = sampleTheme('strip1').copyWith((p) {

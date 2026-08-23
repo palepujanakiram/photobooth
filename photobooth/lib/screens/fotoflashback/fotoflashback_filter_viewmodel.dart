@@ -21,6 +21,8 @@ import '../../utils/print_size_helpers.dart';
 import '../../utils/strip_filters_catalog_fallback.dart';
 import '../../utils/strip_look_matrix_bake.dart';
 import '../../utils/strip_preview_grade_compress.dart';
+import '../../services/local_guest_media_write.dart';
+import '../../services/local_media_store.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
 
@@ -800,6 +802,14 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     );
   }
 
+  Future<String> _persistStripPrintUrl(String url) {
+    return persistGuestImageUrl(
+      prefix: kGuestMediaPrefixFotoflashback,
+      source: url,
+      fetchBytes: guestMediaNetworkFetch(),
+    );
+  }
+
   Future<GeneratedImage?> _completeLocalLook() async {
     final baked = await bakeStripLookMatricesOntoDataUrls(
       dataUrls: List<String>.from(_imageDataUrls),
@@ -817,8 +827,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       apiPrintSize: null,
       orientation: _printOrientation,
     );
+    final persisted = await _persistStripPrintUrl(url);
     final result = localLookComposeResult(
-      imageUrl: url,
+      imageUrl: persisted,
       filterId: _selectedFilterId,
       printSize: printSize,
     );
@@ -826,7 +837,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     _composePreview = result;
     return GeneratedImage(
       id: 'local_look_$_selectedFilterId',
-      imageUrl: url,
+      imageUrl: persisted,
       theme: theme,
       isSelected: true,
       printSize: printSize,
@@ -942,9 +953,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         apiPrintSize: result.printSize,
         orientation: _printOrientation,
       );
+      final printUrl = await _persistStripPrintUrl(result.printImageUrl);
       return GeneratedImage(
         id: 'strip_${_selectedFilterId}_${DateTime.now().millisecondsSinceEpoch}',
-        imageUrl: result.printImageUrl,
+        imageUrl: printUrl,
         theme: theme,
         isSelected: true,
         printSize: printSize,

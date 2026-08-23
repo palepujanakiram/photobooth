@@ -6,13 +6,23 @@ import 'package:path_provider/path_provider.dart';
 
 import '../utils/logger.dart';
 
+const kGuestMediaPrefixGenerated = 'generated';
+const kGuestMediaPrefixPreviews = 'previews';
+const kGuestMediaPrefixUserUploads = 'user-uploads';
+const kGuestMediaPrefixFotoflashback = 'fotoflashback';
+const kGuestMediaPrefixSurpriseMe = 'surprise-me';
+
 const kLocalGuestMediaPrefixes = <String>{
-  'generated',
-  'previews',
-  'user-uploads',
-  'fotoflashback',
-  'surprise-me',
+  kGuestMediaPrefixGenerated,
+  kGuestMediaPrefixPreviews,
+  kGuestMediaPrefixUserUploads,
+  kGuestMediaPrefixFotoflashback,
+  kGuestMediaPrefixSurpriseMe,
 };
+
+const kFotozenMediaDirName = 'fotozen_media';
+const kApiImgPathPrefix = '/api/img/';
+const kLocalMediaScheme = 'local-media';
 
 /// `{prefix}/{uuid}.jpg` guest photo on kiosk disk.
 class LocalMediaRef {
@@ -30,7 +40,7 @@ class LocalMediaRef {
     var path = trimmed;
     final uri = Uri.tryParse(trimmed);
     if (uri != null && uri.hasScheme) {
-      if (uri.scheme == 'local-media') {
+      if (uri.scheme == kLocalMediaScheme) {
         final host = uri.host;
         final pathSegs =
             uri.path.split('/').where((s) => s.isNotEmpty).toList();
@@ -44,7 +54,7 @@ class LocalMediaRef {
       }
       path = uri.path;
     }
-    const marker = '/api/img/';
+    const marker = kApiImgPathPrefix;
     final idx = path.indexOf(marker);
     final rest = idx >= 0 ? path.substring(idx + marker.length) : path;
     final parts = rest.split('/').where((s) => s.isNotEmpty).toList();
@@ -77,7 +87,7 @@ class LocalMediaStore {
 
   static Future<Directory> _defaultDirectory() async {
     final root = await supportDirectory();
-    final dir = Directory(p.join(root.path, 'fotozen_media'));
+    final dir = Directory(p.join(root.path, kFotozenMediaDirName));
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }

@@ -31,6 +31,8 @@ import '../../services/generation_display_preferences.dart';
 import '../../models/parallel_generation_result.dart';
 import '../../models/generation_timing_stats.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
+import '../../services/local_guest_media_write.dart';
+import '../../services/local_media_store.dart';
 import '../../utils/web_flow_trace.dart';
 import '../../utils/session_photo_sync_helpers.dart';
 
@@ -1194,10 +1196,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     try {
       await _refreshGenerationRunStepsNow();
     } catch (_) {}
-    final newImages = generatedImagesFromParallelResult(
-      parallel: parallel,
-      theme: theme,
-      newImageId: _newGeneratedImageId,
+    final newImages = await _persistGeneratedGuestImages(
+      generatedImagesFromParallelResult(
+        parallel: parallel,
+        theme: theme,
+        newImageId: _newGeneratedImageId,
+      ),
     );
     _generatedImages = [...newImages, ..._generatedImages];
     _ensureNewestAlwaysSelected();
@@ -1220,10 +1224,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     if (photo == null || theme == null) return false;
     _errorMessage = null;
     _progressMessage = AppStrings.offlineFrameOnlyMessage;
+    final stored = await persistCapturedGuestXFile(photo.imageFile);
+    final url = guestSessionUrlForPath(stored.path) ?? stored.path;
     _generatedImages = [
       GeneratedImage(
         id: 'frame_only_${photo.id}',
-        imageUrl: photo.imageFile.path,
+        imageUrl: url,
         theme: theme,
         isSelected: true,
         printSize: AppConstants.kPrintSizePortrait4x6,

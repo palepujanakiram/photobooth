@@ -38,6 +38,7 @@ import '../../utils/web_flow_trace.dart';
 import '../../utils/web_upload_error_hint.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/capture_sound_service.dart';
+import '../../services/local_guest_media_write.dart';
 import '../../services/local_camera_service.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_camera_config.dart';
@@ -2360,15 +2361,16 @@ class CaptureViewModel extends ChangeNotifier {
     } else if (cameraIdOverride == null) {
       _snapshotLockedCaptureCardAspectFromLivePreview();
     }
+    final storedFile = await persistCapturedGuestXFile(savedFile);
     _capturedPhoto = PhotoModel(
       id: photoId,
-      imageFile: savedFile,
+      imageFile: storedFile,
       capturedAt: DateTime.now(),
       cameraId: cameraId,
     );
     _capturedImagePixelSize = null;
     if (!skipCapturedImagePixelSizeDecode) {
-      await _refreshCapturedImagePixelSize(savedFile);
+      await _refreshCapturedImagePixelSize(storedFile);
     }
     unawaited(ErrorReportingManager.setPhotoCaptureContext(
       photoId: photoId,
@@ -2983,14 +2985,15 @@ class CaptureViewModel extends ChangeNotifier {
       final photoId = _uuid.v4();
 
       _lockedCaptureCardAspectRatio = null;
+      final storedFile = await persistCapturedGuestXFile(normalizedFile);
       _capturedPhoto = PhotoModel(
         id: photoId,
-        imageFile: normalizedFile,
+        imageFile: storedFile,
         capturedAt: DateTime.now(),
         cameraId: cameraId,
       );
       _capturedImagePixelSize = null;
-      unawaited(_refreshCapturedImagePixelSizeSoon(normalizedFile));
+      unawaited(_refreshCapturedImagePixelSizeSoon(storedFile));
 
       // Track successful photo selection
       unawaited(ErrorReportingManager.setPhotoCaptureContext(
