@@ -642,6 +642,8 @@ abstract final class AppStrings {
   static const staffKpiRevenueHint = 'Approved total';
   static const staffDiskFull =
       'Kiosk disk is full. Connect internet and wait for photos to sync before starting new sessions.';
+  static const staffOfflineModeBanner =
+      'This kiosk is in Offline mode. Guests get frame-only photos and cash at the counter. Catalog and photos still sync when internet is up.';
   static const offlineFrameOnlyMessage =
       'AI needs internet. You can still print this photo.';
   static const offlineCashOnlyMessage =

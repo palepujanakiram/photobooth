@@ -75,4 +75,27 @@ void main() {
     await SessionManager().endCustomerSession();
     expect(SessionManager().hasSession, isFalse);
   });
+
+  test('isOfflineSession follows session offline flag', () {
+    final sm = SessionManager();
+    sm.setSessionFromResponse({
+      'id': 'sess-on',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': [],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+    });
+    expect(sm.isOfflineSession, isFalse);
+    sm.setSessionFromResponse({
+      'id': 'sess-off',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': [],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+      'offline': true,
+    });
+    expect(sm.isOfflineSession, isTrue);
+  });
 }

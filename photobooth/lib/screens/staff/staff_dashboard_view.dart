@@ -337,6 +337,7 @@ class StaffDashboardOverviewTab extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             children: [
+              const StaffOfflineModeBanner(),
               const StaffDiskFullBanner(),
               StaffLocalDayTotalsCard(isoDate: vm.selectedDate),
               if (vm.error != null) ...[

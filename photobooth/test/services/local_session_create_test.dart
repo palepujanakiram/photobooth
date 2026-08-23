@@ -131,4 +131,21 @@ void main() {
     expect(result.usedLocalFallback, isTrue);
     expect((result.sessionJson['id'] as String).length, greaterThan(8));
   });
+
+  test('createKioskSession skips Fly when forceOffline', () async {
+    var called = false;
+    final result = await createKioskSession(
+      newId: () => 'admin-offline',
+      forceOffline: true,
+      now: DateTime.utc(2026, 8, 23),
+      acceptTerms: (_) async {
+        called = true;
+        return {'id': 'should-not-run'};
+      },
+    );
+    expect(called, isFalse);
+    expect(result.usedLocalFallback, isTrue);
+    expect(result.sessionJson['id'], 'admin-offline');
+    expect(result.sessionJson[kKioskSessionOfflineKey], isTrue);
+  });
 }

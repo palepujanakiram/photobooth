@@ -196,6 +196,7 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
       final created = await createKioskSession(
         store: _injectedStore ?? LocalKioskStore.instance,
         kioskCode: kioskCode,
+        forceOffline: await _kioskManager.isOperatingModeOffline(),
         acceptTerms: (clientId) => _apiService
             .acceptTermsAndCreateSession(
               kioskCode: kioskCode,

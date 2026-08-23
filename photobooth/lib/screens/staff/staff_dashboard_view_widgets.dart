@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/staff_dashboard_models.dart';
 import '../../services/kiosk_disk_guard.dart';
+import '../../services/kiosk_manager.dart';
 import '../../services/local_kiosk_store.dart';
 import '../../services/local_media_store.dart';
 import '../../utils/app_strings.dart';
@@ -38,6 +39,41 @@ class StaffShiftBadge extends StatelessWidget {
           fontSize: 12,
           fontWeight: FontWeight.w700,
         ),
+      ),
+    );
+  }
+}
+
+class StaffOfflineModeBanner extends StatefulWidget {
+  const StaffOfflineModeBanner({super.key});
+
+  @override
+  State<StaffOfflineModeBanner> createState() => _StaffOfflineModeBannerState();
+}
+
+class _StaffOfflineModeBannerState extends State<StaffOfflineModeBanner> {
+  bool _offline = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final offline = await KioskManager().isOperatingModeOffline();
+    if (!mounted || !offline) return;
+    setState(() => _offline = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_offline) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: StaffDashboardErrorBanner(
+        message: AppStrings.staffOfflineModeBanner,
+        onDismiss: () => setState(() => _offline = false),
       ),
     );
   }

@@ -15,19 +15,26 @@ class LocalSessionCreateResult {
 }
 
 /// Client UUID first, then Fly accept-terms. WAN-down still returns a local
-/// session so classic cash/print can continue.
+/// session so classic cash/print can continue. Admin offline mode skips Fly.
 Future<LocalSessionCreateResult> createKioskSession({
   required Future<Map<String, dynamic>> Function(String clientId) acceptTerms,
   LocalKioskStore? store,
   String Function()? newId,
   String? kioskCode,
   DateTime? now,
+  bool forceOffline = false,
 }) async {
   final id = (newId ?? _uuidV4)();
   final local = localSessionSkeleton(id: id, now: now);
   await store?.upsertSession(
     LocalSessionWrite(id: id, payload: local, kioskCode: kioskCode),
   );
+  if (forceOffline) {
+    return LocalSessionCreateResult(
+      sessionJson: local,
+      usedLocalFallback: true,
+    );
+  }
   try {
     final response = await acceptTerms(id);
     final remote = Map<String, dynamic>.from(response);

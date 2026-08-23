@@ -147,6 +147,80 @@ void main() {
     );
   });
 
+  test('KioskInfoModel operatingMode defaults online and parses offline', () {
+    expect(
+      KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'}).operatingMode,
+      KioskInfoModel.operatingModeOnline,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'operatingMode': 'offline',
+      }).isOperatingModeOffline,
+      isTrue,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'operating_mode': 'OFFLINE',
+      }).isOperatingModeOffline,
+      isTrue,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'operatingMode': true,
+      }).isOperatingModeOffline,
+      isTrue,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'operatingMode': 0,
+      }).isOperatingModeOffline,
+      isFalse,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'operatingMode': 1,
+      }).isOperatingModeOffline,
+      isTrue,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'operatingMode': false,
+      }).isOperatingModeOffline,
+      isFalse,
+    );
+    for (final flag in ['off', 'true', '1', 'yes']) {
+      expect(
+        KioskInfoModel.fromJson({
+          'id': 'k1',
+          'code': 'ABC',
+          'operatingMode': flag,
+        }).isOperatingModeOffline,
+        isTrue,
+        reason: '"$flag" should mean offline',
+      );
+    }
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'operatingMode': 'online',
+      }).isOperatingModeOffline,
+      isFalse,
+    );
+  });
+
   test('KioskFrameModel.fromJson', () {
     const f = KioskFrameModel(
       id: 'f1',

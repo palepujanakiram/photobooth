@@ -236,6 +236,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       await _kiosk.setKioskCode(code);
       await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
       await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
+      await _kiosk.setOperatingModeOffline(kiosk.isOperatingModeOffline);
       final eventErr = await bindSplashEventCode(
         eventManager: _event,
         fetchEvent: (code, kioskCode) =>
@@ -339,6 +340,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       await _kiosk.setKioskCode(code);
       await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
       await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
+      await _kiosk.setOperatingModeOffline(kiosk.isOperatingModeOffline);
       await endPhotoboothCustomerSessionLogged('splash: kiosk code submitted');
       final eventErr = await bindSplashEventCode(
         eventManager: _event,
