@@ -35,20 +35,28 @@ class CanonCaptureReviewTest {
             seen += id
             args.joinToString(",")
         }
-        CanonCaptureReview.bannerText(0, isLast = true, isStrip = false, nextShot = 2, shotCount = 4, resolve)
+        CanonCaptureReview.bannerText(
+            ReviewBannerInput(0, isLast = true, isStrip = false, nextShot = 2, shotCount = 4),
+            resolve,
+        )
         assertThat(seen.last()).isEqualTo(R.string.canon_review_last_shot)
 
-        CanonCaptureReview.bannerText(3, isLast = true, isStrip = false, nextShot = 2, shotCount = 4, resolve)
+        CanonCaptureReview.bannerText(
+            ReviewBannerInput(3, isLast = true, isStrip = false, nextShot = 2, shotCount = 4),
+            resolve,
+        )
         assertThat(seen.last()).isEqualTo(R.string.canon_review_last_shot_countdown_format)
 
         val rearrange = CanonCaptureReview.bannerText(
-            0, isLast = false, isStrip = true, nextShot = 2, shotCount = 4, resolve,
+            ReviewBannerInput(0, isLast = false, isStrip = true, nextShot = 2, shotCount = 4),
+            resolve,
         )
         assertThat(rearrange).isEqualTo("2,4")
         assertThat(seen.last()).isEqualTo(R.string.canon_review_rearrange_format)
 
         val counting = CanonCaptureReview.bannerText(
-            5, isLast = false, isStrip = true, nextShot = 2, shotCount = 4, resolve,
+            ReviewBannerInput(5, isLast = false, isStrip = true, nextShot = 2, shotCount = 4),
+            resolve,
         )
         assertThat(counting).isEqualTo("2,4,5")
         assertThat(seen.last()).isEqualTo(R.string.canon_review_rearrange_countdown_format)

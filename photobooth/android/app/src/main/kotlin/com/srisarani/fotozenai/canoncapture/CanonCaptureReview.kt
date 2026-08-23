@@ -4,6 +4,14 @@ import com.srisarani.fotozenai.R
 
 internal enum class ReviewOutcome { ACCEPT, RETAKE }
 
+internal data class ReviewBannerInput(
+    val secondsLeft: Int,
+    val isLast: Boolean,
+    val isStrip: Boolean,
+    val nextShot: Int,
+    val shotCount: Int,
+)
+
 /**
  * Copy and timing for the still-review hold.
  *
@@ -27,17 +35,13 @@ internal object CanonCaptureReview {
     }
 
     fun bannerText(
-        secondsLeft: Int,
-        isLast: Boolean,
-        isStrip: Boolean,
-        nextShot: Int,
-        shotCount: Int,
+        input: ReviewBannerInput,
         resolve: (Int, Array<out Any>) -> String,
     ): String {
-        return if (isLast || !isStrip) {
-            lastShotBanner(secondsLeft, resolve)
+        return if (input.isLast || !input.isStrip) {
+            lastShotBanner(input.secondsLeft, resolve)
         } else {
-            rearrangeBanner(secondsLeft, nextShot, shotCount, resolve)
+            rearrangeBanner(input.secondsLeft, input.nextShot, input.shotCount, resolve)
         }
     }
 

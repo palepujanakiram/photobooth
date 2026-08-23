@@ -93,13 +93,7 @@ object EvfFrameParser {
         bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()
 
     private fun readNextBlock(reader: PtpReader): Pair<Int, ByteArray>? {
-        val size = readU32OrNull(reader) ?: return null
-        if (size == 0L) return null
-        if (size < BLOCK_HEADER_SIZE || size > MAX_BLOCK_SIZE) {
-            CanonLog.w("Implausible EVF block size %d - stopping", size)
-            return null
-        }
-
+        val size = readBlockSize(reader) ?: return null
         val type = readU32OrNull(reader)?.toInt() ?: return null
         val dataSize = (size - BLOCK_HEADER_SIZE).toInt()
         if (dataSize > reader.remaining) {
@@ -113,6 +107,16 @@ object EvfFrameParser {
         }
         val data = if (dataSize > 0) reader.bytes(dataSize) else ByteArray(0)
         return type to data
+    }
+
+    private fun readBlockSize(reader: PtpReader): Long? {
+        val size = readU32OrNull(reader) ?: return null
+        if (size == 0L) return null
+        if (size < BLOCK_HEADER_SIZE || size > MAX_BLOCK_SIZE) {
+            CanonLog.w("Implausible EVF block size %d - stopping", size)
+            return null
+        }
+        return size
     }
 
     private fun readU32OrNull(reader: PtpReader): Long? =

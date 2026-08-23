@@ -231,22 +231,7 @@ object EosEventParser {
     }
 
     private fun readNextRecord(reader: PtpReader, decodedSoFar: Int): RecordRead {
-        val recordStart = reader.position
-        val size = readU32OrNull(reader) ?: run {
-            CanonLog.w("Event array truncated at offset %d", recordStart)
-            return RecordRead.End
-        }
-        if (size == 0L) return RecordRead.End
-        if (size < RECORD_HEADER_SIZE || size > MAX_RECORD_SIZE) {
-            CanonLog.e(
-                "Implausible EOS event record size %d at offset %d - stopping. " +
-                    "Decoded %d event(s) before this.",
-                size,
-                recordStart,
-                decodedSoFar,
-            )
-            return RecordRead.End
-        }
+        val size = readRecordSize(reader, decodedSoFar) ?: return RecordRead.End
         val type = readU32OrNull(reader)?.toInt() ?: return RecordRead.End
         if (type == 0) {
             // Observed on a real 200D II: 8-byte type-0 records are padding.
@@ -255,6 +240,27 @@ object EosEventParser {
             return RecordRead.Skip
         }
         return readTypedRecord(reader, type, size)
+    }
+
+    private fun readRecordSize(reader: PtpReader, decodedSoFar: Int): Long? {
+        val recordStart = reader.position
+        val size = readU32OrNull(reader)
+        if (size == null) {
+            CanonLog.w("Event array truncated at offset %d", recordStart)
+            return null
+        }
+        if (size == 0L) return null
+        if (size < RECORD_HEADER_SIZE || size > MAX_RECORD_SIZE) {
+            CanonLog.e(
+                "Implausible EOS event record size %d at offset %d - stopping. " +
+                    "Decoded %d event(s) before this.",
+                size,
+                recordStart,
+                decodedSoFar,
+            )
+            return null
+        }
+        return size
     }
 
     private fun readTypedRecord(reader: PtpReader, type: Int, size: Long): RecordRead {

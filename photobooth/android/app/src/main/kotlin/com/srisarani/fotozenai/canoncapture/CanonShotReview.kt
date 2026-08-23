@@ -52,7 +52,9 @@ internal class CanonShotReview(
         actions.clearStatus()
         applyReviewLabels(isStrip, isLast)
 
-        val outcome = awaitChoice(holdMs, isLast, isStrip, request, shots.size)
+        val outcome = awaitChoice(
+            ReviewHold(holdMs, isLast, isStrip, request, shots.size),
+        )
         hideStill()
         actions.restoreShutter()
         return outcome
@@ -78,13 +80,7 @@ internal class CanonShotReview(
         views.shutter.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0)
     }
 
-    private suspend fun awaitChoice(
-        holdMs: Int,
-        isLast: Boolean,
-        isStrip: Boolean,
-        request: CaptureSessionContract.Request,
-        shotsTaken: Int,
-    ): ReviewOutcome {
+    private suspend fun awaitChoice(hold: ReviewHold): ReviewOutcome {
         val choice = CompletableDeferred<ReviewOutcome>()
         if (!actions.isUiAlive()) return ReviewOutcome.ACCEPT
         views.retake.visibility = View.VISIBLE
@@ -95,11 +91,11 @@ internal class CanonShotReview(
         views.shutter.requestFocus()
 
         try {
-            return if (holdMs <= 0) {
+            return if (hold.holdMs <= 0) {
                 views.banner.visibility = View.GONE
                 choice.await()
             } else {
-                waitForHold(choice, holdMs, isLast, isStrip, request, shotsTaken)
+                waitForHold(choice, hold)
             }
         } finally {
             if (actions.isUiAlive()) {
@@ -113,37 +109,29 @@ internal class CanonShotReview(
 
     private suspend fun waitForHold(
         choice: CompletableDeferred<ReviewOutcome>,
-        holdMs: Int,
-        isLast: Boolean,
-        isStrip: Boolean,
-        request: CaptureSessionContract.Request,
-        shotsTaken: Int,
+        hold: ReviewHold,
     ): ReviewOutcome {
-        val deadline = System.currentTimeMillis() + holdMs
+        val deadline = System.currentTimeMillis() + hold.holdMs
         views.banner.visibility = View.VISIBLE
         while (!actions.isFinished() && System.currentTimeMillis() < deadline) {
             if (choice.isCompleted) break
-            views.banner.text = bannerText(deadline, isLast, isStrip, request, shotsTaken)
+            views.banner.text = bannerText(deadline, hold)
             delay(REVIEW_TICK_MS)
         }
         return if (choice.isCompleted) choice.await() else ReviewOutcome.ACCEPT
     }
 
-    private fun bannerText(
-        deadlineMs: Long,
-        isLast: Boolean,
-        isStrip: Boolean,
-        request: CaptureSessionContract.Request,
-        shotsTaken: Int,
-    ): String {
+    private fun bannerText(deadlineMs: Long, hold: ReviewHold): String {
         val secondsLeft = ((deadlineMs - System.currentTimeMillis() + 999) / 1000).toInt()
         return CanonCaptureReview.bannerText(
-            secondsLeft = secondsLeft,
-            isLast = isLast,
-            isStrip = isStrip,
-            nextShot = shotsTaken + 1,
-            shotCount = request.shotCount,
-            resolve = actions.resolve,
+            ReviewBannerInput(
+                secondsLeft = secondsLeft,
+                isLast = hold.isLast,
+                isStrip = hold.isStrip,
+                nextShot = hold.shotsTaken + 1,
+                shotCount = hold.request.shotCount,
+            ),
+            actions.resolve,
         )
     }
 
@@ -162,3 +150,11 @@ internal class CanonShotReview(
         const val REVIEW_TICK_MS = 200L
     }
 }
+
+internal data class ReviewHold(
+    val holdMs: Int,
+    val isLast: Boolean,
+    val isStrip: Boolean,
+    val request: CaptureSessionContract.Request,
+    val shotsTaken: Int,
+)
