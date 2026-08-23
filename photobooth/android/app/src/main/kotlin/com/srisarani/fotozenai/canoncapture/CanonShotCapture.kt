@@ -25,18 +25,33 @@ internal class CanonShotCapture(
     private val consumedHandles: MutableSet<Long>,
     private val host: Host,
 ) {
-
     interface Host {
         val request: CaptureSessionContract.Request
-        fun string(id: Int, vararg args: Any): String
+
+        fun string(
+            id: Int,
+            vararg args: Any,
+        ): String
+
         fun setStatus(text: String)
+
         fun finishWith(result: CaptureSessionContract.Result)
+
         fun startIdleWatchdog()
-        fun fillThumb(shotsTaken: Int, thumbnail: Bitmap?)
+
+        fun fillThumb(
+            shotsTaken: Int,
+            thumbnail: Bitmap?,
+        )
+
         fun setShutterEnabled(enabled: Boolean)
+
         fun isCaptureJobActive(): Boolean
+
         fun isUiAlive(): Boolean
+
         fun playShutterSound()
+
         fun seedStaleReplay()
     }
 
@@ -61,9 +76,10 @@ internal class CanonShotCapture(
         // Subscribe BEFORE firing, and UNDISPATCHED so the collector is attached before
         // this line returns. A download can finish faster than a coroutine scheduled the
         // ordinary way would take to start collecting, and the event would be missed.
-        val done = scope.async(start = CoroutineStart.UNDISPATCHED) {
-            queue.completed.first { it.handle !in consumedHandles }
-        }
+        val done =
+            scope.async(start = CoroutineStart.UNDISPATCHED) {
+                queue.completed.first { it.handle !in consumedHandles }
+            }
 
         // Wait for the shutter to actually fire before waiting for an image. A release that
         // comes back DeviceBusy produces no photo, and treating that as "in flight" cost the
@@ -126,22 +142,24 @@ internal class CanonShotCapture(
         }
 
         val original = done.image.file
-        val derivative = DisplayDerivative.create(
-            original = original,
-            maxLongEdge = host.request.displayMaxLongEdge,
-            jpegQuality = host.request.displayJpegQuality,
-        )
+        val derivative =
+            DisplayDerivative.create(
+                original = original,
+                maxLongEdge = host.request.displayMaxLongEdge,
+                jpegQuality = host.request.displayJpegQuality,
+            )
 
         withContext(Dispatchers.Main.immediate) {
             if (!host.isUiAlive()) return@withContext
-            shots += CaptureSessionContract.Shot(
-                originalPath = original.absolutePath,
-                displayPath = derivative?.file?.absolutePath,
-                widthPx = derivative?.originalWidthPx ?: 0,
-                heightPx = derivative?.originalHeightPx ?: 0,
-                bytes = done.image.sizeBytes,
-                capturedAtMs = System.currentTimeMillis(),
-            )
+            shots +=
+                CaptureSessionContract.Shot(
+                    originalPath = original.absolutePath,
+                    displayPath = derivative?.file?.absolutePath,
+                    widthPx = derivative?.originalWidthPx ?: 0,
+                    heightPx = derivative?.originalHeightPx ?: 0,
+                    bytes = done.image.sizeBytes,
+                    capturedAtMs = System.currentTimeMillis(),
+                )
 
             CanonLog.i(
                 "Shot %d/%d stored: %s (%d bytes, %dms)",

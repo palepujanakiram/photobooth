@@ -41,7 +41,6 @@ class EosLiveView(
     private val scope: CoroutineScope,
     private val config: Config = Config(),
 ) {
-
     data class Config(
         /**
          * Delay between poll attempts.
@@ -82,11 +81,12 @@ class EosLiveView(
      * misses intermediate frames rather than delaying the stream. For a viewfinder a late
      * frame is worse than a missing one.
      */
-    private val _currentFrame = MutableSharedFlow<Bitmap>(
-        replay = 1,
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
+    private val _currentFrame =
+        MutableSharedFlow<Bitmap>(
+            replay = 1,
+            extraBufferCapacity = 1,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        )
     val currentFrame: SharedFlow<Bitmap> = _currentFrame.asSharedFlow()
 
     private val _isRunning = MutableStateFlow(false)
@@ -115,10 +115,11 @@ class EosLiveView(
 
         // C-19: TFT+PC keeps the camera's own screen alive. PC-only makes the body show
         // "Busy", which reads as a hung camera to anyone standing at the booth.
-        val ok = properties.setUInt32WithRetry(
-            EosProperty.EVF_OUTPUT_DEVICE,
-            EvfOutputDevice.CAMERA_TFT_AND_PC.toLong(),
-        )
+        val ok =
+            properties.setUInt32WithRetry(
+                EosProperty.EVF_OUTPUT_DEVICE,
+                EvfOutputDevice.CAMERA_TFT_AND_PC.toLong(),
+            )
         if (!ok) {
             CanonLog.e("Could not route live view to host - check the mode dial and photo/movie lever")
             return false
@@ -133,29 +134,33 @@ class EosLiveView(
     }
 
     private fun startPolling() {
-        pollJob = scope.launch {
-            var consecutiveFailures = 0
-            var lastFailure: Exception? = null
-            val startedAtMillis = System.currentTimeMillis()
-            // C-13: the first frames after enabling are routinely garbage. Discarding a
-            // couple avoids a green flash every time live view starts or resumes.
-            var framesToDiscard = DISCARD_AFTER_ENABLE
+        pollJob =
+            scope.launch {
+                var consecutiveFailures = 0
+                var lastFailure: Exception? = null
+                val startedAtMillis = System.currentTimeMillis()
+                // C-13: the first frames after enabling are routinely garbage. Discarding a
+                // couple avoids a green flash every time live view starts or resumes.
+                var framesToDiscard = DISCARD_AFTER_ENABLE
 
-            while (isActive) {
-                val tick = pollOnce(framesToDiscard, consecutiveFailures)
-                framesToDiscard = tick.framesToDiscard
-                consecutiveFailures = tick.consecutiveFailures
-                lastFailure = tick.lastFailure ?: lastFailure
-                if (shouldStop(startedAtMillis, consecutiveFailures, lastFailure)) {
-                    return@launch
+                while (isActive) {
+                    val tick = pollOnce(framesToDiscard, consecutiveFailures)
+                    framesToDiscard = tick.framesToDiscard
+                    consecutiveFailures = tick.consecutiveFailures
+                    lastFailure = tick.lastFailure ?: lastFailure
+                    if (shouldStop(startedAtMillis, consecutiveFailures, lastFailure)) {
+                        return@launch
+                    }
+                    delay(config.frameIntervalMs)
                 }
-                delay(config.frameIntervalMs)
             }
-        }
     }
 
-    private fun pollOnce(framesToDiscard: Int, consecutiveFailures: Int): PollTick {
-        return try {
+    private fun pollOnce(
+        framesToDiscard: Int,
+        consecutiveFailures: Int,
+    ): PollTick =
+        try {
             val payload = fetchFrame()
             if (payload != null) {
                 acceptFrame(payload, framesToDiscard)
@@ -176,9 +181,11 @@ class EosLiveView(
         } catch (e: Exception) {
             PollTick(framesToDiscard, consecutiveFailures + 1, lastFailure = e)
         }
-    }
 
-    private fun acceptFrame(payload: ByteArray, framesToDiscard: Int): PollTick {
+    private fun acceptFrame(
+        payload: ByteArray,
+        framesToDiscard: Int,
+    ): PollTick {
         if (framesToDiscard > 0) {
             return PollTick(framesToDiscard - 1, consecutiveFailures = 0, lastFailure = null)
         }
@@ -221,11 +228,12 @@ class EosLiveView(
     }
 
     private fun fetchFrame(): ByteArray? {
-        val result = ptp.transact(
-            CanonEosOperation.GET_VIEWFINDER_DATA,
-            VIEWFINDER_REQUEST_FLAG,
-            timeoutMs = FRAME_TIMEOUT_MS,
-        )
+        val result =
+            ptp.transact(
+                CanonEosOperation.GET_VIEWFINDER_DATA,
+                VIEWFINDER_REQUEST_FLAG,
+                timeoutMs = FRAME_TIMEOUT_MS,
+            )
         return result.data
     }
 
@@ -235,10 +243,11 @@ class EosLiveView(
             framesDropped++
             return
         }
-        val bitmap = decodeJpeg(jpeg) ?: run {
-            framesDropped++
-            return
-        }
+        val bitmap =
+            decodeJpeg(jpeg) ?: run {
+                framesDropped++
+                return
+            }
         reusableBitmap = bitmap
         framesReceived++
         recordFps()
@@ -278,11 +287,12 @@ class EosLiveView(
             val delta = now - lastFrameAtMillis
             if (delta > 0) {
                 // Exponential moving average - a per-frame instantaneous figure is too noisy.
-                measuredFps = if (measuredFps == 0.0) {
-                    1000.0 / delta
-                } else {
-                    measuredFps * 0.9 + (1000.0 / delta) * 0.1
-                }
+                measuredFps =
+                    if (measuredFps == 0.0) {
+                        1000.0 / delta
+                    } else {
+                        measuredFps * 0.9 + (1000.0 / delta) * 0.1
+                    }
             }
         }
         lastFrameAtMillis = now
@@ -313,8 +323,7 @@ class EosLiveView(
         CanonLog.i("Live view stopped (%d frames, %d dropped)", framesReceived, framesDropped)
     }
 
-    fun summary(): String =
-        "frames=%d dropped=%d fps=%.1f".format(framesReceived, framesDropped, measuredFps)
+    fun summary(): String = "frames=%d dropped=%d fps=%.1f".format(framesReceived, framesDropped, measuredFps)
 
     private data class PollTick(
         val framesToDiscard: Int,

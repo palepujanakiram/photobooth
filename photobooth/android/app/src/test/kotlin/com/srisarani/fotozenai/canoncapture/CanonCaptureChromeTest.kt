@@ -5,7 +5,6 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 class CanonCaptureChromeTest {
-
     @Test
     fun `uploads stay visible only before the first shot`() {
         assertThat(CanonCaptureChrome.uploadVisibility(allowed = true, beforeFirstShot = true))

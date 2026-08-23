@@ -34,7 +34,6 @@ internal class CanonUploadActions(
  * budget. Visibility and disable rules match the previous inline methods.
  */
 internal object CanonCaptureChrome {
-
     /**
      * Wires the top-bar actions that mirror the Flutter capture AppBar.
      *
@@ -48,7 +47,10 @@ internal object CanonCaptureChrome {
      * two screens look identical, and disabled so they cannot promise something that will
      * not happen. See [LiveViewSurfaceRenderer] if rotation ever becomes real.
      */
-    fun bindTopBar(views: CanonTopBarViews, actions: CanonTopBarActions) {
+    fun bindTopBar(
+        views: CanonTopBarViews,
+        actions: CanonTopBarActions,
+    ) {
         views.reconnect?.setOnClickListener {
             if (actions.isCapturing()) return@setOnClickListener
             actions.onReconnect()
@@ -80,7 +82,10 @@ internal object CanonCaptureChrome {
      * Visibility is [refreshUploads]' job — they stay up through the first countdown
      * and go once a shot actually lands.
      */
-    fun bindUploads(views: CanonUploadViews, actions: CanonUploadActions) {
+    fun bindUploads(
+        views: CanonUploadViews,
+        actions: CanonUploadActions,
+    ) {
         refreshUploads(views, actions)
         views.gallery.setOnClickListener {
             actions.finishWith(
@@ -110,12 +115,17 @@ internal object CanonCaptureChrome {
      * the first countdown exactly as they do on the Flutter screen, and come back if a
      * retake empties the strip again.
      */
-    fun refreshUploads(views: CanonUploadViews, actions: CanonUploadActions) {
+    fun refreshUploads(
+        views: CanonUploadViews,
+        actions: CanonUploadActions,
+    ) {
         val beforeFirstShot = actions.beforeFirstShot()
         views.gallery.visibility = uploadVisibility(actions.allowGallery(), beforeFirstShot)
         views.phoneQr.visibility = uploadVisibility(actions.allowPhone(), beforeFirstShot)
     }
 
-    fun uploadVisibility(allowed: Boolean, beforeFirstShot: Boolean): Int =
-        if (allowed && beforeFirstShot) View.VISIBLE else View.GONE
+    fun uploadVisibility(
+        allowed: Boolean,
+        beforeFirstShot: Boolean,
+    ): Int = if (allowed && beforeFirstShot) View.VISIBLE else View.GONE
 }

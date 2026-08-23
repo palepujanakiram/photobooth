@@ -1,7 +1,7 @@
 package com.srisarani.fotozenai.canon.eos
 
-import com.srisarani.fotozenai.canon.ptp.PtpReader
 import com.srisarani.fotozenai.canon.CanonLog
+import com.srisarani.fotozenai.canon.ptp.PtpReader
 
 /**
  * Canon EOS event codes.
@@ -59,31 +59,32 @@ object EosEventCode {
      */
     const val OBJECT_ADDED_EX64 = 0xC1A9
 
-    private val names = mapOf(
-        REQUEST_GET_EVENT to "RequestGetEvent",
-        OBJECT_ADDED_EX to "ObjectAddedEx",
-        OBJECT_REMOVED to "ObjectRemoved",
-        REQUEST_GET_OBJECT_INFO_EX to "RequestGetObjectInfoEx",
-        STORAGE_STATUS_CHANGED to "StorageStatusChanged",
-        STORAGE_INFO_CHANGED to "StorageInfoChanged",
-        REQUEST_OBJECT_TRANSFER to "RequestObjectTransfer",
-        OBJECT_INFO_CHANGED_EX to "ObjectInfoChangedEx",
-        OBJECT_CONTENT_CHANGED to "ObjectContentChanged",
-        PROP_VALUE_CHANGED to "PropValueChanged",
-        AVAIL_LIST_CHANGED to "AvailListChanged",
-        CAMERA_STATUS_CHANGED to "CameraStatusChanged",
-        WILL_SOON_SHUTDOWN to "WillSoonShutdown",
-        SHUTDOWN_TIMER_UPDATED to "ShutdownTimerUpdated",
-        REQUEST_CANCEL_TRANSFER to "RequestCancelTransfer",
-        REQUEST_OBJECT_TRANSFER_DT to "RequestObjectTransferDT",
-        STORE_ADDED to "StoreAdded",
-        STORE_REMOVED to "StoreRemoved",
-        BULB_EXPOSURE_TIME to "BulbExposureTime",
-        RECORDING_TIME to "RecordingTime",
-        REQUEST_OBJECT_TRANSFER_TS to "RequestObjectTransferTS",
-        AF_RESULT to "AfResult",
-        OBJECT_ADDED_EX64 to "ObjectAddedEx64",
-    )
+    private val names =
+        mapOf(
+            REQUEST_GET_EVENT to "RequestGetEvent",
+            OBJECT_ADDED_EX to "ObjectAddedEx",
+            OBJECT_REMOVED to "ObjectRemoved",
+            REQUEST_GET_OBJECT_INFO_EX to "RequestGetObjectInfoEx",
+            STORAGE_STATUS_CHANGED to "StorageStatusChanged",
+            STORAGE_INFO_CHANGED to "StorageInfoChanged",
+            REQUEST_OBJECT_TRANSFER to "RequestObjectTransfer",
+            OBJECT_INFO_CHANGED_EX to "ObjectInfoChangedEx",
+            OBJECT_CONTENT_CHANGED to "ObjectContentChanged",
+            PROP_VALUE_CHANGED to "PropValueChanged",
+            AVAIL_LIST_CHANGED to "AvailListChanged",
+            CAMERA_STATUS_CHANGED to "CameraStatusChanged",
+            WILL_SOON_SHUTDOWN to "WillSoonShutdown",
+            SHUTDOWN_TIMER_UPDATED to "ShutdownTimerUpdated",
+            REQUEST_CANCEL_TRANSFER to "RequestCancelTransfer",
+            REQUEST_OBJECT_TRANSFER_DT to "RequestObjectTransferDT",
+            STORE_ADDED to "StoreAdded",
+            STORE_REMOVED to "StoreRemoved",
+            BULB_EXPOSURE_TIME to "BulbExposureTime",
+            RECORDING_TIME to "RecordingTime",
+            REQUEST_OBJECT_TRANSFER_TS to "RequestObjectTransferTS",
+            AF_RESULT to "AfResult",
+            OBJECT_ADDED_EX64 to "ObjectAddedEx64",
+        )
 
     fun name(code: Int): String = names[code] ?: "EosEvent(0x%04X)".format(code)
 }
@@ -96,7 +97,6 @@ object EosEventCode {
  * anticipate can be decoded from a committed log later rather than being lost.
  */
 sealed interface EosEvent {
-
     val code: Int
 
     /** A new object is available on the camera. **M4's capture trigger.** */
@@ -170,13 +170,11 @@ sealed interface EosEvent {
         override val code: Int,
         val payload: ByteArray,
     ) : EosEvent {
-        override fun equals(other: Any?): Boolean =
-            other is Unknown && code == other.code && payload.contentEquals(other.payload)
+        override fun equals(other: Any?): Boolean = other is Unknown && code == other.code && payload.contentEquals(other.payload)
 
         override fun hashCode(): Int = 31 * code + payload.contentHashCode()
 
-        override fun toString(): String =
-            "Unknown(${EosEventCode.name(code)}, ${payload.size}B: ${payload.toHexPreview()})"
+        override fun toString(): String = "Unknown(${EosEventCode.name(code)}, ${payload.size}B: ${payload.toHexPreview()})"
     }
 }
 
@@ -210,7 +208,6 @@ private fun ByteArray.toHexPreview(limit: Int = 96): String =
  * propagates.
  */
 object EosEventParser {
-
     /** Records shorter than the 8-byte header are impossible; treat as end of array. */
     private const val RECORD_HEADER_SIZE = 8
 
@@ -230,7 +227,10 @@ object EosEventParser {
         return events
     }
 
-    private fun readNextRecord(reader: PtpReader, decodedSoFar: Int): RecordRead {
+    private fun readNextRecord(
+        reader: PtpReader,
+        decodedSoFar: Int,
+    ): RecordRead {
         val size = readRecordSize(reader, decodedSoFar) ?: return RecordRead.End
         val type = readU32OrNull(reader)?.toInt() ?: return RecordRead.End
         if (type == 0) {
@@ -242,7 +242,10 @@ object EosEventParser {
         return readTypedRecord(reader, type, size)
     }
 
-    private fun readRecordSize(reader: PtpReader, decodedSoFar: Int): Long? {
+    private fun readRecordSize(
+        reader: PtpReader,
+        decodedSoFar: Int,
+    ): Long? {
         val recordStart = reader.position
         val size = readU32OrNull(reader)
         if (size == null) {
@@ -263,7 +266,11 @@ object EosEventParser {
         return size
     }
 
-    private fun readTypedRecord(reader: PtpReader, type: Int, size: Long): RecordRead {
+    private fun readTypedRecord(
+        reader: PtpReader,
+        type: Int,
+        size: Long,
+    ): RecordRead {
         val payloadSize = (size - RECORD_HEADER_SIZE).toInt()
         if (payloadSize > reader.remaining) {
             CanonLog.w(
@@ -275,45 +282,79 @@ object EosEventParser {
             return RecordRead.End
         }
         val recordPayload = if (payloadSize > 0) reader.bytes(payloadSize) else ByteArray(0)
-        val event = try {
-            decode(type, recordPayload)
-        } catch (e: Exception) {
-            CanonLog.w(e, "Failed to decode %s, keeping raw", EosEventCode.name(type))
-            EosEvent.Unknown(type, recordPayload)
-        }
+        val event =
+            try {
+                decode(type, recordPayload)
+            } catch (e: Exception) {
+                CanonLog.w(e, "Failed to decode %s, keeping raw", EosEventCode.name(type))
+                EosEvent.Unknown(type, recordPayload)
+            }
         return RecordRead.Item(event)
     }
 
-    private fun decode(type: Int, payload: ByteArray): EosEvent {
+    private fun decode(
+        type: Int,
+        payload: ByteArray,
+    ): EosEvent {
         val r = PtpReader(payload)
         return when (type) {
-            EosEventCode.OBJECT_ADDED_EX -> decodeObjectAddedEx(r)
-            EosEventCode.OBJECT_ADDED_EX64 -> decodeObjectAddedEx64(r)
-            EosEventCode.REQUEST_OBJECT_TRANSFER -> EosEvent.ObjectTransferRequested(
-                objectHandle = r.u32(),
-                sizeBytes = run {
-                    r.u32()
-                    r.u32()
-                    r.u32()
-                },
-                filename = readCString(r),
-            )
-            EosEventCode.PROP_VALUE_CHANGED -> EosEvent.PropertyChanged(
-                propertyCode = r.u32().toInt(),
-                rawValue = if (r.hasRemaining()) r.bytes(r.remaining) else ByteArray(0),
-            )
-            EosEventCode.AVAIL_LIST_CHANGED -> EosEvent.AvailableValuesChanged(
-                propertyCode = r.u32().toInt(),
-            )
-            EosEventCode.CAMERA_STATUS_CHANGED -> EosEvent.CameraStatusChanged(status = r.u32())
-            EosEventCode.AF_RESULT -> EosEvent.AfResult(result = r.u32())
-            EosEventCode.WILL_SOON_SHUTDOWN -> EosEvent.WillSoonShutdown()
+            EosEventCode.OBJECT_ADDED_EX -> {
+                decodeObjectAddedEx(r)
+            }
+
+            EosEventCode.OBJECT_ADDED_EX64 -> {
+                decodeObjectAddedEx64(r)
+            }
+
+            EosEventCode.REQUEST_OBJECT_TRANSFER -> {
+                EosEvent.ObjectTransferRequested(
+                    objectHandle = r.u32(),
+                    sizeBytes =
+                        run {
+                            r.u32()
+                            r.u32()
+                            r.u32()
+                        },
+                    filename = readCString(r),
+                )
+            }
+
+            EosEventCode.PROP_VALUE_CHANGED -> {
+                EosEvent.PropertyChanged(
+                    propertyCode = r.u32().toInt(),
+                    rawValue = if (r.hasRemaining()) r.bytes(r.remaining) else ByteArray(0),
+                )
+            }
+
+            EosEventCode.AVAIL_LIST_CHANGED -> {
+                EosEvent.AvailableValuesChanged(
+                    propertyCode = r.u32().toInt(),
+                )
+            }
+
+            EosEventCode.CAMERA_STATUS_CHANGED -> {
+                EosEvent.CameraStatusChanged(status = r.u32())
+            }
+
+            EosEventCode.AF_RESULT -> {
+                EosEvent.AfResult(result = r.u32())
+            }
+
+            EosEventCode.WILL_SOON_SHUTDOWN -> {
+                EosEvent.WillSoonShutdown()
+            }
+
             EosEventCode.STORAGE_STATUS_CHANGED,
             EosEventCode.STORAGE_INFO_CHANGED,
             EosEventCode.STORE_ADDED,
             EosEventCode.STORE_REMOVED,
-            -> EosEvent.StorageChanged(type)
-            else -> EosEvent.Unknown(type, payload)
+            -> {
+                EosEvent.StorageChanged(type)
+            }
+
+            else -> {
+                EosEvent.Unknown(type, payload)
+            }
         }
     }
 
@@ -322,10 +363,11 @@ object EosEventParser {
             objectHandle = r.u32(),
             storageId = r.u32(),
             objectFormat = r.u32().toInt(),
-            sizeBytes = run {
-                r.u32()
-                r.u32()
-            },
+            sizeBytes =
+                run {
+                    r.u32()
+                    r.u32()
+                },
             filename = readCString(r),
         )
 
@@ -354,8 +396,12 @@ object EosEventParser {
 
     private sealed class RecordRead {
         object End : RecordRead()
+
         object Skip : RecordRead()
-        data class Item(val event: EosEvent) : RecordRead()
+
+        data class Item(
+            val event: EosEvent,
+        ) : RecordRead()
     }
 
     /**

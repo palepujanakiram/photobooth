@@ -19,7 +19,6 @@ import java.io.File
  * singleton over Qlty's file-complexity budget.
  */
 internal object CameraSessionHandshake {
-
     /**
      * Read budget for the **first** `GetDeviceInfo` on a freshly claimed interface.
      *
@@ -56,7 +55,10 @@ internal object CameraSessionHandshake {
         throw last ?: PtpException.Malformed("GetDeviceInfo failed with no recorded cause")
     }
 
-    fun writeCapabilityDump(info: PtpDeviceInfo, dir: File?) {
+    fun writeCapabilityDump(
+        info: PtpDeviceInfo,
+        dir: File?,
+    ) {
         if (dir == null) return
         runCatching {
             val target = File(dir, DeviceCapabilityDump.suggestedFilename(info))
@@ -91,12 +93,13 @@ internal object CameraSessionHandshake {
     suspend fun awaitCaptureDrained(queue: CaptureQueue?): Boolean {
         if (queue == null) return false
         val completedBefore = queue.capturesCompleted + queue.capturesFailed
-        val drained = kotlinx.coroutines.withTimeoutOrNull(CAPTURE_DRAIN_TIMEOUT_MS) {
-            while (queue.capturesCompleted + queue.capturesFailed == completedBefore) {
-                kotlinx.coroutines.delay(CAPTURE_DRAIN_POLL_MS)
+        val drained =
+            kotlinx.coroutines.withTimeoutOrNull(CAPTURE_DRAIN_TIMEOUT_MS) {
+                while (queue.capturesCompleted + queue.capturesFailed == completedBefore) {
+                    kotlinx.coroutines.delay(CAPTURE_DRAIN_POLL_MS)
+                }
+                true
             }
-            true
-        }
         if (drained == null) {
             CanonLog.w(
                 "Image did not reach disk within %dms of the shutter - resuming live view anyway (C-16)",

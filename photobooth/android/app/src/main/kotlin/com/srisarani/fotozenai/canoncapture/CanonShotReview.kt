@@ -39,7 +39,6 @@ internal class CanonShotReview(
     private val views: CanonReviewViews,
     private val actions: CanonReviewActions,
 ) {
-
     suspend fun present(
         request: CaptureSessionContract.Request,
         shots: List<CaptureSessionContract.Shot>,
@@ -52,9 +51,10 @@ internal class CanonShotReview(
         actions.clearStatus()
         applyReviewLabels(isStrip, isLast)
 
-        val outcome = awaitChoice(
-            ReviewHold(holdMs, isLast, isStrip, request, shots.size),
-        )
+        val outcome =
+            awaitChoice(
+                ReviewHold(holdMs, isLast, isStrip, request, shots.size),
+            )
         hideStill()
         actions.restoreShutter()
         return outcome
@@ -66,16 +66,21 @@ internal class CanonShotReview(
         views.still.setImageDrawable(null)
     }
 
-    private fun applyReviewLabels(isStrip: Boolean, isLast: Boolean) {
+    private fun applyReviewLabels(
+        isStrip: Boolean,
+        isLast: Boolean,
+    ) {
         if (!actions.isUiAlive()) return
-        views.retake.text = actions.resolve(
-            CanonCaptureReview.retakeLabelRes(isStrip),
-            emptyArray(),
-        )
-        views.shutter.text = actions.resolve(
-            CanonCaptureReview.shutterLabelRes(isStrip, isLast),
-            emptyArray(),
-        )
+        views.retake.text =
+            actions.resolve(
+                CanonCaptureReview.retakeLabelRes(isStrip),
+                emptyArray(),
+            )
+        views.shutter.text =
+            actions.resolve(
+                CanonCaptureReview.shutterLabelRes(isStrip, isLast),
+                emptyArray(),
+            )
         // The shutter glyph belongs to "Take shot"; the review action is not a shutter.
         views.shutter.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0)
     }
@@ -121,7 +126,10 @@ internal class CanonShotReview(
         return if (choice.isCompleted) choice.await() else ReviewOutcome.ACCEPT
     }
 
-    private fun bannerText(deadlineMs: Long, hold: ReviewHold): String {
+    private fun bannerText(
+        deadlineMs: Long,
+        hold: ReviewHold,
+    ): String {
         val secondsLeft = ((deadlineMs - System.currentTimeMillis() + 999) / 1000).toInt()
         return CanonCaptureReview.bannerText(
             ReviewBannerInput(
@@ -136,11 +144,12 @@ internal class CanonShotReview(
     }
 
     private suspend fun showStill(displayPath: String?) {
-        val bitmap = displayPath?.let {
-            withContext(Dispatchers.Default) {
-                runCatching { BitmapFactory.decodeFile(it) }.getOrNull()
-            }
-        } ?: return
+        val bitmap =
+            displayPath?.let {
+                withContext(Dispatchers.Default) {
+                    runCatching { BitmapFactory.decodeFile(it) }.getOrNull()
+                }
+            } ?: return
         if (!actions.isUiAlive()) return
         views.still.setImageBitmap(bitmap)
         views.still.visibility = View.VISIBLE

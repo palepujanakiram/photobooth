@@ -38,7 +38,6 @@ import kotlinx.coroutines.withContext
  * so the contract does not have to change again.
  */
 class CanonCaptureActivity : Activity() {
-
     private lateinit var surface: SurfaceView
     private lateinit var statusText: TextView
     private lateinit var titleText: TextView
@@ -96,9 +95,10 @@ class CanonCaptureActivity : Activity() {
         // One line switches the booth look for the diagnostic one — see CaptureScreenStyle.
         setContentView(CaptureScreenStyle.current.layoutRes)
 
-        request = CaptureSessionContract.Request.fromJson(
-            intent.getStringExtra(CaptureSessionContract.EXTRA_REQUEST),
-        )
+        request =
+            CaptureSessionContract.Request.fromJson(
+                intent.getStringExtra(CaptureSessionContract.EXTRA_REQUEST),
+            )
 
         surface = findViewById(R.id.canon_live_view)
         statusText = findViewById(R.id.canon_status)
@@ -115,64 +115,79 @@ class CanonCaptureActivity : Activity() {
         phoneQrButton = findViewById(R.id.canon_phone_qr)
         reviewStill = findViewById(R.id.canon_review_still)
         reviewBanner = findViewById(R.id.canon_review_banner)
-        shotReview = CanonShotReview(
-            views = CanonReviewViews(reviewStill, reviewBanner, retakeButton, shutterButton),
-            actions = CanonReviewActions(
-                resolve = { id, args -> resolveReviewString(id, args) },
-                isFinished = { finished },
-                isUiAlive = { isCaptureUiAlive() },
-                clearStatus = { if (isCaptureUiAlive()) clearStatus() },
-                restoreShutter = { if (isCaptureUiAlive()) restoreShutterForCapture() },
-            ),
-        )
-        thumbStrip = CanonThumbStrip(
-            strip = thumbnailStrip,
-            inflater = layoutInflater,
-            density = resources.displayMetrics.density,
-        )
+        shotReview =
+            CanonShotReview(
+                views = CanonReviewViews(reviewStill, reviewBanner, retakeButton, shutterButton),
+                actions =
+                    CanonReviewActions(
+                        resolve = { id, args -> resolveReviewString(id, args) },
+                        isFinished = { finished },
+                        isUiAlive = { isCaptureUiAlive() },
+                        clearStatus = { if (isCaptureUiAlive()) clearStatus() },
+                        restoreShutter = { if (isCaptureUiAlive()) restoreShutterForCapture() },
+                    ),
+            )
+        thumbStrip =
+            CanonThumbStrip(
+                strip = thumbnailStrip,
+                inflater = layoutInflater,
+                density = resources.displayMetrics.density,
+            )
         thumbStrip.buildSlots(request.shotCount)
-        countdown = CanonCountdown(
-            views = CanonCountdownViews(
-                countdownText, countdownHeadline, countdownScrim, countdownGroup,
-            ),
-            actions = CanonCountdownActions(
-                isFinished = { finished },
-                setStatus = { setStatus(it) },
-                beep = { beep() },
-                introText = { getString(R.string.canon_countdown_intro) },
-                poseStatus = { shot, total ->
-                    getString(R.string.canon_status_pose_format, shot, total)
-                },
-            ),
-        )
-        shotCapture = CanonShotCapture(
-            scope = scope,
-            shots = shots,
-            consumedHandles = consumedHandles,
-            host = shotCaptureHost(),
-        )
-        connector = CanonCaptureConnector(
-            appContext = applicationContext,
-            host = object : CanonCaptureConnector.Host {
-                override val isFinished: Boolean get() = finished
-                override fun finishWith(result: CaptureSessionContract.Result) =
-                    this@CanonCaptureActivity.finishWith(result)
-            },
-        )
+        countdown =
+            CanonCountdown(
+                views =
+                    CanonCountdownViews(
+                        countdownText,
+                        countdownHeadline,
+                        countdownScrim,
+                        countdownGroup,
+                    ),
+                actions =
+                    CanonCountdownActions(
+                        isFinished = { finished },
+                        setStatus = { setStatus(it) },
+                        beep = { beep() },
+                        introText = { getString(R.string.canon_countdown_intro) },
+                        poseStatus = { shot, total ->
+                            getString(R.string.canon_status_pose_format, shot, total)
+                        },
+                    ),
+            )
+        shotCapture =
+            CanonShotCapture(
+                scope = scope,
+                shots = shots,
+                consumedHandles = consumedHandles,
+                host = shotCaptureHost(),
+            )
+        connector =
+            CanonCaptureConnector(
+                appContext = applicationContext,
+                host =
+                    object : CanonCaptureConnector.Host {
+                        override val isFinished: Boolean get() = finished
+
+                        override fun finishWith(result: CaptureSessionContract.Result) = this@CanonCaptureActivity.finishWith(result)
+                    },
+            )
         uploadViews = CanonUploadViews(galleryButton, phoneQrButton)
-        uploadActions = CanonUploadActions(
-            allowGallery = { request.allowGalleryUpload },
-            allowPhone = { request.allowPhoneUpload },
-            beforeFirstShot = { shots.isEmpty() },
-            finishWith = { finishWith(it) },
-        )
+        uploadActions =
+            CanonUploadActions(
+                allowGallery = { request.allowGalleryUpload },
+                allowPhone = { request.allowPhoneUpload },
+                beforeFirstShot = { shots.isEmpty() },
+                finishWith = { finishWith(it) },
+            )
         CanonCaptureChrome.bindUploads(uploadViews, uploadActions)
 
-        toneGenerator = runCatching {
-            ToneGenerator(AudioManager.STREAM_MUSIC, TONE_VOLUME)
-        }.getOrNull()
-        shutterSound = runCatching { MediaActionSound().apply { load(MediaActionSound.SHUTTER_CLICK) } }
-            .getOrNull()
+        toneGenerator =
+            runCatching {
+                ToneGenerator(AudioManager.STREAM_MUSIC, TONE_VOLUME)
+            }.getOrNull()
+        shutterSound =
+            runCatching { MediaActionSound().apply { load(MediaActionSound.SHUTTER_CLICK) } }
+                .getOrNull()
 
         request.titleText?.let { titleText.text = it }
         // Booth layout only; the diagnostic one has no subtitle line.
@@ -183,44 +198,54 @@ class CanonCaptureActivity : Activity() {
         request.cancelText?.let { cancelButton.text = it }
 
         shutterButton.setOnClickListener { onShutter() }
-        val cancel = View.OnClickListener {
-            finishWith(CaptureSessionContract.Result.cancelled("Cancelled by user"))
-        }
+        val cancel =
+            View.OnClickListener {
+                finishWith(CaptureSessionContract.Result.cancelled("Cancelled by user"))
+            }
         cancelButton.setOnClickListener(cancel)
         // Present only in the booth layout, mirroring the Flutter capture bar's back arrow.
         findViewById<View?>(R.id.canon_back)?.setOnClickListener(cancel)
         CanonCaptureChrome.bindTopBar(
-            views = CanonTopBarViews(
-                reconnect = findViewById(R.id.canon_reconnect),
-                selectCamera = findViewById(R.id.canon_select_camera),
-                rotate = findViewById(R.id.canon_rotate),
-            ),
-            actions = CanonTopBarActions(
-                isCapturing = { captureJob?.isActive == true },
-                onReconnect = {
-                    setStatus(getString(R.string.canon_status_reconnecting))
-                    CanonLog.i("Operator asked for a reconnect from the capture screen")
-                    CameraSessionManager.scanAndConnect(applicationContext)
-                },
-                disabledAlpha = DISABLED_ACTION_ALPHA,
-            ),
+            views =
+                CanonTopBarViews(
+                    reconnect = findViewById(R.id.canon_reconnect),
+                    selectCamera = findViewById(R.id.canon_select_camera),
+                    rotate = findViewById(R.id.canon_rotate),
+                ),
+            actions =
+                CanonTopBarActions(
+                    isCapturing = { captureJob?.isActive == true },
+                    onReconnect = {
+                        setStatus(getString(R.string.canon_status_reconnecting))
+                        CanonLog.i("Operator asked for a reconnect from the capture screen")
+                        CameraSessionManager.scanAndConnect(applicationContext)
+                    },
+                    disabledAlpha = DISABLED_ACTION_ALPHA,
+                ),
         )
         // The box reports touch AND d-pad; the shutter must be reachable without a screen tap.
         shutterButton.requestFocus()
 
         renderer = LiveViewSurfaceRenderer(surface.holder)
-        surface.holder.addCallback(object : SurfaceHolder.Callback {
-            override fun surfaceCreated(holder: SurfaceHolder) {
-                renderer?.isSurfaceReady = true
-            }
+        surface.holder.addCallback(
+            object : SurfaceHolder.Callback {
+                override fun surfaceCreated(holder: SurfaceHolder) {
+                    renderer?.isSurfaceReady = true
+                }
 
-            override fun surfaceChanged(holder: SurfaceHolder, f: Int, w: Int, h: Int) = Unit
+                override fun surfaceChanged(
+                    holder: SurfaceHolder,
+                    f: Int,
+                    w: Int,
+                    h: Int,
+                ) = Unit
 
-            override fun surfaceDestroyed(holder: SurfaceHolder) {
-                // Must clear before returning, or the render loop draws into a dead surface.
-                renderer?.isSurfaceReady = false
-            }
-        })
+                override fun surfaceDestroyed(holder: SurfaceHolder) {
+                    // Must clear before returning, or the render loop draws into a dead surface.
+                    renderer?.isSurfaceReady = false
+                }
+            },
+        )
 
         startSession()
     }
@@ -269,15 +294,16 @@ class CanonCaptureActivity : Activity() {
         // POSE", and three good photos were thrown away with the guest dumped back on the
         // Terms screen. Observed on hardware 2026-08-18.
         idleJob?.cancel()
-        idleJob = scope.launch {
-            delay(request.idleTimeoutSeconds * 1000L)
-            CanonLog.w("Capture session idle for %ds — abandoning", request.idleTimeoutSeconds)
-            finishWith(
-                CaptureSessionContract.Result.cancelled(
-                    "No photos completed within ${request.idleTimeoutSeconds}s",
-                ),
-            )
-        }
+        idleJob =
+            scope.launch {
+                delay(request.idleTimeoutSeconds * 1000L)
+                CanonLog.w("Capture session idle for %ds — abandoning", request.idleTimeoutSeconds)
+                finishWith(
+                    CaptureSessionContract.Result.cancelled(
+                        "No photos completed within ${request.idleTimeoutSeconds}s",
+                    ),
+                )
+            }
     }
 
     /** Countdown → shot → rearrange, repeated [CaptureSessionContract.Request.shotCount] times. */
@@ -345,7 +371,10 @@ class CanonCaptureActivity : Activity() {
         shutterButton.setOnClickListener { onShutter() }
         shutterButton.text = request.shutterText ?: getString(R.string.canon_capture_shutter)
         shutterButton.setCompoundDrawablesRelativeWithIntrinsicBounds(
-            R.drawable.ic_canon_shutter, 0, 0, 0,
+            R.drawable.ic_canon_shutter,
+            0,
+            0,
+            0,
         )
         shutterButton.isEnabled = false
     }
@@ -421,36 +450,41 @@ class CanonCaptureActivity : Activity() {
         CameraSessionManager.captureQueue?.seedReplayInto(consumedHandles)
     }
 
-    private fun shotCaptureHost(): CanonShotCapture.Host = object : CanonShotCapture.Host {
-        override val request: CaptureSessionContract.Request
-            get() = this@CanonCaptureActivity.request
+    private fun shotCaptureHost(): CanonShotCapture.Host =
+        object : CanonShotCapture.Host {
+            override val request: CaptureSessionContract.Request
+                get() = this@CanonCaptureActivity.request
 
-        override fun string(id: Int, vararg args: Any): String =
-            if (args.isEmpty()) getString(id) else getString(id, *args)
+            override fun string(
+                id: Int,
+                vararg args: Any,
+            ): String = if (args.isEmpty()) getString(id) else getString(id, *args)
 
-        override fun setStatus(text: String) = this@CanonCaptureActivity.setStatus(text)
+            override fun setStatus(text: String) = this@CanonCaptureActivity.setStatus(text)
 
-        override fun finishWith(result: CaptureSessionContract.Result) =
-            this@CanonCaptureActivity.finishWith(result)
+            override fun finishWith(result: CaptureSessionContract.Result) = this@CanonCaptureActivity.finishWith(result)
 
-        override fun startIdleWatchdog() = this@CanonCaptureActivity.startIdleWatchdog()
+            override fun startIdleWatchdog() = this@CanonCaptureActivity.startIdleWatchdog()
 
-        override fun fillThumb(shotsTaken: Int, thumbnail: Bitmap?) {
-            if (::thumbStrip.isInitialized) thumbStrip.fillSlot(shotsTaken, thumbnail)
+            override fun fillThumb(
+                shotsTaken: Int,
+                thumbnail: Bitmap?,
+            ) {
+                if (::thumbStrip.isInitialized) thumbStrip.fillSlot(shotsTaken, thumbnail)
+            }
+
+            override fun setShutterEnabled(enabled: Boolean) {
+                shutterButton.isEnabled = enabled
+            }
+
+            override fun isCaptureJobActive(): Boolean = captureJob?.isActive == true
+
+            override fun isUiAlive(): Boolean = isCaptureUiAlive()
+
+            override fun playShutterSound() = shutterSound()
+
+            override fun seedStaleReplay() = seedStaleCaptureReplay()
         }
-
-        override fun setShutterEnabled(enabled: Boolean) {
-            shutterButton.isEnabled = enabled
-        }
-
-        override fun isCaptureJobActive(): Boolean = captureJob?.isActive == true
-
-        override fun isUiAlive(): Boolean = isCaptureUiAlive()
-
-        override fun playShutterSound() = shutterSound()
-
-        override fun seedStaleReplay() = seedStaleCaptureReplay()
-    }
 
     // ------------------------------------------------------------------ lifecycle
 
@@ -504,7 +538,10 @@ class CanonCaptureActivity : Activity() {
 
     private fun isCaptureUiAlive(): Boolean = !isFinishing && !isDestroyed
 
-    private fun resolveReviewString(id: Int, args: Array<out Any>): String {
+    private fun resolveReviewString(
+        id: Int,
+        args: Array<out Any>,
+    ): String {
         if (!isCaptureUiAlive()) return ""
         return if (args.isEmpty()) getString(id) else getString(id, *args)
     }

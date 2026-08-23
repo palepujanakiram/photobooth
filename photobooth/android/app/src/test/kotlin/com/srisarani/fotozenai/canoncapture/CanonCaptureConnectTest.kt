@@ -5,7 +5,6 @@ import com.srisarani.fotozenai.canon.state.ConnectionState
 import org.junit.Test
 
 class CanonCaptureConnectTest {
-
     @Test
     fun `ready states are connect outcomes and ready for capture`() {
         assertThat(CanonCaptureConnect.isReady(ConnectionState.Ready)).isTrue()
@@ -17,13 +16,17 @@ class CanonCaptureConnectTest {
 
     @Test
     fun `stale ptp sessions are the half-open states`() {
-        assertThat(CanonCaptureConnect.isStalePtpSession(ConnectionState.Opened(
-            productName = "EOS",
-            bulkInAddress = 1,
-            bulkOutAddress = 2,
-            interruptInAddress = -1,
-            bulkInMaxPacketSize = 512,
-        ))).isTrue()
+        assertThat(
+            CanonCaptureConnect.isStalePtpSession(
+                ConnectionState.Opened(
+                    productName = "EOS",
+                    bulkInAddress = 1,
+                    bulkOutAddress = 2,
+                    interruptInAddress = -1,
+                    bulkInMaxPacketSize = 512,
+                ),
+            ),
+        ).isTrue()
         assertThat(CanonCaptureConnect.isStalePtpSession(ConnectionState.Ready)).isFalse()
         assertThat(CanonCaptureConnect.isStalePtpSession(ConnectionState.NoDevice)).isFalse()
     }

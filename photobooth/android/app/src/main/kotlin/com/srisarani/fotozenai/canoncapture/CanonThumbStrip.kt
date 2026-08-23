@@ -13,7 +13,6 @@ internal class CanonThumbStrip(
     private val inflater: LayoutInflater,
     private val density: Float,
 ) {
-
     fun buildSlots(shotCount: Int) {
         strip.removeAllViews()
         if (shotCount <= 1) {
@@ -43,7 +42,10 @@ internal class CanonThumbStrip(
         }
     }
 
-    fun fillSlot(shotsTaken: Int, bitmap: Bitmap?) {
+    fun fillSlot(
+        shotsTaken: Int,
+        bitmap: Bitmap?,
+    ) {
         if (strip.childCount == 0) return
         val slot = strip.getChildAt(shotsTaken - 1) ?: return
         refreshStates(shotsTaken)
@@ -55,7 +57,10 @@ internal class CanonThumbStrip(
         slot.findViewById<TextView>(R.id.canon_thumb_number).visibility = View.GONE
     }
 
-    fun clearAt(index: Int, shotsTaken: Int) {
+    fun clearAt(
+        index: Int,
+        shotsTaken: Int,
+    ) {
         val slot = strip.getChildAt(index) ?: return
         slot.findViewById<ImageView>(R.id.canon_thumb_image).apply {
             setImageDrawable(null)

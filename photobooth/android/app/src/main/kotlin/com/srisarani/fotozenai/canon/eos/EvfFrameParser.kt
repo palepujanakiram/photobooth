@@ -69,7 +69,6 @@ object EvfOutputDevice {
  * Pure and Android-free so it is unit tested; the bitmap decode sits on top.
  */
 object EvfFrameParser {
-
     private const val BLOCK_HEADER_SIZE = 8
     private const val MAX_BLOCK_SIZE = 32 * 1024 * 1024
 
@@ -85,12 +84,10 @@ object EvfFrameParser {
     }
 
     /** Extracts just the JPEG frame, or null if this response carried none. */
-    fun extractJpeg(payload: ByteArray): ByteArray? =
-        parseBlocks(payload).firstOrNull { it.first == EvfBlockType.JPEG_IMAGE }?.second
+    fun extractJpeg(payload: ByteArray): ByteArray? = parseBlocks(payload).firstOrNull { it.first == EvfBlockType.JPEG_IMAGE }?.second
 
     /** True when the bytes start with a JPEG SOI marker. A cheap sanity check. */
-    fun looksLikeJpeg(bytes: ByteArray): Boolean =
-        bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()
+    fun looksLikeJpeg(bytes: ByteArray): Boolean = bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()
 
     private fun readNextBlock(reader: PtpReader): Pair<Int, ByteArray>? {
         val size = readBlockSize(reader) ?: return null

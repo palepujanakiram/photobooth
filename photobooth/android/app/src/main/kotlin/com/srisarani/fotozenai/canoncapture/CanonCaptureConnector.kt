@@ -18,9 +18,9 @@ internal class CanonCaptureConnector(
     private val appContext: Context,
     private val host: Host,
 ) {
-
     interface Host {
         val isFinished: Boolean
+
         fun finishWith(result: CaptureSessionContract.Result)
     }
 
@@ -40,11 +40,12 @@ internal class CanonCaptureConnector(
             // counts NoDevice as terminal, so `first` matched that stale value immediately and
             // POSE reported "No camera found" roughly 90ms in — while the very same connect
             // went on to succeed seconds later. Observed on hardware 2026-08-18.
-            val settled = withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
-                CameraSessionManager.state.drop(1).first {
-                    CanonCaptureConnect.isConnectOutcome(it) || CanonCaptureConnect.isReady(it)
+            val settled =
+                withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
+                    CameraSessionManager.state.drop(1).first {
+                        CanonCaptureConnect.isConnectOutcome(it) || CanonCaptureConnect.isReady(it)
+                    }
                 }
-            }
 
             val state = settled ?: CameraSessionManager.state.value
             if (CanonCaptureConnect.isReady(state)) return true

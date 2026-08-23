@@ -5,7 +5,6 @@ import com.srisarani.fotozenai.R
 import org.junit.Test
 
 class CanonCaptureThumbsTest {
-
     @Test
     fun `active slot uses the amber chrome`() {
         assertThat(CanonCaptureThumbs.backgroundRes(filled = false, active = true))

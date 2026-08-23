@@ -5,7 +5,6 @@ import com.srisarani.fotozenai.R
 import org.junit.Test
 
 class CanonCaptureReviewTest {
-
     private val request = CaptureSessionContract.Request(shotCount = 4, reviewHoldMs = 8000, finalReviewHoldMs = 2000)
 
     @Test
@@ -47,17 +46,19 @@ class CanonCaptureReviewTest {
         )
         assertThat(seen.last()).isEqualTo(R.string.canon_review_last_shot_countdown_format)
 
-        val rearrange = CanonCaptureReview.bannerText(
-            ReviewBannerInput(0, isLast = false, isStrip = true, nextShot = 2, shotCount = 4),
-            resolve,
-        )
+        val rearrange =
+            CanonCaptureReview.bannerText(
+                ReviewBannerInput(0, isLast = false, isStrip = true, nextShot = 2, shotCount = 4),
+                resolve,
+            )
         assertThat(rearrange).isEqualTo("2,4")
         assertThat(seen.last()).isEqualTo(R.string.canon_review_rearrange_format)
 
-        val counting = CanonCaptureReview.bannerText(
-            ReviewBannerInput(5, isLast = false, isStrip = true, nextShot = 2, shotCount = 4),
-            resolve,
-        )
+        val counting =
+            CanonCaptureReview.bannerText(
+                ReviewBannerInput(5, isLast = false, isStrip = true, nextShot = 2, shotCount = 4),
+                resolve,
+            )
         assertThat(counting).isEqualTo("2,4,5")
         assertThat(seen.last()).isEqualTo(R.string.canon_review_rearrange_countdown_format)
     }

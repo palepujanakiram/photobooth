@@ -37,7 +37,6 @@ class UsbTransport(
     private val channel: UsbBulkChannel,
     private val config: Config = Config(),
 ) : Closeable {
-
     data class Config(
         /**
          * Per-read timeout. Short enough that a wedged endpoint is noticed, long enough
@@ -79,6 +78,7 @@ class UsbTransport(
         val terminatedBy: Termination,
     ) {
         val size: Int get() = data.size
+
         override fun toString(): String = "TransferResult(${data.size}B, $packetsRead pkts, $terminatedBy)"
     }
 
@@ -112,7 +112,11 @@ class UsbTransport(
      * took what it could. Looping is correct; assuming one call writes everything is the
      * bug.
      */
-    fun write(data: ByteArray, offset: Int = 0, length: Int = data.size - offset) {
+    fun write(
+        data: ByteArray,
+        offset: Int = 0,
+        length: Int = data.size - offset,
+    ) {
         require(offset >= 0 && length >= 0 && offset + length <= data.size) {
             "bad range offset=$offset length=$length size=${data.size}"
         }
@@ -158,7 +162,10 @@ class UsbTransport(
     }
 
     /** Reads exactly [length] bytes, failing if the device ends the transfer early. */
-    fun readExactly(length: Int, timeoutMs: Int = config.readTimeoutMs): ByteArray {
+    fun readExactly(
+        length: Int,
+        timeoutMs: Int = config.readTimeoutMs,
+    ): ByteArray {
         val result = readTransfer(expectedLength = length, timeoutMs = timeoutMs)
         if (result.size != length) {
             throw UsbError.TransferFailed(
@@ -181,14 +188,22 @@ class UsbTransport(
 
         val n = channel.bulkIn(zlpScratch, 0, maxPacketSize, config.zlpTimeoutMs)
         when {
-            n == 0 -> CanonLog.v("Drained pending ZLP after %dB aligned transfer", total)
-            n < 0 -> CanonLog.v("No ZLP pending after %dB (host stack consumed it)", total)
-            else -> CanonLog.e(
-                "P-01: expected ZLP after %dB aligned transfer but got %d bytes of data. " +
-                    "The stream is now misaligned - the session should be reset.",
-                total,
-                n,
-            )
+            n == 0 -> {
+                CanonLog.v("Drained pending ZLP after %dB aligned transfer", total)
+            }
+
+            n < 0 -> {
+                CanonLog.v("No ZLP pending after %dB (host stack consumed it)", total)
+            }
+
+            else -> {
+                CanonLog.e(
+                    "P-01: expected ZLP after %dB aligned transfer but got %d bytes of data. " +
+                        "The stream is now misaligned - the session should be reset.",
+                    total,
+                    n,
+                )
+            }
         }
     }
 
@@ -204,7 +219,10 @@ class UsbTransport(
      *   wrong for recovery: see [RECOVERY_SETTLE_READS].
      * @return bytes discarded.
      */
-    fun drain(timeoutMs: Int = config.zlpTimeoutMs, settleReads: Int = 1): Int {
+    fun drain(
+        timeoutMs: Int = config.zlpTimeoutMs,
+        settleReads: Int = 1,
+    ): Int {
         if (!channel.isOpen) return 0
         var discarded = 0
         var rounds = 0

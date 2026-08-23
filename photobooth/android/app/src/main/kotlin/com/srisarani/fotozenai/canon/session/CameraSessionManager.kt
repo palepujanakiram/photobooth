@@ -2,13 +2,14 @@ package com.srisarani.fotozenai.canon.session
 
 import android.content.Context
 import android.hardware.usb.UsbDevice
+import com.srisarani.fotozenai.canon.CanonLog
+import com.srisarani.fotozenai.canon.capture.CaptureQueue
+import com.srisarani.fotozenai.canon.capture.ImageStore
 import com.srisarani.fotozenai.canon.eos.EosCameraSettings
 import com.srisarani.fotozenai.canon.eos.EosCapture
 import com.srisarani.fotozenai.canon.eos.EosLiveView
 import com.srisarani.fotozenai.canon.eos.EosProperties
 import com.srisarani.fotozenai.canon.eos.EosSession
-import com.srisarani.fotozenai.canon.capture.CaptureQueue
-import com.srisarani.fotozenai.canon.capture.ImageStore
 import com.srisarani.fotozenai.canon.ptp.PtpDeviceInfo
 import com.srisarani.fotozenai.canon.ptp.PtpException
 import com.srisarani.fotozenai.canon.ptp.PtpSession
@@ -18,8 +19,8 @@ import com.srisarani.fotozenai.canon.state.label
 import com.srisarani.fotozenai.canon.usb.UsbCameraDiscovery
 import com.srisarani.fotozenai.canon.usb.UsbError
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +28,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.srisarani.fotozenai.canon.CanonLog
 import java.util.concurrent.Executors
 
 /**
@@ -48,10 +48,10 @@ import java.util.concurrent.Executors
  * correctness requirement of the protocol.
  */
 object CameraSessionManager {
-
-    private val usbThread = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "usb-io").apply { isDaemon = true }
-    }
+    private val usbThread =
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "usb-io").apply { isDaemon = true }
+        }
 
     /** The one and only thread permitted to touch the USB endpoints. */
     val usbDispatcher = usbThread.asCoroutineDispatcher()
@@ -96,7 +96,11 @@ object CameraSessionManager {
         private set
 
     /** Applies a property change on the USB thread. */
-    fun stepSetting(propertyCode: Int, table: Map<Int, String>, forward: Boolean) {
+    fun stepSetting(
+        propertyCode: Int,
+        table: Map<Int, String>,
+        forward: Boolean,
+    ) {
         scope.launch {
             cameraSettings?.step(propertyCode, table, forward)
         }
@@ -136,38 +140,41 @@ object CameraSessionManager {
      */
     fun triggerCapture(withAutofocus: Boolean = true): Deferred<Boolean> {
         val released = CompletableDeferred<Boolean>()
-        scope.launch {
-            val capture = eosCapture
-            if (capture == null) {
-                CanonLog.w("Capture requested but no EOS session is active")
-                released.complete(false)
-                return@launch
-            }
-
-            val liveViewWasRunning = pauseLiveViewForCapture()
-
-            val fired = runCatching {
-                val mode = if (withAutofocus) {
-                    EosCapture.ReleaseMode.WITH_AUTOFOCUS
-                } else {
-                    EosCapture.ReleaseMode.WITHOUT_AUTOFOCUS
+        scope
+            .launch {
+                val capture = eosCapture
+                if (capture == null) {
+                    CanonLog.w("Capture requested but no EOS session is active")
+                    released.complete(false)
+                    return@launch
                 }
-                capture.release(mode)
-            }.onFailure { CanonLog.e(it, "Shutter release failed") }.isSuccess
 
-            // Publish before draining, not after: the caller needs to stop waiting for an
-            // image the moment we know none is coming, and awaitCaptureDrained below can
-            // itself take seconds.
-            released.complete(fired)
+                val liveViewWasRunning = pauseLiveViewForCapture()
 
-            // C-16: hold live view down until the bytes are safely on disk.
-            if (fired) CameraSessionHandshake.awaitCaptureDrained(captureQueue)
-            resumeLiveViewAfterCapture(liveViewWasRunning)
-        }.invokeOnCompletion { cause ->
-            // A cancelled or crashed launch must not leave the caller awaiting forever.
-            if (!released.isCompleted) released.complete(false)
-            if (cause != null) CanonLog.w(cause, "Capture coroutine ended before releasing")
-        }
+                val fired =
+                    runCatching {
+                        val mode =
+                            if (withAutofocus) {
+                                EosCapture.ReleaseMode.WITH_AUTOFOCUS
+                            } else {
+                                EosCapture.ReleaseMode.WITHOUT_AUTOFOCUS
+                            }
+                        capture.release(mode)
+                    }.onFailure { CanonLog.e(it, "Shutter release failed") }.isSuccess
+
+                // Publish before draining, not after: the caller needs to stop waiting for an
+                // image the moment we know none is coming, and awaitCaptureDrained below can
+                // itself take seconds.
+                released.complete(fired)
+
+                // C-16: hold live view down until the bytes are safely on disk.
+                if (fired) CameraSessionHandshake.awaitCaptureDrained(captureQueue)
+                resumeLiveViewAfterCapture(liveViewWasRunning)
+            }.invokeOnCompletion { cause ->
+                // A cancelled or crashed launch must not leave the caller awaiting forever.
+                if (!released.isCompleted) released.complete(false)
+                if (cause != null) CanonLog.w(cause, "Capture coroutine ended before releasing")
+            }
         return released
     }
 
@@ -262,13 +269,14 @@ object CameraSessionManager {
             CanonLog.w("%d cameras attached; using %s", cameras.size, device.deviceName)
         }
 
-        _state.value = ConnectionState.DeviceFound(
-            deviceName = device.deviceName,
-            productName = device.productName,
-            vendorId = device.vendorId,
-            productId = device.productId,
-            permissionPending = !discovery.hasPermission(device),
-        )
+        _state.value =
+            ConnectionState.DeviceFound(
+                deviceName = device.deviceName,
+                productName = device.productName,
+                vendorId = device.vendorId,
+                productId = device.productId,
+                permissionPending = !discovery.hasPermission(device),
+            )
 
         if (!discovery.hasPermission(device)) {
             CanonLog.i("Requesting USB permission for %s", device.deviceName)
@@ -282,18 +290,22 @@ object CameraSessionManager {
         connect(discovery, device)
     }
 
-    private suspend fun connect(discovery: UsbCameraDiscovery, device: UsbDevice) {
+    private suspend fun connect(
+        discovery: UsbCameraDiscovery,
+        device: UsbDevice,
+    ) {
         withContext(usbDispatcher) {
             try {
                 val camera = discovery.open(device)
                 opened = camera
-                _state.value = ConnectionState.Opened(
-                    productName = camera.productName,
-                    bulkInAddress = camera.endpoints.bulkIn.address,
-                    bulkOutAddress = camera.endpoints.bulkOut.address,
-                    interruptInAddress = camera.endpoints.interruptIn?.address ?: -1,
-                    bulkInMaxPacketSize = camera.endpoints.bulkIn.maxPacketSize,
-                )
+                _state.value =
+                    ConnectionState.Opened(
+                        productName = camera.productName,
+                        bulkInAddress = camera.endpoints.bulkIn.address,
+                        bulkOutAddress = camera.endpoints.bulkOut.address,
+                        interruptInAddress = camera.endpoints.interruptIn?.address ?: -1,
+                        bulkInMaxPacketSize = camera.endpoints.bulkIn.maxPacketSize,
+                    )
                 CanonLog.i("Connected: %s", camera.endpoints)
                 openPtpSession(camera.productName)
             } catch (e: UsbError) {
@@ -339,10 +351,11 @@ object CameraSessionManager {
             ptp.openSession(1)
             session = ptp
 
-            _state.value = ConnectionState.SessionOpen(
-                productName = productName ?: info.model,
-                sessionId = ptp.sessionId,
-            )
+            _state.value =
+                ConnectionState.SessionOpen(
+                    productName = productName ?: info.model,
+                    sessionId = ptp.sessionId,
+                )
 
             CameraSessionHandshake.writeCapabilityDump(info, capabilityDumpDir)
             CameraSessionHandshake.warnAboutMissingCapabilities(info)

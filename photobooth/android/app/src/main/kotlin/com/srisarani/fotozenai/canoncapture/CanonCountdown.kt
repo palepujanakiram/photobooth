@@ -29,8 +29,10 @@ internal class CanonCountdown(
     private val views: CanonCountdownViews,
     private val actions: CanonCountdownActions,
 ) {
-
-    suspend fun run(shotNumber: Int, request: CaptureSessionContract.Request) {
+    suspend fun run(
+        shotNumber: Int,
+        request: CaptureSessionContract.Request,
+    ) {
         // FotoZen only, and only on the first tick: Classic already says "shot X of Y" in the
         // subtitle and the status line, so repeating it over the preview is noise.
         // Mirrors `showAiIntro` in _buildCountdownOverlay.
