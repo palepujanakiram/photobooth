@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../services/app_settings_manager.dart';
 import '../../services/payment_push_coordinator.dart';
+import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/fotoflashback_payment_helpers.dart';
@@ -57,6 +58,10 @@ class _PrePaymentScreenState extends State<PrePaymentScreen> {
   }
 
   Future<void> _bootstrapPayment() async {
+    if (SessionManager().isOfflineSession) {
+      _onPaymentApproved();
+      return;
+    }
     final paymentsEnabled = await resolvePaymentsEnabled();
     if (!mounted) return;
     if (!paymentsEnabled) {
@@ -264,13 +269,23 @@ class _PrePaymentCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          ResultPaymentCouponRow(
-            appliedDiscount: viewModel.appliedDiscount,
-            couponError: viewModel.couponError,
-            busy: viewModel.couponBusy || viewModel.paymentInitInProgress,
-            onApply: viewModel.applyCoupon,
-            onUnapply: viewModel.unapplyCoupon,
-          ),
+          if (!SessionManager().isOfflineSession)
+            ResultPaymentCouponRow(
+              appliedDiscount: viewModel.appliedDiscount,
+              couponError: viewModel.couponError,
+              busy: viewModel.couponBusy || viewModel.paymentInitInProgress,
+              onApply: viewModel.applyCoupon,
+              onUnapply: viewModel.unapplyCoupon,
+            )
+          else
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                AppStrings.offlineGiftCardUnavailable,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+            ),
           const SizedBox(height: 6),
           Expanded(
             child: Center(

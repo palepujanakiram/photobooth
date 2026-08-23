@@ -173,6 +173,72 @@ class ApiService {
     }
   }
 
+  /// POST `/api/kiosk/ingest` — insert-once ledger rows from the kiosk outbox.
+  Future<void> ingestKioskEntities({
+    required String kioskCode,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    final code = kioskCode.trim().toUpperCase();
+    if (code.isEmpty) {
+      throw ApiException('kioskCode is required');
+    }
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/kiosk/ingest',
+        data: <String, dynamic>{'kioskCode': code, 'items': items},
+        options: Options(
+          headers: {'X-Kiosk-Code': code},
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+      throwIfHttpErrorResponse(r, operationLabel: 'Kiosk ingest failed');
+    } on DioException catch (e) {
+      throwApiExceptionAfterWebCors(
+        e,
+        messagePrefix: 'Kiosk ingest failed',
+      );
+    }
+  }
+
+  /// POST `/api/kiosk/ingest/asset` — idempotent guest JPEG upload.
+  Future<void> ingestKioskAsset({
+    required String kioskCode,
+    required String prefix,
+    required String filename,
+    required List<int> bytes,
+  }) async {
+    final code = kioskCode.trim().toUpperCase();
+    if (code.isEmpty) {
+      throw ApiException('kioskCode is required');
+    }
+    if (bytes.isEmpty) {
+      throw ApiException('asset bytes are required');
+    }
+    try {
+      final r = await _dio.post<dynamic>(
+        '/api/kiosk/ingest/asset',
+        data: <String, dynamic>{
+          'kioskCode': code,
+          'prefix': prefix,
+          'filename': filename,
+          'bytesBase64': base64Encode(bytes),
+        },
+        options: Options(
+          headers: {'X-Kiosk-Code': code},
+          responseType: ResponseType.json,
+          validateStatus: (c) => c != null && c >= 200 && c < 500,
+        ),
+      );
+      throwIfHttpErrorResponse(r, operationLabel: 'Kiosk asset ingest failed');
+    } on DioException catch (e) {
+      throwApiExceptionAfterWebCors(
+        e,
+        messagePrefix: 'Kiosk asset ingest failed',
+      );
+    }
+  }
+
   /// POST `/api/sessions/:id/receipt` — create/update receipt + optional WhatsApp queue.
   ///
   /// Requires `session.paymentStatus == APPROVED` server-side.
@@ -188,6 +254,8 @@ class ApiService {
     String? transactionRef,
     String? fcmToken,
     int? printQuantity,
+    String? receiptNumber,
+    String? receiptId,
   }) async {
     final sid = sessionId.trim();
     if (sid.isEmpty) {
@@ -212,6 +280,9 @@ class ApiService {
       if (fcmToken != null && fcmToken.trim().isNotEmpty) 'fcmToken': fcmToken.trim(),
       if (printQuantity != null && printQuantity >= 1)
         'printQuantity': printQuantity,
+      if (receiptNumber != null && receiptNumber.trim().isNotEmpty)
+        'receiptNumber': receiptNumber.trim(),
+      if (receiptId != null && receiptId.trim().isNotEmpty) 'id': receiptId.trim(),
     };
 
     try {
@@ -971,6 +1042,7 @@ class ApiService {
     String? selectedFrameId,
     bool includeSelectedFrameId = false,
     bool groupConsentAccepted = true,
+    String? clientSessionId,
   }) async {
     try {
       final eventCode = await EventManager().getEventCode();
@@ -980,6 +1052,8 @@ class ApiService {
         if (source != null && source.isNotEmpty) 'source': source,
         'groupConsentAccepted': groupConsentAccepted,
         if (includeSelectedFrameId) 'selectedFrameId': selectedFrameId,
+        if (clientSessionId != null && clientSessionId.isNotEmpty)
+          'id': clientSessionId,
       });
       if (response is Map<String, dynamic>) return response;
       if (response is Map) return Map<String, dynamic>.from(response);

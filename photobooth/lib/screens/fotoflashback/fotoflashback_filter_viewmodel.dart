@@ -14,10 +14,12 @@ import '../../utils/classic_strip_scrub_helpers.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/image_helper.dart';
+import '../../utils/kiosk_offline_ux.dart';
 import '../../utils/logger.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/print_size_helpers.dart';
 import '../../utils/strip_filters_catalog_fallback.dart';
+import '../../utils/strip_look_matrix_bake.dart';
 import '../../utils/strip_preview_grade_compress.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
@@ -798,6 +800,39 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     );
   }
 
+  Future<GeneratedImage?> _completeLocalLook() async {
+    final baked = await bakeStripLookMatricesOntoDataUrls(
+      dataUrls: List<String>.from(_imageDataUrls),
+      filterId: _selectedFilterId,
+    );
+    final url = firstNonEmptyDataUrl(
+      baked.isNotEmpty ? baked : _imageDataUrls,
+    );
+    if (url.isEmpty) {
+      _errorMessage = AppStrings.flashbackComposeFailed;
+      return null;
+    }
+    final printSize = resolveClassicComposePrintSize(
+      imageCount: 1,
+      apiPrintSize: null,
+      orientation: _printOrientation,
+    );
+    final result = localLookComposeResult(
+      imageUrl: url,
+      filterId: _selectedFilterId,
+      printSize: printSize,
+    );
+    _composeResult = result;
+    _composePreview = result;
+    return GeneratedImage(
+      id: 'local_look_$_selectedFilterId',
+      imageUrl: url,
+      theme: theme,
+      isSelected: true,
+      printSize: printSize,
+    );
+  }
+
   /// Composes the strip and returns a selected [GeneratedImage] for Result.
   Future<GeneratedImage?> compose() async {
     if (!canCompose) {
@@ -814,6 +849,20 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       return null;
     }
 
+    if (KioskOfflineUx.shouldUseLocalStripLook(
+      sessionOffline: _sessionManager.isOfflineSession,
+    )) {
+      _composing = true;
+      _errorMessage = null;
+      notifyListeners();
+      try {
+        return await _completeLocalLook();
+      } finally {
+        _composing = false;
+        notifyListeners();
+      }
+    }
+
     _composePreviewDebounce?.cancel();
     if (classicOverlayCleanupEnabled &&
         !isSingleClassic &&
@@ -821,7 +870,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       // Join the first look-screen polish so print matches preview. Do not
       // start a second Gemini pass on Continue (felt like the CTA vanished).
       await preparePreview().timeout(
-        const Duration(seconds: 45),
+        composeWarmJoinTimeoutForTest,
         onTimeout: () {
           AppLogger.warning('Classic preparePreview timed out on compose');
         },
@@ -909,6 +958,13 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _errorMessage = AppStrings.flashbackComposeFailed;
       return null;
     } on ApiException catch (e) {
+      if (KioskOfflineUx.shouldUseLocalStripLook(
+        sessionOffline: false,
+        error: e,
+      )) {
+        _sessionManager.markSessionOffline();
+        return await _completeLocalLook();
+      }
       _errorMessage = e.message;
       return null;
     } catch (e, st) {

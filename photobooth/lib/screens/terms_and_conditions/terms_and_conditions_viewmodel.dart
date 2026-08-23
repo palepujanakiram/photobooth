@@ -4,6 +4,11 @@ import '../../services/api_service.dart';
 import '../../services/fcm_service.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/session_manager.dart';
+import '../../services/kiosk_disk_guard.dart';
+import '../../services/local_kiosk_store.dart';
+import '../../services/local_media_store.dart';
+import '../../services/local_session_create.dart';
+import '../../utils/app_strings.dart';
 import '../../services/file_helper.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/error_reporting_helpers.dart';
@@ -13,6 +18,7 @@ import '../../services/error_reporting/error_reporting_manager.dart';
 class TermsAndConditionsViewModel extends ChangeNotifier {
   final ApiService _apiService;
   final KioskManager _kioskManager;
+  final LocalKioskStore? _injectedStore;
   bool _isAgreed = false;
   bool _isSubmitting = false;
   String? _errorMessage;
@@ -27,8 +33,10 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
   TermsAndConditionsViewModel({
     ApiService? apiService,
     KioskManager? kioskManager,
+    LocalKioskStore? kioskStore,
   })  : _apiService = apiService ?? ApiService(),
-        _kioskManager = kioskManager ?? KioskManager() {
+        _kioskManager = kioskManager ?? KioskManager(),
+        _injectedStore = kioskStore {
     unawaited(_loadKioskCode());
   }
 
@@ -162,6 +170,19 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
       return false;
     }
 
+    final store = _injectedStore ?? LocalKioskStore.instance;
+    if (store != null) {
+      final disk = await KioskDiskGuard(
+        store: store,
+        media: LocalMediaStore(),
+      ).measure();
+      if (KioskDiskGuard.shouldBlockNewSessions(disk)) {
+        _errorMessage = AppStrings.termsDiskFull;
+        notifyListeners();
+        return false;
+      }
+    }
+
     // Fire-and-forget cleanup of temp images
     FileHelper.cleanupTempImages();
 
@@ -172,29 +193,40 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
 
     try {
       const createSessionTimeout = Duration(seconds: 30);
-      final response = await _apiService.acceptTermsAndCreateSession(
+      final created = await createKioskSession(
+        store: _injectedStore ?? LocalKioskStore.instance,
         kioskCode: kioskCode,
-        source: kIsWeb ? 'web' : 'mobile',
-      ).timeout(
-        createSessionTimeout,
-        onTimeout: () => throw TimeoutException(
-          'Creating session timed out after ${createSessionTimeout.inSeconds} seconds',
-        ),
+        acceptTerms: (clientId) => _apiService
+            .acceptTermsAndCreateSession(
+              kioskCode: kioskCode,
+              source: kIsWeb ? 'web' : 'mobile',
+              clientSessionId: clientId,
+            )
+            .timeout(
+              createSessionTimeout,
+              onTimeout: () => throw TimeoutException(
+                'Creating session timed out after ${createSessionTimeout.inSeconds} seconds',
+              ),
+            ),
       );
-      
-      // Store session data in SessionManager from API response
-      final sessionManager = SessionManager();
-      sessionManager.setSessionFromResponse(response);
 
-      // Bind kiosk session to device FCM token early (silent pushes: WhatsApp status, etc.).
-      if (!kIsWeb) {
+      final sessionManager = SessionManager();
+      sessionManager.setSessionFromResponse(created.sessionJson);
+
+      if (!created.usedLocalFallback && !kIsWeb) {
         final sid = sessionManager.sessionId;
         final token = await FcmService.getToken();
-        if (sid != null && sid.trim().isNotEmpty && token != null && token.trim().isNotEmpty) {
-          await _apiService.registerSessionFcmToken(sessionId: sid, fcmToken: token);
+        if (sid != null &&
+            sid.trim().isNotEmpty &&
+            token != null &&
+            token.trim().isNotEmpty) {
+          await _apiService.registerSessionFcmToken(
+            sessionId: sid,
+            fcmToken: token,
+          );
         }
       }
-      
+
       return true;
     } on TimeoutException catch (e, st) {
       _errorMessage = 'Request took too long. Please check your connection and try again.';

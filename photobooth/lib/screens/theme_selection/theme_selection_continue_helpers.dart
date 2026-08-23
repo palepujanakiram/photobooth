@@ -5,6 +5,7 @@ import '../../services/app_settings_manager.dart';
 import '../../utils/constants.dart';
 import '../../utils/classic_shot_mode.dart';
 import '../../utils/fotoflashback_navigation.dart';
+import '../../services/session_manager.dart';
 import '../../utils/payment_workflow_helpers.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../photo_capture/photo_model.dart';
@@ -101,6 +102,7 @@ Future<void> _themeSelectionNavigateAfterFramesLoaded({
         .read<AppSettingsManager>()
         .settings
         ?.paymentCollectionTiming,
+    wanDown: SessionManager().isOfflineSession,
   );
 }
 

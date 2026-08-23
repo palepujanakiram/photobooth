@@ -464,7 +464,7 @@ class _ResultScreenState extends State<ResultScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            _buildTitleSection(appColors),
+                            _buildTitleSection(appColors, viewModel),
                             if (_transformationRunId != null) ...[
                               const SizedBox(height: 4),
                               _buildTransformationDetailsLink(),
@@ -622,11 +622,13 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
-  Widget _buildTitleSection(AppColors appColors) {
+  Widget _buildTitleSection(AppColors appColors, ResultViewModel viewModel) {
     return Padding(
       padding: const EdgeInsets.only(top: 0, bottom: 2),
       child: Text(
-        'Scan the QR code to pay with UPI.\nPrinting starts automatically after payment is approved.',
+        viewModel.cashOnlyOffline
+            ? AppStrings.offlineCashOnlyMessage
+            : 'Scan the QR code to pay with UPI.\nPrinting starts automatically after payment is approved.',
         maxLines: 3,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(

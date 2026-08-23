@@ -13,6 +13,7 @@ import 'package:photobooth/screens/fotoflashback/fotoflashback_filter_viewmodel.
 import 'package:photobooth/screens/photo_capture/photo_model.dart';
 import 'package:photobooth/screens/photo_generate/photo_generate_viewmodel.dart';
 import 'package:photobooth/services/session_manager.dart';
+import 'package:photobooth/services/local_session_skeleton.dart';
 import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/classic_strip_scrub_coordinator.dart';
 import 'package:photobooth/utils/constants.dart';
@@ -38,12 +39,14 @@ void main() {
 
   setUp(() {
     ClassicStripScrubCoordinator.instance.resetForTests();
+    SessionManager().clearSession();
     FotoFlashbackFilterViewModel.composeWarmJoinTimeoutForTest =
         const Duration(seconds: 45);
   });
 
   tearDown(() {
     ClassicStripScrubCoordinator.instance.resetForTests();
+    SessionManager().clearSession();
     FotoFlashbackFilterViewModel.composeWarmJoinTimeoutForTest =
         const Duration(seconds: 45);
   });
@@ -632,6 +635,55 @@ void main() {
     expect(vm.errorMessage, 'compose down');
   });
 
+  test('FotoFlashbackFilterViewModel uses local look when session is offline',
+      () async {
+    SessionManager().setSessionFromResponse({
+      ..._sessionJson('sess-offline'),
+      kKioskSessionOfflineKey: true,
+    });
+    final api = _StripFakeApi(failCompose: true);
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, _tinyJpegDataUrl()),
+      apiService: api,
+    );
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    expect(image!.imageUrl, isNotEmpty);
+    expect(api.composeCalls, 0);
+    expect(SessionManager().isOfflineSession, isTrue);
+  });
+
+  test('FotoFlashbackFilterViewModel local look fails when shots have no pixels',
+      () async {
+    SessionManager().setSessionFromResponse({
+      ..._sessionJson('sess-offline-empty'),
+      kKioskSessionOfflineKey: true,
+    });
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, '   '),
+      apiService: _StripFakeApi(),
+    );
+    expect(await vm.compose(), isNull);
+    expect(vm.errorMessage, AppStrings.flashbackComposeFailed);
+  });
+
+  test('FotoFlashbackFilterViewModel uses local look on WAN-down compose',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-wan'));
+    final api = _StripFakeApi(failComposeWan: true);
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, _tinyJpegDataUrl()),
+      apiService: api,
+    );
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    expect(api.composeCalls, 1);
+    expect(SessionManager().isOfflineSession, isTrue);
+  });
+
   test('FotoFlashbackFilterViewModel handles load/compose edge cases', () async {
     SessionManager().clearSession();
     final shortVm = FotoFlashbackFilterViewModel(
@@ -1088,6 +1140,7 @@ void main() {
         apiService: api,
         shotCleaned: const [false, false, false, false],
         overlayCleanupBuildGate: true,
+        enableOsdScrub: true,
       );
       late GeneratedImage? image;
       unawaited(vm.compose().then((v) => image = v));
@@ -1355,6 +1408,7 @@ class _ThrowingScrubFakeApi extends _StripFakeApi {
 class _StripFakeApi extends FakeApiService {
   _StripFakeApi({
     this.failCompose = false,
+    this.failComposeWan = false,
     this.failLoad = false,
     this.throwGenericLoad = false,
     this.throwGenericCompose = false,
@@ -1364,6 +1418,7 @@ class _StripFakeApi extends FakeApiService {
   });
 
   final bool failCompose;
+  final bool failComposeWan;
   final bool failLoad;
   final bool throwGenericLoad;
   final bool throwGenericCompose;
@@ -1503,6 +1558,9 @@ class _StripFakeApi extends FakeApiService {
     lastComposeTimeout = timeout;
     if (failCompose) {
       throw ApiException('compose down');
+    }
+    if (failComposeWan) {
+      throw ApiException(AppConstants.kErrorNetwork, 503);
     }
     if (throwGenericCompose) {
       throw Exception('compose boom');

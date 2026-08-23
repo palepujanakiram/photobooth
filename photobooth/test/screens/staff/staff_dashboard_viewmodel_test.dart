@@ -135,6 +135,14 @@ void main() {
       expect(StaffDashboardHelpers.isValidIsoDate(''), isFalse);
     });
 
+    test('parses iso dates', () {
+      expect(
+        StaffDashboardHelpers.tryParseIsoDate('2026-07-20'),
+        DateTime(2026, 7, 20),
+      );
+      expect(StaffDashboardHelpers.tryParseIsoDate('bad'), isNull);
+    });
+
     test('formats day label', () {
       expect(
         StaffDashboardHelpers.formatDayLabel('2026-07-20'),

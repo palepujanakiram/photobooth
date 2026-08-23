@@ -640,6 +640,22 @@ abstract final class AppStrings {
   static const staffKpiPaymentsHint = 'Approved payments';
   static const staffKpiRevenue = 'Revenue';
   static const staffKpiRevenueHint = 'Approved total';
+  static const staffDiskFull =
+      'Kiosk disk is full. Connect internet and wait for photos to sync before starting new sessions.';
+  static const offlineFrameOnlyMessage =
+      'AI needs internet. You can still print this photo.';
+  static const offlineCashOnlyMessage =
+      'UPI needs internet. Pay cash at the counter.';
+  static const offlineCashOnlyWaiting =
+      'Pay cash at the counter. Printing starts after staff confirm.';
+  static const offlineGiftCardUnavailable =
+      'Gift cards and coupons need internet.';
+  static const offlinePayAtCounterTitle = 'Pay at counter';
+  static const staffLocalDayTitle = 'On this kiosk';
+  static const staffLocalDayHint = 'Not yet synced to the cloud';
+  static const staffLocalDayCash = 'Cash collected';
+  static const termsDiskFull =
+      'This kiosk is out of photo storage. Ask staff to connect internet and wait for sync.';
   static const staffModeUpi = 'UPI';
   static const staffModeCash = 'Cash';
   static const staffModeComplimentary = 'Complimentary';

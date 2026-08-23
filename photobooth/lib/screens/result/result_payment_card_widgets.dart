@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../utils/app_strings.dart';
 import 'result_payment_copies_row.dart';
 import 'result_payment_coupon_row.dart';
 import 'result_payment_status.dart';
@@ -40,7 +41,12 @@ class ResultPaymentCardColumn extends StatelessWidget {
     final status = ResultPaymentStatusPresentation.fromViewModel(viewModel);
     return Column(
       children: [
-        const Text('Pay via UPI', style: kResultPaymentBoxTitleStyle),
+        Text(
+          viewModel.cashOnlyOffline
+              ? AppStrings.offlinePayAtCounterTitle
+              : 'Pay via UPI',
+          style: kResultPaymentBoxTitleStyle,
+        ),
         const SizedBox(height: 4),
         Text(
           viewModel.collectPaymentBeforeGeneration && viewModel.chargeAmount > 0
@@ -66,13 +72,23 @@ class ResultPaymentCardColumn extends StatelessWidget {
         const SizedBox(height: 8),
         ResultPaymentCopiesRow(viewModel: viewModel),
         const SizedBox(height: 6),
-        ResultPaymentCouponRow(
-          appliedDiscount: viewModel.appliedDiscount,
-          couponError: viewModel.couponError,
-          busy: viewModel.couponBusy || viewModel.paymentInitInProgress,
-          onApply: viewModel.applyCoupon,
-          onUnapply: viewModel.unapplyCoupon,
-        ),
+        if (!viewModel.cashOnlyOffline)
+          ResultPaymentCouponRow(
+            appliedDiscount: viewModel.appliedDiscount,
+            couponError: viewModel.couponError,
+            busy: viewModel.couponBusy || viewModel.paymentInitInProgress,
+            onApply: viewModel.applyCoupon,
+            onUnapply: viewModel.unapplyCoupon,
+          )
+        else
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text(
+              AppStrings.offlineGiftCardUnavailable,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+          ),
         const SizedBox(height: 6),
         Expanded(
           child: Center(

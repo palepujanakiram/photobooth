@@ -7,6 +7,7 @@ import '../photo_capture/photo_model.dart';
 import '../theme_selection/theme_model.dart';
 import '../../models/kiosk_frame_model.dart';
 import '../../services/app_settings_manager.dart';
+import '../../services/session_manager.dart';
 import '../../utils/payment_workflow_helpers.dart';
 import '../../utils/route_args.dart';
 import '../../utils/secure_image_url.dart';
@@ -102,6 +103,7 @@ class _FrameSelectScreenState extends State<FrameSelectScreen> {
             .read<AppSettingsManager>()
             .settings
             ?.paymentCollectionTiming,
+        wanDown: SessionManager().isOfflineSession,
       ),
     );
   }

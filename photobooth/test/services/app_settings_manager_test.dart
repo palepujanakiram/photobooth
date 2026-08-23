@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/app_settings_model.dart';
 import 'package:photobooth/services/app_settings_manager.dart';
+import 'package:photobooth/services/catalog_disk_cache.dart';
 import 'package:photobooth/utils/app_runtime_config.dart';
 import 'package:photobooth/utils/exceptions.dart';
 
@@ -91,6 +94,31 @@ void main() {
     // Same kiosk again → cached.
     await mgr.fetchSettings();
     expect(api.fetchCount, 2);
+  });
+
+  test('fetchSettings hydrates disk when API fails', () async {
+    final dir = await Directory.systemTemp.createTemp('settings_disk_');
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    final disk = CatalogDiskCache(resolveDirectory: () async => dir);
+    final api = _SettingsApi(AppSettingsModel(initialPrice: 175));
+    final first = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => 'K1',
+      diskCache: disk,
+    );
+    await first.fetchSettings();
+    expect(first.settings?.initialPrice, 175);
+
+    final offline = AppSettingsManager(
+      apiService: _ThrowingSettingsApi(),
+      resolveKioskCode: () async => 'K1',
+      diskCache: disk,
+    );
+    await offline.fetchSettings();
+    expect(offline.settings?.initialPrice, 175);
+    expect(offline.errorMessage, isNotNull);
   });
 }
 

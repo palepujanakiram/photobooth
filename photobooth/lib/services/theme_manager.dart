@@ -7,26 +7,35 @@ import '../utils/theme_image_urls.dart';
 import '../utils/error_reporting_helpers.dart';
 import '../utils/logger.dart';
 import 'api_service.dart';
+import 'catalog_disk_cache.dart';
 import 'kiosk_manager.dart';
 import 'event_manager.dart';
 
 /// Singleton class responsible for fetching, caching, and providing themes
 /// to all screens that need them.
 class ThemeManager {
-  ThemeManager._internal([ApiService? apiService])
-      : _apiService = apiService ?? ApiService();
+  ThemeManager._internal([ApiService? apiService, CatalogDiskCache? diskCache])
+      : _apiService = apiService ?? ApiService(),
+        _diskCache = diskCache;
 
-  static final ThemeManager _instance = ThemeManager._internal();
+  static final ThemeManager _instance = ThemeManager._internal(
+    null,
+    CatalogDiskCache(),
+  );
 
   /// Get the singleton instance
   factory ThemeManager() => _instance;
 
   /// Non-singleton instance for unit tests.
   @visibleForTesting
-  factory ThemeManager.forTesting(ApiService apiService) =>
-      ThemeManager._internal(apiService);
+  factory ThemeManager.forTesting(
+    ApiService apiService, {
+    CatalogDiskCache? diskCache,
+  }) =>
+      ThemeManager._internal(apiService, diskCache);
 
   final ApiService _apiService;
+  final CatalogDiskCache? _diskCache;
 
   // Cached themes
   List<ThemeModel> _cachedThemes = [];
@@ -81,8 +90,15 @@ class ThemeManager {
       _cachedThemesKioskKey = kioskKey;
     }
 
+    if (_cachedThemes.isEmpty) {
+      await _hydrateFromDisk(kioskKey);
+    }
+
     // Return cached themes if available and not forcing refresh
-    if (!forceRefresh && _cachedThemes.isNotEmpty && !_isLoading) {
+    if (!forceRefresh &&
+        _cachedThemes.isNotEmpty &&
+        _lastFetchTime != null &&
+        !_isLoading) {
       return List.unmodifiable(_cachedThemes);
     }
 
@@ -116,6 +132,7 @@ class ThemeManager {
       _errorMessage = null;
       _isLoading = false;
       _notifyListeners();
+      await _persistToDisk(_cachedThemesKioskKey);
       return List.unmodifiable(_cachedThemes);
     } on ApiException catch (e) {
       _errorMessage = e.message;
@@ -142,6 +159,36 @@ class ThemeManager {
       }
       throw ApiException('Failed to fetch themes: $e');
     }
+  }
+
+  String _diskKey(String kioskKey) {
+    final safe = kioskKey.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    return 'themes_${safe.isEmpty ? 'default' : safe}';
+  }
+
+  Future<void> _hydrateFromDisk(String kioskKey) async {
+    final disk = _diskCache;
+    if (disk == null || _cachedThemes.isNotEmpty) return;
+    final raw = await disk.readJson(_diskKey(kioskKey));
+    if (raw is! List) return;
+    final loaded = <ThemeModel>[];
+    for (final row in raw) {
+      if (row is! Map) continue;
+      final theme = ThemeModel.fromJson(Map<String, dynamic>.from(row));
+      if (theme.id.isNotEmpty) loaded.add(theme);
+    }
+    if (loaded.isEmpty) return;
+    _cachedThemes = loaded;
+    _cachedThemesKioskKey = kioskKey;
+  }
+
+  Future<void> _persistToDisk(String kioskKey) async {
+    final disk = _diskCache;
+    if (disk == null) return;
+    await disk.writeJson(
+      _diskKey(kioskKey),
+      _cachedThemes.map((t) => t.toJson()).toList(),
+    );
   }
 
   /// Gets themes synchronously from cache.

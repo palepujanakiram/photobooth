@@ -6,6 +6,8 @@ import '../utils/constants.dart';
 import '../utils/logger.dart';
 import 'alice_inspector.dart';
 import 'api_service.dart';
+import 'app_settings_cache_codec.dart';
+import 'catalog_disk_cache.dart';
 import 'kiosk_manager.dart';
 
 class AppSettingsManager extends ChangeNotifier {
@@ -15,9 +17,13 @@ class AppSettingsManager extends ChangeNotifier {
   AppSettingsManager({
     ApiService? apiService,
     @visibleForTesting Future<String?> Function()? resolveKioskCode,
+    CatalogDiskCache? diskCache,
   })  : _apiService = apiService ?? ApiService(),
         _resolveKioskCode =
-            resolveKioskCode ?? (() => KioskManager().getKioskCode());
+            resolveKioskCode ?? (() => KioskManager().getKioskCode()),
+        _diskCache = diskCache ?? CatalogDiskCache();
+
+  final CatalogDiskCache _diskCache;
 
   AppSettingsModel? _settings;
   bool _isLoading = false;
@@ -59,9 +65,16 @@ class AppSettingsManager extends ChangeNotifier {
     final kioskChanged =
         _settings != null && _settingsKioskKey != null && _settingsKioskKey != kioskKey;
 
+    if (!forceRefresh && !kioskChanged && _settings == null) {
+      await _hydrateFromDisk(kioskKey);
+    }
+
     // Startup often loads settings before splash binds a kiosk. When the bound
     // kiosk changes, ignore the account-default cache so guest prices refresh.
-    if (!forceRefresh && !kioskChanged && _settings != null) {
+    if (!forceRefresh &&
+        !kioskChanged &&
+        _settings != null &&
+        _lastFetchedAt != null) {
       // Keep [AppRuntimeConfig] in sync when callers reuse cached settings.
       AppRuntimeConfig.instance.applyFromSettings(_settings);
       return;
@@ -88,6 +101,7 @@ class AppSettingsManager extends ChangeNotifier {
         _lastFetchedAt = DateTime.now();
         _errorMessage = null;
         AppRuntimeConfig.instance.applyFromSettings(_settings);
+        await _persistToDisk(kioskKey);
         applyFlutterImageCacheLimits();
         AliceInspector.syncWithRuntimeConfig();
         // Fire-and-forget: stop/start EDSDK vs PTP to match ZenAI mode.
@@ -100,6 +114,9 @@ class AppSettingsManager extends ChangeNotifier {
           error: e,
           stackTrace: st,
         );
+        if (_settings == null) {
+          await _hydrateFromDisk(kioskKey);
+        }
       } finally {
         _isLoading = false;
         notifyListeners();
@@ -114,5 +131,26 @@ class AppSettingsManager extends ChangeNotifier {
         _inflightFetch = null;
       }
     }
+  }
+
+  String _diskKey(String kioskKey) {
+    final safe = kioskKey.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    return 'settings_${safe.isEmpty ? 'default' : safe}';
+  }
+
+  Future<void> _hydrateFromDisk(String kioskKey) async {
+    if (_settings != null) return;
+    final parsed =
+        appSettingsFromCacheJson(await _diskCache.readJson(_diskKey(kioskKey)));
+    if (parsed == null) return;
+    _settings = parsed;
+    _settingsKioskKey = kioskKey;
+    AppRuntimeConfig.instance.applyFromSettings(_settings);
+  }
+
+  Future<void> _persistToDisk(String kioskKey) async {
+    final s = _settings;
+    if (s == null) return;
+    await _diskCache.writeJson(_diskKey(kioskKey), appSettingsToCacheJson(s));
   }
 }

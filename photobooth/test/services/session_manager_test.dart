@@ -2,15 +2,17 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/services/session_manager.dart';
+import 'package:photobooth/services/local_kiosk_store.dart';
 import 'package:photobooth/utils/print_orientation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
+  setUp(() async {
+    LocalKioskStore.resetInstance();
     SharedPreferences.setMockInitialValues({});
-    SessionManager().clearSession();
+    await SessionManager().endCustomerSession();
   });
 
   test('setSessionFromResponse and getters', () {
@@ -30,7 +32,6 @@ void main() {
   });
 
   test('restore reloads session from SharedPreferences', () async {
-    SessionManager().clearSession();
     final payload = {
       'id': 'sess-persist',
       'termsAccepted': true,

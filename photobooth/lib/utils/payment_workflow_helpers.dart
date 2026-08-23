@@ -53,7 +53,9 @@ int resolveCheckoutAmount({
 String resolvePostFrameRoute({
   required bool paymentsEnabled,
   required String? paymentCollectionTiming,
+  bool wanDown = false,
 }) {
+  if (wanDown) return AppConstants.kRouteGenerateProgress;
   if (paymentsEnabled &&
       collectPaymentBeforeGeneration(paymentCollectionTiming)) {
     return AppConstants.kRoutePrePayment;
@@ -76,12 +78,14 @@ Future<void> navigateToGenerationOrPrePayment({
   required ThemeModel theme,
   required bool replace,
   String? paymentCollectionTiming,
+  bool wanDown = false,
 }) async {
   final paymentsEnabled = await resolvePaymentsEnabled();
   if (!context.mounted) return;
   final route = resolvePostFrameRoute(
     paymentsEnabled: paymentsEnabled,
     paymentCollectionTiming: paymentCollectionTiming,
+    wanDown: wanDown,
   );
   final args = GenerateArgs(photo: photo, theme: theme);
   if (replace) {

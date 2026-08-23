@@ -775,4 +775,91 @@ void main() {
       expect(await prepareDirectPtpPoseSession(settings: settings), isFalse);
     });
   });
+
+  group('isDirectPtpHardwareAvailable', () {
+    test('false off Android', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      expect(await isDirectPtpHardwareAvailable(), isFalse);
+    });
+
+    test('false when the booth is not direct_ptp', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      expect(
+        await isDirectPtpHardwareAvailable(
+          settings: AppSettingsModel(cameraConnectionMode: 'pi'),
+          camera: DirectPtpCameraService(isAndroid: () => true),
+        ),
+        isFalse,
+      );
+    });
+
+    test('false when the native service is unsupported', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      expect(
+        await isDirectPtpHardwareAvailable(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+          camera: DirectPtpCameraService(isAndroid: () => false),
+        ),
+        isFalse,
+      );
+    });
+
+    test('false without USB host', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      const ptpChannel = MethodChannel('com.srisarani.fotozenai/canon_ptp');
+      messenger.setMockMethodCallHandler(ptpChannel, (call) async {
+        if (call.method == 'hasUsbHost') return false;
+        return null;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(ptpChannel, null));
+      expect(
+        await isDirectPtpHardwareAvailable(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+          camera: DirectPtpCameraService(isAndroid: () => true),
+        ),
+        isFalse,
+      );
+    });
+
+    test('true when a device is on the bus', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      const ptpChannel = MethodChannel('com.srisarani.fotozenai/canon_ptp');
+      messenger.setMockMethodCallHandler(ptpChannel, (call) async {
+        if (call.method == 'hasUsbHost') return true;
+        if (call.method == 'probeDevice') {
+          return {
+            'deviceName': 'EOS',
+            'vendorId': 1,
+            'productId': 2,
+            'hasPermission': true,
+          };
+        }
+        return null;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(ptpChannel, null));
+      expect(
+        await isDirectPtpHardwareAvailable(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+          camera: DirectPtpCameraService(isAndroid: () => true),
+        ),
+        isTrue,
+      );
+    });
+
+    test('uses the default camera service when omitted', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      expect(
+        await isDirectPtpHardwareAvailable(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+        ),
+        isFalse,
+      );
+    });
+  });
 }

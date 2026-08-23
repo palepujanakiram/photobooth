@@ -20,6 +20,7 @@ import '../../utils/ai_attempts_budget.dart';
 import '../../utils/constants.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/kiosk_offline_ux.dart';
 import '../../utils/logger.dart';
 import '../../utils/memory_pressure_response.dart';
 import '../../utils/error_reporting_helpers.dart';
@@ -1213,6 +1214,37 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     return true;
   }
 
+  Future<bool> _completeFrameOnlyLocally() async {
+    final photo = _originalPhoto;
+    final theme = _selectedTheme;
+    if (photo == null || theme == null) return false;
+    _errorMessage = null;
+    _progressMessage = AppStrings.offlineFrameOnlyMessage;
+    _generatedImages = [
+      GeneratedImage(
+        id: 'frame_only_${photo.id}',
+        imageUrl: photo.imageFile.path,
+        theme: theme,
+        isSelected: true,
+        printSize: AppConstants.kPrintSizePortrait4x6,
+      ),
+    ];
+    _ensureNewestAlwaysSelected();
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> _recoverFrameOnlyIfWanDown(Object error) async {
+    if (!KioskOfflineUx.shouldSkipAiGeneration(
+      sessionOffline: _sessionManager.isOfflineSession,
+      error: error,
+    )) {
+      return false;
+    }
+    _sessionManager.markSessionOffline();
+    return _completeFrameOnlyLocally();
+  }
+
   /// Generate image with the current theme
   Future<bool> generateImage() async {
     if (_selectedTheme == null || _originalPhoto == null) {
@@ -1223,6 +1255,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     if (_isGenerating) {
       AppLogger.debug('generateImage ignored: already in progress');
       return false;
+    }
+
+    if (KioskOfflineUx.shouldSkipAiGeneration(
+      sessionOffline: _sessionManager.isOfflineSession,
+    )) {
+      return _completeFrameOnlyLocally();
     }
 
     await syncAttemptsBudgetFromServer();
@@ -1332,6 +1370,10 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       return ok;
     } catch (e, stackTrace) {
       _stopTimer();
+      if (await _recoverFrameOnlyIfWanDown(e)) {
+        succeeded = true;
+        return true;
+      }
       WebFlowTrace.log('GENERATE', 'ERROR $e');
       AppLogger.error('❌ Error generating image: $e');
       await ErrorReportingManager.recordError(
@@ -1370,6 +1412,15 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   Future<bool> tryDifferentStyle(ThemeModel newTheme) async {
     if (_originalPhoto == null) return false;
     if (!_isLoadingMore && !canTryDifferentStyle) return false;
+
+    if (KioskOfflineUx.shouldSkipAiGeneration(
+      sessionOffline: _sessionManager.isOfflineSession,
+    )) {
+      _isLoadingMore = false;
+      _errorMessage = AppStrings.offlineFrameOnlyMessage;
+      notifyListeners();
+      return false;
+    }
 
     var succeeded = false;
     _resetCancellation();

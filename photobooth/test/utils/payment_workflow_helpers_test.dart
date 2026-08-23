@@ -161,6 +161,18 @@ void main() {
         AppConstants.kRouteGenerateProgress,
       );
     });
+
+    test('skips pre-payment when WAN is down', () {
+      expect(
+        resolvePostFrameRoute(
+          paymentsEnabled: true,
+          paymentCollectionTiming:
+              AppConstants.kPaymentCollectionBeforeGeneration,
+          wanDown: true,
+        ),
+        AppConstants.kRouteGenerateProgress,
+      );
+    });
   });
 
   group('resolvePaymentsEnabled', () {
@@ -206,6 +218,41 @@ void main() {
       await tester.tap(find.text('go'));
       await tester.pumpAndSettle();
       expect(find.text('pre-pay'), findsOneWidget);
+    });
+
+    testWidgets('skips pre-payment when wanDown', (tester) async {
+      await KioskManager().setPaymentEnabledOverride(true);
+      await tester.pumpWidget(
+        MaterialApp(
+          routes: {
+            '/': (_) => Builder(
+                  builder: (context) => ElevatedButton(
+                    onPressed: () {
+                      navigateToGenerationOrPrePayment(
+                        context: context,
+                        photo: _testPhoto(),
+                        theme: _testTheme(),
+                        replace: false,
+                        paymentCollectionTiming:
+                            AppConstants.kPaymentCollectionBeforeGeneration,
+                        wanDown: true,
+                      );
+                    },
+                    child: const Text('go'),
+                  ),
+                ),
+            AppConstants.kRoutePrePayment: (_) =>
+                const Scaffold(body: Text('pre-pay')),
+            AppConstants.kRouteGenerateProgress: (_) =>
+                const Scaffold(body: Text('generate')),
+          },
+        ),
+      );
+
+      await tester.tap(find.text('go'));
+      await tester.pumpAndSettle();
+      expect(find.text('generate'), findsOneWidget);
+      expect(find.text('pre-pay'), findsNothing);
     });
 
     testWidgets('pushReplacement navigates to generate progress', (tester) async {

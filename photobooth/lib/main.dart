@@ -33,6 +33,11 @@ import 'services/payment_push_coordinator.dart';
 import 'services/api_service.dart';
 import 'services/client_identification.dart';
 import 'services/session_manager.dart';
+import 'services/local_kiosk_store.dart';
+import 'services/local_media_store.dart';
+import 'services/kiosk_disk_guard.dart';
+import 'services/kiosk_outbox_worker.dart';
+import 'services/kiosk_manager.dart';
 import 'services/low_memory_monitor.dart';
 import 'utils/app_config.dart';
 import 'utils/platform_capabilities.dart';
@@ -98,6 +103,30 @@ Future<void> main() async {
 
   configureFlutterErrorHandlers();
 
+  if (!kIsWeb) {
+    await LocalKioskStore.init();
+    final store = LocalKioskStore.instance;
+    if (store != null) {
+      final media = LocalMediaStore();
+      final api = ApiService();
+      KioskOutboxWorker(
+        store: store,
+        ingestEntities: (code, items) => api.ingestKioskEntities(
+          kioskCode: code,
+          items: [for (final item in items) item.toJson()],
+        ),
+        ingestAsset: (code, asset) => api.ingestKioskAsset(
+          kioskCode: code,
+          prefix: asset.prefix,
+          filename: asset.filename,
+          bytes: asset.bytes,
+        ),
+        resolveKioskCode: KioskManager().getKioskCode,
+        media: media,
+        diskGuard: KioskDiskGuard(store: store, media: media),
+      ).start();
+    }
+  }
   await SessionManager().restore();
 
   logErrorReportingReady();

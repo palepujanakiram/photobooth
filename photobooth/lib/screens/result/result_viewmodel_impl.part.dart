@@ -17,6 +17,15 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       notifyListeners();
       return;
     }
+    if (KioskOfflineUx.shouldUseCashOnlyPayments(
+      sessionOffline: _r._sessionManager.isOfflineSession,
+    )) {
+      _r._paymentInitInProgress = false;
+      _r._paymentInitError = null;
+      _startSessionApprovalPolling(sessionId);
+      notifyListeners();
+      return;
+    }
 
     final generation = ++_r._paymentInitiateGeneration;
     _r._paymentInitInProgress = true;
@@ -87,8 +96,26 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       }
       _startSessionApprovalPolling(sessionId);
     } on ApiException catch (e) {
+      if (KioskOfflineUx.shouldUseCashOnlyPayments(
+        sessionOffline: false,
+        error: e,
+      )) {
+        _r._sessionManager.markSessionOffline();
+        _r._paymentInitError = null;
+        _startSessionApprovalPolling(sessionId);
+        return;
+      }
       _r._paymentInitError = e.message;
     } catch (e, st) {
+      if (KioskOfflineUx.shouldUseCashOnlyPayments(
+        sessionOffline: false,
+        error: e,
+      )) {
+        _r._sessionManager.markSessionOffline();
+        _r._paymentInitError = null;
+        _startSessionApprovalPolling(sessionId);
+        return;
+      }
       _r._paymentInitError = 'Payment setup failed: $e';
       unawaited(
         reportIssue(
@@ -124,6 +151,13 @@ mixin _ResultViewModelImpl on ChangeNotifier {
   }
 
   Future<void> applyCoupon(String code) async {
+    if (KioskOfflineUx.shouldHideCloudDiscounts(
+      sessionOffline: _r._sessionManager.isOfflineSession,
+    )) {
+      _r._couponError = AppStrings.offlineGiftCardUnavailable;
+      notifyListeners();
+      return;
+    }
     final sessionId = _r._sessionManager.sessionId;
     if (sessionId == null || sessionId.isEmpty) {
       _r._couponError = 'No session for coupon';
@@ -249,6 +283,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     } catch (_) {
       raw = null;
     }
+    raw ??= await LocalKioskStore.instance?.getSession(sessionId);
     if (_r._disposed) {
       t.cancel();
       return;
@@ -935,6 +970,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     Object? lastError;
     StackTrace? lastStack;
     int? lastStatus;
+    final local = await _issueLocalReceipt(sessionId);
 
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -950,6 +986,8 @@ mixin _ResultViewModelImpl on ChangeNotifier {
           transactionRef: _r._activePaymentId,
           fcmToken: fcmToken,
           printQuantity: _r.printSheetCount,
+          receiptNumber: local?.receiptNumber,
+          receiptId: local?.id,
         );
       } on ApiException catch (e, st) {
         lastError = e;
@@ -998,7 +1036,49 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         'maxAttempts': maxAttempts,
       },
     );
+    final err = lastError;
+    if (local != null && err != null && isWanDownSessionError(err)) {
+      return local.json;
+    }
     return null;
+  }
+
+  Future<LocalReceiptIssue?> _issueLocalReceipt(String sessionId) async {
+    final store = LocalKioskStore.instance;
+    if (store == null) return null;
+    try {
+      final kioskCode = await _r._kioskManager.getKioskCode();
+      return LocalKioskSettlement(store: store).issueReceipt(
+        sessionId: sessionId,
+        kioskCode: kioskCode,
+        amount: _r.chargeAmount,
+      );
+    } catch (e, st) {
+      AppLogger.debug('Local receipt issue failed ($e)');
+      AppLogger.debug('$st');
+      return null;
+    }
+  }
+
+  Future<void> _recordLocalPrintJobs() async {
+    final store = LocalKioskStore.instance;
+    final sessionId = _r._sessionManager.sessionId;
+    if (store == null || sessionId == null || sessionId.trim().isEmpty) {
+      return;
+    }
+    try {
+      final settlement = LocalKioskSettlement(store: store);
+      for (final image in _r._generatedImages) {
+        await settlement.recordPrintJob(
+          sessionId: sessionId,
+          imageUrl: image.imageUrl,
+          copies: _r._printCopies,
+        );
+      }
+    } catch (e, st) {
+      AppLogger.debug('Local print job record failed ($e)');
+      AppLogger.debug('$st');
+    }
   }
 
   /// Mints a short-lived customer share link for this session (for QR bridge).
@@ -1405,6 +1485,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       } else {
         _r._errorMessage = null;
         _completePrintProgress(totalPages: _r._generatedImages.length);
+        unawaited(_recordLocalPrintJobs());
       }
     } on PrintException catch (e, st) {
       if (shouldApplyPrintFailure(_r._printProgress)) {

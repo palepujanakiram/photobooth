@@ -10,6 +10,8 @@ import '../../services/app_settings_manager.dart';
 import '../../services/print_service.dart';
 import '../../services/receipt/receipt_print_bridge.dart';
 import '../../services/staff_session_manager.dart';
+import '../../services/local_kiosk_store.dart';
+import '../../services/local_kiosk_settlement.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
@@ -78,6 +80,13 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
         p,
         const ['id', 'paymentId', 'payment_id'],
       );
+
+  static int _staffPaymentAmount(Map<String, dynamic> p) {
+    final v = p['amount'];
+    if (v is int) return v;
+    if (v is num) return v.round();
+    return int.tryParse(v?.toString() ?? '') ?? 0;
+  }
 
   static String _paymentStatus(Map<String, dynamic> p) =>
       StaffPaymentsPayloadUtils.pickString(
@@ -357,10 +366,25 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
       _error = null;
     });
     try {
-      await _api.approvePayment(
-        paymentId: id,
-        paymentMode: mode.apiValue,
-      );
+      final store = LocalKioskStore.instance;
+      if (store != null) {
+        await settleApprovedPayment(
+          approveOnFly: () => _api.approvePayment(
+            paymentId: id,
+            paymentMode: mode.apiValue,
+          ),
+          store: store,
+          paymentId: id,
+          sessionId: _sessionId(p),
+          paymentMode: mode.apiValue,
+          amount: _staffPaymentAmount(p),
+        );
+      } else {
+        await _api.approvePayment(
+          paymentId: id,
+          paymentMode: mode.apiValue,
+        );
+      }
       await _reloadPaymentsAfterDecision();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -471,6 +495,13 @@ class _StaffPaymentsScreenState extends State<StaffPaymentsScreen> {
         onSuccess: i == picked.length - 1 ? _showPrintJobSentSnackBar : null,
       );
       if (_error != null && _error!.isNotEmpty) return;
+      final store = LocalKioskStore.instance;
+      if (store != null) {
+        await LocalKioskSettlement(store: store).recordPrintJob(
+          sessionId: sid,
+          imageUrl: pickedUrl,
+        );
+      }
     }
   }
 

@@ -6,6 +6,7 @@ import '../screens/fotoflashback/surprise_me_upsell_view.dart';
 import '../screens/photo_generate/photo_generate_viewmodel.dart';
 import '../services/app_settings_manager.dart';
 import '../services/print_selection_coordinator.dart';
+import '../services/session_manager.dart';
 import 'app_strings.dart';
 import 'constants.dart';
 import 'payment_workflow_helpers.dart';
@@ -23,7 +24,8 @@ Future<String?> continueAfterFlashbackLook({
   if (!context.mounted) return AppStrings.flashbackComposeFailed;
 
   final payBefore = paymentsEnabled &&
-      collectPaymentBeforeGeneration(paymentCollectionTiming);
+      collectPaymentBeforeGeneration(paymentCollectionTiming) &&
+      !SessionManager().isOfflineSession;
   if (payBefore) {
     await Navigator.of(context).pushNamed(
       AppConstants.kRoutePrePayment,

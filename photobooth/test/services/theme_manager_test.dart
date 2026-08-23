@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photobooth/services/catalog_disk_cache.dart';
 import 'package:photobooth/services/theme_manager.dart';
 import 'package:photobooth/utils/exceptions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -54,5 +57,25 @@ void main() {
   test('fetchThemes rethrows when empty and API fails', () async {
     final tm = ThemeManager.forTesting(ThemesFakeApi([], throwOnFetch: true));
     expect(() => tm.fetchThemes(), throwsA(isA<ApiException>()));
+  });
+
+  test('fetchThemes hydrates disk then falls back when API fails', () async {
+    final dir = await Directory.systemTemp.createTemp('themes_disk_');
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    final disk = CatalogDiskCache(resolveDirectory: () async => dir);
+    final first = ThemeManager.forTesting(
+      ThemesFakeApi([sampleTheme('t1')]),
+      diskCache: disk,
+    );
+    await first.fetchThemes();
+
+    final offline = ThemeManager.forTesting(
+      ThemesFakeApi([], throwOnFetch: true),
+      diskCache: disk,
+    );
+    final loaded = await offline.fetchThemes();
+    expect(loaded.single.id, 't1');
   });
 }
