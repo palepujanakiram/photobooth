@@ -730,6 +730,31 @@ void main() {
     expect(loadFail.filters, isNotEmpty);
     expect(loadFail.canCompose, isTrue);
 
+    SessionManager().setSessionFromResponse({
+      ..._sessionJson('offline-looks'),
+      'offline': true,
+    });
+    final offlineLooks = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: _StripFakeApi(failLoad: true),
+    );
+    await offlineLooks.loadFilters();
+    expect(offlineLooks.errorMessage, isNull);
+    expect(offlineLooks.filters, isNotEmpty);
+    offlineLooks.dispose();
+
+    SessionManager().setSessionFromResponse(_sessionJson('dns-looks'));
+    final dnsLooks = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: _StripFakeApi(failLoadHostLookup: true),
+    );
+    await dnsLooks.loadFilters();
+    expect(dnsLooks.errorMessage, isNull);
+    expect(dnsLooks.filters, isNotEmpty);
+    dnsLooks.dispose();
+
     final apiBoom = _StripFakeApi(throwGenericLoad: true);
     final loadBoom = FotoFlashbackFilterViewModel(
       theme: stripTheme,
@@ -1415,6 +1440,7 @@ class _StripFakeApi extends FakeApiService {
     this.failCompose = false,
     this.failComposeWan = false,
     this.failLoad = false,
+    this.failLoadHostLookup = false,
     this.throwGenericLoad = false,
     this.throwGenericCompose = false,
     this.monoOnly = false,
@@ -1425,6 +1451,7 @@ class _StripFakeApi extends FakeApiService {
   final bool failCompose;
   final bool failComposeWan;
   final bool failLoad;
+  final bool failLoadHostLookup;
   final bool throwGenericLoad;
   final bool throwGenericCompose;
   final bool monoOnly;
@@ -1442,6 +1469,12 @@ class _StripFakeApi extends FakeApiService {
 
   @override
   Future<StripFiltersCatalog> fetchStripFilters() async {
+    if (failLoadHostLookup) {
+      throw ApiException(
+        "Failed to load strip filters: The connection errored: "
+        "Failed host lookup: 'zenai.fly.dev'",
+      );
+    }
     if (failLoad) throw ApiException('filters down');
     if (throwGenericLoad) throw Exception('load boom');
     if (altChromeOnly) {

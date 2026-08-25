@@ -485,6 +485,60 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     await startPostPaymentPrintIfNeeded();
   }
 
+  /// Offline Pay: staff PIN → local CASH ledger row → same print path as UPI approve.
+  ///
+  /// Does not leave the Pay route; Fly is optional (session may be local-only).
+  Future<bool> confirmOfflineCashReceived({required String pin}) async {
+    if (!_r.cashOnlyOffline) {
+      _r._errorMessage = AppStrings.offlineCashConfirmFailed;
+      notifyListeners();
+      return false;
+    }
+    if (_r._paymentOutcomeHandled || _r._fcmPaymentPushSuccess == true) {
+      return true;
+    }
+    final ok = await OfflineOperatorPinStore.verifyPin(pin);
+    if (!ok) {
+      _r._errorMessage = AppStrings.offlineCashConfirmBadPin;
+      notifyListeners();
+      return false;
+    }
+    try {
+      final settled = await settleOfflineCashForCurrentSession(
+        amountRupees: _r.chargeAmount,
+        sessionManager: _r._sessionManager,
+      );
+      _r._errorMessage = null;
+      notifyListeners();
+      await onFcmPaymentPush(
+        PaymentPushPayload(
+          type: PaymentPushCoordinator.typeApproved,
+          paymentId: settled.paymentId,
+          amount: '${settled.amountRupees}',
+          title: AppStrings.paymentConfirmedTitle,
+          body: 'Cash received. Printing...',
+        ),
+      );
+      return _r._fcmPaymentPushSuccess == true;
+    } on ApiException catch (e) {
+      _r._errorMessage = e.message;
+      notifyListeners();
+      return false;
+    } catch (e, st) {
+      _r._errorMessage = AppStrings.offlineCashConfirmFailed;
+      notifyListeners();
+      unawaited(
+        reportIssue(
+          'Offline cash confirm failed',
+          e,
+          st,
+          extraInfo: {'source': 'offline_cash_confirm'},
+        ),
+      );
+      return false;
+    }
+  }
+
   /// Starts the first post-payment print once (native kiosk with printer enabled).
   Future<void> startPostPaymentPrintIfNeeded() async {
     if (kIsWeb) return;

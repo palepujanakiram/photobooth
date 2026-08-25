@@ -62,6 +62,32 @@ abstract final class KioskOfflineUx {
     }
     return false;
   }
+
+  /// Pick-a-look already has a built-in catalog — do not show raw Fly DNS /
+  /// connection errors when the session is offline or the host is unreachable.
+  static bool shouldSilenceStripCatalogLoadError({
+    required bool sessionOffline,
+    Object? error,
+  }) {
+    if (sessionOffline) return true;
+    if (error == null) return false;
+    if (error is TimeoutException) return false;
+    final msg = error is ApiException ? error.message : error.toString();
+    if (msg == AppConstants.kErrorNetwork) return true;
+    final lower = msg.toLowerCase();
+    if (lower.contains('failed host lookup') ||
+        lower.contains('connection errored') ||
+        lower.contains('socketexception') ||
+        lower.contains('network is unreachable') ||
+        lower.contains('connection refused')) {
+      return true;
+    }
+    if (error is ApiException) {
+      final code = error.statusCode;
+      if (code != null && code >= 500) return true;
+    }
+    return false;
+  }
 }
 
 String firstNonEmptyDataUrl(Iterable<String> urls) {

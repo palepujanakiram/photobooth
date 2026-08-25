@@ -372,15 +372,20 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         onTimeout: () {
           if (gen != _catalogLoadGen) return;
           AppLogger.warning('Strip filters catalog timed out after 15s');
-          _applyFallbackCatalog(AppStrings.flashbackFiltersLoadTimeout);
+          if (_sessionManager.isOfflineSession) {
+            _applyFallbackCatalog();
+          } else {
+            _applyFallbackCatalog(AppStrings.flashbackFiltersLoadTimeout);
+          }
         },
       );
     } finally {
       if (gen == _catalogLoadGen) {
         if (_catalog == null || filters.isEmpty) {
-          _applyFallbackCatalog(
-            _errorMessage ?? AppStrings.flashbackFiltersLoadTimeout,
-          );
+          final soft = _sessionManager.isOfflineSession
+              ? null
+              : (_errorMessage ?? AppStrings.flashbackFiltersLoadTimeout);
+          _applyFallbackCatalog(soft);
         }
         _loading = false;
         notifyListeners();
@@ -399,7 +404,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     );
   }
 
-  void _applyFallbackCatalog(String message) {
+  void _applyFallbackCatalog([String? message]) {
     _catalog = stripFiltersCatalogFallback();
     _selectedFilterId = kDefaultStripFilterId;
     _selectedFrameId = kDefaultStripFrameId;
@@ -408,6 +413,11 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   }
 
   Future<void> _loadCatalog(int gen) async {
+    if (_sessionManager.isOfflineSession) {
+      AppLogger.debug('Strip filters: local catalog (offline session)');
+      _applyFallbackCatalog();
+      return;
+    }
     try {
       final catalog = await _api.fetchStripFilters();
       if (gen != _catalogLoadGen) return;
@@ -430,12 +440,26 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     } on ApiException catch (e) {
       if (gen != _catalogLoadGen) return;
       if (filters.isNotEmpty) return;
-      _applyFallbackCatalog(e.message);
+      _applyCatalogLoadFailure(e);
     } catch (e) {
       if (gen != _catalogLoadGen) return;
       if (filters.isNotEmpty) return;
-      _applyFallbackCatalog(e.toString());
+      _applyCatalogLoadFailure(e);
     }
+  }
+
+  void _applyCatalogLoadFailure(Object error) {
+    final silence = KioskOfflineUx.shouldSilenceStripCatalogLoadError(
+      sessionOffline: _sessionManager.isOfflineSession,
+      error: error,
+    );
+    if (silence) {
+      AppLogger.warning('Strip filters unavailable; using local looks ($error)');
+      _applyFallbackCatalog();
+      return;
+    }
+    final message = error is ApiException ? error.message : error.toString();
+    _applyFallbackCatalog(message);
   }
 
   /// Classic overlay polish when admin scrub is ON (Gemini AF + OSD).

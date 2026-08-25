@@ -148,6 +148,48 @@ void main() {
     );
   });
 
+  test('shouldSilenceStripCatalogLoadError for offline and DNS failures', () {
+    expect(
+      KioskOfflineUx.shouldSilenceStripCatalogLoadError(sessionOffline: true),
+      isTrue,
+    );
+    expect(
+      KioskOfflineUx.shouldSilenceStripCatalogLoadError(sessionOffline: false),
+      isFalse,
+    );
+    expect(
+      KioskOfflineUx.shouldSilenceStripCatalogLoadError(
+        sessionOffline: false,
+        error: ApiException(
+          "Failed to load strip filters: The connection errored: "
+          "Failed host lookup: 'zenai.fly.dev'",
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      KioskOfflineUx.shouldSilenceStripCatalogLoadError(
+        sessionOffline: false,
+        error: ApiException('filters down'),
+      ),
+      isFalse,
+    );
+    expect(
+      KioskOfflineUx.shouldSilenceStripCatalogLoadError(
+        sessionOffline: false,
+        error: TimeoutException('t'),
+      ),
+      isFalse,
+    );
+    expect(
+      KioskOfflineUx.shouldSilenceStripCatalogLoadError(
+        sessionOffline: false,
+        error: ApiException('x', 502),
+      ),
+      isTrue,
+    );
+  });
+
   test('firstNonEmptyDataUrl and localLookComposeResult', () {
     expect(firstNonEmptyDataUrl(const []), '');
     expect(firstNonEmptyDataUrl(const ['  ', 'a', 'b']), 'a');

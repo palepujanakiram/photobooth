@@ -25,6 +25,7 @@ class ResultPaymentCardColumn extends StatelessWidget {
     required this.onGetHelp,
     required this.refreshPollingChild,
     required this.buildQrArea,
+    this.onStaffCashConfirm,
   });
 
   final ResultViewModel viewModel;
@@ -35,6 +36,7 @@ class ResultPaymentCardColumn extends StatelessWidget {
   final VoidCallback onGetHelp;
   final Widget refreshPollingChild;
   final Widget Function(ResultViewModel vm, double maxQrWidth) buildQrArea;
+  final VoidCallback? onStaffCashConfirm;
 
   @override
   Widget build(BuildContext context) {
@@ -180,6 +182,26 @@ class ResultPaymentCardColumn extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               color: Colors.white.withValues(alpha: 0.75),
+            ),
+          ),
+        ],
+        if (viewModel.cashOnlyOffline &&
+            viewModel.fcmPaymentPushSuccess != true &&
+            onStaffCashConfirm != null) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.amber.shade200,
+                side: BorderSide(color: Colors.amber.shade200.withValues(alpha: 0.5)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: onStaffCashConfirm,
+              child: const Text(AppStrings.offlineCashConfirmStaffCta),
             ),
           ),
         ],

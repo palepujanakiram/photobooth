@@ -641,10 +641,23 @@ abstract final class AppStrings {
   static const offlineCashOnlyMessage =
       'UPI needs internet. Pay cash at the counter.';
   static const offlineCashOnlyWaiting =
-      'Pay cash at the counter. Printing starts after staff confirm.';
+      'Pay cash at the counter. Staff confirm here to start printing.';
   static const offlineGiftCardUnavailable =
       'Gift cards and coupons need internet.';
   static const offlinePayAtCounterTitle = 'Pay at counter';
+  static const offlineCashConfirmStaffCta = 'Staff: cash received';
+  static const offlineCashConfirmSheetTitle = 'Confirm cash received';
+  static const offlineCashConfirmSheetBody =
+      'Enter the booth PIN after collecting cash. Printing stays on this screen.';
+  static const offlineCashConfirmPinLabel = 'Booth PIN';
+  static const offlineCashConfirmSubmit = 'Confirm & print';
+  static const offlineCashConfirmBadPin = 'Incorrect PIN. Try again.';
+  static const offlineCashConfirmFailed =
+      'Could not record cash payment on this kiosk.';
+  static const offlineCashConfirmNoLedger =
+      'Kiosk ledger is not ready. Restart the booth app and try again.';
+  static const offlineFreePrintTitle = 'PRINT';
+  static const offlineFreePrintSubtitle = 'Preparing your photos…';
   static const staffLocalDayTitle = 'On this kiosk';
   static const staffLocalDayHint = 'Not yet synced to the cloud';
   static const staffLocalDayCash = 'Cash collected';

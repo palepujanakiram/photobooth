@@ -186,6 +186,32 @@ void main() {
     });
   });
 
+  group('shouldSkipOfflinePayCollect', () {
+    test('true only for offline sessions with payments disabled', () {
+      expect(
+        shouldSkipOfflinePayCollect(
+          paymentsEnabled: false,
+          sessionOffline: true,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldSkipOfflinePayCollect(
+          paymentsEnabled: true,
+          sessionOffline: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldSkipOfflinePayCollect(
+          paymentsEnabled: false,
+          sessionOffline: false,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('navigateToGenerationOrPrePayment', () {
     testWidgets('pushes pre-payment when configured', (tester) async {
       await KioskManager().setPaymentEnabledOverride(true);

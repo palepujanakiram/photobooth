@@ -71,6 +71,13 @@ Future<bool> resolvePaymentsEnabled() async {
   return override ?? true;
 }
 
+/// Offline + payments off → no cash wait; free print (skip Pay collect UI).
+bool shouldSkipOfflinePayCollect({
+  required bool paymentsEnabled,
+  required bool sessionOffline,
+}) =>
+    sessionOffline && !paymentsEnabled;
+
 /// Navigates to pre-payment or generation based on account payment timing.
 Future<void> navigateToGenerationOrPrePayment({
   required BuildContext context,

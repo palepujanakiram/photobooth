@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'result_payment_card_widgets.dart';
 import 'result_payment_qr_area.dart';
 import 'result_payment_status.dart';
+import 'result_offline_cash_sheet.dart';
 import 'result_viewmodel.dart';
 import '../../services/app_settings_manager.dart';
 import '../../utils/constants.dart';
@@ -410,23 +411,29 @@ class _ResultScreenState extends State<ResultScreen> {
         surfaceTintColor: Colors.transparent,
         forceMaterialTransparency: true,
         centerTitle: true,
-        title: const Text(
-          'PAY',
-          style: TextStyle(
+        title: Text(
+          paymentsEnabled
+              ? 'PAY'
+              : AppStrings.offlineFreePrintTitle,
+          style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w600,
             fontSize: 22,
           ),
         ),
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(22),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(22),
           child: Padding(
-            padding: EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.only(bottom: 6),
             child: Text(
-              'Scan to complete your purchase',
+              paymentsEnabled
+                  ? (viewModel.cashOnlyOffline
+                      ? AppStrings.offlineCashOnlyWaiting
+                      : 'Scan to complete your purchase')
+                  : AppStrings.offlineFreePrintSubtitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -815,6 +822,14 @@ class _ResultScreenState extends State<ResultScreen> {
                 onGetHelp: () => _showGetHelpDialog(viewModel),
                 refreshPollingChild: _buildRefreshPollingChild(),
                 buildQrArea: _buildPaymentQrArea,
+                onStaffCashConfirm: viewModel.cashOnlyOffline
+                    ? () => unawaited(
+                          showOfflineCashConfirmSheet(
+                            context: context,
+                            viewModel: viewModel,
+                          ),
+                        )
+                    : null,
               );
             },
           ),
