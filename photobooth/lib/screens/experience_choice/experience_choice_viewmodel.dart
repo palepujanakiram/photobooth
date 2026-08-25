@@ -4,6 +4,7 @@ import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../services/theme_manager.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../theme_selection/theme_model.dart';
 
@@ -53,6 +54,9 @@ class ExperienceChoiceViewModel extends ChangeNotifier {
   }
 
   /// Binds the seeded FotoFlashback theme to the session, then caller navigates.
+  ///
+  /// Offline / local sessions have no Fly row or kiosk token — bind [selectedThemeId]
+  /// on-device instead of PATCH (avoids "Network error occurred" on Classic Start).
   Future<ThemeModel?> prepareFotoFlashback() async {
     final theme = fotoFlashTheme;
     if (theme == null) {
@@ -71,6 +75,10 @@ class ExperienceChoiceViewModel extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
     try {
+      if (_sessionManager.isOfflineSession) {
+        _bindClassicThemeLocally(theme);
+        return theme;
+      }
       final response = await _api.updateSession(
         sessionId: sessionId,
         selectedThemeId: theme.id,
@@ -78,6 +86,11 @@ class ExperienceChoiceViewModel extends ChangeNotifier {
       _sessionManager.setSessionFromResponse(response);
       return theme;
     } on ApiException catch (e) {
+      if (_isTransportFailureForClassicStart(e)) {
+        _sessionManager.markSessionOffline();
+        _bindClassicThemeLocally(theme);
+        return theme;
+      }
       _errorMessage = e.message;
       return null;
     } catch (_) {
@@ -87,5 +100,19 @@ class ExperienceChoiceViewModel extends ChangeNotifier {
       _startingFlashback = false;
       notifyListeners();
     }
+  }
+
+  /// Connection / 5xx only — not auth or validation 4xx (those must surface).
+  bool _isTransportFailureForClassicStart(ApiException e) {
+    if (e.message == AppConstants.kErrorNetwork) return true;
+    final code = e.statusCode;
+    return code != null && code >= 500;
+  }
+
+  void _bindClassicThemeLocally(ThemeModel theme) {
+    final session = _sessionManager.currentSession;
+    if (session == null) return;
+    final payload = session.toJson()..['selectedThemeId'] = theme.id;
+    _sessionManager.setSessionFromResponse(payload);
   }
 }

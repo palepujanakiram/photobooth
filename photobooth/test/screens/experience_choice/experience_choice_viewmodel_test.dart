@@ -3,6 +3,7 @@ import 'package:photobooth/screens/experience_choice/experience_choice_viewmodel
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
 import 'package:photobooth/services/session_manager.dart';
 import 'package:photobooth/services/theme_manager.dart';
+import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/exceptions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -120,6 +121,7 @@ void main() {
 
   test('prepareFotoFlashback surfaces API errors', () async {
     final api = _ThemesFakeApi(themes: [strip], patchThrows: true);
+    SessionManager().clearSession();
     SessionManager().setSessionFromResponse(sessionJson('sess-1'));
     final vm = ExperienceChoiceViewModel(
       themeManager: ThemeManager.forTesting(api),
@@ -128,6 +130,40 @@ void main() {
     await vm.load();
     expect(await vm.prepareFotoFlashback(), isNull);
     expect(vm.errorMessage, 'patch failed');
+  });
+
+  test('prepareFotoFlashback binds theme locally for offline sessions', () async {
+    final api = _ThemesFakeApi(themes: [strip], patchThrows: true);
+    SessionManager().clearSession();
+    SessionManager().setSessionFromResponse({
+      ...sessionJson('offline-1'),
+      'offline': true,
+    });
+    final vm = ExperienceChoiceViewModel(
+      themeManager: ThemeManager.forTesting(api),
+      apiService: api,
+    );
+    await vm.load();
+    final theme = await vm.prepareFotoFlashback();
+    expect(theme?.id, 'strip');
+    expect(api.lastSelectedThemeId, isNull);
+    expect(SessionManager().currentSession?.selectedThemeId, 'strip');
+    expect(SessionManager().isOfflineSession, isTrue);
+  });
+
+  test('prepareFotoFlashback falls back locally on WAN-down patch', () async {
+    final api = _ThemesFakeApi(themes: [strip], patchThrowsNetwork: true);
+    SessionManager().clearSession();
+    SessionManager().setSessionFromResponse(sessionJson('sess-wan'));
+    final vm = ExperienceChoiceViewModel(
+      themeManager: ThemeManager.forTesting(api),
+      apiService: api,
+    );
+    await vm.load();
+    final theme = await vm.prepareFotoFlashback();
+    expect(theme?.id, 'strip');
+    expect(SessionManager().currentSession?.selectedThemeId, 'strip');
+    expect(SessionManager().isOfflineSession, isTrue);
   });
 }
 
@@ -139,12 +175,14 @@ class _ThemesFakeApi extends FakeApiService {
     this.loadThrowsApi = false,
     this.loadThrowsGeneric = false,
     this.patchThrowsGeneric = false,
+    this.patchThrowsNetwork = false,
   });
 
   final List<ThemeModel> themes;
   final bool loadThrowsApi;
   final bool loadThrowsGeneric;
   final bool patchThrowsGeneric;
+  final bool patchThrowsNetwork;
   String? lastSelectedThemeId;
 
   @override
@@ -165,6 +203,9 @@ class _ThemesFakeApi extends FakeApiService {
     Map<String, dynamic>? framingMetadata,
   }) async {
     lastSelectedThemeId = selectedThemeId;
+    if (patchThrowsNetwork) {
+      throw ApiException(AppConstants.kErrorNetwork);
+    }
     if (patchThrows) throw ApiException('patch failed');
     if (patchThrowsGeneric) throw Exception('patch boom');
     return sessionResponse;
