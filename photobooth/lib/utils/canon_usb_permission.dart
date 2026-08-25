@@ -34,6 +34,7 @@ Future<bool> ensureCanonUsbPermissionForDirectSidecar({
   if (defaultTargetPlatform != TargetPlatform.android) return true;
   final cfg = config ?? resolveCameraSidecarConfig(settings);
   if (!cfg.isDirectConnection || !cfg.isConfigured) return true;
+  if (!await CanonSidecarStatusChannel.isCameraPresent()) return true;
   if (await CanonSidecarStatusChannel.hasUsbPermission()) return true;
   return CanonSidecarStatusChannel.requestUsbPermissionIfNeeded();
 }
@@ -49,6 +50,7 @@ Future<bool> warmDirectSidecarAfterUsbGrant({
   if (defaultTargetPlatform != TargetPlatform.android) return false;
   final cfg = config ?? resolveCameraSidecarConfig(settings);
   if (!cfg.isDirectConnection || !cfg.isConfigured) return false;
+  if (!await CanonSidecarStatusChannel.isCameraPresent()) return false;
 
   final service = LocalCameraService(config: cfg, client: client);
   try {
@@ -77,6 +79,7 @@ Future<bool> primeCanonUsbOnTermsLaunch({
   http.Client? client,
 }) async {
   if (!isDirectCanonSidecarBooth(settings)) return true;
+  if (!await isDirectCanonHardwareAvailable(settings: settings)) return true;
   final granted = await ensureCanonUsbPermissionForDirectSidecar(
     settings: settings,
   );
@@ -166,6 +169,20 @@ Future<bool> primeDirectPtpOnTermsLaunch({
   );
   await warmDirectPtpOnTerms(settings: settings, camera: camera);
   return granted;
+}
+
+/// True when a Canon DSLR is on USB for the on-device EDSDK sidecar.
+///
+/// Direct mode defaults to localhost `:8791` even on phones with no body.
+/// POSE / Terms must not wait for USB permission or EVF unless this is true.
+Future<bool> isDirectCanonHardwareAvailable({
+  AppSettingsModel? settings,
+}) async {
+  if (defaultTargetPlatform != TargetPlatform.android) return false;
+  if (settings != null && !isDirectCanonSidecarBooth(settings)) {
+    return false;
+  }
+  return CanonSidecarStatusChannel.isCameraPresent();
 }
 
 /// True when a Canon body is attached over USB (native PTP capture may proceed).

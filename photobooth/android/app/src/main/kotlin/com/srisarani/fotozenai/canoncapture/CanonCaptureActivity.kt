@@ -2,7 +2,6 @@ package com.srisarani.fotozenai.canoncapture
 
 import android.app.Activity
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.media.MediaActionSound
 import android.media.ToneGenerator
@@ -17,24 +16,15 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.srisarani.fotozenai.R
 import com.srisarani.fotozenai.canon.CanonLog
-import com.srisarani.fotozenai.canon.capture.CaptureQueue
 import com.srisarani.fotozenai.canon.session.CameraSessionManager
-import com.srisarani.fotozenai.canon.state.ConnectionState
-import com.srisarani.fotozenai.canon.state.isReadyForCapture
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The native DSLR capture screen (`docs/direct-ptp-native-camera-plan.md`, P3).
@@ -48,7 +38,6 @@ import kotlinx.coroutines.withTimeoutOrNull
  * so the contract does not have to change again.
  */
 class CanonCaptureActivity : Activity() {
-
     private lateinit var surface: SurfaceView
     private lateinit var statusText: TextView
     private lateinit var titleText: TextView
@@ -66,6 +55,13 @@ class CanonCaptureActivity : Activity() {
     private lateinit var reviewBanner: TextView
 
     private var renderer: LiveViewSurfaceRenderer? = null
+    private lateinit var shotReview: CanonShotReview
+    private lateinit var shotCapture: CanonShotCapture
+    private lateinit var countdown: CanonCountdown
+    private lateinit var thumbStrip: CanonThumbStrip
+    private lateinit var connector: CanonCaptureConnector
+    private lateinit var uploadViews: CanonUploadViews
+    private lateinit var uploadActions: CanonUploadActions
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var request = CaptureSessionContract.Request()
 
@@ -99,9 +95,10 @@ class CanonCaptureActivity : Activity() {
         // One line switches the booth look for the diagnostic one — see CaptureScreenStyle.
         setContentView(CaptureScreenStyle.current.layoutRes)
 
-        request = CaptureSessionContract.Request.fromJson(
-            intent.getStringExtra(CaptureSessionContract.EXTRA_REQUEST),
-        )
+        request =
+            CaptureSessionContract.Request.fromJson(
+                intent.getStringExtra(CaptureSessionContract.EXTRA_REQUEST),
+            )
 
         surface = findViewById(R.id.canon_live_view)
         statusText = findViewById(R.id.canon_status)
@@ -118,14 +115,79 @@ class CanonCaptureActivity : Activity() {
         phoneQrButton = findViewById(R.id.canon_phone_qr)
         reviewStill = findViewById(R.id.canon_review_still)
         reviewBanner = findViewById(R.id.canon_review_banner)
-        buildThumbnailSlots()
-        bindUploadActions()
+        shotReview =
+            CanonShotReview(
+                views = CanonReviewViews(reviewStill, reviewBanner, retakeButton, shutterButton),
+                actions =
+                    CanonReviewActions(
+                        resolve = { id, args -> resolveReviewString(id, args) },
+                        isFinished = { finished },
+                        isUiAlive = { isCaptureUiAlive() },
+                        clearStatus = { if (isCaptureUiAlive()) clearStatus() },
+                        restoreShutter = { if (isCaptureUiAlive()) restoreShutterForCapture() },
+                    ),
+            )
+        thumbStrip =
+            CanonThumbStrip(
+                strip = thumbnailStrip,
+                inflater = layoutInflater,
+                density = resources.displayMetrics.density,
+            )
+        thumbStrip.buildSlots(request.shotCount)
+        countdown =
+            CanonCountdown(
+                views =
+                    CanonCountdownViews(
+                        countdownText,
+                        countdownHeadline,
+                        countdownScrim,
+                        countdownGroup,
+                    ),
+                actions =
+                    CanonCountdownActions(
+                        isFinished = { finished },
+                        setStatus = { setStatus(it) },
+                        beep = { beep() },
+                        introText = { getString(R.string.canon_countdown_intro) },
+                        poseStatus = { shot, total ->
+                            getString(R.string.canon_status_pose_format, shot, total)
+                        },
+                    ),
+            )
+        shotCapture =
+            CanonShotCapture(
+                scope = scope,
+                shots = shots,
+                consumedHandles = consumedHandles,
+                host = shotCaptureHost(),
+            )
+        connector =
+            CanonCaptureConnector(
+                appContext = applicationContext,
+                host =
+                    object : CanonCaptureConnector.Host {
+                        override val isFinished: Boolean get() = finished
 
-        toneGenerator = runCatching {
-            ToneGenerator(AudioManager.STREAM_MUSIC, TONE_VOLUME)
-        }.getOrNull()
-        shutterSound = runCatching { MediaActionSound().apply { load(MediaActionSound.SHUTTER_CLICK) } }
-            .getOrNull()
+                        override fun finishWith(result: CaptureSessionContract.Result) = this@CanonCaptureActivity.finishWith(result)
+                    },
+            )
+        uploadViews = CanonUploadViews(galleryButton, phoneQrButton)
+        uploadActions =
+            CanonUploadActions(
+                allowGallery = { request.allowGalleryUpload },
+                allowPhone = { request.allowPhoneUpload },
+                beforeFirstShot = { shots.isEmpty() },
+                finishWith = { finishWith(it) },
+            )
+        CanonCaptureChrome.bindUploads(uploadViews, uploadActions)
+
+        toneGenerator =
+            runCatching {
+                ToneGenerator(AudioManager.STREAM_MUSIC, TONE_VOLUME)
+            }.getOrNull()
+        shutterSound =
+            runCatching { MediaActionSound().apply { load(MediaActionSound.SHUTTER_CLICK) } }
+                .getOrNull()
 
         request.titleText?.let { titleText.text = it }
         // Booth layout only; the diagnostic one has no subtitle line.
@@ -136,61 +198,56 @@ class CanonCaptureActivity : Activity() {
         request.cancelText?.let { cancelButton.text = it }
 
         shutterButton.setOnClickListener { onShutter() }
-        val cancel = View.OnClickListener {
-            finishWith(CaptureSessionContract.Result.cancelled("Cancelled by user"))
-        }
+        val cancel =
+            View.OnClickListener {
+                finishWith(CaptureSessionContract.Result.cancelled("Cancelled by user"))
+            }
         cancelButton.setOnClickListener(cancel)
         // Present only in the booth layout, mirroring the Flutter capture bar's back arrow.
         findViewById<View?>(R.id.canon_back)?.setOnClickListener(cancel)
-        bindTopBarActions()
+        CanonCaptureChrome.bindTopBar(
+            views =
+                CanonTopBarViews(
+                    reconnect = findViewById(R.id.canon_reconnect),
+                    selectCamera = findViewById(R.id.canon_select_camera),
+                    rotate = findViewById(R.id.canon_rotate),
+                ),
+            actions =
+                CanonTopBarActions(
+                    isCapturing = { captureJob?.isActive == true },
+                    onReconnect = {
+                        setStatus(getString(R.string.canon_status_reconnecting))
+                        CanonLog.i("Operator asked for a reconnect from the capture screen")
+                        CameraSessionManager.scanAndConnect(applicationContext)
+                    },
+                    disabledAlpha = DISABLED_ACTION_ALPHA,
+                ),
+        )
         // The box reports touch AND d-pad; the shutter must be reachable without a screen tap.
         shutterButton.requestFocus()
 
         renderer = LiveViewSurfaceRenderer(surface.holder)
-        surface.holder.addCallback(object : SurfaceHolder.Callback {
-            override fun surfaceCreated(holder: SurfaceHolder) {
-                renderer?.isSurfaceReady = true
-            }
+        surface.holder.addCallback(
+            object : SurfaceHolder.Callback {
+                override fun surfaceCreated(holder: SurfaceHolder) {
+                    renderer?.isSurfaceReady = true
+                }
 
-            override fun surfaceChanged(holder: SurfaceHolder, f: Int, w: Int, h: Int) = Unit
+                override fun surfaceChanged(
+                    holder: SurfaceHolder,
+                    f: Int,
+                    w: Int,
+                    h: Int,
+                ) = Unit
 
-            override fun surfaceDestroyed(holder: SurfaceHolder) {
-                // Must clear before returning, or the render loop draws into a dead surface.
-                renderer?.isSurfaceReady = false
-            }
-        })
+                override fun surfaceDestroyed(holder: SurfaceHolder) {
+                    // Must clear before returning, or the render loop draws into a dead surface.
+                    renderer?.isSurfaceReady = false
+                }
+            },
+        )
 
         startSession()
-    }
-
-    /**
-     * Wires the top-bar actions that mirror the Flutter capture AppBar.
-     *
-     * All three are looked up as nullable: the diagnostic layout deliberately has no chrome,
-     * and a hard `findViewById` would crash it rather than simply showing nothing.
-     *
-     * Only *reconnect* has real work to do. On the Flutter screen "select camera" and
-     * "rotate" drive CameraX — choosing between a front/back/UVC device, and re-orienting a
-     * preview whose sensor rotation the plugin reports. Neither exists here: there is one
-     * tethered body, and its live-view frames arrive already upright. They are kept so the
-     * two screens look identical, and disabled so they cannot promise something that will
-     * not happen. See [LiveViewSurfaceRenderer] if rotation ever becomes real.
-     */
-    private fun bindTopBarActions() {
-        findViewById<View?>(R.id.canon_reconnect)?.setOnClickListener {
-            if (captureJob?.isActive == true) return@setOnClickListener
-            setStatus(getString(R.string.canon_status_reconnecting))
-            CanonLog.i("Operator asked for a reconnect from the capture screen")
-            CameraSessionManager.scanAndConnect(applicationContext)
-        }
-        findViewById<View?>(R.id.canon_select_camera)?.apply {
-            isEnabled = false
-            alpha = DISABLED_ACTION_ALPHA
-        }
-        findViewById<View?>(R.id.canon_rotate)?.apply {
-            isEnabled = false
-            alpha = DISABLED_ACTION_ALPHA
-        }
     }
 
     // ------------------------------------------------------------------ session
@@ -199,7 +256,7 @@ class CanonCaptureActivity : Activity() {
         scope.launch {
             setStatus(getString(R.string.canon_status_connecting))
 
-            if (!ensureConnected()) return@launch
+            if (!connector.ensureConnected()) return@launch
 
             seedStaleCaptureReplay()
 
@@ -237,15 +294,16 @@ class CanonCaptureActivity : Activity() {
         // POSE", and three good photos were thrown away with the guest dumped back on the
         // Terms screen. Observed on hardware 2026-08-18.
         idleJob?.cancel()
-        idleJob = scope.launch {
-            delay(request.idleTimeoutSeconds * 1000L)
-            CanonLog.w("Capture session idle for %ds — abandoning", request.idleTimeoutSeconds)
-            finishWith(
-                CaptureSessionContract.Result.cancelled(
-                    "No photos completed within ${request.idleTimeoutSeconds}s",
-                ),
-            )
-        }
+        idleJob =
+            scope.launch {
+                delay(request.idleTimeoutSeconds * 1000L)
+                CanonLog.w("Capture session idle for %ds — abandoning", request.idleTimeoutSeconds)
+                finishWith(
+                    CaptureSessionContract.Result.cancelled(
+                        "No photos completed within ${request.idleTimeoutSeconds}s",
+                    ),
+                )
+            }
     }
 
     /** Countdown → shot → rearrange, repeated [CaptureSessionContract.Request.shotCount] times. */
@@ -254,10 +312,10 @@ class CanonCaptureActivity : Activity() {
         while (shots.size < request.shotCount && !finished) {
             val shotNumber = shots.size + 1
 
-            runCountdown(shotNumber)
+            countdown.run(shotNumber, request)
             if (finished) return
 
-            val ok = runOneShot()
+            val ok = shotCapture.runOneShot()
             if (!ok) {
                 // A failed shot is retried rather than abandoning the strip — the guest is
                 // still standing there, and losing three good shots to one bad one is worse
@@ -268,13 +326,13 @@ class CanonCaptureActivity : Activity() {
             }
 
             // A shot has landed, so the upload alternatives go.
-            refreshUploadActions()
+            CanonCaptureChrome.refreshUploads(uploadViews, uploadActions)
 
             // Review the still just taken. This replaces the old holdForRearrange, which ran
             // *before* the next countdown and showed live view — so the guest was told to
             // rearrange while watching themselves move, never seeing the shot. Flutter holds
             // on the captured photo instead, which is what this does.
-            if (reviewLastShot() == ReviewOutcome.RETAKE) {
+            if (shotReview.present(request, shots) == ReviewOutcome.RETAKE) {
                 dropLastShot()
             }
         }
@@ -285,174 +343,6 @@ class CanonCaptureActivity : Activity() {
                     status = CaptureSessionContract.STATUS_COMPLETED,
                     shots = shots.toList(),
                 ),
-            )
-        }
-    }
-
-    /**
-     * Offers Gallery / Phone QR when the kiosk allows them, and hands the choice to Dart.
-     *
-     * Neither upload happens here. Phone QR needs `/api/kiosk/upload-links` and a poll loop,
-     * and Gallery is a single `viewModel.selectFromGallery()` on the Dart side — both already
-     * exist for the Flutter capture screen. Duplicating them natively would mean two
-     * implementations free to drift, so the Activity ends the session with
-     * [CaptureSessionContract.STATUS_UPLOAD_REQUESTED] and lets Dart run the code it has.
-     *
-     * Cost of that choice: leaving the Activity tears down live view, so returning from a
-     * cancelled sheet reconnects the camera — a visible blink the Flutter screen does not
-     * have. Accepted deliberately; keeping the Activity alive behind a Dart overlay is much
-     * more machinery for a transition most guests will not see twice.
-     *
-     * Visibility is [refreshUploadActions]' job — they stay up through the first countdown
-     * and go once a shot actually lands.
-     */
-    private fun bindUploadActions() {
-        refreshUploadActions()
-        galleryButton.setOnClickListener {
-            finishWith(
-                CaptureSessionContract.Result.uploadRequested(
-                    CaptureSessionContract.UPLOAD_SOURCE_GALLERY,
-                ),
-            )
-        }
-        phoneQrButton.setOnClickListener {
-            finishWith(
-                CaptureSessionContract.Result.uploadRequested(
-                    CaptureSessionContract.UPLOAD_SOURCE_PHONE,
-                ),
-            )
-        }
-    }
-
-    /**
-     * Uploads are offered only until the first shot lands.
-     *
-     * Mirrors `capturePhotoUploadActionsAllowed`, whose gate is
-     * `classicFourShotInProgress = isClassicFourShot && _stripShots.isNotEmpty` — so they
-     * *are* offered on a 4-shot strip, but only before shot 1, because "a gallery pick
-     * cannot break strip indexing / remount" once the set has started.
-     *
-     * Keyed on `shots` rather than on the sequence having started, so they stay up through
-     * the first countdown exactly as they do on the Flutter screen, and come back if a
-     * retake empties the strip again.
-     */
-    private fun refreshUploadActions() {
-        val beforeFirstShot = shots.isEmpty()
-        galleryButton.visibility =
-            if (request.allowGalleryUpload && beforeFirstShot) View.VISIBLE else View.GONE
-        phoneQrButton.visibility =
-            if (request.allowPhoneUpload && beforeFirstShot) View.VISIBLE else View.GONE
-    }
-
-    private enum class ReviewOutcome { ACCEPT, RETAKE }
-
-    /**
-     * Holds on the still just taken, offering Retake and the primary action.
-     *
-     * Three behaviours, chosen by Dart through [CaptureSessionContract.Request.reviewHoldMs]
-     * and [CaptureSessionContract.Request.finalReviewHoldMs], because only Dart knows the
-     * flow (see `flashbackShotReviewHoldDuration` / `shouldScheduleFlashbackAutoAccept`):
-     *
-     * - **0** — wait indefinitely for a tap. FotoZen never auto-accepts.
-     * - **mid-strip** — 8s rearrange window, then accept.
-     * - **final shot** — 2s, then accept.
-     *
-     * Returns as soon as either button is pressed, so a guest who is happy never waits out
-     * the timer.
-     */
-    private suspend fun reviewLastShot(): ReviewOutcome {
-        val isLast = shots.size >= request.shotCount
-        val holdMs = if (isLast) request.finalReviewHoldMs else request.reviewHoldMs
-        val isStrip = request.shotCount > 1
-
-        showReviewStill(shots.lastOrNull()?.displayPath)
-
-        // The still on screen *is* the saved photo, so any progress line under it is stale by
-        // definition. On the final shot processCapturedShot() sets "Saving photo…" and nothing
-        // clears it: the only later setStatus() is behind `shots.size < request.shotCount`,
-        // false for the last shot. A 1-shot guest therefore reviewed their photo under a label
-        // claiming it was still saving — and with holdMs 0 the review banner is hidden too, so
-        // that stale line was the only text on the card and read as a hang. Reported from the
-        // Android box as "saving photo is always visible"; reproduced on the phone 2026-08-20.
-        clearStatus()
-
-        retakeButton.text = getString(
-            if (isStrip) R.string.canon_capture_retake_last else R.string.canon_capture_retake,
-        )
-        shutterButton.text = getString(
-            when {
-                !isStrip -> R.string.canon_capture_continue
-                isLast -> R.string.canon_capture_pick_look
-                else -> R.string.canon_capture_next_shot
-            },
-        )
-        // The shutter glyph belongs to "Take shot"; the review action is not a shutter.
-        shutterButton.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0)
-
-        val outcome = awaitReviewChoice(holdMs, isLast, isStrip)
-
-        hideReviewStill()
-        restoreShutterForCapture()
-        return outcome
-    }
-
-    /** Waits for a button press, or for [holdMs] to elapse. 0 means wait forever. */
-    private suspend fun awaitReviewChoice(
-        holdMs: Int,
-        isLast: Boolean,
-        isStrip: Boolean,
-    ): ReviewOutcome {
-        val choice = CompletableDeferred<ReviewOutcome>()
-        retakeButton.visibility = View.VISIBLE
-        retakeButton.isEnabled = true
-        shutterButton.isEnabled = true
-        retakeButton.setOnClickListener { choice.complete(ReviewOutcome.RETAKE) }
-        shutterButton.setOnClickListener { choice.complete(ReviewOutcome.ACCEPT) }
-        shutterButton.requestFocus()
-
-        try {
-            if (holdMs <= 0) {
-                // No banner: nothing is counting down, so a countdown line would be a lie.
-                reviewBanner.visibility = View.GONE
-                return choice.await()
-            }
-            val deadline = System.currentTimeMillis() + holdMs
-            reviewBanner.visibility = View.VISIBLE
-            while (!finished && System.currentTimeMillis() < deadline) {
-                if (choice.isCompleted) break
-                reviewBanner.text = reviewBannerText(deadline, isLast, isStrip)
-                delay(REVIEW_TICK_MS)
-            }
-            return if (choice.isCompleted) choice.await() else ReviewOutcome.ACCEPT
-        } finally {
-            retakeButton.setOnClickListener(null)
-            retakeButton.visibility = View.GONE
-            reviewBanner.visibility = View.GONE
-            if (!choice.isCompleted) choice.cancel()
-        }
-    }
-
-    /** Mirrors [AppStrings.flashbackReviewHoldStatus]. */
-    private fun reviewBannerText(deadlineMs: Long, isLast: Boolean, isStrip: Boolean): String {
-        val secondsLeft = ((deadlineMs - System.currentTimeMillis() + 999) / 1000).toInt()
-        return if (isLast || !isStrip) {
-            if (secondsLeft <= 0) {
-                getString(R.string.canon_review_last_shot)
-            } else {
-                getString(R.string.canon_review_last_shot_countdown_format, secondsLeft)
-            }
-        } else if (secondsLeft <= 0) {
-            getString(
-                R.string.canon_review_rearrange_format,
-                shots.size + 1,
-                request.shotCount,
-            )
-        } else {
-            getString(
-                R.string.canon_review_rearrange_countdown_format,
-                shots.size + 1,
-                request.shotCount,
-                secondsLeft,
             )
         }
     }
@@ -470,24 +360,10 @@ class CanonCaptureActivity : Activity() {
         CanonLog.i("Retake: dropped shot %d (%s)", shots.size + 1, dropped.originalPath)
         // Empty the slot rather than removing it: the strip is a fixed set of poses, and
         // dropping a view would shrink it, making a 4-shot strip look like a 3-shot one.
-        clearThumbnailAt(shots.size)
-        refreshUploadActions()
-    }
-
-    private suspend fun showReviewStill(displayPath: String?) {
-        val bitmap = displayPath?.let {
-            withContext(Dispatchers.Default) {
-                runCatching { BitmapFactory.decodeFile(it) }.getOrNull()
-            }
+        if (::thumbStrip.isInitialized) {
+            thumbStrip.clearAt(shots.size, shots.size)
         }
-        if (bitmap == null) return
-        reviewStill.setImageBitmap(bitmap)
-        reviewStill.visibility = View.VISIBLE
-    }
-
-    private fun hideReviewStill() {
-        reviewStill.visibility = View.GONE
-        reviewStill.setImageDrawable(null)
+        CanonCaptureChrome.refreshUploads(uploadViews, uploadActions)
     }
 
     /** Puts the primary button back to its "Take shot" identity after a review. */
@@ -495,125 +371,12 @@ class CanonCaptureActivity : Activity() {
         shutterButton.setOnClickListener { onShutter() }
         shutterButton.text = request.shutterText ?: getString(R.string.canon_capture_shutter)
         shutterButton.setCompoundDrawablesRelativeWithIntrinsicBounds(
-            R.drawable.ic_canon_shutter, 0, 0, 0,
+            R.drawable.ic_canon_shutter,
+            0,
+            0,
+            0,
         )
         shutterButton.isEnabled = false
-    }
-
-    private suspend fun runCountdown(shotNumber: Int) {
-        // FotoZen only, and only on the first tick: Classic already says "shot X of Y" in the
-        // subtitle and the status line, so repeating it over the preview is noise.
-        // Mirrors `showAiIntro` in _buildCountdownOverlay.
-        val showHeadline = request.showCountdownHeadline
-        countdownHeadline.text = getString(R.string.canon_countdown_intro)
-
-        for (remaining in request.countdownSeconds downTo 1) {
-            if (finished) return
-            countdownScrim.visibility = View.VISIBLE
-            countdownGroup.visibility = View.VISIBLE
-            countdownHeadline.visibility =
-                if (showHeadline && remaining == request.countdownSeconds) {
-                    View.VISIBLE
-                } else {
-                    View.GONE
-                }
-            countdownText.visibility = View.VISIBLE
-            countdownText.text = remaining.toString()
-            setStatus(
-                getString(R.string.canon_status_pose_format, shotNumber, request.shotCount),
-            )
-            if (remaining <= COUNTDOWN_BEEP_FROM) beep()
-            delay(1000)
-        }
-        hideCountdown()
-    }
-
-    private fun hideCountdown() {
-        countdownText.visibility = View.GONE
-        countdownHeadline.visibility = View.GONE
-        countdownGroup.visibility = View.GONE
-        countdownScrim.visibility = View.GONE
-    }
-
-    /** Connects if needed; finishes the Activity with a typed error if it cannot. */
-    private suspend fun ensureConnected(): Boolean {
-        if (CameraSessionManager.state.value.isReadyForCapture) return true
-
-        clearStalePtpSessionIfNeeded()
-
-        repeat(2) { attempt ->
-            CameraSessionManager.scanAndConnect(applicationContext)
-            // drop(1) discards the value the StateFlow replays on subscription — the state as
-            // it was *before* the scan above could change it. Without it this whole wait
-            // collapsed: the manager sits at ConnectionState.NoDevice, isConnectOutcome()
-            // counts NoDevice as terminal, so `first` matched that stale value immediately and
-            // POSE reported "No camera found" roughly 90ms in — while the very same connect
-            // went on to succeed seconds later. Observed on hardware 2026-08-18.
-            // CanonPtpMethodChannel's connect already does this; only this copy was missing it.
-            val settled = withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
-                CameraSessionManager.state.drop(1).first {
-                    it.isConnectOutcome() || it.isReadyForCapture
-                }
-            }
-
-            when (val state = settled ?: CameraSessionManager.state.value) {
-                is ConnectionState.Ready,
-                is ConnectionState.RemoteMode,
-                is ConnectionState.LiveView,
-                -> return true
-
-                is ConnectionState.PermissionDenied -> finishWith(
-                    CaptureSessionContract.Result.error(
-                        CaptureSessionContract.ERROR_PERMISSION_DENIED,
-                        "USB permission was refused for the camera",
-                    ),
-                )
-
-                is ConnectionState.NoDevice -> finishWith(
-                    CaptureSessionContract.Result.error(
-                        CaptureSessionContract.ERROR_NO_DEVICE,
-                        "No camera found. Check the cable and that the camera is switched on.",
-                    ),
-                )
-
-                is ConnectionState.NoUsbHostSupport -> finishWith(
-                    CaptureSessionContract.Result.error(
-                        CaptureSessionContract.ERROR_CONNECT_FAILED,
-                        "This device cannot host USB",
-                    ),
-                )
-
-                else -> if (attempt == 0) {
-                    CanonLog.w(
-                        "Connect attempt ${attempt + 1} stalled at $state — retrying",
-                    )
-                    CameraSessionManager.disconnectAndAwait()
-                    delay(RETRY_PAUSE_MS)
-                } else {
-                    finishWith(
-                        CaptureSessionContract.Result.error(
-                            CaptureSessionContract.ERROR_CONNECT_FAILED,
-                            describe(state),
-                        ),
-                    )
-                }
-            }
-            if (finished) return false
-        }
-        return false
-    }
-
-    /** Drops a half-open USB/PTP session so the next scan can start clean. */
-    private suspend fun clearStalePtpSessionIfNeeded() {
-        when (CameraSessionManager.state.value) {
-            is ConnectionState.Error,
-            is ConnectionState.Wedged,
-            is ConnectionState.SessionOpen,
-            is ConnectionState.Opened,
-            -> CameraSessionManager.disconnectAndAwait()
-
-            else -> Unit
-        }
     }
 
     private fun startLiveView() {
@@ -687,221 +450,41 @@ class CanonCaptureActivity : Activity() {
         CameraSessionManager.captureQueue?.seedReplayInto(consumedHandles)
     }
 
-    /** Fires one shot and stores it. Returns false when the shot did not land. */
-    private suspend fun runOneShot(): Boolean {
-        val queue = CameraSessionManager.captureQueue
-        if (queue == null) {
-            finishWith(
-                CaptureSessionContract.Result.error(
-                    CaptureSessionContract.ERROR_CAPTURE_FAILED,
-                    "Capture queue unavailable — the camera session is not fully open",
-                ),
-            )
-            return false
-        }
+    private fun shotCaptureHost(): CanonShotCapture.Host =
+        object : CanonShotCapture.Host {
+            override val request: CaptureSessionContract.Request
+                get() = this@CanonCaptureActivity.request
 
-        setStatus(getString(R.string.canon_status_capturing))
-        shutterSound()
+            override fun string(
+                id: Int,
+                vararg args: Any,
+            ): String = if (args.isEmpty()) getString(id) else getString(id, *args)
 
-        seedStaleCaptureReplay()
+            override fun setStatus(text: String) = this@CanonCaptureActivity.setStatus(text)
 
-        // Subscribe BEFORE firing, and UNDISPATCHED so the collector is attached before
-        // this line returns. A download can finish faster than a coroutine scheduled the
-        // ordinary way would take to start collecting, and the event would be missed.
-        val done = scope.async(start = CoroutineStart.UNDISPATCHED) {
-            queue.completed.first { it.handle !in consumedHandles }
-        }
+            override fun finishWith(result: CaptureSessionContract.Result) = this@CanonCaptureActivity.finishWith(result)
 
-        // Wait for the shutter to actually fire before waiting for an image. A release that
-        // comes back DeviceBusy produces no photo, and treating that as "in flight" cost the
-        // full CAPTURE_TIMEOUT_MS of blank screen per failed attempt — two in a row put a
-        // guest through 106s of nothing before the third try worked (hardware 2026-08-18).
-        if (!CameraSessionManager.triggerCapture(withAutofocus = true).await()) {
-            done.cancel()
-            setStatus(getString(R.string.canon_status_capture_failed))
-            shutterButton.isEnabled = !request.autoStart
-            CanonLog.e("Shutter did not fire; not waiting for an image")
-            return false
-        }
+            override fun startIdleWatchdog() = this@CanonCaptureActivity.startIdleWatchdog()
 
-        val completed = withTimeoutOrNull(CAPTURE_TIMEOUT_MS) { done.await() }
-        done.cancel()
-
-        if (completed == null) {
-            setStatus(getString(R.string.canon_status_capture_failed))
-            shutterButton.isEnabled = !request.autoStart
-            CanonLog.e("Capture timed out after %dms", CAPTURE_TIMEOUT_MS)
-            return false
-        }
-
-        consumedHandles += completed.handle
-        val isLastCapture = shots.size + 1 >= request.shotCount
-
-        // Off the main thread, but **awaited** — the one place this merge could not keep
-        // main's shape.
-        //
-        // origin/main fires the derivative as a detached `scope.async` and only awaits it on
-        // the final shot, to "overlap native display derivatives with rearrange". That
-        // overlap has nothing left to overlap with: the rearrange window is now the review,
-        // and the review *shows the still*, so its derivative is needed immediately rather
-        // than at leisure. Leaving it detached meant `shots` was still empty when
-        // reviewLastShot() read it, so the guest reviewed a blank card.
-        //
-        // Awaiting also removes the `capturesCompleted` counter main added to track "USB
-        // done, derivative maybe not". With the await, `shots.size` is authoritative again —
-        // which retake needs, because dropLastShot() shrinks `shots` and a separate counter
-        // would drift from it and mis-terminate the strip.
-        //
-        // The decode still runs on Dispatchers.Default, so the viewfinder does not stutter;
-        // the cost is ~250ms before the still appears, which is not perceptible.
-        withContext(Dispatchers.Default) {
-            processCapturedShot(completed, showProcessingStatus = isLastCapture)
-        }
-        return true
-    }
-
-    private suspend fun processCapturedShot(
-        done: CaptureQueue.Item.Done,
-        showProcessingStatus: Boolean,
-    ) {
-        if (showProcessingStatus) {
-            withContext(Dispatchers.Main.immediate) {
-                setStatus(getString(R.string.canon_status_processing))
+            override fun fillThumb(
+                shotsTaken: Int,
+                thumbnail: Bitmap?,
+            ) {
+                if (::thumbStrip.isInitialized) thumbStrip.fillSlot(shotsTaken, thumbnail)
             }
-        }
 
-        val original = done.image.file
-        val derivative = DisplayDerivative.create(
-            original = original,
-            maxLongEdge = request.displayMaxLongEdge,
-            jpegQuality = request.displayJpegQuality,
-        )
-
-        withContext(Dispatchers.Main.immediate) {
-            shots += CaptureSessionContract.Shot(
-                originalPath = original.absolutePath,
-                displayPath = derivative?.file?.absolutePath,
-                widthPx = derivative?.originalWidthPx ?: 0,
-                heightPx = derivative?.originalHeightPx ?: 0,
-                bytes = done.image.sizeBytes,
-                capturedAtMs = System.currentTimeMillis(),
-            )
-
-            CanonLog.i(
-                "Shot %d/%d stored: %s (%d bytes, %dms)",
-                shots.size,
-                request.shotCount,
-                original.name,
-                done.image.sizeBytes,
-                done.elapsedMs,
-            )
-
-            addThumbnail(derivative?.thumbnailBitmap)
-
-            // A landed shot is proof the guest is still there, so the idle clock starts over.
-            startIdleWatchdog()
-
-            // Deliberately does NOT finish the session on the last shot.
-            //
-            // [runShotSequence] owns completion, because the final still has to sit in
-            // review first with Retake and "Pick a look" available. Finishing here returned
-            // to Dart the instant the shot landed, so the guest never saw their last shot
-            // and could not retake it.
-            if (shots.size < request.shotCount && captureJob?.isActive != true) {
-                // Only hand the button back when nothing is driving the strip. Keyed on the job
-                // rather than on autoStart because runShotSequence continues straight into the
-                // next countdown, and re-enabling mid-strip would offer a press that does nothing.
-                setStatus(
-                    getString(R.string.canon_status_ready_format, shots.size + 1, request.shotCount),
-                )
-                shutterButton.isEnabled = true
+            override fun setShutterEnabled(enabled: Boolean) {
+                shutterButton.isEnabled = enabled
             }
-        }
-    }
 
-    /**
-     * Lays out one slot per shot, before any of them are taken.
-     *
-     * Flutter renders the whole strip from the start — filled, active, then empty numbered
-     * placeholders — so a guest can see how many poses are left. The native screen used to
-     * append a thumbnail only once a shot landed, which showed progress but never the total:
-     * after shot 1 of 4 the strip looked finished.
-     */
-    private fun buildThumbnailSlots() {
-        thumbnailStrip.removeAllViews()
-        if (request.shotCount <= 1) {
-            thumbnailStrip.visibility = View.GONE
-            return
-        }
-        val inflater = layoutInflater
-        for (i in 0 until request.shotCount) {
-            val slot = inflater.inflate(R.layout.view_canon_thumb_slot, thumbnailStrip, false)
-            slot.findViewById<TextView>(R.id.canon_thumb_number).text = (i + 1).toString()
-            (slot.layoutParams as? LinearLayout.LayoutParams)?.marginEnd =
-                if (i == request.shotCount - 1) 0 else dip(THUMBNAIL_GAP_DP)
-            thumbnailStrip.addView(slot)
-        }
-        thumbnailStrip.visibility = View.VISIBLE
-        refreshThumbnailStates()
-    }
+            override fun isCaptureJobActive(): Boolean = captureJob?.isActive == true
 
-    /**
-     * Repaints slot borders so exactly one slot reads as "next".
-     *
-     * Called after every shot and every retake, because a retake moves the active slot
-     * *backwards* — the border is the only thing telling the guest which pose is being
-     * reshot.
-     */
-    private fun refreshThumbnailStates() {
-        for (i in 0 until thumbnailStrip.childCount) {
-            val slot = thumbnailStrip.getChildAt(i)
-            val filled = i < shots.size
-            val active = i == shots.size
-            slot.setBackgroundResource(
-                when {
-                    active -> R.drawable.bg_canon_thumb_slot_active
-                    filled -> R.drawable.bg_canon_thumb_slot_filled
-                    else -> R.drawable.bg_canon_thumb_slot_empty
-                },
-            )
-            slot.findViewById<TextView>(R.id.canon_thumb_number).setTextColor(
-                if (active) THUMB_NUMBER_ACTIVE else THUMB_NUMBER_IDLE,
-            )
+            override fun isUiAlive(): Boolean = isCaptureUiAlive()
+
+            override fun playShutterSound() = shutterSound()
+
+            override fun seedStaleReplay() = seedStaleCaptureReplay()
         }
-    }
-
-    /**
-     * Fills the slot for the shot just taken.
-     *
-     * Uses the in-memory thumbnail from [DisplayDerivative] — no second file decode.
-     */
-    private fun addThumbnail(bitmap: Bitmap?) {
-        if (request.shotCount <= 1) return
-        val slot = thumbnailStrip.getChildAt(shots.size - 1) ?: return
-        // Repaint borders even when the bitmap is missing: the slot still has to stop being
-        // the active one, or the amber ring would sit on a pose already shot.
-        refreshThumbnailStates()
-        if (bitmap == null) return
-
-        slot.findViewById<ImageView>(R.id.canon_thumb_image).apply {
-            setImageBitmap(bitmap)
-            visibility = View.VISIBLE
-        }
-        slot.findViewById<TextView>(R.id.canon_thumb_number).visibility = View.GONE
-    }
-
-    /** Empties the slot a retake just freed, so it reads as "to do" again. */
-    private fun clearThumbnailAt(index: Int) {
-        val slot = thumbnailStrip.getChildAt(index) ?: return
-        slot.findViewById<ImageView>(R.id.canon_thumb_image).apply {
-            setImageDrawable(null)
-            visibility = View.GONE
-        }
-        slot.findViewById<TextView>(R.id.canon_thumb_number).visibility = View.VISIBLE
-        refreshThumbnailStates()
-    }
-
-    private fun dip(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     // ------------------------------------------------------------------ lifecycle
 
@@ -953,7 +536,18 @@ class CanonCaptureActivity : Activity() {
         runCatching { shutterSound?.play(MediaActionSound.SHUTTER_CLICK) }
     }
 
+    private fun isCaptureUiAlive(): Boolean = !isFinishing && !isDestroyed
+
+    private fun resolveReviewString(
+        id: Int,
+        args: Array<out Any>,
+    ): String {
+        if (!isCaptureUiAlive()) return ""
+        return if (args.isEmpty()) getString(id) else getString(id, *args)
+    }
+
     private fun setStatus(text: String) {
+        if (!isCaptureUiAlive()) return
         statusText.text = text
         statusText.visibility = View.VISIBLE
     }
@@ -965,65 +559,19 @@ class CanonCaptureActivity : Activity() {
      * sitting under an empty gap — [setStatus] flips it back on for the next countdown.
      */
     private fun clearStatus() {
+        if (!isCaptureUiAlive()) return
         statusText.text = ""
         statusText.visibility = View.GONE
     }
 
-    private fun describe(state: ConnectionState?): String = when (state) {
-        is ConnectionState.Error -> state.message
-        is ConnectionState.Wedged -> state.reason
-        null -> "Timed out waiting for the camera"
-        else -> state::class.simpleName ?: "Unknown camera state"
-    }
-
     private companion object {
-        const val CONNECT_TIMEOUT_MS = 30_000L
-
-        /** Beep only on the closing seconds — a beep every second for 10s is irritating. */
-        const val COUNTDOWN_BEEP_FROM = 3
         const val BEEP_MS = 150
         const val TONE_VOLUME = 80
 
         /** Pause after a failed shot before retrying, so the body can settle. */
         const val RETRY_PAUSE_MS = 1_500L
 
-        /** Banner refresh while a review hold counts down; Flutter ticks at 200ms. */
-        const val REVIEW_TICK_MS = 200L
-
-        /**
-         * Gap between strip slots. Slot *size* now comes from view_canon_thumb_slot.xml, so
-         * main's THUMBNAIL_WIDTH_PX / THUMBNAIL_GAP_PX are gone with the views they sized,
-         * and THUMBNAIL_LONG_EDGE with the file re-decode that DisplayDerivative's in-memory
-         * thumbnail replaced.
-         */
-        const val THUMBNAIL_GAP_DP = 10
-
-        /** Colors.amber.shade200 and Colors.white38 from _StripThumbSlot. */
-        const val THUMB_NUMBER_ACTIVE = 0xFFFFE082.toInt()
-        const val THUMB_NUMBER_IDLE = 0x61FFFFFF
-
-        /**
-         * Shutter to image-on-disk.
-         *
-         * Wide because the body can answer `DeviceBusy` for ~8s after a release while the
-         * image is still in its buffer (`P-18`), and the download itself follows.
-         */
-        const val CAPTURE_TIMEOUT_MS = 45_000L
-
         /** Matches the Flutter capture bar, which greys unavailable actions rather than hiding them. */
         const val DISABLED_ACTION_ALPHA = 0.4f
     }
-}
-
-private fun ConnectionState.isConnectOutcome(): Boolean = when (this) {
-    is ConnectionState.Ready,
-    is ConnectionState.Error,
-    is ConnectionState.PermissionDenied,
-    is ConnectionState.NoDevice,
-    is ConnectionState.NoUsbHostSupport,
-    is ConnectionState.Detached,
-    is ConnectionState.Wedged,
-    -> true
-
-    else -> false
 }

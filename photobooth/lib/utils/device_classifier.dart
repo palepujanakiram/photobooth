@@ -9,7 +9,7 @@ class DeviceClassifier {
     return impl.getDeviceType(context);
   }
 
-  /// True for tablet or TV types: show only external cameras.
+  /// True for tablet or TV kiosk types (USB-first Terms preload).
   static bool showOnlyExternalCameras(AppDeviceType type) {
     switch (type) {
       case AppDeviceType.iosTablet:

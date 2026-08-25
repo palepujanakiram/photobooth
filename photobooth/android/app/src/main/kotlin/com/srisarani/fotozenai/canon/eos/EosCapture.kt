@@ -1,12 +1,12 @@
 package com.srisarani.fotozenai.canon.eos
 
+import com.srisarani.fotozenai.canon.CanonLog
 import com.srisarani.fotozenai.canon.ptp.CanonEosOperation
 import com.srisarani.fotozenai.canon.ptp.PtpException
 import com.srisarani.fotozenai.canon.ptp.PtpObjectInfo
 import com.srisarani.fotozenai.canon.ptp.PtpOperation
 import com.srisarani.fotozenai.canon.ptp.PtpSession
 import kotlinx.coroutines.delay
-import com.srisarani.fotozenai.canon.CanonLog
 
 /**
  * Capture and download for Canon EOS bodies.
@@ -31,7 +31,6 @@ class EosCapture(
     private val properties: EosProperties,
     private val config: Config = Config(),
 ) {
-
     data class Config(
         /**
          * Fake free space reported to the camera, in bytes.
@@ -40,13 +39,10 @@ class EosCapture(
          * just has to be non-zero, or the camera treats the host as full (`P-05`).
          */
         val fakeCapacityBytes: Long = 0x1000000,
-
         /** Chunk size for `GetPartialObject`. Plan M4: benchmark 1–4MB. */
         val downloadChunkBytes: Int = 2 * 1024 * 1024,
-
         /** How long to wait for AF before giving up (`C-02`). */
         val autofocusTimeoutMs: Long = 3_000,
-
         /** Read timeout for a download chunk. Generous: this is the slow path. */
         val downloadTimeoutMs: Int = 30_000,
     )
@@ -76,10 +72,11 @@ class EosCapture(
         //
         // Note card-only would not work at all — with CAMERA_CARD the image never crosses
         // USB, so there is nothing to make a print derivative from.
-        val destinationOk = properties.setUInt32WithRetry(
-            EosProperty.CAPTURE_DESTINATION,
-            EosCaptureDestination.BOTH.toLong(),
-        )
+        val destinationOk =
+            properties.setUInt32WithRetry(
+                EosProperty.CAPTURE_DESTINATION,
+                EosCaptureDestination.BOTH.toLong(),
+            )
         if (!destinationOk) {
             CanonLog.e("Capture destination not set - images may go to the card only")
         }
@@ -92,16 +89,17 @@ class EosCapture(
         // and invites a retry loop that can never succeed.
         //
         // Parameters follow libgphoto2: (capacityInBlocks, blockSize, flag).
-        val capacityOk = runCatching {
-            ptp.transact(
-                CanonEosOperation.PC_HDD_CAPACITY,
-                CAPACITY_BLOCKS,
-                CAPACITY_BLOCK_SIZE,
-                CAPACITY_FLAG,
-            )
-        }.onFailure {
-            CanonLog.e(it, "EOS_PCHDDCapacity failed (P-05) - host capture will fail as 'disk full'")
-        }.isSuccess
+        val capacityOk =
+            runCatching {
+                ptp.transact(
+                    CanonEosOperation.PC_HDD_CAPACITY,
+                    CAPACITY_BLOCKS,
+                    CAPACITY_BLOCK_SIZE,
+                    CAPACITY_FLAG,
+                )
+            }.onFailure {
+                CanonLog.e(it, "EOS_PCHDDCapacity failed (P-05) - host capture will fail as 'disk full'")
+            }.isSuccess
 
         // Report the destination actually written. The POC logged a hardcoded
         // "destination=host" here, which contradicts the BOTH the line above sets — and a
@@ -184,27 +182,28 @@ class EosCapture(
                 // on hardware 2026-08-18 releases were failing on roughly two attempts in
                 // three, each burning the full ~8s busy budget, and the guest simply got no
                 // photo. A frame that might be slightly soft beats no frame at all.
-                afEngaged = runCatching {
-                    busyRetry(stage = "half-press (AF)") {
-                        ptp.transact(CanonEosOperation.REMOTE_RELEASE_ON, HALF_PRESS, 0)
-                    }
-                }.onFailure {
-                    CanonLog.w(it, "Autofocus half-press did not take - firing without AF (C-02)")
-                }.isSuccess
+                afEngaged =
+                    runCatching {
+                        busyRetry(BusyRetryPolicy(stage = "half-press (AF)")) {
+                            ptp.transact(CanonEosOperation.REMOTE_RELEASE_ON, HALF_PRESS, 0)
+                        }
+                    }.onFailure {
+                        CanonLog.w(it, "Autofocus half-press did not take - firing without AF (C-02)")
+                    }.isSuccess
             }
 
             // Full press: fires the shutter.
-            busyRetry(stage = "full-press (shutter)") {
+            busyRetry(BusyRetryPolicy(stage = "full-press (shutter)")) {
                 ptp.transact(CanonEosOperation.REMOTE_RELEASE_ON, FULL_PRESS, 0)
             }
 
             // Release in reverse order. Leaving the button virtually held down blocks the
             // next capture.
-            busyRetry(stage = "full-press release") {
+            busyRetry(BusyRetryPolicy(stage = "full-press release")) {
                 ptp.transact(CanonEosOperation.REMOTE_RELEASE_OFF, FULL_PRESS)
             }
             if (afEngaged) {
-                busyRetry(stage = "half-press release") {
+                busyRetry(BusyRetryPolicy(stage = "half-press release")) {
                     ptp.transact(CanonEosOperation.REMOTE_RELEASE_OFF, HALF_PRESS)
                 }
             }
@@ -217,6 +216,19 @@ class EosCapture(
             throw e
         }
     }
+
+    /**
+     * Names which of the four stages of a release a [busyRetry] is covering.
+     *
+     * "EOS_RemoteReleaseOn failed: DeviceBusy" names the opcode but not the stage, and
+     * the two RemoteReleaseOn calls mean very different things: the half press is
+     * autofocus, the full press is the shutter.
+     */
+    private data class BusyRetryPolicy(
+        val stage: String,
+        val maxAttempts: Int = BUSY_MAX_ATTEMPTS,
+        val initialDelayMs: Long = 120,
+    )
 
     /**
      * Retries an operation while the camera answers `DeviceBusy` (`P-07`).
@@ -245,27 +257,26 @@ class EosCapture(
      * actually clears.
      */
     private suspend fun <T> busyRetry(
-        maxAttempts: Int = BUSY_MAX_ATTEMPTS,
-        initialDelayMs: Long = 120,
-        // Which of the four stages of a release this is. "EOS_RemoteReleaseOn failed:
-        // DeviceBusy" names the opcode but not the stage, and the two RemoteReleaseOn calls
-        // mean very different things: the half press is autofocus, the full press is the
-        // shutter. A body that will not focus and a body that is still writing the previous
-        // frame need opposite responses, and the log could not tell them apart.
-        stage: String = "release",
+        policy: BusyRetryPolicy,
         block: () -> T,
     ): T {
-        var delayMs = initialDelayMs
+        var delayMs = policy.initialDelayMs
         var lastError: PtpException.OperationFailed? = null
 
-        repeat(maxAttempts) { attempt ->
+        repeat(policy.maxAttempts) { attempt ->
             try {
                 return block()
             } catch (e: PtpException.OperationFailed) {
                 if (!e.isBusy) throw e
                 lastError = e
-                if (attempt < maxAttempts - 1) {
-                    CanonLog.i("Camera busy on %s, retrying in %dms (attempt %d/%d)", stage, delayMs, attempt + 1, maxAttempts)
+                if (attempt < policy.maxAttempts - 1) {
+                    CanonLog.i(
+                        "Camera busy on %s, retrying in %dms (attempt %d/%d)",
+                        policy.stage,
+                        delayMs,
+                        attempt + 1,
+                        policy.maxAttempts,
+                    )
                     delay(delayMs)
                     // Capped growth: the wait we are riding out is bounded (the camera
                     // clears once its pending image is drained), so unbounded doubling
@@ -277,8 +288,8 @@ class EosCapture(
         CanonLog.e(
             "Camera still busy on %s after %d attempts (~%ds). A previous image is probably " +
                 "still pending download - the camera stays busy until its buffer is drained.",
-            stage,
-            maxAttempts,
+            policy.stage,
+            policy.maxAttempts,
             BUSY_TOTAL_BUDGET_SECONDS,
         )
         throw lastError ?: IllegalStateException("busyRetry exhausted without an error")
@@ -319,7 +330,10 @@ class EosCapture(
 
     /** Progress callback: bytes so far, total expected. */
     fun interface ProgressListener {
-        fun onProgress(bytesRead: Long, bytesTotal: Long)
+        fun onProgress(
+            bytesRead: Long,
+            bytesTotal: Long,
+        )
     }
 
     class DownloadResult(
@@ -359,18 +373,20 @@ class EosCapture(
             val remaining = expectedSize - offset
             val chunkSize = minOf(config.downloadChunkBytes.toLong(), remaining).toInt()
 
-            val result = ptp.transact(
-                partialObjectOpcode(),
-                objectHandle,
-                offset,
-                chunkSize.toLong(),
-                timeoutMs = config.downloadTimeoutMs,
-            )
-
-            val chunk = result.data
-                ?: throw PtpException.Malformed(
-                    "GetPartialObject returned no data at offset $offset of $expectedSize",
+            val result =
+                ptp.transact(
+                    partialObjectOpcode(),
+                    objectHandle,
+                    offset,
+                    chunkSize.toLong(),
+                    timeoutMs = config.downloadTimeoutMs,
                 )
+
+            val chunk =
+                result.data
+                    ?: throw PtpException.Malformed(
+                        "GetPartialObject returned no data at offset $offset of $expectedSize",
+                    )
 
             if (chunk.isEmpty()) {
                 throw PtpException.Malformed(
@@ -443,11 +459,17 @@ class EosCapture(
     private fun partialObjectOpcode(): Int {
         val info = ptp.cachedDeviceInfo ?: return CanonEosOperation.GET_PARTIAL_OBJECT
         return when {
-            info.supportsOperation(CanonEosOperation.GET_PARTIAL_OBJECT) ->
+            info.supportsOperation(CanonEosOperation.GET_PARTIAL_OBJECT) -> {
                 CanonEosOperation.GET_PARTIAL_OBJECT
-            info.supportsOperation(PtpOperation.GET_PARTIAL_OBJECT) ->
+            }
+
+            info.supportsOperation(PtpOperation.GET_PARTIAL_OBJECT) -> {
                 PtpOperation.GET_PARTIAL_OBJECT
-            else -> CanonEosOperation.GET_PARTIAL_OBJECT
+            }
+
+            else -> {
+                CanonEosOperation.GET_PARTIAL_OBJECT
+            }
         }
     }
 

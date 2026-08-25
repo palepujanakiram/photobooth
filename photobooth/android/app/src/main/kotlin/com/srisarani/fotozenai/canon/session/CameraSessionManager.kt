@@ -2,28 +2,25 @@ package com.srisarani.fotozenai.canon.session
 
 import android.content.Context
 import android.hardware.usb.UsbDevice
+import com.srisarani.fotozenai.canon.CanonLog
+import com.srisarani.fotozenai.canon.capture.CaptureQueue
+import com.srisarani.fotozenai.canon.capture.ImageStore
 import com.srisarani.fotozenai.canon.eos.EosCameraSettings
 import com.srisarani.fotozenai.canon.eos.EosCapture
 import com.srisarani.fotozenai.canon.eos.EosLiveView
 import com.srisarani.fotozenai.canon.eos.EosProperties
 import com.srisarani.fotozenai.canon.eos.EosSession
-import com.srisarani.fotozenai.canon.capture.CaptureQueue
-import com.srisarani.fotozenai.canon.capture.ImageStore
-import com.srisarani.fotozenai.canon.ptp.CanonEosOperation
-import com.srisarani.fotozenai.canon.ptp.DeviceCapabilityDump
 import com.srisarani.fotozenai.canon.ptp.PtpDeviceInfo
 import com.srisarani.fotozenai.canon.ptp.PtpException
-import com.srisarani.fotozenai.canon.ptp.PtpOperation
 import com.srisarani.fotozenai.canon.ptp.PtpSession
-import com.srisarani.fotozenai.canon.ptp.PtpVendorExtension
 import com.srisarani.fotozenai.canon.state.ConnectionState
 import com.srisarani.fotozenai.canon.state.isReadyForCapture
 import com.srisarani.fotozenai.canon.state.label
 import com.srisarani.fotozenai.canon.usb.UsbCameraDiscovery
 import com.srisarani.fotozenai.canon.usb.UsbError
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,7 +28,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.srisarani.fotozenai.canon.CanonLog
 import java.util.concurrent.Executors
 
 /**
@@ -52,10 +48,10 @@ import java.util.concurrent.Executors
  * correctness requirement of the protocol.
  */
 object CameraSessionManager {
-
-    private val usbThread = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "usb-io").apply { isDaemon = true }
-    }
+    private val usbThread =
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "usb-io").apply { isDaemon = true }
+        }
 
     /** The one and only thread permitted to touch the USB endpoints. */
     val usbDispatcher = usbThread.asCoroutineDispatcher()
@@ -100,7 +96,11 @@ object CameraSessionManager {
         private set
 
     /** Applies a property change on the USB thread. */
-    fun stepSetting(propertyCode: Int, table: Map<Int, String>, forward: Boolean) {
+    fun stepSetting(
+        propertyCode: Int,
+        table: Map<Int, String>,
+        forward: Boolean,
+    ) {
         scope.launch {
             cameraSettings?.step(propertyCode, table, forward)
         }
@@ -140,82 +140,59 @@ object CameraSessionManager {
      */
     fun triggerCapture(withAutofocus: Boolean = true): Deferred<Boolean> {
         val released = CompletableDeferred<Boolean>()
-        scope.launch {
-            val capture = eosCapture
-            if (capture == null) {
-                CanonLog.w("Capture requested but no EOS session is active")
-                released.complete(false)
-                return@launch
+        scope
+            .launch {
+                val capture = eosCapture
+                if (capture == null) {
+                    CanonLog.w("Capture requested but no EOS session is active")
+                    released.complete(false)
+                    return@launch
+                }
+
+                val liveViewWasRunning = pauseLiveViewForCapture()
+
+                val fired =
+                    runCatching {
+                        val mode =
+                            if (withAutofocus) {
+                                EosCapture.ReleaseMode.WITH_AUTOFOCUS
+                            } else {
+                                EosCapture.ReleaseMode.WITHOUT_AUTOFOCUS
+                            }
+                        capture.release(mode)
+                    }.onFailure { CanonLog.e(it, "Shutter release failed") }.isSuccess
+
+                // Publish before draining, not after: the caller needs to stop waiting for an
+                // image the moment we know none is coming, and awaitCaptureDrained below can
+                // itself take seconds.
+                released.complete(fired)
+
+                // C-16: hold live view down until the bytes are safely on disk.
+                if (fired) CameraSessionHandshake.awaitCaptureDrained(captureQueue)
+                resumeLiveViewAfterCapture(liveViewWasRunning)
+            }.invokeOnCompletion { cause ->
+                // A cancelled or crashed launch must not leave the caller awaiting forever.
+                if (!released.isCompleted) released.complete(false)
+                if (cause != null) CanonLog.w(cause, "Capture coroutine ended before releasing")
             }
-
-            val liveViewWasRunning = liveView?.isRunning?.value == true
-            if (liveViewWasRunning) {
-                CanonLog.d("Pausing live view for capture (C-13)")
-                liveView?.stop()
-                // Let the body finish tearing the EVF stream down before asking it to fire.
-                //
-                // Observed on hardware 2026-08-17: releasing immediately after stopping live
-                // view returned DeviceBusy for the whole ~10s retry budget, and the shot
-                // never happened. Stopping live view is asynchronous inside the camera - the
-                // mirror has to come down and the sensor stop streaming - so an instant
-                // RemoteReleaseOn arrives while the body still considers itself busy.
-                kotlinx.coroutines.delay(LIVE_VIEW_SETTLE_BEFORE_RELEASE_MS)
-            }
-
-            val fired = runCatching {
-                capture.release(
-                    if (withAutofocus) EosCapture.ReleaseMode.WITH_AUTOFOCUS
-                    else EosCapture.ReleaseMode.WITHOUT_AUTOFOCUS,
-                )
-            }.onFailure { CanonLog.e(it, "Shutter release failed") }.isSuccess
-
-            // Publish before draining, not after: the caller needs to stop waiting for an
-            // image the moment we know none is coming, and awaitCaptureDrained below can
-            // itself take seconds.
-            released.complete(fired)
-
-            // C-16: hold live view down until the bytes are safely on disk.
-            if (fired) awaitCaptureDrained()
-
-            if (liveViewWasRunning) {
-                // Give the body a moment to finish the mirror cycle before re-enabling.
-                kotlinx.coroutines.delay(LIVE_VIEW_RESUME_DELAY_MS)
-                liveView?.start()
-            }
-        }.invokeOnCompletion { cause ->
-            // A cancelled or crashed launch must not leave the caller awaiting forever.
-            if (!released.isCompleted) released.complete(false)
-            if (cause != null) CanonLog.w(cause, "Capture coroutine ended before releasing")
-        }
         return released
     }
 
-    /**
-     * Waits for the capture queue to finish the transfer this release produced.
-     *
-     * Bounded rather than open-ended: if the image never arrives (`P-17` variance, a missed
-     * event) the booth still gets its viewfinder back. Returns false on timeout so the
-     * caller can log it as the real failure it is.
-     */
-    private suspend fun awaitCaptureDrained(): Boolean {
-        val queue = captureQueue ?: return false
-        val completedBefore = queue.capturesCompleted + queue.capturesFailed
-
-        val drained = kotlinx.coroutines.withTimeoutOrNull(CAPTURE_DRAIN_TIMEOUT_MS) {
-            while (queue.capturesCompleted + queue.capturesFailed == completedBefore) {
-                kotlinx.coroutines.delay(CAPTURE_DRAIN_POLL_MS)
-            }
-            true
-        }
-
-        if (drained == null) {
-            CanonLog.w(
-                "Image did not reach disk within %dms of the shutter - resuming live view anyway (C-16)",
-                CAPTURE_DRAIN_TIMEOUT_MS,
-            )
-            return false
-        }
+    private suspend fun pauseLiveViewForCapture(): Boolean {
+        val running = liveView?.isRunning?.value == true
+        if (!running) return false
+        CanonLog.d("Pausing live view for capture (C-13)")
+        liveView?.stop()
+        // Stopping live view is asynchronous inside the camera. An instant RemoteReleaseOn
+        // arrives while the body still considers itself busy (hardware 2026-08-17).
+        kotlinx.coroutines.delay(LIVE_VIEW_SETTLE_BEFORE_RELEASE_MS)
         return true
+    }
+
+    private suspend fun resumeLiveViewAfterCapture(wasRunning: Boolean) {
+        if (!wasRunning) return
+        kotlinx.coroutines.delay(LIVE_VIEW_RESUME_DELAY_MS)
+        liveView?.start()
     }
 
     fun toggleLiveView() {
@@ -292,13 +269,14 @@ object CameraSessionManager {
             CanonLog.w("%d cameras attached; using %s", cameras.size, device.deviceName)
         }
 
-        _state.value = ConnectionState.DeviceFound(
-            deviceName = device.deviceName,
-            productName = device.productName,
-            vendorId = device.vendorId,
-            productId = device.productId,
-            permissionPending = !discovery.hasPermission(device),
-        )
+        _state.value =
+            ConnectionState.DeviceFound(
+                deviceName = device.deviceName,
+                productName = device.productName,
+                vendorId = device.vendorId,
+                productId = device.productId,
+                permissionPending = !discovery.hasPermission(device),
+            )
 
         if (!discovery.hasPermission(device)) {
             CanonLog.i("Requesting USB permission for %s", device.deviceName)
@@ -312,18 +290,22 @@ object CameraSessionManager {
         connect(discovery, device)
     }
 
-    private suspend fun connect(discovery: UsbCameraDiscovery, device: UsbDevice) {
+    private suspend fun connect(
+        discovery: UsbCameraDiscovery,
+        device: UsbDevice,
+    ) {
         withContext(usbDispatcher) {
             try {
                 val camera = discovery.open(device)
                 opened = camera
-                _state.value = ConnectionState.Opened(
-                    productName = camera.productName,
-                    bulkInAddress = camera.endpoints.bulkIn.address,
-                    bulkOutAddress = camera.endpoints.bulkOut.address,
-                    interruptInAddress = camera.endpoints.interruptIn?.address ?: -1,
-                    bulkInMaxPacketSize = camera.endpoints.bulkIn.maxPacketSize,
-                )
+                _state.value =
+                    ConnectionState.Opened(
+                        productName = camera.productName,
+                        bulkInAddress = camera.endpoints.bulkIn.address,
+                        bulkOutAddress = camera.endpoints.bulkOut.address,
+                        interruptInAddress = camera.endpoints.interruptIn?.address ?: -1,
+                        bulkInMaxPacketSize = camera.endpoints.bulkIn.maxPacketSize,
+                    )
                 CanonLog.i("Connected: %s", camera.endpoints)
                 openPtpSession(camera.productName)
             } catch (e: UsbError) {
@@ -365,18 +347,19 @@ object CameraSessionManager {
 
             // GetDeviceInfo works before a session is open, so we learn what the body
             // supports before committing to anything.
-            val info = readDeviceInfoWithRetries(ptp, transport)
+            val info = CameraSessionHandshake.readDeviceInfoWithRetries(ptp, transport)
             ptp.openSession(1)
             session = ptp
 
-            _state.value = ConnectionState.SessionOpen(
-                productName = productName ?: info.model,
-                sessionId = ptp.sessionId,
-            )
+            _state.value =
+                ConnectionState.SessionOpen(
+                    productName = productName ?: info.model,
+                    sessionId = ptp.sessionId,
+                )
 
-            writeCapabilityDump(info)
-            warnAboutMissingCapabilities(info)
-            startEosSession(info, productName)
+            CameraSessionHandshake.writeCapabilityDump(info, capabilityDumpDir)
+            CameraSessionHandshake.warnAboutMissingCapabilities(info)
+            startEosSession(info)
         } catch (e: PtpException) {
             CanonLog.e(e, "PTP session failed to open")
             _state.value = ConnectionState.Error(e.message ?: "PTP error", e)
@@ -388,50 +371,13 @@ object CameraSessionManager {
     }
 
     /**
-     * Reads `GetDeviceInfo`, clearing the endpoint between attempts.
-     *
-     * The retry *is* the working path, not a safety net. This body ignores the first PTP
-     * command after `claimInterface` — the read comes back `after 0B`, zero bytes — and the
-     * same command succeeds once the halt is cleared behind it. Sometimes it takes more than
-     * one round, because the reply the body abandoned can surface during the next attempt
-     * and has to be read past first (that is the `1140862976` misparse).
-     *
-     * [FIRST_DEVICE_INFO_TIMEOUT_MS] is short precisely so several rounds are affordable:
-     * the whole loop is bounded by about 5s, against 20s for the single generous attempt it
-     * replaced — which recovered less often.
-     */
-    private fun readDeviceInfoWithRetries(
-        ptp: PtpSession,
-        transport: com.srisarani.fotozenai.canon.usb.UsbTransport,
-    ): PtpDeviceInfo {
-        var last: Exception? = null
-        repeat(DEVICE_INFO_ATTEMPTS) { attempt ->
-            try {
-                return ptp.getDeviceInfo(timeoutMs = FIRST_DEVICE_INFO_TIMEOUT_MS)
-            } catch (e: PtpException) {
-                last = e
-            } catch (e: UsbError) {
-                last = e
-            }
-            CanonLog.w(
-                "GetDeviceInfo attempt %d/%d failed (%s) - clearing endpoint and retrying",
-                attempt + 1,
-                DEVICE_INFO_ATTEMPTS,
-                last?.message,
-            )
-            transport.recoverFromStall()
-        }
-        throw last ?: PtpException.Malformed("GetDeviceInfo failed with no recorded cause")
-    }
-
-    /**
      * Enters EOS remote mode and starts the event loop.
      *
      * Gated on the capability dump: if the body does not report the remote-mode opcodes,
      * attempting the handshake produces a confusing failure. Better to say plainly that
      * this body cannot do it and leave the PTP session usable for everything else.
      */
-    private fun startEosSession(info: PtpDeviceInfo, productName: String?) {
+    private fun startEosSession(info: PtpDeviceInfo) {
         if (!info.supportsEosRemoteMode) {
             CanonLog.e("Skipping EOS handshake - this body does not report the remote-mode opcodes")
             return
@@ -479,44 +425,6 @@ object CameraSessionManager {
         }
     }
 
-    /** Writes the dump to app storage so it can be pulled and committed to `docs/`. */
-    private fun writeCapabilityDump(info: PtpDeviceInfo) {
-        val dir = capabilityDumpDir ?: return
-        runCatching {
-            val target = java.io.File(dir, DeviceCapabilityDump.suggestedFilename(info))
-            target.parentFile?.mkdirs()
-            target.writeText(DeviceCapabilityDump.render(info))
-            CanonLog.i("Capability dump written to %s - COMMIT THIS to docs/device-capabilities/", target.absolutePath)
-        }.onFailure { CanonLog.w(it, "Could not write capability dump") }
-    }
-
-    /**
-     * Checks the body against what later milestones need, and says so now.
-     *
-     * Discovering at M3 that the body does not expose the remote-mode opcodes - after a
-     * day of debugging an event loop that was never going to work - is avoidable. The
-     * capability list is available the moment we connect, so use it.
-     */
-    private fun warnAboutMissingCapabilities(info: PtpDeviceInfo) {
-        // Deliberately NOT checking the vendor extension field. A real EOS 200D II reports
-        // "Microsoft" there while implementing the full EOS operation set - verified on
-        // hardware 2026-08-13. Capability comes from the opcode list, nothing else.
-        if (!info.isCanonEos) {
-            CanonLog.e("Body does not implement the EOS operation set - this is not a tetherable EOS camera")
-        }
-        if (!info.supportsEosRemoteMode) {
-            CanonLog.e("Body does not report the EOS remote-mode opcodes - M3 is blocked on this body")
-        }
-        if (!info.supportsJpegCapture) {
-            CanonLog.e("Body does not report JPEG capture support - plan section 2 assumes it")
-        }
-        if (!info.supportsOperation(PtpOperation.GET_PARTIAL_OBJECT) &&
-            !info.supportsOperation(CanonEosOperation.GET_PARTIAL_OBJECT)
-        ) {
-            CanonLog.w("No GetPartialObject - M4 must fall back to whole-file GetObject")
-        }
-    }
-
     // ------------------------------------------------------------- teardown
 
     /**
@@ -546,69 +454,18 @@ object CameraSessionManager {
         }
     }
 
+    /** Mirror-cycle settling time before live view is re-enabled after a capture. */
+    private const val LIVE_VIEW_RESUME_DELAY_MS = 400L
+
+    /** Settling time between stopping live view and firing the shutter. */
+    private const val LIVE_VIEW_SETTLE_BEFORE_RELEASE_MS = 400L
+
     /**
      * Releases the interface and closes the connection, swallowing failures.
      *
      * Leaking either is what produces U-11: works for N reconnect cycles, then stops
      * because file descriptors have run out.
      */
-    /**
-     * Read budget for the **first** `GetDeviceInfo` on a freshly claimed interface.
-     *
-     * Deliberately *short*, which is the opposite of the obvious instinct. A per-read trace
-     * on hardware 2026-08-18 settled what actually happens: this body does not answer its
-     * first PTP command after `claimInterface` at all. The read logged `bulkIn after 0B
-     * timed out after 20000ms` — not a slow reply, **zero bytes for the full budget**. Clear
-     * the endpoint halt afterwards and the identical command succeeds in ~800ms, every time.
-     *
-     * So the first command is really a wake-up that gets swallowed, and the only thing a
-     * generous timeout buys is dead air in front of the guest: raising this to 20s turned a
-     * 5s stall into a 21s one and fixed nothing. Failing fast hands control to the retry in
-     * [openPtpSession], which is the call that works.
-     *
-     * It also limits the damage from the related fault. When that abandoned reply *does*
-     * arrive late it offsets the stream, and the next read lands mid-payload: `peekLength`
-     * sees `00 30 00 44` = 0x44003000 = **1140862976**, the "Container truncated" signature
-     * blamed on stale leftovers since `U-17`. The dump that proved it contained `"0D II"`
-     * and `"3-1.0.1"` — this body's own model and firmware strings.
-     */
-    private const val FIRST_DEVICE_INFO_TIMEOUT_MS = 1_500
-
-    /**
-     * Rounds of "try GetDeviceInfo, clear the endpoint" before giving up.
-     *
-     * Three because two was observably not always enough: on 2026-08-18 a connect recovered
-     * on its second attempt and an otherwise identical one failed with only two available.
-     * At [FIRST_DEVICE_INFO_TIMEOUT_MS] each, three costs ~5s in the worst case and only the
-     * first ~1.5s in the common one.
-     */
-    private const val DEVICE_INFO_ATTEMPTS = 3
-
-    /** Mirror-cycle settling time before live view is re-enabled after a capture. */
-    private const val LIVE_VIEW_RESUME_DELAY_MS = 400L
-
-    /**
-     * Settling time between stopping live view and firing the shutter.
-     *
-     * The POC only ever delayed on the *resume* side, which left the release racing the
-     * EVF teardown. On hardware that showed up as `EOS_RemoteReleaseOn failed: DeviceBusy`
-     * repeated until the ~10s budget expired, with no photo taken — a shutter button that
-     * silently does nothing, which is `P-18`'s symptom from a different cause.
-     *
-     * Matched to [LIVE_VIEW_RESUME_DELAY_MS]: the same mirror cycle, in the other direction.
-     */
-    private const val LIVE_VIEW_SETTLE_BEFORE_RELEASE_MS = 400L
-
-    /**
-     * How long to hold live view down waiting for the shot to reach disk (`C-16`).
-     *
-     * A 24MP JPEG measured 15–17.6 MB/s over USB 2.0, so ~8MB lands in well under a second.
-     * 15s is deliberately generous — it covers a slow card, a busy body, and a retry —
-     * while still guaranteeing the viewfinder comes back if the image is genuinely lost.
-     */
-    private const val CAPTURE_DRAIN_TIMEOUT_MS = 15_000L
-    private const val CAPTURE_DRAIN_POLL_MS = 50L
-
     private fun releaseQuietly() {
         // Teardown order is deliberate and matters:
         //   EOS remote mode -> PTP session -> USB transport

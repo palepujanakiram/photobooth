@@ -1,4 +1,5 @@
 import '../../utils/app_device_type.dart';
+import '../../utils/app_strings.dart';
 
 /// Camera preparation phase while the guest reads Terms.
 enum TermsCameraPrimingPhase {
@@ -201,9 +202,32 @@ Future<bool> canSkipTermsPrimingOnReentry({
 ///
 /// The hint is only honest while the grant is actually missing: a booth that
 /// was allowed on a previous guest never sees the system dialog again, so the
-/// generic "Detecting cameras…" wording is the truthful one.
+/// generic getting-ready wording is the truthful one.
 bool shouldShowCanonUsbPrimingHint({
   required bool isCanonUsbBooth,
   required bool permissionPending,
 }) =>
     isCanonUsbBooth && permissionPending;
+
+/// Guest-facing Terms camera banner. One detecting line, one unavailable line.
+String termsCameraPrimingBannerMessage({
+  required TermsCameraPrimingPhase phase,
+  required bool photoUploadAllowed,
+  bool showCanonUsbHint = false,
+}) {
+  switch (phase) {
+    case TermsCameraPrimingPhase.skipped:
+    case TermsCameraPrimingPhase.ready:
+      return '';
+    case TermsCameraPrimingPhase.detecting:
+      return showCanonUsbHint
+          ? AppStrings.termsDetectingCamerasCanonUsb
+          : AppStrings.termsDetectingCameras;
+    case TermsCameraPrimingPhase.permissionDenied:
+    case TermsCameraPrimingPhase.noneFound:
+    case TermsCameraPrimingPhase.failed:
+      return photoUploadAllowed
+          ? AppStrings.termsCameraUnavailableUploadOk
+          : AppStrings.termsCameraUnavailable;
+  }
+}

@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import '../../models/kiosk_device_status.dart';
 import '../../utils/app_strings.dart';
 import '../../views/widgets/app_colors.dart';
+import 'kiosk_device_status_visibility.dart';
 
 /// Status rows shown under kiosk manage actions (DNP, Selphy, receipt, USB, DSLR).
 class KioskDeviceStatusPanel extends StatelessWidget {
@@ -39,27 +40,29 @@ class KioskDeviceStatusPanel extends StatelessWidget {
           )
         else if (snapshot != null) ...[
           const SizedBox(height: 10),
-          KioskDeviceStatusRow(entry: snapshot!.dnpPrinter, appColors: appColors),
-          const SizedBox(height: 8),
-          KioskDeviceStatusRow(
-            entry: snapshot!.selphyPrinter,
-            appColors: appColors,
-          ),
-          const SizedBox(height: 8),
-          KioskDeviceStatusRow(
-            entry: snapshot!.receiptPrinter,
-            appColors: appColors,
-          ),
-          const SizedBox(height: 8),
-          KioskDeviceStatusRow(entry: snapshot!.usbCamera, appColors: appColors),
-          const SizedBox(height: 8),
-          KioskDeviceStatusRow(
-            entry: snapshot!.dslrSidecar,
-            appColors: appColors,
-          ),
+          ..._statusRows(snapshot!),
         ],
       ],
     );
+  }
+
+  List<Widget> _statusRows(KioskDeviceStatusSnapshot snapshot) {
+    final entries = <KioskDeviceStatusEntry>[
+      snapshot.dnpPrinter,
+      snapshot.selphyPrinter,
+      snapshot.receiptPrinter,
+      snapshot.usbCamera,
+      snapshot.dslrSidecar,
+    ].where((entry) => kioskDeviceStatusRowEnabled(entry.deviceName));
+
+    final rows = <Widget>[];
+    for (final entry in entries) {
+      if (rows.isNotEmpty) {
+        rows.add(const SizedBox(height: 8));
+      }
+      rows.add(KioskDeviceStatusRow(entry: entry, appColors: appColors));
+    }
+    return rows;
   }
 }
 
@@ -146,14 +149,11 @@ class KioskDeviceStatusRow extends StatelessWidget {
       icon = CupertinoIcons.exclamationmark_circle_fill;
       iconColor = CupertinoColors.systemOrange.resolveFrom(context);
     }
-    final stateLabel = !entry.configured
-        ? AppStrings.kioskDeviceNotConfigured
-        : entry.crashed
-            ? AppStrings.kioskDeviceCrashed
-            : entry.connected
-                ? AppStrings.kioskDeviceConnected
-                : AppStrings.kioskDeviceNotConnected;
-    final modeLabel = _transportLabel(entry.transport);
+    final stateLabel = kioskDeviceStatusStateLabel(entry);
+    final modeLabel = kioskDeviceStatusTransportLabel(
+      deviceName: entry.deviceName,
+      transport: entry.transport,
+    );
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -173,14 +173,5 @@ class KioskDeviceStatusRow extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  String _transportLabel(KioskDeviceTransport? transport) {
-    return switch (transport) {
-      KioskDeviceTransport.usb => AppStrings.kioskDeviceTransportUsb,
-      KioskDeviceTransport.wifi => AppStrings.kioskDeviceTransportWifi,
-      KioskDeviceTransport.lan => AppStrings.kioskDeviceTransportLan,
-      null => AppStrings.kioskDeviceTransportUnknown,
-    };
   }
 }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/photo_capture/photo_capture_camera_error_helpers.dart';
+import 'package:photobooth/utils/app_strings.dart';
 
 void main() {
   test('cameraLoadFailureMessage maps camera unavailable', () {
@@ -12,7 +13,7 @@ void main() {
     );
     expect(
       cameraLoadFailureMessage(error),
-      contains('No camera detected'),
+      AppStrings.noCameraConnected,
     );
   });
 
@@ -61,7 +62,7 @@ void main() {
   test('cameraLoadFailureMessage handles generic error strings', () {
     expect(
       cameraLoadFailureMessage(Exception('CameraUnavailable: Available cameras: 0')),
-      contains('No camera detected'),
+      AppStrings.noCameraConnected,
     );
     expect(
       cameraLoadFailureMessage(Exception('Failed to open camera')),
@@ -104,6 +105,17 @@ void main() {
     expect(
       isHandledCameraPipelineError(Exception('platformexception usb offline')),
       isTrue,
+    );
+  });
+
+  test('emptyCameraEnumerationMessage is No Camera Connected off web', () {
+    expect(
+      emptyCameraEnumerationMessage(isWeb: false),
+      AppStrings.noCameraConnected,
+    );
+    expect(
+      emptyCameraEnumerationMessage(isWeb: true),
+      AppStrings.noCameraDetectedWeb,
     );
   });
 }

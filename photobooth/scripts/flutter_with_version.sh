@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run from photobooth/ (or anywhere): forwards to flutter after syncing pubspec on `flutter build …`.
 # Loads photobooth/.env (+ .env.local) and injects BUGSNAG_API_KEY for release/profile mobile builds.
+# SKIP_VERSION_SYNC=1 skips the pubspec bump (Fastlane already set the store build number).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -43,7 +44,7 @@ append_bugsnag_dart_define() {
 
 FLUTTER_ARGS=("$@")
 
-if [[ "${1:-}" == "build" ]]; then
+if [[ "${1:-}" == "build" && "${SKIP_VERSION_SYNC:-}" != "1" ]]; then
   dart run tool/sync_build_version.dart
 fi
 
