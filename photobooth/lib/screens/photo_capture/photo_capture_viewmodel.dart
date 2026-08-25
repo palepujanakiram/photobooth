@@ -3606,6 +3606,51 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  /// Offline / local skeleton sessions have no kioskAuthToken. Persist the
+  /// capture on device and continue (frame-only AI / Classic cash flow).
+  Future<bool> _persistPhotoForOfflineSession({
+    required String sessionId,
+  }) async {
+    beginContinueUpload();
+    await Future<void>.delayed(Duration.zero);
+    try {
+      WebFlowTrace.log('UPLOAD', 'offline_local_persist');
+      _uploadStatusMessage = 'Saving photo…';
+      notifyListeners();
+
+      final photo = _capturedPhoto!;
+      final stored = await persistCapturedGuestXFile(photo.imageFile);
+      if (stored.path != photo.imageFile.path) {
+        _capturedPhoto = photo.copyWith(imageFile: stored);
+      }
+
+      await _resolvePersonCountAfterUpload(
+        sessionId: sessionId,
+        clientFaceCount: _preparedClientFaceCount ?? 0,
+      );
+      WebFlowTrace.log('UPLOAD', 'offline_local_persist_done');
+      _releaseUploadPayloadMemory();
+      return true;
+    } catch (e, st) {
+      WebFlowTrace.log('UPLOAD', 'ERROR offline_local_persist $e');
+      _errorMessage = 'Failed to save photo: ${e.toString()}';
+      unawaited(
+        reportIssue(
+          'Offline photo persist failed',
+          e,
+          st,
+          extraInfo: {'source': 'photo_capture_offline_persist'},
+        ),
+      );
+      return false;
+    } finally {
+      _stopUploadTimer();
+      _isUploading = false;
+      _uploadStatusMessage = null;
+      notifyListeners();
+    }
+  }
+
   /// Called when user taps "Continue" button in Capture Photo screen
   /// Uploads photo, saves client person count, and fires server preprocess in background.
   Future<bool> uploadPhotoToSession() async {
@@ -3644,6 +3689,10 @@ class CaptureViewModel extends ChangeNotifier {
 
     final kioskToken = _sessionManager.kioskAuthToken;
     if (kioskToken == null || kioskToken.isEmpty) {
+      // Local/admin-offline skeleton has no Fly token — persist on device.
+      if (_sessionManager.isOfflineSession) {
+        return _persistPhotoForOfflineSession(sessionId: sessionId);
+      }
       _errorMessage =
           'Session authentication is missing. Please go back and accept Terms again.';
       notifyListeners();

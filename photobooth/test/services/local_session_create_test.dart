@@ -132,7 +132,8 @@ void main() {
     expect((result.sessionJson['id'] as String).length, greaterThan(8));
   });
 
-  test('createKioskSession skips Fly when forceOffline', () async {
+  test('createKioskSession forceOffline still uses Fly when reachable',
+      () async {
     var called = false;
     final result = await createKioskSession(
       newId: () => 'admin-offline',
@@ -140,12 +141,27 @@ void main() {
       now: DateTime.utc(2026, 8, 23),
       acceptTerms: (_) async {
         called = true;
-        return {'id': 'should-not-run'};
+        return {
+          'id': 'admin-offline',
+          'kioskAuthToken': 'tok-offline-mode',
+          'termsAccepted': true,
+        };
       },
     );
-    expect(called, isFalse);
+    expect(called, isTrue);
+    expect(result.usedLocalFallback, isFalse);
+    expect(result.sessionJson['kioskAuthToken'], 'tok-offline-mode');
+  });
+
+  test('createKioskSession forceOffline falls back on non-WAN error', () async {
+    final result = await createKioskSession(
+      newId: () => 'admin-offline-4xx',
+      forceOffline: true,
+      now: DateTime.utc(2026, 8, 23),
+      acceptTerms: (_) async => throw ApiException('bad kiosk', 400),
+    );
     expect(result.usedLocalFallback, isTrue);
-    expect(result.sessionJson['id'], 'admin-offline');
+    expect(result.sessionJson['id'], 'admin-offline-4xx');
     expect(result.sessionJson[kKioskSessionOfflineKey], isTrue);
   });
 }
