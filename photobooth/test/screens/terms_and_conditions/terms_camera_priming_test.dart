@@ -366,5 +366,92 @@ void main() {
         isEmpty,
       );
     });
+
+    test('names the Canon USB grant only while it is still pending', () {
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.detecting,
+          photoUploadAllowed: false,
+          canonUsbPermissionPending: true,
+        ),
+        AppStrings.termsDetectingCamerasCanonUsb,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.detecting,
+          photoUploadAllowed: false,
+          canonUsbPermissionPending: false,
+        ),
+        AppStrings.termsDetectingCameras,
+      );
+    });
+
+    test('keeps the unavailable line even when a grant is pending', () {
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.noneFound,
+          photoUploadAllowed: false,
+          canonUsbPermissionPending: true,
+        ),
+        AppStrings.termsCameraUnavailable,
+      );
+    });
+  });
+  group('TermsCanonPrimingMemo', () {
+    setUp(TermsCanonPrimingMemo.reset);
+    tearDown(TermsCanonPrimingMemo.reset);
+
+    test('starts unprimed and remembers a ready pass', () {
+      expect(TermsCanonPrimingMemo.isPrimed, isFalse);
+      TermsCanonPrimingMemo.markPrimed();
+      expect(TermsCanonPrimingMemo.isPrimed, isTrue);
+      TermsCanonPrimingMemo.reset();
+      expect(TermsCanonPrimingMemo.isPrimed, isFalse);
+    });
+  });
+
+  group('canSkipTermsPrimingOnReentry', () {
+    test('never skips the first visit', () async {
+      var probed = false;
+      final skip = await canSkipTermsPrimingOnReentry(
+        primedBefore: false,
+        probeStillReady: () async {
+          probed = true;
+          return true;
+        },
+      );
+      expect(skip, isFalse);
+      expect(probed, isFalse, reason: 'no live probe before a first pass');
+    });
+
+    test('skips when a primed booth is still ready', () async {
+      expect(
+        await canSkipTermsPrimingOnReentry(
+          primedBefore: true,
+          probeStillReady: () async => true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('re-primes when the camera left between guests', () async {
+      expect(
+        await canSkipTermsPrimingOnReentry(
+          primedBefore: true,
+          probeStillReady: () async => false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('re-primes when the probe throws', () async {
+      expect(
+        await canSkipTermsPrimingOnReentry(
+          primedBefore: true,
+          probeStillReady: () async => throw StateError('channel down'),
+        ),
+        isFalse,
+      );
+    });
   });
 }

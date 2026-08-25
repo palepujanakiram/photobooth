@@ -992,4 +992,186 @@ void main() {
       );
     });
   });
+
+  group('Terms re-entry probes', () {
+    const ptpChannel = MethodChannel(DirectPtpCameraService.methodChannelName);
+
+    tearDown(() => messenger.setMockMethodCallHandler(ptpChannel, null));
+
+    void asAndroid() {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    }
+
+    test('permission held is false off Android', () async {
+      expect(
+        await isOnDeviceCanonUsbPermissionHeld(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+        ),
+        isFalse,
+      );
+    });
+
+    test('permission held follows PTP readiness', () async {
+      asAndroid();
+      messenger.setMockMethodCallHandler(ptpChannel, (call) async {
+        if (call.method == 'status') {
+          return {'state': 'Ready', 'label': 'Ready'};
+        }
+        return null;
+      });
+      expect(
+        await isOnDeviceCanonUsbPermissionHeld(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+          camera: DirectPtpCameraService(isAndroid: () => true),
+        ),
+        isTrue,
+      );
+    });
+
+    test('permission held is false when PTP has no device', () async {
+      asAndroid();
+      messenger.setMockMethodCallHandler(ptpChannel, (call) async {
+        switch (call.method) {
+          case 'status':
+            return {'state': 'NoDevice', 'label': 'No device'};
+          default:
+            return null;
+        }
+      });
+      expect(
+        await isOnDeviceCanonUsbPermissionHeld(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+          camera: DirectPtpCameraService(isAndroid: () => true),
+        ),
+        isFalse,
+      );
+    });
+
+    test('permission held is false for non-Canon booths', () async {
+      asAndroid();
+      expect(
+        await isOnDeviceCanonUsbPermissionHeld(
+          settings: AppSettingsModel(
+            cameraConnectionMode: 'pi',
+            cameraEnabled: true,
+            cameraSidecarHost: '10.0.0.5',
+          ),
+        ),
+        isFalse,
+      );
+    });
+
+    test('permission held asks the sidecar channel for EDSDK booths', () async {
+      asAndroid();
+      final calls = <String>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call.method);
+        if (call.method == 'isCameraPresent') return true;
+        if (call.method == 'hasUsbPermission') return true;
+        return null;
+      });
+      expect(
+        await isOnDeviceCanonUsbPermissionHeld(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct'),
+        ),
+        isTrue,
+      );
+      expect(calls, ['isCameraPresent', 'hasUsbPermission']);
+    });
+
+    test('permission held is true when no Canon body is attached', () async {
+      asAndroid();
+      final calls = <String>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call.method);
+        if (call.method == 'isCameraPresent') return false;
+        return null;
+      });
+      // No body means no allow dialog, so Terms must not name the Canon grant.
+      expect(
+        await isOnDeviceCanonUsbPermissionHeld(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct'),
+        ),
+        isTrue,
+      );
+      expect(calls, ['isCameraPresent']);
+    });
+
+    test('still ready is false off Android', () async {
+      expect(
+        await isOnDeviceCanonBoothStillReady(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+        ),
+        isFalse,
+      );
+    });
+
+    test('still ready follows PTP readiness', () async {
+      asAndroid();
+      messenger.setMockMethodCallHandler(ptpChannel, (call) async {
+        if (call.method == 'status') {
+          return {'state': 'Ready', 'label': 'Ready'};
+        }
+        return null;
+      });
+      expect(
+        await isOnDeviceCanonBoothStillReady(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+          camera: DirectPtpCameraService(isAndroid: () => true),
+        ),
+        isTrue,
+      );
+    });
+
+    test('still ready is false for non-Canon booths', () async {
+      asAndroid();
+      expect(
+        await isOnDeviceCanonBoothStillReady(
+          settings: AppSettingsModel(
+            cameraConnectionMode: 'pi',
+            cameraEnabled: true,
+            cameraSidecarHost: '10.0.0.5',
+          ),
+        ),
+        isFalse,
+      );
+    });
+
+    test('still ready is true when the EDSDK sidecar answers', () async {
+      asAndroid();
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'isCameraPresent') return true;
+        return null;
+      });
+      final client = MockClient(
+        (_) async => http.Response('{"ok":true,"connected":true}', 200),
+      );
+      expect(
+        await isOnDeviceCanonBoothStillReady(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct'),
+          client: client,
+          sidecarTimeout: const Duration(milliseconds: 200),
+        ),
+        isTrue,
+      );
+    });
+
+    test('still ready gives up quickly on a dead sidecar', () async {
+      asAndroid();
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'getState') return 'idle';
+        return null;
+      });
+      final client = MockClient((_) async => throw Exception('refused'));
+      expect(
+        await isOnDeviceCanonBoothStillReady(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct'),
+          client: client,
+          sidecarTimeout: const Duration(milliseconds: 30),
+        ),
+        isFalse,
+      );
+    });
+  });
 }
