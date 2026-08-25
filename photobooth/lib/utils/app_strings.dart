@@ -125,6 +125,10 @@ abstract final class AppStrings {
   /// Non-blocking status on Terms while cameras are enumerated on entry.
   static const termsDetectingCameras = 'Getting the camera ready…';
 
+  /// Terms banner while direct Canon USB permission / sidecar warm-up runs.
+  static const termsDetectingCamerasCanonUsb =
+      'Allow USB access for the Canon camera when prompted…';
+
   /// Terms Continue label while camera detection is still running.
   static const termsContinueWhenReady = 'Continue when ready';
 

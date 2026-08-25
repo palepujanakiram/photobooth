@@ -321,6 +321,96 @@ void main() {
     });
   });
 
+  group('TermsCanonPrimingMemo', () {
+    setUp(TermsCanonPrimingMemo.reset);
+    tearDown(TermsCanonPrimingMemo.reset);
+
+    test('starts unprimed and remembers a ready pass', () {
+      expect(TermsCanonPrimingMemo.isPrimed, isFalse);
+      TermsCanonPrimingMemo.markPrimed();
+      expect(TermsCanonPrimingMemo.isPrimed, isTrue);
+      TermsCanonPrimingMemo.reset();
+      expect(TermsCanonPrimingMemo.isPrimed, isFalse);
+    });
+  });
+
+  group('canSkipTermsPrimingOnReentry', () {
+    test('never skips the first visit', () async {
+      var probed = false;
+      final skip = await canSkipTermsPrimingOnReentry(
+        primedBefore: false,
+        probeStillReady: () async {
+          probed = true;
+          return true;
+        },
+      );
+      expect(skip, isFalse);
+      expect(probed, isFalse, reason: 'no live probe before a first pass');
+    });
+
+    test('skips when a primed booth is still ready', () async {
+      expect(
+        await canSkipTermsPrimingOnReentry(
+          primedBefore: true,
+          probeStillReady: () async => true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('re-primes when the camera left between guests', () async {
+      expect(
+        await canSkipTermsPrimingOnReentry(
+          primedBefore: true,
+          probeStillReady: () async => false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('re-primes when the probe throws', () async {
+      expect(
+        await canSkipTermsPrimingOnReentry(
+          primedBefore: true,
+          probeStillReady: () async => throw StateError('channel down'),
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('shouldShowCanonUsbPrimingHint', () {
+    test('shows only while a Canon booth still needs the grant', () {
+      expect(
+        shouldShowCanonUsbPrimingHint(
+          isCanonUsbBooth: true,
+          permissionPending: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('hides once the grant is held', () {
+      expect(
+        shouldShowCanonUsbPrimingHint(
+          isCanonUsbBooth: true,
+          permissionPending: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('hides on booths that never touch USB', () {
+      expect(
+        shouldShowCanonUsbPrimingHint(
+          isCanonUsbBooth: false,
+          permissionPending: true,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('termsCameraPrimingBannerMessage', () {
     test('uses one detecting line and one unavailable line', () {
       expect(
@@ -329,6 +419,14 @@ void main() {
           photoUploadAllowed: false,
         ),
         AppStrings.termsDetectingCameras,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.detecting,
+          photoUploadAllowed: false,
+          showCanonUsbHint: true,
+        ),
+        AppStrings.termsDetectingCamerasCanonUsb,
       );
       expect(
         termsCameraPrimingBannerMessage(

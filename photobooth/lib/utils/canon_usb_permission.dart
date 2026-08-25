@@ -249,3 +249,43 @@ Future<bool> canonSidecarAwaitingUsbPermission() async {
   final state = await CanonSidecarStatusChannel.getState();
   return state == 'waiting_usb';
 }
+
+/// True when an on-device Canon booth already holds its Android USB grant.
+///
+/// Terms uses this to decide whether the "Allow USB access…" hint is honest.
+/// A booth that was allowed on an earlier guest never sees the system dialog
+/// again, so the hint would just be noise on every re-entry.
+Future<bool> isOnDeviceCanonUsbPermissionHeld({
+  AppSettingsModel? settings,
+  DirectPtpCameraService? camera,
+}) async {
+  if (defaultTargetPlatform != TargetPlatform.android) return false;
+  if (isDirectPtpBooth(settings)) {
+    return isDirectPtpReadyForTerms(settings: settings, camera: camera);
+  }
+  if (!isDirectCanonSidecarBooth(settings)) return false;
+  return CanonSidecarStatusChannel.hasUsbPermission();
+}
+
+/// True when a booth primed on an earlier guest is still camera-ready.
+///
+/// Deliberately short-deadlined: this runs on the Terms fast path, so a body
+/// that was unplugged between guests must fail quickly and fall through to a
+/// full priming pass rather than stall the screen.
+Future<bool> isOnDeviceCanonBoothStillReady({
+  AppSettingsModel? settings,
+  DirectPtpCameraService? camera,
+  http.Client? client,
+  Duration sidecarTimeout = const Duration(seconds: 2),
+}) async {
+  if (defaultTargetPlatform != TargetPlatform.android) return false;
+  if (isDirectPtpBooth(settings)) {
+    return isDirectPtpReadyForTerms(settings: settings, camera: camera);
+  }
+  if (!isDirectCanonSidecarBooth(settings)) return false;
+  return warmDirectSidecarAfterUsbGrant(
+    settings: settings,
+    client: client,
+    timeout: sidecarTimeout,
+  );
+}
