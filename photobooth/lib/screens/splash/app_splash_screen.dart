@@ -10,6 +10,7 @@ import 'bootstrap_route_args.dart';
 import 'kiosk_qr_scan_screen.dart';
 import '../../models/kiosk_device_status.dart';
 import '../../models/kiosk_info_model.dart';
+import '../../services/api_environment_store.dart';
 import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/client_identification.dart';
@@ -17,15 +18,19 @@ import '../../services/customer_session_lifecycle.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/event_manager.dart';
 import '../../services/kiosk_device_status_service.dart';
+import '../../utils/api_environment.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/kiosk_qr_payload.dart';
 import '../../utils/logger.dart';
 import '../../views/widgets/app_colors.dart';
+import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/animated_slideshow_background.dart'
     show kSlideshowAssetPaths;
 import 'app_splash_event_helpers.dart';
 import 'app_splash_input_helpers.dart';
 import 'app_splash_screen_body.dart';
+import 'splash_api_environment_control.dart';
 import '../../utils/event_station_role.dart';
 import '../../utils/kiosk_runtime_refresh.dart';
 
@@ -48,7 +53,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
   late final TextEditingController _codeController;
   late final TextEditingController _eventController;
 
-  final ApiService _api = ApiService();
+  ApiService _api = ApiService();
   final KioskManager _kiosk = KioskManager();
   final EventManager _event = EventManager();
 
@@ -58,6 +63,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
   String? _storedCode;
   bool _needsEntry = false;
   bool _manageEditing = false;
+  ApiEnvironment _apiEnvironment = splashApiEnvironmentSelection();
   bool _deviceStatusLoading = false;
   KioskDeviceStatusSnapshot? _deviceStatus;
   final KioskDeviceStatusService _deviceStatusService = KioskDeviceStatusService();
@@ -144,6 +150,35 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       if (mounted) {
         setState(() => _deviceStatusLoading = false);
       }
+    }
+  }
+
+  Future<void> _onApiEnvironmentChanged(ApiEnvironment env) async {
+    if (_busy || env == _apiEnvironment) return;
+    setState(() {
+      _busy = true;
+      _apiEnvironment = env;
+    });
+    try {
+      await ApiEnvironmentStore.set(env);
+      _api = ApiService();
+      if (mounted) {
+        context.read<AppSettingsManager>().rebindApiService();
+        await _refreshSettingsForBoundKiosk();
+      }
+      if (!mounted) return;
+      AppSnackBar.showSuccess(context, AppStrings.apiEnvironmentSaved);
+    } catch (e, st) {
+      AppLogger.warning(
+        'Failed to save API environment',
+        error: e,
+        stackTrace: st,
+      );
+      if (mounted) {
+        setState(() => _apiEnvironment = splashApiEnvironmentSelection());
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -752,6 +787,10 @@ class _AppSplashScreenState extends State<AppSplashScreen>
                     deviceStatusLoading: _deviceStatusLoading,
                     deviceStatus: _deviceStatus,
                     onRefreshDeviceStatus: _onRefreshDeviceStatusPressed,
+                    apiEnvironment: _apiEnvironment,
+                    onApiEnvironmentChanged: widget.args.manageKiosk
+                        ? _onApiEnvironmentChanged
+                        : null,
                   ),
                 ),
                 appSplashVersionFooter(versionFooter, appColors),

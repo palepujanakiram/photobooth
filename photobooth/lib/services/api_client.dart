@@ -6,7 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
 import '../models/app_settings_model.dart';
 import '../screens/theme_selection/theme_model.dart';
-import '../utils/constants.dart';
+import '../utils/app_config.dart';
 
 part 'api_client.g.dart';
 
@@ -16,7 +16,7 @@ abstract class ParseErrorLogger {
       [dynamic response]);
 }
 
-@RestApi(baseUrl: AppConstants.kBaseUrl)
+@RestApi(baseUrl: AppConfig.retrofitAnnotationBaseUrl)
 abstract class ApiClient {
   factory ApiClient(Dio dio, {String baseUrl}) = _ApiClient;
 

@@ -36,7 +36,7 @@ class SecureImageUrl {
   }
 
   static String _baseUrlNoTrailingSlash() {
-    const b = AppConfig.baseUrl;
+    final b = AppConfig.baseUrl;
     return b.endsWith('/') ? b.substring(0, b.length - 1) : b;
   }
 

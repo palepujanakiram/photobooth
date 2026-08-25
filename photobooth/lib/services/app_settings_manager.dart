@@ -11,7 +11,7 @@ import 'catalog_disk_cache.dart';
 import 'kiosk_manager.dart';
 
 class AppSettingsManager extends ChangeNotifier {
-  final ApiService _apiService;
+  ApiService _apiService;
   final Future<String?> Function() _resolveKioskCode;
 
   AppSettingsManager({
@@ -40,6 +40,11 @@ class AppSettingsManager extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   DateTime? get lastFetchedAt => _lastFetchedAt;
+
+  /// Recreate the HTTP client after splash Stage/Live host change.
+  void rebindApiService({ApiService? apiService}) {
+    _apiService = apiService ?? ApiService();
+  }
 
   /// True when account settings collect UPI before AI generation.
   bool get collectPaymentBeforeGeneration =>

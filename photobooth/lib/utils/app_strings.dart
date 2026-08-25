@@ -146,6 +146,13 @@ abstract final class AppStrings {
   static const kioskSettingsRefreshFailed =
       'Kiosk settings refresh failed; using cache';
 
+  /// Splash manage: Stage vs Live API host control.
+  static const apiEnvironmentHeading = 'API server';
+  static const apiEnvironmentLive = 'Live';
+  static const apiEnvironmentStage = 'Stage';
+  static const apiEnvironmentSaved =
+      'API server saved. New requests use this host.';
+
   /// Terms banner when camera is missing, permission was denied, or detection failed.
   static const termsCameraUnavailable =
       'Camera is not available. Tap Retry.';

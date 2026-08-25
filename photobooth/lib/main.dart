@@ -40,12 +40,14 @@ import 'services/kiosk_outbox_worker.dart';
 import 'services/kiosk_manager.dart';
 import 'services/low_memory_monitor.dart';
 import 'utils/app_config.dart';
+import 'services/api_environment_store.dart';
 import 'utils/platform_capabilities.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await ClientIdentification.ensureInitialized();
+  await ApiEnvironmentStore.load();
 
   // Generous defaults until `/api/settings` loads; [AppSettingsManager] reapplies limits.
   applyFlutterImageCacheLimits();

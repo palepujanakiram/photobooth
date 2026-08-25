@@ -1,11 +1,13 @@
 import 'package:flutter/cupertino.dart';
 
+import '../../utils/api_environment.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../models/kiosk_device_status.dart';
 import 'app_splash_copy_helpers.dart';
 import 'bootstrap_route_args.dart';
 import 'kiosk_device_status_widgets.dart';
+import 'splash_api_environment_control.dart';
 
 /// Branded card + kiosk form region (Sonar S3776 extraction from [AppSplashScreen]).
 class AppSplashScreenBody extends StatelessWidget {
@@ -31,6 +33,8 @@ class AppSplashScreenBody extends StatelessWidget {
     this.deviceStatusLoading = false,
     this.deviceStatus,
     this.onRefreshDeviceStatus,
+    this.apiEnvironment,
+    this.onApiEnvironmentChanged,
   });
 
   final SplashRouteArgs args;
@@ -53,6 +57,8 @@ class AppSplashScreenBody extends StatelessWidget {
   final bool deviceStatusLoading;
   final KioskDeviceStatusSnapshot? deviceStatus;
   final VoidCallback? onRefreshDeviceStatus;
+  final ApiEnvironment? apiEnvironment;
+  final ValueChanged<ApiEnvironment>? onApiEnvironmentChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -99,6 +105,17 @@ class AppSplashScreenBody extends StatelessWidget {
                             ),
                             if (bootstrapDone) ...[
                               const SizedBox(height: 26),
+                              if (args.manageKiosk &&
+                                  apiEnvironment != null &&
+                                  onApiEnvironmentChanged != null) ...[
+                                SplashApiEnvironmentControl(
+                                  appColors: appColors,
+                                  selected: apiEnvironment!,
+                                  enabled: !busy,
+                                  onChanged: onApiEnvironmentChanged!,
+                                ),
+                                const SizedBox(height: 20),
+                              ],
                               if (showManageSummary)
                                 _AppSplashManageSummary(
                                   appColors: appColors,
