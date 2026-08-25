@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/strip_models.dart';
@@ -10,7 +10,7 @@ import '../../models/strip_models.dart';
 ///
 /// Geometry comes from zenai `STRIP_WYSIWYG_LAYOUT`. When [colorFilter] is null,
 /// [imageDataUrls] are assumed already Sharp-graded (Option A).
-class FotoFlashbackSheetLayoutPreview extends StatelessWidget {
+class FotoFlashbackSheetLayoutPreview extends StatefulWidget {
   const FotoFlashbackSheetLayoutPreview({
     super.key,
     required this.imageDataUrls,
@@ -19,9 +19,11 @@ class FotoFlashbackSheetLayoutPreview extends StatelessWidget {
     required this.height,
     this.colorFilter,
     this.layout,
+    this.imageJpegBytes = const [],
   });
 
   final List<String> imageDataUrls;
+  final List<Uint8List> imageJpegBytes;
   final ColorFilter? colorFilter;
   final String layoutId;
   final StripWysiwygLayout? layout;
@@ -29,42 +31,82 @@ class FotoFlashbackSheetLayoutPreview extends StatelessWidget {
   final double height;
 
   @override
+  State<FotoFlashbackSheetLayoutPreview> createState() =>
+      _FotoFlashbackSheetLayoutPreviewState();
+}
+
+class _FotoFlashbackSheetLayoutPreviewState
+    extends State<FotoFlashbackSheetLayoutPreview> {
+  List<Uint8List> _images = const [];
+  List<String> _decodedUrls = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _decodeIfNeeded(force: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant FotoFlashbackSheetLayoutPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _decodeIfNeeded(force: false);
+  }
+
+  void _decodeIfNeeded({required bool force}) {
+    if (widget.imageJpegBytes.isNotEmpty) {
+      if (!force && _sameJpegBytes(widget.imageJpegBytes)) return;
+      _decodedUrls = const [];
+      _images = widget.imageJpegBytes.take(kStripShotCount).toList();
+      return;
+    }
+    final urls = widget.imageDataUrls.take(kStripShotCount).toList();
+    if (!force && listEquals(urls, _decodedUrls)) return;
+    _decodedUrls = urls;
+    _images = urls.map(_bytesFromDataUrl).toList();
+  }
+
+  bool _sameJpegBytes(List<Uint8List> next) {
+    if (_images.length != next.length) return false;
+    for (var i = 0; i < _images.length; i++) {
+      if (!identical(_images[i], next[i])) return false;
+    }
+    return true;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final wysiwyg = layout ?? StripWysiwygLayout.defaults;
-    final images =
-        imageDataUrls.take(kStripShotCount).map(_bytesFromDataUrl).toList();
-    final body = switch (layoutId) {
+    final wysiwyg = widget.layout ?? StripWysiwygLayout.defaults;
+    final body = switch (widget.layoutId) {
       'polaroid' => _PolaroidSheetPreview(
-          images: images,
+          images: _images,
           layout: wysiwyg,
-          colorFilter: colorFilter,
+          colorFilter: widget.colorFilter,
         ),
       'romantic' => _RomanticSheetPreview(
-          images: images,
+          images: _images,
           layout: wysiwyg,
-          colorFilter: colorFilter,
+          colorFilter: widget.colorFilter,
         ),
       _ => _Grid2x2SheetPreview(
-          images: images,
+          images: _images,
           layout: wysiwyg,
-          colorFilter: colorFilter,
+          colorFilter: widget.colorFilter,
         ),
     };
 
     return SizedBox(
-      key: ValueKey<String>('sheet_layout_$layoutId'),
-      width: width,
-      height: height,
+      key: ValueKey<String>('sheet_layout_${widget.layoutId}'),
+      width: widget.width,
+      height: widget.height,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Grade photos only — chrome/copy stay unfiltered (matches print).
           body,
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
-            child: _SheetCredentialBar(layout: wysiwyg, sheetWidth: width),
+            child: _SheetCredentialBar(layout: wysiwyg, sheetWidth: widget.width),
           ),
         ],
       ),

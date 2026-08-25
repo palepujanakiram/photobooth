@@ -851,21 +851,27 @@ class ImageHelper {
   static Future<String> encodeImageToBase64(XFile imageFile) async {
     try {
       final bytes = await imageFile.readAsBytes();
-      if (bytes.isEmpty) {
-        throw Exception(AppStrings.imageFileEmpty);
-      }
-
-      // Large Classic stills — keep base64 off the UI isolate.
-      final base64String = bytes.length > 256 * 1024
-          ? await compute(_base64EncodeIsolate, bytes)
-          : base64Encode(bytes);
       final extension = imageFile.path.toLowerCase().split('.').last;
       final mimeType = extension == 'png' ? 'image/png' : 'image/jpeg';
-
-      return 'data:$mimeType;base64,$base64String';
+      return encodeBytesToBase64DataUrl(bytes, mimeType: mimeType);
     } catch (e) {
       throw Exception('Failed to encode image to base64: $e');
     }
+  }
+
+  /// Encodes already-read JPEG/PNG bytes. Direct PTP uses this so the look
+  /// picker can paint [bytes] immediately without waiting on base64.
+  static Future<String> encodeBytesToBase64DataUrl(
+    Uint8List bytes, {
+    String mimeType = 'image/jpeg',
+  }) async {
+    if (bytes.isEmpty) {
+      throw Exception(AppStrings.imageFileEmpty);
+    }
+    final base64String = bytes.length > 256 * 1024
+        ? await compute(_base64EncodeIsolate, bytes)
+        : base64Encode(bytes);
+    return 'data:$mimeType;base64,$base64String';
   }
 
   /// Rotates an image 180 degrees and overwrites the original file.

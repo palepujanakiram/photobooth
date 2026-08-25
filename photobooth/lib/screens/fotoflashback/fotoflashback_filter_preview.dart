@@ -30,6 +30,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
     this.scribbles = const [],
     this.drawMode = false,
     this.imagesAreGraded = false,
+    this.imageJpegBytes = const [],
     this.serverComposePreviewUrl,
     this.isRefreshingComposePreview = false,
     this.layout,
@@ -43,6 +44,9 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   });
 
   final List<String> imageDataUrls;
+
+  /// Direct PTP stills: raw JPEG bytes so the strip never re-decodes data-URLs.
+  final List<Uint8List> imageJpegBytes;
   final String filterId;
   final String frameId;
 
@@ -53,8 +57,8 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   /// When true, [imageDataUrls] are already Sharp-graded — skip ColorFilter.
   final bool imagesAreGraded;
 
-  /// Classic 1-shot: server compose JPEG (filter + frame burned in). When set,
-  /// this is the same artifact as Your prints / DNP — skip Flutter chrome.
+  /// Classic 1-shot: server compose JPEG. Look picker does not pass this — the
+  /// print twin is for Continue / Result. Widget tests may still set it.
   final String? serverComposePreviewUrl;
   final bool isRefreshingComposePreview;
 
@@ -106,10 +110,11 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wysiwyg = layout ?? StripWysiwygLayout.defaults;
+    final shotCount =
+        imageJpegBytes.isNotEmpty ? imageJpegBytes.length : imageDataUrls.length;
     final composeUrl = serverComposePreviewUrl?.trim() ?? '';
     if (composeUrl.isNotEmpty &&
-        (imageDataUrls.length == 1 ||
-            imageDataUrls.length == kStripShotCount)) {
+        (shotCount == 1 || shotCount == kStripShotCount)) {
       return SizedBox(
         width: width,
         height: height,
@@ -129,7 +134,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
         ),
       );
     }
-    if (imageDataUrls.length == 1) {
+    if (shotCount == 1) {
       return SizedBox(
         width: width,
         height: height,
@@ -137,7 +142,10 @@ class FotoFlashbackStripPreview extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             _Single6x4Preview(
-              imageDataUrl: imageDataUrls.first,
+              imageDataUrl:
+                  imageDataUrls.isNotEmpty ? imageDataUrls.first : '',
+              jpegBytes:
+                  imageJpegBytes.isNotEmpty ? imageJpegBytes.first : null,
               filterId: filterId,
               frameId: frameId,
               imagesAreGraded: imagesAreGraded,
@@ -168,6 +176,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
           children: [
             FotoFlashbackSheetLayoutPreview(
               imageDataUrls: imageDataUrls,
+              imageJpegBytes: imageJpegBytes,
               colorFilter: imagesAreGraded
                   ? null
                   : stripPreviewColorFilter(filterId),
@@ -243,6 +252,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
         children: [
           _FotoFlashbackSingleStrip(
             imageDataUrls: imageDataUrls,
+            imageJpegBytes: imageJpegBytes,
             filterId: filterId,
             frameId: frameId,
             frameOverlayUrl: frameOverlayUrl,
@@ -313,6 +323,7 @@ Widget _lookPreviewBusyOverlay() {
 class _FotoFlashbackSingleStrip extends StatelessWidget {
   const _FotoFlashbackSingleStrip({
     required this.imageDataUrls,
+    this.imageJpegBytes = const [],
     required this.filterId,
     required this.frameId,
     required this.stickerId,
@@ -334,6 +345,7 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
   });
 
   final List<String> imageDataUrls;
+  final List<Uint8List> imageJpegBytes;
   final String filterId;
   final String frameId;
   final String? frameOverlayUrl;
@@ -356,8 +368,6 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wysiwyg = layout ?? StripWysiwygLayout.defaults;
-    final images =
-        imageDataUrls.take(kStripShotCount).map(_tryBytesFromDataUrl).toList();
     final chrome = StripChromeLook.forFrame(
       frameId,
       borderRatio: wysiwyg.borderRatio,
@@ -388,17 +398,13 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
         for (var i = 0; i < kStripShotCount; i++)
           Positioned.fromRect(
             rect: cells[i].rect,
-            child: images.length > i && images[i] != null
-                ? ColoredBox(
-                    color: letterbox,
-                    child: _lookPreviewPhoto(
-                      bytes: images[i]!,
-                      fit: photoFit,
-                      cacheWidth: cacheW,
-                      imageKey: i,
-                    ),
-                  )
-                : ColoredBox(color: Colors.black12),
+            child: _lookPreviewSlot(
+              jpegBytes: i < imageJpegBytes.length ? imageJpegBytes[i] : null,
+              dataUrl: i < imageDataUrls.length ? imageDataUrls[i] : '',
+              fit: photoFit,
+              cacheWidth: cacheW,
+              letterbox: letterbox,
+            ),
           ),
       ],
     );
@@ -854,44 +860,94 @@ Uint8List? _tryBytesFromDataUrl(String dataUrl) {
   }
 }
 
-Widget _lookPreviewPhoto({
-  required Uint8List bytes,
+Widget _lookPreviewSlot({
+  required Uint8List? jpegBytes,
+  required String dataUrl,
   required BoxFit fit,
-  int? cacheWidth,
-  Object? imageKey,
+  required int? cacheWidth,
+  Color letterbox = Colors.black,
 }) {
-  return Image.memory(
-    bytes,
-    key: imageKey != null ? ValueKey<Object>(imageKey) : null,
-    fit: fit,
-    width: double.infinity,
-    height: double.infinity,
-    gaplessPlayback: true,
-    filterQuality: FilterQuality.high,
-    cacheWidth: cacheWidth,
-    frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-      if (wasSynchronouslyLoaded || frame != null) return child;
-      return const ColoredBox(
-        color: Color(0xFF1A1A1A),
-        child: Center(
-          child: SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.5,
-              color: Colors.white70,
-            ),
-          ),
-        ),
-      );
-    },
-    errorBuilder: (_, __, ___) => const ColoredBox(
-      color: Color(0xFF1A1A1A),
-      child: Center(
-        child: Icon(Icons.broken_image_outlined, color: Colors.white54, size: 40),
-      ),
+  final hasPhoto = jpegBytes != null || dataUrl.trim().isNotEmpty;
+  if (!hasPhoto) return const ColoredBox(color: Colors.black12);
+  return ColoredBox(
+    color: letterbox,
+    child: _LookPreviewPhoto(
+      jpegBytes: jpegBytes,
+      dataUrl: dataUrl,
+      fit: fit,
+      cacheWidth: cacheWidth,
     ),
   );
+}
+
+/// Holds JPEG bytes so parent rebuilds do not re-decode.
+///
+/// Direct PTP paints [jpegBytes] from disk. SDK still uses [dataUrl]. Mixing
+/// the two is what flickered: PTP hydrated into new data-URLs after the strip
+/// was already on screen.
+class _LookPreviewPhoto extends StatefulWidget {
+  const _LookPreviewPhoto({
+    required this.dataUrl,
+    required this.fit,
+    required this.cacheWidth,
+    this.jpegBytes,
+  });
+
+  final Uint8List? jpegBytes;
+  final String dataUrl;
+  final BoxFit fit;
+  final int? cacheWidth;
+
+  @override
+  State<_LookPreviewPhoto> createState() => _LookPreviewPhotoState();
+}
+
+class _LookPreviewPhotoState extends State<_LookPreviewPhoto> {
+  Uint8List? _bytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncBytes();
+  }
+
+  @override
+  void didUpdateWidget(covariant _LookPreviewPhoto oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.jpegBytes, widget.jpegBytes) ||
+        (widget.jpegBytes == null && oldWidget.dataUrl != widget.dataUrl)) {
+      setState(_syncBytes);
+    }
+  }
+
+  void _syncBytes() {
+    _bytes = widget.jpegBytes ?? _tryBytesFromDataUrl(widget.dataUrl);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = _bytes;
+    if (bytes == null) return _lookPreviewMissingPhoto();
+    return Image.memory(
+      bytes,
+      fit: widget.fit,
+      width: double.infinity,
+      height: double.infinity,
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.high,
+      cacheWidth: widget.cacheWidth,
+      errorBuilder: (_, __, ___) => const ColoredBox(
+        color: Color(0xFF1A1A1A),
+        child: Center(
+          child: Icon(
+            Icons.broken_image_outlined,
+            color: Colors.white54,
+            size: 40,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 Widget _lookPreviewMissingPhoto() {
@@ -915,6 +971,7 @@ class _Single6x4Preview extends StatelessWidget {
     required this.drawMode,
     required this.width,
     required this.height,
+    this.jpegBytes,
     this.onMovePlacement,
     this.onRemovePlacement,
     this.onScribbleStart,
@@ -923,6 +980,7 @@ class _Single6x4Preview extends StatelessWidget {
   });
 
   final String imageDataUrl;
+  final Uint8List? jpegBytes;
   final String filterId;
   final String frameId;
   final bool imagesAreGraded;
@@ -944,23 +1002,21 @@ class _Single6x4Preview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bytes = _tryBytesFromDataUrl(imageDataUrl);
     final margin = width * 0.027; // ~48/1800
-    // Cover the print frame (portrait 4×6 or landscape 6×4) — letterboxing
-    // looked like "just whitespace" when toggling orientation.
     final cacheW = flashbackLookPreviewCacheWidth(
       layoutWidth: width,
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
     );
-    final photo = bytes == null
+    final hasPhoto = jpegBytes != null || imageDataUrl.trim().isNotEmpty;
+    final photo = !hasPhoto
         ? _lookPreviewMissingPhoto()
-        : _lookPreviewPhoto(
-            bytes: bytes,
+        : _LookPreviewPhoto(
+            jpegBytes: jpegBytes,
+            dataUrl: imageDataUrl,
             fit: BoxFit.cover,
             cacheWidth: cacheW,
-            imageKey: 0,
           );
-    final photoLayer = bytes == null || imagesAreGraded
+    final photoLayer = !hasPhoto || imagesAreGraded
         ? photo
         : ColorFiltered(
             colorFilter: stripPreviewColorFilter(filterId),
