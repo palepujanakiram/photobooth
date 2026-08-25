@@ -125,10 +125,7 @@ abstract final class AppStrings {
   /// Non-blocking status on Terms while cameras are enumerated on entry.
   static const termsDetectingCameras = 'Getting the camera ready…';
 
-  /// Same as [termsDetectingCameras] while the Canon USB grant is still missing.
-  ///
-  /// Only shown when a probe says the booth genuinely lacks the grant — a booth
-  /// allowed on an earlier guest never sees the system dialog again.
+  /// Terms banner while direct Canon USB permission / sidecar warm-up runs.
   static const termsDetectingCamerasCanonUsb =
       'Allow USB access for the Canon camera when prompted…';
 

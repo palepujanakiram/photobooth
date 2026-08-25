@@ -321,82 +321,6 @@ void main() {
     });
   });
 
-  group('termsCameraPrimingBannerMessage', () {
-    test('uses one detecting line and one unavailable line', () {
-      expect(
-        termsCameraPrimingBannerMessage(
-          phase: TermsCameraPrimingPhase.detecting,
-          photoUploadAllowed: false,
-        ),
-        AppStrings.termsDetectingCameras,
-      );
-      expect(
-        termsCameraPrimingBannerMessage(
-          phase: TermsCameraPrimingPhase.noneFound,
-          photoUploadAllowed: false,
-        ),
-        AppStrings.termsCameraUnavailable,
-      );
-      expect(
-        termsCameraPrimingBannerMessage(
-          phase: TermsCameraPrimingPhase.permissionDenied,
-          photoUploadAllowed: true,
-        ),
-        AppStrings.termsCameraUnavailableUploadOk,
-      );
-      expect(
-        termsCameraPrimingBannerMessage(
-          phase: TermsCameraPrimingPhase.failed,
-          photoUploadAllowed: false,
-        ),
-        AppStrings.termsCameraUnavailable,
-      );
-      expect(
-        termsCameraPrimingBannerMessage(
-          phase: TermsCameraPrimingPhase.ready,
-          photoUploadAllowed: false,
-        ),
-        isEmpty,
-      );
-      expect(
-        termsCameraPrimingBannerMessage(
-          phase: TermsCameraPrimingPhase.skipped,
-          photoUploadAllowed: true,
-        ),
-        isEmpty,
-      );
-    });
-
-    test('names the Canon USB grant only while it is still pending', () {
-      expect(
-        termsCameraPrimingBannerMessage(
-          phase: TermsCameraPrimingPhase.detecting,
-          photoUploadAllowed: false,
-          canonUsbPermissionPending: true,
-        ),
-        AppStrings.termsDetectingCamerasCanonUsb,
-      );
-      expect(
-        termsCameraPrimingBannerMessage(
-          phase: TermsCameraPrimingPhase.detecting,
-          photoUploadAllowed: false,
-          canonUsbPermissionPending: false,
-        ),
-        AppStrings.termsDetectingCameras,
-      );
-    });
-
-    test('keeps the unavailable line even when a grant is pending', () {
-      expect(
-        termsCameraPrimingBannerMessage(
-          phase: TermsCameraPrimingPhase.noneFound,
-          photoUploadAllowed: false,
-          canonUsbPermissionPending: true,
-        ),
-        AppStrings.termsCameraUnavailable,
-      );
-    });
-  });
   group('TermsCanonPrimingMemo', () {
     setUp(TermsCanonPrimingMemo.reset);
     tearDown(TermsCanonPrimingMemo.reset);
@@ -451,6 +375,93 @@ void main() {
           probeStillReady: () async => throw StateError('channel down'),
         ),
         isFalse,
+      );
+    });
+  });
+
+  group('shouldShowCanonUsbPrimingHint', () {
+    test('shows only while a Canon booth still needs the grant', () {
+      expect(
+        shouldShowCanonUsbPrimingHint(
+          isCanonUsbBooth: true,
+          permissionPending: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('hides once the grant is held', () {
+      expect(
+        shouldShowCanonUsbPrimingHint(
+          isCanonUsbBooth: true,
+          permissionPending: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('hides on booths that never touch USB', () {
+      expect(
+        shouldShowCanonUsbPrimingHint(
+          isCanonUsbBooth: false,
+          permissionPending: true,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('termsCameraPrimingBannerMessage', () {
+    test('uses one detecting line and one unavailable line', () {
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.detecting,
+          photoUploadAllowed: false,
+        ),
+        AppStrings.termsDetectingCameras,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.detecting,
+          photoUploadAllowed: false,
+          showCanonUsbHint: true,
+        ),
+        AppStrings.termsDetectingCamerasCanonUsb,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.noneFound,
+          photoUploadAllowed: false,
+        ),
+        AppStrings.termsCameraUnavailable,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.permissionDenied,
+          photoUploadAllowed: true,
+        ),
+        AppStrings.termsCameraUnavailableUploadOk,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.failed,
+          photoUploadAllowed: false,
+        ),
+        AppStrings.termsCameraUnavailable,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.ready,
+          photoUploadAllowed: false,
+        ),
+        isEmpty,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.skipped,
+          photoUploadAllowed: true,
+        ),
+        isEmpty,
       );
     });
   });

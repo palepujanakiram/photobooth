@@ -1142,6 +1142,7 @@ void main() {
       asAndroid();
       messenger.setMockMethodCallHandler(channel, (call) async {
         if (call.method == 'isCameraPresent') return true;
+        if (call.method == 'getState') return 'running';
         return null;
       });
       final client = MockClient(

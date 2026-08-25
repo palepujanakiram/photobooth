@@ -621,6 +621,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     required bool photoUploadAllowed,
   }) {
     final uploadOk = photoUploadAllowed;
+    final settings = context.read<AppSettingsManager>().settings;
     switch (_cameraPrimingPhase) {
       case TermsCameraPrimingPhase.skipped:
       case TermsCameraPrimingPhase.ready:
@@ -633,7 +634,10 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           message: termsCameraPrimingBannerMessage(
             phase: _cameraPrimingPhase,
             photoUploadAllowed: uploadOk,
-            canonUsbPermissionPending: _canonUsbPermissionPending,
+            showCanonUsbHint: shouldShowCanonUsbPrimingHint(
+              isCanonUsbBooth: isOnDeviceCanonUsbBooth(settings),
+              permissionPending: _canonUsbPermissionPending,
+            ),
           ),
           showSpinner: true,
         );

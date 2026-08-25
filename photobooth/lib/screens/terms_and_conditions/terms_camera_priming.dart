@@ -164,38 +164,12 @@ Future<bool> _probeOrFalse(Future<bool> Function()? probe) async {
   }
 }
 
-/// Guest-facing Terms camera banner. One detecting line, one unavailable line.
-///
-/// [canonUsbPermissionPending] names the Canon USB grant while it is genuinely
-/// missing. A booth that was allowed on an earlier guest never sees the system
-/// dialog again, so the generic detecting line is the truthful one there.
-String termsCameraPrimingBannerMessage({
-  required TermsCameraPrimingPhase phase,
-  required bool photoUploadAllowed,
-  bool canonUsbPermissionPending = false,
-}) {
-  switch (phase) {
-    case TermsCameraPrimingPhase.skipped:
-    case TermsCameraPrimingPhase.ready:
-      return '';
-    case TermsCameraPrimingPhase.detecting:
-      return canonUsbPermissionPending
-          ? AppStrings.termsDetectingCamerasCanonUsb
-          : AppStrings.termsDetectingCameras;
-    case TermsCameraPrimingPhase.permissionDenied:
-    case TermsCameraPrimingPhase.noneFound:
-    case TermsCameraPrimingPhase.failed:
-      return photoUploadAllowed
-          ? AppStrings.termsCameraUnavailableUploadOk
-          : AppStrings.termsCameraUnavailable;
-  }
-}
-
 /// Process-level memo of a Terms priming pass that reached [TermsCameraPrimingPhase.ready].
 ///
 /// Terms is re-entered once per guest, but a USB grant and an open PTP session
 /// outlive the screen. Without this, every guest replayed the full warm-up —
-/// including its 20 s poll loop — for a camera that was already connected.
+/// including its 20 s poll loop and the "Allow USB access…" banner — for a
+/// camera that was already connected.
 abstract final class TermsCanonPrimingMemo {
   static bool _primed = false;
 
@@ -221,5 +195,39 @@ Future<bool> canSkipTermsPrimingOnReentry({
     return await probeStillReady();
   } on Object {
     return false;
+  }
+}
+
+/// Whether the detecting banner should name the Canon USB grant.
+///
+/// The hint is only honest while the grant is actually missing: a booth that
+/// was allowed on a previous guest never sees the system dialog again, so the
+/// generic getting-ready wording is the truthful one.
+bool shouldShowCanonUsbPrimingHint({
+  required bool isCanonUsbBooth,
+  required bool permissionPending,
+}) =>
+    isCanonUsbBooth && permissionPending;
+
+/// Guest-facing Terms camera banner. One detecting line, one unavailable line.
+String termsCameraPrimingBannerMessage({
+  required TermsCameraPrimingPhase phase,
+  required bool photoUploadAllowed,
+  bool showCanonUsbHint = false,
+}) {
+  switch (phase) {
+    case TermsCameraPrimingPhase.skipped:
+    case TermsCameraPrimingPhase.ready:
+      return '';
+    case TermsCameraPrimingPhase.detecting:
+      return showCanonUsbHint
+          ? AppStrings.termsDetectingCamerasCanonUsb
+          : AppStrings.termsDetectingCameras;
+    case TermsCameraPrimingPhase.permissionDenied:
+    case TermsCameraPrimingPhase.noneFound:
+    case TermsCameraPrimingPhase.failed:
+      return photoUploadAllowed
+          ? AppStrings.termsCameraUnavailableUploadOk
+          : AppStrings.termsCameraUnavailable;
   }
 }
