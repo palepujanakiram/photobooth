@@ -162,3 +162,48 @@ Future<bool> _probeOrFalse(Future<bool> Function()? probe) async {
     return false;
   }
 }
+
+/// Process-level memo of a Terms priming pass that reached [TermsCameraPrimingPhase.ready].
+///
+/// Terms is re-entered once per guest, but a USB grant and an open PTP session
+/// outlive the screen. Without this, every guest replayed the full warm-up —
+/// including its 20 s poll loop and the "Allow USB access…" banner — for a
+/// camera that was already connected.
+abstract final class TermsCanonPrimingMemo {
+  static bool _primed = false;
+
+  /// True once any priming pass in this process finished ready.
+  static bool get isPrimed => _primed;
+
+  static void markPrimed() => _primed = true;
+
+  /// Forces the next Terms visit through a full priming pass (retry, tests).
+  static void reset() => _primed = false;
+}
+
+/// Whether Terms may jump straight to ready instead of re-priming.
+///
+/// [probeStillReady] is the live check — a body unplugged between guests must
+/// fall through to a full pass, so the memo alone is never enough.
+Future<bool> canSkipTermsPrimingOnReentry({
+  required bool primedBefore,
+  required Future<bool> Function() probeStillReady,
+}) async {
+  if (!primedBefore) return false;
+  try {
+    return await probeStillReady();
+  } on Object {
+    return false;
+  }
+}
+
+/// Whether the detecting banner should name the Canon USB grant.
+///
+/// The hint is only honest while the grant is actually missing: a booth that
+/// was allowed on a previous guest never sees the system dialog again, so the
+/// generic "Detecting cameras…" wording is the truthful one.
+bool shouldShowCanonUsbPrimingHint({
+  required bool isCanonUsbBooth,
+  required bool permissionPending,
+}) =>
+    isCanonUsbBooth && permissionPending;
