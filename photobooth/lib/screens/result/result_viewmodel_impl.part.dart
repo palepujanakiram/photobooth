@@ -1102,10 +1102,13 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     if (store == null) return null;
     try {
       final kioskCode = await _r._kioskManager.getKioskCode();
+      final merchant = _r._appSettingsManager?.settings?.receiptMerchant;
       return LocalKioskSettlement(store: store).issueReceipt(
         sessionId: sessionId,
         kioskCode: kioskCode,
         amount: _r.chargeAmount,
+        merchant: merchant,
+        quantity: _r.printSheetCount,
       );
     } catch (e, st) {
       AppLogger.debug('Local receipt issue failed ($e)');
@@ -1342,6 +1345,8 @@ mixin _ResultViewModelImpl on ChangeNotifier {
 
   /// Fetch ESC/POS from API and deliver to the LAN thermal receipt printer.
   ///
+  /// Offline sessions (and Fly failures) use the same GST slip format built
+  /// on-device from the kiosk invoice number + cached `receiptMerchant`.
   /// When [showErrors] is false (auto post-payment), failures are logged only.
   Future<bool> printReceiptToNetwork({bool showErrors = true}) async {
     if (_r._isPrintingReceipt) return false;
@@ -1380,44 +1385,40 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     }
 
     try {
-      final raw = await _r._apiService.postSessionPrintReceipt(
-        sessionId: sessionId,
-      );
-      if (_r._disposed) return false;
+      if (_r._sessionManager.isOfflineSession) {
+        return await _printLocalGstReceipt(showErrors: showErrors);
+      }
 
-      final result = SessionPrintReceiptResult.fromJson(raw);
-      if (!result.success || !result.printerConfigured) {
-        final msg =
-            result.error ??
-            result.message ??
-            AppStrings.receiptPrintNotConfigured;
-        if (showErrors) {
-          _r._errorMessage = msg;
-        } else {
-          AppLogger.warning('Receipt print skipped: $msg');
+      try {
+        final raw = await _r._apiService.postSessionPrintReceipt(
+          sessionId: sessionId,
+        );
+        if (_r._disposed) return false;
+
+        final result = SessionPrintReceiptResult.fromJson(raw);
+        if (result.success && result.printerConfigured) {
+          if (result.deliveredByServer) {
+            AppLogger.debug('Receipt delivered by server; skipping LAN TCP');
+            return true;
+          }
+          if (result.needsLanDelivery) {
+            await _r._receiptPrintBridge.deliverEscPos(
+              bytes: ReceiptPrinterPayload.decodeBase64(result.payloadBase64!),
+              settings: _r._appSettingsManager?.settings,
+              apiHost: result.host,
+              apiPort: result.port,
+            );
+            return true;
+          }
         }
-        return false;
+        AppLogger.warning(
+          'Fly receipt print unavailable; trying local GST slip',
+        );
+      } catch (e, st) {
+        AppLogger.debug('Fly receipt print failed; trying local: $e\n$st');
       }
 
-      if (result.deliveredByServer) {
-        AppLogger.debug('Receipt delivered by server; skipping LAN TCP');
-        return true;
-      }
-
-      if (!result.needsLanDelivery) {
-        if (showErrors) {
-          _r._errorMessage = AppStrings.receiptPrintEmptyPayload;
-        }
-        return false;
-      }
-
-      await _r._receiptPrintBridge.deliverEscPos(
-        bytes: ReceiptPrinterPayload.decodeBase64(result.payloadBase64!),
-        settings: _r._appSettingsManager?.settings,
-        apiHost: result.host,
-        apiPort: result.port,
-      );
-      return true;
+      return await _printLocalGstReceipt(showErrors: showErrors);
     } catch (e, st) {
       AppLogger.error('printReceiptToNetwork failed: $e', error: e, stackTrace: st);
       if (showErrors) {
@@ -1436,6 +1437,60 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         }
       }
     }
+  }
+
+  Future<bool> _printLocalGstReceipt({required bool showErrors}) async {
+    final store = LocalKioskStore.instance;
+    final sessionId = _r._sessionManager.sessionId?.trim() ?? '';
+    if (store == null || sessionId.isEmpty) {
+      if (showErrors) {
+        _r._errorMessage = AppStrings.receiptPrintFailedGeneric;
+      }
+      return false;
+    }
+
+    final merchant = _r._appSettingsManager?.settings?.receiptMerchant ??
+        const ReceiptMerchantCache(displayName: 'FotoZen.AI');
+    var local = await _issueLocalReceipt(sessionId);
+    if (local == null) {
+      final row = await store.findReceiptForSession(sessionId);
+      if (row != null) {
+        local = LocalReceiptIssue(
+          id: row.id,
+          receiptNumber: row.receiptNumber ??
+              (row.payload['receiptNumber']?.toString() ?? ''),
+          json: Map<String, dynamic>.from(row.payload),
+          pdfPath: row.payload['pdfPath'] as String?,
+        );
+      }
+    }
+    if (local == null || local.receiptNumber.trim().isEmpty) {
+      if (showErrors) {
+        _r._errorMessage = AppStrings.receiptPrintFailedGeneric;
+      } else {
+        AppLogger.warning('Local GST receipt missing invoice number');
+      }
+      return false;
+    }
+
+    final share = _r._receiptShareUrl?.trim().isNotEmpty == true
+        ? _r._receiptShareUrl
+        : _r._kioskFallbackShareUrl;
+    final slip = assembleLocalReceiptSlip(
+      receipt: local,
+      merchant: merchant,
+      quantity: _r.printSheetCount,
+      customerName: _r.customerName,
+      customerPhone: _r.customerPhone,
+      shareUrl: share,
+      transactionRef: _r._activePaymentId,
+    );
+    final bytes = buildLocalReceiptEscPos(slip);
+    await _r._receiptPrintBridge.deliverEscPos(
+      bytes: bytes,
+      settings: _r._appSettingsManager?.settings,
+    );
+    return true;
   }
 
   /// Silent print all images to network printer.

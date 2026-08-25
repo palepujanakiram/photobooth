@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/app_settings_model.dart';
+import 'package:photobooth/models/receipt_merchant_cache.dart';
 import 'package:photobooth/services/app_settings_cache_codec.dart';
 
 void main() {
@@ -77,6 +78,21 @@ void main() {
     expect(json['offlineCashPins'], ['1357', '9999']);
     final back = appSettingsFromCacheJson(json);
     expect(back?.offlineCashPins, ['1357', '9999']);
+  });
+
+  test('round-trips receiptMerchant', () {
+    final src = AppSettingsModel(
+      receiptMerchant: ReceiptMerchantCache(
+        legalName: 'Legal Co',
+        gstin: '36AAAAA0000A1Z5',
+        gstRateBps: 1800,
+        kioskCode: 'K1',
+      ),
+    );
+    final json = appSettingsToCacheJson(src);
+    final back = appSettingsFromCacheJson(json);
+    expect(back?.receiptMerchant?.gstin, '36AAAAA0000A1Z5');
+    expect(back?.receiptMerchant?.legalName, 'Legal Co');
   });
 
   test('fromCacheJson rejects non-maps', () {

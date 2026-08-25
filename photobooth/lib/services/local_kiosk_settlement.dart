@@ -1,10 +1,12 @@
 import 'package:uuid/uuid.dart';
 
 import '../models/payment_mode.dart';
+import '../models/receipt_merchant_cache.dart';
 import 'local_kiosk_models.dart';
 import 'local_kiosk_store.dart';
 import 'local_receipt_pdf.dart';
 import 'local_session_skeleton.dart';
+import 'receipt/local_receipt_tax.dart';
 
 const _sessionIdRequired = 'sessionId is required';
 
@@ -104,6 +106,8 @@ class LocalKioskSettlement {
     String? kioskCode,
     required int amount,
     String? paymentMode,
+    ReceiptMerchantCache? merchant,
+    int quantity = 1,
   }) async {
     final sid = sessionId.trim();
     if (sid.isEmpty) {
@@ -121,6 +125,14 @@ class LocalKioskSettlement {
       at: issuedAt,
     );
     final id = _newId();
+    final cache = merchant ??
+        ReceiptMerchantCache(kioskCode: kioskCode, displayName: 'FotoZen.AI');
+    final tax = localReceiptTaxBreakdown(
+      amountRupees: rupees,
+      gstRateBps: cache.gstRateBps,
+      gstSplitMode: cache.gstSplitMode,
+      complimentary: mode == PaymentMode.complimentary.apiValue,
+    );
     final json = <String, dynamic>{
       'id': id,
       'sessionId': sid,
@@ -129,6 +141,10 @@ class LocalKioskSettlement {
       'currency': 'INR',
       'paymentMode': mode,
       'issuedAt': issuedAt.toIso8601String(),
+      'hsnSac': cache.hsnSac,
+      'gstin': cache.gstin,
+      'merchantName': cache.merchantName,
+      ...tax.toJson(),
     };
     await _store.upsertReceipt(
       id: id,
@@ -142,6 +158,8 @@ class LocalKioskSettlement {
       paymentMode: mode,
       kioskCode: kioskCode ?? '',
       issuedAt: issuedAt,
+      merchant: cache,
+      quantity: quantity,
     );
     final file = await _store.saveReceiptPdf(id, pdf);
     if (file != null) {

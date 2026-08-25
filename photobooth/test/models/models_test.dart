@@ -71,6 +71,22 @@ void main() {
     expect(m.offlineCashPins, ['1357', '9999', '2468']);
   });
 
+  test('AppSettingsModel.fromJson parses receiptMerchant', () {
+    final m = AppSettingsModel.fromJson({
+      'receiptMerchant': {
+        'legalName': 'Sri Sarani Ventures Pvt Ltd',
+        'gstin': '36AAAAA0000A1Z5',
+        'gstRateBps': 1800,
+        'gstSplitMode': 'cgst_sgst',
+        'hsnSac': '998383',
+        'kioskCode': 'ODEON-01',
+      },
+    });
+    expect(m.receiptMerchant?.gstin, '36AAAAA0000A1Z5');
+    expect(m.receiptMerchant?.merchantName, contains('Sri Sarani'));
+    expect(m.receiptMerchant?.gstRateBps, 1800);
+  });
+
   test('KioskInfoModel.isValid requires id and code', () {
     expect(
       KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'}).isValid,

@@ -1,4 +1,5 @@
 import '../utils/json_parse_helpers.dart';
+import 'receipt_merchant_cache.dart';
 
 class AppSettingsModel {
   final String? id;
@@ -72,6 +73,8 @@ class AppSettingsModel {
   /// Offline cash booth PINs from staff members (`/api/settings` → `offlineCashPins`).
   /// Cached on disk with the rest of settings; master PIN `2468` always works.
   final List<String>? offlineCashPins;
+  /// GST / merchant header for offline tax invoices (`receiptMerchant`).
+  final ReceiptMerchantCache? receiptMerchant;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -129,6 +132,7 @@ class AppSettingsModel {
     this.injectAfMarkers,
     this.enableSurpriseMeAi,
     this.offlineCashPins,
+    this.receiptMerchant,
     this.createdAt,
     this.updatedAt,
   });
@@ -219,6 +223,7 @@ class AppSettingsModel {
           ) ??
           JsonParseHelpers.boolOrNull(json['enableSurpriseMeAi']),
       offlineCashPins: _parseOfflineCashPins(json['offlineCashPins']),
+      receiptMerchant: ReceiptMerchantCache.tryParse(json['receiptMerchant']),
       createdAt: JsonParseHelpers.dateTimeOrNull(json['createdAt']),
       updatedAt: JsonParseHelpers.dateTimeOrNull(json['updatedAt']),
     );
