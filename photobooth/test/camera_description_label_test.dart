@@ -4,6 +4,10 @@ import 'package:photobooth/screens/photo_capture/camera_description_label.dart';
 import 'package:photobooth/utils/app_strings.dart';
 
 void main() {
+  test('looksLikeExternalCameraName detects hdmi capture cards', () {
+    expect(looksLikeExternalCameraName('HDMI Capture Card'), isTrue);
+  });
+
   test('looksLikeExternalCameraName detects usb in name', () {
     expect(looksLikeExternalCameraName('USB Webcam HD'), isTrue);
   });

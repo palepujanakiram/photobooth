@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/terms_and_conditions/terms_camera_priming.dart';
 import 'package:photobooth/utils/app_device_type.dart';
+import 'package:photobooth/utils/app_strings.dart';
 
 void main() {
   group('runTermsCameraPriming', () {
@@ -316,6 +317,151 @@ void main() {
           photoUploadAllowed: true,
         ),
         isTrue,
+      );
+    });
+  });
+
+  group('TermsCanonPrimingMemo', () {
+    setUp(TermsCanonPrimingMemo.reset);
+    tearDown(TermsCanonPrimingMemo.reset);
+
+    test('starts unprimed and remembers a ready pass', () {
+      expect(TermsCanonPrimingMemo.isPrimed, isFalse);
+      TermsCanonPrimingMemo.markPrimed();
+      expect(TermsCanonPrimingMemo.isPrimed, isTrue);
+      TermsCanonPrimingMemo.reset();
+      expect(TermsCanonPrimingMemo.isPrimed, isFalse);
+    });
+  });
+
+  group('canSkipTermsPrimingOnReentry', () {
+    test('never skips the first visit', () async {
+      var probed = false;
+      final skip = await canSkipTermsPrimingOnReentry(
+        primedBefore: false,
+        probeStillReady: () async {
+          probed = true;
+          return true;
+        },
+      );
+      expect(skip, isFalse);
+      expect(probed, isFalse, reason: 'no live probe before a first pass');
+    });
+
+    test('skips when a primed booth is still ready', () async {
+      expect(
+        await canSkipTermsPrimingOnReentry(
+          primedBefore: true,
+          probeStillReady: () async => true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('re-primes when the camera left between guests', () async {
+      expect(
+        await canSkipTermsPrimingOnReentry(
+          primedBefore: true,
+          probeStillReady: () async => false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('re-primes when the probe throws', () async {
+      expect(
+        await canSkipTermsPrimingOnReentry(
+          primedBefore: true,
+          probeStillReady: () async => throw StateError('channel down'),
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('shouldShowCanonUsbPrimingHint', () {
+    test('shows only while a Canon booth still needs the grant', () {
+      expect(
+        shouldShowCanonUsbPrimingHint(
+          isCanonUsbBooth: true,
+          permissionPending: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('hides once the grant is held', () {
+      expect(
+        shouldShowCanonUsbPrimingHint(
+          isCanonUsbBooth: true,
+          permissionPending: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('hides on booths that never touch USB', () {
+      expect(
+        shouldShowCanonUsbPrimingHint(
+          isCanonUsbBooth: false,
+          permissionPending: true,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('termsCameraPrimingBannerMessage', () {
+    test('uses one detecting line and one unavailable line', () {
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.detecting,
+          photoUploadAllowed: false,
+        ),
+        AppStrings.termsDetectingCameras,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.detecting,
+          photoUploadAllowed: false,
+          showCanonUsbHint: true,
+        ),
+        AppStrings.termsDetectingCamerasCanonUsb,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.noneFound,
+          photoUploadAllowed: false,
+        ),
+        AppStrings.termsCameraUnavailable,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.permissionDenied,
+          photoUploadAllowed: true,
+        ),
+        AppStrings.termsCameraUnavailableUploadOk,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.failed,
+          photoUploadAllowed: false,
+        ),
+        AppStrings.termsCameraUnavailable,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.ready,
+          photoUploadAllowed: false,
+        ),
+        isEmpty,
+      );
+      expect(
+        termsCameraPrimingBannerMessage(
+          phase: TermsCameraPrimingPhase.skipped,
+          photoUploadAllowed: true,
+        ),
+        isEmpty,
       );
     });
   });

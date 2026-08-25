@@ -33,71 +33,55 @@ bool kioskHasCachedExternalCamera({
 }) {
   if (cached == null || cached.isEmpty || deviceType == null) return false;
   if (!DeviceClassifier.showOnlyExternalCameras(deviceType)) return false;
-  return camerasForDeviceType(
-    cameras: cached,
-    deviceType: deviceType,
-    looksLikeExternalName: looksLikeExternalName,
-  ).isNotEmpty;
+  return cached.any(
+    (camera) =>
+        camera.lensDirection == CameraLensDirection.external ||
+        looksLikeExternalName(camera.name),
+  );
 }
 
-/// Cameras to open on POSE: **external first**, then any other connected camera.
+/// Cameras shown on POSE and Select Camera: **every attached device**.
 ///
-/// Phones keep built-in-only filtering. Kiosk/tablet/TV prefers USB/HDMI but falls
-/// back to built-in when no external is enumerated yet (fast preview from Terms cache).
+/// Order is external / USB / HDMI first, then the front built-in camera, then
+/// remaining cameras. [deviceType] is kept so call sites stay stable; listing
+/// is the same on every device.
 List<CameraDescription> captureCamerasForDevice({
   required List<CameraDescription> cameras,
   required AppDeviceType? deviceType,
   required bool Function(String name) looksLikeExternalName,
 }) {
-  if (cameras.isEmpty) return cameras;
-
-  if (deviceType == AppDeviceType.androidPhone ||
-      deviceType == AppDeviceType.iosPhone) {
-    return camerasForDeviceType(
-      cameras: cameras,
-      deviceType: deviceType,
-      looksLikeExternalName: looksLikeExternalName,
-    );
-  }
-
-  if (deviceType != null &&
-      DeviceClassifier.showOnlyExternalCameras(deviceType)) {
-    final external = cameras
-        .where(
-          (c) =>
-              c.lensDirection == CameraLensDirection.external ||
-              looksLikeExternalName(c.name),
-        )
-        .toList();
-    if (external.isNotEmpty) return external;
-    return List<CameraDescription>.from(cameras);
-  }
-
+  assert(() {
+    deviceType;
+    return true;
+  }());
   return orderCaptureCamerasExternalFirst(
     cameras: cameras,
     looksLikeExternalName: looksLikeExternalName,
   );
 }
 
-/// External / USB / HDMI entries first, then built-in cameras.
+/// External / USB / HDMI first, then front, then remaining built-in cameras.
 List<CameraDescription> orderCaptureCamerasExternalFirst({
   required List<CameraDescription> cameras,
   required bool Function(String name) looksLikeExternalName,
 }) {
   final external = <CameraDescription>[];
+  final front = <CameraDescription>[];
   final other = <CameraDescription>[];
   for (final camera in cameras) {
     if (camera.lensDirection == CameraLensDirection.external ||
         looksLikeExternalName(camera.name)) {
       external.add(camera);
+    } else if (camera.lensDirection == CameraLensDirection.front) {
+      front.add(camera);
     } else {
       other.add(camera);
     }
   }
-  return [...external, ...other];
+  return [...external, ...front, ...other];
 }
 
-/// Default camera from an enumerated list (external preferred).
+/// Default POSE camera: attached external if any, otherwise front built-in.
 CameraDescription pickPreferredCaptureCamera({
   required List<CameraDescription> cameras,
   required AppDeviceType? deviceType,
@@ -114,35 +98,36 @@ CameraDescription pickPreferredCaptureCamera({
   return candidates.first;
 }
 
-/// Filters enumerated cameras for kiosk vs phone (tablet/TV → external only).
+/// Same listing as [captureCamerasForDevice] (all attached cameras, ordered).
 List<CameraDescription> camerasForDeviceType({
   required List<CameraDescription> cameras,
   required AppDeviceType? deviceType,
   required bool Function(String name) looksLikeExternalName,
 }) {
-  if (deviceType == null) return cameras;
-  if (DeviceClassifier.showOnlyExternalCameras(deviceType)) {
-    return cameras
-        .where(
-          (c) =>
-              c.lensDirection == CameraLensDirection.external ||
-              looksLikeExternalName(c.name),
-        )
-        .toList();
-  }
-  switch (deviceType) {
-    case AppDeviceType.androidPhone:
-    case AppDeviceType.iosPhone:
-      return cameras
-          .where(
-            (c) =>
-                c.lensDirection != CameraLensDirection.external &&
-                !looksLikeExternalName(c.name),
-          )
-          .toList();
-    default:
-      return cameras;
-  }
+  return captureCamerasForDevice(
+    cameras: cameras,
+    deviceType: deviceType,
+    looksLikeExternalName: looksLikeExternalName,
+  );
+}
+
+/// True when Select Camera / POSE should show [AppStrings.noCameraConnected].
+bool shouldShowNoCameraConnectedMessage({
+  required bool enumeratedCamerasEmpty,
+  required bool uvcDevicesEmpty,
+}) {
+  return enumeratedCamerasEmpty && uvcDevicesEmpty;
+}
+
+/// Checkmark on Select Camera: enumerated row is active when it is the live
+/// CameraX camera and UVC is not the current preview.
+bool isPickerEnumeratedCameraChecked({
+  required String cameraName,
+  required String? currentCameraName,
+  required bool uvcPreviewActive,
+}) {
+  if (uvcPreviewActive) return false;
+  return currentCameraName == cameraName;
 }
 
 /// One entry per display name (avoids duplicate logical cameras on iOS).

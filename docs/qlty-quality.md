@@ -115,6 +115,10 @@ Path dependencies under `photobooth/packages/` are not app code:
 
 Do not remove these unless you intend Qlty to analyze vendored forks.
 
+### Vendored C++ HTTP library
+
+[`canon_sidecar/src/httplib.h`](../canon_sidecar/src/httplib.h) is [cpp-httplib](https://github.com/yhirose/cpp-httplib) (header-only, third party). It is excluded in [`.qlty/qlty.toml`](../.qlty/qlty.toml). Do not edit it to chase maintainability grades — upgrade the vendor drop instead.
+
 ## Relationship to SonarCloud
 
 | | Qlty | SonarCloud |

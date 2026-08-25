@@ -3,9 +3,37 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../utils/constants.dart';
+import '../../views/widgets/bottom_safe_area.dart';
 
 /// Max width for Retake / Take shot (and related) action columns.
 const double kCaptureActionsMaxWidth = 360;
+
+/// Extra gap so Capture's tap target is not flush with the system nav strip.
+const double kCaptureActionsNavGap = 12;
+
+/// Bottom inset so POSE actions (Capture) sit above the system nav bar.
+///
+/// Uses the larger of [paddingBottom], [viewPaddingBottom], and
+/// [systemGestureInsetBottom] because edge-to-edge Android can report 0
+/// padding while [viewPadding] still has the 3-button / gesture bar height.
+/// On Android, never go below [kBottomSafeAreaMinInset] (kiosks that report
+/// 0 for both). Adds [kCaptureActionsNavGap] so taps are not stolen by the
+/// nav bar's expanded touch target.
+double captureScaffoldBottomInset({
+  required double paddingBottom,
+  required double viewPaddingBottom,
+  double systemGestureInsetBottom = 0,
+  required bool isAndroid,
+}) {
+  final system = math.max(
+    math.max(paddingBottom, viewPaddingBottom),
+    systemGestureInsetBottom,
+  );
+  final reserved =
+      !isAndroid ? system : math.max(system, kBottomSafeAreaMinInset);
+  if (reserved <= 0) return 0;
+  return reserved + kCaptureActionsNavGap;
+}
 
 /// Max width/height fractions for the capture preview card (portrait vs landscape).
 (double widthFrac, double heightFrac) capturePreviewCardSizeFractions({

@@ -1,5 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,6 +10,7 @@ import '../../views/widgets/full_screen_loader.dart';
 import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
 import 'photo_capture_strip_thumbs.dart';
+import 'photo_capture_view_layout.dart';
 import 'photo_capture_viewmodel.dart';
 
 /// App bar + themed body stack for the capture screen (Sonar S3776 extraction).
@@ -75,6 +78,13 @@ class PhotoCaptureScaffold extends StatelessWidget {
                     kToolbarHeight +
                     _appBarExtraHeight +
                     6,
+                bottom: captureScaffoldBottomInset(
+                  paddingBottom: MediaQuery.paddingOf(context).bottom,
+                  viewPaddingBottom: MediaQuery.viewPaddingOf(context).bottom,
+                  systemGestureInsetBottom:
+                      MediaQuery.systemGestureInsetsOf(context).bottom,
+                  isAndroid: defaultTargetPlatform == TargetPlatform.android,
+                ),
               ),
               child: body,
             ),
@@ -105,7 +115,9 @@ class PhotoCaptureScaffold extends StatelessWidget {
       centerTitle: true,
       systemOverlayStyle: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
-        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarColor: const Color(0xFF050810),
+        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarContrastEnforced: false,
       ),
       title: const Text(
         'POSE',

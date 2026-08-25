@@ -1,4 +1,5 @@
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/photo_capture/photo_capture_camera_config.dart';
 import 'package:photobooth/utils/app_device_type.dart';
@@ -120,6 +121,45 @@ void main() {
         isExternal: false,
       ),
       ImageFormatGroup.jpeg,
+    );
+  });
+
+  test('canPrewarmLiveCameraOnPlatform allows Android and iOS only', () {
+    expect(
+      canPrewarmLiveCameraOnPlatform(
+        isWeb: false,
+        platform: TargetPlatform.android,
+      ),
+      isTrue,
+    );
+    expect(
+      canPrewarmLiveCameraOnPlatform(
+        isWeb: false,
+        platform: TargetPlatform.iOS,
+      ),
+      isTrue,
+    );
+    expect(
+      canPrewarmLiveCameraOnPlatform(
+        isWeb: true,
+        platform: TargetPlatform.iOS,
+      ),
+      isFalse,
+    );
+    expect(
+      canPrewarmLiveCameraOnPlatform(
+        isWeb: false,
+        platform: TargetPlatform.windows,
+      ),
+      isFalse,
+    );
+  });
+
+  test('shouldUseFastCameraDescriptionSwitch is off on iOS', () {
+    expect(shouldUseFastCameraDescriptionSwitch(TargetPlatform.iOS), isFalse);
+    expect(
+      shouldUseFastCameraDescriptionSwitch(TargetPlatform.android),
+      isTrue,
     );
   });
 }

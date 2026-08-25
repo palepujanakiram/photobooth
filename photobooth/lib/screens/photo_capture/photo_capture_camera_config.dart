@@ -3,6 +3,22 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, Tar
 
 import '../../utils/app_device_type.dart';
 
+/// Whether Terms/POSE may open a live [CameraController] before the guest
+/// reaches capture. Web has no plugin camera; Android and iOS both do.
+bool canPrewarmLiveCameraOnPlatform({
+  required bool isWeb,
+  required TargetPlatform platform,
+}) {
+  if (isWeb) return false;
+  return platform == TargetPlatform.android || platform == TargetPlatform.iOS;
+}
+
+/// iOS [CameraPreview] crashes (`_dependents.isEmpty`) if the same controller
+/// swaps cameras via [CameraController.setDescription] while still mounted.
+bool shouldUseFastCameraDescriptionSwitch(TargetPlatform platform) {
+  return platform != TargetPlatform.iOS;
+}
+
 /// Whether [camera] is an external / UVC / HDMI capture device.
 bool isExternalCaptureCamera(
   CameraDescription camera,

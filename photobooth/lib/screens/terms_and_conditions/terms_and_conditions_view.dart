@@ -22,6 +22,7 @@ import '../photo_capture/photo_capture_uvc_device_helpers.dart';
 import '../photo_capture/photo_capture_viewmodel.dart';
 import '../splash/bootstrap_route_args.dart';
 import '../webview/webview_screen.dart';
+import '../../models/app_settings_model.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/api_service.dart';
 import '../../services/kiosk_manager.dart';
@@ -59,6 +60,8 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
   bool _startingExperience = false;
   Object? _capturePrefillPhoto;
   TermsCameraPrimingPhase _cameraPrimingPhase = TermsCameraPrimingPhase.detecting;
+  /// Drives the Canon-specific wording on the detecting banner.
+  bool _canonUsbPermissionPending = false;
 
   bool _canStartExperience(bool photoUploadAllowed) =>
       !_navigatingToCapture &&
@@ -93,6 +96,11 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
 
     if (mounted && defaultTargetPlatform == TargetPlatform.android) {
       final settings = context.read<AppSettingsManager>().settings;
+      if (await _resumePrimedCanonBooth(settings)) {
+        await FcmService.ensurePermissionAndPersistToken();
+        return;
+      }
+      await _refreshCanonUsbPermissionPending(settings);
       // Stop EDSDK sidecar before PTP touches USB (async settings sync used to race POSE).
       await syncCanonCameraStackForSettings(settings);
       if (usesDirectPtpCamera(settings: settings)) {
@@ -104,6 +112,35 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     }
 
     await _primeCaptureScreenOnLaunch();
+  }
+
+  /// Fast path for guests 2..N: the USB grant and PTP session outlive Terms.
+  ///
+  /// A full pass would replay the 20 s warm-up loop — and hold the banner and
+  /// the disabled Continue button up for its duration — for a camera that never
+  /// left. The live probe still runs, so an unplugged body falls through.
+  Future<bool> _resumePrimedCanonBooth(AppSettingsModel? settings) async {
+    if (!isOnDeviceCanonUsbBooth(settings)) return false;
+    final stillReady = await canSkipTermsPrimingOnReentry(
+      primedBefore: TermsCanonPrimingMemo.isPrimed,
+      probeStillReady: () => isOnDeviceCanonBoothStillReady(settings: settings),
+    );
+    if (!stillReady || !mounted) return stillReady;
+    setState(() {
+      _canonUsbPermissionPending = false;
+      _cameraPrimingPhase = TermsCameraPrimingPhase.ready;
+    });
+    return true;
+  }
+
+  /// Decides the detecting-banner wording before the allow dialog can appear.
+  Future<void> _refreshCanonUsbPermissionPending(
+    AppSettingsModel? settings,
+  ) async {
+    if (!isOnDeviceCanonUsbBooth(settings)) return;
+    final held = await isOnDeviceCanonUsbPermissionHeld(settings: settings);
+    if (!mounted) return;
+    setState(() => _canonUsbPermissionPending = !held);
   }
 
   /// Permission, enumeration, and live-camera prewarm while the guest reads terms.
@@ -125,8 +162,9 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
             await isDirectPtpHardwareAvailable(settings: settings)) {
           return true;
         }
-        // Direct EDSDK: skip CameraX permission when localhost sidecar is up.
+        // Direct EDSDK: skip CameraX permission only when a Canon body is on USB.
         if (isDirectCanonSidecarBooth(settings) &&
+            await isDirectCanonHardwareAvailable(settings: settings) &&
             await _probeSidecarHealthyForTerms()) {
           return true;
         }
@@ -151,8 +189,16 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
       ensureCanonUsbPermission: _ensureCanonUsbPermissionForTerms,
     );
 
+    if (result.phase == TermsCameraPrimingPhase.ready) {
+      TermsCanonPrimingMemo.markPrimed();
+    }
     if (!mounted) return;
-    setState(() => _cameraPrimingPhase = result.phase);
+    setState(() {
+      if (result.phase == TermsCameraPrimingPhase.ready) {
+        _canonUsbPermissionPending = false;
+      }
+      _cameraPrimingPhase = result.phase;
+    });
   }
 
   Future<bool> _ensureCanonUsbPermissionForTerms() async {
@@ -195,7 +241,15 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
 
   Future<void> _retryCameraPriming() async {
     if (!supportsTermsCameraPriming) return;
+    // A guest who had to tap Retry must not inherit an earlier guest's memo:
+    // the next Terms entry has to re-prime from scratch.
+    TermsCanonPrimingMemo.reset();
     setState(() => _cameraPrimingPhase = TermsCameraPrimingPhase.detecting);
+    if (mounted && defaultTargetPlatform == TargetPlatform.android) {
+      await _refreshCanonUsbPermissionPending(
+        context.read<AppSettingsManager>().settings,
+      );
+    }
     await _primeCaptureScreenOnLaunch();
   }
 
@@ -560,15 +614,6 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 
-  String _termsDetectingCamerasMessage() {
-    if (!mounted) return AppStrings.termsDetectingCameras;
-    final settings = context.read<AppSettingsManager>().settings;
-    if (isOnDeviceCanonUsbBooth(settings)) {
-      return AppStrings.termsDetectingCamerasCanonUsb;
-    }
-    return AppStrings.termsDetectingCameras;
-  }
-
   Widget _buildCameraPrimingBanner(
     AppColors appColors,
     TermsLayoutMetrics layout, {
@@ -576,6 +621,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     required bool photoUploadAllowed,
   }) {
     final uploadOk = photoUploadAllowed;
+    final settings = context.read<AppSettingsManager>().settings;
     switch (_cameraPrimingPhase) {
       case TermsCameraPrimingPhase.skipped:
       case TermsCameraPrimingPhase.ready:
@@ -585,37 +631,27 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
           appColors: appColors,
           layout: layout,
           compact: compact,
-          message: _termsDetectingCamerasMessage(),
+          message: termsCameraPrimingBannerMessage(
+            phase: _cameraPrimingPhase,
+            photoUploadAllowed: uploadOk,
+            showCanonUsbHint: shouldShowCanonUsbPrimingHint(
+              isCanonUsbBooth: isOnDeviceCanonUsbBooth(settings),
+              permissionPending: _canonUsbPermissionPending,
+            ),
+          ),
           showSpinner: true,
         );
       case TermsCameraPrimingPhase.permissionDenied:
-        return _buildCameraPrimingStatusRow(
-          appColors: appColors,
-          layout: layout,
-          compact: compact,
-          message: uploadOk
-              ? AppStrings.termsCameraPermissionDeniedUploadOk
-              : AppStrings.termsCameraPermissionDenied,
-          showRetry: true,
-        );
       case TermsCameraPrimingPhase.noneFound:
-        return _buildCameraPrimingStatusRow(
-          appColors: appColors,
-          layout: layout,
-          compact: compact,
-          message: uploadOk
-              ? AppStrings.termsNoCameraDetectedUploadOk
-              : AppStrings.termsNoCameraDetected,
-          showRetry: true,
-        );
       case TermsCameraPrimingPhase.failed:
         return _buildCameraPrimingStatusRow(
           appColors: appColors,
           layout: layout,
           compact: compact,
-          message: uploadOk
-              ? AppStrings.termsCameraDetectionFailedUploadOk
-              : AppStrings.termsCameraDetectionFailed,
+          message: termsCameraPrimingBannerMessage(
+            phase: _cameraPrimingPhase,
+            photoUploadAllowed: uploadOk,
+          ),
           showRetry: true,
         );
     }

@@ -34,6 +34,7 @@ Future<bool> ensureCanonUsbPermissionForDirectSidecar({
   if (defaultTargetPlatform != TargetPlatform.android) return true;
   final cfg = config ?? resolveCameraSidecarConfig(settings);
   if (!cfg.isDirectConnection || !cfg.isConfigured) return true;
+  if (!await CanonSidecarStatusChannel.isCameraPresent()) return true;
   if (await CanonSidecarStatusChannel.hasUsbPermission()) return true;
   return CanonSidecarStatusChannel.requestUsbPermissionIfNeeded();
 }
@@ -49,6 +50,7 @@ Future<bool> warmDirectSidecarAfterUsbGrant({
   if (defaultTargetPlatform != TargetPlatform.android) return false;
   final cfg = config ?? resolveCameraSidecarConfig(settings);
   if (!cfg.isDirectConnection || !cfg.isConfigured) return false;
+  if (!await CanonSidecarStatusChannel.isCameraPresent()) return false;
 
   final service = LocalCameraService(config: cfg, client: client);
   try {
@@ -77,6 +79,7 @@ Future<bool> primeCanonUsbOnTermsLaunch({
   http.Client? client,
 }) async {
   if (!isDirectCanonSidecarBooth(settings)) return true;
+  if (!await isDirectCanonHardwareAvailable(settings: settings)) return true;
   final granted = await ensureCanonUsbPermissionForDirectSidecar(
     settings: settings,
   );
@@ -168,6 +171,20 @@ Future<bool> primeDirectPtpOnTermsLaunch({
   return granted;
 }
 
+/// True when a Canon DSLR is on USB for the on-device EDSDK sidecar.
+///
+/// Direct mode defaults to localhost `:8791` even on phones with no body.
+/// POSE / Terms must not wait for USB permission or EVF unless this is true.
+Future<bool> isDirectCanonHardwareAvailable({
+  AppSettingsModel? settings,
+}) async {
+  if (defaultTargetPlatform != TargetPlatform.android) return false;
+  if (settings != null && !isDirectCanonSidecarBooth(settings)) {
+    return false;
+  }
+  return CanonSidecarStatusChannel.isCameraPresent();
+}
+
 /// True when a Canon body is attached over USB (native PTP capture may proceed).
 ///
 /// Used to fall back to CameraX/UVC when `cameraConnectionMode=direct_ptp` but no
@@ -231,4 +248,44 @@ Future<bool> canonSidecarAwaitingUsbPermission() async {
   if (defaultTargetPlatform != TargetPlatform.android) return false;
   final state = await CanonSidecarStatusChannel.getState();
   return state == 'waiting_usb';
+}
+
+/// True when an on-device Canon booth already holds its Android USB grant.
+///
+/// Terms uses this to decide whether the "Allow USB access…" hint is honest.
+/// A booth that was allowed on an earlier guest never sees the system dialog
+/// again, so the hint would just be noise on every re-entry.
+Future<bool> isOnDeviceCanonUsbPermissionHeld({
+  AppSettingsModel? settings,
+  DirectPtpCameraService? camera,
+}) async {
+  if (defaultTargetPlatform != TargetPlatform.android) return false;
+  if (isDirectPtpBooth(settings)) {
+    return isDirectPtpReadyForTerms(settings: settings, camera: camera);
+  }
+  if (!isDirectCanonSidecarBooth(settings)) return false;
+  return CanonSidecarStatusChannel.hasUsbPermission();
+}
+
+/// True when a booth primed on an earlier guest is still camera-ready.
+///
+/// Deliberately short-deadlined: this runs on the Terms fast path, so a body
+/// that was unplugged between guests must fail quickly and fall through to a
+/// full priming pass rather than stall the screen.
+Future<bool> isOnDeviceCanonBoothStillReady({
+  AppSettingsModel? settings,
+  DirectPtpCameraService? camera,
+  http.Client? client,
+  Duration sidecarTimeout = const Duration(seconds: 2),
+}) async {
+  if (defaultTargetPlatform != TargetPlatform.android) return false;
+  if (isDirectPtpBooth(settings)) {
+    return isDirectPtpReadyForTerms(settings: settings, camera: camera);
+  }
+  if (!isDirectCanonSidecarBooth(settings)) return false;
+  return warmDirectSidecarAfterUsbGrant(
+    settings: settings,
+    client: client,
+    timeout: sidecarTimeout,
+  );
 }

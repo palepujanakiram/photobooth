@@ -33,8 +33,9 @@ void main() {
           sensorOrientation: 0,
         ),
       ]),
-      isFalse,
+      isTrue,
     );
+    expect(camerasIncludeExternal([back]), isFalse);
   });
 
   test('cameraPickerUsbHint on tablet with only built-in cameras', () {
@@ -78,24 +79,14 @@ void main() {
     );
   });
 
-  test('camerasForDeviceType keeps external only on Android TV', () {
-    const external = CameraDescription(
-      name: 'USB Webcam',
-      lensDirection: CameraLensDirection.external,
-      sensorOrientation: 0,
-    );
-    const front = CameraDescription(
-      name: 'Front',
-      lensDirection: CameraLensDirection.front,
-      sensorOrientation: 270,
-    );
+  test('camerasForDeviceType lists all cameras with external first', () {
     expect(
       camerasForDeviceType(
         cameras: [front, external],
         deviceType: AppDeviceType.androidTv,
         looksLikeExternalName: (_) => false,
       ),
-      [external],
+      [external, front],
     );
     expect(
       camerasForDeviceType(
@@ -103,18 +94,18 @@ void main() {
         deviceType: AppDeviceType.androidPhone,
         looksLikeExternalName: (_) => false,
       ),
-      [front],
+      [external, front],
     );
   });
 
-  test('captureCamerasForDevice prefers external then falls back on Android TV', () {
+  test('captureCamerasForDevice lists all cameras on Android TV', () {
     expect(
       captureCamerasForDevice(
         cameras: [front, external],
         deviceType: AppDeviceType.androidTv,
         looksLikeExternalName: (_) => false,
       ),
-      [external],
+      [external, front],
     );
     expect(
       captureCamerasForDevice(
@@ -137,11 +128,35 @@ void main() {
     );
     expect(
       pickPreferredCaptureCamera(
+        cameras: [front, external],
+        deviceType: AppDeviceType.iosPhone,
+        looksLikeExternalName: (_) => false,
+      ),
+      external,
+    );
+    expect(
+      pickPreferredCaptureCamera(
+        cameras: [back, front],
+        deviceType: AppDeviceType.androidPhone,
+        looksLikeExternalName: (_) => false,
+      ),
+      front,
+    );
+    expect(
+      pickPreferredCaptureCamera(
         cameras: [front],
         deviceType: AppDeviceType.androidTv,
         looksLikeExternalName: (_) => false,
       ),
       front,
+    );
+    expect(
+      pickPreferredCaptureCamera(
+        cameras: [back],
+        deviceType: AppDeviceType.iosPhone,
+        looksLikeExternalName: (_) => false,
+      ),
+      back,
     );
     expect(
       () => pickPreferredCaptureCamera(
@@ -153,14 +168,14 @@ void main() {
     );
   });
 
-  test('captureCamerasForDevice keeps built-in only on phones', () {
+  test('captureCamerasForDevice keeps external and built-in on phones', () {
     expect(
       captureCamerasForDevice(
         cameras: [front, external],
         deviceType: AppDeviceType.androidPhone,
         looksLikeExternalName: (_) => false,
       ),
-      [front],
+      [external, front],
     );
     expect(
       captureCamerasForDevice(
@@ -168,7 +183,18 @@ void main() {
         deviceType: AppDeviceType.iosPhone,
         looksLikeExternalName: (_) => false,
       ),
-      [front],
+      [external, front],
+    );
+  });
+
+  test('captureCamerasForDevice falls back to built-in on iPad', () {
+    expect(
+      captureCamerasForDevice(
+        cameras: [front, back],
+        deviceType: AppDeviceType.iosTablet,
+        looksLikeExternalName: (_) => false,
+      ),
+      [front, back],
     );
   });
 
@@ -191,7 +217,7 @@ void main() {
     );
     expect(
       captureCamerasForDevice(
-        cameras: [front, back],
+        cameras: [back, front],
         deviceType: AppDeviceType.unknown,
         looksLikeExternalName: (_) => false,
       ),
@@ -211,7 +237,15 @@ void main() {
         deviceType: AppDeviceType.androidTablet,
         looksLikeExternalName: (name) => name.contains('HDMI'),
       ),
-      [hdmi],
+      [hdmi, front],
+    );
+    expect(
+      pickPreferredCaptureCamera(
+        cameras: [front, hdmi],
+        deviceType: AppDeviceType.androidTablet,
+        looksLikeExternalName: (name) => name.contains('HDMI'),
+      ),
+      hdmi,
     );
   });
 
@@ -222,7 +256,7 @@ void main() {
         deviceType: null,
         looksLikeExternalName: (_) => false,
       ),
-      [front, external],
+      [external, front],
     );
     expect(
       camerasForDeviceType(
@@ -230,7 +264,7 @@ void main() {
         deviceType: AppDeviceType.unknown,
         looksLikeExternalName: (_) => false,
       ),
-      [front, external],
+      [external, front],
     );
   });
 
@@ -261,13 +295,20 @@ void main() {
     );
   });
 
-  test('orderCaptureCamerasExternalFirst prefers external lens', () {
+  test('orderCaptureCamerasExternalFirst prefers external then front', () {
     expect(
       orderCaptureCamerasExternalFirst(
         cameras: [front, external, back],
         looksLikeExternalName: (_) => false,
       ),
       [external, front, back],
+    );
+    expect(
+      orderCaptureCamerasExternalFirst(
+        cameras: [back, front],
+        looksLikeExternalName: (_) => false,
+      ),
+      [front, back],
     );
   });
 
@@ -311,6 +352,70 @@ void main() {
       ),
       isFalse,
     );
+    const hdmi = CameraDescription(
+      name: 'HDMI Capture Card',
+      lensDirection: CameraLensDirection.back,
+      sensorOrientation: 0,
+    );
+    expect(
+      kioskHasCachedExternalCamera(
+        cached: [hdmi],
+        deviceType: AppDeviceType.iosTablet,
+        looksLikeExternalName: (name) => name.contains('HDMI'),
+      ),
+      isTrue,
+    );
+  });
+
+  test('shouldShowNoCameraConnectedMessage only when nothing is attached', () {
+    expect(
+      shouldShowNoCameraConnectedMessage(
+        enumeratedCamerasEmpty: true,
+        uvcDevicesEmpty: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldShowNoCameraConnectedMessage(
+        enumeratedCamerasEmpty: true,
+        uvcDevicesEmpty: false,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldShowNoCameraConnectedMessage(
+        enumeratedCamerasEmpty: false,
+        uvcDevicesEmpty: true,
+      ),
+      isFalse,
+    );
+  });
+
+  test('isPickerEnumeratedCameraChecked marks the live CameraX row', () {
+    expect(
+      isPickerEnumeratedCameraChecked(
+        cameraName: 'Front',
+        currentCameraName: 'Front',
+        uvcPreviewActive: false,
+      ),
+      isTrue,
+    );
+    expect(
+      isPickerEnumeratedCameraChecked(
+        cameraName: 'Back',
+        currentCameraName: 'Front',
+        uvcPreviewActive: false,
+      ),
+      isFalse,
+    );
+    expect(
+      isPickerEnumeratedCameraChecked(
+        cameraName: 'Front',
+        currentCameraName: 'Front',
+        uvcPreviewActive: true,
+      ),
+      isFalse,
+    );
   });
 
   test('uniqueCamerasByDisplayName keeps one entry per display name', () {
@@ -338,6 +443,16 @@ void main() {
     test('returns true when cached front camera exists on web', () {
       CaptureViewModel.setCachedCamerasForTest([front]);
       expect(CaptureViewModel.hasOpenableCaptureCamera(), isTrue);
+    });
+
+    test('returns true when cached USB camera exists on a phone', () {
+      CaptureViewModel.setCachedCamerasForTest([external]);
+      expect(
+        CaptureViewModel.hasOpenableCaptureCamera(
+          deviceType: AppDeviceType.iosPhone,
+        ),
+        isTrue,
+      );
     });
 
     test('returns true when cached external camera exists for kiosk', () {

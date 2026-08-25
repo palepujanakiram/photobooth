@@ -37,7 +37,6 @@ class UsbTransport(
     private val channel: UsbBulkChannel,
     private val config: Config = Config(),
 ) : Closeable {
-
     data class Config(
         /**
          * Per-read timeout. Short enough that a wedged endpoint is noticed, long enough
@@ -79,6 +78,7 @@ class UsbTransport(
         val terminatedBy: Termination,
     ) {
         val size: Int get() = data.size
+
         override fun toString(): String = "TransferResult(${data.size}B, $packetsRead pkts, $terminatedBy)"
     }
 
@@ -112,7 +112,11 @@ class UsbTransport(
      * took what it could. Looping is correct; assuming one call writes everything is the
      * bug.
      */
-    fun write(data: ByteArray, offset: Int = 0, length: Int = data.size - offset) {
+    fun write(
+        data: ByteArray,
+        offset: Int = 0,
+        length: Int = data.size - offset,
+    ) {
         require(offset >= 0 && length >= 0 && offset + length <= data.size) {
             "bad range offset=$offset length=$length size=${data.size}"
         }
@@ -149,71 +153,19 @@ class UsbTransport(
         require(expectedLength == null || expectedLength >= 0) { "expectedLength must be >= 0" }
 
         val ceiling = expectedLength ?: limit
-        // One packet of slack: a device may legitimately send a full packet when fewer
-        // bytes remain, and overflowing the buffer would be a hard crash.
-        var buffer = ByteArray(min(ceiling, alignedChunkSize) + maxPacketSize)
-        var total = 0
-        var packets = 0
-
-        while (true) {
-            if (total >= ceiling) {
-                val termination = if (expectedLength != null) {
-                    consumePendingZlp(total)
-                    Termination.LENGTH_REACHED
-                } else {
-                    CanonLog.w("readTransfer hit limit of %d bytes without device terminating", ceiling)
-                    Termination.LIMIT_REACHED
-                }
-                return TransferResult(buffer.copyOf(total), packets, termination)
-            }
-
-            if (total + maxPacketSize > buffer.size) {
-                buffer = buffer.copyOf(min(buffer.size * 2, ceiling + maxPacketSize))
-            }
-
-            val room = min(alignedChunkSize, buffer.size - total)
-            val request = if (expectedLength != null) {
-                min(room, expectedLength - total)
-            } else {
-                room
-            }
-
-            val n = channel.bulkIn(buffer, total, request, timeoutMs)
-            // Per-read trace. The "Container truncated: declared 1140862976" failure is
-            // decided entirely by what the *first* read of a transfer returns, and the
-            // container-level dump cannot show whether that was one short read or the tail
-            // of several. Verbose, so it costs nothing until someone asks for it with
-            // `adb shell setprop log.tag.FotozenCanon VERBOSE`.
-            CanonLog.v("bulkIn asked=%d got=%d (total=%d, packet=%d)", request, n, total, packets)
-
-            when {
-                n < 0 -> {
-                    if (!channel.isOpen) throw UsbError.Detached()
-                    throw UsbError.Timeout("bulkIn after ${total}B", timeoutMs)
-                }
-
-                // A zero-length packet. This IS the P-01 case, and reaching it here means
-                // it has been consumed correctly rather than left to poison the next read.
-                n == 0 -> {
-                    packets++
-                    CanonLog.v("ZLP consumed after %dB", total)
-                    return TransferResult(buffer.copyOf(total), packets, Termination.ZERO_LENGTH_PACKET)
-                }
-
-                else -> {
-                    total += n
-                    packets++
-                    // The stack fills the request unless a short packet ended the transfer.
-                    if (n < request) {
-                        return TransferResult(buffer.copyOf(total), packets, Termination.SHORT_PACKET)
-                    }
-                }
-            }
-        }
+        return UsbTransferReader(
+            channel = channel,
+            maxPacketSize = maxPacketSize,
+            alignedChunkSize = alignedChunkSize,
+            consumePendingZlp = ::consumePendingZlp,
+        ).read(expectedLength, ceiling, timeoutMs)
     }
 
     /** Reads exactly [length] bytes, failing if the device ends the transfer early. */
-    fun readExactly(length: Int, timeoutMs: Int = config.readTimeoutMs): ByteArray {
+    fun readExactly(
+        length: Int,
+        timeoutMs: Int = config.readTimeoutMs,
+    ): ByteArray {
         val result = readTransfer(expectedLength = length, timeoutMs = timeoutMs)
         if (result.size != length) {
             throw UsbError.TransferFailed(
@@ -236,14 +188,22 @@ class UsbTransport(
 
         val n = channel.bulkIn(zlpScratch, 0, maxPacketSize, config.zlpTimeoutMs)
         when {
-            n == 0 -> CanonLog.v("Drained pending ZLP after %dB aligned transfer", total)
-            n < 0 -> CanonLog.v("No ZLP pending after %dB (host stack consumed it)", total)
-            else -> CanonLog.e(
-                "P-01: expected ZLP after %dB aligned transfer but got %d bytes of data. " +
-                    "The stream is now misaligned - the session should be reset.",
-                total,
-                n,
-            )
+            n == 0 -> {
+                CanonLog.v("Drained pending ZLP after %dB aligned transfer", total)
+            }
+
+            n < 0 -> {
+                CanonLog.v("No ZLP pending after %dB (host stack consumed it)", total)
+            }
+
+            else -> {
+                CanonLog.e(
+                    "P-01: expected ZLP after %dB aligned transfer but got %d bytes of data. " +
+                        "The stream is now misaligned - the session should be reset.",
+                    total,
+                    n,
+                )
+            }
         }
     }
 
@@ -259,7 +219,10 @@ class UsbTransport(
      *   wrong for recovery: see [RECOVERY_SETTLE_READS].
      * @return bytes discarded.
      */
-    fun drain(timeoutMs: Int = config.zlpTimeoutMs, settleReads: Int = 1): Int {
+    fun drain(
+        timeoutMs: Int = config.zlpTimeoutMs,
+        settleReads: Int = 1,
+    ): Int {
         if (!channel.isOpen) return 0
         var discarded = 0
         var rounds = 0

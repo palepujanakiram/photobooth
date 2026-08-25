@@ -167,7 +167,12 @@ class CaptureViewModel extends ChangeNotifier {
 
   /// Opens the live CameraX feed during Terms idle time so POSE can adopt instantly.
   static Future<void> prewarmLiveCamera({AppDeviceType? deviceType}) async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (!canPrewarmLiveCameraOnPlatform(
+      isWeb: kIsWeb,
+      platform: defaultTargetPlatform,
+    )) {
+      return;
+    }
     if (_prewarmedController?.value.isInitialized == true) return;
     if (_prewarmInFlight != null) {
       await _prewarmInFlight;
@@ -488,6 +493,11 @@ class CaptureViewModel extends ChangeNotifier {
       markSidecarPreviewReady();
       return true;
     }
+    if (service.isDirectConnection &&
+        !await CanonSidecarStatusChannel.isCameraPresent()) {
+      notifyListeners();
+      return false;
+    }
     var listening = await service.isListening();
     if (!listening && service.isDirectConnection && listenAttempts > 1) {
       for (var i = 1; i < listenAttempts && !listening; i++) {
@@ -495,19 +505,9 @@ class CaptureViewModel extends ChangeNotifier {
         listening = await service.isListening();
       }
     }
-    final hasDeviceCamera = hasOpenableDeviceCaptureCamera(
-      deviceType: _deviceType,
-    );
     if (!listening) {
       notifyListeners();
-      return shouldKeepDirectSidecarPose(
-        isDirectConnection: service.isDirectConnection,
-        hasSidecarEndpoint: service.hasSidecarEndpoint,
-        preferDeviceCameraFallback: shouldPreferDeviceCameraOverDslr(
-          dslrPathCanServe: false,
-          hasOpenableDeviceCamera: hasDeviceCamera,
-        ),
-      );
+      return _shouldKeepDirectSidecarPoseWithoutEvf();
     }
     final healthy = await service.isHealthy();
     if (healthy) {
@@ -517,13 +517,25 @@ class CaptureViewModel extends ChangeNotifier {
     // HTTP up / process running but no body — do not claim EVF ready when the
     // tablet has CameraX; Classic already recovered via isHealthy elsewhere.
     notifyListeners();
+    return _shouldKeepDirectSidecarPoseWithoutEvf();
+  }
+
+  Future<bool> _shouldKeepDirectSidecarPoseWithoutEvf() async {
+    final service = _localCameraService;
+    if (service == null) return false;
+    final hasDeviceCamera = hasOpenableDeviceCaptureCamera(
+      deviceType: _deviceType,
+    );
+    final canonPresent = !service.isDirectConnection ||
+        await CanonSidecarStatusChannel.isCameraPresent();
     return shouldKeepDirectSidecarPose(
       isDirectConnection: service.isDirectConnection,
       hasSidecarEndpoint: service.hasSidecarEndpoint,
       preferDeviceCameraFallback: shouldPreferDeviceCameraOverDslr(
-        dslrPathCanServe: false,
+        dslrPathCanServe: canonPresent,
         hasOpenableDeviceCamera: hasDeviceCamera,
       ),
+      canonUsbPresent: canonPresent,
     );
   }
 
@@ -994,10 +1006,16 @@ class CaptureViewModel extends ChangeNotifier {
   bool get isDesktopCaptureMode => usesDesktopPhotoPicker;
 
   bool get isReady {
-    if (usesSidecarLivePreview) return _sidecarPreviewReady;
-    if (isDesktopCaptureMode) return !_isLoadingCameras;
-    return _cameraController != null &&
-        _cameraController!.value.isInitialized;
+    return poseCaptureIsReady(
+      preferDeviceCameraCapture: _preferDeviceCameraCapture,
+      usesSidecarLivePreview: usesSidecarLivePreview,
+      sidecarPreviewReady: _sidecarPreviewReady,
+      cameraControllerInitialized:
+          _cameraController != null &&
+          _cameraController!.value.isInitialized,
+      isDesktopCaptureMode: isDesktopCaptureMode,
+      isLoadingCameras: _isLoadingCameras,
+    );
   }
 
   /// Display name for a camera (Back, Front, External, etc.).
@@ -1019,38 +1037,11 @@ class CaptureViewModel extends ChangeNotifier {
   }
 
   CameraDescription _pickDefaultCamera(List<CameraDescription> cameras) {
-    return _pickDefaultCameraFromList(cameras);
-  }
-
-  static CameraDescription _pickDefaultCameraFromList(
-    List<CameraDescription> cameras,
-  ) {
-    if (cameras.isEmpty) {
-      throw StateError('No cameras available');
-    }
-    final byName = cameras
-        .where((c) => looksLikeExternalCameraName(c.name))
-        .toList();
-    if (byName.isNotEmpty) {
-      return byName.first;
-    }
-    final byDirection = cameras
-        .where((c) => c.lensDirection == CameraLensDirection.external)
-        .toList();
-    if (byDirection.isNotEmpty) {
-      return byDirection.first;
-    }
-    final fronts = cameras
-        .where((c) => c.lensDirection == CameraLensDirection.front)
-        .toList();
-    final backs =
-        cameras.where((c) => c.lensDirection == CameraLensDirection.back).toList();
-    if (fronts.isNotEmpty && backs.isNotEmpty) {
-      return fronts.first;
-    }
-    if (fronts.isNotEmpty) return fronts.first;
-    if (backs.isNotEmpty) return backs.first;
-    return cameras.first;
+    return pickPreferredCaptureCamera(
+      cameras: cameras,
+      deviceType: _deviceType,
+      looksLikeExternalName: _looksLikeExternalCameraName,
+    );
   }
 
   /// Transfers the Terms-screen prewarm into this screen instance.
@@ -1103,7 +1094,7 @@ class CaptureViewModel extends ChangeNotifier {
       looksLikeExternalCameraName(name);
 
   /// Set device type from UI (from [DeviceClassifier.getDeviceType]).
-  /// Used to filter cameras: tablet/TV → external first with built-in fallback.
+  /// Used for preview rotation and kiosk USB-first preload.
   void setDeviceType(AppDeviceType? type) {
     final changed = _deviceType != type;
     _deviceType = type;
@@ -1140,9 +1131,7 @@ class CaptureViewModel extends ChangeNotifier {
     );
     _availableCameras = filtered;
     if (filtered.isEmpty) {
-      _errorMessage = kIsWeb
-          ? 'No camera detected. Allow camera access in the browser, or use Gallery if enabled.'
-          : 'No cameras available';
+      _errorMessage = emptyCameraEnumerationMessage(isWeb: kIsWeb);
       unawaited(
         reportCameraNotFound(
           reason: 'No cameras detected',
@@ -1195,7 +1184,7 @@ class CaptureViewModel extends ChangeNotifier {
   Future<bool> _ensureAndroidCameraPermission({
     bool requestIfNeeded = false,
   }) async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+    if (kIsWeb || !isNativeMobileCameraPlatform) {
       return true;
     }
     final granted = await ensureCameraPermission(
@@ -1228,9 +1217,7 @@ class CaptureViewModel extends ChangeNotifier {
 
   void _assignEnumeratedCameras(List<CameraDescription> allCameras) {
     if (allCameras.isEmpty) {
-      _errorMessage = kIsWeb
-          ? 'No camera detected. Allow camera access in the browser, or use Gallery if enabled.'
-          : 'No cameras available';
+      _errorMessage = emptyCameraEnumerationMessage(isWeb: kIsWeb);
       unawaited(_reportEmptyCameraEnumeration());
     } else {
       _markCameraAvailabilityRestored();
@@ -1521,7 +1508,10 @@ class CaptureViewModel extends ChangeNotifier {
     }
     // This Mini PC / DSLR pose has zero Camera2 cameras. Enumeration starts
     // CameraX retries that also run after shutter and used to clear review.
-    if (usesSidecarLivePreview) {
+    if (shouldSkipCameraXForSidecarEvf(
+      usesSidecarLivePreview: usesSidecarLivePreview,
+      preferDeviceCameraCapture: _preferDeviceCameraCapture,
+    )) {
       _isLoadingCameras = false;
       _errorMessage = null;
       notifyListeners();
@@ -1609,7 +1599,10 @@ class CaptureViewModel extends ChangeNotifier {
   Future<void> warmCameraEnumerationCache() async {
     if (_cachedAvailableCameras != null ||
         usesDesktopPhotoPicker ||
-        usesSidecarLivePreview) {
+        shouldSkipCameraXForSidecarEvf(
+          usesSidecarLivePreview: usesSidecarLivePreview,
+          preferDeviceCameraCapture: _preferDeviceCameraCapture,
+        )) {
       return;
     }
     try {
@@ -1640,7 +1633,10 @@ class CaptureViewModel extends ChangeNotifier {
       AppLogger.debug('⚠️ Cannot reset cameras - captured photo on review');
       return;
     }
-    if (usesSidecarLivePreview) {
+    if (shouldSkipCameraXForSidecarEvf(
+      usesSidecarLivePreview: usesSidecarLivePreview,
+      preferDeviceCameraCapture: _preferDeviceCameraCapture,
+    )) {
       AppLogger.debug('Sidecar live preview — skipping CameraX reset');
       return;
     }
@@ -1781,6 +1777,9 @@ class CaptureViewModel extends ChangeNotifier {
     CameraDescription cameraToUse,
     CameraDescription camera,
   ) async {
+    if (!shouldUseFastCameraDescriptionSwitch(defaultTargetPlatform)) {
+      return false;
+    }
     final ctrl = _cameraController;
     if (ctrl == null || !ctrl.value.isInitialized) return false;
     try {
@@ -1807,6 +1806,7 @@ class CaptureViewModel extends ChangeNotifier {
     _cameraController = null;
     _cameraGeneration++;
     notifyListeners();
+    await Future<void>.delayed(Duration.zero);
     try {
       ctrl.removeListener(_onCameraControllerUpdate);
       await ctrl.dispose();
@@ -1966,6 +1966,10 @@ class CaptureViewModel extends ChangeNotifier {
     }
 
     try {
+      if (notifyInitializing) {
+        await Future<void>.delayed(Duration.zero);
+        if (_disposed) return;
+      }
       _minZoom = null;
       _maxZoom = null;
       _currentZoom = 1.0;
@@ -2125,7 +2129,13 @@ class CaptureViewModel extends ChangeNotifier {
     void Function(int step)? onCountdownStep,
     Future<bool> Function()? captureNow,
   }) async {
-    if (!canStart() || _isCapturing || _countdownValue != null) {
+    final ready = canStart();
+    if (!ready || _isCapturing || _countdownValue != null) {
+      AppLogger.debug(
+        '📸 captureWithCountdown skipped '
+        '(canStart=$ready capturing=$_isCapturing '
+        'countdown=$_countdownValue)',
+      );
       return;
     }
 

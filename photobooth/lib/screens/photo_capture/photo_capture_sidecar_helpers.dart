@@ -194,7 +194,7 @@ bool shouldSkipSidecarStillForDeviceCamera({
   required bool usesSidecarLivePreview,
 }) {
   if (preferDeviceCameraCapture) return true;
-  if (cameraXInitialized && !usesSidecarLivePreview) return true;
+  if (cameraXInitialized) return true;
   return false;
 }
 
