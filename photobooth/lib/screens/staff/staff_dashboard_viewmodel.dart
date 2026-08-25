@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../../models/staff_dashboard_models.dart';
+import '../../services/offline_operator_pin_store.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/exceptions.dart';
 import 'staff_dashboard_helpers.dart';
 
@@ -17,6 +19,7 @@ abstract class StaffDashboardGateway {
     required int actualAmount,
     String closingNotes = '',
   });
+  Future<void> updateOfflineCashPin(String pin);
   Future<void> logout();
 }
 
@@ -126,6 +129,39 @@ class StaffDashboardViewModel extends ChangeNotifier {
           closingNotes: closingNotes,
         ),
       );
+
+  /// Updates this staff member's offline cash PIN on the server (when reachable)
+  /// and always caches it locally for Pay-screen confirm on this kiosk.
+  Future<bool> updateOfflineCashPin(String pin) async {
+    final next = pin.trim();
+    if (!OfflineOperatorPinStore.isValidPinFormat(next)) {
+      _error = AppStrings.staffOfflinePinInvalid;
+      notifyListeners();
+      return false;
+    }
+    if (_actionBusy) return false;
+    _actionBusy = true;
+    _error = null;
+    notifyListeners();
+    try {
+      try {
+        await _gateway.updateOfflineCashPin(next);
+      } on ApiException catch (e) {
+        await OfflineOperatorPinStore.setPin(next);
+        _error = AppStrings.staffOfflinePinLocalOnly(e.message);
+        return true;
+      } catch (e) {
+        await OfflineOperatorPinStore.setPin(next);
+        _error = AppStrings.staffOfflinePinLocalOnly(e.toString());
+        return true;
+      }
+      await OfflineOperatorPinStore.setPin(next);
+      return true;
+    } finally {
+      _actionBusy = false;
+      notifyListeners();
+    }
+  }
 
   Future<void> logout() => _gateway.logout();
 

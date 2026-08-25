@@ -23,10 +23,18 @@ void main() {
     expect(await OfflineOperatorPinStore.verifyPin('0000'), isFalse);
   });
 
-  test('setPin updates verification', () async {
+  test('setPin adds local pin; master 2468 still works', () async {
     await OfflineOperatorPinStore.setPin('9999');
     expect(await OfflineOperatorPinStore.verifyPin('9999'), isTrue);
-    expect(await OfflineOperatorPinStore.verifyPin('2468'), isFalse);
+    expect(await OfflineOperatorPinStore.verifyPin('2468'), isTrue);
+    expect(await OfflineOperatorPinStore.verifyPin('0000'), isFalse);
+  });
+
+  test('syncServerPins accepts staff pins from settings', () async {
+    await OfflineOperatorPinStore.syncServerPins(['1357', 'bad', '12']);
+    expect(await OfflineOperatorPinStore.verifyPin('1357'), isTrue);
+    expect(await OfflineOperatorPinStore.verifyPin('2468'), isTrue);
+    expect(await OfflineOperatorPinStore.verifyPin('12'), isFalse);
   });
 
   test('shouldSkipOfflinePayCollect only when offline and payments off', () {

@@ -4,8 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/app_settings_model.dart';
 import 'package:photobooth/services/app_settings_manager.dart';
 import 'package:photobooth/services/catalog_disk_cache.dart';
+import 'package:photobooth/services/offline_operator_pin_store.dart';
 import 'package:photobooth/utils/app_runtime_config.dart';
 import 'package:photobooth/utils/exceptions.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../fakes/fake_api_service.dart';
 
@@ -23,6 +25,11 @@ class _SettingsApi extends FakeApiService {
 }
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    OfflineOperatorPinStore.resetCacheForTests();
+  });
+
   test('fetchSettings caches and resolveParallelImageCount', () async {
     final api = _SettingsApi(AppSettingsModel(parallelImageCount: 3));
     final mgr = AppSettingsManager(
@@ -119,6 +126,19 @@ void main() {
     await offline.fetchSettings();
     expect(offline.settings?.initialPrice, 175);
     expect(offline.errorMessage, isNotNull);
+  });
+
+  test('fetchSettings syncs offlineCashPins into pin store', () async {
+    final api = _SettingsApi(
+      AppSettingsModel(offlineCashPins: const ['1357']),
+    );
+    final mgr = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => null,
+    );
+    await mgr.fetchSettings();
+    expect(await OfflineOperatorPinStore.verifyPin('1357'), isTrue);
+    expect(await OfflineOperatorPinStore.verifyPin('2468'), isTrue);
   });
 }
 

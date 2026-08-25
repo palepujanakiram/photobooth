@@ -71,6 +71,14 @@ void main() {
     expect(back.id, 's1');
   });
 
+  test('round-trips offlineCashPins', () {
+    final src = AppSettingsModel(offlineCashPins: const ['1357', '9999']);
+    final json = appSettingsToCacheJson(src);
+    expect(json['offlineCashPins'], ['1357', '9999']);
+    final back = appSettingsFromCacheJson(json);
+    expect(back?.offlineCashPins, ['1357', '9999']);
+  });
+
   test('fromCacheJson rejects non-maps', () {
     expect(appSettingsFromCacheJson(null), isNull);
     expect(appSettingsFromCacheJson('nope'), isNull);

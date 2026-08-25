@@ -9,6 +9,7 @@ import 'api_service.dart';
 import 'app_settings_cache_codec.dart';
 import 'catalog_disk_cache.dart';
 import 'kiosk_manager.dart';
+import 'offline_operator_pin_store.dart';
 
 class AppSettingsManager extends ChangeNotifier {
   ApiService _apiService;
@@ -107,6 +108,7 @@ class AppSettingsManager extends ChangeNotifier {
         _errorMessage = null;
         AppRuntimeConfig.instance.applyFromSettings(_settings);
         await _persistToDisk(kioskKey);
+        await _syncOfflineCashPins();
         applyFlutterImageCacheLimits();
         AliceInspector.syncWithRuntimeConfig();
         // Fire-and-forget: stop/start EDSDK vs PTP to match ZenAI mode.
@@ -151,11 +153,16 @@ class AppSettingsManager extends ChangeNotifier {
     _settings = parsed;
     _settingsKioskKey = kioskKey;
     AppRuntimeConfig.instance.applyFromSettings(_settings);
+    await _syncOfflineCashPins();
   }
 
   Future<void> _persistToDisk(String kioskKey) async {
     final s = _settings;
     if (s == null) return;
     await _diskCache.writeJson(_diskKey(kioskKey), appSettingsToCacheJson(s));
+  }
+
+  Future<void> _syncOfflineCashPins() async {
+    await OfflineOperatorPinStore.syncServerPins(_settings?.offlineCashPins);
   }
 }

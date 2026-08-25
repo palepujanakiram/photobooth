@@ -69,6 +69,9 @@ class AppSettingsModel {
   final bool? injectAfMarkers;
   /// Classic Surprise Me AI teaser (`settings.photoStripConfig.enableSurpriseMeAi`).
   final bool? enableSurpriseMeAi;
+  /// Offline cash booth PINs from staff members (`/api/settings` → `offlineCashPins`).
+  /// Cached on disk with the rest of settings; master PIN `2468` always works.
+  final List<String>? offlineCashPins;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -125,6 +128,7 @@ class AppSettingsModel {
     this.enableOsdScrub,
     this.injectAfMarkers,
     this.enableSurpriseMeAi,
+    this.offlineCashPins,
     this.createdAt,
     this.updatedAt,
   });
@@ -214,8 +218,19 @@ class AppSettingsModel {
             stripMap?['enableSurpriseMeAi'],
           ) ??
           JsonParseHelpers.boolOrNull(json['enableSurpriseMeAi']),
+      offlineCashPins: _parseOfflineCashPins(json['offlineCashPins']),
       createdAt: JsonParseHelpers.dateTimeOrNull(json['createdAt']),
       updatedAt: JsonParseHelpers.dateTimeOrNull(json['updatedAt']),
     );
+  }
+
+  static List<String>? _parseOfflineCashPins(Object? raw) {
+    if (raw is! List) return null;
+    final pins = <String>[];
+    for (final item in raw) {
+      final p = item?.toString().trim() ?? '';
+      if (RegExp(r'^\d{4,8}$').hasMatch(p)) pins.add(p);
+    }
+    return pins;
   }
 }

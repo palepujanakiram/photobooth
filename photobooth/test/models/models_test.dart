@@ -64,6 +64,13 @@ void main() {
     expect(m.cameraSidecarPath, '/');
   });
 
+  test('AppSettingsModel.fromJson parses offlineCashPins', () {
+    final m = AppSettingsModel.fromJson({
+      'offlineCashPins': ['1357', '9999', 'nope', 2468],
+    });
+    expect(m.offlineCashPins, ['1357', '9999', '2468']);
+  });
+
   test('KioskInfoModel.isValid requires id and code', () {
     expect(
       KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'}).isValid,

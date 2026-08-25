@@ -698,6 +698,16 @@ abstract final class AppStrings {
   static const staffCashRegisterSubtitle =
       'Open with float; close with actual cash count';
   static const staffOpenRegister = 'Open register';
+  static const staffChangeOfflinePin = 'Change booth PIN';
+  static const staffChangeOfflinePinTitle = 'Change offline cash PIN';
+  static const staffChangeOfflinePinBody =
+      'Used on Pay when confirming cash offline. Syncs to this account’s kiosks when online. Master key 2468 always works.';
+  static const staffChangeOfflinePinLabel = 'New PIN (4–8 digits)';
+  static const staffChangeOfflinePinConfirm = 'Save PIN';
+  static const staffChangeOfflinePinSaved = 'Booth PIN updated';
+  static const staffOfflinePinInvalid = 'PIN must be 4–8 digits';
+  static String staffOfflinePinLocalOnly(String detail) =>
+      'Saved on this kiosk only (cloud sync failed: $detail)';
   static const staffCloseRegister = 'Close register';
   static const staffNoKioskForRegister =
       'This staff member is not assigned to a kiosk. Assign a kiosk in admin before opening the register.';
