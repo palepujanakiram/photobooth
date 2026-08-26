@@ -41,6 +41,14 @@ class AppConfig {
     return url.endsWith('/') ? url.substring(0, url.length - 1) : url;
   }
 
+  /// Short guest-facing URL used by the booth QR.
+  static String shareUrlForToken(String token) =>
+      '$baseUrl/s/${Uri.encodeComponent(token.trim())}';
+
+  /// Long fallback URL shown below the booth QR.
+  static String shareLongUrlForToken(String token) =>
+      '$baseUrl/share/${Uri.encodeComponent(token.trim())}';
+
   /// JWT for `Authorization: Bearer …` on API calls (e.g. Supabase anon / edge gateway).
   ///
   /// **Public credential** — enforce authorization on the server (RLS, session checks,

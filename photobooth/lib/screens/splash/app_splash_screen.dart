@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'bootstrap_route_args.dart';
 import 'kiosk_qr_scan_screen.dart';
 import '../../models/kiosk_device_status.dart';
+import '../../models/event_info_model.dart';
 import '../../models/kiosk_info_model.dart';
 import '../../services/api_environment_store.dart';
 import '../../services/api_service.dart';
@@ -70,7 +71,8 @@ class _AppSplashScreenState extends State<AppSplashScreen>
   ApiEnvironment _apiEnvironment = splashApiEnvironmentSelection();
   bool _deviceStatusLoading = false;
   KioskDeviceStatusSnapshot? _deviceStatus;
-  final KioskDeviceStatusService _deviceStatusService = KioskDeviceStatusService();
+  final KioskDeviceStatusService _deviceStatusService =
+      KioskDeviceStatusService();
   KioskOutboxSyncCounts? _outboxCounts;
   bool _outboxSyncing = false;
   int _outboxCompletedThisRun = 0;
@@ -348,8 +350,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       await _applyBoundKiosk(code, kiosk);
       final eventErr = await bindSplashEventCode(
         eventManager: _event,
-        fetchEvent: (eventCode, kioskCode) =>
-            _api.fetchEventByCode(eventCode, kioskCode: kioskCode),
+        fetchEvent: _fetchEventByCodeBounded,
         eventCode: _eventController.text,
         kioskCode: code,
       );
@@ -366,7 +367,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       await _refreshSettingsForBoundKiosk();
       final urls = await _loadThemeBackgroundUrls();
       if (!mounted) return;
-      await _goAfterBind(urls);
+      await _goAfterBind(urls, wanAvailable: !resolved.fromCache);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -395,6 +396,24 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     }
   }
 
+  Future<EventInfoModel?> _fetchEventByCodeBounded(
+    String eventCode,
+    String? kioskCode,
+  ) async {
+    try {
+      return await _api
+          .fetchEventByCode(eventCode, kioskCode: kioskCode)
+          .timeout(const Duration(seconds: 12), onTimeout: () => null);
+    } catch (e, st) {
+      AppLogger.warning(
+        'Splash fetchEventByCode failed',
+        error: e,
+        stackTrace: st,
+      );
+      return null;
+    }
+  }
+
   Future<SplashKioskResolveResult> _resolveKioskForSplash(String code) {
     return resolveSplashKioskByCode(
       code: code,
@@ -409,14 +428,26 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     await _kiosk.setOperatingModeOffline(kiosk.isOperatingModeOffline);
   }
 
-  Future<void> _goAfterBind(List<String> urls) async {
+  Future<void> _goAfterBind(
+    List<String> urls, {
+    required bool wanAvailable,
+  }) async {
     final eventCode = await _event.getEventCode();
     final role = await _event.getStationRole();
     if (!mounted) return;
     final dest = resolveEventPostSplashRoute(
       eventCode: eventCode,
       stationRole: role,
+      wanAvailable: wanAvailable,
     );
+    if (dest == EventPostSplashRoute.needsInternet) {
+      setState(() {
+        _bootstrapDone = true;
+        _needsEntry = true;
+        _error = AppStrings.eventStationNeedsInternet;
+      });
+      return;
+    }
     if (dest == EventPostSplashRoute.terms) {
       _goToTerms(urls);
       return;
@@ -465,8 +496,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       await endPhotoboothCustomerSessionLogged('splash: kiosk code submitted');
       final eventErr = await bindSplashEventCode(
         eventManager: _event,
-        fetchEvent: (eventCode, kioskCode) =>
-            _api.fetchEventByCode(eventCode, kioskCode: kioskCode),
+        fetchEvent: _fetchEventByCodeBounded,
         eventCode: _eventController.text,
         kioskCode: code,
       );
@@ -478,7 +508,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       await _refreshSettingsForBoundKiosk();
       final urls = await _loadThemeBackgroundUrls();
       if (!mounted) return;
-      await _goAfterBind(urls);
+      await _goAfterBind(urls, wanAvailable: !resolved.fromCache);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -880,7 +910,8 @@ class _AppSplashScreenState extends State<AppSplashScreen>
                     outboxCounts: showManageSummary ? _outboxCounts : null,
                     outboxSyncing: _outboxSyncing,
                     outboxCompletedThisRun: _outboxCompletedThisRun,
-                    onOutboxSync: showManageSummary ? _onOutboxSyncPressed : null,
+                    onOutboxSync:
+                        showManageSummary ? _onOutboxSyncPressed : null,
                   ),
                 ),
                 appSplashVersionFooter(versionFooter, appColors),

@@ -98,4 +98,40 @@ void main() {
     });
     expect(sm.isOfflineSession, isTrue);
   });
+
+  test('share token round-trips and is minted only once', () async {
+    final sm = SessionManager();
+    sm.setSessionFromResponse({
+      'id': 'sess-share',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': [],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+      'offline': true,
+    });
+
+    final first = await sm.ensureShareToken();
+    final second = await sm.ensureShareToken();
+
+    expect(first, matches(RegExp(r'^[0-9a-f-]{36}$')));
+    expect(second, first);
+    expect(sm.currentSession?.toJson()['shareToken'], first);
+  });
+
+  test('session responses preserve an existing share token', () {
+    final sm = SessionManager();
+    final base = {
+      'id': 'sess-preserve-share',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': <dynamic>[],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+    };
+    sm.setSessionFromResponse({...base, 'shareToken': 'stable-token'});
+    sm.setSessionFromResponse({...base, 'attemptsUsed': 1});
+
+    expect(sm.shareToken, 'stable-token');
+  });
 }

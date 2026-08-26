@@ -980,8 +980,17 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     notifyListeners();
   }
 
-  /// Local invoice + optional thermal; Fly share mint/POST run short & in background.
+  /// Local share URL + invoice; the Fly receipt POST runs short in background.
   Future<void> _runOfflinePostPaymentShareArtifacts(String sessionId) async {
+    // Offline V2-4: publish the QR before receipt or upload work.
+    final shareToken = await _r._sessionManager.ensureShareToken();
+    if (_r._disposed) return;
+    if (shareToken != null && shareToken.isNotEmpty) {
+      _r._receiptShareUrl = AppConfig.shareUrlForToken(shareToken);
+      _r._receiptShareLongUrl = AppConfig.shareLongUrlForToken(shareToken);
+      notifyListeners();
+    }
+
     try {
       await _issueLocalReceipt(sessionId).timeout(const Duration(seconds: 8));
     } catch (e, st) {
@@ -994,18 +1003,13 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       unawaited(printReceiptToNetwork(showErrors: false));
     }
 
-    unawaited(_tryOfflineFlyShareInBackground(sessionId));
+    unawaited(_tryOfflineReceiptInBackground(sessionId));
 
     _r._postPaymentSharePrepared = true;
     notifyListeners();
   }
 
-  Future<void> _tryOfflineFlyShareInBackground(String sessionId) async {
-    try {
-      await _mintKioskFallbackForPostPayment()
-          .timeout(const Duration(seconds: 5));
-    } catch (_) {}
-    if (_r._disposed) return;
+  Future<void> _tryOfflineReceiptInBackground(String sessionId) async {
     try {
       await _postSessionReceiptForPostPayment(sessionId)
           .timeout(const Duration(seconds: 12));

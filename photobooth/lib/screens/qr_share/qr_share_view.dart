@@ -92,9 +92,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
       if (_printKickoffScheduled) return;
       _printKickoffScheduled = true;
       unawaited(_viewModel?.startPostPaymentPrintIfNeeded());
-      if (!_offline) {
-        _scheduleShareArtifactsKickoffIfNeeded();
-      }
+      _scheduleShareArtifactsKickoffIfNeeded();
     });
 
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {

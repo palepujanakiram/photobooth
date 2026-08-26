@@ -26,6 +26,7 @@ import '../../services/offline_operator_pin_store.dart';
 import '../../models/session_print_receipt_result.dart';
 import '../../services/share_service.dart';
 import '../../services/kiosk_manager.dart';
+import '../../utils/app_config.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/offline_cash_confirm.dart';
 import '../../utils/receipt_printer_config.dart';

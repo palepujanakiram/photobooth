@@ -11,8 +11,13 @@ import 'package:photobooth/utils/exceptions.dart';
 void main() {
   test('skeleton and slim payload', () {
     final now = DateTime.utc(2026, 8, 23, 6);
-    final json = localSessionSkeleton(id: 'abc', now: now);
+    final json = localSessionSkeleton(
+      id: 'abc',
+      now: now,
+      shareToken: 'share-abc',
+    );
     expect(json['id'], 'abc');
+    expect(json['shareToken'], 'share-abc');
     expect(json['termsAccepted'], isTrue);
     expect(json[kKioskSessionOfflineKey], isTrue);
     expect(json['attemptsUsed'], 0);
@@ -36,6 +41,10 @@ void main() {
   test('skeleton uses DateTime.now when now omitted', () {
     final json = localSessionSkeleton(id: 'n');
     expect(json['id'], 'n');
+    expect(
+      json['shareToken'],
+      matches(RegExp(r'^[0-9a-f-]{36}$')),
+    );
     expect(DateTime.parse(json['expiresAt'] as String).isAfter(DateTime.now()),
         isTrue);
   });
@@ -84,13 +93,30 @@ void main() {
   });
 
   test('createKioskSession falls back when WAN is down', () async {
+    final dir = await Directory.systemTemp.createTemp('fz_offline_sess_');
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    final store = LocalKioskStore(
+      resolveDirectory: () async => dir,
+      newId: () => 'outbox-1',
+      nowMs: () => 1,
+    );
     final result = await createKioskSession(
+      store: store,
       newId: () => 'offline-1',
+      eventId: 'event-123',
       now: DateTime.utc(2026, 8, 23),
       acceptTerms: (_) async => throw ApiException('Network error occurred'),
     );
     expect(result.usedLocalFallback, isTrue);
     expect(result.sessionJson['id'], 'offline-1');
+    expect(result.sessionJson['shareToken'], isNotEmpty);
+    expect(result.sessionJson['eventId'], 'event-123');
+    final outbox = await store.pendingOutbox();
+    expect(
+        outbox.single.payload['shareToken'], result.sessionJson['shareToken']);
+    expect(outbox.single.payload['eventId'], 'event-123');
   });
 
   test('createKioskSession keeps client id if Fly omits id', () async {

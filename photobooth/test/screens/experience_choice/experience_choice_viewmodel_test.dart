@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/screens/experience_choice/experience_choice_viewmodel.dart';
 import 'package:photobooth/screens/theme_selection/theme_model.dart';
 import 'package:photobooth/services/session_manager.dart';
+import 'package:photobooth/services/event_manager.dart';
 import 'package:photobooth/services/theme_manager.dart';
 import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/exceptions.dart';
@@ -139,7 +140,8 @@ void main() {
       'offline': true,
     });
     final vm = ExperienceChoiceViewModel(
-      themeManager: ThemeManager.forTesting(_ThemesFakeApi(themes: [ai, strip])),
+      themeManager:
+          ThemeManager.forTesting(_ThemesFakeApi(themes: [ai, strip])),
       apiService: _ThemesFakeApi(themes: [ai, strip]),
     );
     expect(vm.isOffline, isTrue);
@@ -155,7 +157,26 @@ void main() {
     expect(online.aiAvailable, isTrue);
   });
 
-  test('prepareFotoFlashback binds theme locally for offline sessions', () async {
+  test('FRAME_ONLY event disables AI while online', () async {
+    SharedPreferences.setMockInitialValues({});
+    EventManager.resetCacheForTests();
+    final eventManager = EventManager();
+    await eventManager.setPhotoModeOverride('FRAME_ONLY');
+    SessionManager().setSessionFromResponse(sessionJson('frame-only-online'));
+    final api = _ThemesFakeApi(themes: [ai, strip]);
+    final vm = ExperienceChoiceViewModel(
+      themeManager: ThemeManager.forTesting(api),
+      apiService: api,
+      eventManager: eventManager,
+    );
+    await vm.load();
+    expect(vm.isOffline, isFalse);
+    expect(vm.aiAvailable, isFalse);
+    expect(vm.fotoFlashAvailable, isTrue);
+  });
+
+  test('prepareFotoFlashback binds theme locally for offline sessions',
+      () async {
     final api = _ThemesFakeApi(themes: [strip], patchThrows: true);
     SessionManager().clearSession();
     SessionManager().setSessionFromResponse({

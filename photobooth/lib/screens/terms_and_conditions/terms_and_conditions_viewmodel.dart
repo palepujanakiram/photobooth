@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../services/api_service.dart';
 import '../../services/fcm_service.dart';
+import '../../services/event_manager.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/session_manager.dart';
 import '../../services/kiosk_disk_guard.dart';
@@ -25,7 +26,7 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
   String _kioskName = '';
   String? _kioskCode;
   bool _kioskCodeLoaded = false;
-  
+
   // Timer tracking
   Timer? _timer;
   int _elapsedSeconds = 0;
@@ -197,6 +198,7 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
         store: _injectedStore ?? LocalKioskStore.instance,
         kioskCode: kioskCode,
         forceOffline: await _kioskManager.isOperatingModeOffline(),
+        eventId: await EventManager().getEventId(),
         acceptTerms: (clientId) => _apiService
             .acceptTermsAndCreateSession(
               kioskCode: kioskCode,
@@ -230,7 +232,8 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
 
       return true;
     } on TimeoutException catch (e, st) {
-      _errorMessage = 'Request took too long. Please check your connection and try again.';
+      _errorMessage =
+          'Request took too long. Please check your connection and try again.';
       unawaited(
         reportIssue(
           'Accept terms timed out',
@@ -274,4 +277,3 @@ class TermsAndConditionsViewModel extends ChangeNotifier {
     return acceptTermsAndCreateSession(null);
   }
 }
-

@@ -4,8 +4,10 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:photobooth/services/local_kiosk_codec.dart';
+import 'package:photobooth/services/local_kiosk_db.dart';
 import 'package:photobooth/services/local_kiosk_models.dart';
 import 'package:photobooth/services/local_kiosk_store.dart';
+import 'package:sqflite/sqflite.dart';
 
 void main() {
   late Directory dir;
@@ -57,7 +59,7 @@ void main() {
   test('session persist round-trip and SYNCING recovery', () async {
     await store.upsertSession(sessionWrite('sess-1'));
     await store.claimPendingOutbox(limit: 1);
-    final file = File('${dir.path}/ledger.json');
+    final file = File('${dir.path}/kiosk.db');
     expect(await file.exists(), isTrue);
 
     final reloaded = LocalKioskStore(resolveDirectory: () async => dir);
@@ -66,6 +68,52 @@ void main() {
     final pending = await reloaded.pendingOutbox();
     expect(pending, hasLength(1));
     expect(pending.first.status, KioskOutboxStatus.pending);
+  });
+
+  test('imports ledger.json then archives it', () async {
+    final seed = LocalKioskStore(
+      resolveDirectory: () async => dir,
+      nowMs: () => 1,
+      newId: () => 'ob-seed',
+    );
+    // Force a JSON ledger like a v1 booth, then migrate via a fresh store.
+    await seed.upsertSession(sessionWrite('legacy-1'));
+    await seed.closeForTest();
+
+    // Simulate v1: dump current SQLite state is already there. Write a JSON
+    // ledger in a sibling dir and import.
+    final migrateDir = await Directory.systemTemp.createTemp('fz_migrate_');
+    addTearDown(() async {
+      if (await migrateDir.exists()) await migrateDir.delete(recursive: true);
+    });
+    await File('${migrateDir.path}/ledger.json').writeAsString(
+      jsonEncode({
+        'version': 1,
+        'currentSessionId': 'legacy-1',
+        'sessions': {
+          'legacy-1': {
+            'id': 'legacy-1',
+            'payload': {'id': 'legacy-1', 'termsAccepted': true},
+            'createdAtMs': 1,
+            'updatedAtMs': 1,
+          },
+        },
+        'payments': {},
+        'printJobs': {},
+        'receipts': {},
+        'invoiceSequences': {},
+        'outbox': {},
+        'syncedAssets': {},
+      }),
+    );
+    final migrated = LocalKioskStore(resolveDirectory: () async => migrateDir);
+    expect((await migrated.getSession('legacy-1'))!['id'], 'legacy-1');
+    expect(await File('${migrateDir.path}/kiosk.db').exists(), isTrue);
+    expect(await File('${migrateDir.path}/ledger.json').exists(), isFalse);
+    expect(
+      await File('${migrateDir.path}/ledger.json.migrated').exists(),
+      isTrue,
+    );
   });
 
   test('empty and corrupt ledger load as empty', () async {
@@ -93,9 +141,20 @@ void main() {
   });
 
   test('save failure is swallowed', () async {
-    await Directory('${dir.path}/ledger.json').create();
     await store.upsertSession(sessionWrite('s1'));
-    expect((await store.getSession('s1'))!['id'], 's1');
+    await store.closeForTest();
+    // Replace kiosk.db with a directory so reopen/save cannot use SQLite.
+    final dbPath = '${dir.path}/kiosk.db';
+    final dbFile = File(dbPath);
+    if (await dbFile.exists()) await dbFile.delete();
+    await Directory(dbPath).create();
+    final broken = LocalKioskStore(
+      resolveDirectory: () async => dir,
+      newId: () => 'ob-y',
+      nowMs: () => 9,
+    );
+    await broken.upsertSession(sessionWrite('s2'));
+    expect((await broken.getSession('s2'))!['id'], 's2');
   });
 
   test('rejects empty ids and unknown outbox types', () async {
@@ -232,10 +291,18 @@ void main() {
 
   test('missing current session id returns null', () async {
     await store.upsertSession(sessionWrite('sess-1'));
-    final file = File('${dir.path}/ledger.json');
-    final decoded = jsonDecode(await file.readAsString()) as Map;
-    decoded['currentSessionId'] = 'ghost';
-    await file.writeAsString(jsonEncode(decoded));
+    await store.clearCurrentSession();
+    await store.closeForTest();
+    // Point current_session_id at a missing session via SQLite meta.
+    final db = await LocalKioskDb.open(dir);
+    expect(db, isNotNull);
+    await db!.database.insert(
+      'kiosk_meta',
+      {'key': 'current_session_id', 'value': 'ghost'},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    await db.close();
+
     final reloaded = LocalKioskStore(resolveDirectory: () async => dir);
     expect(await reloaded.currentSessionJson(), isNull);
   });
@@ -309,7 +376,7 @@ void main() {
       nowMs: () => 1,
     );
     await nested.upsertSession(sessionWrite('s1'));
-    expect(await File('${missing.path}/ledger.json').exists(), isTrue);
+    expect(await File('${missing.path}/kiosk.db').exists(), isTrue);
   });
 
   test('default directory creates then reuses kiosk folder', () async {

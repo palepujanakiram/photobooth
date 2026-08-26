@@ -20,11 +20,15 @@ import '../utils/exceptions.dart';
 import '../utils/constants.dart';
 import '../utils/print_orientation.dart';
 import '../utils/session_user_image_validation.dart';
+import '../utils/secure_image_url.dart';
 import '../utils/logger.dart';
 import '../utils/web_flow_trace.dart';
 import 'api_client.dart';
 import 'api_service_dio.dart';
 import 'client_identification.dart';
+import 'catalog_disk_cache.dart';
+import 'image_cache_service.dart';
+import 'image_cache_source.dart';
 import 'api_dio_errors.dart';
 import 'api_http_response.dart';
 import 'generation_api_errors.dart';
@@ -42,8 +46,17 @@ class ApiService {
   late final Dio _dio;
   late final Dio _aiDio;
   final Uuid _uuid = const Uuid();
+  final CatalogDiskCache _catalogDiskCache;
+  final ImageCacheService? _imageCacheService;
 
-  ApiService({Dio? dio, Dio? aiDio}) {
+  ApiService({
+    Dio? dio,
+    Dio? aiDio,
+    CatalogDiskCache? catalogDiskCache,
+    ImageCacheService? imageCacheService,
+  })  : _catalogDiskCache = catalogDiskCache ?? CatalogDiskCache(),
+        _imageCacheService =
+            imageCacheService ?? (dio == null ? ImageCacheService() : null) {
     _dio = dio ?? createProductionApiDio();
     _aiDio = aiDio ?? (dio ?? createAiGenerationDio());
     _apiClient = ApiClient(_dio, baseUrl: AppConstants.kBaseUrl);
@@ -85,7 +98,8 @@ class ApiService {
         ),
       );
       final data = r.data;
-      throwIfHttpErrorResponse(r, operationLabel: 'Failed to create share link');
+      throwIfHttpErrorResponse(r,
+          operationLabel: 'Failed to create share link');
       return parseJsonMapBody(
         data,
         unexpectedMessage: 'Unexpected share link response from API',
@@ -277,12 +291,14 @@ class ApiService {
         'marketingWhatsappOptIn': marketingWhatsappOptIn,
       if (transactionRef != null && transactionRef.trim().isNotEmpty)
         'transactionRef': transactionRef.trim(),
-      if (fcmToken != null && fcmToken.trim().isNotEmpty) 'fcmToken': fcmToken.trim(),
+      if (fcmToken != null && fcmToken.trim().isNotEmpty)
+        'fcmToken': fcmToken.trim(),
       if (printQuantity != null && printQuantity >= 1)
         'printQuantity': printQuantity,
       if (receiptNumber != null && receiptNumber.trim().isNotEmpty)
         'receiptNumber': receiptNumber.trim(),
-      if (receiptId != null && receiptId.trim().isNotEmpty) 'id': receiptId.trim(),
+      if (receiptId != null && receiptId.trim().isNotEmpty)
+        'id': receiptId.trim(),
     };
 
     try {
@@ -333,7 +349,8 @@ class ApiService {
         ),
       );
       final data = r.data;
-      throwIfHttpErrorResponse(r, operationLabel: 'Receipt print request failed');
+      throwIfHttpErrorResponse(r,
+          operationLabel: 'Receipt print request failed');
       return parseJsonMapBody(
         data,
         unexpectedMessage: 'Unexpected receipt print response from API',
@@ -546,6 +563,33 @@ class ApiService {
         .toList();
   }
 
+  String _frameCatalogDiskKey(String kioskCode, String eventCode) {
+    final raw = '$kioskCode|$eventCode';
+    final safe = raw.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    return 'frames_${safe.isEmpty ? 'default' : safe}';
+  }
+
+  Future<List<KioskFrameModel>> _readCachedFrames(String key) async {
+    final raw = await _catalogDiskCache.readJson(key);
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((row) => KioskFrameModel.fromJson(Map<String, dynamic>.from(row)))
+        .where((frame) => frame.id.isNotEmpty && frame.overlayUrl.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<void> _precacheFrameImages(Iterable<KioskFrameModel> frames) async {
+    final cache = _imageCacheService;
+    if (cache == null) return;
+    for (final frame in frames) {
+      await cache.cacheImage(
+        SecureImageUrl.absolutize(frame.overlayUrl),
+        cacheKey: catalogCacheKeyForFrame(frame.id),
+      );
+    }
+  }
+
   /// GET `/api/kiosk/frames` — active occasion frames for the current kiosk session.
   ///
   /// Backend requires at least one of `kioskCode` or `kioskId` (same as themes).
@@ -556,6 +600,11 @@ class ApiService {
       final eventCode =
           (await EventManager().getEventCode())?.trim().toUpperCase();
       final kioskId = SessionManager().currentSession?.kioskId;
+      final diskKey = _frameCatalogDiskKey(
+        kioskCode ?? kioskId ?? '',
+        eventCode ?? '',
+      );
+      final cachedFrames = await _readCachedFrames(diskKey);
 
       final qp = <String, dynamic>{};
       if (kioskCode != null && kioskCode.isNotEmpty) {
@@ -597,7 +646,7 @@ class ApiService {
             error: e,
             stackTrace: st,
           );
-          return <KioskFrameModel>[];
+          return cachedFrames;
         }
       }
 
@@ -613,11 +662,24 @@ class ApiService {
         throw ApiException('Failed to load frames ($status)', status);
       }
 
-      return _parseKioskFramesBody(data);
+      final frames = _parseKioskFramesBody(data);
+      await _catalogDiskCache.writeJson(
+        diskKey,
+        frames.map((frame) => frame.toJson()).toList(),
+      );
+      unawaited(_precacheFrameImages(frames));
+      return frames;
     } on ApiException {
       rethrow;
     } on DioException catch (e) {
       _handleWebNetworkError(e);
+      final kioskCode =
+          (await KioskManager().getKioskCode())?.trim().toUpperCase() ?? '';
+      final eventCode =
+          (await EventManager().getEventCode())?.trim().toUpperCase() ?? '';
+      final cached =
+          await _readCachedFrames(_frameCatalogDiskKey(kioskCode, eventCode));
+      if (cached.isNotEmpty) return cached;
       throw ApiException(
         'Failed to load frames: ${e.message}',
         e.response?.statusCode,
@@ -1083,8 +1145,10 @@ class ApiService {
     /// When true, sends `selectedFrameId` in the body (value may be JSON `null`).
     bool includeSelectedFrameId = false,
     String? selectedFrameId,
+
     /// Optional face count hint when sending `userImageUrl`.
     int? personCount,
+
     /// Optional framing metadata (recommended with photo upload).
     Map<String, dynamic>? framingMetadata,
   }) async {
@@ -1285,7 +1349,8 @@ class ApiService {
         data: <String, dynamic>{'code': c, 'subtotal': subtotal},
         options: Options(
           responseType: ResponseType.json,
-          validateStatus: (status) => status != null && status >= 200 && status < 500,
+          validateStatus: (status) =>
+              status != null && status >= 200 && status < 500,
         ),
       );
       throwIfHttpErrorResponse(r, operationLabel: 'Apply discount failed');
@@ -1315,7 +1380,8 @@ class ApiService {
         data: const <String, dynamic>{},
         options: Options(
           responseType: ResponseType.json,
-          validateStatus: (status) => status != null && status >= 200 && status < 500,
+          validateStatus: (status) =>
+              status != null && status >= 200 && status < 500,
         ),
       );
       throwIfHttpErrorResponse(r, operationLabel: 'Clear discount failed');
@@ -1344,7 +1410,8 @@ class ApiService {
         '/api/sessions/$sid/discount',
         options: Options(
           responseType: ResponseType.json,
-          validateStatus: (status) => status != null && status >= 200 && status < 500,
+          validateStatus: (status) =>
+              status != null && status >= 200 && status < 500,
         ),
       );
       throwIfHttpErrorResponse(r, operationLabel: 'Fetch discount failed');
@@ -1429,7 +1496,6 @@ class ApiService {
     required String themeId,
     void Function(String message)? onProgress,
   }) async {
-
     final apiClientWithTimeout =
         ApiClient(_aiDio, baseUrl: AppConstants.kBaseUrl);
 
@@ -1538,7 +1604,8 @@ class ApiService {
 
       final body = response.data;
       if (body is! ResponseBody) {
-        throw ApiException('Unexpected response for parallel generation stream');
+        throw ApiException(
+            'Unexpected response for parallel generation stream');
       }
 
       return consumeParallelGenerationSseStream(

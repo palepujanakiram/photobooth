@@ -20,4 +20,15 @@ void main() {
     expect(AppConfig.branchDefaultEnvironment, ApiEnvironment.stage);
     expect(AppConfig.retrofitAnnotationBaseUrl, 'https://zenai.fly.dev');
   });
+
+  test('share URL helpers use the configured base URL', () {
+    expect(
+      AppConfig.shareUrlForToken(' token-1 '),
+      '${AppConfig.baseUrl}/s/token-1',
+    );
+    expect(
+      AppConfig.shareLongUrlForToken('token-1'),
+      '${AppConfig.baseUrl}/share/token-1',
+    );
+  });
 }

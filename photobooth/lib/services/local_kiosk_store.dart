@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
@@ -10,18 +9,18 @@ import 'package:uuid/uuid.dart';
 import '../utils/local_invoice_number.dart';
 import '../utils/logger.dart';
 import 'local_kiosk_codec.dart';
+import 'local_kiosk_db.dart';
 import 'local_kiosk_models.dart';
 import 'local_session_skeleton.dart';
 
-const _ledgerFileName = 'ledger.json';
 const _kioskDirName = 'fotozen_kiosk';
 const _emptyIdMessage = 'id must not be empty';
 
 enum _LedgerTable { payments, printJobs, receipts }
 
 /// On-device kiosk ledger: sessions, payments, prints, receipts, outbox,
-/// invoice sequences. File-backed (SQLite-shaped tables) so the 4GB TV APK
-/// owns guest records without Fly.
+/// invoice sequences. SQLite-backed (v2-1) with one-shot migration from
+/// `ledger.json` so the 4GB TV APK owns guest records without Fly.
 class LocalKioskStore {
   LocalKioskStore({
     Future<Directory> Function()? resolveDirectory,
@@ -38,12 +37,17 @@ class LocalKioskStore {
   static LocalKioskStore? instance;
 
   KioskLedgerData _data = KioskLedgerData();
+  LocalKioskDb? _db;
   bool _ready = false;
   Future<void> _chain = Future<void>.value();
 
   @visibleForTesting
   static Future<Directory> Function() supportDirectory =
       getApplicationSupportDirectory;
+
+  /// Exposed for migration tests (path of open `kiosk.db`).
+  @visibleForTesting
+  String? get debugDbPath => _db?.database.path;
 
   static Future<Directory> _defaultDirectory() async {
     final root = await supportDirectory();
@@ -70,6 +74,14 @@ class LocalKioskStore {
   @visibleForTesting
   static void resetInstance() {
     instance = null;
+  }
+
+  /// Close SQLite when tests tear down a store that opened a DB.
+  @visibleForTesting
+  Future<void> closeForTest() async {
+    await _db?.close();
+    _db = null;
+    _ready = false;
   }
 
   Future<void> ensureReady() => _serialized(() async {
@@ -615,20 +627,6 @@ class LocalKioskStore {
     return d.year == day.year && d.month == day.month && d.day == day.day;
   }
 
-  Future<File?> _ledgerFile() async {
-    try {
-      final dir = await _resolveDirectory();
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-      return File(p.join(dir.path, _ledgerFileName));
-    } catch (e, st) {
-      AppLogger.debug('LocalKioskStore: directory unavailable ($e)');
-      AppLogger.debug('$st');
-      return null;
-    }
-  }
-
   Future<File?> _writeReceiptPdfUnlocked(String id, List<int> bytes) async {
     final safe = id.trim().replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '');
     if (safe.isEmpty) return null;
@@ -648,20 +646,49 @@ class LocalKioskStore {
     }
   }
 
+  Future<Directory?> _kioskDirectory() async {
+    try {
+      final dir = await _resolveDirectory();
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      return dir;
+    } catch (e, st) {
+      AppLogger.debug('LocalKioskStore: directory unavailable ($e)');
+      AppLogger.debug('$st');
+      return null;
+    }
+  }
+
   Future<void> _loadUnlocked() async {
-    final file = await _ledgerFile();
-    if (file == null || !await file.exists()) {
+    final dir = await _kioskDirectory();
+    if (dir == null) {
+      _data = KioskLedgerData();
+      _db = null;
+      return;
+    }
+
+    final db = await LocalKioskDb.open(dir);
+    _db = db;
+    if (db == null) {
       _data = KioskLedgerData();
       return;
     }
+
     try {
-      final raw = await file.readAsString();
-      if (raw.trim().isEmpty) {
-        _data = KioskLedgerData();
-        return;
+      if (await db.isEmpty()) {
+        final imported = await tryImportLedgerJson(dir);
+        if (imported != null) {
+          await db.importLedger(imported);
+          _data = imported;
+          _data.recoverInFlightOutbox();
+          // Persist SYNCING→PENDING recovery before archiving JSON.
+          await db.replaceAll(_data);
+          await archiveLedgerJson(dir);
+          return;
+        }
       }
-      _data = KioskLedgerData.fromJson(jsonDecode(raw));
-      _data.recoverInFlightOutbox();
+      _data = await db.loadAll();
     } catch (e, st) {
       AppLogger.debug('LocalKioskStore: load failed ($e)');
       AppLogger.debug('$st');
@@ -670,15 +697,10 @@ class LocalKioskStore {
   }
 
   Future<void> _saveUnlocked() async {
-    final file = await _ledgerFile();
-    if (file == null) return;
+    final db = _db;
+    if (db == null) return;
     try {
-      final tmp = File('${file.path}.tmp');
-      await tmp.writeAsString(jsonEncode(_data.toJson()), flush: true);
-      if (await file.exists()) {
-        await file.delete();
-      }
-      await tmp.rename(file.path);
+      await db.replaceAll(_data);
     } catch (e, st) {
       AppLogger.debug('LocalKioskStore: save failed ($e)');
       AppLogger.debug('$st');

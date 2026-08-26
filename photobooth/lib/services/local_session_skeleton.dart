@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:uuid/uuid.dart';
+
 import '../utils/constants.dart';
 import '../utils/exceptions.dart';
 
@@ -14,10 +16,14 @@ const _heavySessionKeys = <String>['userImageUrl', 'compressedImageUrl'];
 Map<String, dynamic> localSessionSkeleton({
   required String id,
   DateTime? now,
+  String? shareToken,
+  String? eventId,
 }) {
   final t = now ?? DateTime.now().toUtc();
   return <String, dynamic>{
     'id': id,
+    'shareToken': shareToken ?? mintLocalShareToken(),
+    if (eventId != null && eventId.trim().isNotEmpty) 'eventId': eventId.trim(),
     'termsAccepted': true,
     'termsAcceptedAt': t.toIso8601String(),
     'attemptsUsed': 0,
@@ -26,6 +32,8 @@ Map<String, dynamic> localSessionSkeleton({
     kKioskSessionOfflineKey: true,
   };
 }
+
+String mintLocalShareToken() => const Uuid().v4();
 
 /// Drops capture blobs so SQLite/JSON never holds data-URL photos.
 Map<String, dynamic> slimSessionPayload(Map<String, dynamic> payload) {

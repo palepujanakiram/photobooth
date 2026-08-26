@@ -35,7 +35,7 @@ void main() {
       expect(snap.qrData, 'https://route.example/s/0');
     });
 
-    test('fromViewModel offline clears QR and uses offline headline', () {
+    test('fromViewModel offline keeps local QR and uses sync headline', () {
       final vm = ResultViewModel(generatedImages: const []);
       final snap = QrShareUiSnapshot.fromViewModel(
         viewModel: vm,
@@ -47,11 +47,11 @@ void main() {
         offline: true,
       );
       expect(snap.offline, isTrue);
-      expect(snap.qrData, isEmpty);
-      expect(snap.longUrl, isEmpty);
+      expect(snap.qrData, 'https://route.example/s/0');
+      expect(snap.longUrl, 'https://long.example');
       expect(snap.expiresAt, isNull);
       expect(snap.waLine, isEmpty);
-      expect(snap.headline, contains('Digital copies need internet'));
+      expect(snap.headline, contains('after the booth syncs'));
     });
   });
 
@@ -63,7 +63,7 @@ void main() {
           waActuallyQueued: true,
           phone: '999',
         ),
-        contains('Digital copies need internet'),
+        contains('after the booth syncs'),
       );
     });
 

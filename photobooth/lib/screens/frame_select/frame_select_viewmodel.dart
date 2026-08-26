@@ -73,6 +73,16 @@ class FrameSelectViewModel extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
     try {
+      if (_sessionManager.isOfflineSession) {
+        final session = _sessionManager.currentSession;
+        if (session == null) return false;
+        final payload = session.toJson();
+        if (includeSelectedFrameId) {
+          payload['selectedFrameId'] = selectedFrameId;
+        }
+        _sessionManager.setSessionFromResponse(payload);
+        return true;
+      }
       final response = await _apiService.updateSession(
         sessionId: sessionId,
         includeSelectedFrameId: includeSelectedFrameId,

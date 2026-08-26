@@ -18,8 +18,8 @@ import '../../utils/kiosk_offline_ux.dart';
 import '../../utils/logger.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/print_size_helpers.dart';
+import '../../utils/strip_compositor_local.dart';
 import '../../utils/strip_filters_catalog_fallback.dart';
-import '../../utils/strip_look_matrix_bake.dart';
 import '../../utils/strip_preview_grade_compress.dart';
 import '../../services/local_guest_media_write.dart';
 import '../../services/local_media_store.dart';
@@ -858,23 +858,24 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   }
 
   Future<GeneratedImage?> _completeLocalLook() async {
-    final baked = await bakeStripLookMatricesOntoDataUrls(
-      dataUrls: List<String>.from(_imageDataUrls),
-      filterId: _selectedFilterId,
+    final persisted = await composeLocalStripSheet(
+      LocalStripComposeRequest(
+        sources: List<String>.from(_imageDataUrls),
+        filterId: _selectedFilterId,
+        frameId: _selectedFrameId,
+        single: isSingleClassic,
+        orientation: _printOrientation,
+      ),
     );
-    final url = firstNonEmptyDataUrl(
-      baked.isNotEmpty ? baked : _imageDataUrls,
-    );
-    if (url.isEmpty) {
+    if (persisted == null || persisted.isEmpty) {
       _errorMessage = AppStrings.flashbackComposeFailed;
       return null;
     }
     final printSize = resolveClassicComposePrintSize(
-      imageCount: 1,
+      imageCount: _imageDataUrls.length,
       apiPrintSize: null,
       orientation: _printOrientation,
     );
-    final persisted = await _persistStripPrintUrl(url);
     final result = localLookComposeResult(
       imageUrl: persisted,
       filterId: _selectedFilterId,

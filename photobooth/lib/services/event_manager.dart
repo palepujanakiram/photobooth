@@ -2,10 +2,16 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/event_info_model.dart';
 import '../utils/event_station_role.dart';
+import 'catalog_disk_cache.dart';
 
 /// Cached booth event from `/api/event/verify` (additive to [KioskManager]).
 class EventManager {
+  EventManager({CatalogDiskCache? diskCache})
+      : _diskCache = diskCache ?? CatalogDiskCache();
+
+  final CatalogDiskCache _diskCache;
   static const String _kPrefsEventCode = 'event_code';
   static const String _kPrefsEventId = 'event_id';
   static const String _kPrefsEventPhotoMode = 'event_photo_mode';
@@ -18,6 +24,8 @@ class EventManager {
   static String? _cachedCode;
   static String? _cachedPhotoMode;
   static String? _cachedStationRole;
+
+  String _diskKey(String code) => 'event_${code.trim().toUpperCase()}';
 
   @visibleForTesting
   static void resetCacheForTests() {
@@ -79,7 +87,8 @@ class EventManager {
       return _cachedStationRole!.isEmpty ? null : _cachedStationRole;
     }
     final prefs = await SharedPreferences.getInstance();
-    final parsed = EventStationRole.tryParse(prefs.getString(_kPrefsStationRole));
+    final parsed =
+        EventStationRole.tryParse(prefs.getString(_kPrefsStationRole));
     _cachedStationRole = parsed ?? '';
     return parsed;
   }
@@ -133,6 +142,8 @@ class EventManager {
     String? name,
     int themeCount = 0,
     int frameCount = 0,
+    List<String> themeIds = const [],
+    List<String> frameIds = const [],
   }) async {
     await setEventCode(code);
     await setPhotoModeOverride(photoMode);
@@ -145,6 +156,27 @@ class EventManager {
     }
     await prefs.setInt(_kPrefsEventThemeCount, themeCount);
     await prefs.setInt(_kPrefsEventFrameCount, frameCount);
+    await _diskCache.writeJson(
+      _diskKey(code),
+      EventInfoModel(
+        id: id,
+        code: code,
+        name: name,
+        photoMode: photoMode,
+        themeCount: themeCount,
+        frameCount: frameCount,
+        themeIds: themeIds,
+        frameIds: frameIds,
+      ).toJson(),
+    );
+  }
+
+  /// Returns the last verified row for this exact event code.
+  Future<EventInfoModel?> readCachedEvent(String code) async {
+    final raw = await _diskCache.readJson(_diskKey(code));
+    if (raw is! Map) return null;
+    final event = EventInfoModel.fromJson(Map<String, dynamic>.from(raw));
+    return event.isValid ? event : null;
   }
 
   Future<void> clearEvent() async {

@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photobooth/services/local_kiosk_db.dart';
 import 'package:photobooth/services/local_kiosk_settlement.dart';
 import 'package:photobooth/services/local_kiosk_store.dart';
 import 'package:photobooth/services/local_receipt_pdf.dart';
@@ -244,14 +244,16 @@ void main() {
       receiptNumber: 'FZ/K1/2627/00009',
       payload: {'receiptNumber': 'FZ/K1/2627/00009'},
     );
-    final file = File('${dir.path}/ledger.json');
-    final decoded = jsonDecode(await file.readAsString()) as Map;
-    final receipts = Map<String, dynamic>.from(decoded['receipts'] as Map);
-    final row = Map<String, dynamic>.from(receipts['rc-p'] as Map);
-    row.remove('receiptNumber');
-    receipts['rc-p'] = row;
-    decoded['receipts'] = receipts;
-    await file.writeAsString(jsonEncode(decoded));
+    await store.closeForTest();
+    final db = await LocalKioskDb.open(dir);
+    expect(db, isNotNull);
+    await db!.database.update(
+      'receipts',
+      {'receipt_number': null},
+      where: 'id = ?',
+      whereArgs: const ['rc-p'],
+    );
+    await db.close();
 
     final reloaded = LocalKioskStore(resolveDirectory: () async => dir);
     final issued = await LocalKioskSettlement(store: reloaded).issueReceipt(
@@ -269,14 +271,16 @@ void main() {
       receiptNumber: 'FZ/K1/2627/00010',
       payload: <String, dynamic>{},
     );
-    final file = File('${dir.path}/ledger.json');
-    final decoded = jsonDecode(await file.readAsString()) as Map;
-    final receipts = Map<String, dynamic>.from(decoded['receipts'] as Map);
-    final row = Map<String, dynamic>.from(receipts['rc-empty'] as Map);
-    row.remove('receiptNumber');
-    receipts['rc-empty'] = row;
-    decoded['receipts'] = receipts;
-    await file.writeAsString(jsonEncode(decoded));
+    await store.closeForTest();
+    final db = await LocalKioskDb.open(dir);
+    expect(db, isNotNull);
+    await db!.database.update(
+      'receipts',
+      {'receipt_number': null},
+      where: 'id = ?',
+      whereArgs: const ['rc-empty'],
+    );
+    await db.close();
 
     final reloaded = LocalKioskStore(resolveDirectory: () async => dir);
     final issued = await LocalKioskSettlement(store: reloaded).issueReceipt(

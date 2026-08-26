@@ -58,6 +58,27 @@ void main() {
     );
   });
 
+  test('WAN-down station role never enters guest Classic', () {
+    for (final role in EventStationRole.values) {
+      expect(
+        resolveEventPostSplashRoute(
+          eventCode: 'GALA',
+          stationRole: role,
+          wanAvailable: false,
+        ),
+        EventPostSplashRoute.needsInternet,
+      );
+    }
+    expect(
+      resolveEventPostSplashRoute(
+        eventCode: 'GALA',
+        stationRole: null,
+        wanAvailable: false,
+      ),
+      EventPostSplashRoute.stationPicker,
+    );
+  });
+
   test('post-capture route stays on capture station in event mode', () {
     expect(
       resolvePostCaptureRoute(eventCaptureStation: true),

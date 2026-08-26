@@ -46,8 +46,8 @@ class QrShareUiSnapshot {
     final waRequested = viewModel.effectiveWhatsappOptIn;
     final vmStatus = (viewModel.whatsappDeliveryStatus ?? '').trim();
     return QrShareUiSnapshot(
-      qrData: offline ? '' : qrData,
-      longUrl: offline ? '' : longUrl,
+      qrData: qrData,
+      longUrl: longUrl,
       expiresAt: offline ? null : expiresAt,
       headline: qrShareHeadlineForSession(
         offline: offline,

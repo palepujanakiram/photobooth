@@ -2,7 +2,10 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/services/catalog_disk_cache.dart';
+import 'package:photobooth/services/event_manager.dart';
 import 'package:photobooth/services/theme_manager.dart';
+import 'package:photobooth/models/event_info_model.dart';
+import 'package:photobooth/screens/splash/app_splash_event_helpers.dart';
 import 'package:photobooth/utils/exceptions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -77,5 +80,48 @@ void main() {
     );
     final loaded = await offline.fetchThemes();
     expect(loaded.single.id, 't1');
+  });
+
+  test('cached event bind keeps event themes available when Dio fails',
+      () async {
+    final dir = await Directory.systemTemp.createTemp('event_catalog_');
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    final disk = CatalogDiskCache(resolveDirectory: () async => dir);
+    final eventManager = EventManager(diskCache: disk);
+    await bindSplashEventCode(
+      eventManager: eventManager,
+      fetchEvent: (_, __) async => const EventInfoModel(
+        id: 'event-1',
+        code: 'GALA',
+        themeCount: 1,
+        themeIds: ['t1'],
+      ),
+      eventCode: 'GALA',
+      kioskCode: 'K1',
+    );
+    await ThemeManager.forTesting(
+      ThemesFakeApi([sampleTheme('t1')]),
+      diskCache: disk,
+    ).fetchThemes();
+
+    SharedPreferences.setMockInitialValues({'kiosk_code': 'K1'});
+    EventManager.resetCacheForTests();
+    final rebound = EventManager(diskCache: disk);
+    expect(
+      await bindSplashEventCode(
+        eventManager: rebound,
+        fetchEvent: (_, __) async => null,
+        eventCode: 'GALA',
+        kioskCode: 'K1',
+      ),
+      isNull,
+    );
+    final themes = await ThemeManager.forTesting(
+      ThemesFakeApi([], throwOnFetch: true),
+      diskCache: disk,
+    ).fetchThemes();
+    expect(themes.single.id, 't1');
   });
 }

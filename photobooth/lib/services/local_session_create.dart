@@ -27,18 +27,23 @@ Future<LocalSessionCreateResult> createKioskSession({
   String? kioskCode,
   DateTime? now,
   bool forceOffline = false,
+  String? eventId,
 }) async {
   final id = (newId ?? _uuidV4)();
-  final local = localSessionSkeleton(id: id, now: now);
+  final local = localSessionSkeleton(id: id, now: now, eventId: eventId);
   await store?.upsertSession(
     LocalSessionWrite(id: id, payload: local, kioskCode: kioskCode),
   );
   try {
     final response = await acceptTerms(id);
     final remote = Map<String, dynamic>.from(response);
+    if (eventId != null &&
+        eventId.trim().isNotEmpty &&
+        (remote['eventId']?.toString().trim().isEmpty ?? true)) {
+      remote['eventId'] = eventId.trim();
+    }
     final remoteId = (remote['id'] as String?)?.trim();
-    final idToKeep =
-        (remoteId != null && remoteId.isNotEmpty) ? remoteId : id;
+    final idToKeep = (remoteId != null && remoteId.isNotEmpty) ? remoteId : id;
     await store?.upsertSession(
       LocalSessionWrite(id: idToKeep, payload: remote, kioskCode: kioskCode),
     );
