@@ -422,4 +422,38 @@ void main() {
     expect(after.failed, 0);
     expect(after.syncing, 0);
   });
+
+  test('ensureInvoiceSequenceAtLeast and remintReceiptInvoiceNumber', () async {
+    await store.ensureInvoiceSequenceAtLeast(kioskCode: 'MALL-01', lastSeq: 1);
+    final first = await store.allocateInvoiceNumber(kioskCode: 'MALL-01');
+    expect(first, contains('/00002'));
+
+    await store.upsertSession(sessionWrite('sess-r'));
+    await store.upsertReceipt(
+      id: 'rc-1',
+      sessionId: 'sess-r',
+      receiptNumber: 'FZ/MALL-01/2627/00002',
+      payload: {
+        'id': 'rc-1',
+        'sessionId': 'sess-r',
+        'receiptNumber': 'FZ/MALL-01/2627/00002',
+        'amount': 250,
+      },
+    );
+    final reminted = await store.remintReceiptInvoiceNumber(
+      receiptId: 'rc-1',
+      kioskCode: 'MALL-01',
+    );
+    expect(reminted, isNotNull);
+    expect(reminted!.payload['payload']?['receiptNumber'] ??
+        reminted.payload['receiptNumber'], isNot(equals('FZ/MALL-01/2627/00002')));
+    // Nested LocalEntityRow.toJson puts receipt fields under payload.
+    final nested = reminted.payload['payload'];
+    final number = nested is Map
+        ? nested['receiptNumber']?.toString()
+        : reminted.payload['receiptNumber']?.toString();
+    expect(number, startsWith('FZ/MALL-01/'));
+    expect(number, isNot('FZ/MALL-01/2627/00002'));
+    expect(reminted.status, KioskOutboxStatus.pending);
+  });
 }

@@ -20,6 +20,10 @@ class KioskInfoModel {
   /// Admin guest network mode: `online` (default) or `offline`.
   final String operatingMode;
 
+  /// High-water from Fly `receipt_invoice_sequences` for this booth's current FY.
+  /// Used to keep the local counter ahead of cloud-issued invoices.
+  final int? invoiceLastSeq;
+
   static const operatingModeOnline = 'online';
   static const operatingModeOffline = 'offline';
 
@@ -35,6 +39,7 @@ class KioskInfoModel {
     this.additionalPrintPrice,
     this.regenerationPrice,
     this.operatingMode = operatingModeOnline,
+    this.invoiceLastSeq,
   });
 
   factory KioskInfoModel.fromJson(Map<String, dynamic> json) {
@@ -72,6 +77,7 @@ class KioskInfoModel {
       operatingMode: _parseOperatingMode(
         json['operatingMode'] ?? json['operating_mode'],
       ),
+      invoiceLastSeq: parsePrice(json['invoiceLastSeq']),
     );
   }
 
@@ -90,6 +96,7 @@ class KioskInfoModel {
           'additionalPrintPrice': additionalPrintPrice,
         if (regenerationPrice != null) 'regenerationPrice': regenerationPrice,
         'operatingMode': operatingMode,
+        if (invoiceLastSeq != null) 'invoiceLastSeq': invoiceLastSeq,
       };
 
   /// Accepts bool, 0/1, and common string flags from admin/API payloads.

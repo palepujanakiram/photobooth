@@ -49,6 +49,17 @@ void main() {
     expect(parseKioskReceiptNumber('INV-1'), isNull);
   });
 
+  test('parseKioskInvoiceNumberParts extracts seq', () {
+    expect(
+      parseKioskInvoiceNumberParts('FZ/ODEON-01/2627/00147'),
+      isA<ParsedKioskInvoiceNumber>()
+          .having((p) => p.booth, 'booth', 'ODEON-01')
+          .having((p) => p.fy, 'fy', '2627')
+          .having((p) => p.seq, 'seq', 147),
+    );
+    expect(parseKioskInvoiceNumberParts('bad'), isNull);
+  });
+
   test('truncates long kiosk codes', () {
     expect(
       boothInvoiceCode('ABCDEFGHIJKLMNOPQRST'),

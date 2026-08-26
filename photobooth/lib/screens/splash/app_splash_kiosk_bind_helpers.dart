@@ -1,5 +1,6 @@
 import '../../models/kiosk_info_model.dart';
 import '../../services/kiosk_info_disk_cache.dart';
+import '../../services/local_invoice_sequence_hydrate.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/logger.dart';
 
@@ -54,6 +55,7 @@ Future<SplashKioskResolveResult> resolveSplashKioskByCode({
 
   if (online != null && online.isValid) {
     await disk.save(online);
+    await hydrateLocalInvoiceSequenceFromKiosk(kiosk: online);
     return SplashKioskResolveResult.ok(online, fromCache: false);
   }
 
@@ -62,6 +64,7 @@ Future<SplashKioskResolveResult> resolveSplashKioskByCode({
     AppLogger.debug(
       'Splash using cached kiosk $normalized (server unreachable or rejected)',
     );
+    await hydrateLocalInvoiceSequenceFromKiosk(kiosk: cached);
     return SplashKioskResolveResult.ok(cached, fromCache: true);
   }
 

@@ -108,6 +108,7 @@ void main() {
       additionalPrintPrice: 50,
       regenerationPrice: 75,
       operatingMode: KioskInfoModel.operatingModeOffline,
+      invoiceLastSeq: 12,
     );
     final again = KioskInfoModel.fromJson(original.toJson());
     expect(again.id, original.id);
@@ -121,6 +122,7 @@ void main() {
     expect(again.additionalPrintPrice, original.additionalPrintPrice);
     expect(again.regenerationPrice, original.regenerationPrice);
     expect(again.operatingMode, original.operatingMode);
+    expect(again.invoiceLastSeq, original.invoiceLastSeq);
   });
 
   test('KioskInfoModel parses price overrides', () {

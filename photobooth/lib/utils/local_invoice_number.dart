@@ -58,3 +58,26 @@ String? parseKioskReceiptNumber(String? raw) {
   if (!_kioskReceiptNumber.hasMatch(n)) return null;
   return n;
 }
+
+class ParsedKioskInvoiceNumber {
+  const ParsedKioskInvoiceNumber({
+    required this.booth,
+    required this.fy,
+    required this.seq,
+  });
+
+  final String booth;
+  final String fy;
+  final int seq;
+}
+
+/// Split `FZ/{booth}/{fy}/{#####}` after validation.
+ParsedKioskInvoiceNumber? parseKioskInvoiceNumberParts(String? raw) {
+  final n = parseKioskReceiptNumber(raw);
+  if (n == null) return null;
+  final parts = n.split('/');
+  if (parts.length != 4) return null;
+  final seq = int.tryParse(parts[3]);
+  if (seq == null || seq < 1) return null;
+  return ParsedKioskInvoiceNumber(booth: parts[1], fy: parts[2], seq: seq);
+}

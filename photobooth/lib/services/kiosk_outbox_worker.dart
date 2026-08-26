@@ -79,6 +79,12 @@ bool isRetryableIngestError(Object error) {
   return true;
 }
 
+/// True when Fly rejects a receipt because the invoice number is taken.
+bool isReceiptNumberConflict(Object error) {
+  if (error is! ApiException) return false;
+  return error.statusCode == 409;
+}
+
 /// Drains the kiosk ledger outbox into Fly ingest when WAN is up.
 class KioskOutboxWorker {
   KioskOutboxWorker({
@@ -272,19 +278,28 @@ class KioskOutboxWorker {
 
   Future<bool> _syncEntry(String kioskCode, KioskOutboxEntry entry) async {
     try {
-      if (entry.entityType == KioskOutboxEntity.asset) {
-        await _syncAsset(kioskCode, entry);
-      } else {
-        await _ingestEntities(kioskCode, <KioskIngestItem>[
-          KioskIngestItem(
-            entityType: entry.entityType,
-            entityId: entry.entityId,
-            payload: entry.payload,
-          ),
-        ]);
-      }
+      await _syncEntryBody(kioskCode, entry);
       return true;
     } catch (e) {
+      if (entry.entityType == KioskOutboxEntity.receipt &&
+          isReceiptNumberConflict(e)) {
+        final reminted = await _store.remintReceiptInvoiceNumber(
+          receiptId: entry.entityId,
+          kioskCode: kioskCode,
+        );
+        if (reminted != null) {
+          try {
+            await _syncEntryBody(kioskCode, reminted);
+            return true;
+          } catch (e2) {
+            await _store.markOutboxFailed(
+              reminted.id,
+              maxAttempts: isRetryableIngestError(e2) ? 8 : 1,
+            );
+            return false;
+          }
+        }
+      }
       final retry = isRetryableIngestError(e);
       await _store.markOutboxFailed(
         entry.id,
@@ -292,6 +307,20 @@ class KioskOutboxWorker {
       );
       return false;
     }
+  }
+
+  Future<void> _syncEntryBody(String kioskCode, KioskOutboxEntry entry) async {
+    if (entry.entityType == KioskOutboxEntity.asset) {
+      await _syncAsset(kioskCode, entry);
+      return;
+    }
+    await _ingestEntities(kioskCode, <KioskIngestItem>[
+      KioskIngestItem(
+        entityType: entry.entityType,
+        entityId: entry.entityId,
+        payload: entry.payload,
+      ),
+    ]);
   }
 
   Future<void> _syncAsset(String kioskCode, KioskOutboxEntry entry) async {

@@ -201,6 +201,90 @@ class LocalKioskStore {
     });
   }
 
+  /// Raise the local series high-water so the next allocate cannot collide
+  /// with numbers already used on Fly (or on a prior install of this booth).
+  Future<void> ensureInvoiceSequenceAtLeast({
+    required String kioskCode,
+    required int lastSeq,
+    DateTime? at,
+  }) {
+    return _serialized(() async {
+      await _ensureReadyUnlocked();
+      if (lastSeq < 1) return;
+      final key = receiptSeriesKey(kioskCode, at ?? DateTime.now());
+      final current = _data.invoiceSequences[key] ?? 0;
+      if (lastSeq <= current) return;
+      _data.invoiceSequences[key] = lastSeq;
+      await _saveUnlocked();
+    });
+  }
+
+  /// After Fly 409 receipt-number conflict: bump past the colliding number and
+  /// rewrite the local receipt + outbox payload so Sync can retry.
+  Future<KioskOutboxEntry?> remintReceiptInvoiceNumber({
+    required String receiptId,
+    required String kioskCode,
+  }) {
+    return _serialized(() async {
+      await _ensureReadyUnlocked();
+      final id = receiptId.trim();
+      if (id.isEmpty) return null;
+      final row = _data.receipts[id];
+      if (row == null) return null;
+
+      final oldNumber = parseKioskReceiptNumber(
+            row.receiptNumber ?? row.payload['receiptNumber']?.toString(),
+          ) ??
+          '';
+      final parts = parseKioskInvoiceNumberParts(oldNumber);
+      if (parts != null) {
+        final key = '${parts.booth}/${parts.fy}';
+        final current = _data.invoiceSequences[key] ?? 0;
+        if (parts.seq > current) {
+          _data.invoiceSequences[key] = parts.seq;
+        }
+      }
+
+      final date = DateTime.now();
+      final key = receiptSeriesKey(kioskCode, date);
+      final next = (_data.invoiceSequences[key] ?? 0) + 1;
+      _data.invoiceSequences[key] = next;
+      final number = formatInvoiceNumber(
+        kioskCode,
+        indianFinancialYearCode(date),
+        next,
+      );
+
+      final payload = Map<String, dynamic>.from(row.payload)
+        ..['receiptNumber'] = number
+        ..['id'] = id
+        ..['sessionId'] = row.sessionId;
+      _data.receipts[id] = LocalEntityRow(
+        id: id,
+        sessionId: row.sessionId,
+        payload: payload,
+        createdAtMs: row.createdAtMs,
+        receiptNumber: number,
+      );
+
+      final existing = _outboxFor(KioskOutboxEntity.receipt, id);
+      final now = _nowMs();
+      final outbox = KioskOutboxEntry(
+        id: existing?.id ?? _newId(),
+        entityType: KioskOutboxEntity.receipt,
+        entityId: id,
+        payload: _data.receipts[id]!.toJson(),
+        status: KioskOutboxStatus.pending,
+        attempts: 0,
+        createdAtMs: existing?.createdAtMs ?? now,
+        updatedAtMs: now,
+      );
+      _data.outbox[outbox.id] = outbox;
+      await _saveUnlocked();
+      return outbox;
+    });
+  }
+
   Future<KioskOutboxEntry> enqueueOutbox({
     required String entityType,
     required String entityId,

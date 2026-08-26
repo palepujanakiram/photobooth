@@ -211,6 +211,57 @@ void main() {
     expect(result.isCaughtUp, isFalse);
     expect(result.remaining, greaterThan(0));
   });
+
+  test('remints receipt on 409 conflict then succeeds', () async {
+    await store.upsertSession(
+      const LocalSessionWrite(id: 'sess-1', payload: {'id': 'sess-1'}),
+    );
+    await store.upsertReceipt(
+      id: '11111111-1111-1111-1111-111111111111',
+      sessionId: 'sess-1',
+      receiptNumber: 'FZ/K1/2627/00001',
+      payload: {
+        'id': '11111111-1111-1111-1111-111111111111',
+        'sessionId': 'sess-1',
+        'receiptNumber': 'FZ/K1/2627/00001',
+        'amount': 100,
+      },
+    );
+    // Drop the session outbox so drain only hits the receipt.
+    for (final row in await store.pendingOutbox()) {
+      if (row.entityType == KioskOutboxEntity.session) {
+        await store.markOutboxDone(row.id);
+      }
+    }
+
+    var attempts = 0;
+    final w = KioskOutboxWorker(
+      store: store,
+      ingestEntities: (kioskCode, items) async {
+        expect(kioskCode, 'K1');
+        attempts++;
+        if (attempts == 1) {
+          throw ApiException('Receipt number conflict', 409);
+        }
+        ingested.addAll(items);
+      },
+      ingestAsset: (kioskCode, asset) async {},
+      resolveKioskCode: () async => 'k1',
+      media: media,
+      diskGuard: _CountingGuard(() => pruneCalls++),
+      now: () => DateTime.utc(2026, 8, 23),
+    );
+    expect(await w.drain(limit: 4), 1);
+    expect(attempts, 2);
+    expect(ingested.single.entityType, KioskOutboxEntity.receipt);
+    final payload = ingested.single.payload;
+    final nested = payload['payload'];
+    final number = nested is Map
+        ? nested['receiptNumber']?.toString()
+        : payload['receiptNumber']?.toString();
+    expect(number, isNot('FZ/K1/2627/00001'));
+    expect(isReceiptNumberConflict(ApiException('x', 409)), isTrue);
+  });
 }
 
 class _CountingGuard extends KioskDiskGuard {
