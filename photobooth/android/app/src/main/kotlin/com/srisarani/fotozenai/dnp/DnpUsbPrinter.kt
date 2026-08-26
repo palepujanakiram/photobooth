@@ -7,7 +7,9 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
+import android.os.Build
 import android.util.Log
+import kotlin.system.measureTimeMillis
 
 /**
  * USB driver for DNP DS-RX1 / DS-RX1HS (VID 0x1343, PID 0x0005).
@@ -33,26 +35,66 @@ class DnpUsbPrinter(
 
     fun hasPermission(dev: UsbDevice): Boolean = usbManager.hasPermission(dev)
 
+    /**
+     * Shows the Android USB allow dialog and reports the answer.
+     *
+     * ## The PendingIntent must stay mutable
+     *
+     * [UsbManager.requestPermission] returns its answer by filling
+     * [UsbManager.EXTRA_PERMISSION_GRANTED] and [UsbManager.EXTRA_DEVICE] into this
+     * PendingIntent. `FLAG_IMMUTABLE` drops that fill-in, so the receiver read a missing
+     * extra and defaulted to `false` — the guest tapped **Allow** and the app still
+     * reported `PERMISSION_DENIED`.
+     *
+     * It only bit when the dialog was actually needed. `device_filter.xml` covers this
+     * printer, so a plug-in with "always open for this device" ticked grants at attach and
+     * [hasPermission] short-circuits above. After a replug, power cycle, reboot or app
+     * reinstall the grant is gone, the dialog runs, and printing failed — which is why it
+     * read as intermittent rather than broken. Staff reprint uses this same path.
+     *
+     * `FLAG_MUTABLE` only exists from S; below that the default is already mutable.
+     */
     fun requestPermission(
         dev: UsbDevice,
         onResult: (Boolean) -> Unit,
     ) {
         if (usbManager.hasPermission(dev)) {
+            Log.i(TAG, "USB permission already held for ${describe(dev)}")
             onResult(true)
             return
         }
+        Log.i(TAG, "Requesting USB permission for ${describe(dev)} - showing allow dialog")
+        val flags =
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
         val intent =
             PendingIntent.getBroadcast(
                 context,
                 0,
-                Intent(ACTION_USB_PERMISSION),
-                PendingIntent.FLAG_IMMUTABLE,
+                Intent(ACTION_USB_PERMISSION).setPackage(context.packageName),
+                flags,
             )
         usbManager.requestPermission(dev, intent)
         // MainActivity handles the broadcast; store callback via companion for simplicity.
         pendingPermissionCallback = onResult
         pendingDevice = dev
     }
+
+    /** Stable one-line device identity for logs (no PII; ids are USB-assigned). */
+    fun describe(dev: UsbDevice): String =
+        "vid=0x%04X pid=0x%04X %s".format(dev.vendorId, dev.productId, dev.deviceName)
+
+    /**
+     * Everything currently on the USB bus, for the "no printer found" log.
+     *
+     * Whether the printer was absent, or present under an unexpected product id, or the
+     * whole bus dropped, are three different faults that all surface as `NO_PRINTER`.
+     * Without this the log cannot tell them apart after the fact.
+     */
+    fun describeAttachedDevices(): String =
+        usbManager.deviceList.values
+            .joinToString(", ") { describe(it) }
+            .ifEmpty { "<none>" }
 
     fun connect(dev: UsbDevice): String {
         if (!usbManager.hasPermission(dev)) {
@@ -150,26 +192,44 @@ class DnpUsbPrinter(
                 sendStartCommand = { sendStartCommand(cmd) },
             )
 
+        // Timed per stage. Everything between "connected" and the first completion poll
+        // used to be silent, so a print that took 45s instead of 28s could not be
+        // attributed after the fact — the completion poller was the only thing logging.
         report("wait_ready", "Checking printer is ready…", 0.25)
-        monitor.waitUntilReady()
+        val readyMs = measureTimeMillis { monitor.waitUntilReady() }
 
         report("convert", "Building print data…", 0.28)
         val image = job.image
-        val (y, m, c) = DnpPrintJobBuilder.rgbToPlanes(image.pixels, image.width, image.height)
-        val jobData = DnpPrintJobBuilder.buildJob(y, m, c, image.width, image.height)
+        lateinit var jobData: ByteArray
+        val convertMs =
+            measureTimeMillis {
+                val (y, m, c) = DnpPrintJobBuilder.rgbToPlanes(image.pixels, image.width, image.height)
+                jobData = DnpPrintJobBuilder.buildJob(y, m, c, image.width, image.height)
+            }
 
         report("send_settings", "Sending print settings…", 0.32)
-        cmd.recoverEndpoints()
-        sendPrintSetup(cmd, job.copies, job.size, job.matte)
+        val setupMs =
+            measureTimeMillis {
+                cmd.recoverEndpoints()
+                sendPrintSetup(cmd, job.copies, job.size, job.matte)
+            }
 
         report("send_data", "Sending image data…", 0.35)
-        sendJobChunks(cmd, jobData, report)
+        val sendMs = measureTimeMillis { sendJobChunks(cmd, jobData, report) }
+
+        Log.i(
+            TAG,
+            "Print stage timings: ready=${readyMs}ms convert=${convertMs}ms " +
+                "setup=${setupMs}ms send=${sendMs}ms (${jobData.size} bytes, " +
+                "${image.width}x${image.height})",
+        )
 
         // Reference driver sleeps 1s after the job stream before polling STATUS.
         Thread.sleep(1000)
         cmd.recoverEndpoints()
         report("printing", "Print job started — waiting for printer…", 0.90)
-        monitor.waitForPrintComplete()
+        val printMs = measureTimeMillis { monitor.waitForPrintComplete() }
+        Log.i(TAG, "Print completed: waitForPrintComplete=${printMs}ms")
     }
 
     /** Send CNTRL START as a standalone command (32-byte ESC/P header). */

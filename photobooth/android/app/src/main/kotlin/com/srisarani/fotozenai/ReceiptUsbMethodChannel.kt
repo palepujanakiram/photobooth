@@ -9,6 +9,7 @@ import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import com.srisarani.fotozenai.receipt.ReceiptPrinterException
 import com.srisarani.fotozenai.receipt.ReceiptUsbPrinter
 import io.flutter.embedding.engine.FlutterEngine
@@ -18,6 +19,8 @@ import java.util.concurrent.Executors
 
 /** Native Posiflow / ESC/POS USB receipt printing for Android kiosk builds. */
 object ReceiptUsbMethodChannel {
+    private const val TAG = "ReceiptUsbChannel"
+
     const val METHOD_CHANNEL = "com.srisarani.fotozenai/receipt_usb"
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -31,7 +34,19 @@ object ReceiptUsbMethodChannel {
     private val usbPermissionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != ReceiptUsbPrinter.ACTION_USB_PERMISSION) return
+            // A missing extra means the PendingIntent swallowed the system's fill-in, which
+            // is not the same as the user declining. Keep them apart in the log.
+            val hasExtra = intent.hasExtra(UsbManager.EXTRA_PERMISSION_GRANTED)
             val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+            if (!hasExtra) {
+                Log.e(
+                    TAG,
+                    "USB permission result arrived with no EXTRA_PERMISSION_GRANTED - the " +
+                        "PendingIntent is not mutable. Treating as denied; print will fail.",
+                )
+            } else {
+                Log.i(TAG, "Receipt USB permission ${if (granted) "GRANTED" else "DENIED"} by user")
+            }
             ReceiptUsbPrinter.pendingPermissionCallback?.invoke(granted)
             ReceiptUsbPrinter.pendingPermissionCallback = null
         }
