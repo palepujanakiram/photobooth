@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/kiosk_manager.dart';
+import '../../services/session_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/capture_session_kind.dart';
 import '../../utils/classic_shot_mode.dart';
 import '../../utils/classic_capture_intent.dart';
 import '../../utils/constants.dart';
 import '../../utils/fotoflashback_navigation.dart';
+import '../../utils/kiosk_offline_ux.dart';
 import '../../utils/kiosk_page_route.dart';
 import '../../utils/logger.dart';
 import '../../views/widgets/app_colors.dart';
@@ -42,6 +44,8 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
   late final ExperienceChoiceViewModel _viewModel;
   late final KioskManager _kioskManager;
   bool _redirectingToAi = false;
+  /// null while loading kiosk Classic flag from prefs / bind cache.
+  bool? _classicEnabled;
 
   @override
   void initState() {
@@ -49,13 +53,21 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
     _kioskManager = widget.kioskManager ?? KioskManager();
     _viewModel = ExperienceChoiceViewModel();
     unawaited(_viewModel.load());
-    unawaited(_redirectIfClassicDisabled());
+    unawaited(_resolveClassicGate());
   }
 
-  /// Defensive: if Classic is off, skip this screen (deep link / stale route).
-  Future<void> _redirectIfClassicDisabled() async {
+  /// Defensive: if Classic is off, skip this screen online (deep link / stale).
+  /// Offline: never auto-enter AI — show a clear message instead.
+  Future<void> _resolveClassicGate() async {
     final classicEnabled = await _kioskManager.isClassicPhotosEnabled();
-    if (!mounted || classicEnabled || _redirectingToAi) return;
+    if (!mounted) return;
+    setState(() => _classicEnabled = classicEnabled);
+    if (classicEnabled || _redirectingToAi) return;
+    if (KioskOfflineUx.shouldDisableAiExperience(
+      sessionOffline: SessionManager().isOfflineSession,
+    )) {
+      return;
+    }
     _redirectingToAi = true;
     await _chooseAi();
   }
@@ -68,6 +80,15 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
 
   Future<void> _chooseAi() async {
     if (!mounted) return;
+    if (KioskOfflineUx.shouldDisableAiExperience(
+      sessionOffline: SessionManager().isOfflineSession,
+    )) {
+      AppSnackBar.showError(
+        context,
+        AppStrings.experienceOfflineAiBlockedSnack,
+      );
+      return;
+    }
     // Do not let a stale Classic intent lock AI POSE into strip mode.
     ClassicCaptureIntent.clear();
     final prefill = widget.capturePrefillPhoto;
@@ -152,10 +173,15 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
                     maxWidth: 640,
                     child: Consumer<ExperienceChoiceViewModel>(
                       builder: (context, vm, _) {
+                        final classicOn = _classicEnabled ?? true;
+                        final classicReady =
+                            classicOn && vm.fotoFlashAvailable;
                         return _ExperienceChoicePanel(
                           appColors: appColors,
                           isLoading: vm.isLoading,
-                          fotoFlashAvailable: vm.fotoFlashAvailable,
+                          offline: vm.isOffline,
+                          aiAvailable: vm.aiAvailable,
+                          fotoFlashAvailable: classicReady,
                           startingFlashback: vm.isStartingFlashback,
                           onAi: () => unawaited(_chooseAi()),
                           onFotoFlashOneShot: () => unawaited(
@@ -187,6 +213,8 @@ class _ExperienceChoicePanel extends StatelessWidget {
   const _ExperienceChoicePanel({
     required this.appColors,
     required this.isLoading,
+    required this.offline,
+    required this.aiAvailable,
     required this.fotoFlashAvailable,
     required this.startingFlashback,
     required this.onAi,
@@ -197,6 +225,8 @@ class _ExperienceChoicePanel extends StatelessWidget {
 
   final AppColors appColors;
   final bool isLoading;
+  final bool offline;
+  final bool aiAvailable;
   final bool fotoFlashAvailable;
   final bool startingFlashback;
   final VoidCallback onAi;
@@ -206,6 +236,7 @@ class _ExperienceChoicePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final noPath = offline && !fotoFlashAvailable && !isLoading;
     return Container(
       padding: const EdgeInsets.fromLTRB(28, 32, 28, 20),
       decoration: BoxDecoration(
@@ -235,7 +266,11 @@ class _ExperienceChoicePanel extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            AppStrings.experienceChoiceSubtitle,
+            noPath
+                ? AppStrings.experienceOfflineNoClassicMessage
+                : offline
+                    ? AppStrings.experienceOfflineBanner
+                    : AppStrings.experienceChoiceSubtitle,
             textAlign: TextAlign.center,
             style: TextStyle(
               color: appColors.secondaryTextColor,
@@ -251,13 +286,16 @@ class _ExperienceChoicePanel extends StatelessWidget {
                 child: CircularProgressIndicator(color: appColors.primaryColor),
               ),
             )
-          else ...[
+          else if (!noPath) ...[
             _ExperienceOptionCard(
               title: AppStrings.experienceAiTitle,
-              subtitle: AppStrings.experienceAiSubtitle,
-              preview: const ExperienceFotoZenThumb(),
+              subtitle: aiAvailable
+                  ? AppStrings.experienceAiSubtitle
+                  : AppStrings.experienceAiOfflineSubtitle,
+              preview: ExperienceFotoZenThumb(muted: !aiAvailable),
               accent: const Color(0xFF6B4EFF),
-              onTap: onAi,
+              enabled: aiAvailable,
+              onTap: aiAvailable ? onAi : null,
             ),
             const SizedBox(height: 14),
             _ExperienceOptionCard(

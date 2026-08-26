@@ -434,6 +434,16 @@ abstract final class AppStrings {
       'Pick one experience for this session.';
   static const experienceAiTitle = 'FotoZen';
   static const experienceAiSubtitle = 'AI Photo Experiences';
+  /// Offline session: AI card muted — guests should use Classic instead.
+  static const experienceAiOfflineSubtitle =
+      'Needs internet — try Classic while you wait to reconnect';
+  static const experienceOfflineBanner =
+      'AI needs internet. Classic photos still work offline.';
+  static const experienceOfflineAiBlockedSnack =
+      'AI needs internet. Try Classic photos meanwhile.';
+  static const experienceOfflineNoClassicMessage =
+      'AI needs internet, and Classic isn’t available on this booth. '
+      'Please wait to reconnect or ask staff.';
   static const experienceFotoFlashTitle = 'Classic';
   static const experienceFotoFlashSubtitle =
       'As-is photos with glitter — choose 1-shot or 4-shot below';
@@ -637,7 +647,8 @@ abstract final class AppStrings {
   static const staffOfflineModeBanner =
       'This kiosk is in Offline mode. Guests get frame-only photos and cash at the counter. Catalog and photos still sync when internet is up.';
   static const offlineFrameOnlyMessage =
-      'AI needs internet. You can still print this photo.';
+      'AI needs internet. You can still print this photo — '
+      'try Classic while waiting to reconnect.';
   static const offlineCashOnlyMessage =
       'UPI needs internet. Pay cash at the counter.';
   static const offlineCashOnlyWaiting =

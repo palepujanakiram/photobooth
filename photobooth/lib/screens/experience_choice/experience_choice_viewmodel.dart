@@ -6,6 +6,7 @@ import '../../services/theme_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/kiosk_offline_ux.dart';
 import '../theme_selection/theme_model.dart';
 
 /// Loads kiosk themes and starts the FotoFlashback session theme when chosen.
@@ -31,6 +32,14 @@ class ExperienceChoiceViewModel extends ChangeNotifier {
   bool get isStartingFlashback => _startingFlashback;
   String? get errorMessage => _errorMessage;
   bool get fotoFlashAvailable => _themes.any((t) => t.isPhotoStrip);
+
+  /// Local / WAN-down sessions cannot run Fly Gemini AI.
+  bool get isOffline => _sessionManager.isOfflineSession;
+
+  /// FotoZen AI path — disabled offline so guests are not sent into network errors.
+  bool get aiAvailable => !KioskOfflineUx.shouldDisableAiExperience(
+        sessionOffline: isOffline,
+      );
 
   ThemeModel? get fotoFlashTheme {
     for (final t in _themes) {

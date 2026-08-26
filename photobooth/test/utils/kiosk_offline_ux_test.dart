@@ -54,6 +54,17 @@ void main() {
     );
   });
 
+  test('shouldDisableAiExperience matches offline session flag', () {
+    expect(
+      KioskOfflineUx.shouldDisableAiExperience(sessionOffline: true),
+      isTrue,
+    );
+    expect(
+      KioskOfflineUx.shouldDisableAiExperience(sessionOffline: false),
+      isFalse,
+    );
+  });
+
   test('cash-only and hide-discount / skip-prepay flags', () {
     expect(
       KioskOfflineUx.shouldUseCashOnlyPayments(sessionOffline: true),

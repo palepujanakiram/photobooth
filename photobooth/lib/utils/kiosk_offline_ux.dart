@@ -22,6 +22,10 @@ abstract final class KioskOfflineUx {
     return isWanDownSessionError(error);
   }
 
+  /// Experience-choice: mute FotoZen AI when the session is already offline.
+  static bool shouldDisableAiExperience({required bool sessionOffline}) =>
+      sessionOffline;
+
   /// Hide UPI QR; cash / pay at counter only.
   static bool shouldUseCashOnlyPayments({
     required bool sessionOffline,

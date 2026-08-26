@@ -132,6 +132,29 @@ void main() {
     expect(vm.errorMessage, 'patch failed');
   });
 
+  test('aiAvailable is false for offline sessions', () {
+    SessionManager().clearSession();
+    SessionManager().setSessionFromResponse({
+      ...sessionJson('offline-ai'),
+      'offline': true,
+    });
+    final vm = ExperienceChoiceViewModel(
+      themeManager: ThemeManager.forTesting(_ThemesFakeApi(themes: [ai, strip])),
+      apiService: _ThemesFakeApi(themes: [ai, strip]),
+    );
+    expect(vm.isOffline, isTrue);
+    expect(vm.aiAvailable, isFalse);
+
+    SessionManager().clearSession();
+    SessionManager().setSessionFromResponse(sessionJson('online-ai'));
+    final online = ExperienceChoiceViewModel(
+      themeManager: ThemeManager.forTesting(_ThemesFakeApi(themes: [ai])),
+      apiService: _ThemesFakeApi(themes: [ai]),
+    );
+    expect(online.isOffline, isFalse);
+    expect(online.aiAvailable, isTrue);
+  });
+
   test('prepareFotoFlashback binds theme locally for offline sessions', () async {
     final api = _ThemesFakeApi(themes: [strip], patchThrows: true);
     SessionManager().clearSession();
