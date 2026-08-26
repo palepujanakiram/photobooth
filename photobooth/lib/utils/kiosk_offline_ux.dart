@@ -26,6 +26,17 @@ abstract final class KioskOfflineUx {
   static bool shouldDisableAiExperience({required bool sessionOffline}) =>
       sessionOffline;
 
+  /// Guest phone QR / WhatsApp need Fly after ingest — do not make guests wait
+  /// on a spinning share link while WAN is down.
+  static bool shouldUseOfflineQrShareUx({required bool sessionOffline}) =>
+      sessionOffline;
+
+  /// Shorter Scan & Share idle when there is nothing useful to scan.
+  static int qrShareIdleSeconds({required bool sessionOffline}) =>
+      sessionOffline
+          ? AppConstants.kQrShareOfflineIdleSeconds
+          : AppConstants.kQrShareIdleSeconds;
+
   /// Hide UPI QR; cash / pay at counter only.
   static bool shouldUseCashOnlyPayments({
     required bool sessionOffline,

@@ -309,7 +309,7 @@ class _ResultScreenState extends State<ResultScreen> {
       viewModel.enterGuestQrShareMode();
 
       // Keep the session alive for a short window so operators can print/share.
-      // QrShareScreen will wipe locally and reset back to Terms after 60s.
+      // QrShareScreen wipes locally and resets to Terms (60s online / 12s offline).
       await Navigator.of(context).pushReplacementNamed(
         AppConstants.kRouteQrShare,
         arguments: QrShareArgs(

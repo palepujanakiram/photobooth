@@ -17,6 +17,8 @@ class QrShareScaffoldBody extends StatelessWidget {
     required this.waLine,
     required this.secondsLeftListenable,
     required this.onExit,
+    this.offline = false,
+    this.appBarTitle,
   });
 
   final String qrData;
@@ -26,6 +28,8 @@ class QrShareScaffoldBody extends StatelessWidget {
   final String waLine;
   final ValueListenable<int> secondsLeftListenable;
   final VoidCallback onExit;
+  final bool offline;
+  final String? appBarTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -43,9 +47,9 @@ class QrShareScaffoldBody extends StatelessWidget {
           icon: const Icon(CupertinoIcons.xmark, color: Colors.white),
           onPressed: onExit,
         ),
-        title: const Text(
-          'SCAN & SHARE',
-          style: TextStyle(
+        title: Text(
+          appBarTitle ?? 'SCAN & SHARE',
+          style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w700,
           ),
@@ -65,7 +69,9 @@ class QrShareScaffoldBody extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        canShowQr ? headline : 'Preparing your share link…',
+                        canShowQr || offline
+                            ? headline
+                            : AppStrings.qrSharePreparingShareLink,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,
@@ -100,7 +106,11 @@ class QrShareScaffoldBody extends StatelessWidget {
                         ),
                       ],
                       const SizedBox(height: 14),
-                      _QrShareCodeBox(canShowQr: canShowQr, qrData: qrData),
+                      _QrShareCodeBox(
+                        canShowQr: canShowQr,
+                        qrData: qrData,
+                        offline: offline,
+                      ),
                       if (longUrl.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         SelectableText(
@@ -131,10 +141,15 @@ class QrShareScaffoldBody extends StatelessWidget {
 }
 
 class _QrShareCodeBox extends StatelessWidget {
-  const _QrShareCodeBox({required this.canShowQr, required this.qrData});
+  const _QrShareCodeBox({
+    required this.canShowQr,
+    required this.qrData,
+    this.offline = false,
+  });
 
   final bool canShowQr;
   final String qrData;
+  final bool offline;
 
   @override
   Widget build(BuildContext context) {
@@ -172,8 +187,14 @@ class _QrShareCodeBox extends StatelessWidget {
                 ),
               ),
             )
-          : const Center(
-              child: CircularProgressIndicator(strokeWidth: 2),
+          : Center(
+              child: offline
+                  ? Icon(
+                      Icons.print_outlined,
+                      size: 72,
+                      color: Colors.grey.shade500,
+                    )
+                  : const CircularProgressIndicator(strokeWidth: 2),
             ),
     );
   }

@@ -331,6 +331,11 @@ abstract final class AppStrings {
   static const generationWaitStartOver = 'Start over';
 
   static const qrShareStartAgain = 'Start again';
+  static const qrShareOfflineAppBarTitle = 'THANK YOU';
+  static const qrShareOfflineHeadline =
+      'Your print is ready. Digital copies need internet — '
+      'ask staff once the booth is back online.';
+  static const qrSharePreparingShareLink = 'Preparing your share link…';
 
   static String qrShareResettingIn(int seconds) =>
       'Starting fresh in ${seconds}s';

@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/session_manager.dart';
 import '../../services/whatsapp_push_coordinator.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
+import '../../utils/kiosk_offline_ux.dart';
 import '../../utils/logger.dart';
 import '../../utils/route_args.dart';
 import '../../views/widgets/app_colors.dart';
@@ -26,8 +28,8 @@ class _QrShareScreenState extends State<QrShareScreen> {
   bool _ownsViewModel = false;
   bool _initialized = false;
   Timer? _timer;
-  final ValueNotifier<int> _secondsLeft =
-      ValueNotifier<int>(AppConstants.kQrShareIdleSeconds);
+  late final ValueNotifier<int> _secondsLeft;
+  bool _offline = false;
   bool _exiting = false;
   QrShareArgs? _parsedArgs;
 
@@ -39,6 +41,17 @@ class _QrShareScreenState extends State<QrShareScreen> {
 
   void _onWhatsappStatusFromFcm(WhatsAppStatusPayload payload) {
     _viewModel?.applyWhatsappStatusPush(payload);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _offline = KioskOfflineUx.shouldUseOfflineQrShareUx(
+      sessionOffline: SessionManager().isOfflineSession,
+    );
+    _secondsLeft = ValueNotifier<int>(
+      KioskOfflineUx.qrShareIdleSeconds(sessionOffline: _offline),
+    );
   }
 
   @override
@@ -67,20 +80,21 @@ class _QrShareScreenState extends State<QrShareScreen> {
 
     _viewModel?.enterGuestQrShareMode();
 
-    WhatsAppPushCoordinator.instance.registerCallback(_onWhatsappStatusFromFcm);
-    _viewModel?.startWhatsappDeliveryPolling();
-
-    // Listen for the receipt POST to settle, then surface a one-shot toast.
-    // The receipt POST may have already completed by the time this screen
-    // mounts (it fires from onFcmPaymentPush), so check immediately too.
-    _viewModel?.addListener(_maybeShowPostReceiptToast);
-    _maybeShowPostReceiptToast();
+    if (!_offline) {
+      WhatsAppPushCoordinator.instance
+          .registerCallback(_onWhatsappStatusFromFcm);
+      _viewModel?.startWhatsappDeliveryPolling();
+      _viewModel?.addListener(_maybeShowPostReceiptToast);
+      _maybeShowPostReceiptToast();
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_printKickoffScheduled) return;
       _printKickoffScheduled = true;
       unawaited(_viewModel?.startPostPaymentPrintIfNeeded());
-      _scheduleShareArtifactsKickoffIfNeeded();
+      if (!_offline) {
+        _scheduleShareArtifactsKickoffIfNeeded();
+      }
     });
 
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
@@ -106,6 +120,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
       parsedShareLongUrl: parsed.shareLongUrl,
       parsedShareExpiresAt: parsed.shareExpiresAt,
       phone: (parsed.customerPhone ?? '').trim(),
+      offline: _offline,
     );
     if (snapshot.qrData.isNotEmpty) return;
 
@@ -126,10 +141,10 @@ class _QrShareScreenState extends State<QrShareScreen> {
     super.dispose();
   }
 
-  /// Watches [ResultViewModel.postReceiptOutcome] and shows the spec'd toast
+  /// Watches [ResultViewModel.postReceiptOutcome] and shows the one-shot toast
   /// once when the value transitions out of [PostReceiptOutcome.pending].
   void _maybeShowPostReceiptToast() {
-    if (_postReceiptToastShown) return;
+    if (_offline || _postReceiptToastShown) return;
     final vm = _viewModel;
     if (vm == null) return;
     final outcome = vm.postReceiptOutcome;
@@ -220,6 +235,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
           parsedShareLongUrl: parsed.shareLongUrl,
           parsedShareExpiresAt: parsed.shareExpiresAt,
           phone: phone,
+          offline: _offline,
         ),
         builder: (context, snapshot, _) {
           return QrShareScaffoldBody(
@@ -228,6 +244,10 @@ class _QrShareScreenState extends State<QrShareScreen> {
             expiry: qrShareExpiryText(snapshot.expiresAt),
             headline: snapshot.headline,
             waLine: snapshot.waLine,
+            offline: snapshot.offline,
+            appBarTitle: snapshot.offline
+                ? AppStrings.qrShareOfflineAppBarTitle
+                : null,
             secondsLeftListenable: _secondsLeft,
             onExit: () => unawaited(_exitToStart()),
           );

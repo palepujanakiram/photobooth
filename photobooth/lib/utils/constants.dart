@@ -405,6 +405,9 @@ class AppConstants {
   /// Idle countdown on SCAN & SHARE before auto-start of a fresh session.
   static const int kQrShareIdleSeconds = 60;
 
+  /// Offline: no guest QR — short thank-you window then reset (print already kicked).
+  static const int kQrShareOfflineIdleSeconds = 12;
+
   static const String kErrorNetwork = 'Network error occurred';
   static const String kErrorUnknown = 'An unexpected error occurred';
 }

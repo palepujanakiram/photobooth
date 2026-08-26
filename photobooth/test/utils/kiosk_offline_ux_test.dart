@@ -65,6 +65,25 @@ void main() {
     );
   });
 
+  test('offline QR share UX uses a short idle countdown', () {
+    expect(
+      KioskOfflineUx.shouldUseOfflineQrShareUx(sessionOffline: true),
+      isTrue,
+    );
+    expect(
+      KioskOfflineUx.shouldUseOfflineQrShareUx(sessionOffline: false),
+      isFalse,
+    );
+    expect(
+      KioskOfflineUx.qrShareIdleSeconds(sessionOffline: true),
+      AppConstants.kQrShareOfflineIdleSeconds,
+    );
+    expect(
+      KioskOfflineUx.qrShareIdleSeconds(sessionOffline: false),
+      AppConstants.kQrShareIdleSeconds,
+    );
+  });
+
   test('cash-only and hide-discount / skip-prepay flags', () {
     expect(
       KioskOfflineUx.shouldUseCashOnlyPayments(sessionOffline: true),
