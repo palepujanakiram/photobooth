@@ -10,6 +10,7 @@ import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import com.srisarani.fotozenai.dnp.DnpImageProcessor
 import com.srisarani.fotozenai.dnp.DnpPrepareBitmapOptions
 import com.srisarani.fotozenai.dnp.DnpPrintImage
@@ -25,9 +26,12 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
+import kotlin.system.measureTimeMillis
 
 /** Native DNP DS-RX1(S)HS USB printing for Android kiosk builds. */
 object DnpUsbMethodChannel {
+    private const val TAG = "DnpUsbMethodChannel"
+
     const val METHOD_CHANNEL = "com.srisarani.fotozenai/dnp_usb"
     const val PROGRESS_CHANNEL = "com.srisarani.fotozenai/dnp_print_progress"
 
@@ -45,7 +49,20 @@ object DnpUsbMethodChannel {
     private val usbPermissionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != DnpUsbPrinter.ACTION_USB_PERMISSION) return
+            // A missing extra is the signature of an immutable PendingIntent swallowing the
+            // system's fill-in — it used to read as a plain denial and cost the print.
+            // Distinguish the two so a repeat report is diagnosable from logcat alone.
+            val hasExtra = intent.hasExtra(UsbManager.EXTRA_PERMISSION_GRANTED)
             val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+            if (!hasExtra) {
+                Log.e(
+                    TAG,
+                    "USB permission result arrived with no EXTRA_PERMISSION_GRANTED - the " +
+                        "PendingIntent is not mutable. Treating as denied; print will fail.",
+                )
+            } else {
+                Log.i(TAG, "USB permission ${if (granted) "GRANTED" else "DENIED"} by user")
+            }
             DnpUsbPrinter.pendingPermissionCallback?.invoke(granted)
             DnpUsbPrinter.pendingPermissionCallback = null
         }
@@ -126,6 +143,10 @@ object DnpUsbMethodChannel {
     private fun requestUsbPermission(result: MethodChannel.Result) {
         val dev = usbPrinter.findDevice()
         if (dev == null) {
+            Log.w(
+                TAG,
+                "No DNP printer on USB. Devices seen: ${usbPrinter.describeAttachedDevices()}",
+            )
             mainHandler.post {
                 result.error(
                     "NO_PRINTER",
@@ -138,6 +159,7 @@ object DnpUsbMethodChannel {
 
         fun onGranted(granted: Boolean) {
             if (!granted) {
+                Log.w(TAG, "USB print aborted - permission not granted for ${usbPrinter.describe(dev)}")
                 mainHandler.post {
                     result.error(
                         "PERMISSION_DENIED",
@@ -163,6 +185,7 @@ object DnpUsbMethodChannel {
                         )
                     }
                 } catch (e: Exception) {
+                    Log.e(TAG, "USB connect failed for ${usbPrinter.describe(dev)}", e)
                     mainHandler.post {
                         result.error("CONNECT_FAILED", e.message ?: "USB connect failed", null)
                     }
@@ -244,14 +267,18 @@ object DnpUsbMethodChannel {
                 emitPrintProgress("prepare", "Preparing photo for print…", 0.05)
                 val size = networkPrintSize?.let { DnpPrintSize.fromNetworkPrintSize(it) }
                     ?: DnpPrintSize.fromLabel(paperSize)
-                val bitmap = DnpImageProcessor.prepareBitmap(
-                    DnpPrepareBitmapOptions(
-                        sourcePath = filePath,
-                        size = size,
-                        memoryEfficient = memoryEfficient,
-                        networkPrintSize = networkPrintSize,
-                    ),
-                )
+                lateinit var bitmap: android.graphics.Bitmap
+                val prepareMs =
+                    measureTimeMillis {
+                        bitmap = DnpImageProcessor.prepareBitmap(
+                            DnpPrepareBitmapOptions(
+                                sourcePath = filePath,
+                                size = size,
+                                memoryEfficient = memoryEfficient,
+                                networkPrintSize = networkPrintSize,
+                            ),
+                        )
+                    }
                 emitPrintProgress(
                     "prepare",
                     "Photo prepared (${bitmap.width}×${bitmap.height})",
@@ -259,10 +286,22 @@ object DnpUsbMethodChannel {
                 )
 
                 emitPrintProgress("convert", "Reading pixel data…", 0.20)
-                val pixels = DnpImageProcessor.bitmapToPixels(bitmap, mirrorHorizontal = true)
+                lateinit var pixels: IntArray
+                val pixelsMs =
+                    measureTimeMillis {
+                        pixels = DnpImageProcessor.bitmapToPixels(bitmap, mirrorHorizontal = true)
+                    }
                 val w = bitmap.width
                 val h = bitmap.height
                 bitmap.recycle()
+                // Decode/scale and pixel read run on the kiosk CPU, which is the weakest
+                // part of an Amlogic TV box. Timed separately from the USB stages so a slow
+                // print can be blamed on the right one.
+                Log.i(
+                    TAG,
+                    "Image prep timings: prepareBitmap=${prepareMs}ms bitmapToPixels=${pixelsMs}ms " +
+                        "(${w}x$h, memoryEfficient=$memoryEfficient)",
+                )
 
                 usbPrinter.print(
                     DnpPrintJob(
