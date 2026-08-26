@@ -8,6 +8,7 @@ import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
 import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
+import android.os.Build
 import android.util.Log
 import java.io.File
 
@@ -34,21 +35,37 @@ class ReceiptUsbPrinter(
 
     fun hasPermission(dev: UsbDevice): Boolean = usbManager.hasPermission(dev)
 
+    /**
+     * Shows the Android USB allow dialog and reports the answer.
+     *
+     * The PendingIntent must stay mutable: [UsbManager.requestPermission] returns its
+     * answer by filling [UsbManager.EXTRA_PERMISSION_GRANTED] into it, and
+     * `FLAG_IMMUTABLE` drops that fill-in, so a tapped **Allow** still read as denied.
+     * Same defect the DNP path carried; see `DnpUsbPrinter.requestPermission`.
+     */
     fun requestPermission(dev: UsbDevice, onResult: (Boolean) -> Unit) {
         if (usbManager.hasPermission(dev)) {
+            Log.i(TAG, "USB permission already held for ${describe(dev)}")
             onResult(true)
             return
         }
+        Log.i(TAG, "Requesting USB permission for ${describe(dev)} - showing allow dialog")
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
         val intent = PendingIntent.getBroadcast(
             context,
             0,
-            Intent(ACTION_USB_PERMISSION),
-            PendingIntent.FLAG_IMMUTABLE,
+            Intent(ACTION_USB_PERMISSION).setPackage(context.packageName),
+            flags,
         )
         usbManager.requestPermission(dev, intent)
         pendingPermissionCallback = onResult
         pendingDevice = dev
     }
+
+    /** Stable one-line device identity for logs (no PII; ids are USB-assigned). */
+    fun describe(dev: UsbDevice): String =
+        "vid=0x%04X pid=0x%04X %s".format(dev.vendorId, dev.productId, dev.deviceName)
 
     fun connect(dev: UsbDevice): String {
         if (!usbManager.hasPermission(dev)) {

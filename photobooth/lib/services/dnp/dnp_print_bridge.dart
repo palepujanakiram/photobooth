@@ -173,8 +173,25 @@ class DnpPrintBridge {
     } on PlatformException catch (e) {
       if (!_isRecoverableUsbError(e)) rethrow;
       AppLogger.warning(
-        'DNP USB print unavailable (${e.code}); continuing hunt',
+        'DNP USB print unavailable (${e.code}): ${e.message ?? "no detail"}; '
+        'continuing hunt for a network printer',
       );
+      // A denied grant is the one recoverable code an operator can act on, and it
+      // is invisible when the hunt then finds no network printer and the button
+      // appears to do nothing.
+      //
+      // Passed with [error] deliberately: AppLogger.error only forwards to Bugsnag
+      // when an error object is present, and a booth in the field is the one place
+      // logcat cannot be read. The other recoverable codes stay local — a powered
+      // off printer is routine and would only add noise.
+      if (e.code == 'PERMISSION_DENIED') {
+        AppLogger.error(
+          'DNP USB permission was refused. Printing will only work over the '
+          'network until the printer is replugged and USB access allowed.',
+          error: e,
+          stackTrace: StackTrace.current,
+        );
+      }
       _usbReady = false;
       return false;
     }

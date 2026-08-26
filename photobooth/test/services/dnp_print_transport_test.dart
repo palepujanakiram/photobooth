@@ -559,6 +559,93 @@ void main() {
       expect(printedWifi, isTrue);
     });
 
+    test('auto transport falls back to Wi-Fi when USB permission is refused',
+        () async {
+      // The refusal used to be silent: PERMISSION_DENIED is recoverable, so the
+      // hunt moved on, and with no network printer the Print button did nothing.
+      final usb = _RecordingUsbClient(const MethodChannel('test/usb_denied'))
+        ..connectError = PlatformException(
+          code: 'PERMISSION_DENIED',
+          message: 'USB permission denied. Reconnect the printer and try again.',
+        );
+      var printedWifi = false;
+      final wifi = DnpWifiClient(
+        client: MockClient((request) async {
+          if (request.url.path == '/api/PrintImage') {
+            printedWifi = true;
+            return http.Response('ok', 200);
+          }
+          return http.Response('', 404);
+        }),
+      );
+      wifi.printerBaseUrlForTesting = 'http://192.168.1.20';
+
+      final bridge = DnpPrintBridge(
+        usbClient: usb,
+        wifiClient: wifi,
+        isAndroid: () => true,
+      );
+
+      final jpeg = File(
+        '${Directory.systemTemp.path}/dnp_denied_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await jpeg.writeAsBytes([0xFF, 0xD8]);
+      addTearDown(() async {
+        if (await jpeg.exists()) await jpeg.delete();
+      });
+
+      await bridge.printImage(
+        imageFile: XFile(jpeg.path),
+        settings: AppSettingsModel(printerTransport: 'auto'),
+        networkPrintSize: 's4x6',
+      );
+
+      expect(usb.printCalls, 0, reason: 'USB never became usable');
+      expect(printedWifi, isTrue, reason: 'the hunt still reaches Wi-Fi');
+    });
+
+    test('usb-only transport surfaces a refused permission to the caller',
+        () async {
+      // With transport pinned to usb there is no hunt to absorb it, so the
+      // refusal must reach the caller rather than resolving silently.
+      final usb = _RecordingUsbClient(const MethodChannel('test/usb_only'))
+        ..connectError = PlatformException(
+          code: 'PERMISSION_DENIED',
+          message: 'USB permission denied. Reconnect the printer and try again.',
+        );
+      final bridge = DnpPrintBridge(
+        usbClient: usb,
+        wifiClient: DnpWifiClient(
+          client: MockClient((_) async => http.Response('', 404)),
+        ),
+        isAndroid: () => true,
+      );
+
+      final jpeg = File(
+        '${Directory.systemTemp.path}/dnp_usbonly_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await jpeg.writeAsBytes([0xFF, 0xD8]);
+      addTearDown(() async {
+        if (await jpeg.exists()) await jpeg.delete();
+      });
+
+      await expectLater(
+        bridge.printImage(
+          imageFile: XFile(jpeg.path),
+          settings: AppSettingsModel(printerTransport: 'usb'),
+          networkPrintSize: 's4x6',
+        ),
+        throwsA(
+          isA<PlatformException>().having(
+            (e) => e.code,
+            'code',
+            'PERMISSION_DENIED',
+          ),
+        ),
+      );
+      expect(usb.printCalls, 0);
+    });
+
     test('printImage uses wifi when transport is wifi', () async {
       var printed = false;
       final wifi = DnpWifiClient(
