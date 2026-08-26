@@ -12,16 +12,22 @@ Future<String?> bindSplashEventCode({
   final code = eventCode?.trim().toUpperCase() ?? '';
   if (code.isEmpty) return null;
   final event = await fetchEvent(code, kioskCode);
-  if (event == null || !event.isValid || !event.currentlyActive) {
-    return 'Invalid or inactive event code. Check with your venue and try again.';
+  if (event != null && event.isValid && event.currentlyActive) {
+    await eventManager.cacheVerifyResult(
+      id: event.id,
+      code: event.code,
+      photoMode: event.photoMode,
+      name: event.name,
+      themeCount: event.themeCount,
+      frameCount: event.frameCount,
+    );
+    return null;
   }
-  await eventManager.cacheVerifyResult(
-    id: event.id,
-    code: event.code,
-    photoMode: event.photoMode,
-    name: event.name,
-    themeCount: event.themeCount,
-    frameCount: event.frameCount,
-  );
-  return null;
+  // Offline / verify failed: allow resume when this device already bound the
+  // same event code (prefs from a prior online verify).
+  final cached = await eventManager.getEventCode();
+  if (cached != null && cached == code) {
+    return null;
+  }
+  return 'Invalid or inactive event code. Check with your venue and try again.';
 }

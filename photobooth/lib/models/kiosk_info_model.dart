@@ -77,6 +77,21 @@ class KioskInfoModel {
 
   bool get isOperatingModeOffline => operatingMode == operatingModeOffline;
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'code': code,
+        if (name != null) 'name': name,
+        if (location != null) 'location': location,
+        if (accountId != null) 'accountId': accountId,
+        if (paymentEnabled != null) 'paymentEnabled': paymentEnabled,
+        'classicPhotosEnabled': classicPhotosEnabled,
+        if (initialPrice != null) 'initialPrice': initialPrice,
+        if (additionalPrintPrice != null)
+          'additionalPrintPrice': additionalPrintPrice,
+        if (regenerationPrice != null) 'regenerationPrice': regenerationPrice,
+        'operatingMode': operatingMode,
+      };
+
   /// Accepts bool, 0/1, and common string flags from admin/API payloads.
   static bool _parseClassicPhotosEnabled(dynamic raw) {
     if (raw == null) return true;

@@ -29,6 +29,7 @@ import '../../views/widgets/animated_slideshow_background.dart'
     show kSlideshowAssetPaths;
 import 'app_splash_event_helpers.dart';
 import 'app_splash_input_helpers.dart';
+import 'app_splash_kiosk_bind_helpers.dart';
 import 'app_splash_screen_body.dart';
 import 'splash_api_environment_control.dart';
 import '../../utils/event_station_role.dart';
@@ -256,26 +257,24 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       _error = null;
     });
     try {
-      final kiosk = await _fetchKioskByCodeBounded(code);
+      final resolved = await _resolveKioskForSplash(code);
       if (!mounted) return;
-      if (kiosk == null) {
+      final kiosk = resolved.kiosk;
+      if (!resolved.isOk || kiosk == null) {
         setState(() {
           _bootstrapDone = true;
           _needsEntry = true;
-          _error =
-              'Could not verify kiosk code. Check network and try again, or enter a new code.';
+          _error = resolved.errorMessage ??
+              AppStrings.splashCouldNotVerifyStoredKiosk;
           _codeController.text = code;
         });
         return;
       }
-      await _kiosk.setKioskCode(code);
-      await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
-      await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
-      await _kiosk.setOperatingModeOffline(kiosk.isOperatingModeOffline);
+      await _applyBoundKiosk(code, kiosk);
       final eventErr = await bindSplashEventCode(
         eventManager: _event,
-        fetchEvent: (code, kioskCode) =>
-            _api.fetchEventByCode(code, kioskCode: kioskCode),
+        fetchEvent: (eventCode, kioskCode) =>
+            _api.fetchEventByCode(eventCode, kioskCode: kioskCode),
         eventCode: _eventController.text,
         kioskCode: code,
       );
@@ -321,6 +320,20 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     }
   }
 
+  Future<SplashKioskResolveResult> _resolveKioskForSplash(String code) {
+    return resolveSplashKioskByCode(
+      code: code,
+      fetchOnline: _fetchKioskByCodeBounded,
+    );
+  }
+
+  Future<void> _applyBoundKiosk(String code, KioskInfoModel kiosk) async {
+    await _kiosk.setKioskCode(code);
+    await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
+    await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
+    await _kiosk.setOperatingModeOffline(kiosk.isOperatingModeOffline);
+  }
+
   Future<void> _goAfterBind(List<String> urls) async {
     final eventCode = await _event.getEventCode();
     final role = await _event.getStationRole();
@@ -354,7 +367,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
   Future<void> _submitCode() async {
     final code = _codeController.text.trim().toUpperCase();
     if (code.isEmpty) {
-      setState(() => _error = 'Enter a kiosk code');
+      setState(() => _error = AppStrings.splashEnterKioskCode);
       return;
     }
     if (_busy) return;
@@ -363,19 +376,17 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       _error = null;
     });
     try {
-      final kiosk = await _fetchKioskByCodeBounded(code);
+      final resolved = await _resolveKioskForSplash(code);
       if (!mounted) return;
-      if (kiosk == null) {
+      final kiosk = resolved.kiosk;
+      if (!resolved.isOk || kiosk == null) {
         setState(() {
           _error =
-              'Invalid kiosk code or network timeout. Check with your venue and try again.';
+              resolved.errorMessage ?? AppStrings.splashKioskCodeUnavailable;
         });
         return;
       }
-      await _kiosk.setKioskCode(code);
-      await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
-      await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
-      await _kiosk.setOperatingModeOffline(kiosk.isOperatingModeOffline);
+      await _applyBoundKiosk(code, kiosk);
       await endPhotoboothCustomerSessionLogged('splash: kiosk code submitted');
       final eventErr = await bindSplashEventCode(
         eventManager: _event,

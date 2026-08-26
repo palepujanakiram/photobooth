@@ -95,6 +95,34 @@ void main() {
     expect(KioskInfoModel.fromJson({'id': '', 'code': 'x'}).isValid, isFalse);
   });
 
+  test('KioskInfoModel toJson round-trips through fromJson', () {
+    const original = KioskInfoModel(
+      id: 'k1',
+      code: 'ABC',
+      name: 'Lobby',
+      location: 'Floor 1',
+      accountId: 'a1',
+      paymentEnabled: false,
+      classicPhotosEnabled: false,
+      initialPrice: 100,
+      additionalPrintPrice: 50,
+      regenerationPrice: 75,
+      operatingMode: KioskInfoModel.operatingModeOffline,
+    );
+    final again = KioskInfoModel.fromJson(original.toJson());
+    expect(again.id, original.id);
+    expect(again.code, original.code);
+    expect(again.name, original.name);
+    expect(again.location, original.location);
+    expect(again.accountId, original.accountId);
+    expect(again.paymentEnabled, original.paymentEnabled);
+    expect(again.classicPhotosEnabled, original.classicPhotosEnabled);
+    expect(again.initialPrice, original.initialPrice);
+    expect(again.additionalPrintPrice, original.additionalPrintPrice);
+    expect(again.regenerationPrice, original.regenerationPrice);
+    expect(again.operatingMode, original.operatingMode);
+  });
+
   test('KioskInfoModel parses price overrides', () {
     final m = KioskInfoModel.fromJson({
       'id': 'k1',

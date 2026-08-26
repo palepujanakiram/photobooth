@@ -661,6 +661,28 @@ abstract final class AppStrings {
   static const staffLocalDayTitle = 'On this kiosk';
   static const staffLocalDayHint = 'Not yet synced to the cloud';
   static const staffLocalDayCash = 'Cash collected';
+  static const splashEnterKioskCode = 'Enter a kiosk code';
+  static const splashKioskCodeUnavailable =
+      'Invalid kiosk code, or this device has never bound it online. Connect once to cache this kiosk for offline use.';
+  static const splashCouldNotVerifyStoredKiosk =
+      'Could not verify kiosk code. Check network and try again, or enter a new code.';
+  static const splashSyncNowButton = 'Sync now';
+  static const splashSyncingButton = 'Syncing…';
+  static const splashSyncCaughtUp = 'All offline data synced';
+  static String splashSyncPending(int open, int failed) {
+    if (failed > 0) {
+      return '$open waiting to sync ($failed failed — tap Sync to retry)';
+    }
+    return '$open item${open == 1 ? '' : 's'} waiting to sync';
+  }
+
+  static String splashSyncProgress(int completed, int remaining) =>
+      'Synced $completed · $remaining left';
+  static const splashSyncCompleteToast = 'Sync finished — all caught up';
+  static String splashSyncPartialToast(int remaining) =>
+      'Sync paused with $remaining still pending. Check internet and try again.';
+  static const splashSyncFailedToast =
+      'Could not sync. Check internet and try again.';
   static const termsDiskFull =
       'This kiosk is out of photo storage. Ask staff to connect internet and wait for sync.';
   static const staffModeUpi = 'UPI';
