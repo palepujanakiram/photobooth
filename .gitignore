@@ -63,10 +63,19 @@ fastlane/test_output
 **/fastlane/play-store-*.json
 **/fastlane/*-service-account.json
 
-# Environment variables
-.env
-.env.local
-.cursor/mcp.env
+# Environment variables — any name, any depth.
+#
+# The old rules were anchored (a pattern with a slash only matches from the
+# directory holding this file), so `.cursor/mcp.env` covered the repo root but
+# not `photobooth/.cursor/mcp.env`, which reached origin with a live key in it.
+# Match on the extension instead so a new nested copy cannot slip through.
+**/*.env
+**/*.env.local
+
+# Templates are meant to be committed. `*.env` already misses them (they end in
+# `.example`); this states the intent so nobody tightens the rule above by
+# accident.
+!**/*.env.example
 
 # Local business/docs artifacts (do not commit)
 *.xlsx
