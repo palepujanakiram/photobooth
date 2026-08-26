@@ -60,14 +60,18 @@ class _OfflineCashConfirmBodyState extends State<_OfflineCashConfirmBody> {
       pin: _pinController.text,
     );
     if (!mounted) return;
-    if (ok) {
-      Navigator.of(context).pop();
+    if (!ok) {
+      setState(() {
+        _busy = false;
+        _localError =
+            widget.viewModel.errorMessage ?? AppStrings.offlineCashConfirmFailed;
+      });
       return;
     }
-    setState(() {
-      _busy = false;
-      _localError =
-          widget.viewModel.errorMessage ?? AppStrings.offlineCashConfirmFailed;
+    // Dismiss first so Pay→QR navigation is not blocked by this modal.
+    Navigator.of(context).pop();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(widget.viewModel.publishOfflineCashApproval());
     });
   }
 

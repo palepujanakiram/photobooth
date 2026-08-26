@@ -485,9 +485,10 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     await startPostPaymentPrintIfNeeded();
   }
 
-  /// Offline Pay: staff PIN → local CASH ledger row → same print path as UPI approve.
+  /// Offline Pay: staff PIN → local CASH ledger only.
   ///
-  /// Does not leave the Pay route; Fly is optional (session may be local-only).
+  /// Does **not** start print/share/navigation — call [publishOfflineCashApproval]
+  /// after the PIN sheet is dismissed so the modal does not race Scan & Share.
   Future<bool> confirmOfflineCashReceived({required String pin}) async {
     if (!_r.cashOnlyOffline) {
       _r._errorMessage = AppStrings.offlineCashConfirmFailed;
@@ -495,6 +496,9 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       return false;
     }
     if (_r._paymentOutcomeHandled || _r._fcmPaymentPushSuccess == true) {
+      return true;
+    }
+    if (_r._pendingOfflineCashApproval != null) {
       return true;
     }
     final ok = await OfflineOperatorPinStore.verifyPin(pin);
@@ -508,18 +512,10 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         amountRupees: _r.chargeAmount,
         sessionManager: _r._sessionManager,
       );
+      _r._pendingOfflineCashApproval = settled;
       _r._errorMessage = null;
       notifyListeners();
-      await onFcmPaymentPush(
-        PaymentPushPayload(
-          type: PaymentPushCoordinator.typeApproved,
-          paymentId: settled.paymentId,
-          amount: '${settled.amountRupees}',
-          title: AppStrings.paymentConfirmedTitle,
-          body: 'Cash received. Printing...',
-        ),
-      );
-      return _r._fcmPaymentPushSuccess == true;
+      return true;
     } on ApiException catch (e) {
       _r._errorMessage = e.message;
       notifyListeners();
@@ -537,6 +533,25 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       );
       return false;
     }
+  }
+
+  /// After the PIN sheet pops: mark paid, navigate, print/share in background.
+  Future<void> publishOfflineCashApproval() async {
+    final settled = _r._pendingOfflineCashApproval;
+    if (settled == null) {
+      if (_r._fcmPaymentPushSuccess == true) return;
+      return;
+    }
+    _r._pendingOfflineCashApproval = null;
+    await onFcmPaymentPush(
+      PaymentPushPayload(
+        type: PaymentPushCoordinator.typeApproved,
+        paymentId: settled.paymentId,
+        amount: '${settled.amountRupees}',
+        title: AppStrings.paymentConfirmedTitle,
+        body: 'Cash received. Printing...',
+      ),
+    );
   }
 
   /// Starts the first post-payment print once (native kiosk with printer enabled).
@@ -934,6 +949,12 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       return;
     }
 
+    // Offline sessions must not wait on Fly mint/receipt (Dio can sit ~5 min).
+    if (_r._sessionManager.isOfflineSession) {
+      await _runOfflinePostPaymentShareArtifacts(sessionId);
+      return;
+    }
+
     await _mintKioskFallbackForPostPayment();
     if (_r._disposed) return;
 
@@ -956,6 +977,53 @@ mixin _ResultViewModelImpl on ChangeNotifier {
 
     _r._postPaymentSharePrepared = true;
     await refreshWhatsappDeliveryStatusFromSession();
+    notifyListeners();
+  }
+
+  /// Local invoice + optional thermal; Fly share mint/POST run short & in background.
+  Future<void> _runOfflinePostPaymentShareArtifacts(String sessionId) async {
+    try {
+      await _issueLocalReceipt(sessionId).timeout(const Duration(seconds: 8));
+    } catch (e, st) {
+      AppLogger.debug('Offline local receipt timed out/failed: $e\n$st');
+    }
+    if (_r._disposed) return;
+
+    if (_r.isReceiptPrinterConfigured && !_r._postPaymentReceiptPrintStarted) {
+      _r._postPaymentReceiptPrintStarted = true;
+      unawaited(printReceiptToNetwork(showErrors: false));
+    }
+
+    unawaited(_tryOfflineFlyShareInBackground(sessionId));
+
+    _r._postPaymentSharePrepared = true;
+    notifyListeners();
+  }
+
+  Future<void> _tryOfflineFlyShareInBackground(String sessionId) async {
+    try {
+      await _mintKioskFallbackForPostPayment()
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {}
+    if (_r._disposed) return;
+    try {
+      await _postSessionReceiptForPostPayment(sessionId)
+          .timeout(const Duration(seconds: 12));
+    } catch (_) {}
+    if (_r._disposed) return;
+    applyKioskFallbackWhenReceiptShareEmpty(
+      KioskReceiptShareFallback(
+        receiptShareUrl: _r._receiptShareUrl,
+        kioskFallbackShareUrl: _r._kioskFallbackShareUrl,
+        setReceiptShareUrl: (u) => _r._receiptShareUrl = u,
+        receiptShareLongUrl: _r._receiptShareLongUrl,
+        kioskFallbackShareLongUrl: _r._kioskFallbackShareLongUrl,
+        setReceiptShareLongUrl: (u) => _r._receiptShareLongUrl = u,
+        receiptShareExpiresAt: _r._receiptShareExpiresAt,
+        kioskFallbackShareExpiresAt: _r._kioskFallbackShareExpiresAt,
+        setReceiptShareExpiresAt: (t) => _r._receiptShareExpiresAt = t,
+      ),
+    );
     notifyListeners();
   }
 
@@ -1521,7 +1589,12 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       return;
     }
 
-    await _r._printService.resetDnpPrintSession();
+    await _r._printService.resetDnpPrintSession().timeout(
+      const Duration(seconds: 8),
+      onTimeout: () {
+        AppLogger.warning('DNP/Selphy session reset timed out after 8s');
+      },
+    );
 
     if (_r._downloadedFilesList.length != _r._generatedImages.length) {
       if (kIsWeb) {

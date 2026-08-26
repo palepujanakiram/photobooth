@@ -156,6 +156,9 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   String? _fcmPaymentStatusDetail;
   bool? _fcmPaymentPushSuccess;
 
+  /// Settled offline cash waiting for sheet dismiss before Pay→QR navigation.
+  OfflineCashConfirmResult? _pendingOfflineCashApproval;
+
   bool _postPaymentSharePrepared = false;
   Future<void>? _postPaymentInflight;
   String? _receiptShareUrl;
