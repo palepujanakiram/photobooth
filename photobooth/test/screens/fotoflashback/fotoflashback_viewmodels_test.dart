@@ -101,9 +101,37 @@ void main() {
     }
 
     expect(vm.isHydratingCaptures, isFalse);
+    expect(vm.hasLookPreviewJpegBytes, isTrue);
+    expect(vm.lookPreviewJpegBytes, hasLength(1));
     expect(vm.imageDataUrls, hasLength(1));
     expect(vm.imageDataUrls.first, startsWith('data:image/jpeg;base64,'));
     expect(vm.canCompose, isTrue);
+  });
+
+  test('FotoFlashbackFilterViewModel hydrate surfaces an empty capture file',
+      () async {
+    // A direct-PTP path that exists but holds no bytes: the transfer was cut
+    // short. Compose would reject it later, so the look screen has to say so.
+    final path =
+        '${Directory.systemTemp.path}/ptp_hydrate_empty_${DateTime.now().microsecondsSinceEpoch}.jpg';
+    await File(path).writeAsBytes(Uint8List(0));
+
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: const [],
+      pendingImageFilePaths: [path],
+      overlayCleanupBuildGate: false,
+    );
+
+    for (var i = 0; i < 50 && vm.isHydratingCaptures; i++) {
+      await pumpEventQueue();
+    }
+
+    expect(vm.isHydratingCaptures, isFalse);
+    expect(vm.errorMessage, AppStrings.flashbackFinishEncodeFailed);
+    expect(vm.hasLookPreviewJpegBytes, isFalse);
+    expect(vm.imageDataUrls, isEmpty);
+    expect(vm.canCompose, isFalse);
   });
 
   test('FotoFlashbackFilterViewModel hydrate kicks off overlay scrub after encode',

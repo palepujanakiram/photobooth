@@ -457,8 +457,19 @@ object CameraSessionManager {
     /** Mirror-cycle settling time before live view is re-enabled after a capture. */
     private const val LIVE_VIEW_RESUME_DELAY_MS = 400L
 
-    /** Settling time between stopping live view and firing the shutter. */
-    private const val LIVE_VIEW_SETTLE_BEFORE_RELEASE_MS = 400L
+    /**
+     * Settling time between stopping live view and firing the shutter.
+     *
+     * The POC only ever delayed on the *resume* side, which left the release racing the
+     * EVF teardown. On hardware that showed up as `EOS_RemoteReleaseOn failed: DeviceBusy`
+     * repeated until the ~10s budget expired, with no photo taken — a shutter button that
+     * silently does nothing, which is `P-18`'s symptom from a different cause.
+     *
+     * Longer than [LIVE_VIEW_RESUME_DELAY_MS]: teardown is slower than resume on this
+     * body. 400ms still raced the mirror (hardware 2026-08-20) — AF half-press succeeded
+     * and the full press stayed DeviceBusy for the whole retry budget.
+     */
+    private const val LIVE_VIEW_SETTLE_BEFORE_RELEASE_MS = 800L
 
     /**
      * Releases the interface and closes the connection, swallowing failures.

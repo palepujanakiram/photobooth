@@ -264,6 +264,9 @@ Future<bool> isOnDeviceCanonUsbPermissionHeld({
     return isDirectPtpReadyForTerms(settings: settings, camera: camera);
   }
   if (!isDirectCanonSidecarBooth(settings)) return false;
+  // No body on USB means no allow dialog is coming — treat the grant as held so
+  // Terms keeps the generic copy instead of naming a camera that is not there.
+  if (!await isDirectCanonHardwareAvailable(settings: settings)) return true;
   return CanonSidecarStatusChannel.hasUsbPermission();
 }
 

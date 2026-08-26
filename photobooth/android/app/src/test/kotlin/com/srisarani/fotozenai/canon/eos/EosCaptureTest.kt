@@ -237,8 +237,8 @@ class EosCaptureTest {
             assertThat(sequence)
                 .containsExactly(
                     CanonEosOperation.REMOTE_RELEASE_ON to 1L, // half - AF
-                    CanonEosOperation.REMOTE_RELEASE_ON to 2L, // full - fire
-                    CanonEosOperation.REMOTE_RELEASE_OFF to 2L, // release full
+                    CanonEosOperation.REMOTE_RELEASE_ON to 3L, // Completely - fire
+                    CanonEosOperation.REMOTE_RELEASE_OFF to 3L, // release full
                     CanonEosOperation.REMOTE_RELEASE_OFF to 1L, // release half
                 ).inOrder()
         }
@@ -258,9 +258,10 @@ class EosCaptureTest {
             val sequence = rig.commands().map { it.code to it.parameter(0) }
             assertThat(sequence)
                 .containsExactly(
-                    CanonEosOperation.REMOTE_RELEASE_ON to 2L,
-                    CanonEosOperation.REMOTE_RELEASE_OFF to 2L,
+                    CanonEosOperation.REMOTE_RELEASE_ON to 3L,
+                    CanonEosOperation.REMOTE_RELEASE_OFF to 3L,
                 ).inOrder()
+            assertThat(rig.commands().first().parameter(1)).isEqualTo(1L) // NonAF
         }
 
     @Test
@@ -277,6 +278,95 @@ class EosCaptureTest {
 
             assertThat(rig.commands().map { it.code }).contains(CanonEosOperation.REMOTE_RELEASE)
         }
+
+    /**
+     * A full-press that fails for a non-busy reason used to skip RemoteReleaseOff, leaving
+     * AF virtually held. The next shot then stayed DeviceBusy until the body was power-cycled.
+     */
+    @Test
+    fun `failed full press still releases the AF half-press`() = runTest {
+        val rig = Rig()
+        rig.ok() // half-press
+        rig.fail(PtpResponse.ACCESS_DENIED) // full-press
+        rig.ok() // half-press off in finally
+
+        var thrown: PtpException.OperationFailed? = null
+        try {
+            rig.capture.release(EosCapture.ReleaseMode.WITH_AUTOFOCUS)
+        } catch (e: PtpException.OperationFailed) {
+            thrown = e
+        }
+        assertThat(thrown?.responseCode).isEqualTo(PtpResponse.ACCESS_DENIED)
+
+        val sequence = rig.commands().map { it.code to it.parameter(0) }
+        assertThat(sequence).containsExactly(
+            CanonEosOperation.REMOTE_RELEASE_ON to 1L,
+            CanonEosOperation.REMOTE_RELEASE_ON to 3L,
+            CanonEosOperation.REMOTE_RELEASE_OFF to 1L,
+        ).inOrder()
+    }
+
+    /**
+     * When Completely+AF stays DeviceBusy, retry Completely NonAF with the half-press
+     * still held — matching EDSDK `ShutterButton_Completely_NonAF`. Dropping AF and
+     * sending full-press `2` is what kept this body busy with no photo (2026-08-20).
+     */
+    @Test
+    fun `busy full press after AF falls back to a no-AF shutter`() = runTest {
+        val rig = Rig()
+        rig.ok() // half-press
+        repeat(5) { rig.fail(PtpResponse.DEVICE_BUSY) } // Completely + AF
+        rig.ok() // Completely NonAF
+        rig.ok() // release full
+        rig.ok() // release half
+
+        rig.capture.release(EosCapture.ReleaseMode.WITH_AUTOFOCUS)
+
+        val sequence = rig.commands().map { it.code to it.parameter(0) }
+        assertThat(sequence).containsExactly(
+            CanonEosOperation.REMOTE_RELEASE_ON to 1L,
+            CanonEosOperation.REMOTE_RELEASE_ON to 3L,
+            CanonEosOperation.REMOTE_RELEASE_ON to 3L,
+            CanonEosOperation.REMOTE_RELEASE_ON to 3L,
+            CanonEosOperation.REMOTE_RELEASE_ON to 3L,
+            CanonEosOperation.REMOTE_RELEASE_ON to 3L,
+            CanonEosOperation.REMOTE_RELEASE_ON to 3L,
+            CanonEosOperation.REMOTE_RELEASE_OFF to 3L,
+            CanonEosOperation.REMOTE_RELEASE_OFF to 1L,
+        ).inOrder()
+        val nonAf = rig.commands().last { it.code == CanonEosOperation.REMOTE_RELEASE_ON }
+        assertThat(nonAf.parameter(1)).isEqualTo(1L)
+    }
+
+    /**
+     * With no AF held the first full press is already NonAF, so there is no second,
+     * different attempt to make. Retrying it anyway burned a whole extra ~7.5s busy
+     * budget on the operation that had just failed - ~15s of the guest staring at a
+     * booth that had already given up.
+     */
+    @Test
+    fun `busy full press without AF does not retry the same NonAF press`() = runTest {
+        val rig = Rig()
+        val busyMaxAttempts = 12 // EosCapture.BUSY_MAX_ATTEMPTS (private companion)
+        repeat(busyMaxAttempts) { rig.fail(PtpResponse.DEVICE_BUSY) }
+
+        var thrown: PtpException.OperationFailed? = null
+        try {
+            rig.capture.release(EosCapture.ReleaseMode.WITHOUT_AUTOFOCUS)
+        } catch (e: PtpException.OperationFailed) {
+            thrown = e
+        }
+        assertThat(thrown?.responseCode).isEqualTo(PtpResponse.DEVICE_BUSY)
+
+        val fullPresses = rig.commands().filter {
+            it.code == CanonEosOperation.REMOTE_RELEASE_ON
+        }
+        assertThat(fullPresses).hasSize(busyMaxAttempts)
+        assertThat(fullPresses.map { it.parameter(0) }.toSet()).containsExactly(3L)
+        // Nothing engaged, so the finally block must not un-press anything.
+        assertThat(rig.commands().map { it.code })
+            .doesNotContain(CanonEosOperation.REMOTE_RELEASE_OFF)
+    }
 
     // ================================================================ download
 
