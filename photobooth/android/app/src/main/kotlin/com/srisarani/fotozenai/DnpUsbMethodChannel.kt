@@ -26,6 +26,7 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
+import kotlin.system.measureTimeMillis
 
 /** Native DNP DS-RX1(S)HS USB printing for Android kiosk builds. */
 object DnpUsbMethodChannel {
@@ -266,14 +267,18 @@ object DnpUsbMethodChannel {
                 emitPrintProgress("prepare", "Preparing photo for print…", 0.05)
                 val size = networkPrintSize?.let { DnpPrintSize.fromNetworkPrintSize(it) }
                     ?: DnpPrintSize.fromLabel(paperSize)
-                val bitmap = DnpImageProcessor.prepareBitmap(
-                    DnpPrepareBitmapOptions(
-                        sourcePath = filePath,
-                        size = size,
-                        memoryEfficient = memoryEfficient,
-                        networkPrintSize = networkPrintSize,
-                    ),
-                )
+                lateinit var bitmap: android.graphics.Bitmap
+                val prepareMs =
+                    measureTimeMillis {
+                        bitmap = DnpImageProcessor.prepareBitmap(
+                            DnpPrepareBitmapOptions(
+                                sourcePath = filePath,
+                                size = size,
+                                memoryEfficient = memoryEfficient,
+                                networkPrintSize = networkPrintSize,
+                            ),
+                        )
+                    }
                 emitPrintProgress(
                     "prepare",
                     "Photo prepared (${bitmap.width}×${bitmap.height})",
@@ -281,10 +286,22 @@ object DnpUsbMethodChannel {
                 )
 
                 emitPrintProgress("convert", "Reading pixel data…", 0.20)
-                val pixels = DnpImageProcessor.bitmapToPixels(bitmap, mirrorHorizontal = true)
+                lateinit var pixels: IntArray
+                val pixelsMs =
+                    measureTimeMillis {
+                        pixels = DnpImageProcessor.bitmapToPixels(bitmap, mirrorHorizontal = true)
+                    }
                 val w = bitmap.width
                 val h = bitmap.height
                 bitmap.recycle()
+                // Decode/scale and pixel read run on the kiosk CPU, which is the weakest
+                // part of an Amlogic TV box. Timed separately from the USB stages so a slow
+                // print can be blamed on the right one.
+                Log.i(
+                    TAG,
+                    "Image prep timings: prepareBitmap=${prepareMs}ms bitmapToPixels=${pixelsMs}ms " +
+                        "(${w}x$h, memoryEfficient=$memoryEfficient)",
+                )
 
                 usbPrinter.print(
                     DnpPrintJob(

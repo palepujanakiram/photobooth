@@ -9,6 +9,7 @@ import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.util.Log
+import kotlin.system.measureTimeMillis
 
 /**
  * USB driver for DNP DS-RX1 / DS-RX1HS (VID 0x1343, PID 0x0005).
@@ -191,26 +192,44 @@ class DnpUsbPrinter(
                 sendStartCommand = { sendStartCommand(cmd) },
             )
 
+        // Timed per stage. Everything between "connected" and the first completion poll
+        // used to be silent, so a print that took 45s instead of 28s could not be
+        // attributed after the fact — the completion poller was the only thing logging.
         report("wait_ready", "Checking printer is ready…", 0.25)
-        monitor.waitUntilReady()
+        val readyMs = measureTimeMillis { monitor.waitUntilReady() }
 
         report("convert", "Building print data…", 0.28)
         val image = job.image
-        val (y, m, c) = DnpPrintJobBuilder.rgbToPlanes(image.pixels, image.width, image.height)
-        val jobData = DnpPrintJobBuilder.buildJob(y, m, c, image.width, image.height)
+        lateinit var jobData: ByteArray
+        val convertMs =
+            measureTimeMillis {
+                val (y, m, c) = DnpPrintJobBuilder.rgbToPlanes(image.pixels, image.width, image.height)
+                jobData = DnpPrintJobBuilder.buildJob(y, m, c, image.width, image.height)
+            }
 
         report("send_settings", "Sending print settings…", 0.32)
-        cmd.recoverEndpoints()
-        sendPrintSetup(cmd, job.copies, job.size, job.matte)
+        val setupMs =
+            measureTimeMillis {
+                cmd.recoverEndpoints()
+                sendPrintSetup(cmd, job.copies, job.size, job.matte)
+            }
 
         report("send_data", "Sending image data…", 0.35)
-        sendJobChunks(cmd, jobData, report)
+        val sendMs = measureTimeMillis { sendJobChunks(cmd, jobData, report) }
+
+        Log.i(
+            TAG,
+            "Print stage timings: ready=${readyMs}ms convert=${convertMs}ms " +
+                "setup=${setupMs}ms send=${sendMs}ms (${jobData.size} bytes, " +
+                "${image.width}x${image.height})",
+        )
 
         // Reference driver sleeps 1s after the job stream before polling STATUS.
         Thread.sleep(1000)
         cmd.recoverEndpoints()
         report("printing", "Print job started — waiting for printer…", 0.90)
-        monitor.waitForPrintComplete()
+        val printMs = measureTimeMillis { monitor.waitForPrintComplete() }
+        Log.i(TAG, "Print completed: waitForPrintComplete=${printMs}ms")
     }
 
     /** Send CNTRL START as a standalone command (32-byte ESC/P header). */
