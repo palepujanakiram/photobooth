@@ -257,6 +257,58 @@ class LocalKioskStore {
     });
   }
 
+  /// Counts rows that still need a successful Fly ingest.
+  Future<KioskOutboxSyncCounts> outboxSyncCounts() {
+    return _serialized(() async {
+      await _ensureReadyUnlocked();
+      var pending = 0;
+      var syncing = 0;
+      var failed = 0;
+      for (final row in _data.outbox.values) {
+        switch (row.status) {
+          case KioskOutboxStatus.pending:
+            pending++;
+            break;
+          case KioskOutboxStatus.syncing:
+            syncing++;
+            break;
+          case KioskOutboxStatus.failed:
+            failed++;
+            break;
+        }
+      }
+      return KioskOutboxSyncCounts(
+        pending: pending,
+        syncing: syncing,
+        failed: failed,
+      );
+    });
+  }
+
+  /// Manual Sync: put FAILED (and stuck SYNCING) back into PENDING.
+  Future<int> requeueOpenOutbox() {
+    return _serialized(() async {
+      await _ensureReadyUnlocked();
+      var n = 0;
+      final now = _nowMs();
+      for (final entry in _data.outbox.entries) {
+        final row = entry.value;
+        if (row.status != KioskOutboxStatus.failed &&
+            row.status != KioskOutboxStatus.syncing) {
+          continue;
+        }
+        _data.outbox[entry.key] = row.copyWith(
+          status: KioskOutboxStatus.pending,
+          attempts: 0,
+          updatedAtMs: now,
+        );
+        n++;
+      }
+      if (n > 0) await _saveUnlocked();
+      return n;
+    });
+  }
+
   Future<KioskOutboxEntry?> findOutbox(String entityType, String entityId) {
     return _serialized(() async {
       await _ensureReadyUnlocked();

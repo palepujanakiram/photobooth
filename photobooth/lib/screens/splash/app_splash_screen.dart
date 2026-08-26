@@ -18,6 +18,8 @@ import '../../services/customer_session_lifecycle.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/event_manager.dart';
 import '../../services/kiosk_device_status_service.dart';
+import '../../services/kiosk_outbox_worker.dart';
+import '../../services/local_kiosk_models.dart';
 import '../../utils/api_environment.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
@@ -30,6 +32,7 @@ import '../../views/widgets/animated_slideshow_background.dart'
 import 'app_splash_event_helpers.dart';
 import 'app_splash_input_helpers.dart';
 import 'app_splash_kiosk_bind_helpers.dart';
+import 'app_splash_outbox_sync_helpers.dart';
 import 'app_splash_screen_body.dart';
 import 'splash_api_environment_control.dart';
 import '../../utils/event_station_role.dart';
@@ -68,6 +71,9 @@ class _AppSplashScreenState extends State<AppSplashScreen>
   bool _deviceStatusLoading = false;
   KioskDeviceStatusSnapshot? _deviceStatus;
   final KioskDeviceStatusService _deviceStatusService = KioskDeviceStatusService();
+  KioskOutboxSyncCounts? _outboxCounts;
+  bool _outboxSyncing = false;
+  int _outboxCompletedThisRun = 0;
 
   @override
   void initState() {
@@ -187,6 +193,71 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     await _refreshDeviceStatus(forceSettingsRefresh: true);
   }
 
+  Future<void> _refreshOutboxCounts() async {
+    final worker = KioskOutboxWorker.instance;
+    if (worker == null) return;
+    try {
+      final counts = await worker.syncCounts();
+      if (!mounted) return;
+      setState(() => _outboxCounts = counts);
+    } catch (e, st) {
+      AppLogger.warning(
+        'Splash outbox count refresh failed',
+        error: e,
+        stackTrace: st,
+      );
+    }
+  }
+
+  Future<void> _onOutboxSyncPressed() async {
+    final worker = KioskOutboxWorker.instance;
+    if (worker == null) {
+      if (mounted) {
+        AppSnackBar.showError(context, AppStrings.splashSyncFailedToast);
+      }
+      return;
+    }
+    if (_outboxSyncing || _busy) return;
+    setState(() {
+      _outboxSyncing = true;
+      _outboxCompletedThisRun = 0;
+    });
+    try {
+      final result = await worker.drainUntilCaughtUp(
+        onProgress: (progress) {
+          if (!mounted) return;
+          setState(() {
+            _outboxCounts = progress.counts;
+            _outboxCompletedThisRun = progress.completedThisRun;
+            _outboxSyncing = progress.running;
+          });
+        },
+      );
+      if (!mounted) return;
+      setState(() {
+        _outboxSyncing = false;
+        _outboxCompletedThisRun = result.completed;
+      });
+      final message = splashOutboxSyncResultMessage(result);
+      if (result.isCaughtUp) {
+        AppSnackBar.showSuccess(context, message);
+      } else {
+        AppSnackBar.showError(context, message);
+      }
+    } catch (e, st) {
+      AppLogger.warning(
+        'Splash manual outbox sync failed',
+        error: e,
+        stackTrace: st,
+      );
+      if (mounted) {
+        setState(() => _outboxSyncing = false);
+        AppSnackBar.showError(context, AppStrings.splashSyncFailedToast);
+      }
+      await _refreshOutboxCounts();
+    }
+  }
+
   Future<void> _bootstrapDeviceStatus() async {
     // One pass only — a second probe while native USB from the first is still
     // winding down has frozen Android TV USB (DNP + UVC).
@@ -204,9 +275,13 @@ class _AppSplashScreenState extends State<AppSplashScreen>
         _bootstrapDone = true;
         _storedCode = code;
         _codeController.text = (code ?? '').trim();
+        if ((code ?? '').trim().isNotEmpty) {
+          _outboxCounts = const KioskOutboxSyncCounts();
+        }
       });
       if ((code ?? '').trim().isNotEmpty) {
         unawaited(_bootstrapDeviceStatus());
+        unawaited(_refreshOutboxCounts());
       }
       return;
     }
@@ -802,6 +877,10 @@ class _AppSplashScreenState extends State<AppSplashScreen>
                     onApiEnvironmentChanged: widget.args.manageKiosk
                         ? _onApiEnvironmentChanged
                         : null,
+                    outboxCounts: showManageSummary ? _outboxCounts : null,
+                    outboxSyncing: _outboxSyncing,
+                    outboxCompletedThisRun: _outboxCompletedThisRun,
+                    onOutboxSync: showManageSummary ? _onOutboxSyncPressed : null,
                   ),
                 ),
                 appSplashVersionFooter(versionFooter, appColors),

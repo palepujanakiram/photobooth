@@ -405,4 +405,21 @@ void main() {
     // path_provider may throw in unit tests; in-memory still accepts the write.
     expect(await def.getSession('s-def'), isNotNull);
   });
+
+  test('outboxSyncCounts and requeueOpenOutbox', () async {
+    await store.upsertSession(sessionWrite('sess-1'));
+    expect((await store.outboxSyncCounts()).pending, 1);
+
+    final claimed = await store.claimPendingOutbox();
+    expect((await store.outboxSyncCounts()).syncing, 1);
+
+    await store.markOutboxFailed(claimed.first.id, maxAttempts: 1);
+    expect((await store.outboxSyncCounts()).failed, 1);
+
+    expect(await store.requeueOpenOutbox(), 1);
+    final after = await store.outboxSyncCounts();
+    expect(after.pending, 1);
+    expect(after.failed, 0);
+    expect(after.syncing, 0);
+  });
 }

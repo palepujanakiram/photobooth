@@ -8,6 +8,8 @@ import 'app_splash_copy_helpers.dart';
 import 'bootstrap_route_args.dart';
 import 'kiosk_device_status_widgets.dart';
 import 'splash_api_environment_control.dart';
+import 'splash_outbox_sync_panel.dart';
+import '../../services/local_kiosk_models.dart';
 
 /// Branded card + kiosk form region (Sonar S3776 extraction from [AppSplashScreen]).
 class AppSplashScreenBody extends StatelessWidget {
@@ -35,6 +37,10 @@ class AppSplashScreenBody extends StatelessWidget {
     this.onRefreshDeviceStatus,
     this.apiEnvironment,
     this.onApiEnvironmentChanged,
+    this.outboxCounts,
+    this.outboxSyncing = false,
+    this.outboxCompletedThisRun = 0,
+    this.onOutboxSync,
   });
 
   final SplashRouteArgs args;
@@ -59,6 +65,10 @@ class AppSplashScreenBody extends StatelessWidget {
   final VoidCallback? onRefreshDeviceStatus;
   final ApiEnvironment? apiEnvironment;
   final ValueChanged<ApiEnvironment>? onApiEnvironmentChanged;
+  final KioskOutboxSyncCounts? outboxCounts;
+  final bool outboxSyncing;
+  final int outboxCompletedThisRun;
+  final VoidCallback? onOutboxSync;
 
   @override
   Widget build(BuildContext context) {
@@ -126,6 +136,11 @@ class AppSplashScreenBody extends StatelessWidget {
                                   deviceStatusLoading: deviceStatusLoading,
                                   deviceStatus: deviceStatus,
                                   onRefreshDeviceStatus: onRefreshDeviceStatus,
+                                  outboxCounts: outboxCounts,
+                                  outboxSyncing: outboxSyncing,
+                                  outboxCompletedThisRun:
+                                      outboxCompletedThisRun,
+                                  onOutboxSync: onOutboxSync,
                                 ),
                               if (showForm)
                                 _AppSplashKioskForm(
@@ -222,6 +237,10 @@ class _AppSplashManageSummary extends StatelessWidget {
     this.deviceStatusLoading = false,
     this.deviceStatus,
     this.onRefreshDeviceStatus,
+    this.outboxCounts,
+    this.outboxSyncing = false,
+    this.outboxCompletedThisRun = 0,
+    this.onOutboxSync,
   });
 
   final AppColors appColors;
@@ -232,6 +251,10 @@ class _AppSplashManageSummary extends StatelessWidget {
   final bool deviceStatusLoading;
   final KioskDeviceStatusSnapshot? deviceStatus;
   final VoidCallback? onRefreshDeviceStatus;
+  final KioskOutboxSyncCounts? outboxCounts;
+  final bool outboxSyncing;
+  final int outboxCompletedThisRun;
+  final VoidCallback? onOutboxSync;
 
   @override
   Widget build(BuildContext context) {
@@ -258,6 +281,15 @@ class _AppSplashManageSummary extends StatelessWidget {
           ),
           textAlign: TextAlign.center,
         ),
+        if (outboxCounts != null)
+          SplashOutboxSyncPanel(
+            appColors: appColors,
+            counts: outboxCounts!,
+            syncing: outboxSyncing,
+            completedThisRun: outboxCompletedThisRun,
+            enabled: !busy,
+            onSyncPressed: onOutboxSync,
+          ),
         const SizedBox(height: 24),
         Row(
           children: [

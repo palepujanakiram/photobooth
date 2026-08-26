@@ -46,6 +46,22 @@ abstract final class KioskOutboxStatus {
   static const failed = 'FAILED';
 }
 
+/// Open outbox rows waiting to reach Fly (pending / syncing / failed).
+class KioskOutboxSyncCounts {
+  const KioskOutboxSyncCounts({
+    this.pending = 0,
+    this.syncing = 0,
+    this.failed = 0,
+  });
+
+  final int pending;
+  final int syncing;
+  final int failed;
+
+  int get open => pending + syncing + failed;
+  bool get isCaughtUp => open == 0;
+}
+
 class LocalSessionWrite {
   const LocalSessionWrite({
     required this.id,

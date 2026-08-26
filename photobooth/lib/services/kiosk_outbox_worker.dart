@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../utils/exceptions.dart';
 import 'local_kiosk_models.dart';
 import 'local_kiosk_store.dart';
@@ -37,6 +39,36 @@ class KioskAssetUpload {
   final List<int> bytes;
 }
 
+/// Progress for splash / staff manual sync UI.
+class KioskOutboxSyncProgress {
+  const KioskOutboxSyncProgress({
+    required this.counts,
+    required this.completedThisRun,
+    required this.running,
+  });
+
+  final KioskOutboxSyncCounts counts;
+  final int completedThisRun;
+  final bool running;
+
+  int get remaining => counts.open;
+  int get failed => counts.failed;
+}
+
+class KioskOutboxDrainResult {
+  const KioskOutboxDrainResult({
+    required this.completed,
+    required this.remaining,
+    required this.failed,
+  });
+
+  final int completed;
+  final int remaining;
+  final int failed;
+
+  bool get isCaughtUp => remaining == 0;
+}
+
 /// True when Fly is unreachable or the parent row is not on Fly yet.
 bool isRetryableIngestError(Object error) {
   if (isWanDownSessionError(error)) return true;
@@ -67,6 +99,17 @@ class KioskOutboxWorker {
         _diskGuard = diskGuard,
         _now = now ?? DateTime.now;
 
+  static KioskOutboxWorker? _instance;
+
+  /// Process-wide worker started from [main] (null on web / before init).
+  static KioskOutboxWorker? get instance => _instance;
+
+  @visibleForTesting
+  static void resetInstanceForTests() {
+    _instance?.stop();
+    _instance = null;
+  }
+
   final LocalKioskStore _store;
   final Future<void> Function(String kioskCode, List<KioskIngestItem> items)
       _ingestEntities;
@@ -79,10 +122,13 @@ class KioskOutboxWorker {
 
   Timer? _timer;
   Future<void> _chain = Future<void>.value();
+  bool _manualDrainActive = false;
 
   bool get isRunning => _timer != null;
+  bool get isManualDrainActive => _manualDrainActive;
 
   void start({Duration interval = const Duration(seconds: 30)}) {
+    _instance = this;
     if (_timer != null) return;
     unawaited(drain());
     _timer = Timer.periodic(interval, (_) => unawaited(drain()));
@@ -91,7 +137,12 @@ class KioskOutboxWorker {
   void stop() {
     _timer?.cancel();
     _timer = null;
+    if (identical(_instance, this)) {
+      _instance = null;
+    }
   }
+
+  Future<KioskOutboxSyncCounts> syncCounts() => _store.outboxSyncCounts();
 
   Future<int> drain({int limit = 8}) {
     final done = Completer<int>();
@@ -105,6 +156,77 @@ class KioskOutboxWorker {
     return done.future;
   }
 
+  /// Requeue failures, enqueue media, then drain until caught up or stalled.
+  Future<KioskOutboxDrainResult> drainUntilCaughtUp({
+    void Function(KioskOutboxSyncProgress progress)? onProgress,
+    int batchLimit = 8,
+    int maxRounds = 250,
+  }) {
+    final done = Completer<KioskOutboxDrainResult>();
+    _chain = _chain.then((_) async {
+      _manualDrainActive = true;
+      try {
+        done.complete(
+          await _drainUntilCaughtUpUnlocked(
+            onProgress: onProgress,
+            batchLimit: batchLimit,
+            maxRounds: maxRounds,
+          ),
+        );
+      } catch (e, st) {
+        done.completeError(e, st);
+      } finally {
+        _manualDrainActive = false;
+      }
+    });
+    return done.future;
+  }
+
+  Future<KioskOutboxDrainResult> _drainUntilCaughtUpUnlocked({
+    required void Function(KioskOutboxSyncProgress progress)? onProgress,
+    required int batchLimit,
+    required int maxRounds,
+  }) async {
+    await _store.requeueOpenOutbox();
+    await _enqueueUnsyncedMedia();
+    var completed = 0;
+    var stalledRounds = 0;
+
+    void emit(KioskOutboxSyncCounts counts, {required bool running}) {
+      onProgress?.call(
+        KioskOutboxSyncProgress(
+          counts: counts,
+          completedThisRun: completed,
+          running: running,
+        ),
+      );
+    }
+
+    var counts = await _store.outboxSyncCounts();
+    emit(counts, running: true);
+
+    for (var round = 0; round < maxRounds && counts.open > 0; round++) {
+      final n = await _drainUnlocked(limit: batchLimit);
+      completed += n;
+      counts = await _store.outboxSyncCounts();
+      emit(counts, running: true);
+      if (n == 0) {
+        stalledRounds++;
+        if (stalledRounds >= 2) break;
+      } else {
+        stalledRounds = 0;
+      }
+    }
+
+    counts = await _store.outboxSyncCounts();
+    emit(counts, running: false);
+    return KioskOutboxDrainResult(
+      completed: completed,
+      remaining: counts.open,
+      failed: counts.failed,
+    );
+  }
+
   Future<int> _drainUnlocked({required int limit}) async {
     final code = (await _resolveKioskCode())?.trim().toUpperCase();
     if (code == null || code.isEmpty) return 0;
@@ -116,7 +238,10 @@ class KioskOutboxWorker {
       if (synced) {
         await _store.markOutboxDone(entry.id);
         if (entry.entityType == KioskOutboxEntity.asset) {
-          await _store.markAssetSynced(entry.entityId, atMs: _now().millisecondsSinceEpoch);
+          await _store.markAssetSynced(
+            entry.entityId,
+            atMs: _now().millisecondsSinceEpoch,
+          );
         }
         n++;
       }

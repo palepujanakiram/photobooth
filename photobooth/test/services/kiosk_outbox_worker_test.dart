@@ -37,6 +37,7 @@ void main() {
   });
 
   tearDown(() async {
+    KioskOutboxWorker.resetInstanceForTests();
     LocalKioskStore.resetInstance();
     if (await dir.exists()) await dir.delete(recursive: true);
   });
@@ -162,12 +163,53 @@ void main() {
     final w = worker();
     w.start(interval: const Duration(hours: 1));
     expect(w.isRunning, isTrue);
+    expect(KioskOutboxWorker.instance, same(w));
     w.start(interval: const Duration(hours: 1));
     expect(await w.drain(), 0);
     w.stop();
     w.stop();
     expect(w.isRunning, isFalse);
+    expect(KioskOutboxWorker.instance, isNull);
     expect(ingested, isNotEmpty);
+  });
+
+  test('outboxSyncCounts and drainUntilCaughtUp report progress', () async {
+    await store.upsertSession(
+      const LocalSessionWrite(id: 'sess-1', payload: {'id': 'sess-1'}),
+    );
+    await store.upsertSession(
+      const LocalSessionWrite(id: 'sess-2', payload: {'id': 'sess-2'}),
+    );
+    nextError = ApiException('session_missing', 412);
+    final w = worker();
+    expect(await w.drain(), 0);
+    var counts = await w.syncCounts();
+    expect(counts.open, greaterThan(0));
+
+    nextError = null;
+    final progress = <KioskOutboxSyncProgress>[];
+    final result = await w.drainUntilCaughtUp(
+      onProgress: progress.add,
+      batchLimit: 4,
+    );
+    expect(result.isCaughtUp, isTrue);
+    expect(result.completed, greaterThan(0));
+    expect(progress, isNotEmpty);
+    expect(progress.first.running, isTrue);
+    expect(progress.last.running, isFalse);
+    expect(progress.last.counts.isCaughtUp, isTrue);
+    expect((await w.syncCounts()).isCaughtUp, isTrue);
+  });
+
+  test('drainUntilCaughtUp stalls when WAN stays down', () async {
+    await store.upsertSession(
+      const LocalSessionWrite(id: 'sess-1', payload: {'id': 'sess-1'}),
+    );
+    nextError = ApiException(AppConstants.kErrorNetwork, 400);
+    final w = worker();
+    final result = await w.drainUntilCaughtUp(maxRounds: 5, batchLimit: 2);
+    expect(result.isCaughtUp, isFalse);
+    expect(result.remaining, greaterThan(0));
   });
 }
 
