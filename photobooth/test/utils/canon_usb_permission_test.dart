@@ -1067,6 +1067,7 @@ void main() {
       final calls = <String>[];
       messenger.setMockMethodCallHandler(channel, (call) async {
         calls.add(call.method);
+        if (call.method == 'isCameraPresent') return true;
         if (call.method == 'hasUsbPermission') return true;
         return null;
       });
@@ -1076,7 +1077,25 @@ void main() {
         ),
         isTrue,
       );
-      expect(calls, ['hasUsbPermission']);
+      expect(calls, ['isCameraPresent', 'hasUsbPermission']);
+    });
+
+    test('permission held is true when no Canon body is attached', () async {
+      asAndroid();
+      final calls = <String>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call.method);
+        if (call.method == 'isCameraPresent') return false;
+        return null;
+      });
+      // No body means no allow dialog, so Terms must not name the Canon grant.
+      expect(
+        await isOnDeviceCanonUsbPermissionHeld(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct'),
+        ),
+        isTrue,
+      );
+      expect(calls, ['isCameraPresent']);
     });
 
     test('still ready is false off Android', () async {
