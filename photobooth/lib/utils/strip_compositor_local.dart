@@ -16,17 +16,19 @@ import 'strip_look_matrix_bake.dart';
 const int kLocalStripSheetWidth = 1200;
 const int kLocalStripSheetHeight = 1800;
 const int kLocalStripWidth = 600;
-const int kLocalStripBorder = 4;
-const int kLocalStripGutter = 0;
-const int kLocalStripCenterGutter = 24;
+const int kLocalStripBorder = 10;
+const int kLocalStripBorderTop = 10;
+const int kLocalStripBorderBottom = 10;
+const int kLocalStripGutter = 10;
+const int kLocalStripCenterGutter = 16;
 const int kLocalStripJpegQuality = 92;
 
-const int _filmRailWidth = 52;
-const int _filmHoleWidth = 26;
-const int _filmHoleHeight = 34;
-const int _filmHolePitch = 58;
-const int _filmHoleStartY = 40;
-const int _filmHoleInset = 6;
+const int _filmRailWidth = 36;
+const int _filmHoleWidth = 18;
+const int _filmHoleHeight = 24;
+const int _filmHolePitch = 46;
+const int _filmHoleStartY = 28;
+const int _filmHoleInset = 4;
 
 class LocalStripComposeRequest {
   const LocalStripComposeRequest({
@@ -211,17 +213,18 @@ void _drawDualStripCells(
   final cellWidth = stripDrawWidth - rail * 2;
   // Sheet height is fixed by the print; fewer shots simply means taller cells.
   final innerHeight = kLocalStripSheetHeight -
-      kLocalStripBorder * 2 -
+      kLocalStripBorderTop -
+      kLocalStripBorderBottom -
       kLocalStripGutter * (shotCount - 1);
   final cellHeight = innerHeight ~/ shotCount;
   for (var i = 0; i < sources.length; i++) {
-    final top = kLocalStripBorder + i * (cellHeight + kLocalStripGutter);
+    final top =
+        kLocalStripBorderTop + i * (cellHeight + kLocalStripGutter);
     final prepared = _prepareCell(
       sources[i],
       matrix,
       cellWidth,
       cellHeight,
-      contain: frameId == 'filmstrip',
     );
     if (prepared == null) continue;
     for (final stripLeft in stripOffsets) {

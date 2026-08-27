@@ -425,6 +425,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     await _kiosk.setKioskCode(code);
     await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
     await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
+    await _kiosk.setClassicShotModes(kiosk.classicShotModes);
     await _kiosk.setOperatingModeOffline(kiosk.isOperatingModeOffline);
   }
 

@@ -101,8 +101,8 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   /// Layout uses the single-strip aspect guests edit.
   static const double aspectRatio = stripAspectRatio;
 
-  /// Matches zenai `STRIP_PRINT.border / stripWidth` (4 / 600).
-  static const double printBorderRatio = 4 / 600;
+  /// Matches zenai `STRIP_PRINT.border / stripWidth` (10 / 600).
+  static const double printBorderRatio = 10 / 600;
 
   /// Compact credential burned onto Classic strips (not AI — brand only).
   static const String credentialLine = 'FOTOZEN AI';
@@ -395,8 +395,8 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
       frameId: frameId,
       stripWidth: width,
       stripHeight: height,
-      shotCount: shotCount,
       layout: wysiwyg,
+      shotCount: shotCount,
     );
     final borderPad = stripChromeBorderPad(
       frameId: frameId,

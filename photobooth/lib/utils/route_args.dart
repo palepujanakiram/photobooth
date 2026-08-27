@@ -159,6 +159,35 @@ class FlashbackCaptureArgs {
   }
 }
 
+/// Args for Classic shot-mode preview (after experience choice when >1 mode).
+class ClassicShotChoiceArgs {
+  final ThemeModel theme;
+  final List<int> modes;
+
+  const ClassicShotChoiceArgs({
+    required this.theme,
+    required this.modes,
+  });
+
+  static ClassicShotChoiceArgs? tryParse(Object? args) {
+    if (args is ClassicShotChoiceArgs) return args;
+    if (args is Map && args['theme'] is ThemeModel) {
+      final raw = args['modes'];
+      final modes = raw is List
+          ? raw
+              .map((e) => e is int ? e : int.tryParse('$e'))
+              .whereType<int>()
+              .toList()
+          : const <int>[];
+      return ClassicShotChoiceArgs(
+        theme: args['theme'] as ThemeModel,
+        modes: normalizeClassicShotModes(modes),
+      );
+    }
+    return null;
+  }
+}
+
 /// Args for FotoFlashback filter + compose.
 class FlashbackFilterArgs {
   final ThemeModel theme;

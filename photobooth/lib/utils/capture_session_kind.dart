@@ -13,7 +13,7 @@ enum CaptureSessionKind {
   /// Classic: one still → look picker (6×4 / 4×6).
   classicOneShot,
 
-  /// Classic: three stills → look picker (dual 2×6 strip, taller cells).
+  /// Classic: three stills → look picker (dual 2×6 strip).
   classicThreeShot,
 
   /// Classic: four stills → look picker (dual 2×6 strip).
@@ -21,7 +21,10 @@ enum CaptureSessionKind {
 }
 
 extension CaptureSessionKindX on CaptureSessionKind {
-  bool get isClassic => this != CaptureSessionKind.fotoZen;
+  bool get isClassic =>
+      this == CaptureSessionKind.classicOneShot ||
+      this == CaptureSessionKind.classicThreeShot ||
+      this == CaptureSessionKind.classicFourShot;
 
   bool get isClassicOneShot => this == CaptureSessionKind.classicOneShot;
 
@@ -32,6 +35,9 @@ extension CaptureSessionKindX on CaptureSessionKind {
   /// Any 2×6 strip session (3- or 4-shot). Use this — not
   /// [isClassicFourShot] — for "Classic, but not the 1-shot FSM" branches.
   bool get isClassicStrip => isClassicThreeShot || isClassicFourShot;
+
+  /// Alias of [isClassicStrip] (main naming).
+  bool get isClassicMultiShot => isClassicStrip;
 
   bool get isFotoZen => this == CaptureSessionKind.fotoZen;
 

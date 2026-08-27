@@ -4,7 +4,7 @@ import 'package:photobooth/utils/constants.dart';
 
 void main() {
   test('kStripCellAspectRatio matches 2×6 print cell geometry', () {
-    expect(kStripCellAspectRatio, closeTo(592 / 448, 0.0001));
+    expect(kStripCellAspectRatio, closeTo(580 / 437.5, 0.0001));
     expect(kStripCellAspectRatio, greaterThan(1)); // wider than tall
   });
 
@@ -100,7 +100,7 @@ void main() {
     expect(catalog.printSize, 's4x6');
     expect(catalog.copiesOnSheet, 2);
     expect(catalog.printNote, 'Two strips');
-    expect(catalog.wysiwyg.borderRatio, closeTo(4 / 600, 0.0001));
+    expect(catalog.wysiwyg.borderRatio, closeTo(10 / 600, 0.0001));
   });
 
   test('StripWysiwygLayout.fromJson parses romantic slots', () {

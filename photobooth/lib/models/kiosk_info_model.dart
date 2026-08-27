@@ -12,6 +12,9 @@ class KioskInfoModel {
   /// Defaults to true when the API omits the field.
   final bool classicPhotosEnabled;
 
+  /// Classic shot counts offered on the experience screen (1, 3, and/or 4).
+  final List<int> classicShotModes;
+
   /// Per-kiosk guest price overrides (rupees). null = inherit account settings.
   final int? initialPrice;
   final int? additionalPrintPrice;
@@ -35,6 +38,7 @@ class KioskInfoModel {
     this.accountId,
     this.paymentEnabled,
     this.classicPhotosEnabled = true,
+    this.classicShotModes = const [1, 3, 4],
     this.initialPrice,
     this.additionalPrintPrice,
     this.regenerationPrice,
@@ -62,6 +66,9 @@ class KioskInfoModel {
         json['classicPhotosEnabled'] ?? json['classic_photos_enabled'];
     // Missing/null → enabled (legacy kiosks / older API builds).
     final classicEnabled = _parseClassicPhotosEnabled(rawClassic);
+    final modes = _parseClassicShotModes(
+      json['classicShotModes'] ?? json['classic_shot_modes'],
+    );
 
     return KioskInfoModel(
       id: (json['id'] ?? '').toString(),
@@ -71,6 +78,7 @@ class KioskInfoModel {
       accountId: json['accountId']?.toString(),
       paymentEnabled: payment,
       classicPhotosEnabled: classicEnabled,
+      classicShotModes: modes,
       initialPrice: parsePrice(json['initialPrice']),
       additionalPrintPrice: parsePrice(json['additionalPrintPrice']),
       regenerationPrice: parsePrice(json['regenerationPrice']),
@@ -91,6 +99,7 @@ class KioskInfoModel {
         if (accountId != null) 'accountId': accountId,
         if (paymentEnabled != null) 'paymentEnabled': paymentEnabled,
         'classicPhotosEnabled': classicPhotosEnabled,
+        'classicShotModes': classicShotModes,
         if (initialPrice != null) 'initialPrice': initialPrice,
         if (additionalPrintPrice != null)
           'additionalPrintPrice': additionalPrintPrice,
@@ -112,6 +121,21 @@ class KioskInfoModel {
     }
     // Unknown shape — prefer enabling Classic over silently hiding it.
     return raw != false;
+  }
+
+  static List<int> _parseClassicShotModes(dynamic raw) {
+    if (raw is! List) return const [1, 3, 4];
+    final seen = <int>{};
+    for (final item in raw) {
+      final n = item is int
+          ? item
+          : item is num
+              ? item.round()
+              : int.tryParse(item?.toString().trim() ?? '');
+      if (n == 1 || n == 3 || n == 4) seen.add(n!);
+    }
+    if (seen.isEmpty) return const [1, 3, 4];
+    return [1, 3, 4].where(seen.contains).toList();
   }
 
   /// Missing/unknown → online (legacy kiosks / older API builds).

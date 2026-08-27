@@ -216,7 +216,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _syncCaptureWatchdog(_captureViewModel);
     // Classic 1-shot is a linear FSM — never drive it from VM notify storms
     // (UVC normalize / reopen was restarting countdowns forever).
-    if (widget.sessionKind.isClassicStrip) {
+    if (widget.sessionKind.isClassicMultiShot) {
       _maybeAdvanceFlashbackAutoChain();
     } else if (widget.sessionKind.isClassicOneShot) {
       _oneShotOnViewModelTick();
@@ -351,7 +351,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void _maybeAdvanceFlashbackAutoChain() {
     if (!mounted) return;
     // 1-shot never enters this chain — see [_oneShotDispatch].
-    if (!widget.sessionKind.isClassicStrip) return;
+    if (!widget.sessionKind.isClassicMultiShot) return;
     // Accept has detached the still but not finished retake/resume yet.
     if (_flashbackAcceptingShot) return;
 
@@ -721,7 +721,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   Future<void> _startFlashbackAutoCountdown() async {
     // Classic 1-shot uses [_oneShotDispatch] only — never share this path.
-    if (!widget.sessionKind.isClassicStrip) return;
+    if (!widget.sessionKind.isClassicMultiShot) return;
     if (_flashbackCountdownStarting || !mounted) return;
     if (!shouldAutoStartFlashbackCountdown(
       isFlashbackMultiShot: true,
@@ -923,8 +923,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   /// Classic POSE (1-shot or 4-shot). Prefer this over [_isFlashbackMultiShot].
   bool get _isClassicPose => widget.sessionKind.isClassic;
 
-  /// Classic 4-shot strip only — never true for 1-shot (avoids remount chain).
-  bool get _isFlashbackMultiShot => widget.sessionKind.isClassicStrip;
+  /// Classic multi-shot strip (3 or 4) — never true for 1-shot (avoids remount chain).
+  bool get _isFlashbackMultiShot => widget.sessionKind.isClassicMultiShot;
 
   /// Any Classic 2×6 strip session (3- or 4-shot) — not the 1-shot FSM.
   bool get _isFlashbackStripSession => widget.sessionKind.isClassicStrip;
@@ -1287,7 +1287,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     } else if (_stripShots.isNotEmpty && next <= total) {
       _subtitleHint = AppStrings.flashbackGetReadyForShot(next, total);
     } else {
-      _subtitleHint = AppStrings.flashbackCaptureSubtitle;
+      _subtitleHint = total == 3
+          ? AppStrings.flashbackCaptureSubtitleThree
+          : AppStrings.flashbackCaptureSubtitle;
     }
   }
 
@@ -1312,7 +1314,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     final theme = _flashbackTheme ?? ClassicCaptureIntent.peekTheme();
-    if (!widget.sessionKind.isClassicStrip) return;
+    if (!widget.sessionKind.isClassicMultiShot) return;
     if (theme == null) return;
     final total = _classicShotCap;
     if (total <= 0) return;
@@ -1827,7 +1829,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       setState(() {});
       _resetUvcIdleSleepTimer();
       // 4-shot only — 1-shot must not auto-fire after USB webcam reopen.
-      if (widget.sessionKind.isClassicStrip) {
+      if (widget.sessionKind.isClassicMultiShot) {
         _maybeAdvanceFlashbackAutoChain();
       }
     });
@@ -2183,7 +2185,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
     unawaited(_captureViewModel.loadPreviewRotation());
     _syncPoseIdleTimer(_captureViewModel);
-    if (widget.sessionKind.isClassicStrip) {
+    if (widget.sessionKind.isClassicMultiShot) {
       _maybeAdvanceFlashbackAutoChain();
     } else if (widget.sessionKind.isClassicOneShot) {
       _oneShotOnViewModelTick();

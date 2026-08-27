@@ -460,7 +460,7 @@ void main() {
     expect(vm.stripShotCount, 3);
     expect(vm.canCompose, isTrue);
     // Same fixed 2×6 print, taller cells than the four-shot strip.
-    expect(vm.stripCellAspectRatio, closeTo(592 / (1792 / 3), 0.0001));
+    expect(vm.stripCellAspectRatio, closeTo(580 / (1760 / 3), 0.0001));
     expect(vm.stripCellAspectRatio, lessThan(kStripCellAspectRatio));
     // Sheet layouts hardcode four slots, so they stay hidden for three shots.
     expect(vm.frames.any((f) => isStripSheetLayout(f.id)), isFalse);

@@ -1,13 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/strip_models.dart';
+import 'package:photobooth/utils/capture_session_kind.dart';
 import 'package:photobooth/utils/classic_shot_mode.dart';
 
 void main() {
   test('ClassicShotMode defaults to four-shot strip count', () {
     expect(ClassicShotMode.fourShot.shotCount, kStripShotCount);
+    expect(ClassicShotMode.threeShot.shotCount, 3);
     expect(ClassicShotMode.single6x4.shotCount, 1);
     expect(ClassicShotMode.fourShot.isSingle6x4, isFalse);
     expect(ClassicShotMode.single6x4.isSingle6x4, isTrue);
+    expect(ClassicShotMode.threeShot.isMultiStrip, isTrue);
   });
 
   test('threeShot is a strip mode with three poses', () {
@@ -30,14 +33,14 @@ void main() {
   });
 
   test('fewer shots means taller cells on the same fixed 2x6 print', () {
-    // Sheet is 600×1800 with a 4px border either way: only the divisor moves.
+    // HAMA: 600×1800, 10px margins + 10px gutters → 4-shot 580×437.5.
     expect(
       ClassicShotMode.fourShot.stripCellAspectRatio,
-      closeTo(592 / 448, 0.0001),
+      closeTo(580 / 437.5, 0.0001),
     );
     expect(
       ClassicShotMode.threeShot.stripCellAspectRatio,
-      closeTo(592 / (1792 / 3), 0.0001),
+      closeTo(580 / (1760 / 3), 0.0001),
     );
     // 4-shot cells are landscape; 3-shot cells are near square (taller).
     expect(ClassicShotMode.fourShot.stripCellAspectRatio, greaterThan(1));
@@ -62,5 +65,16 @@ void main() {
     expect(kStripFrameIds.contains('plain_6x4'), isFalse);
     expect(isStripSheetLayout('plain_6x4'), isFalse);
     expect(isStripSheetLayout('romantic'), isTrue);
+  });
+
+  test('classic shot modes normalize and map to session kinds', () {
+    expect(normalizeClassicShotModes([4, 1, 9]), [1, 4]);
+    expect(normalizeClassicShotModes(null), [1, 3, 4]);
+    expect(classicShotModeForCount(3), ClassicShotMode.threeShot);
+    expect(
+      CaptureSessionKindX.fromClassicShotMode(ClassicShotMode.threeShot),
+      CaptureSessionKind.classicThreeShot,
+    );
+    expect(CaptureSessionKind.classicThreeShot.isClassicMultiShot, isTrue);
   });
 }
