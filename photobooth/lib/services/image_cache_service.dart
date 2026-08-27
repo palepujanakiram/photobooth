@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
@@ -34,34 +33,22 @@ class ImageCacheService {
   }
 
   /// Get cache file path for a given image URL
-  /// Normalizes the URL to ensure consistent caching
-  Future<String> _getCacheFilePath(String imageUrl) async {
+  ///
+  /// [cacheKey] (theme-/frame- id) wins so a later Fly URL still hits.
+  Future<String> _getCacheFilePath(String imageUrl, {String? cacheKey}) async {
     await _ensureCacheDir();
-    
-    // Normalize URL: remove query parameters, fragments, and normalize path
-    final uri = Uri.parse(imageUrl);
-    final normalizedUrl = '${uri.scheme}://${uri.host}${uri.path}';
-    
-    // Create a safe, collision-resistant filename from normalized URL.
-    //
-    // The previous implementation used a simple byte-sum hash which can collide,
-    // causing a theme to display another theme's cached image.
-    final b64 = base64UrlEncode(utf8.encode(normalizedUrl)).replaceAll('=', '');
-    // Avoid overly long filenames (most filesystems cap at 255 bytes).
-    final safeKey = b64.length <= 140 ? b64 : '${b64.substring(0, 70)}_${b64.substring(b64.length - 70)}';
-    
-    // Get extension from URL path or default to jpg
-    final extension = path.extension(uri.path).isEmpty 
-        ? '.jpg' 
-        : path.extension(uri.path);
-    
-    return path.join(_cacheDir!.path, '${normalizedUrl.length}_$safeKey$extension');
+    final stem = catalogImageCacheFileStem(
+      cacheKey: cacheKey,
+      imageUrl: imageUrl,
+    );
+    final extension = imageCacheFileExtension(imageUrl);
+    return path.join(_cacheDir!.path, '$stem$extension');
   }
 
   /// Check if image is cached
-  Future<bool> isCached(String imageUrl) async {
+  Future<bool> isCached(String imageUrl, {String? cacheKey}) async {
     try {
-      final cacheFile = File(await _getCacheFilePath(imageUrl));
+      final cacheFile = File(await _getCacheFilePath(imageUrl, cacheKey: cacheKey));
       if (!await cacheFile.exists()) return false;
 
       // Check if cache is too old
@@ -81,11 +68,11 @@ class ImageCacheService {
   }
 
   /// Get cached image file
-  Future<File?> getCachedFile(String imageUrl) async {
+  Future<File?> getCachedFile(String imageUrl, {String? cacheKey}) async {
     try {
-      if (!await isCached(imageUrl)) return null;
+      if (!await isCached(imageUrl, cacheKey: cacheKey)) return null;
       
-      final cacheFile = File(await _getCacheFilePath(imageUrl));
+      final cacheFile = File(await _getCacheFilePath(imageUrl, cacheKey: cacheKey));
       if (await cacheFile.exists()) {
         return cacheFile;
       }
@@ -97,16 +84,16 @@ class ImageCacheService {
   }
 
   /// Download and cache image
-  Future<File?> cacheImage(String imageUrl) async {
+  Future<File?> cacheImage(String imageUrl, {String? cacheKey}) async {
     try {
       // Check if already cached
-      final cachedFile = await getCachedFile(imageUrl);
+      final cachedFile = await getCachedFile(imageUrl, cacheKey: cacheKey);
       if (cachedFile != null) {
         return cachedFile;
       }
 
       AppLogger.debug('ImageCacheService: downloading and caching image: $imageUrl');
-      final cacheFile = File(await _getCacheFilePath(imageUrl));
+      final cacheFile = File(await _getCacheFilePath(imageUrl, cacheKey: cacheKey));
       final Uint8List bytes;
       final inlineDataUrl = extractInlineImageDataUrl(imageUrl);
       if (inlineDataUrl != null) {
@@ -151,15 +138,15 @@ class ImageCacheService {
 
   /// Get image file (cached or download)
   /// Returns the file path if cached, or null if download failed
-  Future<File?> getImageFile(String imageUrl) async {
+  Future<File?> getImageFile(String imageUrl, {String? cacheKey}) async {
     // Try to get from cache first
-    final cachedFile = await getCachedFile(imageUrl);
+    final cachedFile = await getCachedFile(imageUrl, cacheKey: cacheKey);
     if (cachedFile != null) {
       return cachedFile;
     }
 
     // Download and cache
-    return await cacheImage(imageUrl);
+    return await cacheImage(imageUrl, cacheKey: cacheKey);
   }
 
   /// Clean cache if it exceeds maximum size

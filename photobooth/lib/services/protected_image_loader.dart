@@ -9,6 +9,7 @@ import 'client_identification.dart';
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
 import '../utils/app_strings.dart';
 import 'kiosk_session_auth.dart';
+import 'local_media_store.dart';
 import 'staff_session_manager.dart';
 
 /// Loads `/api/img/*` resources with kiosk session auth headers.
@@ -48,6 +49,10 @@ class ProtectedImageLoader {
 
   /// Fetches image bytes with `X-Kiosk-Session-Token` (and bearer auth if configured).
   Future<Uint8List> fetchBytes(String url) async {
+    final local = await LocalMediaStore().fileForUrl(url);
+    if (local != null) {
+      return local.readAsBytes();
+    }
     return _fetchBytesWithDio(_dio, url);
   }
 

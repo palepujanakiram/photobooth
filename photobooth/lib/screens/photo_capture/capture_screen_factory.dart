@@ -6,6 +6,7 @@ import '../../models/app_settings_model.dart';
 import '../../services/app_settings_manager.dart';
 import '../../utils/camera_source_config.dart';
 import '../../utils/capture_session_kind.dart';
+import '../../utils/classic_shot_mode.dart';
 import '../../utils/route_args.dart';
 import 'capture_screen_router.dart';
 import 'photo_capture_view.dart';
@@ -67,7 +68,11 @@ CaptureSessionKind captureSessionKindFor(CaptureRouteArgs? args) {
   if (args == null) return CaptureSessionKind.fotoZen;
   final mode = args.classicShotMode;
   if (mode != null) return CaptureSessionKindX.fromClassicShotMode(mode);
-  if (args.isFlashbackFourShot) return CaptureSessionKind.classicFourShot;
+  if (args.isFlashbackStrip) {
+    return CaptureSessionKindX.fromClassicShotMode(
+      classicStripShotModeForCount(args.resolvedShotTotal),
+    );
+  }
   if (args.isFlashbackSingle6x4) return CaptureSessionKind.classicOneShot;
   return CaptureSessionKind.fotoZen;
 }

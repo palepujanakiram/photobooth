@@ -30,6 +30,7 @@ import '../../utils/uvc_capture_config.dart';
 import 'camera_description_label.dart';
 import 'photo_capture_camera_selection_helpers.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/kiosk_offline_ux.dart';
 import '../../utils/capture_flow_log.dart';
 import '../../utils/logger.dart';
 import '../../utils/error_reporting_helpers.dart';
@@ -38,6 +39,7 @@ import '../../utils/web_flow_trace.dart';
 import '../../utils/web_upload_error_hint.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/capture_sound_service.dart';
+import '../../services/local_guest_media_write.dart';
 import '../../services/local_camera_service.dart';
 import 'package:camera_native_details/camera_native_details.dart';
 import 'photo_capture_camera_config.dart';
@@ -2370,15 +2372,16 @@ class CaptureViewModel extends ChangeNotifier {
     } else if (cameraIdOverride == null) {
       _snapshotLockedCaptureCardAspectFromLivePreview();
     }
+    final storedFile = await persistCapturedGuestXFile(savedFile);
     _capturedPhoto = PhotoModel(
       id: photoId,
-      imageFile: savedFile,
+      imageFile: storedFile,
       capturedAt: DateTime.now(),
       cameraId: cameraId,
     );
     _capturedImagePixelSize = null;
     if (!skipCapturedImagePixelSizeDecode) {
-      await _refreshCapturedImagePixelSize(savedFile);
+      await _refreshCapturedImagePixelSize(storedFile);
     }
     unawaited(ErrorReportingManager.setPhotoCaptureContext(
       photoId: photoId,
@@ -2993,14 +2996,15 @@ class CaptureViewModel extends ChangeNotifier {
       final photoId = _uuid.v4();
 
       _lockedCaptureCardAspectRatio = null;
+      final storedFile = await persistCapturedGuestXFile(normalizedFile);
       _capturedPhoto = PhotoModel(
         id: photoId,
-        imageFile: normalizedFile,
+        imageFile: storedFile,
         capturedAt: DateTime.now(),
         cameraId: cameraId,
       );
       _capturedImagePixelSize = null;
-      unawaited(_refreshCapturedImagePixelSizeSoon(normalizedFile));
+      unawaited(_refreshCapturedImagePixelSizeSoon(storedFile));
 
       // Track successful photo selection
       unawaited(ErrorReportingManager.setPhotoCaptureContext(
@@ -3551,6 +3555,13 @@ class CaptureViewModel extends ChangeNotifier {
       'immediate personCount=$immediateCount kIsWeb=$kIsWeb',
     );
 
+    if (KioskOfflineUx.shouldSkipGeminiPreprocess(
+      sessionOffline: _sessionManager.isOfflineSession,
+    )) {
+      WebFlowTrace.log('PREPROCESS', 'skipped_offline');
+      return;
+    }
+
     WebFlowTrace.log('PREPROCESS', 'preprocessImage_fire_and_forget');
     unawaited(
       _refinePersonCountFromPreprocess(
@@ -3595,6 +3606,51 @@ class CaptureViewModel extends ChangeNotifier {
     }
   }
 
+  /// Offline / local skeleton sessions have no kioskAuthToken. Persist the
+  /// capture on device and continue (frame-only AI / Classic cash flow).
+  Future<bool> _persistPhotoForOfflineSession({
+    required String sessionId,
+  }) async {
+    beginContinueUpload();
+    await Future<void>.delayed(Duration.zero);
+    try {
+      WebFlowTrace.log('UPLOAD', 'offline_local_persist');
+      _uploadStatusMessage = 'Saving photo…';
+      notifyListeners();
+
+      final photo = _capturedPhoto!;
+      final stored = await persistCapturedGuestXFile(photo.imageFile);
+      if (stored.path != photo.imageFile.path) {
+        _capturedPhoto = photo.copyWith(imageFile: stored);
+      }
+
+      await _resolvePersonCountAfterUpload(
+        sessionId: sessionId,
+        clientFaceCount: _preparedClientFaceCount ?? 0,
+      );
+      WebFlowTrace.log('UPLOAD', 'offline_local_persist_done');
+      _releaseUploadPayloadMemory();
+      return true;
+    } catch (e, st) {
+      WebFlowTrace.log('UPLOAD', 'ERROR offline_local_persist $e');
+      _errorMessage = 'Failed to save photo: ${e.toString()}';
+      unawaited(
+        reportIssue(
+          'Offline photo persist failed',
+          e,
+          st,
+          extraInfo: {'source': 'photo_capture_offline_persist'},
+        ),
+      );
+      return false;
+    } finally {
+      _stopUploadTimer();
+      _isUploading = false;
+      _uploadStatusMessage = null;
+      notifyListeners();
+    }
+  }
+
   /// Called when user taps "Continue" button in Capture Photo screen
   /// Uploads photo, saves client person count, and fires server preprocess in background.
   Future<bool> uploadPhotoToSession() async {
@@ -3633,6 +3689,10 @@ class CaptureViewModel extends ChangeNotifier {
 
     final kioskToken = _sessionManager.kioskAuthToken;
     if (kioskToken == null || kioskToken.isEmpty) {
+      // Local/admin-offline skeleton has no Fly token — persist on device.
+      if (_sessionManager.isOfflineSession) {
+        return _persistPhotoForOfflineSession(sessionId: sessionId);
+      }
       _errorMessage =
           'Session authentication is missing. Please go back and accept Terms again.';
       notifyListeners();

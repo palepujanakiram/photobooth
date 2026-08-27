@@ -2,7 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/models/staff_dashboard_models.dart';
 import 'package:photobooth/screens/staff/staff_dashboard_helpers.dart';
 import 'package:photobooth/screens/staff/staff_dashboard_viewmodel.dart';
+import 'package:photobooth/services/offline_operator_pin_store.dart';
 import 'package:photobooth/utils/exceptions.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeGateway implements StaffDashboardGateway {
   StaffOpsSession session = const StaffOpsSession(
@@ -115,6 +117,14 @@ class _FakeGateway implements StaffDashboardGateway {
     logoutCalls++;
   }
 
+  @override
+  Future<void> updateOfflineCashPin(String pin) async {
+    _throwIfNeeded();
+    lastOfflinePin = pin;
+  }
+
+  String? lastOfflinePin;
+
   void _throwIfNeeded() {
     if (throwUnexpected) {
       throw StateError('boom');
@@ -133,6 +143,14 @@ void main() {
       expect(StaffDashboardHelpers.isValidIsoDate('2026-07-20'), isTrue);
       expect(StaffDashboardHelpers.isValidIsoDate('20-07-2026'), isFalse);
       expect(StaffDashboardHelpers.isValidIsoDate(''), isFalse);
+    });
+
+    test('parses iso dates', () {
+      expect(
+        StaffDashboardHelpers.tryParseIsoDate('2026-07-20'),
+        DateTime(2026, 7, 20),
+      );
+      expect(StaffDashboardHelpers.tryParseIsoDate('bad'), isNull);
     });
 
     test('formats day label', () {
@@ -424,6 +442,51 @@ void main() {
       final b = vm.loadAll();
       await Future.wait([a, b]);
       expect(vm.session, isNotNull);
+    });
+
+    test('updateOfflineCashPin rejects invalid format', () async {
+      final gw = _FakeGateway();
+      final vm = StaffDashboardViewModel(
+        gateway: gw,
+        initialDate: '2026-07-20',
+      );
+      await vm.loadAll();
+      final ok = await vm.updateOfflineCashPin('12');
+      expect(ok, isFalse);
+      expect(vm.error, isNotNull);
+      expect(gw.lastOfflinePin, isNull);
+    });
+
+    test('updateOfflineCashPin syncs via gateway', () async {
+      SharedPreferences.setMockInitialValues({});
+      OfflineOperatorPinStore.resetCacheForTests();
+      final gw = _FakeGateway();
+      final vm = StaffDashboardViewModel(
+        gateway: gw,
+        initialDate: '2026-07-20',
+      );
+      await vm.loadAll();
+      final ok = await vm.updateOfflineCashPin('1357');
+      expect(ok, isTrue);
+      expect(gw.lastOfflinePin, '1357');
+      expect(vm.error, isNull);
+      expect(await OfflineOperatorPinStore.verifyPin('1357'), isTrue);
+    });
+
+    test('updateOfflineCashPin keeps local pin when cloud fails', () async {
+      SharedPreferences.setMockInitialValues({});
+      OfflineOperatorPinStore.resetCacheForTests();
+      final gw = _FakeGateway();
+      final vm = StaffDashboardViewModel(
+        gateway: gw,
+        initialDate: '2026-07-20',
+      );
+      await vm.loadAll();
+      gw.failNext = ApiException('offline');
+      final ok = await vm.updateOfflineCashPin('8888');
+      expect(ok, isTrue);
+      expect(await OfflineOperatorPinStore.verifyPin('8888'), isTrue);
+      expect(vm.error, contains('Saved on this kiosk only'));
     });
   });
 }

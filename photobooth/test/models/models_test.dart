@@ -64,12 +64,65 @@ void main() {
     expect(m.cameraSidecarPath, '/');
   });
 
+  test('AppSettingsModel.fromJson parses offlineCashPins', () {
+    final m = AppSettingsModel.fromJson({
+      'offlineCashPins': ['1357', '9999', 'nope', 2468],
+    });
+    expect(m.offlineCashPins, ['1357', '9999', '2468']);
+  });
+
+  test('AppSettingsModel.fromJson parses receiptMerchant', () {
+    final m = AppSettingsModel.fromJson({
+      'receiptMerchant': {
+        'legalName': 'Sri Sarani Ventures Pvt Ltd',
+        'gstin': '36AAAAA0000A1Z5',
+        'gstRateBps': 1800,
+        'gstSplitMode': 'cgst_sgst',
+        'hsnSac': '998383',
+        'kioskCode': 'ODEON-01',
+      },
+    });
+    expect(m.receiptMerchant?.gstin, '36AAAAA0000A1Z5');
+    expect(m.receiptMerchant?.merchantName, contains('Sri Sarani'));
+    expect(m.receiptMerchant?.gstRateBps, 1800);
+  });
+
   test('KioskInfoModel.isValid requires id and code', () {
     expect(
       KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'}).isValid,
       isTrue,
     );
     expect(KioskInfoModel.fromJson({'id': '', 'code': 'x'}).isValid, isFalse);
+  });
+
+  test('KioskInfoModel toJson round-trips through fromJson', () {
+    const original = KioskInfoModel(
+      id: 'k1',
+      code: 'ABC',
+      name: 'Lobby',
+      location: 'Floor 1',
+      accountId: 'a1',
+      paymentEnabled: false,
+      classicPhotosEnabled: false,
+      initialPrice: 100,
+      additionalPrintPrice: 50,
+      regenerationPrice: 75,
+      operatingMode: KioskInfoModel.operatingModeOffline,
+      invoiceLastSeq: 12,
+    );
+    final again = KioskInfoModel.fromJson(original.toJson());
+    expect(again.id, original.id);
+    expect(again.code, original.code);
+    expect(again.name, original.name);
+    expect(again.location, original.location);
+    expect(again.accountId, original.accountId);
+    expect(again.paymentEnabled, original.paymentEnabled);
+    expect(again.classicPhotosEnabled, original.classicPhotosEnabled);
+    expect(again.initialPrice, original.initialPrice);
+    expect(again.additionalPrintPrice, original.additionalPrintPrice);
+    expect(again.regenerationPrice, original.regenerationPrice);
+    expect(again.operatingMode, original.operatingMode);
+    expect(again.invoiceLastSeq, original.invoiceLastSeq);
   });
 
   test('KioskInfoModel parses price overrides', () {
@@ -144,6 +197,80 @@ void main() {
       }).classicPhotosEnabled,
       isTrue,
       reason: 'unknown shape prefers enabling Classic',
+    );
+  });
+
+  test('KioskInfoModel operatingMode defaults online and parses offline', () {
+    expect(
+      KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'}).operatingMode,
+      KioskInfoModel.operatingModeOnline,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'operatingMode': 'offline',
+      }).isOperatingModeOffline,
+      isTrue,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'operating_mode': 'OFFLINE',
+      }).isOperatingModeOffline,
+      isTrue,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'operatingMode': true,
+      }).isOperatingModeOffline,
+      isTrue,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'operatingMode': 0,
+      }).isOperatingModeOffline,
+      isFalse,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'operatingMode': 1,
+      }).isOperatingModeOffline,
+      isTrue,
+    );
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'operatingMode': false,
+      }).isOperatingModeOffline,
+      isFalse,
+    );
+    for (final flag in ['off', 'true', '1', 'yes']) {
+      expect(
+        KioskInfoModel.fromJson({
+          'id': 'k1',
+          'code': 'ABC',
+          'operatingMode': flag,
+        }).isOperatingModeOffline,
+        isTrue,
+        reason: '"$flag" should mean offline',
+      );
+    }
+    expect(
+      KioskInfoModel.fromJson({
+        'id': 'k1',
+        'code': 'ABC',
+        'operatingMode': 'online',
+      }).isOperatingModeOffline,
+      isFalse,
     );
   });
 

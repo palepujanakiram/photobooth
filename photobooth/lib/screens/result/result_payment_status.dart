@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import '../../utils/app_strings.dart';
 import 'result_viewmodel.dart';
 
 /// User-facing status line and color under the UPI QR on [ResultScreen].
@@ -41,6 +42,12 @@ class ResultPaymentStatusPresentation {
             ? 'Payment confirmed. Preparing your digital copy…'
             : 'Payment confirmed. Printing...',
         statusMessageColor: Colors.green.shade200,
+      );
+    }
+    if (viewModel.cashOnlyOffline) {
+      return const ResultPaymentStatusPresentation(
+        statusMessage: AppStrings.offlineCashOnlyWaiting,
+        statusMessageColor: Colors.white70,
       );
     }
     final waitingMessage = viewModel.isPaymentGatewayEnabled

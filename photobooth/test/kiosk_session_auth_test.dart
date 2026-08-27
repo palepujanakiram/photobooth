@@ -50,6 +50,8 @@ void main() {
         requestNeedsKioskSessionToken('/api/event/station/theme-jobs'),
         isFalse,
       );
+      expect(requestNeedsKioskSessionToken('/api/kiosk/ingest'), isFalse);
+      expect(requestNeedsKioskSessionToken('/api/kiosk/ingest/asset'), isFalse);
     });
   });
 

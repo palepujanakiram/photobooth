@@ -14,12 +14,21 @@ import '../../services/print_service.dart';
 import '../../services/print_file.dart';
 import '../../services/print_service_helpers.dart';
 import '../../services/receipt/receipt_print_bridge.dart';
+import '../../services/receipt/local_receipt_assemble.dart';
+import '../../services/receipt/local_receipt_escpos.dart';
 import '../../services/receipt_printer_payload.dart';
+import '../../models/receipt_merchant_cache.dart';
+import '../../services/local_kiosk_store.dart';
+import '../../services/local_kiosk_settlement.dart';
 import '../../services/session_manager.dart';
+import '../../services/local_session_skeleton.dart';
+import '../../services/offline_operator_pin_store.dart';
 import '../../models/session_print_receipt_result.dart';
 import '../../services/share_service.dart';
 import '../../services/kiosk_manager.dart';
+import '../../utils/app_config.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/offline_cash_confirm.dart';
 import '../../utils/receipt_printer_config.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
@@ -29,6 +38,7 @@ import '../../utils/print_orientation.dart';
 import '../../utils/print_progress_helpers.dart';
 import '../../utils/print_size_helpers.dart';
 import '../../utils/error_reporting_helpers.dart';
+import '../../utils/kiosk_offline_ux.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
 import '../../services/fcm_service.dart';
 import '../../services/payment_push_coordinator.dart';
@@ -147,6 +157,9 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   String? _fcmPaymentStatusDetail;
   bool? _fcmPaymentPushSuccess;
 
+  /// Settled offline cash waiting for sheet dismiss before Pay→QR navigation.
+  OfflineCashConfirmResult? _pendingOfflineCashApproval;
+
   bool _postPaymentSharePrepared = false;
   Future<void>? _postPaymentInflight;
   String? _receiptShareUrl;
@@ -193,6 +206,8 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
         upiLink: _upiLink,
         paymentLink: _paymentLink,
       );
+
+  bool get cashOnlyOffline => _sessionManager.isOfflineSession;
 
   /// Stops payment/session polling (e.g. before customer deletes photos).
   void stopPaymentPolling() {

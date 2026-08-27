@@ -7,7 +7,8 @@ import 'photo_image_from_xfile_io.dart'
 
 /// Top strip of accepted FotoFlashback shots on the POSE screen.
 ///
-/// Stamp-sized thumbs use [kStripCellAspectRatio] (same cover crop as 2×6 print).
+/// Stamp-sized thumbs use the print cell aspect for [total] shots (same cover
+/// crop as the 2×6 print), so a 3-shot strip previews its taller cells.
 class PhotoCaptureStripThumbs extends StatelessWidget {
   const PhotoCaptureStripThumbs({
     super.key,
@@ -21,13 +22,18 @@ class PhotoCaptureStripThumbs extends StatelessWidget {
   final XFile? pendingFile;
 
   static const double _gap = 10;
-  /// Stamp height; width = height × print cell aspect (~564/432).
+  /// Stamp height; width = height × print cell aspect (4-shot ≈ 592/448).
   static const double stampHeight = 64;
 
+  /// Legacy 4-shot stamp width; [stampWidthFor] follows the real strip length.
   static double get stampWidth => stampHeight * kStripCellAspectRatio;
+
+  static double stampWidthFor(int shotCount) =>
+      stampHeight * stripCellAspectRatioForShots(shotCount);
 
   @override
   Widget build(BuildContext context) {
+    final slotWidth = stampWidthFor(total);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
       child: SizedBox(
@@ -41,7 +47,7 @@ class PhotoCaptureStripThumbs extends StatelessWidget {
                 index: i,
                 file: _fileAt(i),
                 isActive: _isActive(i),
-                width: stampWidth,
+                width: slotWidth,
                 height: stampHeight,
               ),
             ],

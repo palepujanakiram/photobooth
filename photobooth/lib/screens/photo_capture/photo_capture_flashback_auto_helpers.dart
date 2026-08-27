@@ -121,7 +121,7 @@ Duration flashbackShotReviewHoldDuration({
 
 /// Mid-strip status while waiting for LV / HDMI warmup (not counting down).
 bool shouldShowClassicBetweenShotReadyBanner({
-  required bool isFourShot,
+  required bool isStripSession,
   required int acceptedCount,
   required int total,
   required bool hasCapturedPhoto,
@@ -130,7 +130,7 @@ bool shouldShowClassicBetweenShotReadyBanner({
   required bool cameraReadyForCapture,
   required bool acceptingShot,
 }) {
-  if (!isFourShot || hasCapturedPhoto || isCountingDown || isCapturing) {
+  if (!isStripSession || hasCapturedPhoto || isCountingDown || isCapturing) {
     return false;
   }
   if (acceptedCount <= 0 || acceptedCount >= total || total <= 0) return false;

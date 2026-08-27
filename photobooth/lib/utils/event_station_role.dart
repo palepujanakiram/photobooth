@@ -8,8 +8,7 @@ class EventStationRole {
 
   static const values = <String>[capture, theme, print];
 
-  static bool isValid(String? role) =>
-      role != null && values.contains(role);
+  static bool isValid(String? role) => role != null && values.contains(role);
 
   static String? tryParse(String? raw) {
     final v = raw?.trim().toLowerCase();
@@ -18,17 +17,29 @@ class EventStationRole {
   }
 }
 
-enum EventPostSplashRoute { terms, stationPicker, capture, theme, print }
+enum EventPostSplashRoute {
+  terms,
+  stationPicker,
+  capture,
+  theme,
+  print,
+  needsInternet,
+}
 
 /// After splash bind: event stations vs guest terms.
 EventPostSplashRoute resolveEventPostSplashRoute({
   required String? eventCode,
   required String? stationRole,
+  bool wanAvailable = true,
 }) {
   if (eventCode == null || eventCode.trim().isEmpty) {
     return EventPostSplashRoute.terms;
   }
-  switch (EventStationRole.tryParse(stationRole)) {
+  final role = EventStationRole.tryParse(stationRole);
+  if (role != null && !wanAvailable) {
+    return EventPostSplashRoute.needsInternet;
+  }
+  switch (role) {
     case EventStationRole.capture:
       return EventPostSplashRoute.capture;
     case EventStationRole.theme:
@@ -52,6 +63,8 @@ String eventPostSplashRouteName(EventPostSplashRoute route) {
       return AppConstants.kRouteEventStation;
     case EventPostSplashRoute.terms:
       return AppConstants.kRouteTerms;
+    case EventPostSplashRoute.needsInternet:
+      return AppConstants.kRouteSplash;
   }
 }
 

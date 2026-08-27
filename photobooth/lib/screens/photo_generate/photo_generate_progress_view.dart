@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/app_settings_manager.dart';
+import '../../services/session_manager.dart';
 import '../../services/theme_manager.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
@@ -184,6 +185,18 @@ class _PhotoGenerateProgressScreenState
                         height: MediaQuery.paddingOf(context).top +
                             kToolbarHeight,
                       ),
+                      if (SessionManager().isOfflineSession)
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+                          child: Text(
+                            AppStrings.offlineFrameOnlyMessage,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
                       Expanded(
                         child: GenerationWaitBody(
                           viewModel: viewModel,

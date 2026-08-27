@@ -5,6 +5,8 @@ import '../screens/fotoflashback/surprise_me_upsell_view.dart';
 import '../screens/photo_generate/photo_generate_viewmodel.dart';
 import '../screens/theme_selection/theme_model.dart';
 import '../services/api_service.dart';
+import '../services/local_guest_media_write.dart';
+import '../services/local_media_store.dart';
 import '../services/session_manager.dart';
 import 'app_strings.dart';
 import 'constants.dart';
@@ -113,8 +115,14 @@ Future<SurpriseMeOfferResult?> maybeOfferSurpriseMeCopy({
     );
     if (status == null || !status.showUpsell) return null;
 
-    final surprise = surpriseImageFromStatus(status);
-    if (surprise == null) return null;
+    final rawSurprise = surpriseImageFromStatus(status);
+    if (rawSurprise == null) return null;
+    final persistedUrl = await persistGuestImageUrl(
+      prefix: kGuestMediaPrefixSurpriseMe,
+      source: rawSurprise.imageUrl,
+      fetchBytes: guestMediaNetworkFetch(),
+    );
+    final surprise = rawSurprise.copyWith(imageUrl: persistedUrl);
     if (!context.mounted) return null;
 
     final choice = await Navigator.of(context).push<SurpriseMeUpsellChoice>(

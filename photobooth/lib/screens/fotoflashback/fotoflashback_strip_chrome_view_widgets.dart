@@ -22,19 +22,19 @@ class StripChromeLook {
   final bool showNoirDoubleLine;
   final bool showFilmstripSprockets;
 
-  /// Print uses a 4px pad on a 600-wide strip for every chrome frame.
-  static const double printBorderRatio = 4 / 600;
+  /// Print uses a 10px pad on a 600-wide strip for Classic / Noir (HAMA-style).
+  static const double printBorderRatio = 10 / 600;
   static const double printAccentStrokeRatio = 1.75 / 600;
   static const double printNoirAccentStrokeRatio = 2.5 / 600;
 
   /// Matches zenai `FILMSTRIP_DUAL` on a 600×1800 strip.
-  static const double filmRailRatio = 52 / 600;
-  static const double filmHoleWRatio = 26 / 600;
-  static const double filmHoleHRatio = 34 / 1800;
-  static const double filmHolePitchRatio = 58 / 1800;
-  static const double filmHoleStartYRatio = 40 / 1800;
+  static const double filmRailRatio = 36 / 600;
+  static const double filmHoleWRatio = 18 / 600;
+  static const double filmHoleHRatio = 24 / 1800;
+  static const double filmHolePitchRatio = 46 / 1800;
+  static const double filmHoleStartYRatio = 28 / 1800;
   /// Matches zenai `FILMSTRIP_DUAL.holeInset` (pull punches toward photo).
-  static const double filmHoleInsetRatio = 6 / 600;
+  static const double filmHoleInsetRatio = 4 / 600;
 
   static StripChromeLook forFrame(
     String frameId, {
@@ -55,7 +55,7 @@ class StripChromeLook {
           showNoirDoubleLine: true,
         );
       case 'filmstrip':
-        // Rail width matches zenai FILMSTRIP_DUAL.railW (52 on 600-wide strip).
+        // Rail width matches zenai FILMSTRIP_DUAL.railW (36 on 600-wide strip).
         return const StripChromeLook(
           fill: Color(0xFF0A0A0A),
           borderRatio: filmRailRatio,

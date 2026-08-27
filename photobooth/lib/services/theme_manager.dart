@@ -7,66 +7,83 @@ import '../utils/theme_image_urls.dart';
 import '../utils/error_reporting_helpers.dart';
 import '../utils/logger.dart';
 import 'api_service.dart';
+import 'catalog_disk_cache.dart';
+import 'image_cache_service.dart';
+import 'image_cache_source.dart';
 import 'kiosk_manager.dart';
 import 'event_manager.dart';
 
 /// Singleton class responsible for fetching, caching, and providing themes
 /// to all screens that need them.
 class ThemeManager {
-  ThemeManager._internal([ApiService? apiService])
-      : _apiService = apiService ?? ApiService();
+  ThemeManager._internal([
+    ApiService? apiService,
+    CatalogDiskCache? diskCache,
+    ImageCacheService? imageCache,
+  ])  : _apiService = apiService ?? ApiService(),
+        _diskCache = diskCache,
+        _imageCache = imageCache;
 
-  static final ThemeManager _instance = ThemeManager._internal();
+  static final ThemeManager _instance = ThemeManager._internal(
+    null,
+    CatalogDiskCache(),
+    ImageCacheService(),
+  );
 
   /// Get the singleton instance
   factory ThemeManager() => _instance;
 
   /// Non-singleton instance for unit tests.
   @visibleForTesting
-  factory ThemeManager.forTesting(ApiService apiService) =>
-      ThemeManager._internal(apiService);
+  factory ThemeManager.forTesting(
+    ApiService apiService, {
+    CatalogDiskCache? diskCache,
+  }) =>
+      ThemeManager._internal(apiService, diskCache);
 
   final ApiService _apiService;
+  final CatalogDiskCache? _diskCache;
+  final ImageCacheService? _imageCache;
 
   // Cached themes
   List<ThemeModel> _cachedThemes = [];
   String _cachedThemesKioskKey = '';
-  
+
   // Loading state
   bool _isLoading = false;
   Future<List<ThemeModel>>? _ongoingFetch;
-  
+
   // Error state
   String? _errorMessage;
-  
+
   // Timestamp of last fetch
   DateTime? _lastFetchTime;
-  
+
   // Listeners for theme updates
   final List<VoidCallback> _listeners = [];
 
   /// Get cached themes (returns empty list if not fetched yet)
   List<ThemeModel> get themes => List.unmodifiable(_cachedThemes);
-  
+
   /// Check if themes are currently being loaded
   bool get isLoading => _isLoading;
-  
+
   /// Get error message if any
   String? get errorMessage => _errorMessage;
-  
+
   /// Check if there's an error
   bool get hasError => _errorMessage != null;
-  
+
   /// Check if themes have been fetched at least once
   bool get hasThemes => _cachedThemes.isNotEmpty;
-  
+
   /// Get timestamp of last successful fetch
   DateTime? get lastFetchTime => _lastFetchTime;
 
   /// Fetches themes from the API and caches them.
   /// If themes are already cached and [forceRefresh] is false,
   /// returns cached themes without making an API call.
-  /// 
+  ///
   /// [forceRefresh] - If true, forces a fresh fetch from API
   /// Returns the list of themes (cached or freshly fetched)
   Future<List<ThemeModel>> fetchThemes({bool forceRefresh = false}) async {
@@ -81,8 +98,15 @@ class ThemeManager {
       _cachedThemesKioskKey = kioskKey;
     }
 
+    if (_cachedThemes.isEmpty) {
+      await _hydrateFromDisk(kioskKey);
+    }
+
     // Return cached themes if available and not forcing refresh
-    if (!forceRefresh && _cachedThemes.isNotEmpty && !_isLoading) {
+    if (!forceRefresh &&
+        _cachedThemes.isNotEmpty &&
+        _lastFetchTime != null &&
+        !_isLoading) {
       return List.unmodifiable(_cachedThemes);
     }
 
@@ -116,6 +140,8 @@ class ThemeManager {
       _errorMessage = null;
       _isLoading = false;
       _notifyListeners();
+      await _persistToDisk(_cachedThemesKioskKey);
+      unawaited(_precacheThemeImages(themes));
       return List.unmodifiable(_cachedThemes);
     } on ApiException catch (e) {
       _errorMessage = e.message;
@@ -144,6 +170,49 @@ class ThemeManager {
     }
   }
 
+  String _diskKey(String kioskKey) {
+    final safe = kioskKey.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    return 'themes_${safe.isEmpty ? 'default' : safe}';
+  }
+
+  Future<void> _hydrateFromDisk(String kioskKey) async {
+    final disk = _diskCache;
+    if (disk == null || _cachedThemes.isNotEmpty) return;
+    final raw = await disk.readJson(_diskKey(kioskKey));
+    if (raw is! List) return;
+    final loaded = <ThemeModel>[];
+    for (final row in raw) {
+      if (row is! Map) continue;
+      final theme = ThemeModel.fromJson(Map<String, dynamic>.from(row));
+      if (theme.id.isNotEmpty) loaded.add(theme);
+    }
+    if (loaded.isEmpty) return;
+    _cachedThemes = loaded;
+    _cachedThemesKioskKey = kioskKey;
+  }
+
+  Future<void> _persistToDisk(String kioskKey) async {
+    final disk = _diskCache;
+    if (disk == null) return;
+    await disk.writeJson(
+      _diskKey(kioskKey),
+      _cachedThemes.map((t) => t.toJson()).toList(),
+    );
+  }
+
+  Future<void> _precacheThemeImages(Iterable<ThemeModel> themes) async {
+    final cache = _imageCache;
+    if (cache == null) return;
+    for (final theme in themes) {
+      final url = theme.sampleImageUrl?.trim() ?? '';
+      if (url.isEmpty) continue;
+      await cache.cacheImage(
+        resolveThemeSampleImageUrl(url),
+        cacheKey: catalogCacheKeyForTheme(theme.id),
+      );
+    }
+  }
+
   /// Gets themes synchronously from cache.
   /// Returns empty list if themes haven't been fetched yet.
   /// Use [fetchThemes()] to ensure themes are loaded.
@@ -164,7 +233,8 @@ class ThemeManager {
   /// Gets themes for display: filter by isActive when present (show only when true),
   /// sort by displayOrder ascending when present (nulls last).
   List<ThemeModel> getActiveThemes() {
-    final list = _cachedThemes.where((theme) => theme.isActive != false).toList();
+    final list =
+        _cachedThemes.where((theme) => theme.isActive != false).toList();
     list.sort((a, b) {
       final aOrder = a.displayOrder;
       final bOrder = b.displayOrder;
@@ -182,7 +252,7 @@ class ThemeManager {
     return _cachedThemes
         .where((theme) =>
             (theme.isActive == true) &&
-            theme.sampleImageUrl != null && 
+            theme.sampleImageUrl != null &&
             theme.sampleImageUrl!.isNotEmpty)
         .map((theme) {
           final fullUrl = resolveThemeSampleImageUrl(theme.sampleImageUrl!);
@@ -226,9 +296,9 @@ class ThemeManager {
         listener();
       } catch (e, st) {
         // Ignore errors from listeners
-        AppLogger.error('Error in ThemeManager listener', error: e, stackTrace: st);
+        AppLogger.error('Error in ThemeManager listener',
+            error: e, stackTrace: st);
       }
     }
   }
 }
-

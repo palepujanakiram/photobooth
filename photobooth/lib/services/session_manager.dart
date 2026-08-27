@@ -8,6 +8,10 @@ import '../utils/logger.dart';
 import '../utils/print_orientation.dart';
 import 'error_reporting/error_reporting_manager.dart';
 import 'kiosk_session_auth.dart';
+import 'local_kiosk_models.dart';
+import 'local_kiosk_store.dart';
+import 'local_session_skeleton.dart';
+import 'session_deliverable_images.dart';
 
 /// Session data model matching API response
 class SessionData {
@@ -27,12 +31,28 @@ class SessionData {
   final String? selectedCategoryId; // Category ID of selected theme
   /// Frame id, `"none"` if customer declined, or null if unset / auto-resolve later.
   final String? selectedFrameId;
+
   /// Opaque token from session create; sent as `X-Kiosk-Session-Token` on protected routes.
   final String? kioskAuthToken;
+
   /// Authoritative person count from `/api/preprocess-image` (used for theme filtering).
   final int? personCount;
+
   /// Customer print layout preference (`portrait` | `landscape`).
   final String? printOrientation;
+
+  /// True when this session was created (or later marked) while Fly was down.
+  final bool offline;
+
+  /// Stable token minted locally so offline guests can scan before assets sync.
+  final String? shareToken;
+  final String? eventId;
+
+  /// Last deliverable proxy path (`/api/img/...`) for staff thumbs after sync.
+  final String? latestImageUrl;
+
+  /// Classic dual-strip / sheet proxy path when composed on-device.
+  final String? stripCompositeUrl;
 
   SessionData({
     required this.id,
@@ -52,6 +72,11 @@ class SessionData {
     this.kioskAuthToken,
     this.personCount,
     this.printOrientation,
+    this.offline = false,
+    this.shareToken,
+    this.eventId,
+    this.latestImageUrl,
+    this.stripCompositeUrl,
   });
 
   SessionData copyWith({
@@ -59,6 +84,12 @@ class SessionData {
     String? kioskAuthToken,
     String? printOrientation,
     int? attemptsUsed,
+    bool? offline,
+    String? shareToken,
+    String? eventId,
+    List<dynamic>? generatedImages,
+    String? latestImageUrl,
+    String? stripCompositeUrl,
   }) {
     return SessionData(
       id: id,
@@ -67,7 +98,7 @@ class SessionData {
       termsAcceptedIp: termsAcceptedIp,
       termsVersion: termsVersion,
       attemptsUsed: attemptsUsed ?? this.attemptsUsed,
-      generatedImages: generatedImages,
+      generatedImages: generatedImages ?? this.generatedImages,
       expiresAt: expiresAt,
       kioskId: kioskId,
       kioskLocation: kioskLocation,
@@ -78,6 +109,11 @@ class SessionData {
       kioskAuthToken: kioskAuthToken ?? this.kioskAuthToken,
       personCount: personCount ?? this.personCount,
       printOrientation: printOrientation ?? this.printOrientation,
+      offline: offline ?? this.offline,
+      shareToken: shareToken ?? this.shareToken,
+      eventId: eventId ?? this.eventId,
+      latestImageUrl: latestImageUrl ?? this.latestImageUrl,
+      stripCompositeUrl: stripCompositeUrl ?? this.stripCompositeUrl,
     );
   }
 
@@ -103,11 +139,17 @@ class SessionData {
       if (kioskAuthToken != null) 'kioskAuthToken': kioskAuthToken,
       if (personCount != null) 'personCount': personCount,
       if (printOrientation != null) 'printOrientation': printOrientation,
+      if (offline) kKioskSessionOfflineKey: true,
+      if (shareToken != null) 'shareToken': shareToken,
+      if (eventId != null) 'eventId': eventId,
+      if (latestImageUrl != null) 'latestImageUrl': latestImageUrl,
+      if (stripCompositeUrl != null) 'stripCompositeUrl': stripCompositeUrl,
     };
   }
 
   static String? _printOrientationFromJson(Map<String, dynamic> json) {
-    final direct = PrintOrientation.tryParse(json['printOrientation']?.toString());
+    final direct =
+        PrintOrientation.tryParse(json['printOrientation']?.toString());
     if (direct != null) return direct.apiValue;
     final framing = json['framingMetadata'];
     if (framing is Map) {
@@ -139,6 +181,12 @@ class SessionData {
     return DateTime.parse(raw);
   }
 
+  static String? _optionalTrimmedString(Map<String, dynamic> json, String key) {
+    final v = json[key]?.toString().trim();
+    if (v == null || v.isEmpty) return null;
+    return v;
+  }
+
   factory SessionData.fromJson(Map<String, dynamic> json) {
     return SessionData(
       id: _requireString(json, 'id'),
@@ -158,6 +206,13 @@ class SessionData {
       kioskAuthToken: parseKioskAuthToken(json),
       personCount: _personCountFromJson(json),
       printOrientation: _printOrientationFromJson(json),
+      offline: json[kKioskSessionOfflineKey] == true,
+      shareToken:
+          (json['shareToken'] ?? json['share_token'])?.toString().trim(),
+      eventId: (json['eventId'] ?? json['event_id'])?.toString().trim(),
+      latestImageUrl: _optionalTrimmedString(json, 'latestImageUrl'),
+      stripCompositeUrl: _optionalTrimmedString(json, 'stripCompositeUrl') ??
+          _optionalTrimmedString(json, 'strip_composite_url'),
     );
   }
 }
@@ -203,6 +258,67 @@ class SessionManager extends ChangeNotifier {
   /// Kiosk session auth token for protected API routes (null if no active session).
   String? get kioskAuthToken => currentSession?.kioskAuthToken;
 
+  /// True when the guest session is running without Fly (frame-only / cash).
+  bool get isOfflineSession => currentSession?.offline == true;
+
+  String? get shareToken => currentSession?.shareToken;
+
+  /// Returns the session's stable share token, minting and persisting it once.
+  Future<String?> ensureShareToken() async {
+    final s = _currentSession;
+    if (s == null) return null;
+    final existing = s.shareToken?.trim();
+    if (existing != null && existing.isNotEmpty) return existing;
+    final token = mintLocalShareToken();
+    _currentSession = s.copyWith(shareToken: token);
+    await _persistCurrentSession();
+    notifyListeners();
+    return token;
+  }
+
+  /// Remember that WAN dropped so later screens skip AI / UPI.
+  void markSessionOffline() {
+    final s = _currentSession;
+    if (s == null || s.offline) return;
+    _currentSession = s.copyWith(offline: true);
+    unawaited(_persistCurrentSession());
+    notifyListeners();
+  }
+
+  /// Links local compose/print proxy URLs onto the session and re-enqueues
+  /// outbox so Fly ingest can fill staff thumbnails after Sync.
+  Future<void> attachDeliverableImageUrls({
+    required Iterable<String> imageUrls,
+    String? stripCompositeUrl,
+  }) async {
+    final s = _currentSession;
+    if (s == null) return;
+    final incoming = imageUrls
+        .map((u) => u.trim())
+        .where(isSessionProxyImageUrl)
+        .cast<String>()
+        .toList();
+    final stripRaw = stripCompositeUrl?.trim();
+    final stripOk =
+        isSessionProxyImageUrl(stripRaw) ? stripRaw : null;
+    if (incoming.isEmpty && stripOk == null) return;
+
+    final merged = mergeSessionProxyImageUrls(s.generatedImages, [
+      ...incoming,
+      if (stripOk != null) stripOk,
+    ]);
+    // When [incoming] is empty, early-return above guarantees [stripOk] != null.
+    final latest =
+        incoming.isNotEmpty ? incoming.last : stripOk!;
+    _currentSession = s.copyWith(
+      generatedImages: merged,
+      latestImageUrl: latest,
+      stripCompositeUrl: stripOk ?? s.stripCompositeUrl,
+    );
+    await _persistCurrentSession();
+    notifyListeners();
+  }
+
   /// Person count for theme filtering (from preprocess; null until set).
   int? get personCount => currentSession?.personCount;
 
@@ -217,9 +333,7 @@ class SessionManager extends ChangeNotifier {
   bool get isSessionExpired {
     final s = _currentSession;
     if (s == null) return true;
-    return s.expiresAt
-        .add(kSessionExpiryGrace)
-        .isBefore(DateTime.now());
+    return s.expiresAt.add(kSessionExpiryGrace).isBefore(DateTime.now());
   }
 
   Future<void> _persistCurrentSession() async {
@@ -227,10 +341,32 @@ class SessionManager extends ChangeNotifier {
     final s = _currentSession;
     if (s == null) {
       await prefs.remove(_prefsKey);
+      await _syncKioskStore(null);
       return;
     }
     final map = s.toJson()..remove('userImageUrl');
     await prefs.setString(_prefsKey, jsonEncode(map));
+    await _syncKioskStore(s);
+  }
+
+  Future<void> _syncKioskStore(SessionData? session) async {
+    final store = LocalKioskStore.instance;
+    if (store == null) return;
+    try {
+      if (session == null) {
+        await store.clearCurrentSession();
+        return;
+      }
+      await store.upsertSession(
+        LocalSessionWrite(
+          id: session.id,
+          payload: session.toJson()..remove('userImageUrl'),
+        ),
+      );
+    } catch (e, st) {
+      AppLogger.debug('Kiosk store session persist failed ($e)');
+      AppLogger.debug('$st');
+    }
   }
 
   void _clearSessionInternal({required String reason}) {
@@ -257,22 +393,63 @@ class SessionManager extends ChangeNotifier {
     // and can surface as an uncaught async error right after photo upload.
     // The app already carries pixels in [PhotoModel]; server retains the image.
     final slim = Map<String, dynamic>.from(response)..remove('userImageUrl');
-    if (parseKioskAuthToken(slim) == null &&
-        _currentSession?.kioskAuthToken != null) {
-      slim[kKioskAuthTokenJsonKey] = _currentSession!.kioskAuthToken;
-    }
-    if (SessionData._personCountFromJson(slim) == null &&
-        _currentSession?.personCount != null) {
-      slim['personCount'] = _currentSession!.personCount;
-    }
-    if (SessionData._printOrientationFromJson(slim) == null &&
-        _currentSession?.printOrientation != null) {
-      slim['printOrientation'] = _currentSession!.printOrientation;
-    }
+    _carryForwardWithinSession(slim);
     _currentSession = SessionData.fromJson(slim);
     AppLogger.debug('Session stored from API: ${_currentSession!.id}');
     unawaited(_persistCurrentSession());
     notifyListeners();
+  }
+
+  /// Fills gaps in a PATCH echo from the session already in memory.
+  ///
+  /// Only runs when [slim] IS that session. [setSessionFromResponse] also
+  /// ingests a brand-new session, and back-filling there handed the next guest
+  /// the previous guest's state: their share token (a link to someone else's
+  /// gallery), their generated images, and their `offline` flag — one WAN blip
+  /// marked a session offline and every later session inherited it, so Pick a
+  /// look fell back to the built-in catalog (one frame, one sticker) and
+  /// payment claimed offline until the app restarted.
+  void _carryForwardWithinSession(Map<String, dynamic> slim) {
+    final previous = _currentSession;
+    if (previous == null) return;
+    final responseId = slim['id']?.toString().trim() ?? '';
+    if (responseId.isEmpty || responseId != previous.id.trim()) return;
+
+    if (parseKioskAuthToken(slim) == null && previous.kioskAuthToken != null) {
+      slim[kKioskAuthTokenJsonKey] = previous.kioskAuthToken;
+    }
+    if (SessionData._personCountFromJson(slim) == null &&
+        previous.personCount != null) {
+      slim['personCount'] = previous.personCount;
+    }
+    if (SessionData._printOrientationFromJson(slim) == null &&
+        previous.printOrientation != null) {
+      slim['printOrientation'] = previous.printOrientation;
+    }
+    if (previous.offline) {
+      slim[kKioskSessionOfflineKey] = true;
+    }
+    if ((slim['shareToken']?.toString().trim().isEmpty ?? true) &&
+        previous.shareToken != null) {
+      slim['shareToken'] = previous.shareToken;
+    }
+    if ((slim['eventId']?.toString().trim().isEmpty ?? true) &&
+        previous.eventId != null) {
+      slim['eventId'] = previous.eventId;
+    }
+    final incomingImages = slim['generatedImages'];
+    final incomingEmpty = incomingImages is! List || incomingImages.isEmpty;
+    if (incomingEmpty && previous.generatedImages.isNotEmpty) {
+      slim['generatedImages'] = previous.generatedImages;
+    }
+    if ((slim['latestImageUrl']?.toString().trim().isEmpty ?? true) &&
+        previous.latestImageUrl != null) {
+      slim['latestImageUrl'] = previous.latestImageUrl;
+    }
+    if ((slim['stripCompositeUrl']?.toString().trim().isEmpty ?? true) &&
+        previous.stripCompositeUrl != null) {
+      slim['stripCompositeUrl'] = previous.stripCompositeUrl;
+    }
   }
 
   /// Updates authoritative person count after `/api/preprocess-image`.
@@ -318,9 +495,12 @@ class SessionManager extends ChangeNotifier {
 
   /// Restores persisted session into memory (best-effort).
   ///
+  /// Prefers the on-device kiosk ledger, then SharedPreferences.
   /// On parse/validation failure: discards persisted value and reports error.
   Future<void> restore() async {
     try {
+      final fromStore = await _restoreFromKioskStore();
+      if (fromStore) return;
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_prefsKey);
       if (raw == null || raw.trim().isEmpty) return;
@@ -355,6 +535,29 @@ class SessionManager extends ChangeNotifier {
         reason: 'Session restore failed (corrupt persisted JSON)',
         fatal: false,
       );
+    }
+  }
+
+  Future<bool> _restoreFromKioskStore() async {
+    final store = LocalKioskStore.instance;
+    if (store == null) return false;
+    try {
+      final json = await store.currentSessionJson();
+      if (json == null) return false;
+      final session = SessionData.fromJson(json);
+      _currentSession = session;
+      if (isSessionExpired) {
+        _clearSessionInternal(reason: 'expired_restore');
+        return false;
+      }
+      AppLogger.debug(
+          'Session restored from kiosk store: ${session.id} (expires at: ${session.expiresAt})');
+      notifyListeners();
+      return true;
+    } catch (e, st) {
+      AppLogger.debug('Kiosk store session restore failed ($e)');
+      AppLogger.debug('$st');
+      return false;
     }
   }
 }

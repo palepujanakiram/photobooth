@@ -1,5 +1,8 @@
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../services/api_environment_store.dart';
+import 'api_environment.dart';
+
 /// Application Configuration
 ///
 /// This file contains configurable API base URL and related endpoints.
@@ -7,23 +10,44 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 /// Modify these values to change the app's endpoints without code changes.
 class AppConfig {
   // API Configuration
-  /// Base URL for the API endpoints
+  /// Compile-time override: `--dart-define=BASE_URL=https://…`
   ///
-  /// For development with CORS issues, you can use:
-  /// - A local proxy: `./run_web_dev.sh` (recommended for web dev)
-  /// - Direct API: `--dart-define=BASE_URL=https://fotozenai.fly.dev` (requires server CORS)
+  /// When empty, [baseUrl] uses the splash Stage/Live preference (or the
+  /// offline-branch default [branchDefaultEnvironment]).
+  static const String dartDefineBaseUrl = String.fromEnvironment('BASE_URL');
+
+  /// Offline / stage-first default when prefs and dart-define are unset.
+  static const ApiEnvironment branchDefaultEnvironment = ApiEnvironment.stage;
+
+  /// Const host for Retrofit `@RestApi` codegen only — runtime Dio uses [baseUrl].
+  static const String retrofitAnnotationBaseUrl = 'https://zenai.fly.dev';
+
+  /// Effective API base URL (no trailing slash).
   ///
-  /// For production Flutter web on Fly.io, use same-origin BASE_URL
-  /// (`https://fotozen-web.fly.dev`); nginx proxies `/api/*` to the API app.
-  ///
-  /// Base URL for the API endpoints
-  /// NOTE: For web development, you MUST run Chrome with CORS disabled
-  /// See QUICK_CORS_FIX.md or run: ./run_chrome_dev.sh
-  /// Override for local/dev: `--dart-define=BASE_URL=http://10.0.2.2:5000` (Android emulator → host).
-  static const String baseUrl = String.fromEnvironment(
-    'BASE_URL',
-    defaultValue: 'https://fotozenai.fly.dev',
-  );
+  /// Priority: splash prefs → `--dart-define=BASE_URL` → [branchDefaultEnvironment].
+  static String get baseUrl {
+    final fromPrefs = ApiEnvironmentStore.override?.baseUrl;
+    if (fromPrefs != null && fromPrefs.isNotEmpty) {
+      return _stripTrailingSlash(fromPrefs);
+    }
+    final fromDefine = dartDefineBaseUrl.trim();
+    if (fromDefine.isNotEmpty) {
+      return _stripTrailingSlash(fromDefine);
+    }
+    return branchDefaultEnvironment.baseUrl;
+  }
+
+  static String _stripTrailingSlash(String url) {
+    return url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+  }
+
+  /// Short guest-facing URL used by the booth QR.
+  static String shareUrlForToken(String token) =>
+      '$baseUrl/s/${Uri.encodeComponent(token.trim())}';
+
+  /// Long fallback URL shown below the booth QR.
+  static String shareLongUrlForToken(String token) =>
+      '$baseUrl/share/${Uri.encodeComponent(token.trim())}';
 
   /// JWT for `Authorization: Bearer …` on API calls (e.g. Supabase anon / edge gateway).
   ///

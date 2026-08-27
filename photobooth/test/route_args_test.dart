@@ -262,7 +262,35 @@ void main() {
       expect(parsed!.multiShotTotal, 1);
       expect(parsed.resolvedShotTotal, 1);
       expect(parsed.isFlashbackSingle6x4, isTrue);
-      expect(parsed.isFlashbackFourShot, isFalse);
+      expect(parsed.isFlashbackStrip, isFalse);
+    });
+
+    test('classicShotMode threeShot forces multiShotTotal to 3', () {
+      final parsed = CaptureRouteArgs.tryParse({
+        'returnPhotoOnly': true,
+        'multiShotTotal': 4,
+        'classicShotMode': 'threeShot',
+        'flashbackTheme': theme,
+      });
+      expect(parsed!.multiShotTotal, 3);
+      expect(parsed.resolvedShotTotal, 3);
+      expect(parsed.classicShotMode, ClassicShotMode.threeShot);
+      expect(parsed.isFlashbackSingle6x4, isFalse);
+      expect(parsed.isFlashbackStrip, isTrue);
+    });
+
+    test('parseClassicShotModeArg accepts the bare shot count', () {
+      expect(parseClassicShotModeArg('3'), ClassicShotMode.threeShot);
+      expect(parseClassicShotModeArg('three'), ClassicShotMode.threeShot);
+      expect(parseClassicShotModeArg('threeShot'), ClassicShotMode.threeShot);
+      expect(parseClassicShotModeArg('4'), ClassicShotMode.fourShot);
+      expect(parseClassicShotModeArg('1'), ClassicShotMode.single6x4);
+      expect(parseClassicShotModeArg('2'), isNull);
+      expect(parseClassicShotModeArg(null), isNull);
+      expect(
+        parseClassicShotModeArg(ClassicShotMode.threeShot),
+        ClassicShotMode.threeShot,
+      );
     });
   });
 
@@ -275,6 +303,25 @@ void main() {
         't1',
       );
       expect(FlashbackCaptureArgs.tryParse({'theme': 'x'}), isNull);
+    });
+  });
+
+  group('ClassicShotChoiceArgs.tryParse', () {
+    test('parses theme and normalizes modes', () {
+      final typed = ClassicShotChoiceArgs(theme: theme, modes: const [3, 4]);
+      expect(ClassicShotChoiceArgs.tryParse(typed), same(typed));
+      final parsed = ClassicShotChoiceArgs.tryParse({
+        'theme': theme,
+        'modes': [4, 3, 9, '1'],
+      });
+      expect(parsed!.theme.id, 't1');
+      expect(parsed.modes, [1, 3, 4]);
+    });
+
+    test('defaults modes when missing', () {
+      final parsed = ClassicShotChoiceArgs.tryParse({'theme': theme});
+      expect(parsed!.modes, [1, 3, 4]);
+      expect(ClassicShotChoiceArgs.tryParse({'theme': 'x'}), isNull);
     });
   });
 

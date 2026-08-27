@@ -132,7 +132,7 @@ String bakeOneStripLookMatrixDataUrlForTest(
 
     if (matrix != null) {
       work = work.convert(numChannels: 4);
-      _applyColorMatrixInPlace(work, matrix);
+      applyStripLookColorMatrixInPlace(work, matrix);
     }
 
     final q = jpegQuality.clamp(40, 97);
@@ -143,7 +143,7 @@ String bakeOneStripLookMatrixDataUrlForTest(
   }
 }
 
-void _applyColorMatrixInPlace(img.Image image, List<double> m) {
+void applyStripLookColorMatrixInPlace(img.Image image, List<double> m) {
   for (final p in image) {
     final r = p.r.toDouble();
     final g = p.g.toDouble();

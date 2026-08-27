@@ -6,6 +6,7 @@ import '../../utils/constants.dart';
 import '../../utils/event_station_role.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_scaffold.dart';
+import '../splash/bootstrap_route_args.dart';
 
 class EventStationPickerScreen extends StatelessWidget {
   const EventStationPickerScreen({super.key, EventManager? eventManager})
@@ -19,56 +20,69 @@ class EventStationPickerScreen extends StatelessWidget {
     await Navigator.of(context).pushReplacementNamed(route);
   }
 
+  /// Leave station mode without re-entering the splash→station auto-route loop.
+  void _leaveToKioskSettings(BuildContext context) {
+    Navigator.of(context).pushReplacementNamed(
+      AppConstants.kRouteSplash,
+      arguments: const SplashRouteArgs(manageKiosk: true),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    return AppScaffold(
-      title: AppStrings.eventStationTitle,
-      showBackButton: true,
-      onBackPressed: () {
-        Navigator.of(context).pushReplacementNamed(AppConstants.kRouteSplash);
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _leaveToKioskSettings(context);
       },
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _StationChoice(
-              title: AppStrings.eventStationCapture,
-              subtitle: AppStrings.eventStationCaptureHint,
-              onTap: () => _pick(
-                context,
-                EventStationRole.capture,
-                AppConstants.kRouteEventCaptureStation,
+      child: AppScaffold(
+        title: AppStrings.eventStationTitle,
+        showBackButton: true,
+        onBackPressed: () => _leaveToKioskSettings(context),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _StationChoice(
+                title: AppStrings.eventStationCapture,
+                subtitle: AppStrings.eventStationCaptureHint,
+                onTap: () => _pick(
+                  context,
+                  EventStationRole.capture,
+                  AppConstants.kRouteEventCaptureStation,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            _StationChoice(
-              title: AppStrings.eventStationTheme,
-              subtitle: AppStrings.eventStationThemeHint,
-              onTap: () => _pick(
-                context,
-                EventStationRole.theme,
-                AppConstants.kRouteEventThemeStation,
+              const SizedBox(height: 16),
+              _StationChoice(
+                title: AppStrings.eventStationTheme,
+                subtitle: AppStrings.eventStationThemeHint,
+                onTap: () => _pick(
+                  context,
+                  EventStationRole.theme,
+                  AppConstants.kRouteEventThemeStation,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            _StationChoice(
-              title: AppStrings.eventStationPrint,
-              subtitle: AppStrings.eventStationPrintHint,
-              onTap: () => _pick(
-                context,
-                EventStationRole.print,
-                AppConstants.kRouteEventPrintStation,
+              const SizedBox(height: 16),
+              _StationChoice(
+                title: AppStrings.eventStationPrint,
+                subtitle: AppStrings.eventStationPrintHint,
+                onTap: () => _pick(
+                  context,
+                  EventStationRole.print,
+                  AppConstants.kRouteEventPrintStation,
+                ),
               ),
-            ),
-            const Spacer(),
-            Text(
-              'Printer, camera, and copies come from this kiosk.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colors.secondaryTextColor),
-            ),
-          ],
+              const Spacer(),
+              Text(
+                'Printer, camera, and copies come from this kiosk.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colors.secondaryTextColor),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -96,7 +110,10 @@ class _StationChoice extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 8),
           Text(subtitle, textAlign: TextAlign.center),
         ],

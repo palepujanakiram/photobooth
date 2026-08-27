@@ -14,6 +14,7 @@ import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/theme_card.dart';
 import '../../views/widgets/cached_network_image.dart';
+import '../../services/image_cache_source.dart';
 import '../../views/widgets/bottom_safe_area.dart';
 import '../../views/widgets/falling_starfield_background.dart';
 import '../../views/widgets/centered_max_width.dart';
@@ -514,6 +515,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
               imageFilter: ui.ImageFilter.blur(sigmaX: 40, sigmaY: 40),
               child: CachedNetworkImage(
                 imageUrl: imageUrl,
+                cacheKey: catalogCacheKeyForTheme(theme?.id),
                 fit: BoxFit.cover,
                 width: double.infinity,
                 height: double.infinity,
@@ -987,6 +989,7 @@ class _ThemeThumbImage extends StatelessWidget {
     }
     return CachedNetworkImage(
       imageUrl: url,
+      cacheKey: catalogCacheKeyForTheme(theme.id),
       fit: BoxFit.cover,
       width: double.infinity,
       height: double.infinity,

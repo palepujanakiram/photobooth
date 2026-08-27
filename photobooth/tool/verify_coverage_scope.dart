@@ -23,6 +23,7 @@ bool ignored(String path) {
     'result_payment_copies_row.dart',
     'photo_capture_strip_thumbs.dart',
     'staff_payments_print_picker.dart',
+    'capture_screen_router.dart',
     'staff_payments_preview_helpers.dart',
     'fotoflashback_filter_preview.dart',
     'kiosk_device_status_widgets.dart',

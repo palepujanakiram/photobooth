@@ -6,6 +6,7 @@ import 'screens/event_station/event_print_station_view.dart';
 import 'screens/event_station/event_station_picker_view.dart';
 import 'screens/event_station/event_theme_station_view.dart';
 import 'screens/print_selection/print_selection_view.dart';
+import 'screens/classic_shot_choice/classic_shot_choice_view.dart';
 import 'screens/experience_choice/experience_choice_view.dart';
 import 'screens/frame_select/frame_select_view.dart';
 import 'screens/fotoflashback/fotoflashback_capture_view.dart';
@@ -48,6 +49,10 @@ Map<String, WidgetBuilder> buildAppRoutes() {
     },
     AppConstants.kRouteExperienceChoice: (context) =>
         const ExperienceChoiceScreen(),
+    AppConstants.kRouteClassicShotChoice: (context) {
+      final raw = ModalRoute.of(context)?.settings.arguments;
+      return ClassicShotChoiceScreen.fromRouteArgs(raw);
+    },
     AppConstants.kRouteHome: (context) => const ThemeSelectionScreen(),
     AppConstants.kRouteCapture: (context) {
       final raw = ModalRoute.of(context)?.settings.arguments;

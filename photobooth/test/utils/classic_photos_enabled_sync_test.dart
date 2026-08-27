@@ -14,8 +14,10 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await KioskManager().clearClassicPhotosEnabled();
+    await KioskManager().clearOperatingModeOffline();
     await KioskManager().clearKioskCode();
     KioskManager.resetClassicPhotosCacheForTests();
+    KioskManager.resetOperatingModeCacheForTests();
   });
 
   test('syncClassicPhotosEnabled updates stale false from API true', () async {
@@ -38,6 +40,7 @@ void main() {
     final enabled = await syncClassicPhotosEnabled(api: api, kiosk: km);
     expect(enabled, isTrue);
     expect(await km.isClassicPhotosEnabled(), isTrue);
+    expect(await km.isOperatingModeOffline(), isFalse);
   });
 
   test('syncClassicPhotosEnabled falls back to cache when API misses', () async {
@@ -61,6 +64,27 @@ void main() {
     final mock = createMockApiDio();
     final api = ApiService(dio: mock.dio);
     expect(await syncClassicPhotosEnabled(api: api, kiosk: km), isTrue);
+  });
+
+  test('syncClassicPhotosEnabled persists admin offline mode', () async {
+    final km = KioskManager();
+    await km.setKioskCode('FOTO');
+    await km.setOperatingModeOffline(false);
+
+    final mock = createMockApiDio();
+    final api = ApiService(dio: mock.dio);
+    mock.adapter.onGet(
+      '/api/kiosk/by-code/FOTO',
+      (server) => server.reply(200, {
+        'id': 'k1',
+        'code': 'FOTO',
+        'classicPhotosEnabled': true,
+        'operatingMode': 'offline',
+      }),
+    );
+
+    await syncClassicPhotosEnabled(api: api, kiosk: km);
+    expect(await km.isOperatingModeOffline(), isTrue);
   });
 
   test('syncClassicPhotosEnabled falls back to cache when API throws', () async {

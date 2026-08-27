@@ -13,6 +13,8 @@ import '../../utils/secure_image_url.dart';
 /// Falls back to network image if cache fails
 class CachedNetworkImage extends StatefulWidget {
   final String imageUrl;
+  /// Stable catalog key (`theme-{id}` / `frame-{id}`). URL-hash fallback if null.
+  final String? cacheKey;
   final BoxFit? fit;
   final Widget? placeholder;
   final Widget? errorWidget;
@@ -25,6 +27,7 @@ class CachedNetworkImage extends StatefulWidget {
   const CachedNetworkImage({
     super.key,
     required this.imageUrl,
+    this.cacheKey,
     this.fit,
     this.placeholder,
     this.errorWidget,
@@ -55,7 +58,8 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
   @override
   void didUpdateWidget(CachedNetworkImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.imageUrl != widget.imageUrl) {
+    if (oldWidget.imageUrl != widget.imageUrl ||
+        oldWidget.cacheKey != widget.cacheKey) {
       _loadImage();
     }
   }
@@ -92,7 +96,10 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
         return;
       }
 
-      final cachedFile = await _cacheService.getCachedFile(securedUrl);
+      final cachedFile = await _cacheService.getCachedFile(
+        securedUrl,
+        cacheKey: widget.cacheKey,
+      );
       if (await _tryUseCachedFile(cachedFile)) {
         return;
       }
@@ -132,7 +139,7 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
   }
 
   void _cacheInBackground(String securedUrl) {
-    _cacheService.cacheImage(securedUrl).then((cachedFile) {
+    _cacheService.cacheImage(securedUrl, cacheKey: widget.cacheKey).then((cachedFile) {
       if (!mounted || cachedFile == null || kIsWeb) return;
       if (!cachedFile.existsSync()) return;
       setState(() => _cachedFile = cachedFile as dynamic);

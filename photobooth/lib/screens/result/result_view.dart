@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'result_payment_card_widgets.dart';
 import 'result_payment_qr_area.dart';
 import 'result_payment_status.dart';
+import 'result_offline_cash_sheet.dart';
 import 'result_viewmodel.dart';
 import '../../services/app_settings_manager.dart';
 import '../../utils/constants.dart';
@@ -308,7 +309,7 @@ class _ResultScreenState extends State<ResultScreen> {
       viewModel.enterGuestQrShareMode();
 
       // Keep the session alive for a short window so operators can print/share.
-      // QrShareScreen will wipe locally and reset back to Terms after 60s.
+      // QrShareScreen wipes locally and resets to Terms (60s online / 12s offline).
       await Navigator.of(context).pushReplacementNamed(
         AppConstants.kRouteQrShare,
         arguments: QrShareArgs(
@@ -410,23 +411,29 @@ class _ResultScreenState extends State<ResultScreen> {
         surfaceTintColor: Colors.transparent,
         forceMaterialTransparency: true,
         centerTitle: true,
-        title: const Text(
-          'PAY',
-          style: TextStyle(
+        title: Text(
+          paymentsEnabled
+              ? 'PAY'
+              : AppStrings.offlineFreePrintTitle,
+          style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w600,
             fontSize: 22,
           ),
         ),
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(22),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(22),
           child: Padding(
-            padding: EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.only(bottom: 6),
             child: Text(
-              'Scan to complete your purchase',
+              paymentsEnabled
+                  ? (viewModel.cashOnlyOffline
+                      ? AppStrings.offlineCashOnlyWaiting
+                      : 'Scan to complete your purchase')
+                  : AppStrings.offlineFreePrintSubtitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -464,7 +471,7 @@ class _ResultScreenState extends State<ResultScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            _buildTitleSection(appColors),
+                            _buildTitleSection(appColors, viewModel),
                             if (_transformationRunId != null) ...[
                               const SizedBox(height: 4),
                               _buildTransformationDetailsLink(),
@@ -622,11 +629,13 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
-  Widget _buildTitleSection(AppColors appColors) {
+  Widget _buildTitleSection(AppColors appColors, ResultViewModel viewModel) {
     return Padding(
       padding: const EdgeInsets.only(top: 0, bottom: 2),
       child: Text(
-        'Scan the QR code to pay with UPI.\nPrinting starts automatically after payment is approved.',
+        viewModel.cashOnlyOffline
+            ? AppStrings.offlineCashOnlyMessage
+            : 'Scan the QR code to pay with UPI.\nPrinting starts automatically after payment is approved.',
         maxLines: 3,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
@@ -813,6 +822,14 @@ class _ResultScreenState extends State<ResultScreen> {
                 onGetHelp: () => _showGetHelpDialog(viewModel),
                 refreshPollingChild: _buildRefreshPollingChild(),
                 buildQrArea: _buildPaymentQrArea,
+                onStaffCashConfirm: viewModel.cashOnlyOffline
+                    ? () => unawaited(
+                          showOfflineCashConfirmSheet(
+                            context: context,
+                            viewModel: viewModel,
+                          ),
+                        )
+                    : null,
               );
             },
           ),

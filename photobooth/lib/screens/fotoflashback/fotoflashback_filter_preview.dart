@@ -101,8 +101,8 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   /// Layout uses the single-strip aspect guests edit.
   static const double aspectRatio = stripAspectRatio;
 
-  /// Matches zenai `STRIP_PRINT.border / stripWidth` (4 / 600).
-  static const double printBorderRatio = 4 / 600;
+  /// Matches zenai `STRIP_PRINT.border / stripWidth` (10 / 600).
+  static const double printBorderRatio = 10 / 600;
 
   /// Compact credential burned onto Classic strips (not AI — brand only).
   static const String credentialLine = 'FOTOZEN AI';
@@ -113,8 +113,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
     final shotCount =
         imageJpegBytes.isNotEmpty ? imageJpegBytes.length : imageDataUrls.length;
     final composeUrl = serverComposePreviewUrl?.trim() ?? '';
-    if (composeUrl.isNotEmpty &&
-        (shotCount == 1 || shotCount == kStripShotCount)) {
+    if (composeUrl.isNotEmpty && isValidClassicComposeShotCount(shotCount)) {
       return SizedBox(
         width: width,
         height: height,
@@ -304,6 +303,19 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   }
 }
 
+/// Strip length behind a preview: the images it was handed, snapped to a
+/// supported strip length (3 or 4) so a partially-hydrated list still lays out.
+int stripPreviewShotCount({
+  required List<String> imageDataUrls,
+  required List<Uint8List> imageJpegBytes,
+}) {
+  final count = imageJpegBytes.isNotEmpty
+      ? imageJpegBytes.length
+      : imageDataUrls.length;
+  if (kClassicStripShotCounts.contains(count)) return count;
+  return kStripShotCount;
+}
+
 Widget _lookPreviewBusyOverlay() {
   return const ColoredBox(
     color: Color(0x66000000),
@@ -374,11 +386,17 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
       accentStrokeRatio: wysiwyg.accentStrokeRatio,
       noirAccentStrokeRatio: wysiwyg.noirAccentStrokeRatio,
     );
+    // Strip length drives cell height only — the 2×6 sheet is a fixed print.
+    final shotCount = stripPreviewShotCount(
+      imageDataUrls: imageDataUrls,
+      imageJpegBytes: imageJpegBytes,
+    );
     final cells = computeStripPhotoCellRects(
       frameId: frameId,
       stripWidth: width,
       stripHeight: height,
       layout: wysiwyg,
+      shotCount: shotCount,
     );
     final borderPad = stripChromeBorderPad(
       frameId: frameId,
@@ -395,7 +413,7 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
     final photoStack = Stack(
       clipBehavior: Clip.hardEdge,
       children: [
-        for (var i = 0; i < kStripShotCount; i++)
+        for (var i = 0; i < cells.length; i++)
           Positioned.fromRect(
             rect: cells[i].rect,
             child: _lookPreviewSlot(

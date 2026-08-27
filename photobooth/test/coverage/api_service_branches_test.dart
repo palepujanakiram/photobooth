@@ -399,11 +399,15 @@ void main() {
       marketingSmsOptIn: false,
       marketingWhatsappOptIn: true,
       fcmToken: 'fcm',
+      receiptNumber: 'FZ/ODEON-01/2627/00147',
+      receiptId: '550e8400-e29b-41d4-a716-446655440000',
     );
     expect(seen?['customerEmail'], 'a@b.co');
     expect(seen?['marketingEmailOptIn'], true);
     expect(seen?['marketingSmsOptIn'], false);
     expect(seen?['marketingWhatsappOptIn'], true);
+    expect(seen?['receiptNumber'], 'FZ/ODEON-01/2627/00147');
+    expect(seen?['id'], '550e8400-e29b-41d4-a716-446655440000');
   });
 
   test('applySessionDiscount validates and posts body', () async {
@@ -472,7 +476,7 @@ void main() {
     expect(api.fetchStripFilters(), throwsA(isA<ApiException>()));
   });
 
-  test('cleanStripOverlays accepts one or four shots', () async {
+  test('cleanStripOverlays accepts one, three or four shots', () async {
     expect(
       () => api.cleanStripOverlays(sessionId: 's', images: const ['a', 'b']),
       throwsA(isA<ApiException>()),
@@ -513,6 +517,24 @@ void main() {
     expect(cleaned.images.first.endsWith('_clean'), isTrue);
     expect(cleaned.cleanedFlags, [true, false, true, false]);
     expect(cleaned.allCleaned, isFalse);
+
+    final threeImages = List.filled(3, 'data:image/jpeg;base64,xyz');
+    adapter.onPost(
+      '/api/sessions/sess-1/strip/clean-overlays',
+      (server) => server.reply(200, {
+        'success': true,
+        'images': threeImages.map((e) => '${e}_clean').toList(),
+        'cleaned': [true, true, true],
+        'overlayCleanup': {'detectedCount': 3, 'cleanedCount': 3},
+      }),
+      data: Matchers.any,
+    );
+    final threeShot = await api.cleanStripOverlays(
+      sessionId: 'sess-1',
+      images: threeImages,
+    );
+    expect(threeShot.images, hasLength(3));
+    expect(threeShot.allCleaned, isTrue);
   });
 
   test('composeStrip validates shot count and returns print url', () async {
@@ -569,6 +591,27 @@ void main() {
     );
     expect(single.printSize, 's6x4');
     expect(single.copiesOnSheet, 1);
+
+    // A 3-shot strip is the same dual 2×6 print as a 4-shot one.
+    adapter.onPost(
+      '/api/sessions/sess-three/strip/compose',
+      (server) => server.reply(200, {
+        'imageUrl': 'https://example.com/strip3.jpg',
+        'stripCompositeUrl': 'https://example.com/composite3.jpg',
+        'filter': 'mono',
+        'printSize': 's6x2_2',
+        'copiesOnSheet': 2,
+      }),
+      data: Matchers.any,
+    );
+    final three = await api.composeStrip(
+      sessionId: 'sess-three',
+      images: List.filled(3, 'data:image/jpeg;base64,abc'),
+      filter: 'mono',
+    );
+    expect(three.printSize, 's6x2_2');
+    expect(three.copiesOnSheet, 2);
+    expect(three.printImageUrl, 'https://example.com/composite3.jpg');
     expect(single.printImageUrl, 'https://example.com/single6x4.jpg');
   });
 
@@ -651,4 +694,66 @@ void main() {
     );
   });
 
+  test('ingest kiosk entities and assets', () async {
+    expect(
+      () => api.ingestKioskEntities(kioskCode: ' ', items: const []),
+      throwsA(isA<ApiException>()),
+    );
+    expect(
+      () => api.ingestKioskAsset(
+        kioskCode: 'K1',
+        prefix: 'generated',
+        filename: 'a.jpg',
+        bytes: const [],
+      ),
+      throwsA(isA<ApiException>()),
+    );
+    adapter.onPost(
+      '/api/kiosk/ingest',
+      (server) => server.reply(200, {'ok': true, 'items': []}),
+      data: Matchers.any,
+    );
+    await api.ingestKioskEntities(
+      kioskCode: 'k1',
+      items: [
+        {'entityType': 'session', 'entityId': 's1', 'payload': {}},
+      ],
+    );
+    adapter.onPost(
+      '/api/kiosk/ingest/asset',
+      (server) => server.reply(200, {'ok': true}),
+      data: Matchers.any,
+    );
+    await api.ingestKioskAsset(
+      kioskCode: 'k1',
+      prefix: 'generated',
+      filename: 'a.jpg',
+      bytes: const [1, 2, 3],
+    );
+  });
+
+  test('ingest wraps DioException', () async {
+    final bad = Dio(BaseOptions(baseUrl: dio.options.baseUrl));
+    bad.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (o, h) => h.reject(
+          DioException(requestOptions: o, message: 'net down'),
+        ),
+      ),
+    );
+    final badApi = ApiService(dio: bad);
+    await expectLater(
+      badApi.ingestKioskEntities(kioskCode: 'K1', items: const []),
+      throwsA(isA<ApiException>()),
+    );
+    await expectLater(
+      badApi.ingestKioskAsset(
+        kioskCode: 'K1',
+        prefix: 'generated',
+        filename: 'a.jpg',
+        bytes: const [1],
+      ),
+      throwsA(isA<ApiException>()),
+    );
+  });
 }

@@ -9,9 +9,11 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await KioskManager().clearPaymentEnabledOverride();
     await KioskManager().clearClassicPhotosEnabled();
+    await KioskManager().clearOperatingModeOffline();
     await KioskManager().clearKioskCode();
     KioskManager.resetPaymentOverrideCacheForTests();
     KioskManager.resetClassicPhotosCacheForTests();
+    KioskManager.resetOperatingModeCacheForTests();
   });
 
   test('payment override and clear flows', () async {
@@ -49,5 +51,26 @@ void main() {
     await km.clearClassicPhotosEnabled();
     KioskManager.resetClassicPhotosCacheForTests();
     expect(await km.isClassicPhotosEnabled(), isTrue);
+  });
+
+  test('operating mode defaults online and persists offline', () async {
+    final km = KioskManager();
+    expect(await km.isOperatingModeOffline(), isFalse);
+    expect(KioskManager.isOperatingModeOfflineCached, isFalse);
+    await km.setOperatingModeOffline(true);
+    expect(await km.isOperatingModeOffline(), isTrue);
+    expect(KioskManager.isOperatingModeOfflineCached, isTrue);
+    KioskManager.resetOperatingModeCacheForTests();
+    expect(await km.isOperatingModeOffline(), isTrue);
+    await km.clearOperatingModeOffline();
+    KioskManager.resetOperatingModeCacheForTests();
+    expect(await km.isOperatingModeOffline(), isFalse);
+  });
+
+  test('isOperatingModeOffline reads prefs when cache empty', () async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('kiosk_operating_mode_offline', true);
+    KioskManager.resetOperatingModeCacheForTests();
+    expect(await KioskManager().isOperatingModeOffline(), isTrue);
   });
 }

@@ -274,6 +274,19 @@ class StaffApiService {
     );
   }
 
+  /// PATCH `/api/staff/me/offline-cash-pin` — syncs to kiosks via settings.
+  Future<void> updateOfflineCashPin(String pin) async {
+    final next = pin.trim();
+    if (next.isEmpty) {
+      throw ApiException('Offline cash PIN is required');
+    }
+    await _patchWithToken(
+      '/api/staff/me/offline-cash-pin',
+      data: {'offlineCashPin': next},
+      defaultError: 'Failed to update offline cash PIN',
+    );
+  }
+
   Future<Map<String, dynamic>> _getJsonMap(
     String path, {
     required String defaultError,
@@ -559,15 +572,43 @@ class StaffApiService {
     required Map<String, dynamic> data,
     required String defaultError,
   }) async {
+    await _mutateWithToken(
+      path,
+      method: 'POST',
+      data: data,
+      defaultError: defaultError,
+    );
+  }
+
+  Future<void> _patchWithToken(
+    String path, {
+    required Map<String, dynamic> data,
+    required String defaultError,
+  }) async {
+    await _mutateWithToken(
+      path,
+      method: 'PATCH',
+      data: data,
+      defaultError: defaultError,
+    );
+  }
+
+  Future<void> _mutateWithToken(
+    String path, {
+    required String method,
+    required Map<String, dynamic> data,
+    required String defaultError,
+  }) async {
     final token = await _sessionManager.getToken();
     if (token == null || token.isEmpty) {
       throw ApiException('Staff session expired. Please log in again.');
     }
     try {
-      final r = await _dio.post<dynamic>(
+      final r = await _dio.request<dynamic>(
         path,
         data: data,
         options: Options(
+          method: method,
           headers: {AppStrings.staffTokenHeader: token},
           validateStatus: (c) => c != null && c >= 200 && c < 500,
           responseType: ResponseType.json,

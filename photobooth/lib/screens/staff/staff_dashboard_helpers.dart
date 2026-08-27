@@ -19,6 +19,18 @@ abstract final class StaffDashboardHelpers {
     return RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(isoDate.trim());
   }
 
+  /// Parses `YYYY-MM-DD` into a local calendar [DateTime], or null.
+  static DateTime? tryParseIsoDate(String isoDate) {
+    final trimmed = isoDate.trim();
+    if (!isValidIsoDate(trimmed)) return null;
+    final parts = trimmed.split('-');
+    return DateTime(
+      int.parse(parts[0]),
+      int.parse(parts[1]),
+      int.parse(parts[2]),
+    );
+  }
+
   static String formatDayLabel(String isoDate) {
     final parts = isoDate.split('-');
     if (parts.length != 3) return isoDate;

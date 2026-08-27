@@ -7,6 +7,7 @@ import '../../services/image_cache_service.dart';
 import '../../utils/logger.dart';
 import '../../utils/error_reporting_helpers.dart';
 import '../../utils/theme_image_urls.dart';
+import '../../services/image_cache_source.dart';
 import '../../views/widgets/animated_slideshow_background.dart'
     show kSlideshowAssetPaths;
 import '../theme_selection/theme_model.dart';
@@ -249,7 +250,8 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
   }
 
   Future<dynamic> _cacheWithTimeout(String url, {String? label}) {
-    return _imageCacheService.cacheImage(url).timeout(
+    final cacheKey = catalogCacheKeyForTheme(getThemeForImageUrl(url)?.id);
+    return _imageCacheService.cacheImage(url, cacheKey: cacheKey).timeout(
       const Duration(seconds: 10),
       onTimeout: () {
         AppLogger.debug('${label ?? 'Image'} cache timeout for: $url');

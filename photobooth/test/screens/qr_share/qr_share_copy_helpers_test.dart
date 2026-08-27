@@ -34,6 +34,49 @@ void main() {
       );
       expect(snap.qrData, 'https://route.example/s/0');
     });
+
+    test('fromViewModel offline keeps local QR and uses sync headline', () {
+      final vm = ResultViewModel(generatedImages: const []);
+      final snap = QrShareUiSnapshot.fromViewModel(
+        viewModel: vm,
+        parsedShareUrl: 'https://route.example/s/0',
+        parsedKioskShareUrl: 'https://kiosk.example/s/1',
+        parsedShareLongUrl: 'https://long.example',
+        parsedShareExpiresAt: DateTime.utc(2026, 8, 1),
+        phone: '999',
+        offline: true,
+      );
+      expect(snap.offline, isTrue);
+      expect(snap.qrData, 'https://route.example/s/0');
+      expect(snap.longUrl, 'https://long.example');
+      expect(snap.expiresAt, isNull);
+      expect(snap.waLine, isEmpty);
+      expect(snap.headline, contains('after the booth syncs'));
+    });
+  });
+
+  group('qrShareHeadlineForSession', () {
+    test('offline uses offline copy', () {
+      expect(
+        qrShareHeadlineForSession(
+          offline: true,
+          waActuallyQueued: true,
+          phone: '999',
+        ),
+        contains('after the booth syncs'),
+      );
+    });
+
+    test('online keeps scan copy', () {
+      expect(
+        qrShareHeadlineForSession(
+          offline: false,
+          waActuallyQueued: false,
+          phone: '',
+        ),
+        startsWith('Scan this QR'),
+      );
+    });
   });
 
   group('resolveQrShareData', () {

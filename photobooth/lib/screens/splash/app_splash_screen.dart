@@ -9,7 +9,9 @@ import 'package:provider/provider.dart';
 import 'bootstrap_route_args.dart';
 import 'kiosk_qr_scan_screen.dart';
 import '../../models/kiosk_device_status.dart';
+import '../../models/event_info_model.dart';
 import '../../models/kiosk_info_model.dart';
+import '../../services/api_environment_store.dart';
 import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/client_identification.dart';
@@ -17,15 +19,23 @@ import '../../services/customer_session_lifecycle.dart';
 import '../../services/kiosk_manager.dart';
 import '../../services/event_manager.dart';
 import '../../services/kiosk_device_status_service.dart';
+import '../../services/kiosk_outbox_worker.dart';
+import '../../services/local_kiosk_models.dart';
+import '../../utils/api_environment.dart';
+import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../utils/kiosk_qr_payload.dart';
 import '../../utils/logger.dart';
 import '../../views/widgets/app_colors.dart';
+import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/animated_slideshow_background.dart'
     show kSlideshowAssetPaths;
 import 'app_splash_event_helpers.dart';
 import 'app_splash_input_helpers.dart';
+import 'app_splash_kiosk_bind_helpers.dart';
+import 'app_splash_outbox_sync_helpers.dart';
 import 'app_splash_screen_body.dart';
+import 'splash_api_environment_control.dart';
 import '../../utils/event_station_role.dart';
 import '../../utils/kiosk_runtime_refresh.dart';
 
@@ -48,7 +58,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
   late final TextEditingController _codeController;
   late final TextEditingController _eventController;
 
-  final ApiService _api = ApiService();
+  ApiService _api = ApiService();
   final KioskManager _kiosk = KioskManager();
   final EventManager _event = EventManager();
 
@@ -58,9 +68,14 @@ class _AppSplashScreenState extends State<AppSplashScreen>
   String? _storedCode;
   bool _needsEntry = false;
   bool _manageEditing = false;
+  ApiEnvironment _apiEnvironment = splashApiEnvironmentSelection();
   bool _deviceStatusLoading = false;
   KioskDeviceStatusSnapshot? _deviceStatus;
-  final KioskDeviceStatusService _deviceStatusService = KioskDeviceStatusService();
+  final KioskDeviceStatusService _deviceStatusService =
+      KioskDeviceStatusService();
+  KioskOutboxSyncCounts? _outboxCounts;
+  bool _outboxSyncing = false;
+  int _outboxCompletedThisRun = 0;
 
   @override
   void initState() {
@@ -147,8 +162,102 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     }
   }
 
+  Future<void> _onApiEnvironmentChanged(ApiEnvironment env) async {
+    if (_busy || env == _apiEnvironment) return;
+    setState(() {
+      _busy = true;
+      _apiEnvironment = env;
+    });
+    try {
+      await ApiEnvironmentStore.set(env);
+      _api = ApiService();
+      if (mounted) {
+        context.read<AppSettingsManager>().rebindApiService();
+        await _refreshSettingsForBoundKiosk();
+      }
+      if (!mounted) return;
+      AppSnackBar.showSuccess(context, AppStrings.apiEnvironmentSaved);
+    } catch (e, st) {
+      AppLogger.warning(
+        'Failed to save API environment',
+        error: e,
+        stackTrace: st,
+      );
+      if (mounted) {
+        setState(() => _apiEnvironment = splashApiEnvironmentSelection());
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _onRefreshDeviceStatusPressed() async {
     await _refreshDeviceStatus(forceSettingsRefresh: true);
+  }
+
+  Future<void> _refreshOutboxCounts() async {
+    final worker = KioskOutboxWorker.instance;
+    if (worker == null) return;
+    try {
+      final counts = await worker.syncCounts();
+      if (!mounted) return;
+      setState(() => _outboxCounts = counts);
+    } catch (e, st) {
+      AppLogger.warning(
+        'Splash outbox count refresh failed',
+        error: e,
+        stackTrace: st,
+      );
+    }
+  }
+
+  Future<void> _onOutboxSyncPressed() async {
+    final worker = KioskOutboxWorker.instance;
+    if (worker == null) {
+      if (mounted) {
+        AppSnackBar.showError(context, AppStrings.splashSyncFailedToast);
+      }
+      return;
+    }
+    if (_outboxSyncing || _busy) return;
+    setState(() {
+      _outboxSyncing = true;
+      _outboxCompletedThisRun = 0;
+    });
+    try {
+      final result = await worker.drainUntilCaughtUp(
+        onProgress: (progress) {
+          if (!mounted) return;
+          setState(() {
+            _outboxCounts = progress.counts;
+            _outboxCompletedThisRun = progress.completedThisRun;
+            _outboxSyncing = progress.running;
+          });
+        },
+      );
+      if (!mounted) return;
+      setState(() {
+        _outboxSyncing = false;
+        _outboxCompletedThisRun = result.completed;
+      });
+      final message = splashOutboxSyncResultMessage(result);
+      if (result.isCaughtUp) {
+        AppSnackBar.showSuccess(context, message);
+      } else {
+        AppSnackBar.showError(context, message);
+      }
+    } catch (e, st) {
+      AppLogger.warning(
+        'Splash manual outbox sync failed',
+        error: e,
+        stackTrace: st,
+      );
+      if (mounted) {
+        setState(() => _outboxSyncing = false);
+        AppSnackBar.showError(context, AppStrings.splashSyncFailedToast);
+      }
+      await _refreshOutboxCounts();
+    }
   }
 
   Future<void> _bootstrapDeviceStatus() async {
@@ -168,9 +277,13 @@ class _AppSplashScreenState extends State<AppSplashScreen>
         _bootstrapDone = true;
         _storedCode = code;
         _codeController.text = (code ?? '').trim();
+        if ((code ?? '').trim().isNotEmpty) {
+          _outboxCounts = const KioskOutboxSyncCounts();
+        }
       });
       if ((code ?? '').trim().isNotEmpty) {
         unawaited(_bootstrapDeviceStatus());
+        unawaited(_refreshOutboxCounts());
       }
       return;
     }
@@ -221,25 +334,23 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       _error = null;
     });
     try {
-      final kiosk = await _fetchKioskByCodeBounded(code);
+      final resolved = await _resolveKioskForSplash(code);
       if (!mounted) return;
-      if (kiosk == null) {
+      final kiosk = resolved.kiosk;
+      if (!resolved.isOk || kiosk == null) {
         setState(() {
           _bootstrapDone = true;
           _needsEntry = true;
-          _error =
-              'Could not verify kiosk code. Check network and try again, or enter a new code.';
+          _error = resolved.errorMessage ??
+              AppStrings.splashCouldNotVerifyStoredKiosk;
           _codeController.text = code;
         });
         return;
       }
-      await _kiosk.setKioskCode(code);
-      await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
-      await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
+      await _applyBoundKiosk(code, kiosk);
       final eventErr = await bindSplashEventCode(
         eventManager: _event,
-        fetchEvent: (code, kioskCode) =>
-            _api.fetchEventByCode(code, kioskCode: kioskCode),
+        fetchEvent: _fetchEventByCodeBounded,
         eventCode: _eventController.text,
         kioskCode: code,
       );
@@ -256,7 +367,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       await _refreshSettingsForBoundKiosk();
       final urls = await _loadThemeBackgroundUrls();
       if (!mounted) return;
-      await _goAfterBind(urls);
+      await _goAfterBind(urls, wanAvailable: !resolved.fromCache);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -285,14 +396,59 @@ class _AppSplashScreenState extends State<AppSplashScreen>
     }
   }
 
-  Future<void> _goAfterBind(List<String> urls) async {
+  Future<EventInfoModel?> _fetchEventByCodeBounded(
+    String eventCode,
+    String? kioskCode,
+  ) async {
+    try {
+      return await _api
+          .fetchEventByCode(eventCode, kioskCode: kioskCode)
+          .timeout(const Duration(seconds: 12), onTimeout: () => null);
+    } catch (e, st) {
+      AppLogger.warning(
+        'Splash fetchEventByCode failed',
+        error: e,
+        stackTrace: st,
+      );
+      return null;
+    }
+  }
+
+  Future<SplashKioskResolveResult> _resolveKioskForSplash(String code) {
+    return resolveSplashKioskByCode(
+      code: code,
+      fetchOnline: _fetchKioskByCodeBounded,
+    );
+  }
+
+  Future<void> _applyBoundKiosk(String code, KioskInfoModel kiosk) async {
+    await _kiosk.setKioskCode(code);
+    await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
+    await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
+    await _kiosk.setClassicShotModes(kiosk.classicShotModes);
+    await _kiosk.setOperatingModeOffline(kiosk.isOperatingModeOffline);
+  }
+
+  Future<void> _goAfterBind(
+    List<String> urls, {
+    required bool wanAvailable,
+  }) async {
     final eventCode = await _event.getEventCode();
     final role = await _event.getStationRole();
     if (!mounted) return;
     final dest = resolveEventPostSplashRoute(
       eventCode: eventCode,
       stationRole: role,
+      wanAvailable: wanAvailable,
     );
+    if (dest == EventPostSplashRoute.needsInternet) {
+      setState(() {
+        _bootstrapDone = true;
+        _needsEntry = true;
+        _error = AppStrings.eventStationNeedsInternet;
+      });
+      return;
+    }
     if (dest == EventPostSplashRoute.terms) {
       _goToTerms(urls);
       return;
@@ -318,7 +474,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
   Future<void> _submitCode() async {
     final code = _codeController.text.trim().toUpperCase();
     if (code.isEmpty) {
-      setState(() => _error = 'Enter a kiosk code');
+      setState(() => _error = AppStrings.splashEnterKioskCode);
       return;
     }
     if (_busy) return;
@@ -327,23 +483,21 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       _error = null;
     });
     try {
-      final kiosk = await _fetchKioskByCodeBounded(code);
+      final resolved = await _resolveKioskForSplash(code);
       if (!mounted) return;
-      if (kiosk == null) {
+      final kiosk = resolved.kiosk;
+      if (!resolved.isOk || kiosk == null) {
         setState(() {
           _error =
-              'Invalid kiosk code or network timeout. Check with your venue and try again.';
+              resolved.errorMessage ?? AppStrings.splashKioskCodeUnavailable;
         });
         return;
       }
-      await _kiosk.setKioskCode(code);
-      await _kiosk.setPaymentEnabledOverride(kiosk.paymentEnabled);
-      await _kiosk.setClassicPhotosEnabled(kiosk.classicPhotosEnabled);
+      await _applyBoundKiosk(code, kiosk);
       await endPhotoboothCustomerSessionLogged('splash: kiosk code submitted');
       final eventErr = await bindSplashEventCode(
         eventManager: _event,
-        fetchEvent: (eventCode, kioskCode) =>
-            _api.fetchEventByCode(eventCode, kioskCode: kioskCode),
+        fetchEvent: _fetchEventByCodeBounded,
         eventCode: _eventController.text,
         kioskCode: code,
       );
@@ -355,7 +509,7 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       await _refreshSettingsForBoundKiosk();
       final urls = await _loadThemeBackgroundUrls();
       if (!mounted) return;
-      await _goAfterBind(urls);
+      await _goAfterBind(urls, wanAvailable: !resolved.fromCache);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -750,6 +904,15 @@ class _AppSplashScreenState extends State<AppSplashScreen>
                     deviceStatusLoading: _deviceStatusLoading,
                     deviceStatus: _deviceStatus,
                     onRefreshDeviceStatus: _onRefreshDeviceStatusPressed,
+                    apiEnvironment: _apiEnvironment,
+                    onApiEnvironmentChanged: widget.args.manageKiosk
+                        ? _onApiEnvironmentChanged
+                        : null,
+                    outboxCounts: showManageSummary ? _outboxCounts : null,
+                    outboxSyncing: _outboxSyncing,
+                    outboxCompletedThisRun: _outboxCompletedThisRun,
+                    onOutboxSync:
+                        showManageSummary ? _onOutboxSyncPressed : null,
                   ),
                 ),
                 appSplashVersionFooter(versionFooter, appColors),

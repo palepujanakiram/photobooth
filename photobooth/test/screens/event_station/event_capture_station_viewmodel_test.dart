@@ -99,6 +99,7 @@ class _ThrowingApi extends ApiService {
     String? selectedFrameId,
     bool includeSelectedFrameId = false,
     bool groupConsentAccepted = true,
+    String? clientSessionId,
   }) async {
     throw StateError('boom');
   }
