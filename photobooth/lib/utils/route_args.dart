@@ -72,8 +72,8 @@ class CaptureRouteArgs {
       multiShotTotal! >= 1 &&
       flashbackTheme != null;
 
-  /// Four-pose strip (look picker) vs single 6×4 print.
-  bool get isFlashbackFourShot =>
+  /// Multi-pose 2×6 strip (look picker) vs single 6×4 print.
+  bool get isFlashbackStrip =>
       isFlashbackMultiShot && resolvedShotTotal > 1;
 
   bool get isFlashbackSingle6x4 =>
@@ -226,9 +226,7 @@ class FlashbackFilterArgs {
   ClassicShotMode get resolvedShotMode {
     final mode = classicShotMode;
     if (mode != null) return mode;
-    return _captureCount == 1
-        ? ClassicShotMode.single6x4
-        : ClassicShotMode.fourShot;
+    return classicStripShotModeForCount(_captureCount);
   }
 
   static FlashbackFilterArgs? tryParse(Object? args) {
@@ -281,7 +279,7 @@ class FlashbackPrePayArgs {
       if (raw is! List) return null;
       final urls =
           raw.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
-      if (urls.length != 1 && urls.length != kStripShotCount) return null;
+      if (!isValidClassicComposeShotCount(urls.length)) return null;
       return FlashbackPrePayArgs(
         theme: args['theme'] as ThemeModel,
         imageDataUrls: urls,

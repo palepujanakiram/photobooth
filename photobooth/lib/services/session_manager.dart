@@ -393,46 +393,63 @@ class SessionManager extends ChangeNotifier {
     // and can surface as an uncaught async error right after photo upload.
     // The app already carries pixels in [PhotoModel]; server retains the image.
     final slim = Map<String, dynamic>.from(response)..remove('userImageUrl');
-    if (parseKioskAuthToken(slim) == null &&
-        _currentSession?.kioskAuthToken != null) {
-      slim[kKioskAuthTokenJsonKey] = _currentSession!.kioskAuthToken;
-    }
-    if (SessionData._personCountFromJson(slim) == null &&
-        _currentSession?.personCount != null) {
-      slim['personCount'] = _currentSession!.personCount;
-    }
-    if (SessionData._printOrientationFromJson(slim) == null &&
-        _currentSession?.printOrientation != null) {
-      slim['printOrientation'] = _currentSession!.printOrientation;
-    }
-    if (_currentSession?.offline == true) {
-      slim[kKioskSessionOfflineKey] = true;
-    }
-    if ((slim['shareToken']?.toString().trim().isEmpty ?? true) &&
-        _currentSession?.shareToken != null) {
-      slim['shareToken'] = _currentSession!.shareToken;
-    }
-    if ((slim['eventId']?.toString().trim().isEmpty ?? true) &&
-        _currentSession?.eventId != null) {
-      slim['eventId'] = _currentSession!.eventId;
-    }
-    final incomingImages = slim['generatedImages'];
-    final incomingEmpty = incomingImages is! List || incomingImages.isEmpty;
-    if (incomingEmpty && (_currentSession?.generatedImages.isNotEmpty ?? false)) {
-      slim['generatedImages'] = _currentSession!.generatedImages;
-    }
-    if ((slim['latestImageUrl']?.toString().trim().isEmpty ?? true) &&
-        _currentSession?.latestImageUrl != null) {
-      slim['latestImageUrl'] = _currentSession!.latestImageUrl;
-    }
-    if ((slim['stripCompositeUrl']?.toString().trim().isEmpty ?? true) &&
-        _currentSession?.stripCompositeUrl != null) {
-      slim['stripCompositeUrl'] = _currentSession!.stripCompositeUrl;
-    }
+    _carryForwardWithinSession(slim);
     _currentSession = SessionData.fromJson(slim);
     AppLogger.debug('Session stored from API: ${_currentSession!.id}');
     unawaited(_persistCurrentSession());
     notifyListeners();
+  }
+
+  /// Fills gaps in a PATCH echo from the session already in memory.
+  ///
+  /// Only runs when [slim] IS that session. [setSessionFromResponse] also
+  /// ingests a brand-new session, and back-filling there handed the next guest
+  /// the previous guest's state: their share token (a link to someone else's
+  /// gallery), their generated images, and their `offline` flag — one WAN blip
+  /// marked a session offline and every later session inherited it, so Pick a
+  /// look fell back to the built-in catalog (one frame, one sticker) and
+  /// payment claimed offline until the app restarted.
+  void _carryForwardWithinSession(Map<String, dynamic> slim) {
+    final previous = _currentSession;
+    if (previous == null) return;
+    final responseId = slim['id']?.toString().trim() ?? '';
+    if (responseId.isEmpty || responseId != previous.id.trim()) return;
+
+    if (parseKioskAuthToken(slim) == null && previous.kioskAuthToken != null) {
+      slim[kKioskAuthTokenJsonKey] = previous.kioskAuthToken;
+    }
+    if (SessionData._personCountFromJson(slim) == null &&
+        previous.personCount != null) {
+      slim['personCount'] = previous.personCount;
+    }
+    if (SessionData._printOrientationFromJson(slim) == null &&
+        previous.printOrientation != null) {
+      slim['printOrientation'] = previous.printOrientation;
+    }
+    if (previous.offline) {
+      slim[kKioskSessionOfflineKey] = true;
+    }
+    if ((slim['shareToken']?.toString().trim().isEmpty ?? true) &&
+        previous.shareToken != null) {
+      slim['shareToken'] = previous.shareToken;
+    }
+    if ((slim['eventId']?.toString().trim().isEmpty ?? true) &&
+        previous.eventId != null) {
+      slim['eventId'] = previous.eventId;
+    }
+    final incomingImages = slim['generatedImages'];
+    final incomingEmpty = incomingImages is! List || incomingImages.isEmpty;
+    if (incomingEmpty && previous.generatedImages.isNotEmpty) {
+      slim['generatedImages'] = previous.generatedImages;
+    }
+    if ((slim['latestImageUrl']?.toString().trim().isEmpty ?? true) &&
+        previous.latestImageUrl != null) {
+      slim['latestImageUrl'] = previous.latestImageUrl;
+    }
+    if ((slim['stripCompositeUrl']?.toString().trim().isEmpty ?? true) &&
+        previous.stripCompositeUrl != null) {
+      slim['stripCompositeUrl'] = previous.stripCompositeUrl;
+    }
   }
 
   /// Updates authoritative person count after `/api/preprocess-image`.

@@ -32,6 +32,63 @@ void main() {
       expect(decoded.height, kLocalStripSheetHeight);
     });
 
+    test('three plates fill the same sheet with taller cells', () {
+      final sources = <Uint8List>[
+        _solidJpeg(220, 20, 20, width: 40, height: 20),
+        _solidJpeg(20, 220, 20),
+        _solidJpeg(20, 20, 220),
+      ];
+
+      final jpeg = composeLocalStripSheetJpegForTest(
+        sourceBytes: sources,
+        filterId: 'clean',
+        frameId: 'classic',
+        single: false,
+      );
+
+      final decoded = img.decodeJpg(jpeg);
+      expect(decoded, isNotNull);
+      // Print sheet size never changes with the shot count.
+      expect(decoded!.width, kLocalStripSheetWidth);
+      expect(decoded.height, kLocalStripSheetHeight);
+
+      // Each of the three cells is ~597px tall, so sampling a third of the way
+      // down lands in a different plate than the four-shot layout would.
+      const cellHeight = (kLocalStripSheetHeight - kLocalStripBorder * 2) ~/ 3;
+      final firstCell = decoded.getPixel(300, kLocalStripBorder + 50);
+      final secondCell =
+          decoded.getPixel(300, kLocalStripBorder + cellHeight + 50);
+      final thirdCell =
+          decoded.getPixel(300, kLocalStripBorder + cellHeight * 2 + 50);
+      expect(firstCell.r, greaterThan(firstCell.g));
+      expect(secondCell.g, greaterThan(secondCell.r));
+      expect(thirdCell.b, greaterThan(thirdCell.r));
+    });
+
+    test('rejects a strip length the print cannot lay out', () async {
+      final dataUrl =
+          'data:image/jpeg;base64,${base64Encode(_solidJpeg(10, 10, 10))}';
+      final twoShot = LocalStripComposeRequest(
+        sources: [dataUrl, dataUrl],
+        filterId: 'clean',
+        frameId: 'classic',
+        single: false,
+        orientation: PrintOrientation.portrait,
+      );
+      expect(await composeLocalStripSheet(twoShot), isNull);
+
+      // An explicit shotCount that disagrees with the sources also fails open.
+      final mismatched = LocalStripComposeRequest(
+        sources: [dataUrl, dataUrl, dataUrl],
+        filterId: 'clean',
+        frameId: 'classic',
+        single: false,
+        shotCount: 4,
+        orientation: PrintOrientation.portrait,
+      );
+      expect(await composeLocalStripSheet(mismatched), isNull);
+    });
+
     test('loads a file and persists a landscape single sheet', () async {
       final temp = await Directory.systemTemp.createTemp('local-strip-test');
       addTearDown(() => temp.delete(recursive: true));

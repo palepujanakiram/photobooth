@@ -15,14 +15,30 @@ enum ClassicShotMode {
 extension ClassicShotModeX on ClassicShotMode {
   int get shotCount => switch (this) {
         ClassicShotMode.fourShot => kStripShotCount,
-        ClassicShotMode.threeShot => 3,
+        ClassicShotMode.threeShot => kStripShotCountThree,
         ClassicShotMode.single6x4 => 1,
       };
 
   bool get isSingle6x4 => this == ClassicShotMode.single6x4;
 
-  bool get isMultiStrip =>
-      this == ClassicShotMode.fourShot || this == ClassicShotMode.threeShot;
+  /// Any 2×6 strip mode (3- or 4-shot) — the flows 1-shot must not enter.
+  bool get isStrip => !isSingle6x4;
+
+  /// Alias of [isStrip] (main naming).
+  bool get isMultiStrip => isStrip;
+
+  /// Print cell aspect for this mode's 2×6 strip (1-shot has no strip cell).
+  double get stripCellAspectRatio => stripCellAspectRatioForShots(shotCount);
+
+  /// Stable route/log token (`1`, `3`, `4`).
+  String get shotCountLabel => '$shotCount';
+}
+
+/// Strip mode for [shotCount]; anything but 3 falls back to the 4-shot strip.
+ClassicShotMode classicStripShotModeForCount(int shotCount) {
+  if (shotCount == 1) return ClassicShotMode.single6x4;
+  if (shotCount == kStripShotCountThree) return ClassicShotMode.threeShot;
+  return ClassicShotMode.fourShot;
 }
 
 /// Allowed Classic shot counts from kiosk bind (`classicShotModes`).

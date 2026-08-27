@@ -726,9 +726,9 @@ class ApiService {
     required List<String> images,
     String filter = kDefaultStripFilterId,
   }) async {
-    if (images.length != kStripShotCount) {
+    if (!kClassicStripShotCounts.contains(images.length)) {
       throw ApiException(
-        'FotoFlashback requires exactly $kStripShotCount photos.',
+        'FotoFlashback requires $kStripShotCountThree or $kStripShotCount photos.',
       );
     }
     try {
@@ -757,7 +757,7 @@ class ApiService {
         );
       }
       final raw = map['images'];
-      if (raw is! List || raw.length != kStripShotCount) {
+      if (raw is! List || raw.length != images.length) {
         throw ApiException('Strip preview grade returned invalid images');
       }
       final out = <String>[];
@@ -781,16 +781,15 @@ class ApiService {
   }
 
   /// POST `/api/sessions/:id/strip/clean-overlays` — remove viewfinder HUD.
-  /// Accepts 1 shot (per-accept scrub / Classic 6×4) or [kStripShotCount].
+  /// Accepts 1 shot (per-accept scrub / Classic 6×4) or a full strip (3 / 4).
   Future<StripOverlayCleanResult> cleanStripOverlays({
     required String sessionId,
     required List<String> images,
   }) async {
-    if (images.length != 1 &&
-        images.length != 3 &&
-        images.length != kStripShotCount) {
+    if (!isValidClassicComposeShotCount(images.length)) {
       throw ApiException(
-        'Classic overlay cleanup requires 1 or $kStripShotCount photos.',
+        'Classic overlay cleanup requires 1, $kStripShotCountThree '
+        'or $kStripShotCount photos.',
       );
     }
     try {
@@ -949,11 +948,10 @@ class ApiService {
     PrintOrientation? orientation,
     Duration? timeout,
   }) async {
-    if (images.length != 1 &&
-        images.length != 3 &&
-        images.length != kStripShotCount) {
+    if (!isValidClassicComposeShotCount(images.length)) {
       throw ApiException(
-        'Classic compose requires 1 or $kStripShotCount photos.',
+        'Classic compose requires 1, $kStripShotCountThree '
+        'or $kStripShotCount photos.',
       );
     }
     try {

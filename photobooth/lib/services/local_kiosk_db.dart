@@ -37,7 +37,11 @@ class LocalKioskDb {
         version: _dbVersion,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
-          await db.execute('PRAGMA journal_mode = WAL');
+          // `journal_mode` RETURNS a row, so Android's execSQL rejects it with
+          // "Queries can be performed using ... query or rawQuery methods only".
+          // That threw inside onConfigure, so openDatabase aborted before
+          // onCreate ever ran and the booth silently had no ledger tables.
+          await db.rawQuery('PRAGMA journal_mode = WAL');
           await db.execute('PRAGMA synchronous = NORMAL');
         },
         onCreate: (db, version) async {

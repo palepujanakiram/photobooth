@@ -32,8 +32,12 @@ extension CaptureSessionKindX on CaptureSessionKind {
 
   bool get isClassicFourShot => this == CaptureSessionKind.classicFourShot;
 
-  bool get isClassicMultiShot =>
-      isClassicThreeShot || isClassicFourShot;
+  /// Any 2×6 strip session (3- or 4-shot). Use this — not
+  /// [isClassicFourShot] — for "Classic, but not the 1-shot FSM" branches.
+  bool get isClassicStrip => isClassicThreeShot || isClassicFourShot;
+
+  /// Alias of [isClassicStrip] (main naming).
+  bool get isClassicMultiShot => isClassicStrip;
 
   bool get isFotoZen => this == CaptureSessionKind.fotoZen;
 
@@ -41,7 +45,7 @@ extension CaptureSessionKindX on CaptureSessionKind {
   int? get classicShotCount => switch (this) {
         CaptureSessionKind.fotoZen => null,
         CaptureSessionKind.classicOneShot => 1,
-        CaptureSessionKind.classicThreeShot => 3,
+        CaptureSessionKind.classicThreeShot => kStripShotCountThree,
         CaptureSessionKind.classicFourShot => kStripShotCount,
       };
 

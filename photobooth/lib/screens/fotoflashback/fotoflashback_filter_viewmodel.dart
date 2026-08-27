@@ -172,6 +172,22 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   /// Classic 1-shot print (portrait 4×6 by default; guest can switch to 6×4).
   bool get isSingleClassic => _expectedCaptureCount == 1;
 
+  /// Polaroid / 2×2 / romantic need four cells — only Classic 4-shot.
+  bool get supportsSheetLayouts => _expectedCaptureCount == kStripShotCount;
+
+  /// Stills this session captured — 1, 3 or 4. Drives strip cell geometry,
+  /// sticker spawn points and the compose payload, so the whole look screen
+  /// follows the shot count instead of assuming four.
+  int get shotCount => _expectedCaptureCount;
+
+  /// Cells on one 2×6 strip (1-shot has no strip; it prints a single 6×4).
+  int get stripShotCount => isSingleClassic ? 1 : _expectedCaptureCount;
+
+  /// Print cell aspect for this session's strip (fixed sheet, taller cells
+  /// when there are fewer shots).
+  double get stripCellAspectRatio =>
+      stripCellAspectRatioForShots(stripShotCount);
+
   Duration get _composeTimeout => isSingleClassic
       ? AppConstants.kClassicSingleComposeTimeout
       : AppConstants.kClassicStripComposeTimeout;
@@ -179,9 +195,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   bool get _hasComposableShotCount =>
       !_hydratingCaptures &&
       _imageDataUrls.length == _expectedCaptureCount &&
-      (_expectedCaptureCount == 1 ||
-          _expectedCaptureCount == 3 ||
-          _expectedCaptureCount == kStripShotCount);
+      isValidClassicComposeShotCount(_expectedCaptureCount);
 
   StripWysiwygLayout get wysiwygLayout =>
       _catalog?.wysiwyg ?? StripWysiwygLayout.defaults;
@@ -206,10 +220,11 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
 
   List<StripFilter> get filters => _catalog?.filters ?? const [];
 
-  /// Sheet layouts need 4 cells — hide them for Classic 1-shot 6×4.
+  /// Sheet layouts have exactly four hardcoded slots — hide them whenever this
+  /// session did not shoot four (Classic 1-shot 6×4 and the 3-shot strip).
   List<StripFrame> get frames {
     final all = _catalog?.frames ?? const <StripFrame>[];
-    if (!isSingleClassic) return all;
+    if (supportsSheetLayouts) return all;
     return all
         .where((f) => !isStripSheetLayout(f.id))
         .toList(growable: false);
@@ -453,7 +468,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       }
       if (frames.isNotEmpty &&
           (!frames.any((f) => f.id == _selectedFrameId) ||
-              (isSingleClassic && isStripSheetLayout(_selectedFrameId)))) {
+              (!supportsSheetLayouts && isStripSheetLayout(_selectedFrameId)))) {
         _selectedFrameId = frames.first.id;
       }
       if (stickers.isNotEmpty &&
@@ -492,8 +507,8 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   Future<void> preparePreview() async {
     if (!classicOverlayCleanupEnabled) return;
     if (_previewCleaned ||
-        (_imageDataUrls.length != 1 &&
-            _imageDataUrls.length != _expectedCaptureCount)) {
+        _imageDataUrls.length != _expectedCaptureCount ||
+        !isValidClassicComposeShotCount(_imageDataUrls.length)) {
       return;
     }
     final existing = _prepareFuture;
@@ -660,7 +675,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         filter: filterId,
       );
       if (seq != _gradeSeq) return;
-      if (graded.length == _expectedCaptureCount) {
+if (graded.length == _expectedCaptureCount) {
         _gradedByFilter[filterId] = List<String>.from(graded);
       }
     } catch (_) {
@@ -682,7 +697,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   }
 
   void selectFrame(String frameId) {
-    if (isSingleClassic && isStripSheetLayout(frameId)) return;
+    if (!supportsSheetLayouts && isStripSheetLayout(frameId)) return;
     if (frameId == _selectedFrameId) return;
     final wasSheet = isStripSheetLayout(_selectedFrameId);
     final nowSheet = isStripSheetLayout(frameId);
@@ -715,7 +730,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     final room = kMaxStripStickerPlacements - _placements.length;
     if (room <= 0) return;
 
-    final cells = isSingleClassic ? 1 : _expectedCaptureCount;
+    final cells = stripShotCount;
     final toAdd = room < cells ? room : cells;
     final wave = cells == 0
         ? 0
@@ -866,6 +881,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         filterId: _selectedFilterId,
         frameId: _selectedFrameId,
         single: isSingleClassic,
+        shotCount: stripShotCount,
         orientation: _printOrientation,
       ),
     );
@@ -903,7 +919,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     if (!canCompose) {
       _errorMessage = isSingleClassic
           ? AppStrings.flashbackComposeFailed
-          : AppStrings.flashbackNeedFourShots;
+          : AppStrings.flashbackNeedAllShots(_expectedCaptureCount);
       notifyListeners();
       return null;
     }
@@ -1194,7 +1210,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     if (isStripSheetLayout(_selectedFrameId)) {
       return _spawnPointForSheetCell(type, cell, wave);
     }
-    final cellCenterY = (cell + 0.5) / _expectedCaptureCount;
+    final cellCenterY = (cell + 0.5) / stripShotCount;
     final waveNudge = (wave % 3) * 0.04;
     final preferLeft = switch (type) {
       'sparkles' || 'flowers' => cell.isEven,

@@ -537,6 +537,8 @@ abstract final class AppStrings {
   static const directPtpCameraLabel = 'EOS';
   static const flashbackCaptureSubtitle =
       '4 shots · 10s to pose · 8s between shots to rearrange';
+  static const flashbackCaptureSubtitleThree =
+      '3 shots · 10s to pose · 8s between shots to rearrange';
   static const flashbackCaptureSubtitleSingle = 'One shot · 10s pose countdown';
   static String flashbackShotProgress(int current, int total) =>
       'Shot $current of $total';
@@ -626,6 +628,8 @@ abstract final class AppStrings {
   static const flashbackComposeFailed =
       'Couldn’t build strip. Please try again.';
   static const flashbackNeedFourShots = 'Take all 4 shots to continue.';
+  static String flashbackNeedAllShots(int total) =>
+      'Take all $total shots to continue.';
   static const surpriseMeUpsellTitle = 'Surprise AI look';
   static const surpriseMeUpsellSubtitle =
       'We made a bonus AI photo from your first shot.';

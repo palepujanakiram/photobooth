@@ -27,7 +27,7 @@ void main() {
       shotMode: ClassicShotMode.fourShot,
     );
     expect(args.isFlashbackMultiShot, isTrue);
-    expect(args.isFlashbackFourShot, isTrue);
+    expect(args.isFlashbackStrip, isTrue);
     expect(args.multiShotTotal, kStripShotCount);
     expect(args.flashbackTheme?.id, 'strip');
     expect(args.classicShotMode, ClassicShotMode.fourShot);
@@ -42,7 +42,7 @@ void main() {
       shotMode: ClassicShotMode.single6x4,
     );
     expect(args.isFlashbackSingle6x4, isTrue);
-    expect(args.isFlashbackFourShot, isFalse);
+    expect(args.isFlashbackStrip, isFalse);
     expect(args.multiShotTotal, 1);
     expect(args.classicShotMode, ClassicShotMode.single6x4);
     expect(args.resolvedShotTotal, 1);
@@ -96,7 +96,7 @@ void main() {
     );
     expect(args.resolvedShotTotal, 1);
     expect(args.isFlashbackSingle6x4, isTrue);
-    expect(args.isFlashbackFourShot, isFalse);
+    expect(args.isFlashbackStrip, isFalse);
     expect(args.classicShotMode?.shotCount, 1);
   });
 

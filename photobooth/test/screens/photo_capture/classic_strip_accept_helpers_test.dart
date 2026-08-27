@@ -43,17 +43,17 @@ void main() {
   test('shouldKeepUvcControllerOpen for Classic 4-shot', () {
     expect(
       UvcCaptureConfig.shouldKeepUvcControllerOpen(
-        classicFourShotSession: false,
+        classicStripSession: false,
       ),
       isFalse,
     );
     expect(
       UvcCaptureConfig.shouldKeepUvcControllerOpen(
-        classicFourShotSession: true,
+        classicStripSession: true,
       ),
       isTrue,
     );
     expect(UvcCaptureConfig.keepControllerOpenDuringReview, isFalse);
-    expect(UvcCaptureConfig.keepControllerOpenForClassicFourShot, isTrue);
+    expect(UvcCaptureConfig.keepControllerOpenForClassicStrip, isTrue);
   });
 }

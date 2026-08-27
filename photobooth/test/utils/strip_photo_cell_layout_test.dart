@@ -27,12 +27,27 @@ void main() {
         frameId: 'classic',
         stripWidth: stripW,
         stripHeight: stripH,
-        shotCount: 3,
+        shotCount: kStripShotCountThree,
       );
       expect(cells, hasLength(3));
       // (1800 - 10 - 10 - 2*10) / 3 = 1760/3
       expect(cells.first.height, closeTo(1760 / 3, 0.01));
       expect(cells.first.width, closeTo(580, 0.01));
+      expect(cells.first.top, closeTo(10, 0.01));
+      expect(
+        cells.last.top + cells.last.height,
+        closeTo(stripH - 10, 0.01),
+      );
+    });
+
+    test('an unusable shot count falls back to the four-shot strip', () {
+      final cells = computeStripPhotoCellRects(
+        frameId: 'classic',
+        stripWidth: stripW,
+        stripHeight: stripH,
+        shotCount: 0,
+      );
+      expect(cells, hasLength(kStripShotCount));
     });
   });
 
@@ -60,6 +75,20 @@ void main() {
       expect(cells.first.height, closeTo(cellH, 0.01));
       expect(cells[1].top, closeTo(marginY + cellH + gutter, 0.01));
       expect(stripPhotoCellUsesContainFit('filmstrip'), isFalse);
+
+      final threeCells = computeStripPhotoCellRects(
+        frameId: 'filmstrip',
+        stripWidth: stripW,
+        stripHeight: stripH,
+        shotCount: kStripShotCountThree,
+        layout: layout,
+      );
+      final threeCellH =
+          (stripH - marginY - bottom - 2 * gutter) / 3;
+      expect(threeCells, hasLength(3));
+      expect(threeCells.first.height, closeTo(threeCellH, 0.01));
+      expect(threeCells.first.width, closeTo(cellW, 0.01));
+
       expect(
         stripPhotoCellLetterboxColor('filmstrip'),
         const Color(0xFF0A0A0A),
