@@ -208,6 +208,22 @@ void main() {
     AppLogger.error('e', error: Exception('x'));
   });
 
+  test('AppLogger console mirror can be silenced', () {
+    // The mirror is what makes Dart logs visible in logcat; the flag exists so a
+    // test run does not have to carry them.
+    // Restore whatever flutter_test_config set, not a hardcoded true.
+    final previous = AppLogger.mirrorLogsToConsole;
+    addTearDown(() => AppLogger.mirrorLogsToConsole = previous);
+
+    AppLogger.mirrorLogsToConsole = false;
+    AppLogger.info('silenced');
+    AppLogger.error('silenced', error: Exception('x'), stackTrace: StackTrace.current);
+
+    AppLogger.mirrorLogsToConsole = true;
+    AppLogger.info('mirrored');
+    AppLogger.error('mirrored', error: Exception('x'), stackTrace: StackTrace.current);
+  });
+
   test('ErrorReportingManager with fake service', () async {
     final fake = FakeErrorReportingService();
     // Cannot inject fake without prod change — exercise public API after init.
