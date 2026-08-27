@@ -16,9 +16,9 @@ void main() {
     );
   });
 
-  test('branch default API host is stage on offline builds', () {
-    expect(AppConfig.branchDefaultEnvironment, ApiEnvironment.stage);
-    expect(AppConfig.retrofitAnnotationBaseUrl, 'https://zenai.fly.dev');
+  test('branch default API host is live production', () {
+    expect(AppConfig.branchDefaultEnvironment, ApiEnvironment.live);
+    expect(AppConfig.retrofitAnnotationBaseUrl, 'https://fotozenai.fly.dev');
   });
 
   test('share URL helpers use the configured base URL', () {

@@ -26,10 +26,10 @@ void main() {
   });
 
   group('ApiEnvironmentStore', () {
-    test('defaults to stage on offline branch when prefs empty', () async {
+    test('defaults to live when prefs empty', () async {
       await ApiEnvironmentStore.load();
-      expect(ApiEnvironmentStore.current, ApiEnvironment.stage);
-      expect(AppConfig.baseUrl, 'https://zenai.fly.dev');
+      expect(ApiEnvironmentStore.current, ApiEnvironment.live);
+      expect(AppConfig.baseUrl, 'https://fotozenai.fly.dev');
     });
 
     test('persists live selection across load', () async {

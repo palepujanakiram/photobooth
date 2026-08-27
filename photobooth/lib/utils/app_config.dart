@@ -13,14 +13,14 @@ class AppConfig {
   /// Compile-time override: `--dart-define=BASE_URL=https://…`
   ///
   /// When empty, [baseUrl] uses the splash Stage/Live preference (or the
-  /// offline-branch default [branchDefaultEnvironment]).
+  /// default [branchDefaultEnvironment]).
   static const String dartDefineBaseUrl = String.fromEnvironment('BASE_URL');
 
-  /// Offline / stage-first default when prefs and dart-define are unset.
-  static const ApiEnvironment branchDefaultEnvironment = ApiEnvironment.stage;
+  /// Default when prefs and dart-define are unset — production Live API.
+  static const ApiEnvironment branchDefaultEnvironment = ApiEnvironment.live;
 
   /// Const host for Retrofit `@RestApi` codegen only — runtime Dio uses [baseUrl].
-  static const String retrofitAnnotationBaseUrl = 'https://zenai.fly.dev';
+  static const String retrofitAnnotationBaseUrl = 'https://fotozenai.fly.dev';
 
   /// Effective API base URL (no trailing slash).
   ///
