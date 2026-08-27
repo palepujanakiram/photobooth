@@ -6,6 +6,7 @@ import '../../models/preprocess_image_result.dart';
 import '../../services/api_service.dart';
 import '../../services/session_manager.dart';
 import '../../utils/constants.dart';
+import '../../utils/kiosk_offline_ux.dart';
 import '../../utils/theme_filter.dart';
 
 /// Resolves person count after upload preprocess (or when it fails/times out).
@@ -46,6 +47,11 @@ Future<void> ensureAuthoritativePersonCount({
   @visibleForTesting
   Future<PreprocessImageResult> Function(String sessionId)? preprocessFn,
 }) async {
+  if (KioskOfflineUx.shouldSkipGeminiPreprocess(
+    sessionOffline: sessionManager.isOfflineSession,
+  )) {
+    return;
+  }
   final existing = sessionManager.personCount;
   if (existing != null && existing > 2) return;
 

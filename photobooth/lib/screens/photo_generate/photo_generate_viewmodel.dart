@@ -20,6 +20,7 @@ import '../../utils/ai_attempts_budget.dart';
 import '../../utils/constants.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/exceptions.dart';
+import '../../utils/kiosk_offline_ux.dart';
 import '../../utils/logger.dart';
 import '../../utils/memory_pressure_response.dart';
 import '../../utils/error_reporting_helpers.dart';
@@ -30,6 +31,8 @@ import '../../services/generation_display_preferences.dart';
 import '../../models/parallel_generation_result.dart';
 import '../../models/generation_timing_stats.dart';
 import '../../services/error_reporting/error_reporting_manager.dart';
+import '../../services/local_guest_media_write.dart';
+import '../../services/local_media_store.dart';
 import '../../utils/web_flow_trace.dart';
 import '../../utils/session_photo_sync_helpers.dart';
 
@@ -1193,10 +1196,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     try {
       await _refreshGenerationRunStepsNow();
     } catch (_) {}
-    final newImages = generatedImagesFromParallelResult(
-      parallel: parallel,
-      theme: theme,
-      newImageId: _newGeneratedImageId,
+    final newImages = await _persistGeneratedGuestImages(
+      generatedImagesFromParallelResult(
+        parallel: parallel,
+        theme: theme,
+        newImageId: _newGeneratedImageId,
+      ),
     );
     _generatedImages = [...newImages, ..._generatedImages];
     _ensureNewestAlwaysSelected();
@@ -1213,6 +1218,39 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     return true;
   }
 
+  Future<bool> _completeFrameOnlyLocally() async {
+    final photo = _originalPhoto;
+    final theme = _selectedTheme;
+    if (photo == null || theme == null) return false;
+    _errorMessage = null;
+    _progressMessage = AppStrings.offlineFrameOnlyMessage;
+    final stored = await persistCapturedGuestXFile(photo.imageFile);
+    final url = guestSessionUrlForPath(stored.path) ?? stored.path;
+    _generatedImages = [
+      GeneratedImage(
+        id: 'frame_only_${photo.id}',
+        imageUrl: url,
+        theme: theme,
+        isSelected: true,
+        printSize: AppConstants.kPrintSizePortrait4x6,
+      ),
+    ];
+    _ensureNewestAlwaysSelected();
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> _recoverFrameOnlyIfWanDown(Object error) async {
+    if (!KioskOfflineUx.shouldSkipAiGeneration(
+      sessionOffline: _sessionManager.isOfflineSession,
+      error: error,
+    )) {
+      return false;
+    }
+    _sessionManager.markSessionOffline();
+    return _completeFrameOnlyLocally();
+  }
+
   /// Generate image with the current theme
   Future<bool> generateImage() async {
     if (_selectedTheme == null || _originalPhoto == null) {
@@ -1223,6 +1261,12 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     if (_isGenerating) {
       AppLogger.debug('generateImage ignored: already in progress');
       return false;
+    }
+
+    if (KioskOfflineUx.shouldSkipAiGeneration(
+      sessionOffline: _sessionManager.isOfflineSession,
+    )) {
+      return _completeFrameOnlyLocally();
     }
 
     await syncAttemptsBudgetFromServer();
@@ -1332,6 +1376,10 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       return ok;
     } catch (e, stackTrace) {
       _stopTimer();
+      if (await _recoverFrameOnlyIfWanDown(e)) {
+        succeeded = true;
+        return true;
+      }
       WebFlowTrace.log('GENERATE', 'ERROR $e');
       AppLogger.error('❌ Error generating image: $e');
       await ErrorReportingManager.recordError(
@@ -1370,6 +1418,15 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   Future<bool> tryDifferentStyle(ThemeModel newTheme) async {
     if (_originalPhoto == null) return false;
     if (!_isLoadingMore && !canTryDifferentStyle) return false;
+
+    if (KioskOfflineUx.shouldSkipAiGeneration(
+      sessionOffline: _sessionManager.isOfflineSession,
+    )) {
+      _isLoadingMore = false;
+      _errorMessage = AppStrings.offlineFrameOnlyMessage;
+      notifyListeners();
+      return false;
+    }
 
     var succeeded = false;
     _resetCancellation();

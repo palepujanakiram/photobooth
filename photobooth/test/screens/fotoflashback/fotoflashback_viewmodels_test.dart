@@ -12,7 +12,9 @@ import 'package:photobooth/screens/fotoflashback/fotoflashback_capture_viewmodel
 import 'package:photobooth/screens/fotoflashback/fotoflashback_filter_viewmodel.dart';
 import 'package:photobooth/screens/photo_capture/photo_model.dart';
 import 'package:photobooth/screens/photo_generate/photo_generate_viewmodel.dart';
+import 'package:photobooth/services/local_guest_media_write.dart';
 import 'package:photobooth/services/session_manager.dart';
+import 'package:photobooth/services/local_session_skeleton.dart';
 import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/classic_strip_scrub_coordinator.dart';
 import 'package:photobooth/utils/constants.dart';
@@ -38,14 +40,20 @@ void main() {
 
   setUp(() {
     ClassicStripScrubCoordinator.instance.resetForTests();
+    SessionManager().clearSession();
     FotoFlashbackFilterViewModel.composeWarmJoinTimeoutForTest =
         const Duration(seconds: 45);
+    debugGuestMediaFetchBytes = (_) async {
+      throw StateError('skip remote persist in unit tests');
+    };
   });
 
   tearDown(() {
     ClassicStripScrubCoordinator.instance.resetForTests();
+    SessionManager().clearSession();
     FotoFlashbackFilterViewModel.composeWarmJoinTimeoutForTest =
         const Duration(seconds: 45);
+    debugGuestMediaFetchBytes = null;
   });
 
   final stripTheme = sampleTheme('strip1').copyWith((p) {
@@ -660,6 +668,55 @@ void main() {
     expect(vm.errorMessage, 'compose down');
   });
 
+  test('FotoFlashbackFilterViewModel uses local look when session is offline',
+      () async {
+    SessionManager().setSessionFromResponse({
+      ..._sessionJson('sess-offline'),
+      kKioskSessionOfflineKey: true,
+    });
+    final api = _StripFakeApi(failCompose: true);
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, _tinyJpegDataUrl()),
+      apiService: api,
+    );
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    expect(image!.imageUrl, isNotEmpty);
+    expect(api.composeCalls, 0);
+    expect(SessionManager().isOfflineSession, isTrue);
+  });
+
+  test('FotoFlashbackFilterViewModel local look fails when shots have no pixels',
+      () async {
+    SessionManager().setSessionFromResponse({
+      ..._sessionJson('sess-offline-empty'),
+      kKioskSessionOfflineKey: true,
+    });
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, '   '),
+      apiService: _StripFakeApi(),
+    );
+    expect(await vm.compose(), isNull);
+    expect(vm.errorMessage, AppStrings.flashbackComposeFailed);
+  });
+
+  test('FotoFlashbackFilterViewModel uses local look on WAN-down compose',
+      () async {
+    SessionManager().setSessionFromResponse(_sessionJson('sess-wan'));
+    final api = _StripFakeApi(failComposeWan: true);
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, _tinyJpegDataUrl()),
+      apiService: api,
+    );
+    final image = await vm.compose();
+    expect(image, isNotNull);
+    expect(api.composeCalls, 1);
+    expect(SessionManager().isOfflineSession, isTrue);
+  });
+
   test('FotoFlashbackFilterViewModel handles load/compose edge cases', () async {
     SessionManager().clearSession();
     final shortVm = FotoFlashbackFilterViewModel(
@@ -700,6 +757,31 @@ void main() {
     expect(loadFail.errorMessage, 'filters down');
     expect(loadFail.filters, isNotEmpty);
     expect(loadFail.canCompose, isTrue);
+
+    SessionManager().setSessionFromResponse({
+      ..._sessionJson('offline-looks'),
+      'offline': true,
+    });
+    final offlineLooks = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: _StripFakeApi(failLoad: true),
+    );
+    await offlineLooks.loadFilters();
+    expect(offlineLooks.errorMessage, isNull);
+    expect(offlineLooks.filters, isNotEmpty);
+    offlineLooks.dispose();
+
+    SessionManager().setSessionFromResponse(_sessionJson('dns-looks'));
+    final dnsLooks = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+      apiService: _StripFakeApi(failLoadHostLookup: true),
+    );
+    await dnsLooks.loadFilters();
+    expect(dnsLooks.errorMessage, isNull);
+    expect(dnsLooks.filters, isNotEmpty);
+    dnsLooks.dispose();
 
     final apiBoom = _StripFakeApi(throwGenericLoad: true);
     final loadBoom = FotoFlashbackFilterViewModel(
@@ -1384,7 +1466,9 @@ class _ThrowingScrubFakeApi extends _StripFakeApi {
 class _StripFakeApi extends FakeApiService {
   _StripFakeApi({
     this.failCompose = false,
+    this.failComposeWan = false,
     this.failLoad = false,
+    this.failLoadHostLookup = false,
     this.throwGenericLoad = false,
     this.throwGenericCompose = false,
     this.monoOnly = false,
@@ -1393,7 +1477,9 @@ class _StripFakeApi extends FakeApiService {
   });
 
   final bool failCompose;
+  final bool failComposeWan;
   final bool failLoad;
+  final bool failLoadHostLookup;
   final bool throwGenericLoad;
   final bool throwGenericCompose;
   final bool monoOnly;
@@ -1411,6 +1497,12 @@ class _StripFakeApi extends FakeApiService {
 
   @override
   Future<StripFiltersCatalog> fetchStripFilters() async {
+    if (failLoadHostLookup) {
+      throw ApiException(
+        "Failed to load strip filters: The connection errored: "
+        "Failed host lookup: 'zenai.fly.dev'",
+      );
+    }
     if (failLoad) throw ApiException('filters down');
     if (throwGenericLoad) throw Exception('load boom');
     if (altChromeOnly) {
@@ -1532,6 +1624,9 @@ class _StripFakeApi extends FakeApiService {
     lastComposeTimeout = timeout;
     if (failCompose) {
       throw ApiException('compose down');
+    }
+    if (failComposeWan) {
+      throw ApiException(AppConstants.kErrorNetwork, 503);
     }
     if (throwGenericCompose) {
       throw Exception('compose boom');

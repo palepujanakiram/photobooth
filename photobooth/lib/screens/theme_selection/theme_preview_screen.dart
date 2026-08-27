@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../../utils/theme_image_urls.dart';
+import '../../services/image_cache_source.dart';
 import '../../views/widgets/cached_network_image.dart';
 import 'theme_model.dart';
 
@@ -45,6 +46,7 @@ class ThemePreviewScreen extends StatelessWidget {
                   opacity: 0.45,
                   child: CachedNetworkImage(
                     imageUrl: imageUrl,
+                    cacheKey: catalogCacheKeyForTheme(theme.id),
                     fit: BoxFit.cover,
                     width: double.infinity,
                     height: double.infinity,
@@ -107,6 +109,7 @@ class ThemePreviewScreen extends StatelessWidget {
                                             ? const ColoredBox(color: Color(0xFF111111))
                                             : CachedNetworkImage(
                                                 imageUrl: imageUrl,
+                                                cacheKey: catalogCacheKeyForTheme(theme.id),
                                                 fit: BoxFit.cover,
                                                 width: double.infinity,
                                                 height: double.infinity,

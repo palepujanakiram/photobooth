@@ -87,7 +87,6 @@ abstract final class AppStrings {
 
   static const optionalEmailLabel = 'Email (optional)';
 
-
   /// Inline image URL prefix (data URLs, staff QR thumbnails).
   static const dataImagePrefix = 'data:image';
 
@@ -146,9 +145,15 @@ abstract final class AppStrings {
   static const kioskSettingsRefreshFailed =
       'Kiosk settings refresh failed; using cache';
 
+  /// Splash manage: Stage vs Live API host control.
+  static const apiEnvironmentHeading = 'API server';
+  static const apiEnvironmentLive = 'Live';
+  static const apiEnvironmentStage = 'Stage';
+  static const apiEnvironmentSaved =
+      'API server saved. New requests use this host.';
+
   /// Terms banner when camera is missing, permission was denied, or detection failed.
-  static const termsCameraUnavailable =
-      'Camera is not available. Tap Retry.';
+  static const termsCameraUnavailable = 'Camera is not available. Tap Retry.';
 
   /// Same as [termsCameraUnavailable] when Gallery / Phone QR upload is enabled.
   static const termsCameraUnavailableUploadOk =
@@ -195,8 +200,7 @@ abstract final class AppStrings {
   static const sidecarLivePreviewConnecting = 'Connecting to DSLR…';
 
   /// Pose UI when EDSDK sidecar live preview cannot load.
-  static const sidecarLivePreviewUnavailable =
-      'DSLR live preview unavailable.';
+  static const sidecarLivePreviewUnavailable = 'DSLR live preview unavailable.';
 
   /// Pose UI when a captured still cannot be decoded for review.
   static const captureStillDisplayFailed =
@@ -324,11 +328,16 @@ abstract final class AppStrings {
   static const generationWaitStartOver = 'Start over';
 
   static const qrShareStartAgain = 'Start again';
+  static const qrShareOfflineAppBarTitle = 'THANK YOU';
+  static const qrShareOfflineHeadline =
+      'Scan this QR now. Your photos will appear after the booth syncs.';
+  static const qrSharePreparingShareLink = 'Preparing your share link…';
 
   static String qrShareResettingIn(int seconds) =>
       'Starting fresh in ${seconds}s';
 
-  static const generationWaitLiveRevealHeadline = 'Your portrait is taking shape';
+  static const generationWaitLiveRevealHeadline =
+      'Your portrait is taking shape';
 
   static const generationWaitLiveRevealDesc =
       'Magic is happening — hang tight for the reveal';
@@ -351,8 +360,7 @@ abstract final class AppStrings {
 
   static const beholdTransformationDetailsLink = 'View transformation details';
 
-  static const transformationDetailsDisplayTimeLabel =
-      'Time to show on screen';
+  static const transformationDetailsDisplayTimeLabel = 'Time to show on screen';
 
   static const transformationDetailsServerDurationLabel = 'Server duration';
 
@@ -427,6 +435,20 @@ abstract final class AppStrings {
       'Pick one experience for this session.';
   static const experienceAiTitle = 'FotoZen';
   static const experienceAiSubtitle = 'AI Photo Experiences';
+
+  /// Offline session: AI card muted — guests should use Classic instead.
+  static const experienceAiOfflineSubtitle =
+      'Needs internet — try Classic while you wait to reconnect';
+  static const experienceOfflineBanner =
+      'AI needs internet. Classic photos still work offline.';
+  static const experienceOfflineAiBlockedSnack =
+      'AI needs internet. Try Classic photos meanwhile.';
+  static const experienceOfflineNoClassicMessage =
+      'AI needs internet, and Classic isn’t available on this booth. '
+      'Please wait to reconnect or ask staff.';
+  static const eventStationNeedsInternet =
+      'Event capture, theme, and print stations need internet. '
+      'Reconnect this TV, then try again.';
   static const experienceFotoFlashTitle = 'Classic';
   static const experienceFotoFlashSubtitle =
       'As-is photos with glitter — choose 1-shot or 4-shot below';
@@ -459,6 +481,7 @@ abstract final class AppStrings {
   static const experienceClassicOneShotPreviewBadge = '1-shot';
   static const flashbackBrand = 'FotoFlashback';
   static const flashbackCaptureTitle = 'FotoFlashback';
+
   /// POSE bar title, shared by the Flutter capture scaffold and the direct-PTP
   /// native screen so switching between them is invisible to a guest.
   static const posePageTitle = 'POSE';
@@ -492,8 +515,7 @@ abstract final class AppStrings {
   static const directPtpCameraLabel = 'EOS';
   static const flashbackCaptureSubtitle =
       '4 shots · 10s to pose · 8s between shots to rearrange';
-  static const flashbackCaptureSubtitleSingle =
-      'One shot · 10s pose countdown';
+  static const flashbackCaptureSubtitleSingle = 'One shot · 10s pose countdown';
   static String flashbackShotProgress(int current, int total) =>
       'Shot $current of $total';
   static String flashbackPoseProgress(int current, int total) =>
@@ -516,8 +538,7 @@ abstract final class AppStrings {
   static const themeSelectionContinuing = 'Continuing…';
 
   /// Shown during the inter-shot hold while the guest reviews / rearranges.
-  static const flashbackGettingReadyNextShot =
-      'Rearrange for the next pose…';
+  static const flashbackGettingReadyNextShot = 'Rearrange for the next pose…';
 
   /// Mid-strip while LV / HDMI warmup settles before the next countdown.
   static String flashbackGetReadyForShot(int current, int total) =>
@@ -580,7 +601,8 @@ abstract final class AppStrings {
   static const flashbackRetryScrub = 'Refresh polish';
   static const flashbackRetryScrubHint =
       'Some photos still show camera overlays. Tap Refresh polish to re-scrub.';
-  static const flashbackComposeFailed = 'Couldn’t build strip. Please try again.';
+  static const flashbackComposeFailed =
+      'Couldn’t build strip. Please try again.';
   static const flashbackNeedFourShots = 'Take all 4 shots to continue.';
   static const surpriseMeUpsellTitle = 'Surprise AI look';
   static const surpriseMeUpsellSubtitle =
@@ -625,11 +647,66 @@ abstract final class AppStrings {
   static const staffKpiPaymentsHint = 'Approved payments';
   static const staffKpiRevenue = 'Revenue';
   static const staffKpiRevenueHint = 'Approved total';
+  static const staffDiskFull =
+      'Kiosk disk is full. Connect internet and wait for photos to sync before starting new sessions.';
+  static const staffOfflineModeBanner =
+      'This kiosk is in Offline mode. Guests get frame-only photos and cash at the counter. Catalog and photos still sync when internet is up.';
+  static const offlineFrameOnlyMessage =
+      'AI needs internet. You can still print this photo — '
+      'try Classic while waiting to reconnect.';
+  static const offlineCashOnlyMessage =
+      'UPI needs internet. Pay cash at the counter.';
+  static const offlineCashOnlyWaiting =
+      'Pay cash at the counter. Staff confirm here to start printing.';
+  static const offlineGiftCardUnavailable =
+      'Gift cards and coupons need internet.';
+  static const offlinePayAtCounterTitle = 'Pay at counter';
+  static const offlineCashConfirmStaffCta = 'Staff: cash received';
+  static const offlineCashConfirmSheetTitle = 'Confirm cash received';
+  static const offlineCashConfirmSheetBody =
+      'Enter the booth PIN after collecting cash. Printing stays on this screen.';
+  static const offlineCashConfirmPinLabel = 'Booth PIN';
+  static const offlineCashConfirmSubmit = 'Confirm & print';
+  static const offlineCashConfirmBadPin = 'Incorrect PIN. Try again.';
+  static const offlineCashConfirmFailed =
+      'Could not record cash payment on this kiosk.';
+  static const offlineCashConfirmNoLedger =
+      'Kiosk ledger is not ready. Restart the booth app and try again.';
+  static const offlineFreePrintTitle = 'PRINT';
+  static const offlineFreePrintSubtitle = 'Preparing your photos…';
+  static const staffLocalDayTitle = 'On this kiosk';
+  static const staffLocalDayHint = 'Not yet synced to the cloud';
+  static const staffLocalDayCash = 'Cash collected';
+  static const splashEnterKioskCode = 'Enter a kiosk code';
+  static const splashKioskCodeUnavailable =
+      'Invalid kiosk code, or this device has never bound it online. Connect once to cache this kiosk for offline use.';
+  static const splashCouldNotVerifyStoredKiosk =
+      'Could not verify kiosk code. Check network and try again, or enter a new code.';
+  static const splashSyncNowButton = 'Sync now';
+  static const splashSyncingButton = 'Syncing…';
+  static const splashSyncCaughtUp = 'All offline data synced';
+  static String splashSyncPending(int open, int failed) {
+    if (failed > 0) {
+      return '$open waiting to sync ($failed failed — tap Sync to retry)';
+    }
+    return '$open item${open == 1 ? '' : 's'} waiting to sync';
+  }
+
+  static String splashSyncProgress(int completed, int remaining) =>
+      'Synced $completed · $remaining left';
+  static const splashSyncCompleteToast = 'Sync finished — all caught up';
+  static String splashSyncPartialToast(int remaining) =>
+      'Sync paused with $remaining still pending. Check internet and try again.';
+  static const splashSyncFailedToast =
+      'Could not sync. Check internet and try again.';
+  static const termsDiskFull =
+      'This kiosk is out of photo storage. Ask staff to connect internet and wait for sync.';
   static const staffModeUpi = 'UPI';
   static const staffModeCash = 'Cash';
   static const staffModeComplimentary = 'Complimentary';
   static String staffPaymentCount(int count) =>
       '$count payment${count == 1 ? '' : 's'}';
+
   /// Guest used Delete My Data; print photo may still be available same day.
   static const staffGuestDataDeletedBadge = 'Guest deleted';
   static const staffPrintPhotosTitle = 'Print photos';
@@ -660,6 +737,16 @@ abstract final class AppStrings {
   static const staffCashRegisterSubtitle =
       'Open with float; close with actual cash count';
   static const staffOpenRegister = 'Open register';
+  static const staffChangeOfflinePin = 'Change booth PIN';
+  static const staffChangeOfflinePinTitle = 'Change offline cash PIN';
+  static const staffChangeOfflinePinBody =
+      'Used on Pay when confirming cash offline. Syncs to this account’s kiosks when online. Master key 2468 always works.';
+  static const staffChangeOfflinePinLabel = 'New PIN (4–8 digits)';
+  static const staffChangeOfflinePinConfirm = 'Save PIN';
+  static const staffChangeOfflinePinSaved = 'Booth PIN updated';
+  static const staffOfflinePinInvalid = 'PIN must be 4–8 digits';
+  static String staffOfflinePinLocalOnly(String detail) =>
+      'Saved on this kiosk only (cloud sync failed: $detail)';
   static const staffCloseRegister = 'Close register';
   static const staffNoKioskForRegister =
       'This staff member is not assigned to a kiosk. Assign a kiosk in admin before opening the register.';
@@ -673,8 +760,7 @@ abstract final class AppStrings {
   static const staffClosingNotesLabel = 'Notes (optional)';
   static const staffOpenRegisterConfirm = 'Open';
   static const staffCloseRegisterConfirm = 'Close';
-  static String staffRegisterExpectedLine(String amount) =>
-      'Expected: $amount';
+  static String staffRegisterExpectedLine(String amount) => 'Expected: $amount';
   static String staffRegisterReceiptsLine(int n) => 'Receipts: $n';
   static String staffRegisterPrintsLine(int n) => 'Prints: $n';
   static const staffPerformanceTitle = 'Your performance';
@@ -725,7 +811,8 @@ abstract final class AppStrings {
   static const eventStationNoThemes = 'No themes available for this event.';
   static const eventStationPrintNow = 'Print';
   static const eventStationReprint = 'Print another copy';
-  static const eventStationJobClaimed = 'This job was taken by another station.';
+  static const eventStationJobClaimed =
+      'This job was taken by another station.';
   static const eventStationStatusPending = 'PENDING';
   static const eventStationStatusClaimed = 'CLAIMED';
   static const eventStationStatusDone = 'DONE';

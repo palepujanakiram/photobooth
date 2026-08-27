@@ -158,3 +158,18 @@ List<GeneratedImage> generatedImagesFromParallelResult({
   }
   return newImages;
 }
+
+Future<List<GeneratedImage>> _persistGeneratedGuestImages(
+  List<GeneratedImage> images,
+) async {
+  final out = <GeneratedImage>[];
+  for (final image in images) {
+    final url = await persistGuestImageUrl(
+      prefix: kGuestMediaPrefixGenerated,
+      source: image.imageUrl,
+      fetchBytes: guestMediaNetworkFetch(),
+    );
+    out.add(image.copyWith(imageUrl: url));
+  }
+  return out;
+}

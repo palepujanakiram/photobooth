@@ -7,6 +7,7 @@ import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/screens/fotoflashback/surprise_me_upsell_view.dart';
 import 'package:photobooth/utils/surprise_me_helpers.dart';
+import 'package:photobooth/services/local_guest_media_write.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../fakes/fake_api_service.dart';
@@ -29,10 +30,14 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     KioskManager.resetPaymentOverrideCacheForTests();
     SessionManager().clearSession();
+    debugGuestMediaFetchBytes = (_) async {
+      throw StateError('skip remote persist in unit tests');
+    };
   });
 
   tearDown(() {
     SessionManager().clearSession();
+    debugGuestMediaFetchBytes = null;
   });
 
   group('surpriseImageFromStatus', () {

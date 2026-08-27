@@ -399,11 +399,15 @@ void main() {
       marketingSmsOptIn: false,
       marketingWhatsappOptIn: true,
       fcmToken: 'fcm',
+      receiptNumber: 'FZ/ODEON-01/2627/00147',
+      receiptId: '550e8400-e29b-41d4-a716-446655440000',
     );
     expect(seen?['customerEmail'], 'a@b.co');
     expect(seen?['marketingEmailOptIn'], true);
     expect(seen?['marketingSmsOptIn'], false);
     expect(seen?['marketingWhatsappOptIn'], true);
+    expect(seen?['receiptNumber'], 'FZ/ODEON-01/2627/00147');
+    expect(seen?['id'], '550e8400-e29b-41d4-a716-446655440000');
   });
 
   test('applySessionDiscount validates and posts body', () async {
@@ -651,4 +655,66 @@ void main() {
     );
   });
 
+  test('ingest kiosk entities and assets', () async {
+    expect(
+      () => api.ingestKioskEntities(kioskCode: ' ', items: const []),
+      throwsA(isA<ApiException>()),
+    );
+    expect(
+      () => api.ingestKioskAsset(
+        kioskCode: 'K1',
+        prefix: 'generated',
+        filename: 'a.jpg',
+        bytes: const [],
+      ),
+      throwsA(isA<ApiException>()),
+    );
+    adapter.onPost(
+      '/api/kiosk/ingest',
+      (server) => server.reply(200, {'ok': true, 'items': []}),
+      data: Matchers.any,
+    );
+    await api.ingestKioskEntities(
+      kioskCode: 'k1',
+      items: [
+        {'entityType': 'session', 'entityId': 's1', 'payload': {}},
+      ],
+    );
+    adapter.onPost(
+      '/api/kiosk/ingest/asset',
+      (server) => server.reply(200, {'ok': true}),
+      data: Matchers.any,
+    );
+    await api.ingestKioskAsset(
+      kioskCode: 'k1',
+      prefix: 'generated',
+      filename: 'a.jpg',
+      bytes: const [1, 2, 3],
+    );
+  });
+
+  test('ingest wraps DioException', () async {
+    final bad = Dio(BaseOptions(baseUrl: dio.options.baseUrl));
+    bad.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (o, h) => h.reject(
+          DioException(requestOptions: o, message: 'net down'),
+        ),
+      ),
+    );
+    final badApi = ApiService(dio: bad);
+    await expectLater(
+      badApi.ingestKioskEntities(kioskCode: 'K1', items: const []),
+      throwsA(isA<ApiException>()),
+    );
+    await expectLater(
+      badApi.ingestKioskAsset(
+        kioskCode: 'K1',
+        prefix: 'generated',
+        filename: 'a.jpg',
+        bytes: const [1],
+      ),
+      throwsA(isA<ApiException>()),
+    );
+  });
 }

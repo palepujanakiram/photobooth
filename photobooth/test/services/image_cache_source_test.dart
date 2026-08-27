@@ -37,4 +37,52 @@ void main() {
     expect(decodeInlineImageDataUrl('data:image/jpeg;base64,@@@'), isNull);
     expect(decodeInlineImageDataUrl('data:image/jpeg;base64'), isNull);
   });
+
+  test('catalog cache keys prefer theme/frame id over URL hash', () {
+    expect(catalogCacheKeyForTheme(''), isNull);
+    expect(catalogCacheKeyForTheme('  '), isNull);
+    expect(catalogCacheKeyForTheme('bad id'), isNull);
+    expect(catalogCacheKeyForTheme('Hero-01'), 'theme-hero-01');
+    expect(catalogCacheKeyForFrame('frame_9'), 'frame-frame_9');
+    expect(catalogCacheKeyForFrame(null), isNull);
+    expect(
+      catalogImageCacheFileStem(
+        cacheKey: catalogCacheKeyForTheme('t1'),
+        imageUrl: 'https://a.example/old.png?v=1',
+      ),
+      'theme-t1',
+    );
+    expect(
+      catalogImageCacheFileStem(
+        cacheKey: catalogCacheKeyForTheme('t1'),
+        imageUrl: 'https://b.example/new.webp?v=2',
+      ),
+      'theme-t1',
+    );
+    final a = catalogImageCacheFileStem(
+      imageUrl: 'https://fly.dev/x.png?token=a',
+    );
+    final b = catalogImageCacheFileStem(
+      imageUrl: 'https://fly.dev/x.png?token=b',
+    );
+    expect(a, b);
+    expect(a, isNot(catalogImageCacheFileStem(imageUrl: 'https://fly.dev/y.png')));
+  });
+
+  test('url hash stem and extension cover edge cases', () {
+    expect(imageCacheFileExtension('https://x/a.PNG'), '.png');
+    expect(imageCacheFileExtension('https://x/a'), '.jpg');
+    expect(imageCacheFileExtension('https://x/a.toolongext'), '.jpg');
+    expect(imageCacheFileExtension('https://x/dir.with.dot/file'), '.jpg');
+    expect(imageCacheFileExtension('plain.jpg'), '.jpg');
+    expect(urlHashImageCacheStem('not a url'), isNotEmpty);
+    final longId = 'a' * 90;
+    expect(sanitizeCatalogCacheToken(longId)?.length, 80);
+    expect(
+      catalogImageCacheFileStem(cacheKey: 'not valid!', imageUrl: 'https://x/a.jpg'),
+      urlHashImageCacheStem('https://x/a.jpg'),
+    );
+    final longUrl = 'https://example.com/${'z' * 200}.jpg';
+    expect(urlHashImageCacheStem(longUrl).length, lessThan(200));
+  });
 }

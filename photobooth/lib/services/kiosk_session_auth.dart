@@ -33,6 +33,8 @@ bool _isPublicApiPath(String path) {
   // Session creation is unauthenticated; the response provides kioskAuthToken.
   if (p == '/api/sessions/accept-terms') return true;
 
+  if (p == '/api/kiosk/ingest' || p == '/api/kiosk/ingest/asset') return true;
+
   // App bootstrap content is public.
   if (p == '/api/themes') return true;
   if (p == '/api/settings') return true;

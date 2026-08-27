@@ -19,6 +19,7 @@ import 'api_logging_interceptor.dart';
 import 'client_identification.dart';
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
 import 'file_helper.dart';
+import 'local_guest_media_write.dart';
 
 /// Legacy media upload/download helpers (not used by the main kiosk SSE flow).
 class ApiServiceLegacyMedia {
@@ -178,6 +179,11 @@ class ApiServiceLegacyMedia {
   }) async {
     if (kIsWeb) {
       return XFile(imageUrl);
+    }
+
+    final local = await localXFileForGuestImage(imageUrl);
+    if (local != null) {
+      return local;
     }
 
     final resolvedUrl = withGeneratedImageSessionId(resolveApiImageUrl(imageUrl));

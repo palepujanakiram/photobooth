@@ -10,7 +10,7 @@ part of 'api_client.dart';
 
 class _ApiClient implements ApiClient {
   _ApiClient(this._dio, {this.baseUrl, this.errorLogger}) {
-    baseUrl ??= 'https://fotozenai.fly.dev';
+    baseUrl ??= 'https://zenai.fly.dev';
   }
 
   final Dio _dio;

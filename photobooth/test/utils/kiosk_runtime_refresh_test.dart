@@ -16,8 +16,10 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await KioskManager().clearClassicPhotosEnabled();
+    await KioskManager().clearOperatingModeOffline();
     await KioskManager().clearKioskCode();
     KioskManager.resetClassicPhotosCacheForTests();
+    KioskManager.resetOperatingModeCacheForTests();
   });
 
   test('refreshBoundKioskAppSettings force-refreshes cached settings', () async {
@@ -92,6 +94,7 @@ void main() {
     );
     expect(result.classicPhotosEnabled, isTrue);
     expect(await km.isClassicPhotosEnabled(), isTrue);
+    expect(await km.isOperatingModeOffline(), isFalse);
     expect(mgr.settings?.enableOsdScrub, isFalse);
     expect(api.settingsFetches, 2);
     expect(api.kioskFetches, 1);

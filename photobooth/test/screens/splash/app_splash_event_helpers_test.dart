@@ -84,4 +84,22 @@ void main() {
       isNotNull,
     );
   });
+
+  test('offline resume when same event already cached locally', () async {
+    final mgr = EventManager();
+    await mgr.cacheVerifyResult(
+      id: 'e1',
+      code: 'WED',
+      photoMode: 'BOTH',
+      themeCount: 2,
+    );
+    final err = await bindSplashEventCode(
+      eventManager: mgr,
+      fetchEvent: (_, __) async => null,
+      eventCode: 'wed',
+      kioskCode: 'K1',
+    );
+    expect(err, isNull);
+    expect(await mgr.getEventCode(), 'WED');
+  });
 }

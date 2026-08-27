@@ -14,11 +14,15 @@ import '../../utils/classic_strip_scrub_helpers.dart';
 import '../../utils/constants.dart';
 import '../../utils/exceptions.dart';
 import '../../utils/image_helper.dart';
+import '../../utils/kiosk_offline_ux.dart';
 import '../../utils/logger.dart';
 import '../../utils/print_orientation.dart';
 import '../../utils/print_size_helpers.dart';
+import '../../utils/strip_compositor_local.dart';
 import '../../utils/strip_filters_catalog_fallback.dart';
 import '../../utils/strip_preview_grade_compress.dart';
+import '../../services/local_guest_media_write.dart';
+import '../../services/local_media_store.dart';
 import '../photo_generate/photo_generate_viewmodel.dart';
 import '../theme_selection/theme_model.dart';
 
@@ -391,15 +395,20 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         onTimeout: () {
           if (gen != _catalogLoadGen) return;
           AppLogger.warning('Strip filters catalog timed out after 15s');
-          _applyFallbackCatalog(AppStrings.flashbackFiltersLoadTimeout);
+          if (_sessionManager.isOfflineSession) {
+            _applyFallbackCatalog();
+          } else {
+            _applyFallbackCatalog(AppStrings.flashbackFiltersLoadTimeout);
+          }
         },
       );
     } finally {
       if (gen == _catalogLoadGen) {
         if (_catalog == null || filters.isEmpty) {
-          _applyFallbackCatalog(
-            _errorMessage ?? AppStrings.flashbackFiltersLoadTimeout,
-          );
+          final soft = _sessionManager.isOfflineSession
+              ? null
+              : (_errorMessage ?? AppStrings.flashbackFiltersLoadTimeout);
+          _applyFallbackCatalog(soft);
         }
         _loading = false;
         notifyListeners();
@@ -418,7 +427,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     );
   }
 
-  void _applyFallbackCatalog(String message) {
+  void _applyFallbackCatalog([String? message]) {
     _catalog = stripFiltersCatalogFallback();
     _selectedFilterId = kDefaultStripFilterId;
     _selectedFrameId = kDefaultStripFrameId;
@@ -427,6 +436,11 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   }
 
   Future<void> _loadCatalog(int gen) async {
+    if (_sessionManager.isOfflineSession) {
+      AppLogger.debug('Strip filters: local catalog (offline session)');
+      _applyFallbackCatalog();
+      return;
+    }
     try {
       final catalog = await _api.fetchStripFilters();
       if (gen != _catalogLoadGen) return;
@@ -449,12 +463,26 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     } on ApiException catch (e) {
       if (gen != _catalogLoadGen) return;
       if (filters.isNotEmpty) return;
-      _applyFallbackCatalog(e.message);
+      _applyCatalogLoadFailure(e);
     } catch (e) {
       if (gen != _catalogLoadGen) return;
       if (filters.isNotEmpty) return;
-      _applyFallbackCatalog(e.toString());
+      _applyCatalogLoadFailure(e);
     }
+  }
+
+  void _applyCatalogLoadFailure(Object error) {
+    final silence = KioskOfflineUx.shouldSilenceStripCatalogLoadError(
+      sessionOffline: _sessionManager.isOfflineSession,
+      error: error,
+    );
+    if (silence) {
+      AppLogger.warning('Strip filters unavailable; using local looks ($error)');
+      _applyFallbackCatalog();
+      return;
+    }
+    final message = error is ApiException ? error.message : error.toString();
+    _applyFallbackCatalog(message);
   }
 
   /// Classic overlay polish when admin scrub is ON (Gemini AF + OSD).
@@ -821,6 +849,49 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     );
   }
 
+  Future<String> _persistStripPrintUrl(String url) {
+    return persistGuestImageUrl(
+      prefix: kGuestMediaPrefixFotoflashback,
+      source: url,
+      fetchBytes: guestMediaNetworkFetch(),
+    );
+  }
+
+  Future<GeneratedImage?> _completeLocalLook() async {
+    final persisted = await composeLocalStripSheet(
+      LocalStripComposeRequest(
+        sources: List<String>.from(_imageDataUrls),
+        filterId: _selectedFilterId,
+        frameId: _selectedFrameId,
+        single: isSingleClassic,
+        orientation: _printOrientation,
+      ),
+    );
+    if (persisted == null || persisted.isEmpty) {
+      _errorMessage = AppStrings.flashbackComposeFailed;
+      return null;
+    }
+    final printSize = resolveClassicComposePrintSize(
+      imageCount: _imageDataUrls.length,
+      apiPrintSize: null,
+      orientation: _printOrientation,
+    );
+    final result = localLookComposeResult(
+      imageUrl: persisted,
+      filterId: _selectedFilterId,
+      printSize: printSize,
+    );
+    _composeResult = result;
+    _composePreview = result;
+    return GeneratedImage(
+      id: 'local_look_$_selectedFilterId',
+      imageUrl: persisted,
+      theme: theme,
+      isSelected: true,
+      printSize: printSize,
+    );
+  }
+
   /// Composes the strip and returns a selected [GeneratedImage] for Result.
   Future<GeneratedImage?> compose() async {
     if (!canCompose) {
@@ -837,6 +908,20 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       return null;
     }
 
+    if (KioskOfflineUx.shouldUseLocalStripLook(
+      sessionOffline: _sessionManager.isOfflineSession,
+    )) {
+      _composing = true;
+      _errorMessage = null;
+      notifyListeners();
+      try {
+        return await _completeLocalLook();
+      } finally {
+        _composing = false;
+        notifyListeners();
+      }
+    }
+
     _composePreviewDebounce?.cancel();
     if (classicOverlayCleanupEnabled &&
         !isSingleClassic &&
@@ -844,7 +929,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       // Join the first look-screen polish so print matches preview. Do not
       // start a second Gemini pass on Continue (felt like the CTA vanished).
       await preparePreview().timeout(
-        const Duration(seconds: 45),
+        composeWarmJoinTimeoutForTest,
         onTimeout: () {
           AppLogger.warning('Classic preparePreview timed out on compose');
         },
@@ -916,9 +1001,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         apiPrintSize: result.printSize,
         orientation: _printOrientation,
       );
+      final printUrl = await _persistStripPrintUrl(result.printImageUrl);
       return GeneratedImage(
         id: 'strip_${_selectedFilterId}_${DateTime.now().millisecondsSinceEpoch}',
-        imageUrl: result.printImageUrl,
+        imageUrl: printUrl,
         theme: theme,
         isSelected: true,
         printSize: printSize,
@@ -932,6 +1018,13 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _errorMessage = AppStrings.flashbackComposeFailed;
       return null;
     } on ApiException catch (e) {
+      if (KioskOfflineUx.shouldUseLocalStripLook(
+        sessionOffline: false,
+        error: e,
+      )) {
+        _sessionManager.markSessionOffline();
+        return await _completeLocalLook();
+      }
       _errorMessage = e.message;
       return null;
     } catch (e, st) {

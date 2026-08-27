@@ -12,6 +12,7 @@ class ThemeSlideshowImage extends StatelessWidget {
   const ThemeSlideshowImage({
     super.key,
     required this.path,
+    this.cacheKey,
     this.fit = BoxFit.cover,
     this.width,
     this.height,
@@ -20,6 +21,7 @@ class ThemeSlideshowImage extends StatelessWidget {
   });
 
   final String path;
+  final String? cacheKey;
   final BoxFit fit;
   final double? width;
   final double? height;
@@ -41,6 +43,7 @@ class ThemeSlideshowImage extends StatelessWidget {
     }
     return CachedNetworkImage(
       imageUrl: path,
+      cacheKey: cacheKey,
       fit: fit,
       width: width,
       height: height,

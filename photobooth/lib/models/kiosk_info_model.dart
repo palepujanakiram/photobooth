@@ -17,6 +17,16 @@ class KioskInfoModel {
   final int? additionalPrintPrice;
   final int? regenerationPrice;
 
+  /// Admin guest network mode: `online` (default) or `offline`.
+  final String operatingMode;
+
+  /// High-water from Fly `receipt_invoice_sequences` for this booth's current FY.
+  /// Used to keep the local counter ahead of cloud-issued invoices.
+  final int? invoiceLastSeq;
+
+  static const operatingModeOnline = 'online';
+  static const operatingModeOffline = 'offline';
+
   const KioskInfoModel({
     required this.id,
     required this.code,
@@ -28,6 +38,8 @@ class KioskInfoModel {
     this.initialPrice,
     this.additionalPrintPrice,
     this.regenerationPrice,
+    this.operatingMode = operatingModeOnline,
+    this.invoiceLastSeq,
   });
 
   factory KioskInfoModel.fromJson(Map<String, dynamic> json) {
@@ -62,8 +74,30 @@ class KioskInfoModel {
       initialPrice: parsePrice(json['initialPrice']),
       additionalPrintPrice: parsePrice(json['additionalPrintPrice']),
       regenerationPrice: parsePrice(json['regenerationPrice']),
+      operatingMode: _parseOperatingMode(
+        json['operatingMode'] ?? json['operating_mode'],
+      ),
+      invoiceLastSeq: parsePrice(json['invoiceLastSeq']),
     );
   }
+
+  bool get isOperatingModeOffline => operatingMode == operatingModeOffline;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'code': code,
+        if (name != null) 'name': name,
+        if (location != null) 'location': location,
+        if (accountId != null) 'accountId': accountId,
+        if (paymentEnabled != null) 'paymentEnabled': paymentEnabled,
+        'classicPhotosEnabled': classicPhotosEnabled,
+        if (initialPrice != null) 'initialPrice': initialPrice,
+        if (additionalPrintPrice != null)
+          'additionalPrintPrice': additionalPrintPrice,
+        if (regenerationPrice != null) 'regenerationPrice': regenerationPrice,
+        'operatingMode': operatingMode,
+        if (invoiceLastSeq != null) 'invoiceLastSeq': invoiceLastSeq,
+      };
 
   /// Accepts bool, 0/1, and common string flags from admin/API payloads.
   static bool _parseClassicPhotosEnabled(dynamic raw) {
@@ -78,6 +112,26 @@ class KioskInfoModel {
     }
     // Unknown shape — prefer enabling Classic over silently hiding it.
     return raw != false;
+  }
+
+  /// Missing/unknown → online (legacy kiosks / older API builds).
+  static String _parseOperatingMode(dynamic raw) {
+    if (raw == true) return operatingModeOffline;
+    if (raw == false) return operatingModeOnline;
+    if (raw is num) {
+      return raw != 0 ? operatingModeOffline : operatingModeOnline;
+    }
+    if (raw is String) {
+      final v = raw.trim().toLowerCase();
+      if (v == operatingModeOffline ||
+          v == 'off' ||
+          v == 'true' ||
+          v == '1' ||
+          v == 'yes') {
+        return operatingModeOffline;
+      }
+    }
+    return operatingModeOnline;
   }
 
   bool get isValid => id.trim().isNotEmpty && code.trim().isNotEmpty;

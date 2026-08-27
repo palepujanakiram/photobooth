@@ -32,7 +32,13 @@ void main() {
     adapter.onGet(
       '/api/themes',
       (s) => s.reply(200, [
-        {'id': 't1', 'categoryId': 'c', 'name': 'T', 'description': 'd', 'promptText': 'p'},
+        {
+          'id': 't1',
+          'categoryId': 'c',
+          'name': 'T',
+          'description': 'd',
+          'promptText': 'p'
+        },
       ]),
       queryParameters: {'kioskCode': 'ABC'},
     );
@@ -88,12 +94,16 @@ void main() {
           'currentlyActive': true,
           'themeCount': 2,
           'frameCount': 1,
+          'themeIds': ['t1', 't2'],
+          'frameIds': ['f1'],
         },
       }),
     );
     final info = await api.fetchEventByCode('wed');
     expect(info?.code, 'WED');
     expect(info?.themeCount, 2);
+    expect(info?.themeIds, ['t1', 't2']);
+    expect(info?.frameIds, ['f1']);
   });
 
   test('fetchEventByCode null on empty code or 404', () async {
@@ -110,7 +120,8 @@ void main() {
       'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
       'attemptsUsed': 0,
       'generatedImages': [],
-      'expiresAt': DateTime.now().add(const Duration(hours: 1)).toIso8601String(),
+      'expiresAt':
+          DateTime.now().add(const Duration(hours: 1)).toIso8601String(),
     });
     adapter.onGet(
       '/api/kiosk/frames',
@@ -170,7 +181,8 @@ void main() {
       'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
       'attemptsUsed': 0,
       'generatedImages': [],
-      'expiresAt': DateTime.now().add(const Duration(hours: 1)).toIso8601String(),
+      'expiresAt':
+          DateTime.now().add(const Duration(hours: 1)).toIso8601String(),
     });
     adapter.onGet(
       '/api/kiosk/generation-timing',
@@ -190,7 +202,8 @@ void main() {
     expect(timing['busy'], isFalse);
   });
 
-  test('fetchKioskGenerationTiming throws when kiosk context missing', () async {
+  test('fetchKioskGenerationTiming throws when kiosk context missing',
+      () async {
     SharedPreferences.setMockInitialValues({});
     SessionManager().clearSession();
     expect(

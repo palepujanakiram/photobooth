@@ -9,6 +9,7 @@ import 'package:photobooth/services/app_settings_manager.dart';
 import 'package:photobooth/services/kiosk_manager.dart';
 import 'package:photobooth/services/print_selection_coordinator.dart';
 import 'package:photobooth/services/session_manager.dart';
+import 'package:photobooth/services/local_session_skeleton.dart';
 import 'package:photobooth/utils/app_strings.dart';
 import 'package:photobooth/utils/constants.dart';
 import 'package:photobooth/utils/exceptions.dart';
@@ -21,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../fakes/fake_api_service.dart';
 import '../fixtures/theme_fixtures.dart';
+import '../helpers/tiny_jpeg.dart';
 
 class _SeededAppSettingsManager extends AppSettingsManager {
   _SeededAppSettingsManager({AppSettingsModel? settings})
@@ -106,6 +108,59 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('prepay')), findsOneWidget);
     expect(capturedArgs, isA<FlashbackPrePayArgs>());
+  });
+
+  testWidgets('continueAfterFlashbackLook skips pre-pay when session is offline',
+      (tester) async {
+    await KioskManager().setPaymentEnabledOverride(true);
+    SessionManager().setSessionFromResponse({
+      ..._sessionJson('sess-offline-pre'),
+      kKioskSessionOfflineKey: true,
+    });
+    final theme = sampleTheme('strip').copyWith((p) => p.tier = 'photo_strip');
+    final vm = FotoFlashbackFilterViewModel(
+      theme: theme,
+      imageDataUrls: List.filled(4, kTinyJpegDataUrl),
+      apiService: _PaymentFlowStripApi(enableOsdScrub: false),
+    );
+    await vm.loadFilters();
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppSettingsManager>(
+        create: (_) => AppSettingsManager(
+          apiService: FakeApiService(),
+          resolveKioskCode: () async => null,
+        ),
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) {
+              return ElevatedButton(
+                onPressed: () async {
+                  await continueAfterFlashbackLook(
+                    context: context,
+                    viewModel: vm,
+                    paymentCollectionTiming:
+                        AppConstants.kPaymentCollectionBeforeGeneration,
+                  );
+                },
+                child: const Text('go'),
+              );
+            },
+          ),
+          routes: {
+            AppConstants.kRoutePrePayment: (_) =>
+                const SizedBox(key: Key('prepay')),
+            AppConstants.kRoutePrintSelection: (_) =>
+                const SizedBox(key: Key('print-select')),
+            AppConstants.kRouteExperienceChoice: (_) => const SizedBox(),
+            AppConstants.kRouteTerms: (_) => const SizedBox(),
+            AppConstants.kRouteHome: (_) => const SizedBox(),
+          },
+        ),
+      ),
+    );
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('prepay')), findsNothing);
   });
 
   testWidgets('continueAfterFlashbackLook composes then opens print selection',

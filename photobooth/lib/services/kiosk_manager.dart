@@ -7,9 +7,12 @@ class KioskManager {
       'kiosk_payment_enabled_override';
   static const String _kPrefsClassicPhotosEnabled =
       'kiosk_classic_photos_enabled';
+  static const String _kPrefsOperatingModeOffline =
+      'kiosk_operating_mode_offline';
 
   static bool? _cachedPaymentEnabledOverride;
   static bool? _cachedClassicPhotosEnabled;
+  static bool? _cachedOperatingModeOffline;
 
   /// Clears in-memory payment override cache (tests only).
   @visibleForTesting
@@ -22,6 +25,16 @@ class KioskManager {
   static void resetClassicPhotosCacheForTests() {
     _cachedClassicPhotosEnabled = null;
   }
+
+  /// Clears in-memory operating-mode cache (tests only).
+  @visibleForTesting
+  static void resetOperatingModeCacheForTests() {
+    _cachedOperatingModeOffline = null;
+  }
+
+  /// Sync snapshot of admin offline mode (splash / terms refresh).
+  static bool get isOperatingModeOfflineCached =>
+      _cachedOperatingModeOffline == true;
 
   Future<String?> getKioskCode() async {
     final prefs = await SharedPreferences.getInstance();
@@ -105,5 +118,32 @@ class KioskManager {
     _cachedClassicPhotosEnabled = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kPrefsClassicPhotosEnabled);
+  }
+
+  /// Admin **Offline** guest mode — frame-only + cash even when WAN is up.
+  ///
+  /// Defaults to **false** (online) when unset.
+  Future<bool> isOperatingModeOffline() async {
+    final cached = _cachedOperatingModeOffline;
+    if (cached != null) return cached;
+    final prefs = await SharedPreferences.getInstance();
+    if (!prefs.containsKey(_kPrefsOperatingModeOffline)) {
+      return false;
+    }
+    final v = prefs.getBool(_kPrefsOperatingModeOffline) ?? false;
+    _cachedOperatingModeOffline = v;
+    return v;
+  }
+
+  Future<void> setOperatingModeOffline(bool offline) async {
+    _cachedOperatingModeOffline = offline;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kPrefsOperatingModeOffline, offline);
+  }
+
+  Future<void> clearOperatingModeOffline() async {
+    _cachedOperatingModeOffline = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kPrefsOperatingModeOffline);
   }
 }

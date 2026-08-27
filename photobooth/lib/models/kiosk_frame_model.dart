@@ -27,6 +27,16 @@ class KioskFrameModel {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'overlayUrl': overlayUrl,
+        if (scheduledStartAt != null)
+          'scheduledStartAt': scheduledStartAt!.toIso8601String(),
+        if (scheduledEndAt != null)
+          'scheduledEndAt': scheduledEndAt!.toIso8601String(),
+      };
+
   static DateTime? _parseDate(Object? raw) {
     if (raw == null) return null;
     if (raw is DateTime) return raw;

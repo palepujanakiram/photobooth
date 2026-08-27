@@ -1,7 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/staff_dashboard_models.dart';
+import '../../services/kiosk_disk_guard.dart';
+import '../../services/kiosk_manager.dart';
+import '../../services/local_kiosk_store.dart';
+import '../../services/local_media_store.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/kiosk_offline_ux.dart';
 import 'staff_dashboard_helpers.dart';
 import 'staff_theme_colors.dart';
 
@@ -31,6 +38,181 @@ class StaffShiftBadge extends StatelessWidget {
           color: onShift ? StaffThemeColors.success : StaffThemeColors.muted(context),
           fontSize: 12,
           fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class StaffOfflineModeBanner extends StatefulWidget {
+  const StaffOfflineModeBanner({super.key});
+
+  @override
+  State<StaffOfflineModeBanner> createState() => _StaffOfflineModeBannerState();
+}
+
+class _StaffOfflineModeBannerState extends State<StaffOfflineModeBanner> {
+  bool _offline = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final offline = await KioskManager().isOperatingModeOffline();
+    if (!mounted || !offline) return;
+    setState(() => _offline = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_offline) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: StaffDashboardErrorBanner(
+        message: AppStrings.staffOfflineModeBanner,
+        onDismiss: () => setState(() => _offline = false),
+      ),
+    );
+  }
+}
+
+class StaffDiskFullBanner extends StatefulWidget {
+  const StaffDiskFullBanner({super.key});
+
+  @override
+  State<StaffDiskFullBanner> createState() => _StaffDiskFullBannerState();
+}
+
+class _StaffDiskFullBannerState extends State<StaffDiskFullBanner> {
+  String? _message;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final store = LocalKioskStore.instance;
+    if (store == null) return;
+    final status = await KioskDiskGuard(
+      store: store,
+      media: LocalMediaStore(),
+    ).measure();
+    if (!mounted || !status.isCritical) return;
+    setState(() => _message = AppStrings.staffDiskFull);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final message = _message;
+    if (message == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: StaffDashboardErrorBanner(
+        message: message,
+        onDismiss: () => setState(() => _message = null),
+      ),
+    );
+  }
+}
+
+class StaffLocalDayTotalsCard extends StatefulWidget {
+  const StaffLocalDayTotalsCard({super.key, required this.isoDate});
+
+  final String isoDate;
+
+  @override
+  State<StaffLocalDayTotalsCard> createState() =>
+      _StaffLocalDayTotalsCardState();
+}
+
+class _StaffLocalDayTotalsCardState extends State<StaffLocalDayTotalsCard> {
+  LocalBoothCloseTotals? _totals;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  @override
+  void didUpdateWidget(StaffLocalDayTotalsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isoDate != widget.isoDate) {
+      unawaited(_load());
+    }
+  }
+
+  Future<void> _load() async {
+    final store = LocalKioskStore.instance;
+    if (store == null) return;
+    final day = StaffDashboardHelpers.tryParseIsoDate(widget.isoDate) ??
+        DateTime.now();
+    final counts = await store.countsForDay(day);
+    final payments = await store.paymentsOnDay(day);
+    final totals = localBoothCloseTotals(
+      counts: counts,
+      paymentPayloads: payments.map((e) => e.payload),
+    );
+    if (!mounted) return;
+    setState(() => _totals = totals);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final totals = _totals;
+    if (totals == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: StaffThemeColors.chipIdleBg(context),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                AppStrings.staffLocalDayTitle,
+                style: TextStyle(
+                  color: StaffThemeColors.muted(context),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                AppStrings.staffLocalDayHint,
+                style: TextStyle(
+                  color: StaffThemeColors.mutedSoft(context),
+                  fontSize: 11,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '${AppStrings.staffKpiSessions}: ${totals.sessions}  ·  '
+                '${AppStrings.staffKpiPrints}: ${totals.printJobs}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${AppStrings.staffLocalDayCash}: '
+                '${StaffDashboardHelpers.formatInr(totals.cashAmount)}  ·  '
+                '${AppStrings.staffKpiPayments}: ${totals.paymentCount}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

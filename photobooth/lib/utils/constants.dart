@@ -12,7 +12,7 @@ class AppConstants {
   static const String kBrandLogoAsset = 'lib/images/fotozen_wordmark.png';
 
   // API Configuration
-  static const String kBaseUrl = AppConfig.baseUrl;
+  static String get kBaseUrl => AppConfig.baseUrl;
   // Extended timeout for image uploads and AI generation
   // Set to 5 minutes to handle slower networks and extended processing times
   static const Duration kApiTimeout = Duration(seconds: 300);
@@ -348,7 +348,7 @@ class AppConstants {
   /// Google Fonts CSS, etc.) as the main site, the WebView will feel slow until all
   /// assets load. For a fast legal page, host a **static** HTML document (or a
   /// minimal route) and point this constant at that URL instead.
-  static const String kTermsAndConditionsUrl = '${AppConfig.baseUrl}/terms';
+  static String get kTermsAndConditionsUrl => '${AppConfig.baseUrl}/terms';
 
   /// Bundled static Terms HTML for offline / Android TV WebView loads.
   static const String kTermsAndConditionsAssetPath = 'assets/legal/terms.html';
@@ -404,6 +404,9 @@ class AppConstants {
   static const String kErrorApiCall = 'Failed to process request';
   /// Idle countdown on SCAN & SHARE before auto-start of a fresh session.
   static const int kQrShareIdleSeconds = 60;
+
+  /// Offline: no guest QR — short thank-you window then reset (print already kicked).
+  static const int kQrShareOfflineIdleSeconds = 12;
 
   static const String kErrorNetwork = 'Network error occurred';
   static const String kErrorUnknown = 'An unexpected error occurred';
