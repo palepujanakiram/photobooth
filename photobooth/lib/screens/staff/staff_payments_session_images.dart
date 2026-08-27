@@ -186,15 +186,14 @@ abstract final class StaffPaymentsSessionImages {
     return top.isEmpty ? null : top;
   }
 
-  /// Classic compose shot count when present on session payload (1 → 6×4, 4 → strip).
+  /// Classic compose shot count from the session payload (1 → 6×4, 3/4 → strip).
   static int? classicComposeShotCountFromSession(Map<String, dynamic> raw) {
     final captured = raw['capturedImages'] ?? raw['captured_images'];
-    if (captured is List) {
-      if (captured.length == 1) return 1;
-      if (captured.length == kStripShotCount) return kStripShotCount;
+    if (captured is List && isValidClassicComposeShotCount(captured.length)) {
+      return captured.length;
     }
     final shotCount = raw['shotCount'] ?? raw['shot_count'];
-    if (shotCount is int && (shotCount == 1 || shotCount == kStripShotCount)) {
+    if (shotCount is int && isValidClassicComposeShotCount(shotCount)) {
       return shotCount;
     }
     return null;

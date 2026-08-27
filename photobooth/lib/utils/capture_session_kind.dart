@@ -13,18 +13,25 @@ enum CaptureSessionKind {
   /// Classic: one still → look picker (6×4 / 4×6).
   classicOneShot,
 
+  /// Classic: three stills → look picker (dual 2×6 strip, taller cells).
+  classicThreeShot,
+
   /// Classic: four stills → look picker (dual 2×6 strip).
   classicFourShot,
 }
 
 extension CaptureSessionKindX on CaptureSessionKind {
-  bool get isClassic =>
-      this == CaptureSessionKind.classicOneShot ||
-      this == CaptureSessionKind.classicFourShot;
+  bool get isClassic => this != CaptureSessionKind.fotoZen;
 
   bool get isClassicOneShot => this == CaptureSessionKind.classicOneShot;
 
+  bool get isClassicThreeShot => this == CaptureSessionKind.classicThreeShot;
+
   bool get isClassicFourShot => this == CaptureSessionKind.classicFourShot;
+
+  /// Any 2×6 strip session (3- or 4-shot). Use this — not
+  /// [isClassicFourShot] — for "Classic, but not the 1-shot FSM" branches.
+  bool get isClassicStrip => isClassicThreeShot || isClassicFourShot;
 
   bool get isFotoZen => this == CaptureSessionKind.fotoZen;
 
@@ -32,18 +39,22 @@ extension CaptureSessionKindX on CaptureSessionKind {
   int? get classicShotCount => switch (this) {
         CaptureSessionKind.fotoZen => null,
         CaptureSessionKind.classicOneShot => 1,
+        CaptureSessionKind.classicThreeShot => kStripShotCountThree,
         CaptureSessionKind.classicFourShot => kStripShotCount,
       };
 
   ClassicShotMode? get classicShotMode => switch (this) {
         CaptureSessionKind.fotoZen => null,
         CaptureSessionKind.classicOneShot => ClassicShotMode.single6x4,
+        CaptureSessionKind.classicThreeShot => ClassicShotMode.threeShot,
         CaptureSessionKind.classicFourShot => ClassicShotMode.fourShot,
       };
 
   static CaptureSessionKind fromClassicShotMode(ClassicShotMode mode) {
-    return mode.isSingle6x4
-        ? CaptureSessionKind.classicOneShot
-        : CaptureSessionKind.classicFourShot;
+    return switch (mode) {
+      ClassicShotMode.single6x4 => CaptureSessionKind.classicOneShot,
+      ClassicShotMode.threeShot => CaptureSessionKind.classicThreeShot,
+      ClassicShotMode.fourShot => CaptureSessionKind.classicFourShot,
+    };
   }
 }

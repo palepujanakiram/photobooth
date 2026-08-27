@@ -21,6 +21,33 @@ void main() {
       expect(cells.first.top, closeTo(4, 0.01));
       expect(cells.last.top, closeTo(4 + 3 * 448, 0.01));
     });
+
+    test('three shots fill the same 600×1800 strip with taller cells', () {
+      final cells = computeStripPhotoCellRects(
+        frameId: 'classic',
+        stripWidth: stripW,
+        stripHeight: stripH,
+        shotCount: kStripShotCountThree,
+      );
+      expect(cells, hasLength(3));
+      // Width is unchanged — only the height divisor moves.
+      expect(cells.first.width, closeTo(592, 0.01));
+      expect(cells.first.height, closeTo(1792 / 3, 0.01));
+      expect(cells.first.top, closeTo(4, 0.01));
+      expect(cells[1].top, closeTo(4 + 1792 / 3, 0.01));
+      // Cells still cover the print edge to edge: no gap at the bottom border.
+      expect(cells.last.top + cells.last.height, closeTo(stripH - 4, 0.01));
+    });
+
+    test('an unusable shot count falls back to the four-shot strip', () {
+      final cells = computeStripPhotoCellRects(
+        frameId: 'classic',
+        stripWidth: stripW,
+        stripHeight: stripH,
+        shotCount: 0,
+      );
+      expect(cells, hasLength(kStripShotCount));
+    });
   });
 
   group('computeStripPhotoCellRects filmstrip', () {
@@ -46,6 +73,22 @@ void main() {
       expect(cells.first.height, closeTo(cellH, 0.01));
       expect(cells[1].top, closeTo(marginY + cellH + gutter, 0.01));
       expect(stripPhotoCellUsesContainFit('filmstrip'), isTrue);
+
+      final threeCells = computeStripPhotoCellRects(
+        frameId: 'filmstrip',
+        stripWidth: stripW,
+        stripHeight: stripH,
+        shotCount: kStripShotCountThree,
+        layout: layout,
+      );
+      final threeCellH = (stripH - 2 * marginY - 2 * gutter) / 3;
+      expect(threeCells, hasLength(3));
+      expect(threeCells.first.height, closeTo(threeCellH, 0.01));
+      expect(threeCells.first.width, closeTo(cellW, 0.01));
+      expect(
+        threeCells.last.top + threeCells.last.height,
+        closeTo(stripH - marginY, 0.01),
+      );
       expect(
         stripPhotoCellLetterboxColor('filmstrip'),
         const Color(0xFF0A0A0A),

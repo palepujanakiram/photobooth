@@ -77,7 +77,7 @@ void main() {
     );
   });
 
-  test('FlashbackPrePayArgs.tryParse validates four images', () {
+  test('FlashbackPrePayArgs.tryParse validates the shot count', () {
     final theme = sampleTheme('t').copyWith((p) => p.tier = 'photo_strip');
     final typed = FlashbackPrePayArgs(
       theme: theme,
@@ -85,11 +85,12 @@ void main() {
       filterId: 'mono',
     );
     expect(FlashbackPrePayArgs.tryParse(typed), same(typed));
+    // 2 is not a Classic shot count (1, 3 and 4 are).
     expect(
       FlashbackPrePayArgs.tryParse({
         'theme': theme,
         'filterId': 'clean',
-        'imageDataUrls': ['a', 'b', 'c'],
+        'imageDataUrls': ['a', 'b'],
       }),
       isNull,
     );
@@ -100,6 +101,12 @@ void main() {
     });
     expect(ok!.filterId, 'clean');
     expect(ok.imageDataUrls, hasLength(4));
+    final threeShot = FlashbackPrePayArgs.tryParse({
+      'theme': theme,
+      'filterId': 'clean',
+      'imageDataUrls': ['a', 'b', 'c'],
+    });
+    expect(threeShot!.imageDataUrls, hasLength(3));
   });
 
   testWidgets('navigateToFlashbackResult includes optional surprise image',

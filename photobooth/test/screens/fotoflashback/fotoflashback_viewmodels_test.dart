@@ -449,6 +449,63 @@ void main() {
     expect(vm.previewCleaned, isFalse);
   });
 
+  test('FotoFlashbackFilterViewModel follows a three-shot strip', () {
+    final vm = FotoFlashbackFilterViewModel(
+      theme: stripTheme,
+      imageDataUrls: List.filled(3, 'data:image/jpeg;base64,/9j/4AAQ'),
+      overlayCleanupBuildGate: false,
+    );
+    expect(vm.isSingleClassic, isFalse);
+    expect(vm.shotCount, 3);
+    expect(vm.stripShotCount, 3);
+    expect(vm.canCompose, isTrue);
+    // Same fixed 2×6 print, taller cells than the four-shot strip.
+    expect(vm.stripCellAspectRatio, closeTo(592 / (1792 / 3), 0.0001));
+    expect(vm.stripCellAspectRatio, lessThan(kStripCellAspectRatio));
+    // Sheet layouts hardcode four slots, so they stay hidden for three shots.
+    expect(vm.frames.any((f) => isStripSheetLayout(f.id)), isFalse);
+    // One sticker per photo cell — three, not four.
+    vm.addSticker('hearts');
+    expect(vm.stickerPlacements, hasLength(3));
+  });
+
+  test('FotoFlashbackCaptureViewModel collects three shots when asked', () {
+    final vm = FotoFlashbackCaptureViewModel(
+      theme: stripTheme,
+      totalShots: kStripShotCountThree,
+    );
+    for (var i = 0; i < kStripShotCountThree; i++) {
+      expect(vm.isComplete, isFalse);
+      expect(vm.nextShotNumber, i + 1);
+      vm.addShot(
+        PhotoModel(
+          id: 't$i',
+          imageFile: XFile.fromData(
+            Uint8List.fromList([0xFF, 0xD8, 0xFF, i]),
+            name: 't$i.jpg',
+            mimeType: 'image/jpeg',
+          ),
+          capturedAt: DateTime.utc(2026, 1, 1),
+        ),
+      );
+    }
+    expect(vm.isComplete, isTrue);
+    expect(vm.shotCount, kStripShotCountThree);
+    // A fourth shot is refused — the strip is already full.
+    vm.addShot(
+      PhotoModel(
+        id: 'extra',
+        imageFile: XFile.fromData(
+          Uint8List.fromList([0xFF, 0xD8, 0xFF]),
+          name: 'extra.jpg',
+          mimeType: 'image/jpeg',
+        ),
+        capturedAt: DateTime.utc(2026, 1, 1),
+      ),
+    );
+    expect(vm.shotCount, kStripShotCountThree);
+  });
+
   test('FotoFlashbackCaptureViewModel collects four shots', () {
     final vm = FotoFlashbackCaptureViewModel(theme: stripTheme);
     expect(vm.isComplete, isFalse);

@@ -187,6 +187,9 @@ class _ExperienceChoiceScreenState extends State<ExperienceChoiceScreen> {
                           onFotoFlashOneShot: () => unawaited(
                             _chooseFotoFlash(ClassicShotMode.single6x4),
                           ),
+                          onFotoFlashThreeShot: () => unawaited(
+                            _chooseFotoFlash(ClassicShotMode.threeShot),
+                          ),
                           onFotoFlashFourShot: () => unawaited(
                             _chooseFotoFlash(ClassicShotMode.fourShot),
                           ),
@@ -219,6 +222,7 @@ class _ExperienceChoicePanel extends StatelessWidget {
     required this.startingFlashback,
     required this.onAi,
     required this.onFotoFlashOneShot,
+    required this.onFotoFlashThreeShot,
     required this.onFotoFlashFourShot,
     required this.onBackToTerms,
   });
@@ -231,6 +235,7 @@ class _ExperienceChoicePanel extends StatelessWidget {
   final bool startingFlashback;
   final VoidCallback onAi;
   final VoidCallback onFotoFlashOneShot;
+  final VoidCallback onFotoFlashThreeShot;
   final VoidCallback onFotoFlashFourShot;
   final VoidCallback onBackToTerms;
 
@@ -315,6 +320,7 @@ class _ExperienceChoicePanel extends StatelessWidget {
                   ? _ClassicShotStartButtons(
                       enabled: !startingFlashback,
                       onOneShot: onFotoFlashOneShot,
+                      onThreeShot: onFotoFlashThreeShot,
                       onFourShot: onFotoFlashFourShot,
                     )
                   : null,
@@ -337,17 +343,28 @@ class _ExperienceChoicePanel extends StatelessWidget {
   }
 }
 
-/// Two explicit Classic CTAs so 1-shot cannot accidentally launch as 4-shot.
+/// One explicit CTA per Classic shot count, so a guest tapping "1-shot" can
+/// never launch a strip session (and vice versa).
 class _ClassicShotStartButtons extends StatelessWidget {
   const _ClassicShotStartButtons({
     required this.enabled,
     required this.onOneShot,
+    required this.onThreeShot,
     required this.onFourShot,
   });
 
   final bool enabled;
   final VoidCallback onOneShot;
+  final VoidCallback onThreeShot;
   final VoidCallback onFourShot;
+
+  static ButtonStyle _secondaryStyle(AppColors appColors) =>
+      OutlinedButton.styleFrom(
+        foregroundColor: appColors.textColor,
+        side: BorderSide(color: appColors.borderColor),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        minimumSize: const Size.fromHeight(52),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -371,13 +388,16 @@ class _ClassicShotStartButtons extends StatelessWidget {
               Expanded(
                 child: OutlinedButton(
                   onPressed: enabled ? onOneShot : null,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: appColors.textColor,
-                    side: BorderSide(color: appColors.borderColor),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    minimumSize: const Size.fromHeight(52),
-                  ),
+                  style: _secondaryStyle(appColors),
                   child: const Text(AppStrings.experienceClassicStartOneShot),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: enabled ? onThreeShot : null,
+                  style: _secondaryStyle(appColors),
+                  child: const Text(AppStrings.experienceClassicStartThreeShot),
                 ),
               ),
               const SizedBox(width: 10),

@@ -90,10 +90,9 @@ class _FotoFlashbackFilterScreenState extends State<FotoFlashbackFilterScreen> {
     setState(() => _navigatingBack = true);
     vm?.clearCapturePreview();
     final theme = args?.theme ?? vm!.theme;
-    final mode = args?.resolvedShotMode ??
-        (vm!.isSingleClassic
-            ? ClassicShotMode.single6x4
-            : ClassicShotMode.fourShot);
+    // Back → POSE must reopen the same strip length the guest just shot.
+    final mode =
+        args?.resolvedShotMode ?? classicStripShotModeForCount(vm!.shotCount);
     try {
       await navigateBackToClassicCaptureFromLooks(
         context: context,

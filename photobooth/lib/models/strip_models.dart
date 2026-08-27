@@ -10,8 +10,21 @@ const String kDefaultStripFrameId = 'classic';
 /// Default sticker pack when the API omits / invalidates [sticker].
 const String kDefaultStripStickerId = 'none';
 
-/// Exact shot count required by `POST /api/sessions/:id/strip/compose`.
+/// Default (and maximum) strip length for `POST /api/sessions/:id/strip/compose`.
 const int kStripShotCount = 4;
+
+/// Shorter 2×6 strip: three poses instead of four (same fixed print size).
+const int kStripShotCountThree = 3;
+
+/// Strip lengths a Classic multi-shot session may run.
+const List<int> kClassicStripShotCounts = <int>[
+  kStripShotCountThree,
+  kStripShotCount,
+];
+
+/// Shot counts `/strip/compose` accepts: 1 (6×4 / 4×6) or a 2×6 strip length.
+bool isValidClassicComposeShotCount(int count) =>
+    count == 1 || kClassicStripShotCounts.contains(count);
 
 /// Catalog order from zenai `STRIP_FILTER_IDS` / `GET /api/strip/filters`.
 const List<String> kStripFilterIds = [
@@ -161,12 +174,29 @@ class StripStickerPlacement {
       };
 }
 
-/// Per-frame print cell aspect (width ÷ height) for a 2×6 strip.
+/// Printed 2×6 strip geometry at 300 DPI. Fixed — never varies by shot count.
+const double kStripPrintWidthPx = 600;
+const double kStripPrintHeightPx = 1800;
+const double kStripPrintBorderPx = 4;
+
+/// Per-frame print cell aspect (width ÷ height) for a 4-shot 2×6 strip.
 ///
 /// Matches zenai `stripCompositor` cellGeometry at 300 DPI:
 /// strip 600×1800, border 4, gutter 0 → cell 592×448 (landscape).
 /// Shots are cover-cropped edge-to-edge (no blur/letterbox fill).
 const double kStripCellAspectRatio = 592 / 448;
+
+/// Cell aspect (width ÷ height) for a [shotCount]-long 2×6 strip.
+///
+/// The sheet is fixed, so fewer shots means taller cells: 4 → 592×448
+/// (landscape), 3 → 592×597 (near square). Capture framing, look-picker
+/// preview and print all read this so the guest sees what gets printed.
+double stripCellAspectRatioForShots(int shotCount) {
+  final shots = shotCount <= 0 ? kStripShotCount : shotCount;
+  const inner = kStripPrintWidthPx - 2 * kStripPrintBorderPx;
+  final cellHeight = (kStripPrintHeightPx - 2 * kStripPrintBorderPx) / shots;
+  return inner / cellHeight;
+}
 
 /// One look from `GET /api/strip/filters`.
 class StripFilter {

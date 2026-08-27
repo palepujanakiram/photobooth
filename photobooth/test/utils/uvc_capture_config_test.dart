@@ -23,16 +23,16 @@ void main() {
     expect(UvcCaptureConfig.captureFlashDuration, const Duration(milliseconds: 120));
     expect(UvcCaptureConfig.uiCaptureCooldown, const Duration(milliseconds: 600));
     expect(UvcCaptureConfig.keepControllerOpenDuringReview, isFalse);
-    expect(UvcCaptureConfig.keepControllerOpenForClassicFourShot, isTrue);
+    expect(UvcCaptureConfig.keepControllerOpenForClassicStrip, isTrue);
     expect(
       UvcCaptureConfig.shouldKeepUvcControllerOpen(
-        classicFourShotSession: true,
+        classicStripSession: true,
       ),
       isTrue,
     );
     expect(
       UvcCaptureConfig.shouldKeepUvcControllerOpen(
-        classicFourShotSession: false,
+        classicStripSession: false,
       ),
       isFalse,
     );

@@ -32,30 +32,36 @@ Color stripPhotoCellLetterboxColor(String frameId) {
 
 /// Photo cell geometry for one 2×6 strip — mirrors zenai `stripCompositor`.
 ///
-/// Classic / Noir: 4px border, gutter 0 → four 592×448 cover cells on 600×1800.
+/// The strip itself is a fixed print size, so [shotCount] only changes how the
+/// fixed height is divided: 4 → 592×448 cover cells on 600×1800, 3 → 592×597.
+///
+/// Classic / Noir: 4px border, gutter 0, cells fill the strip edge to edge.
 /// Filmstrip: 52px rails, 72px top/bottom margin, 14px gutters, contain fit.
 List<StripPhotoCellRect> computeStripPhotoCellRects({
   required String frameId,
   required double stripWidth,
   required double stripHeight,
+  int shotCount = kStripShotCount,
   StripWysiwygLayout layout = StripWysiwygLayout.defaults,
 }) {
+  final shots = shotCount <= 0 ? kStripShotCount : shotCount;
   if (frameId == 'filmstrip') {
-    return _filmstripCells(stripWidth, stripHeight, layout);
+    return _filmstripCells(stripWidth, stripHeight, shots, layout);
   }
-  return _classicStripCells(stripWidth, stripHeight, layout);
+  return _classicStripCells(stripWidth, stripHeight, shots, layout);
 }
 
 List<StripPhotoCellRect> _classicStripCells(
   double stripWidth,
   double stripHeight,
+  int shotCount,
   StripWysiwygLayout layout,
 ) {
   final border = stripWidth * layout.borderRatio;
   final cellW = stripWidth - 2 * border;
-  final cellH = (stripHeight - 2 * border) / kStripShotCount;
+  final cellH = (stripHeight - 2 * border) / shotCount;
   return [
-    for (var i = 0; i < kStripShotCount; i++)
+    for (var i = 0; i < shotCount; i++)
       StripPhotoCellRect(
         left: border,
         top: border + i * cellH,
@@ -68,6 +74,7 @@ List<StripPhotoCellRect> _classicStripCells(
 List<StripPhotoCellRect> _filmstripCells(
   double stripWidth,
   double stripHeight,
+  int shotCount,
   StripWysiwygLayout layout,
 ) {
   final rail = stripWidth * StripChromeLook.filmRailRatio;
@@ -75,10 +82,9 @@ List<StripPhotoCellRect> _filmstripCells(
   final gutter = stripHeight * layout.filmGutter;
   final cellW = stripWidth - 2 * rail;
   final contentH = stripHeight - 2 * marginY;
-  final cellH =
-      (contentH - (kStripShotCount - 1) * gutter) / kStripShotCount;
+  final cellH = (contentH - (shotCount - 1) * gutter) / shotCount;
   return [
-    for (var i = 0; i < kStripShotCount; i++)
+    for (var i = 0; i < shotCount; i++)
       StripPhotoCellRect(
         left: rail,
         top: marginY + i * (cellH + gutter),

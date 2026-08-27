@@ -127,20 +127,22 @@ class UvcCaptureConfig {
   /// When true, keep the UVC session open while reviewing a still (retake reuses it).
   ///
   /// Default false on production 1-shot kiosks: closing the native feed during
-  /// review cuts CPU/heat. Classic 4-shot uses [shouldKeepUvcControllerOpen]
-  /// instead so shot 2+ does not pay full dispose + Canon LV re-arm.
+  /// review cuts CPU/heat. Classic strip sessions use
+  /// [shouldKeepUvcControllerOpen] instead so shot 2+ does not pay full
+  /// dispose + Canon LV re-arm.
   static const bool keepControllerOpenDuringReview = false;
 
-  /// Classic 4-shot: keep UVC open across reviews (preview is [SizedBox.shrink]
-  /// while a still is shown, so PlatformView does not overlay the JPEG).
-  static const bool keepControllerOpenForClassicFourShot = true;
+  /// Classic strip (3- or 4-shot): keep UVC open across reviews (preview is
+  /// [SizedBox.shrink] while a still is shown, so PlatformView does not
+  /// overlay the JPEG).
+  static const bool keepControllerOpenForClassicStrip = true;
 
   /// Whether capture/resume should leave the UVC controller initialized.
   static bool shouldKeepUvcControllerOpen({
-    required bool classicFourShotSession,
+    required bool classicStripSession,
   }) {
     if (keepControllerOpenDuringReview) return true;
-    return classicFourShotSession && keepControllerOpenForClassicFourShot;
+    return classicStripSession && keepControllerOpenForClassicStrip;
   }
 
   /// Ignore preview-interrupt shutter signals right after the feed reconnects.

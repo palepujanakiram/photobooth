@@ -216,7 +216,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _syncCaptureWatchdog(_captureViewModel);
     // Classic 1-shot is a linear FSM — never drive it from VM notify storms
     // (UVC normalize / reopen was restarting countdowns forever).
-    if (widget.sessionKind.isClassicFourShot) {
+    if (widget.sessionKind.isClassicStrip) {
       _maybeAdvanceFlashbackAutoChain();
     } else if (widget.sessionKind.isClassicOneShot) {
       _oneShotOnViewModelTick();
@@ -351,7 +351,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   void _maybeAdvanceFlashbackAutoChain() {
     if (!mounted) return;
     // 1-shot never enters this chain — see [_oneShotDispatch].
-    if (!widget.sessionKind.isClassicFourShot) return;
+    if (!widget.sessionKind.isClassicStrip) return;
     // Accept has detached the still but not finished retake/resume yet.
     if (_flashbackAcceptingShot) return;
 
@@ -721,7 +721,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
   Future<void> _startFlashbackAutoCountdown() async {
     // Classic 1-shot uses [_oneShotDispatch] only — never share this path.
-    if (!widget.sessionKind.isClassicFourShot) return;
+    if (!widget.sessionKind.isClassicStrip) return;
     if (_flashbackCountdownStarting || !mounted) return;
     if (!shouldAutoStartFlashbackCountdown(
       isFlashbackMultiShot: true,
@@ -924,13 +924,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   bool get _isClassicPose => widget.sessionKind.isClassic;
 
   /// Classic 4-shot strip only — never true for 1-shot (avoids remount chain).
-  bool get _isFlashbackMultiShot => widget.sessionKind.isClassicFourShot;
+  bool get _isFlashbackMultiShot => widget.sessionKind.isClassicStrip;
 
-  bool get _isFlashbackFourShot => widget.sessionKind.isClassicFourShot;
+  /// Any Classic 2×6 strip session (3- or 4-shot) — not the 1-shot FSM.
+  bool get _isFlashbackStripSession => widget.sessionKind.isClassicStrip;
 
   bool get _keepUvcOpenForSession =>
       UvcCaptureConfig.shouldKeepUvcControllerOpen(
-        classicFourShotSession: _isFlashbackFourShot,
+        classicStripSession: _isFlashbackStripSession,
       );
 
   /// Classic prefers HDMI/UVC; fallback uses Pi MJPEG when HDMI open fails.
@@ -966,6 +967,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   bool get _isFlashbackSingleShot => widget.sessionKind.isClassicOneShot;
 
   int get _classicShotCap => widget.sessionKind.classicShotCount ?? 0;
+
+  /// Strip length for progress UI — session kind first, route args as backup.
+  int get _stripTotal {
+    final cap = _classicShotCap;
+    if (cap > 0) return cap;
+    return _multiShotTotal ?? kStripShotCount;
+  }
 
   void _syncClassicPoseFieldsFromKind() {
     final mode = widget.sessionKind.classicShotMode;
@@ -1118,7 +1126,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       return null;
     }
     final countdownSeconds = captureCountdownSecondsForMode(
-      isFlashbackMultiShot: _isFlashbackFourShot || _isFlashbackSingleShot,
+      isFlashbackMultiShot: _isFlashbackStripSession || _isFlashbackSingleShot,
       acceptedShotCount: _stripShots.length,
     );
     final prepareAt = flashbackSidecarStillPrepareAtSecond(
@@ -1304,7 +1312,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     }
 
     final theme = _flashbackTheme ?? ClassicCaptureIntent.peekTheme();
-    if (!widget.sessionKind.isClassicFourShot) return;
+    if (!widget.sessionKind.isClassicStrip) return;
     if (theme == null) return;
     final total = _classicShotCap;
     if (total <= 0) return;
@@ -1538,7 +1546,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         return;
       }
 
-      final shotOk = dataUrls.length == kStripShotCount;
+      final shotOk = dataUrls.length == _classicShotCap;
       if (!shotOk || dataUrls.any((u) => u.trim().isEmpty)) {
         _clearStripFinishingFlags(notify: true);
         if (mounted) {
@@ -1559,7 +1567,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         imageDataUrls: dataUrls,
         overlayCleanupAlreadyDone: allScrubbed,
         shotCleaned: shotCleaned,
-        classicShotMode: ClassicShotMode.fourShot,
+        classicShotMode:
+            widget.sessionKind.classicShotMode ?? ClassicShotMode.fourShot,
       );
       // Direct page route — named `routes:` → const FotoFlashbackFilterScreen()
       // drops typed args on Android TV (forever spinner on Pick a look).
@@ -1818,7 +1827,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       setState(() {});
       _resetUvcIdleSleepTimer();
       // 4-shot only — 1-shot must not auto-fire after USB webcam reopen.
-      if (widget.sessionKind.isClassicFourShot) {
+      if (widget.sessionKind.isClassicStrip) {
         _maybeAdvanceFlashbackAutoChain();
       }
     });
@@ -2174,7 +2183,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
     unawaited(_captureViewModel.loadPreviewRotation());
     _syncPoseIdleTimer(_captureViewModel);
-    if (widget.sessionKind.isClassicFourShot) {
+    if (widget.sessionKind.isClassicStrip) {
       _maybeAdvanceFlashbackAutoChain();
     } else if (widget.sessionKind.isClassicOneShot) {
       _oneShotOnViewModelTick();
@@ -2233,7 +2242,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       unawaited(_beginPoseCaptureSetup());
     }
 
-    if (_isFlashbackFourShot && _stripShots.isNotEmpty) {
+    if (_isFlashbackStripSession && _stripShots.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) => beginSetupOnce());
       return;
     }
@@ -3290,7 +3299,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       }
       return;
     }
-    final flashback = _isFlashbackFourShot;
+    final flashback = _isFlashbackStripSession;
     // Web: remount capture route so getUserMedia restarts (same State leaves a
     // black / dead stream after takePicture). Strip progress is carried in args.
     // Native/UVC: stay on this State and force a controller re-init.
@@ -3353,7 +3362,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
 
     final ctrl = _uvcController;
     if (UvcCaptureConfig.shouldKeepUvcControllerOpen(
-          classicFourShotSession: _isFlashbackFourShot,
+          classicStripSession: _isFlashbackStripSession,
         ) &&
         ctrl != null &&
         ctrl.value.isInitialized) {
@@ -3415,7 +3424,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     try {
       await _withUvcLock(_closeUvcControllerUnlocked);
       if (!UvcCaptureConfig.shouldKeepUvcControllerOpen(
-        classicFourShotSession: _isFlashbackFourShot,
+        classicStripSession: _isFlashbackStripSession,
       )) {
         PaintingBinding.instance.imageCache.clear();
         PaintingBinding.instance.imageCache.clearLiveImages();
@@ -4189,7 +4198,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     // First HDMI frames after open are often the body info screen until LV
     // settles — mask until warmup ends.
     if (_uvcPreviewWarmupActive && viewModel.capturedPhoto == null) {
-      final midStrip = _isFlashbackFourShot && _stripShots.isNotEmpty;
+      final midStrip = _isFlashbackStripSession && _stripShots.isNotEmpty;
       return _uvcStartingLiveViewCard(
         message: midStrip ? _classicMidStripReadyMessage() : null,
       );
@@ -4565,7 +4574,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         // review JPEG is assigned — closing first caused a long blank gap
         // (dispose + 750ms delay + Connecting flash).
         if (!UvcCaptureConfig.shouldKeepUvcControllerOpen(
-              classicFourShotSession: _isFlashbackFourShot,
+              classicStripSession: _isFlashbackStripSession,
             ) &&
             !fromSidecar) {
           _detachUvcHardwareListeners();
@@ -4596,7 +4605,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         } else if (captureFailed) {
           final keepOpen = preferSidecar ||
               UvcCaptureConfig.shouldKeepUvcControllerOpen(
-                classicFourShotSession: _isFlashbackFourShot,
+                classicStripSession: _isFlashbackStripSession,
               );
           if (!keepOpen) {
             _detachUvcHardwareListeners();
@@ -4667,7 +4676,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
       });
     } finally {
       if (!UvcCaptureConfig.shouldKeepUvcControllerOpen(
-            classicFourShotSession: _isFlashbackFourShot,
+            classicStripSession: _isFlashbackStripSession,
           ) &&
           fromSidecar) {
         _detachUvcHardwareListeners();
@@ -4700,7 +4709,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         (m) => m.settings?.photoUploadAllowed == true,
       ),
       classicFourShotInProgress:
-          _isFlashbackFourShot && _stripShots.isNotEmpty,
+          _isFlashbackStripSession && _stripShots.isNotEmpty,
     );
     return Center(
       child: Padding(
@@ -4786,7 +4795,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     if (_awaitingCanonUsbPermission) {
       return AppStrings.captureWaitingCanonUsbPermission;
     }
-    if (_isFlashbackFourShot && _stripShots.isNotEmpty) {
+    if (_isFlashbackStripSession && _stripShots.isNotEmpty) {
       final total = _classicShotCap > 0 ? _classicShotCap : 1;
       final next = (_stripShots.length + 1).clamp(1, total);
       return AppStrings.flashbackGetReadyForShot(next, total);
@@ -4852,7 +4861,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
         (m) => m.settings?.photoUploadAllowed == true,
       ),
       classicFourShotInProgress:
-          _isFlashbackFourShot && _stripShots.isNotEmpty,
+          _isFlashbackStripSession && _stripShots.isNotEmpty,
     );
     return Center(
       child: Padding(
@@ -4936,7 +4945,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             (m) => m.settings?.photoUploadAllowed == true,
           ),
           classicFourShotInProgress:
-              _isFlashbackFourShot && _stripShots.isNotEmpty,
+              _isFlashbackStripSession && _stripShots.isNotEmpty,
         );
         return PhotoCaptureDesktopBody(
           viewModel: viewModel,
@@ -4978,7 +4987,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     );
 
     final midStripRemount =
-        _isFlashbackFourShot && _stripShots.isNotEmpty;
+        _isFlashbackStripSession && _stripShots.isNotEmpty;
     final Widget body;
     final String phaseKey;
     switch (phase) {
@@ -5081,11 +5090,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                   viewModel: viewModel,
                   subtitleHint: _subtitleHint,
                   stripShotTotal:
-                      _isFlashbackFourShot ? _multiShotTotal : null,
-                  stripShotFiles: _isFlashbackFourShot
+                      _isFlashbackStripSession ? _stripTotal : null,
+                  stripShotFiles: _isFlashbackStripSession
                       ? _stripShots.map((p) => p.imageFile).toList(growable: false)
                       : const [],
-                  stripPendingFile: _isFlashbackFourShot
+                  stripPendingFile: _isFlashbackStripSession
                       ? viewModel.capturedPhoto?.imageFile
                       : null,
                   onBack: () => unawaited(_handleCaptureBack(context)),
@@ -5357,7 +5366,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     ),
                   if (!hasCapturedPhoto &&
                       shouldShowClassicBetweenShotReadyBanner(
-                        isFourShot: _isFlashbackFourShot,
+                        isStripSession: _isFlashbackStripSession,
                         acceptedCount: _stripShots.length,
                         total: _classicShotCap,
                         hasCapturedPhoto: hasCapturedPhoto,
@@ -5387,11 +5396,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                           'review-hold-${_flashbackReviewPhotoId ?? _flashbackReviewEndsAt!.millisecondsSinceEpoch}',
                         ),
                         endsAt: _flashbackReviewEndsAt!,
-                        isLastShot: (_stripShots.length + 1) >=
-                            (_multiShotTotal ?? kStripShotCount),
-                        nextShot: ((_stripShots.length + 2)
-                            .clamp(1, _multiShotTotal ?? kStripShotCount)),
-                        total: _multiShotTotal ?? kStripShotCount,
+                        isLastShot: (_stripShots.length + 1) >= _stripTotal,
+                        nextShot:
+                            (_stripShots.length + 2).clamp(1, _stripTotal),
+                        total: _stripTotal,
                       ),
                     ),
                   // Plain UVC/CameraX stills may dim the preview. Sidecar DSLR
@@ -5646,9 +5654,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
   /// Retake and Continue buttons in a Row (post-capture).
   Widget _buildCapturedPhotoControlsRow(BuildContext context, CaptureViewModel viewModel) {
     final multi = _isClassicPose;
-    final total = _isFlashbackSingleShot
-        ? 1
-        : (_classicShotCap > 0 ? _classicShotCap : kStripShotCount);
+    final total = _isFlashbackSingleShot ? 1 : _stripTotal;
     final isLastStripShot = multi && (_stripShots.length + 1) >= total;
     final continueLabel = !multi
         ? (viewModel.isPreparingUploadPayload ? 'Preparing…' : 'Continue')
@@ -5669,7 +5675,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                     unawaited(_handleRetake(context));
                   },
             child: Text(
-              _isFlashbackFourShot
+              _isFlashbackStripSession
                   ? AppStrings.flashbackRetakeLast
                   : 'Retake',
             ),
@@ -5758,12 +5764,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             settingsManager.settings?.photoUploadAllowed == true,
       ),
       classicFourShotInProgress:
-          _isFlashbackFourShot && _stripShots.isNotEmpty,
+          _isFlashbackStripSession && _stripShots.isNotEmpty,
     );
     final flashback = _isFlashbackMultiShot || _isFlashbackSingleShot;
     final countdownSecs = captureCountdownSecondsForMode(
       isFlashbackMultiShot: flashback,
-      acceptedShotCount: _isFlashbackFourShot ? _stripShots.length : 0,
+      acceptedShotCount: _isFlashbackStripSession ? _stripShots.length : 0,
     );
 
     return SizedBox(

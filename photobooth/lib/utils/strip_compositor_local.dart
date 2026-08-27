@@ -35,6 +35,7 @@ class LocalStripComposeRequest {
     required this.frameId,
     required this.single,
     required this.orientation,
+    this.shotCount,
     this.mediaStore,
   });
 
@@ -43,7 +44,15 @@ class LocalStripComposeRequest {
   final String frameId;
   final bool single;
   final PrintOrientation orientation;
+
+  /// Strip length (3 or 4). Defaults to [sources] length for strip composes.
+  final int? shotCount;
+
   final LocalMediaStore? mediaStore;
+
+  /// Sources this request must receive before it can compose.
+  int get expectedSourceCount =>
+      single ? 1 : (shotCount ?? sources.length);
 }
 
 class _LocalStripIsolateInput {
@@ -67,8 +76,11 @@ class _LocalStripIsolateInput {
 /// Invalid or missing inputs fail open with `null`; callers can keep their
 /// existing compose error UX. Disk-write failures return an inline JPEG URL.
 Future<String?> composeLocalStripSheet(LocalStripComposeRequest request) async {
-  final expected = request.single ? 1 : kStripShotCount;
+  final expected = request.expectedSourceCount;
   if (request.sources.length != expected) return null;
+  if (!request.single && !kClassicStripShotCounts.contains(expected)) {
+    return null;
+  }
   try {
     final bytes = <Uint8List>[];
     for (final source in request.sources) {
@@ -170,7 +182,13 @@ Uint8List composeLocalStripSheetJpegForTest({
       _CellRect(0, 0, width, height),
     );
   } else {
-    _drawDualStripCells(sheet, sourceBytes, matrix, frameId);
+    _drawDualStripCells(
+      sheet,
+      sourceBytes,
+      matrix,
+      frameId,
+      sourceBytes.length,
+    );
   }
   return Uint8List.fromList(
     img.encodeJpg(sheet, quality: kLocalStripJpegQuality),
@@ -182,6 +200,7 @@ void _drawDualStripCells(
   List<Uint8List> sources,
   List<double>? matrix,
   String frameId,
+  int shotCount,
 ) {
   const stripDrawWidth = (kLocalStripSheetWidth - kLocalStripCenterGutter) ~/ 2;
   final stripOffsets = <int>[
@@ -190,10 +209,11 @@ void _drawDualStripCells(
   ];
   final rail = frameId == 'filmstrip' ? _filmRailWidth : kLocalStripBorder;
   final cellWidth = stripDrawWidth - rail * 2;
-  const innerHeight = kLocalStripSheetHeight -
+  // Sheet height is fixed by the print; fewer shots simply means taller cells.
+  final innerHeight = kLocalStripSheetHeight -
       kLocalStripBorder * 2 -
-      kLocalStripGutter * (kStripShotCount - 1);
-  const cellHeight = innerHeight ~/ kStripShotCount;
+      kLocalStripGutter * (shotCount - 1);
+  final cellHeight = innerHeight ~/ shotCount;
   for (var i = 0; i < sources.length; i++) {
     final top = kLocalStripBorder + i * (cellHeight + kLocalStripGutter);
     final prepared = _prepareCell(
