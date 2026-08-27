@@ -177,6 +177,8 @@ dependencies {
     // Flutter embedding; declared so the compile classpath does not depend on that, and so
     // the camera code stays byte-comparable with the POC it was copied from.
     implementation 'androidx.core:core-ktx:1.15.0'
+    // enableEdgeToEdge() (Play Console Android 15 edge-to-edge recommendation).
+    implementation 'androidx.activity:activity-ktx:1.10.1'
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'com.google.truth:truth:1.4.4'

@@ -41,10 +41,12 @@ import 'services/kiosk_manager.dart';
 import 'services/low_memory_monitor.dart';
 import 'utils/app_config.dart';
 import 'services/api_environment_store.dart';
+import 'utils/edge_to_edge.dart';
 import 'utils/platform_capabilities.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await enableAppEdgeToEdge();
 
   await ClientIdentification.ensureInitialized();
   await ApiEnvironmentStore.load();
@@ -318,6 +320,9 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
 
   @override
   Widget build(BuildContext context) {
+    const appBarTheme = AppBarTheme(
+      systemOverlayStyle: kEdgeToEdgeOverlayStyle,
+    );
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<SessionManager>.value(value: SessionManager()),
@@ -356,11 +361,13 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
             colorScheme: ColorScheme.fromSeed(
                 seedColor: Colors.blue, brightness: Brightness.light),
             useMaterial3: true,
+            appBarTheme: appBarTheme,
           ),
           darkTheme: ThemeData(
             colorScheme: ColorScheme.fromSeed(
                 seedColor: Colors.blue, brightness: Brightness.dark),
             useMaterial3: true,
+            appBarTheme: appBarTheme,
           ),
           themeMode: ThemeMode.system,
           localizationsDelegates: const [

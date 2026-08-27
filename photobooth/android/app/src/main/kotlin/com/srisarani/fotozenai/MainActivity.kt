@@ -8,13 +8,15 @@ import com.srisarani.fotozenai.canon.CanonSidecarService
 import com.srisarani.fotozenai.canon.CanonSidecarStatusMethodChannel
 import com.srisarani.fotozenai.canon.CanonUsbPermissionManager
 import com.srisarani.fotozenai.canoncapture.CanonCameraStack
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     private var hardwareKeysHandler: HardwareKeysHandler? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // ComponentActivity is required for enableEdgeToEdge(); FlutterActivity is not one.
+        EdgeToEdgeDisplay.enable(this)
         super.onCreate(savedInstanceState)
         PaymentNotificationChannelSetup.registerIfNeeded(this)
         // Only one Canon stack may touch the camera — see CanonCameraStack. Default is
