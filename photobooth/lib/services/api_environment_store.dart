@@ -5,11 +5,12 @@ import '../utils/api_environment.dart';
 import '../utils/app_config.dart';
 import '../utils/logger.dart';
 
-/// Persists Stage vs Live API host across restarts.
+/// Persists Stage vs Live API host for the current process.
 ///
 /// Load once in [main] before any [ApiService] / Dio is created. Splash manage
-/// can change the selection; [AppConfig.baseUrl] then reflects the new host for
-/// newly constructed clients (and rebound managers).
+/// can still switch hosts via [set] for debugging; [load] always cold-starts on
+/// Live (or the compile-time [AppConfig.dartDefineBaseUrl]) so booths cannot
+/// stay stuck on Stage — production kiosk codes such as AAA exist only on Live.
 class ApiEnvironmentStore {
   ApiEnvironmentStore._();
 
@@ -31,21 +32,40 @@ class ApiEnvironmentStore {
 
   static String get currentBaseUrl => current.baseUrl;
 
-  /// Reads SharedPreferences into memory. Safe to call more than once.
+  /// Reads SharedPreferences, then asserts Live (or dart-define) for cold start.
   static Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final parsed = apiEnvironmentFromStorage(prefs.getString(prefsKey));
-      _override = parsed;
+      final define = AppConfig.dartDefineBaseUrl.trim();
+      if (define.isNotEmpty) {
+        // Web / CI builds: same-origin or explicit BASE_URL wins. Drop a stale
+        // Stage preference that would bypass the proxy and 404 real kiosks.
+        _override = null;
+        await prefs.remove(prefsKey);
+        _loaded = true;
+        AppLogger.info(
+          'API environment: dart-define BASE_URL=$define '
+          '(cleared Stage/Live prefs for cold start)',
+        );
+        return;
+      }
+
+      // Native booths: always cold-start on Live. Stage remains available via
+      // splash manage [set] until the next process restart.
+      _override = ApiEnvironment.live;
+      await prefs.setString(
+        prefsKey,
+        apiEnvironmentStorageValue(ApiEnvironment.live),
+      );
       _loaded = true;
       AppLogger.info(
-        'API environment: ${current.label} (${current.baseUrl})'
-        '${parsed == null ? ' [branch default]' : ''}',
+        'API environment: ${current.label} (${current.baseUrl}) [cold-start live]',
       );
     } catch (e, st) {
+      _override = ApiEnvironment.live;
       _loaded = true;
       AppLogger.warning(
-        'API environment load failed; using branch default',
+        'API environment load failed; using Live',
         error: e,
         stackTrace: st,
       );

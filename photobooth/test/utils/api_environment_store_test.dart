@@ -26,30 +26,32 @@ void main() {
   });
 
   group('ApiEnvironmentStore', () {
+    test('cold start forces Live even when prefs had Stage', () async {
+      SharedPreferences.setMockInitialValues({
+        ApiEnvironmentStore.prefsKey: 'stage',
+      });
+      await ApiEnvironmentStore.load();
+      expect(ApiEnvironmentStore.current, ApiEnvironment.live);
+      expect(AppConfig.baseUrl, 'https://fotozenai.fly.dev');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(ApiEnvironmentStore.prefsKey), 'live');
+    });
+
     test('defaults to live when prefs empty', () async {
       await ApiEnvironmentStore.load();
       expect(ApiEnvironmentStore.current, ApiEnvironment.live);
       expect(AppConfig.baseUrl, 'https://fotozenai.fly.dev');
     });
 
-    test('persists live selection across load', () async {
-      await ApiEnvironmentStore.set(ApiEnvironment.live);
-      expect(AppConfig.baseUrl, 'https://fotozenai.fly.dev');
+    test('set(stage) works for this process until next load', () async {
+      await ApiEnvironmentStore.load();
+      await ApiEnvironmentStore.set(ApiEnvironment.stage);
+      expect(AppConfig.baseUrl, 'https://zenai.fly.dev');
 
       ApiEnvironmentStore.resetForTests();
       await ApiEnvironmentStore.load();
       expect(ApiEnvironmentStore.current, ApiEnvironment.live);
       expect(AppConfig.baseUrl, 'https://fotozenai.fly.dev');
-    });
-
-    test('persists stage selection', () async {
-      await ApiEnvironmentStore.set(ApiEnvironment.live);
-      await ApiEnvironmentStore.set(ApiEnvironment.stage);
-      expect(AppConfig.baseUrl, 'https://zenai.fly.dev');
-      expect(
-        apiEnvironmentStorageValue(ApiEnvironment.stage),
-        'stage',
-      );
     });
   });
 

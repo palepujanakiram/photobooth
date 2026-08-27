@@ -705,7 +705,8 @@ abstract final class AppStrings {
   static const staffLocalDayCash = 'Cash collected';
   static const splashEnterKioskCode = 'Enter a kiosk code';
   static const splashKioskCodeUnavailable =
-      'Invalid kiosk code, or this device has never bound it online. Connect once to cache this kiosk for offline use.';
+      'Invalid kiosk code on Live, or this device has never bound it online. '
+      'Confirm the code exists on fotozenai, or connect once online to cache it.';
   static const splashCouldNotVerifyStoredKiosk =
       'Could not verify kiosk code. Check network and try again, or enter a new code.';
   static const splashSyncNowButton = 'Sync now';
