@@ -134,4 +134,105 @@ void main() {
 
     expect(sm.shareToken, 'stable-token');
   });
+
+  test('attachDeliverableImageUrls writes proxy URLs and preserves them',
+      () async {
+    final sm = SessionManager();
+    sm.setSessionFromResponse({
+      'id': 'sess-thumbs',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': <dynamic>[],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+      'offline': true,
+    });
+
+    await sm.attachDeliverableImageUrls(
+      imageUrls: const [
+        'data:image/jpeg;base64,xx',
+        '/api/img/fotoflashback/sheet.jpg',
+      ],
+      stripCompositeUrl: '/api/img/fotoflashback/sheet.jpg',
+    );
+
+    final session = sm.currentSession!;
+    expect(session.generatedImages, ['/api/img/fotoflashback/sheet.jpg']);
+    expect(session.latestImageUrl, '/api/img/fotoflashback/sheet.jpg');
+    expect(session.stripCompositeUrl, '/api/img/fotoflashback/sheet.jpg');
+
+    sm.setSessionFromResponse({
+      'id': 'sess-thumbs',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 1,
+      'generatedImages': <dynamic>[],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+    });
+    expect(
+      sm.currentSession?.generatedImages,
+      ['/api/img/fotoflashback/sheet.jpg'],
+    );
+    expect(
+      sm.currentSession?.latestImageUrl,
+      '/api/img/fotoflashback/sheet.jpg',
+    );
+  });
+
+  test('attachDeliverableImageUrls accepts strip-only and no-ops safely',
+      () async {
+    final sm = SessionManager();
+    await sm.attachDeliverableImageUrls(imageUrls: const ['/api/img/x.jpg']);
+    expect(sm.currentSession, isNull);
+
+    sm.setSessionFromResponse({
+      'id': 'sess-strip-only',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': <dynamic>[],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+    });
+    await sm.attachDeliverableImageUrls(
+      imageUrls: const ['https://cdn.example/x.jpg'],
+      stripCompositeUrl: '/api/img/fotoflashback/only-strip.jpg',
+    );
+    expect(
+      sm.currentSession?.generatedImages,
+      ['/api/img/fotoflashback/only-strip.jpg'],
+    );
+    expect(
+      sm.currentSession?.latestImageUrl,
+      '/api/img/fotoflashback/only-strip.jpg',
+    );
+    expect(
+      sm.currentSession?.stripCompositeUrl,
+      '/api/img/fotoflashback/only-strip.jpg',
+    );
+
+    await sm.attachDeliverableImageUrls(
+      imageUrls: const ['data:image/jpeg;base64,xx'],
+      stripCompositeUrl: 'https://cdn.example/nope.jpg',
+    );
+    expect(
+      sm.currentSession?.stripCompositeUrl,
+      '/api/img/fotoflashback/only-strip.jpg',
+    );
+
+    await sm.attachDeliverableImageUrls(
+      imageUrls: const ['/api/img/generated/ai.jpg'],
+    );
+    expect(
+      sm.currentSession?.generatedImages,
+      [
+        '/api/img/fotoflashback/only-strip.jpg',
+        '/api/img/generated/ai.jpg',
+      ],
+    );
+    expect(sm.currentSession?.latestImageUrl, '/api/img/generated/ai.jpg');
+    expect(
+      sm.currentSession?.stripCompositeUrl,
+      '/api/img/fotoflashback/only-strip.jpg',
+    );
+  });
 }

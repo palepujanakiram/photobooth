@@ -11,6 +11,7 @@ import 'kiosk_session_auth.dart';
 import 'local_kiosk_models.dart';
 import 'local_kiosk_store.dart';
 import 'local_session_skeleton.dart';
+import 'session_deliverable_images.dart';
 
 /// Session data model matching API response
 class SessionData {
@@ -47,6 +48,12 @@ class SessionData {
   final String? shareToken;
   final String? eventId;
 
+  /// Last deliverable proxy path (`/api/img/...`) for staff thumbs after sync.
+  final String? latestImageUrl;
+
+  /// Classic dual-strip / sheet proxy path when composed on-device.
+  final String? stripCompositeUrl;
+
   SessionData({
     required this.id,
     required this.termsAccepted,
@@ -68,6 +75,8 @@ class SessionData {
     this.offline = false,
     this.shareToken,
     this.eventId,
+    this.latestImageUrl,
+    this.stripCompositeUrl,
   });
 
   SessionData copyWith({
@@ -78,6 +87,9 @@ class SessionData {
     bool? offline,
     String? shareToken,
     String? eventId,
+    List<dynamic>? generatedImages,
+    String? latestImageUrl,
+    String? stripCompositeUrl,
   }) {
     return SessionData(
       id: id,
@@ -86,7 +98,7 @@ class SessionData {
       termsAcceptedIp: termsAcceptedIp,
       termsVersion: termsVersion,
       attemptsUsed: attemptsUsed ?? this.attemptsUsed,
-      generatedImages: generatedImages,
+      generatedImages: generatedImages ?? this.generatedImages,
       expiresAt: expiresAt,
       kioskId: kioskId,
       kioskLocation: kioskLocation,
@@ -100,6 +112,8 @@ class SessionData {
       offline: offline ?? this.offline,
       shareToken: shareToken ?? this.shareToken,
       eventId: eventId ?? this.eventId,
+      latestImageUrl: latestImageUrl ?? this.latestImageUrl,
+      stripCompositeUrl: stripCompositeUrl ?? this.stripCompositeUrl,
     );
   }
 
@@ -128,6 +142,8 @@ class SessionData {
       if (offline) kKioskSessionOfflineKey: true,
       if (shareToken != null) 'shareToken': shareToken,
       if (eventId != null) 'eventId': eventId,
+      if (latestImageUrl != null) 'latestImageUrl': latestImageUrl,
+      if (stripCompositeUrl != null) 'stripCompositeUrl': stripCompositeUrl,
     };
   }
 
@@ -165,6 +181,12 @@ class SessionData {
     return DateTime.parse(raw);
   }
 
+  static String? _optionalTrimmedString(Map<String, dynamic> json, String key) {
+    final v = json[key]?.toString().trim();
+    if (v == null || v.isEmpty) return null;
+    return v;
+  }
+
   factory SessionData.fromJson(Map<String, dynamic> json) {
     return SessionData(
       id: _requireString(json, 'id'),
@@ -188,6 +210,9 @@ class SessionData {
       shareToken:
           (json['shareToken'] ?? json['share_token'])?.toString().trim(),
       eventId: (json['eventId'] ?? json['event_id'])?.toString().trim(),
+      latestImageUrl: _optionalTrimmedString(json, 'latestImageUrl'),
+      stripCompositeUrl: _optionalTrimmedString(json, 'stripCompositeUrl') ??
+          _optionalTrimmedString(json, 'strip_composite_url'),
     );
   }
 }
@@ -257,6 +282,40 @@ class SessionManager extends ChangeNotifier {
     if (s == null || s.offline) return;
     _currentSession = s.copyWith(offline: true);
     unawaited(_persistCurrentSession());
+    notifyListeners();
+  }
+
+  /// Links local compose/print proxy URLs onto the session and re-enqueues
+  /// outbox so Fly ingest can fill staff thumbnails after Sync.
+  Future<void> attachDeliverableImageUrls({
+    required Iterable<String> imageUrls,
+    String? stripCompositeUrl,
+  }) async {
+    final s = _currentSession;
+    if (s == null) return;
+    final incoming = imageUrls
+        .map((u) => u.trim())
+        .where(isSessionProxyImageUrl)
+        .cast<String>()
+        .toList();
+    final stripRaw = stripCompositeUrl?.trim();
+    final stripOk =
+        isSessionProxyImageUrl(stripRaw) ? stripRaw : null;
+    if (incoming.isEmpty && stripOk == null) return;
+
+    final merged = mergeSessionProxyImageUrls(s.generatedImages, [
+      ...incoming,
+      if (stripOk != null) stripOk,
+    ]);
+    // When [incoming] is empty, early-return above guarantees [stripOk] != null.
+    final latest =
+        incoming.isNotEmpty ? incoming.last : stripOk!;
+    _currentSession = s.copyWith(
+      generatedImages: merged,
+      latestImageUrl: latest,
+      stripCompositeUrl: stripOk ?? s.stripCompositeUrl,
+    );
+    await _persistCurrentSession();
     notifyListeners();
   }
 
@@ -356,6 +415,19 @@ class SessionManager extends ChangeNotifier {
     if ((slim['eventId']?.toString().trim().isEmpty ?? true) &&
         _currentSession?.eventId != null) {
       slim['eventId'] = _currentSession!.eventId;
+    }
+    final incomingImages = slim['generatedImages'];
+    final incomingEmpty = incomingImages is! List || incomingImages.isEmpty;
+    if (incomingEmpty && (_currentSession?.generatedImages.isNotEmpty ?? false)) {
+      slim['generatedImages'] = _currentSession!.generatedImages;
+    }
+    if ((slim['latestImageUrl']?.toString().trim().isEmpty ?? true) &&
+        _currentSession?.latestImageUrl != null) {
+      slim['latestImageUrl'] = _currentSession!.latestImageUrl;
+    }
+    if ((slim['stripCompositeUrl']?.toString().trim().isEmpty ?? true) &&
+        _currentSession?.stripCompositeUrl != null) {
+      slim['stripCompositeUrl'] = _currentSession!.stripCompositeUrl;
     }
     _currentSession = SessionData.fromJson(slim);
     AppLogger.debug('Session stored from API: ${_currentSession!.id}');

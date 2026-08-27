@@ -871,6 +871,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
       _errorMessage = AppStrings.flashbackComposeFailed;
       return null;
     }
+    await _sessionManager.attachDeliverableImageUrls(
+      imageUrls: [persisted],
+      stripCompositeUrl: persisted,
+    );
     final printSize = resolveClassicComposePrintSize(
       imageCount: _imageDataUrls.length,
       apiPrintSize: null,
@@ -1002,6 +1006,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         orientation: _printOrientation,
       );
       final printUrl = await _persistStripPrintUrl(result.printImageUrl);
+      await _sessionManager.attachDeliverableImageUrls(
+        imageUrls: [printUrl],
+        stripCompositeUrl: printUrl,
+      );
       return GeneratedImage(
         id: 'strip_${_selectedFilterId}_${DateTime.now().millisecondsSinceEpoch}',
         imageUrl: printUrl,

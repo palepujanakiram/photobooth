@@ -1205,6 +1205,9 @@ class PhotoGenerateViewModel extends ChangeNotifier {
     );
     _generatedImages = [...newImages, ..._generatedImages];
     _ensureNewestAlwaysSelected();
+    await _sessionManager.attachDeliverableImageUrls(
+      imageUrls: newImages.map((g) => g.imageUrl),
+    );
     final usedBefore = _sessionManager.currentSession?.attemptsUsed ?? 0;
     await syncAttemptsBudgetFromServer();
     final usedAfter = _sessionManager.currentSession?.attemptsUsed ?? usedBefore;
@@ -1236,6 +1239,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       ),
     ];
     _ensureNewestAlwaysSelected();
+    await _sessionManager.attachDeliverableImageUrls(imageUrls: [url]);
     notifyListeners();
     return true;
   }

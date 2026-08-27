@@ -3,7 +3,7 @@ class SplashRouteArgs {
   const SplashRouteArgs({this.manageKiosk = false});
 
   /// When true, full-screen kiosk management (change / disconnect) instead of
-  /// auto-advancing to terms.
+  /// auto-advancing to terms or the event station picker.
   final bool manageKiosk;
 }
 
