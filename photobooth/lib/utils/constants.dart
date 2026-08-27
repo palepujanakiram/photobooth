@@ -360,6 +360,8 @@ class AppConstants {
   static const String kRouteTerms = '/terms';
   /// After terms: AI transform vs FotoFlashback.
   static const String kRouteExperienceChoice = '/experience-choice';
+  /// Classic: preview 1 / 3 / 4-shot samples when multiple modes are enabled.
+  static const String kRouteClassicShotChoice = '/classic-shot-choice';
   static const String kRouteHome = '/theme-selection';
   static const String kRouteCapture = '/capture';
   /// FotoFlashback: 4-shot booth capture (no AI).

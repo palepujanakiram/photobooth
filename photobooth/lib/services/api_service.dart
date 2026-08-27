@@ -786,7 +786,9 @@ class ApiService {
     required String sessionId,
     required List<String> images,
   }) async {
-    if (images.length != 1 && images.length != kStripShotCount) {
+    if (images.length != 1 &&
+        images.length != 3 &&
+        images.length != kStripShotCount) {
       throw ApiException(
         'Classic overlay cleanup requires 1 or $kStripShotCount photos.',
       );
@@ -947,7 +949,9 @@ class ApiService {
     PrintOrientation? orientation,
     Duration? timeout,
   }) async {
-    if (images.length != 1 && images.length != kStripShotCount) {
+    if (images.length != 1 &&
+        images.length != 3 &&
+        images.length != kStripShotCount) {
       throw ApiException(
         'Classic compose requires 1 or $kStripShotCount photos.',
       );

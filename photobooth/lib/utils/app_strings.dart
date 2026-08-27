@@ -451,20 +451,36 @@ abstract final class AppStrings {
       'Reconnect this TV, then try again.';
   static const experienceFotoFlashTitle = 'Classic';
   static const experienceFotoFlashSubtitle =
-      'As-is photos with glitter — choose 1-shot or 4-shot below';
+      'As-is photos with glitter — pick a look next';
+  static const experienceFotoFlashSubtitleSingle =
+      'As-is photos with glitter — start below';
   static const experienceFotoFlashUnavailable =
       'Classic isn’t available on this booth yet.';
   static const experienceFotoFlashStartFailed =
       'Couldn’t start Classic. Please try again.';
   static const experienceClassicShotModeLabel = 'Start Classic';
   static const experienceClassicFourShot = '4-shot strip';
+  static const experienceClassicThreeShot = '3-shot strip';
   static const experienceClassicOneShot = '1-shot';
   static const experienceClassicStartOneShot = 'Start 1-shot';
+  static const experienceClassicStartThreeShot = 'Start 3-shot';
   static const experienceClassicStartFourShot = 'Start 4-shot';
   static const experienceClassicOrientationLabel = 'Print orientation';
   static const experienceClassicLandscape = 'Landscape 6×4';
   static const experienceClassicPortrait = 'Portrait 4×6';
   static const experienceBackToTerms = 'Back to terms';
+
+  /// After Classic: choose 1 / 3 / 4 with sample strip previews.
+  static const classicShotChoiceTitle = 'Choose your Classic look';
+  static const classicShotChoiceSubtitle =
+      'Preview how your print will look, then tap to start.';
+  static const classicShotChoiceBack = 'Back';
+  static const classicShotChoiceFourSubtitle =
+      'Four poses on a dual 2×6 strip';
+  static const classicShotChoiceThreeSubtitle =
+      'Three poses on a dual 2×6 strip';
+  static const classicShotChoiceOneSubtitle =
+      'One pose on a 6×4 / 4×6 print';
 
   /// Bundled preview art for the experience-choice cards.
   /// FotoZen uses a 2×2 collage of AI theme samples (people + themes).
@@ -475,9 +491,15 @@ abstract final class AppStrings {
     'lib/images/experience/fotozen_ai_preview_d.jpg',
   ];
   static const experienceClassicPreviewAsset =
-      'lib/images/experience/classic_4shot_preview.png';
+      'lib/images/experience/classic_4shot_preview.jpg';
+  static const experienceClassicThreeShotPreviewAsset =
+      'lib/images/experience/classic_3shot_preview.jpg';
+  static const experienceClassicOneShotPreviewAsset =
+      'lib/images/experience/classic_1shot_preview.jpg';
   static const experienceAiPreviewBadge = 'AI themes';
-  static const experienceClassicPreviewBadge = '4-shot strip';
+  static const experienceClassicPreviewBadge = 'Classic';
+  static const experienceClassicFourShotPreviewBadge = '4-shot strip';
+  static const experienceClassicThreeShotPreviewBadge = '3-shot strip';
   static const experienceClassicOneShotPreviewBadge = '1-shot';
   static const flashbackBrand = 'FotoFlashback';
   static const flashbackCaptureTitle = 'FotoFlashback';

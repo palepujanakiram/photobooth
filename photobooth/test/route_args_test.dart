@@ -278,6 +278,25 @@ void main() {
     });
   });
 
+  group('ClassicShotChoiceArgs.tryParse', () {
+    test('parses theme and normalizes modes', () {
+      final typed = ClassicShotChoiceArgs(theme: theme, modes: const [3, 4]);
+      expect(ClassicShotChoiceArgs.tryParse(typed), same(typed));
+      final parsed = ClassicShotChoiceArgs.tryParse({
+        'theme': theme,
+        'modes': [4, 3, 9, '1'],
+      });
+      expect(parsed!.theme.id, 't1');
+      expect(parsed.modes, [1, 3, 4]);
+    });
+
+    test('defaults modes when missing', () {
+      final parsed = ClassicShotChoiceArgs.tryParse({'theme': theme});
+      expect(parsed!.modes, [1, 3, 4]);
+      expect(ClassicShotChoiceArgs.tryParse({'theme': 'x'}), isNull);
+    });
+  });
+
   group('FlashbackFilterArgs.tryParse', () {
     test('parses theme and image urls', () {
       final typed = FlashbackFilterArgs(

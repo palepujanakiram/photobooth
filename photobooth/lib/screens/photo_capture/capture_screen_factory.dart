@@ -67,7 +67,11 @@ CaptureSessionKind captureSessionKindFor(CaptureRouteArgs? args) {
   if (args == null) return CaptureSessionKind.fotoZen;
   final mode = args.classicShotMode;
   if (mode != null) return CaptureSessionKindX.fromClassicShotMode(mode);
-  if (args.isFlashbackFourShot) return CaptureSessionKind.classicFourShot;
   if (args.isFlashbackSingle6x4) return CaptureSessionKind.classicOneShot;
+  if (args.isFlashbackFourShot) {
+    return args.resolvedShotTotal == 3
+        ? CaptureSessionKind.classicThreeShot
+        : CaptureSessionKind.classicFourShot;
+  }
   return CaptureSessionKind.fotoZen;
 }

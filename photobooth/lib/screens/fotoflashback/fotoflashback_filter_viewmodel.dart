@@ -179,7 +179,9 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   bool get _hasComposableShotCount =>
       !_hydratingCaptures &&
       _imageDataUrls.length == _expectedCaptureCount &&
-      (_expectedCaptureCount == 1 || _expectedCaptureCount == kStripShotCount);
+      (_expectedCaptureCount == 1 ||
+          _expectedCaptureCount == 3 ||
+          _expectedCaptureCount == kStripShotCount);
 
   StripWysiwygLayout get wysiwygLayout =>
       _catalog?.wysiwyg ?? StripWysiwygLayout.defaults;
@@ -491,7 +493,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     if (!classicOverlayCleanupEnabled) return;
     if (_previewCleaned ||
         (_imageDataUrls.length != 1 &&
-            _imageDataUrls.length != kStripShotCount)) {
+            _imageDataUrls.length != _expectedCaptureCount)) {
       return;
     }
     final existing = _prepareFuture;
@@ -634,10 +636,10 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
   /// Flutter ColorFilters browse instead). Kept for Continue-path experiments
   /// and unit coverage of the grade API.
   Future<void> refreshPreviewGrade() async {
-    if (_imageDataUrls.length != kStripShotCount) return;
+    if (_imageDataUrls.length != _expectedCaptureCount) return;
     final filterId = _selectedFilterId;
     final cached = _gradedByFilter[filterId];
-    if (cached != null && cached.length == kStripShotCount) return;
+    if (cached != null && cached.length == _expectedCaptureCount) return;
 
     final sessionId = _sessionManager.sessionId?.trim() ?? '';
     if (sessionId.isEmpty) return;
@@ -658,7 +660,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
         filter: filterId,
       );
       if (seq != _gradeSeq) return;
-      if (graded.length == kStripShotCount) {
+      if (graded.length == _expectedCaptureCount) {
         _gradedByFilter[filterId] = List<String>.from(graded);
       }
     } catch (_) {
@@ -713,7 +715,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     final room = kMaxStripStickerPlacements - _placements.length;
     if (room <= 0) return;
 
-    final cells = isSingleClassic ? 1 : kStripShotCount;
+    final cells = isSingleClassic ? 1 : _expectedCaptureCount;
     final toAdd = room < cells ? room : cells;
     final wave = cells == 0
         ? 0
@@ -1192,7 +1194,7 @@ class FotoFlashbackFilterViewModel extends ChangeNotifier {
     if (isStripSheetLayout(_selectedFrameId)) {
       return _spawnPointForSheetCell(type, cell, wave);
     }
-    final cellCenterY = (cell + 0.5) / kStripShotCount;
+    final cellCenterY = (cell + 0.5) / _expectedCaptureCount;
     final waveNudge = (wave % 3) * 0.04;
     final preferLeft = switch (type) {
       'sparkles' || 'flowers' => cell.isEven,

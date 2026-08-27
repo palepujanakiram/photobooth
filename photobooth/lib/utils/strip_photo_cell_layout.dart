@@ -20,8 +20,8 @@ class StripPhotoCellRect {
   Rect get rect => Rect.fromLTWH(left, top, width, height);
 }
 
-/// Whether POSE/print uses [BoxFit.contain] (filmstrip) vs cover (classic/noir).
-bool stripPhotoCellUsesContainFit(String frameId) => frameId == 'filmstrip';
+/// Whether POSE/print uses [BoxFit.contain] (legacy) vs cover (all chrome frames).
+bool stripPhotoCellUsesContainFit(String frameId) => false;
 
 /// Letterbox well behind contain-fit cells (matches print chrome fill).
 Color stripPhotoCellLetterboxColor(String frameId) {
@@ -32,33 +32,41 @@ Color stripPhotoCellLetterboxColor(String frameId) {
 
 /// Photo cell geometry for one 2×6 strip — mirrors zenai `stripCompositor`.
 ///
-/// Classic / Noir: 4px border, gutter 0 → four 592×448 cover cells on 600×1800.
-/// Filmstrip: 52px rails, 72px top/bottom margin, 14px gutters, contain fit.
+/// Classic / Noir (HAMA-style): 10px equal margins, 10px gutters.
+/// Filmstrip: 36px rails, same vertical stack as classic, cover fit.
 List<StripPhotoCellRect> computeStripPhotoCellRects({
   required String frameId,
   required double stripWidth,
   required double stripHeight,
   StripWysiwygLayout layout = StripWysiwygLayout.defaults,
+  int shotCount = kStripShotCount,
 }) {
+  final n = shotCount < 1 ? kStripShotCount : shotCount;
   if (frameId == 'filmstrip') {
-    return _filmstripCells(stripWidth, stripHeight, layout);
+    return _filmstripCells(stripWidth, stripHeight, layout, n);
   }
-  return _classicStripCells(stripWidth, stripHeight, layout);
+  return _classicStripCells(stripWidth, stripHeight, layout, n);
 }
 
 List<StripPhotoCellRect> _classicStripCells(
   double stripWidth,
   double stripHeight,
   StripWysiwygLayout layout,
+  int shotCount,
 ) {
-  final border = stripWidth * layout.borderRatio;
-  final cellW = stripWidth - 2 * border;
-  final cellH = (stripHeight - 2 * border) / kStripShotCount;
+  final side = stripWidth * layout.borderRatio;
+  final topPad = stripHeight * layout.borderTopRatio;
+  final bottomPad = stripHeight * layout.borderBottomRatio;
+  final gutter = stripHeight * layout.gutterRatio;
+  final cellW = stripWidth - 2 * side;
+  final cellH =
+      (stripHeight - topPad - bottomPad - (shotCount - 1) * gutter) /
+          shotCount;
   return [
-    for (var i = 0; i < kStripShotCount; i++)
+    for (var i = 0; i < shotCount; i++)
       StripPhotoCellRect(
-        left: border,
-        top: border + i * cellH,
+        left: side,
+        top: topPad + i * (cellH + gutter),
         width: cellW,
         height: cellH,
       ),
@@ -69,16 +77,18 @@ List<StripPhotoCellRect> _filmstripCells(
   double stripWidth,
   double stripHeight,
   StripWysiwygLayout layout,
+  int shotCount,
 ) {
   final rail = stripWidth * StripChromeLook.filmRailRatio;
   final marginY = stripHeight * layout.filmMarginY;
   final gutter = stripHeight * layout.filmGutter;
   final cellW = stripWidth - 2 * rail;
-  final contentH = stripHeight - 2 * marginY;
+  final bottomPad = stripHeight * layout.borderBottomRatio;
+  final contentH = stripHeight - marginY - bottomPad;
   final cellH =
-      (contentH - (kStripShotCount - 1) * gutter) / kStripShotCount;
+      (contentH - (shotCount - 1) * gutter) / shotCount;
   return [
-    for (var i = 0; i < kStripShotCount; i++)
+    for (var i = 0; i < shotCount; i++)
       StripPhotoCellRect(
         left: rail,
         top: marginY + i * (cellH + gutter),

@@ -101,8 +101,8 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   /// Layout uses the single-strip aspect guests edit.
   static const double aspectRatio = stripAspectRatio;
 
-  /// Matches zenai `STRIP_PRINT.border / stripWidth` (4 / 600).
-  static const double printBorderRatio = 4 / 600;
+  /// Matches zenai `STRIP_PRINT.border / stripWidth` (10 / 600).
+  static const double printBorderRatio = 10 / 600;
 
   /// Compact credential burned onto Classic strips (not AI — brand only).
   static const String credentialLine = 'FOTOZEN AI';
@@ -114,7 +114,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
         imageJpegBytes.isNotEmpty ? imageJpegBytes.length : imageDataUrls.length;
     final composeUrl = serverComposePreviewUrl?.trim() ?? '';
     if (composeUrl.isNotEmpty &&
-        (shotCount == 1 || shotCount == kStripShotCount)) {
+        (shotCount == 1 || shotCount == 3 || shotCount == kStripShotCount)) {
       return SizedBox(
         width: width,
         height: height,
@@ -374,11 +374,15 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
       accentStrokeRatio: wysiwyg.accentStrokeRatio,
       noirAccentStrokeRatio: wysiwyg.noirAccentStrokeRatio,
     );
+    final shotCount = imageJpegBytes.isNotEmpty
+        ? imageJpegBytes.length
+        : (imageDataUrls.isNotEmpty ? imageDataUrls.length : kStripShotCount);
     final cells = computeStripPhotoCellRects(
       frameId: frameId,
       stripWidth: width,
       stripHeight: height,
       layout: wysiwyg,
+      shotCount: shotCount,
     );
     final borderPad = stripChromeBorderPad(
       frameId: frameId,
@@ -395,7 +399,7 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
     final photoStack = Stack(
       clipBehavior: Clip.hardEdge,
       children: [
-        for (var i = 0; i < kStripShotCount; i++)
+        for (var i = 0; i < cells.length; i++)
           Positioned.fromRect(
             rect: cells[i].rect,
             child: _lookPreviewSlot(

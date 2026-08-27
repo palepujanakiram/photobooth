@@ -164,9 +164,9 @@ class StripStickerPlacement {
 /// Per-frame print cell aspect (width ÷ height) for a 2×6 strip.
 ///
 /// Matches zenai `stripCompositor` cellGeometry at 300 DPI:
-/// strip 600×1800, border 4, gutter 0 → cell 592×448 (landscape).
+/// strip 600×1800, equal 10px margins + 10px gutters → cell 580×437.5.
 /// Shots are cover-cropped edge-to-edge (no blur/letterbox fill).
-const double kStripCellAspectRatio = 592 / 448;
+const double kStripCellAspectRatio = 580 / 437.5;
 
 /// One look from `GET /api/strip/filters`.
 class StripFilter {
@@ -273,6 +273,9 @@ List<T> _parseNamedList<T>(
 class StripWysiwygLayout {
   const StripWysiwygLayout({
     required this.borderRatio,
+    required this.borderTopRatio,
+    required this.borderBottomRatio,
+    required this.gutterRatio,
     required this.accentStrokeRatio,
     required this.noirAccentStrokeRatio,
     required this.noirInnerInsetRatio,
@@ -310,6 +313,9 @@ class StripWysiwygLayout {
   });
 
   final double borderRatio;
+  final double borderTopRatio;
+  final double borderBottomRatio;
+  final double gutterRatio;
   final double accentStrokeRatio;
   final double noirAccentStrokeRatio;
   final double noirInnerInsetRatio;
@@ -348,7 +354,10 @@ class StripWysiwygLayout {
 
   /// Matches zenai `STRIP_WYSIWYG_LAYOUT` when the API omits `layout`.
   static const StripWysiwygLayout defaults = StripWysiwygLayout(
-    borderRatio: 4 / 600,
+    borderRatio: 10 / 600,
+    borderTopRatio: 10 / 1800,
+    borderBottomRatio: 10 / 1800,
+    gutterRatio: 10 / 1800,
     accentStrokeRatio: 1.75 / 600,
     noirAccentStrokeRatio: 2.5 / 600,
     noirInnerInsetRatio: 5 / 600,
@@ -385,14 +394,14 @@ class StripWysiwygLayout {
     gridTitle: 'Together',
     gridSubtitle: 'Our favorite moments',
     // Sheet-normalized (1200-wide); dual-strip chrome uses StripChromeLook ratios.
-    filmRailW: 52 / 1200,
-    filmMarginY: 72 / 1800,
-    filmGutter: 14 / 1800,
+    filmRailW: 36 / 1200,
+    filmMarginY: 10 / 1800,
+    filmGutter: 10 / 1800,
     filmStripPadX: 150 / 1200,
-    filmHoleW: 26 / 1200,
-    filmHoleH: 34 / 1800,
-    filmHolePitch: 58 / 1800,
-    filmCellAspect: 496 / 448,
+    filmHoleW: 18 / 1200,
+    filmHoleH: 24 / 1800,
+    filmHolePitch: 46 / 1800,
+    filmCellAspect: 528 / 437.5,
     filmLabel: 'MEMORIES',
   );
 
@@ -407,6 +416,10 @@ class StripWysiwygLayout {
     final film = _asMap(json['filmstrip']);
     return StripWysiwygLayout(
       borderRatio: _d(strip?['borderRatio'], defaults.borderRatio),
+      borderTopRatio: _d(strip?['borderTopRatio'], defaults.borderTopRatio),
+      borderBottomRatio:
+          _d(strip?['borderBottomRatio'], defaults.borderBottomRatio),
+      gutterRatio: _d(strip?['gutterRatio'], defaults.gutterRatio),
       accentStrokeRatio:
           _d(strip?['accentStrokeRatio'], defaults.accentStrokeRatio),
       noirAccentStrokeRatio:

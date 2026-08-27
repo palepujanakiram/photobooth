@@ -13,6 +13,9 @@ enum CaptureSessionKind {
   /// Classic: one still → look picker (6×4 / 4×6).
   classicOneShot,
 
+  /// Classic: three stills → look picker (dual 2×6 strip).
+  classicThreeShot,
+
   /// Classic: four stills → look picker (dual 2×6 strip).
   classicFourShot,
 }
@@ -20,11 +23,17 @@ enum CaptureSessionKind {
 extension CaptureSessionKindX on CaptureSessionKind {
   bool get isClassic =>
       this == CaptureSessionKind.classicOneShot ||
+      this == CaptureSessionKind.classicThreeShot ||
       this == CaptureSessionKind.classicFourShot;
 
   bool get isClassicOneShot => this == CaptureSessionKind.classicOneShot;
 
+  bool get isClassicThreeShot => this == CaptureSessionKind.classicThreeShot;
+
   bool get isClassicFourShot => this == CaptureSessionKind.classicFourShot;
+
+  bool get isClassicMultiShot =>
+      isClassicThreeShot || isClassicFourShot;
 
   bool get isFotoZen => this == CaptureSessionKind.fotoZen;
 
@@ -32,18 +41,22 @@ extension CaptureSessionKindX on CaptureSessionKind {
   int? get classicShotCount => switch (this) {
         CaptureSessionKind.fotoZen => null,
         CaptureSessionKind.classicOneShot => 1,
+        CaptureSessionKind.classicThreeShot => 3,
         CaptureSessionKind.classicFourShot => kStripShotCount,
       };
 
   ClassicShotMode? get classicShotMode => switch (this) {
         CaptureSessionKind.fotoZen => null,
         CaptureSessionKind.classicOneShot => ClassicShotMode.single6x4,
+        CaptureSessionKind.classicThreeShot => ClassicShotMode.threeShot,
         CaptureSessionKind.classicFourShot => ClassicShotMode.fourShot,
       };
 
   static CaptureSessionKind fromClassicShotMode(ClassicShotMode mode) {
-    return mode.isSingle6x4
-        ? CaptureSessionKind.classicOneShot
-        : CaptureSessionKind.classicFourShot;
+    return switch (mode) {
+      ClassicShotMode.single6x4 => CaptureSessionKind.classicOneShot,
+      ClassicShotMode.threeShot => CaptureSessionKind.classicThreeShot,
+      ClassicShotMode.fourShot => CaptureSessionKind.classicFourShot,
+    };
   }
 }

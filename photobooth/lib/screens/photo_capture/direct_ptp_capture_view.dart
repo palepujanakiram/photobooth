@@ -338,9 +338,7 @@ class _DirectPtpCaptureScreenState extends State<DirectPtpCaptureScreen> {
       return;
     }
 
-    final mode = widget.sessionKind.isClassicFourShot
-        ? ClassicShotMode.fourShot
-        : ClassicShotMode.single6x4;
+    final mode = widget.sessionKind.classicShotMode ?? ClassicShotMode.single6x4;
     final filterArgs = FlashbackFilterArgs(
       theme: theme,
       imageDataUrls: const [],

@@ -130,6 +130,9 @@ class CaptureRouteArgs {
     if (name == '1' || name == 'single' || name == 'single6x4') {
       return ClassicShotMode.single6x4;
     }
+    if (name == '3' || name == 'three' || name == 'threeShot') {
+      return ClassicShotMode.threeShot;
+    }
     if (name == '4' || name == 'four' || name == 'fourShot') {
       return ClassicShotMode.fourShot;
     }
@@ -151,6 +154,35 @@ class FlashbackCaptureArgs {
     if (args is FlashbackCaptureArgs) return args;
     if (args is Map && args['theme'] is ThemeModel) {
       return FlashbackCaptureArgs(theme: args['theme'] as ThemeModel);
+    }
+    return null;
+  }
+}
+
+/// Args for Classic shot-mode preview (after experience choice when >1 mode).
+class ClassicShotChoiceArgs {
+  final ThemeModel theme;
+  final List<int> modes;
+
+  const ClassicShotChoiceArgs({
+    required this.theme,
+    required this.modes,
+  });
+
+  static ClassicShotChoiceArgs? tryParse(Object? args) {
+    if (args is ClassicShotChoiceArgs) return args;
+    if (args is Map && args['theme'] is ThemeModel) {
+      final raw = args['modes'];
+      final modes = raw is List
+          ? raw
+              .map((e) => e is int ? e : int.tryParse('$e'))
+              .whereType<int>()
+              .toList()
+          : const <int>[];
+      return ClassicShotChoiceArgs(
+        theme: args['theme'] as ThemeModel,
+        modes: normalizeClassicShotModes(modes),
+      );
     }
     return null;
   }

@@ -27,7 +27,7 @@ int get directPtpBetweenShotSeconds =>
 ///
 /// The rule comes from [shouldScheduleFlashbackAutoAccept], which only schedules
 /// auto-accept when `isFlashbackMultiShot` — and that is
-/// `sessionKind.isClassicFourShot`, four-shot **only**, not "any Classic". So a
+/// `sessionKind.isClassicMultiShot`, four-shot **only**, not "any Classic". So a
 /// FotoZen guest *and* a Classic 1-shot guest both review for as long as they
 /// like and press Continue / Pick a look or Retake.
 ///
@@ -37,7 +37,7 @@ int get directPtpBetweenShotSeconds =>
 /// 1-shot onto it made the native screen blink past the review in ~600ms with no
 /// chance to retake — caught on hardware 2026-08-20.
 int directPtpReviewHoldMsFor(CaptureSessionKind kind) {
-  if (!kind.isClassicFourShot) return 0;
+  if (!kind.isClassicMultiShot) return 0;
   return AppConstants.kFlashbackBetweenShotRearrangeDuration.inMilliseconds;
 }
 
@@ -56,7 +56,7 @@ int directPtpReviewHoldMsFor(CaptureSessionKind kind) {
 ///
 /// Everything that is not a 4-shot strip keeps 0 — see [directPtpReviewHoldMsFor].
 int directPtpFinalReviewHoldMsFor(CaptureSessionKind kind) {
-  if (!kind.isClassicFourShot) return 0;
+  if (!kind.isClassicMultiShot) return 0;
   return AppConstants.kFlashbackBetweenShotRearrangeDuration.inMilliseconds;
 }
 
