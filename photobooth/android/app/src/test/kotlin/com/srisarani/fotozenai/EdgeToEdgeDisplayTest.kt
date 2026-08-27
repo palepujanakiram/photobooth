@@ -39,13 +39,8 @@ class EdgeToEdgeDisplayTest {
     @Test
     fun `window insets are consumed after padding the view`() {
         val view = View(RuntimeEnvironment.getApplication())
-        val insets =
-            WindowInsetsCompat.Builder()
-                .setInsets(
-                    WindowInsetsCompat.Type.systemBars(),
-                    Insets.of(0, 40, 0, 24),
-                ).build()
-        val remaining = EdgeToEdgeDisplay.applySystemBarPadding(view, insets)
+        val remaining =
+            EdgeToEdgeDisplay.applySystemBarPadding(view, systemBarInsets(0, 40, 0, 24))
         assertThat(remaining).isEqualTo(WindowInsetsCompat.CONSUMED)
         assertThat(view.paddingTop).isEqualTo(40)
         assertThat(view.paddingBottom).isEqualTo(24)
@@ -54,16 +49,10 @@ class EdgeToEdgeDisplayTest {
     @Test
     fun `display cutout is included when it is larger than system bars`() {
         val view = View(RuntimeEnvironment.getApplication())
-        val insets =
-            WindowInsetsCompat.Builder()
-                .setInsets(
-                    WindowInsetsCompat.Type.systemBars(),
-                    Insets.of(0, 24, 0, 0),
-                ).setInsets(
-                    WindowInsetsCompat.Type.displayCutout(),
-                    Insets.of(0, 48, 0, 0),
-                ).build()
-        EdgeToEdgeDisplay.applySystemBarPadding(view, insets)
+        val builder = WindowInsetsCompat.Builder()
+        builder.setInsets(WindowInsetsCompat.Type.systemBars(), Insets.of(0, 24, 0, 0))
+        builder.setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.of(0, 48, 0, 0))
+        EdgeToEdgeDisplay.applySystemBarPadding(view, builder.build())
         assertThat(view.paddingTop).isEqualTo(48)
     }
 
@@ -71,13 +60,7 @@ class EdgeToEdgeDisplayTest {
     fun `bindSystemBarPadding applies insets when they are dispatched`() {
         val view = View(RuntimeEnvironment.getApplication())
         EdgeToEdgeDisplay.bindSystemBarPadding(view)
-        val insets =
-            WindowInsetsCompat.Builder()
-                .setInsets(
-                    WindowInsetsCompat.Type.systemBars(),
-                    Insets.of(4, 30, 6, 18),
-                ).build()
-        ViewCompat.dispatchApplyWindowInsets(view, insets)
+        ViewCompat.dispatchApplyWindowInsets(view, systemBarInsets(4, 30, 6, 18))
         assertThat(view.paddingLeft).isEqualTo(4)
         assertThat(view.paddingTop).isEqualTo(30)
         assertThat(view.paddingRight).isEqualTo(6)
@@ -88,13 +71,7 @@ class EdgeToEdgeDisplayTest {
     fun `bindSystemBarPadding can omit the bottom inset`() {
         val view = View(RuntimeEnvironment.getApplication())
         EdgeToEdgeDisplay.bindSystemBarPadding(view, includeBottom = false)
-        val insets =
-            WindowInsetsCompat.Builder()
-                .setInsets(
-                    WindowInsetsCompat.Type.systemBars(),
-                    Insets.of(0, 30, 0, 18),
-                ).build()
-        ViewCompat.dispatchApplyWindowInsets(view, insets)
+        ViewCompat.dispatchApplyWindowInsets(view, systemBarInsets(0, 30, 0, 18))
         assertThat(view.paddingTop).isEqualTo(30)
         assertThat(view.paddingBottom).isEqualTo(0)
     }
@@ -103,5 +80,19 @@ class EdgeToEdgeDisplayTest {
     fun `enable does not throw on a ComponentActivity`() {
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
         EdgeToEdgeDisplay.enable(activity)
+    }
+
+    private fun systemBarInsets(
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+    ): WindowInsetsCompat {
+        val builder = WindowInsetsCompat.Builder()
+        builder.setInsets(
+            WindowInsetsCompat.Type.systemBars(),
+            Insets.of(left, top, right, bottom),
+        )
+        return builder.build()
     }
 }
