@@ -244,8 +244,7 @@ class _StaffPaymentImagePreviewScreenState
                 pageIndex: _pageIndex,
                 pageCount: pageCount,
                 onClose: () => Navigator.of(context).maybePop(),
-                onOpenDetails:
-                    hasRun ? _openTransformationDetails : null,
+                onOpenDetails: hasRun ? _openTransformationDetails : null,
               ),
             ),
             if (multi) ...[
