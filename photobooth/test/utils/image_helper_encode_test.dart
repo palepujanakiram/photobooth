@@ -25,6 +25,13 @@ void main() {
       reason: 'Pi sidecar JPEGs must skip Dart image re-decode',
     );
     expect(isAppNormalizedCapturePath('/tmp/tiny.jpg'), isFalse);
+    expect(
+      isAppNormalizedCapturePath(
+        '/data/user/0/app/files/fotozen_media/user-uploads/cap.jpg',
+      ),
+      isTrue,
+      reason: 'persistCapturedGuestXFile must keep the trusted upload path',
+    );
   });
 
   group('native direct-PTP display derivative', () {
@@ -86,6 +93,19 @@ void main() {
     });
     final photosDir = Directory('${dir.path}/photos')..createSync();
     final capturePath = '${photosDir.path}/photo_1.jpg';
+    File(capturePath).writeAsBytesSync(kTinyJpegBytes);
+    final url = await ImageHelper.encodeImageForUpload(XFile(capturePath));
+    expect(url, startsWith('data:image/jpeg;base64,'));
+  });
+
+  test('encodeImageForUpload uses trusted path for guest media capture', () async {
+    final dir = Directory.systemTemp.createTempSync('pb_guest_media_test');
+    addTearDown(() {
+      if (dir.existsSync()) dir.deleteSync(recursive: true);
+    });
+    final guestDir = Directory('${dir.path}/fotozen_media/user-uploads')
+      ..createSync(recursive: true);
+    final capturePath = '${guestDir.path}/cap.jpg';
     File(capturePath).writeAsBytesSync(kTinyJpegBytes);
     final url = await ImageHelper.encodeImageForUpload(XFile(capturePath));
     expect(url, startsWith('data:image/jpeg;base64,'));

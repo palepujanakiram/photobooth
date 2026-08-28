@@ -3,11 +3,18 @@ import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
 
+import 'jpeg_sof_peek.dart';
 import 'session_user_image_validation.dart';
 
 /// Long edge cap for session PATCH user image (mirrors [ImageHelper]).
 const int kSessionPatchUserImageMaxLongEdgePx = 1536;
 const int kSessionPatchUserImageJpegQuality = 85;
+
+/// Kiosk captures (sidecar, PTP derivative, normalize) are capped at 1920 long edge.
+const int kKioskCaptureTrustMaxLongEdgePx = 1920;
+
+/// Guest media dir written by [persistCapturedGuestXFile] after shutter.
+const String kFotozenMediaPathMarker = '/fotozen_media/';
 
 /// Smaller cap on web so encode + JSON PATCH stay responsive on the main thread.
 const int kSessionPatchUserImageWebMaxLongEdgePx = 768;
@@ -69,7 +76,12 @@ bool isAppNormalizedCapturePath(String path) {
   if (lower.endsWith(kNativeDisplayDerivativeSuffix)) return true;
   // Sidecar stills are already ~1920 JPEG from gphoto — never re-decode with
   // Dart `image` (corrupts Canon → green static on YOU / Gemini input).
-  return lower.contains('/photos/photo_') || lower.contains('/sidecar/');
+  if (lower.contains('/photos/photo_') || lower.contains('/sidecar/')) {
+    return true;
+  }
+  // [persistCapturedGuestXFile] copies normalized stills here before upload.
+  // Without this, Continue falls through to Dart decode→resize on TV boxes.
+  return lower.contains(kFotozenMediaPathMarker);
 }
 
 /// Trust capture-time normalize output — no decode/resize (kiosk Continue path).
@@ -81,6 +93,13 @@ String? tryTrustNormalizedJpegBytesForSessionPatch(Uint8List bytes) {
     return null;
   }
   if (bytes.length > SessionUserImageValidation.maxDecodedPayloadBytes) {
+    return null;
+  }
+  final sof = peekJpegSofDimensions(bytes);
+  if (sof == null) return null;
+  final longEdge =
+      sof.width > sof.height ? sof.width : sof.height;
+  if (longEdge > kKioskCaptureTrustMaxLongEdgePx) {
     return null;
   }
   final url = 'data:image/jpeg;base64,${base64Encode(bytes)}';
