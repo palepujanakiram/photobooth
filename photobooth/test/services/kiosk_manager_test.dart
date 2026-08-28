@@ -73,4 +73,28 @@ void main() {
     KioskManager.resetOperatingModeCacheForTests();
     expect(await KioskManager().isOperatingModeOffline(), isTrue);
   });
+
+  test('classic shot modes cache, prefs, and invalid values', () async {
+    final km = KioskManager();
+    expect(await km.getClassicShotModes(), [1, 3, 4]);
+    expect(await km.getClassicShotModes(), [1, 3, 4]);
+    await km.setClassicShotModes([4, 1, 9]);
+    expect(await km.getClassicShotModes(), [1, 4]);
+    KioskManager.resetClassicPhotosCacheForTests();
+    expect(await km.getClassicShotModes(), [1, 4]);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('kiosk_classic_shot_modes', ['9', 'x']);
+    KioskManager.resetClassicPhotosCacheForTests();
+    expect(await km.getClassicShotModes(), [1, 3, 4]);
+
+    await prefs.setStringList('kiosk_classic_shot_modes', ['3']);
+    KioskManager.resetClassicPhotosCacheForTests();
+    expect(await km.getClassicShotModes(), [3]);
+
+    await km.setClassicShotModes(const []);
+    expect(await km.getClassicShotModes(), [1, 3, 4]);
+    await km.setClassicShotModes(const [2, 9]);
+    expect(await km.getClassicShotModes(), [1, 3, 4]);
+  });
 }

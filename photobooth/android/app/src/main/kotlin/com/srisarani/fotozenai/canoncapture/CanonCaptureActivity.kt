@@ -1,6 +1,5 @@
 package com.srisarani.fotozenai.canoncapture
 
-import android.app.Activity
 import android.graphics.Bitmap
 import android.media.AudioManager
 import android.media.MediaActionSound
@@ -14,6 +13,8 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.ComponentActivity
+import com.srisarani.fotozenai.EdgeToEdgeDisplay
 import com.srisarani.fotozenai.R
 import com.srisarani.fotozenai.canon.CanonLog
 import com.srisarani.fotozenai.canon.session.CameraSessionManager
@@ -37,7 +38,7 @@ import kotlinx.coroutines.withContext
  * idle timeout arrive in P4; [CaptureSessionContract.Request.shotCount] is already honoured
  * so the contract does not have to change again.
  */
-class CanonCaptureActivity : Activity() {
+class CanonCaptureActivity : ComponentActivity() {
     private lateinit var surface: SurfaceView
     private lateinit var statusText: TextView
     private lateinit var titleText: TextView
@@ -89,11 +90,19 @@ class CanonCaptureActivity : Activity() {
     private val consumedHandles = mutableSetOf<Long>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        EdgeToEdgeDisplay.enable(this)
         super.onCreate(savedInstanceState)
         // A booth screen must not sleep mid-pose, and the guest is not touching the device.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         // One line switches the booth look for the diagnostic one — see CaptureScreenStyle.
         setContentView(CaptureScreenStyle.current.layoutRes)
+        // Pad chrome only (ids are booth-layout). Live view / countdown scrim stay full-bleed.
+        findViewById<View?>(R.id.canon_top_chrome)?.let {
+            EdgeToEdgeDisplay.bindSystemBarPadding(it, includeBottom = false)
+        }
+        findViewById<View?>(R.id.canon_body_chrome)?.let {
+            EdgeToEdgeDisplay.bindSystemBarPadding(it)
+        }
 
         request =
             CaptureSessionContract.Request.fromJson(

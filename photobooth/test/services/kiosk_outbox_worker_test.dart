@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -198,6 +199,8 @@ void main() {
     expect(progress.first.running, isTrue);
     expect(progress.last.running, isFalse);
     expect(progress.last.counts.isCaughtUp, isTrue);
+    expect(progress.last.remaining, 0);
+    expect(progress.last.failed, 0);
     expect((await w.syncCounts()).isCaughtUp, isTrue);
   });
 
@@ -261,6 +264,98 @@ void main() {
         : payload['receiptNumber']?.toString();
     expect(number, isNot('FZ/K1/2627/00001'));
     expect(isReceiptNumberConflict(ApiException('x', 409)), isTrue);
+  });
+
+  test('resetInstanceForTests stops a running worker', () async {
+    final w = worker();
+    w.start(interval: const Duration(hours: 1));
+    expect(KioskOutboxWorker.instance, same(w));
+    KioskOutboxWorker.resetInstanceForTests();
+    expect(KioskOutboxWorker.instance, isNull);
+    expect(w.isRunning, isFalse);
+  });
+
+  test('drainUntilCaughtUp surfaces inner errors', () async {
+    await store.upsertSession(
+      const LocalSessionWrite(id: 'sess-1', payload: {'id': 'sess-1'}),
+    );
+    final w = worker();
+    await expectLater(
+      w.drainUntilCaughtUp(
+        onProgress: (_) => throw StateError('progress boom'),
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('isManualDrainActive is true while a catch-up drain runs', () async {
+    final gate = Completer<void>();
+    await store.upsertSession(
+      const LocalSessionWrite(id: 'sess-1', payload: {'id': 'sess-1'}),
+    );
+    final w = KioskOutboxWorker(
+      store: store,
+      ingestEntities: (kioskCode, items) async {
+        await gate.future;
+        ingested.addAll(items);
+      },
+      ingestAsset: (kioskCode, asset) async {},
+      resolveKioskCode: () async => 'k1',
+      media: media,
+      diskGuard: _CountingGuard(() => pruneCalls++),
+      now: () => DateTime.utc(2026, 8, 23),
+    );
+    final future = w.drainUntilCaughtUp();
+    for (var i = 0; i < 40 && !w.isManualDrainActive; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(w.isManualDrainActive, isTrue);
+    gate.complete();
+    await future;
+    expect(w.isManualDrainActive, isFalse);
+  });
+
+  test('remints receipt on 409 then marks failed on second error', () async {
+    await store.upsertSession(
+      const LocalSessionWrite(id: 'sess-1', payload: {'id': 'sess-1'}),
+    );
+    await store.upsertReceipt(
+      id: '11111111-1111-1111-1111-111111111111',
+      sessionId: 'sess-1',
+      receiptNumber: 'FZ/K1/2627/00001',
+      payload: {
+        'id': '11111111-1111-1111-1111-111111111111',
+        'sessionId': 'sess-1',
+        'receiptNumber': 'FZ/K1/2627/00001',
+        'amount': 100,
+      },
+    );
+    for (final row in await store.pendingOutbox()) {
+      if (row.entityType == KioskOutboxEntity.session) {
+        await store.markOutboxDone(row.id);
+      }
+    }
+
+    var attempts = 0;
+    final w = KioskOutboxWorker(
+      store: store,
+      ingestEntities: (kioskCode, items) async {
+        expect(kioskCode, 'K1');
+        attempts++;
+        if (attempts == 1) {
+          throw ApiException('Receipt number conflict', 409);
+        }
+        throw ApiException('still failing', 500);
+      },
+      ingestAsset: (kioskCode, asset) async {},
+      resolveKioskCode: () async => 'k1',
+      media: media,
+      diskGuard: _CountingGuard(() => pruneCalls++),
+      now: () => DateTime.utc(2026, 8, 23),
+    );
+    expect(await w.drain(limit: 4), 0);
+    expect(attempts, 2);
+    expect(await store.pendingOutbox(), isNotEmpty);
   });
 }
 

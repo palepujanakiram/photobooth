@@ -426,6 +426,58 @@ void main() {
     expect(KioskOutboxEntity.priority(KioskOutboxEntity.session), 0);
     expect(KioskOutboxEntity.priority(KioskOutboxEntity.asset), 4);
     expect(KioskOutboxEntity.priority('nope'), 9);
+
+    final session = LocalSessionRow(
+      id: 's1',
+      payload: const {'id': 's1'},
+      createdAtMs: 1,
+      updatedAtMs: 2,
+      kioskCode: 'K1',
+      paymentStatus: 'PAID',
+    );
+    expect(session.toJson()['kioskCode'], 'K1');
+
+    final outbox = KioskOutboxEntry(
+      id: 'o1',
+      entityType: KioskOutboxEntity.session,
+      entityId: 's1',
+      payload: const {'id': 's1'},
+      status: KioskOutboxStatus.pending,
+      attempts: 0,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    );
+    expect(outbox.toJson()['entityType'], KioskOutboxEntity.session);
+
+    final payment = LocalEntityRow(
+      id: 'p1',
+      sessionId: 's1',
+      payload: const {'n': 1},
+      createdAtMs: 1,
+      receiptNumber: 'FZ/1',
+    );
+    expect(payment.toJson()['receiptNumber'], 'FZ/1');
+
+    final ledger = KioskLedgerData(
+      currentSessionId: 's1',
+      sessions: {'s1': session},
+      payments: {'p1': payment},
+      printJobs: {'j1': payment},
+      receipts: {'r1': payment},
+      invoiceSequences: {'FY': 3},
+      outbox: {'o1': outbox},
+      syncedAssets: {'a.jpg': 9},
+    );
+    final encoded = ledger.toJson();
+    final roundTrip = KioskLedgerData.fromJson(encoded);
+    expect(roundTrip.currentSessionId, 's1');
+    expect(roundTrip.sessions['s1']?.kioskCode, 'K1');
+    expect(roundTrip.payments['p1']?.receiptNumber, 'FZ/1');
+    expect(roundTrip.printJobs['j1']?.id, 'p1');
+    expect(roundTrip.receipts['r1']?.id, 'p1');
+    expect(roundTrip.invoiceSequences['FY'], 3);
+    expect(roundTrip.outbox['o1']?.entityId, 's1');
+    expect(roundTrip.syncedAssets['a.jpg'], 9);
   });
 
   test('claims session before later payment and tracks synced assets', () async {
@@ -522,5 +574,70 @@ void main() {
     expect(number, startsWith('FZ/MALL-01/'));
     expect(number, isNot('FZ/MALL-01/2627/00002'));
     expect(reminted.status, KioskOutboxStatus.pending);
+  });
+
+  test('debugDbPath is set after open', () async {
+    await store.ensureReady();
+    expect(store.debugDbPath, contains('kiosk.db'));
+  });
+
+  test('load swallows a corrupted schema', () async {
+    await store.ensureReady();
+    await store.closeForTest();
+    final db = await openDatabase('${dir.path}/kiosk.db');
+    await db.execute('DROP TABLE sessions');
+    await db.close();
+    final reloaded = LocalKioskStore(resolveDirectory: () async => dir);
+    expect(await reloaded.getSession('missing'), isNull);
+  });
+
+  test('save swallows replaceAll failures', () async {
+    await store.ensureReady();
+    final db = await openDatabase(store.debugDbPath!);
+    await db.execute('DROP TABLE sessions');
+    await db.close();
+    await store.upsertSession(sessionWrite('after-drop'));
+  });
+
+  test('LocalKioskDb.open creates a missing directory', () async {
+    final missing = Directory('${dir.path}/db-missing');
+    expect(await missing.exists(), isFalse);
+    final db = await LocalKioskDb.open(missing);
+    expect(db, isNotNull);
+    expect(await missing.exists(), isTrue);
+    await db!.close();
+  });
+
+  test('LocalKioskDb loadAll treats invalid payload JSON as empty', () async {
+    final db = await LocalKioskDb.open(dir);
+    expect(db, isNotNull);
+    await db!.database.insert('sessions', {
+      'id': 'bad',
+      'payload_json': '{not-json',
+      'created_at_ms': 1,
+      'updated_at_ms': 1,
+    });
+    final ledger = await db.loadAll();
+    expect(ledger.sessions['bad']!.payload, isEmpty);
+    await db.close();
+  });
+
+  test('archiveLedgerJson replaces an existing migrated file', () async {
+    final file = File('${dir.path}/ledger.json');
+    await file.writeAsString('{"version":1}');
+    final dest = File('${dir.path}/ledger.json.migrated');
+    await dest.writeAsString('old');
+    await archiveLedgerJson(dir);
+    expect(await file.exists(), isFalse);
+    expect(await dest.exists(), isTrue);
+  });
+
+  test('archiveLedgerJson swallows rename failures', () async {
+    final file = File('${dir.path}/ledger.json');
+    await file.writeAsString('{"version":1}');
+    final destDir = Directory('${dir.path}/ledger.json.migrated');
+    await destDir.create();
+    await archiveLedgerJson(dir);
+    expect(await file.exists(), isTrue);
   });
 }

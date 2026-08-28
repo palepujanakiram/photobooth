@@ -189,6 +189,28 @@ void main() {
       expect(await composeLocalStripSheet(throwingRequest), isNull);
     });
   });
+
+  test('contain-fit resizes landscape and portrait plates', () {
+    final wide = prepareLocalStripCellForTest(
+      _solidJpeg(10, 20, 30, width: 80, height: 20),
+      40,
+      40,
+      contain: true,
+    );
+    expect(wide, isNotNull);
+    expect(wide!.width, 40);
+    expect(wide.height, 40);
+
+    final tall = prepareLocalStripCellForTest(
+      _solidJpeg(30, 20, 10, width: 20, height: 80),
+      40,
+      40,
+      matrix: List<double>.filled(20, 0),
+      contain: true,
+    );
+    expect(tall, isNotNull);
+    expect(tall!.width, 40);
+  });
 }
 
 Uint8List _solidJpeg(

@@ -1211,6 +1211,25 @@ void main() {
     });
   });
 
+  test('FotoFlashbackFilterViewModel catalog timeout stays silent offline', () {
+    fakeAsync((async) {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-to-online'));
+      final vm = FotoFlashbackFilterViewModel(
+        theme: stripTheme,
+        imageDataUrls: List.filled(4, 'data:image/jpeg;base64,/9j/4AAQ'),
+        apiService: _HangingCatalogFakeApi(),
+      );
+      unawaited(vm.loadFilters());
+      async.flushMicrotasks();
+      SessionManager().markSessionOffline();
+      async.elapse(const Duration(seconds: 15));
+      async.flushMicrotasks();
+      expect(vm.filters, isNotEmpty);
+      expect(vm.errorMessage, isNull);
+      vm.dispose();
+    });
+  });
+
   test('FotoFlashbackFilterViewModel adopt scrub times out and re-posts', () {
     fakeAsync((async) {
       ClassicStripScrubCoordinator.instance.resetForTests();

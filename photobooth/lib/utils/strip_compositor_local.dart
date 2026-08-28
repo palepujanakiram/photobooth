@@ -158,6 +158,17 @@ Uint8List _composeLocalStripSheetIsolate(_LocalStripIsolateInput input) {
   );
 }
 
+/// Test hook for contain-fit cell resize (production always uses cover).
+@visibleForTesting
+img.Image? prepareLocalStripCellForTest(
+  Uint8List bytes,
+  int width,
+  int height, {
+  List<double>? matrix,
+  bool contain = false,
+}) =>
+    _prepareCell(bytes, matrix, width, height, contain: contain);
+
 @visibleForTesting
 Uint8List composeLocalStripSheetJpegForTest({
   required List<Uint8List> sourceBytes,

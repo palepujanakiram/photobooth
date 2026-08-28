@@ -1,13 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+      Transparent system bars so the window can draw edge-to-edge on API 30–34
+      (Android 15+ does this by default when targeting SDK 35). Do not set
+      android:statusBarColor / android:navigationBarColor — those attributes are
+      deprecated in Android 15 and are what Play Console flags. enableEdgeToEdge()
+      plus WindowInsetsController appearance is the replacement.
+      Insets are consumed in Flutter via SafeArea / MediaQuery and in native
+      capture via EdgeToEdgeDisplay.
+    -->
+    <style name="EdgeToEdgeTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
     <!-- Theme applied to the Android Application as a whole. -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+    <style name="LaunchTheme" parent="EdgeToEdgeTheme">
         <!-- Show a splash screen on the activity. Automatically removed when
              the Flutter engine draws its first frame -->
         <item name="android:windowBackground">@drawable/launch_background</item>
     </style>
     <!-- Theme applied to the Android Application as a whole. -->
-    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+    <style name="NormalTheme" parent="EdgeToEdgeTheme">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
     <!--
@@ -20,14 +36,15 @@
       behind a transparent one (extendBodyBehindAppBar + SystemUiOverlayStyle.light). The
       native screen hid it entirely, so moving between the two made the clock and battery
       appear and disappear — the one thing CaptureScreenStyle.BOOTH exists to prevent.
-      Transparent bars plus fitsSystemWindows on the chrome reproduces the Flutter layout.
+      Transparent bars plus EdgeToEdgeDisplay on the chrome reproduces the Flutter layout.
     -->
     <style name="CanonCaptureTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:windowAnimationStyle">@null</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

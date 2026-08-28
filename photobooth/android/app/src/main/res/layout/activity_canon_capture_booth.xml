@@ -29,11 +29,13 @@
 
     <!--
       Top action bar, mirroring the Flutter AppBar: back chevron left, then camera-select /
-      rotate / reload right. fitsSystemWindows drops the row below the status bar, which is
+      rotate / reload right. EdgeToEdgeDisplay.bindSystemBarPadding (and fitsSystemWindows
+      as a layout-preview fallback) drops the row below the status bar, which is
       where Flutter's AppBar sits — without it the native title rode ~24dp higher and the
       switch between screens was visible.
     -->
     <FrameLayout
+        android:id="@+id/canon_top_chrome"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="top"
@@ -93,6 +95,7 @@
       exactly as Flutter's Expanded preview does.
     -->
     <LinearLayout
+        android:id="@+id/canon_body_chrome"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:fitsSystemWindows="true"

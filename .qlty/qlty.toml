@@ -127,6 +127,8 @@ ignores = [
   "lib/screens/photo_generate/photo_generate_viewmodel_helpers.dart",
   "lib/screens/result/result_viewmodel.dart",
   "lib/screens/result/result_viewmodel_impl.part.dart",
+  "lib/screens/result/result_offline_cash_sheet.dart",
+  "lib/screens/splash/splash_api_environment_control.dart",
   "**/file_helper*.dart",
   "**/*_stub.dart",
   "**/*_web_stub.dart",
