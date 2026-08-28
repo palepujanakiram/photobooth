@@ -7,6 +7,7 @@ import '../../services/image_cache_service.dart';
 import '../../utils/logger.dart';
 import '../../utils/error_reporting_helpers.dart';
 import '../../utils/theme_image_urls.dart';
+import '../../utils/network_image_decode.dart';
 import '../../services/image_cache_source.dart';
 import '../../views/widgets/animated_slideshow_background.dart'
     show kSlideshowAssetPaths;
@@ -82,8 +83,7 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
     }
 
     for (final theme in activeThemes) {
-      final fullThemeUrl =
-          resolveThemeSampleImageUrl(theme.sampleImageUrl!);
+      final fullThemeUrl = resolveThemeSampleImageUrl(theme.sampleImageUrl!);
       final normalizedThemeUrl = normalizeThemeImageUrl(fullThemeUrl);
       final normalizedImageUrl = normalizeThemeImageUrl(imageUrl);
 
@@ -215,9 +215,8 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
     final successfulUrls = results.whereType<String>().toList();
     _preloadedImageUrls = [imageUrls[0], ...successfulUrls];
     if (successfulUrls.length < remainingUrls.length) {
-      final failedUrls = remainingUrls
-          .where((u) => !successfulUrls.contains(u))
-          .toList();
+      final failedUrls =
+          remainingUrls.where((u) => !successfulUrls.contains(u)).toList();
       _preloadedImageUrls = [..._preloadedImageUrls, ...failedUrls];
     }
   }
@@ -269,14 +268,24 @@ class ThemeSlideshowViewModel extends ChangeNotifier {
     File? cachedFile,
   ) async {
     try {
+      final size = MediaQuery.sizeOf(context);
+      final decode = resolveAppNetworkImageDecodeSize(
+        NetworkImageDecodeInput(
+          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+          layoutWidth: size.width,
+          layoutHeight: size.height,
+        ),
+      );
       if (cachedFile == null) {
-        await precacheImage(NetworkImage(url), context).timeout(
-          const Duration(seconds: 10),
-        );
+        await precacheImage(
+          resizeImageProviderIfNeeded(NetworkImage(url), decode),
+          context,
+        ).timeout(const Duration(seconds: 10));
       } else {
-        await precacheImage(FileImage(cachedFile), context).timeout(
-          const Duration(seconds: 10),
-        );
+        await precacheImage(
+          resizeImageProviderIfNeeded(FileImage(cachedFile), decode),
+          context,
+        ).timeout(const Duration(seconds: 10));
       }
     } catch (e) {
       AppLogger.debug('Precache failed for $url: $e');

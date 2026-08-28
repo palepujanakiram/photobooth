@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import '../../utils/network_image_decode.dart';
 import 'payment_link_qr.dart';
 
 /// Razorpay / UPI QR for the Pay screen — matches web kiosk priority in
@@ -59,14 +60,21 @@ class KioskPaymentQrDisplay extends StatelessWidget {
     final fallback = paymentLink?.trim();
     return LayoutBuilder(
       builder: (context, constraints) {
-        final maxH = !constraints.hasBoundedHeight ||
-                constraints.maxHeight.isInfinite
-            ? _hostedMaxHeight
-            : math.min(_hostedMaxHeight, constraints.maxHeight);
-        final maxW = !constraints.hasBoundedWidth ||
-                constraints.maxWidth.isInfinite
-            ? maxContentWidth
-            : math.min(maxContentWidth, constraints.maxWidth);
+        final maxH =
+            !constraints.hasBoundedHeight || constraints.maxHeight.isInfinite
+                ? _hostedMaxHeight
+                : math.min(_hostedMaxHeight, constraints.maxHeight);
+        final maxW =
+            !constraints.hasBoundedWidth || constraints.maxWidth.isInfinite
+                ? maxContentWidth
+                : math.min(maxContentWidth, constraints.maxWidth);
+        final decode = resolveAppNetworkImageDecodeSize(
+          NetworkImageDecodeInput(
+            devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+            layoutWidth: maxW,
+            layoutHeight: maxH,
+          ),
+        );
         return SizedBox(
           width: maxW,
           height: maxH,
@@ -77,6 +85,8 @@ class KioskPaymentQrDisplay extends StatelessWidget {
               alignment: Alignment.center,
               filterQuality: FilterQuality.high,
               gaplessPlayback: true,
+              cacheWidth: decode.cacheWidth,
+              cacheHeight: decode.cacheHeight,
               webHtmlElementStrategy: kIsWeb
                   ? WebHtmlElementStrategy.prefer
                   : WebHtmlElementStrategy.never,
