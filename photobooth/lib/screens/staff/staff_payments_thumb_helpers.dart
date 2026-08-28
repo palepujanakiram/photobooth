@@ -6,8 +6,12 @@ import 'package:flutter/material.dart';
 
 import '../../services/protected_image_loader.dart';
 import '../../utils/app_strings.dart';
+import '../../utils/network_image_decode.dart';
 import '../../utils/secure_image_url.dart';
 import 'staff_payments_payload_utils.dart';
+
+const double _kStaffThumbLogicalPx = 54;
+const int _kStaffThumbDecodePx = 108;
 
 Widget staffPaymentThumbWithCount({
   required String resolved,
@@ -167,19 +171,28 @@ class _StaffPaymentThumbNetworkImageState
       return ClipRRect(
         borderRadius: BorderRadius.circular(10),
         child: SizedBox(
-          width: 54,
-          height: 54,
+          width: _kStaffThumbLogicalPx,
+          height: _kStaffThumbLogicalPx,
           child: widget.loadingPlaceholder(),
         ),
       );
     }
+    final decode = resolveAppNetworkImageDecodeSize(
+      NetworkImageDecodeInput(
+        devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+        widgetWidth: _kStaffThumbLogicalPx,
+        widgetHeight: _kStaffThumbLogicalPx,
+      ),
+    );
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: Image.memory(
         bytes,
-        width: 54,
-        height: 54,
+        width: _kStaffThumbLogicalPx,
+        height: _kStaffThumbLogicalPx,
         fit: BoxFit.cover,
+        cacheWidth: decode.cacheWidth,
+        cacheHeight: decode.cacheHeight,
         errorBuilder: (_, __, ___) => widget.unavailable(),
       ),
     );
@@ -197,9 +210,10 @@ Widget _staffPaymentDataUrlThumb(
       borderRadius: BorderRadius.circular(10),
       child: Image.memory(
         bytes,
-        width: 54,
-        height: 54,
+        width: _kStaffThumbLogicalPx,
+        height: _kStaffThumbLogicalPx,
         fit: BoxFit.cover,
+        cacheWidth: _kStaffThumbDecodePx,
         errorBuilder: (_, __, ___) => placeholder(),
       ),
     );
@@ -218,9 +232,10 @@ Widget? _staffPaymentBase64Thumb(
       borderRadius: BorderRadius.circular(10),
       child: Image.memory(
         bytes,
-        width: 54,
-        height: 54,
+        width: _kStaffThumbLogicalPx,
+        height: _kStaffThumbLogicalPx,
         fit: BoxFit.cover,
+        cacheWidth: _kStaffThumbDecodePx,
         errorBuilder: (_, __, ___) => placeholder(),
       ),
     );
@@ -232,8 +247,8 @@ Widget? _staffPaymentBase64Thumb(
 /// No photo URL yet (payment before capture/compose).
 Widget staffPaymentThumbPlaceholder() {
   return Container(
-    width: 54,
-    height: 54,
+    width: _kStaffThumbLogicalPx,
+    height: _kStaffThumbLogicalPx,
     decoration: BoxDecoration(
       color: Colors.black.withValues(alpha: 0.06),
       borderRadius: BorderRadius.circular(10),
@@ -247,8 +262,8 @@ Widget staffPaymentThumbPlaceholder() {
 /// URL exists but image could not be loaded (network/storage error).
 Widget staffPaymentThumbUnavailable() {
   return Container(
-    width: 54,
-    height: 54,
+    width: _kStaffThumbLogicalPx,
+    height: _kStaffThumbLogicalPx,
     decoration: BoxDecoration(
       color: Colors.black.withValues(alpha: 0.06),
       borderRadius: BorderRadius.circular(10),

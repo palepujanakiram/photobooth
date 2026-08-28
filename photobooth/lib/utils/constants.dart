@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show kDebugMode, kIsWeb, visibleForTesting;
 import 'package:flutter/widgets.dart';
 
 import 'app_config.dart';
@@ -8,6 +9,7 @@ class AppConstants {
   // Branding
   static const String kBrandName = 'Fotozen AI';
   static const String kBrandAppTitle = 'Fotozen AI Photo Booth';
+
   /// Wordmark used on terms/thank-you screens.
   static const String kBrandLogoAsset = 'lib/images/fotozen_wordmark.png';
 
@@ -24,7 +26,7 @@ class AppConstants {
   /// Best-effort `/api/preprocess-image` wait; on timeout the upload still succeeds
   /// with a fallback person count (solo themes on web).
   static const Duration kPreprocessTimeout = Duration(seconds: 30);
-  
+
   // Timeout for AI generation (same as general timeout)
   static const Duration kAiGenerationTimeout = Duration(seconds: 300);
 
@@ -67,10 +69,12 @@ class AppConstants {
   static const double kTouchTargetSize = 48.0;
 
   /// [SharedPreferences] key: theme list uses card grid vs carousel on Select Theme.
-  static const String kPrefsThemeSelectionCardLayout = 'theme_selection_use_card_layout';
+  static const String kPrefsThemeSelectionCardLayout =
+      'theme_selection_use_card_layout';
 
   /// [SharedPreferences] key: carousel auto-advances when idle on Select Theme (default off).
-  static const String kPrefsThemeCarouselAutoScroll = 'theme_carousel_auto_scroll_v1';
+  static const String kPrefsThemeCarouselAutoScroll =
+      'theme_carousel_auto_scroll_v1';
 
   /// Width : height for theme/generate cards in **portrait** device orientation.
   /// Slightly shorter than raw 9:16 for legacy grid harmony.
@@ -102,8 +106,7 @@ class AppConstants {
   static const double kThemeCarouselCenterMaxScale = 1.15;
 
   /// Time between automatic carousel advances when the user is idle.
-  static const Duration kThemeCarouselAutoScrollInterval =
-      Duration(seconds: 5);
+  static const Duration kThemeCarouselAutoScrollInterval = Duration(seconds: 5);
 
   /// Idle time after the user interacts (tap carousel, thumb, or grid) before
   /// auto-scroll resumes; timer phase resets so the next advance is a full
@@ -206,21 +209,26 @@ class AppConstants {
   static bool get kShowCapturedPhotoMetadataOverlay => false;
 
   /// Theme image disk cache ceiling (MB); lower on kiosk.
-  static int get kThemeDiskCacheMaxSizeMB =>
-      kLowMemoryKioskMode ? 40 : 100;
+  static int get kThemeDiskCacheMaxSizeMB => kLowMemoryKioskMode ? 40 : 100;
 
   /// Flutter in-memory [ImageCache] — max entries when [kLowMemoryKioskMode].
-  static int get kFlutterImageCacheMaxCount =>
-      kLowMemoryKioskMode ? 40 : 100;
+  static int get kFlutterImageCacheMaxCount => kLowMemoryKioskMode ? 40 : 100;
 
   /// Flutter in-memory [ImageCache] — max total bytes when [kLowMemoryKioskMode].
-  static int get kFlutterImageCacheMaxBytes => kLowMemoryKioskMode
-      ? 50 * 1024 * 1024
-      : 100 * 1024 * 1024;
+  static int get kFlutterImageCacheMaxBytes =>
+      kLowMemoryKioskMode ? 50 * 1024 * 1024 : 100 * 1024 * 1024;
+
+  /// Long-edge decode cap for on-screen network images (Play bitmap optimization).
+  static int get kNetworkImageMaxDecodePx => kLowMemoryKioskMode ? 1920 : 2048;
+
+  /// Floor so a 1-logical-px widget still decodes a usable bitmap.
+  static const int kNetworkImageMinDecodePx = 64;
+
+  /// Decode size when reading aspect ratio only (not for display).
+  static const int kNetworkImageAspectProbePx = 64;
 
   /// Gallery picker JPEG quality before normalization (lower = less work / smaller temp file).
-  static int get kGalleryPickerImageQuality =>
-      kLowMemoryKioskMode ? 85 : 95;
+  static int get kGalleryPickerImageQuality => kLowMemoryKioskMode ? 85 : 95;
 
   /// When true (with `showGenerationCommentary`), shows native camera details on Capture Photo.
   /// **Off on web** — `camera_native_details` / layout differs; avoids extra work after capture.
@@ -236,7 +244,8 @@ class AppConstants {
       kDebugMode || AppRuntimeConfig.instance.showGenerationCommentary;
 
   /// SharedPreferences key for camera preview rotation (0, 90, 180, 270 degrees).
-  static const String kCameraPreviewRotationKey = 'camera_preview_rotation_degrees';
+  static const String kCameraPreviewRotationKey =
+      'camera_preview_rotation_degrees';
 
   /// Tracks whether preview rotation was explicitly chosen by the user.
   static const String kCameraPreviewRotationConfiguredKey =
@@ -299,8 +308,7 @@ class AppConstants {
       kFlashbackBetweenShotRearrangeDuration;
 
   /// Brief hold on the final Classic still before looks (not a rearrange).
-  static const Duration kFlashbackLastShotReviewDuration =
-      Duration(seconds: 2);
+  static const Duration kFlashbackLastShotReviewDuration = Duration(seconds: 2);
 
   /// If HDMI still-mask is armed but shutter never starts, recover quickly
   /// instead of waiting for the long capture watchdog (~35s).
@@ -355,34 +363,44 @@ class AppConstants {
 
   // Routes
   static const String kRouteSlideshow = '/';
+
   /// Branded splash: kiosk check, optional theme preload, then terms.
   static const String kRouteSplash = '/splash';
   static const String kRouteTerms = '/terms';
+
   /// After terms: AI transform vs FotoFlashback.
   static const String kRouteExperienceChoice = '/experience-choice';
+
   /// Classic: preview 1 / 3 / 4-shot samples when multiple modes are enabled.
   static const String kRouteClassicShotChoice = '/classic-shot-choice';
   static const String kRouteHome = '/theme-selection';
   static const String kRouteCapture = '/capture';
+
   /// FotoFlashback: 4-shot booth capture (no AI).
   static const String kRouteFlashbackCapture = '/flashback-capture';
+
   /// FotoFlashback: pick look + compose dual 2×6 strip.
   static const String kRouteFlashbackFilter = '/flashback-filter';
+
   /// Kiosk: choose occasion frame (or none) after theme, before generation.
   static const String kRouteFrameSelect = '/frame-select';
   static const String kRouteGenerate = '/generate';
   static const String kRouteGenerateProgress = '/generate-progress';
+
   /// Pre-generation UPI collection when [kPaymentCollectionBeforeGeneration] is set.
   static const String kRoutePrePayment = '/pre-payment';
   static const String kPaymentCollectionBeforeGeneration = 'before_generation';
   static const String kPaymentCollectionAfterGeneration = 'after_generation';
   static const String kRouteReview = '/review';
+
   /// Classic (+ AI) hub: pick strip / AI photos before Pay & Collect.
   static const String kRoutePrintSelection = '/print-selection';
   static const String kRouteResult = '/result';
   static const String kRouteThankYou = '/thank-you';
+
   /// Post-payment QR bridge + optional print/share actions (kiosk).
   static const String kRouteQrShare = '/qr-share';
+
   /// Push [WebViewScreen] (full-screen, close button only; no app bar) using
   /// `arguments`: a URL [String], or a [Map] with `url` ([String]).
   static const String kRouteWebView = '/webview';
@@ -404,6 +422,7 @@ class AppConstants {
       'Failed to initialize camera';
   static const String kErrorPhotoCapture = 'Failed to capture photo';
   static const String kErrorApiCall = 'Failed to process request';
+
   /// Idle countdown on SCAN & SHARE before auto-start of a fresh session.
   static const int kQrShareIdleSeconds = 60;
 
@@ -413,4 +432,3 @@ class AppConstants {
   static const String kErrorNetwork = 'Network error occurred';
   static const String kErrorUnknown = 'An unexpected error occurred';
 }
-

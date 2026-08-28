@@ -7,12 +7,16 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../services/image_cache_service.dart';
 import '../../services/protected_image_loader.dart';
 import '../../utils/logger.dart';
+import '../../utils/network_image_decode.dart';
 import '../../utils/secure_image_url.dart';
 
-/// Widget that displays a network image with disk caching
-/// Falls back to network image if cache fails
+/// Network image with disk cache and decode-time downsampling.
+///
+/// Always decodes at the widget/layout pixel size (capped) so full-resolution
+/// bitmaps are never allocated for on-screen tiles — same idea as Coil/Glide.
 class CachedNetworkImage extends StatefulWidget {
   final String imageUrl;
+
   /// Stable catalog key (`theme-{id}` / `frame-{id}`). URL-hash fallback if null.
   final String? cacheKey;
   final BoxFit? fit;
@@ -23,6 +27,10 @@ class CachedNetworkImage extends StatefulWidget {
   final int? cacheWidth;
   final int? cacheHeight;
   final FilterQuality filterQuality;
+
+  /// When false, skip layout-based decode sizing unless [cacheWidth]/[cacheHeight]
+  /// are set. Use for pinch-zoom viewers that need the source bitmap.
+  final bool downsample;
 
   const CachedNetworkImage({
     super.key,
@@ -36,6 +44,7 @@ class CachedNetworkImage extends StatefulWidget {
     this.cacheWidth,
     this.cacheHeight,
     this.filterQuality = FilterQuality.low,
+    this.downsample = true,
   });
 
   @override
@@ -139,7 +148,9 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
   }
 
   void _cacheInBackground(String securedUrl) {
-    _cacheService.cacheImage(securedUrl, cacheKey: widget.cacheKey).then((cachedFile) {
+    _cacheService
+        .cacheImage(securedUrl, cacheKey: widget.cacheKey)
+        .then((cachedFile) {
       if (!mounted || cachedFile == null || kIsWeb) return;
       if (!cachedFile.existsSync()) return;
       setState(() => _cachedFile = cachedFile as dynamic);
@@ -165,14 +176,14 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
         );
   }
 
-  Widget _buildNetworkImage(String securedUrl) {
+  Widget _buildNetworkImage(String securedUrl, NetworkImageDecodeSize decode) {
     return Image.network(
       securedUrl,
       fit: widget.fit,
       width: widget.width,
       height: widget.height,
-      cacheWidth: widget.cacheWidth,
-      cacheHeight: widget.cacheHeight,
+      cacheWidth: decode.cacheWidth,
+      cacheHeight: decode.cacheHeight,
       filterQuality: widget.filterQuality,
       color: null,
       colorBlendMode: null,
@@ -184,18 +195,29 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final securedUrl =
-        SecureImageUrl.withSessionId(SecureImageUrl.absolutize(widget.imageUrl));
+  NetworkImageDecodeSize _decodeSize(
+      BuildContext context, BoxConstraints constraints) {
+    return resolveAppNetworkImageDecodeSize(
+      NetworkImageDecodeInput(
+        devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+        layoutWidth: constraints.maxWidth,
+        layoutHeight: constraints.maxHeight,
+        widgetWidth: widget.width,
+        widgetHeight: widget.height,
+        explicitCacheWidth: widget.cacheWidth,
+        explicitCacheHeight: widget.cacheHeight,
+      ),
+      downsample: widget.downsample,
+    );
+  }
+
+  Widget _buildDecoded(NetworkImageDecodeSize decode, String securedUrl) {
     if (_isLoading && widget.placeholder != null) {
       return widget.placeholder!;
     }
-
     if (_hasError && widget.errorWidget != null) {
       return widget.errorWidget!;
     }
-
     final protectedBytes = _protectedBytes;
     if (protectedBytes != null) {
       return Image.memory(
@@ -203,14 +225,12 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
         fit: widget.fit,
         width: widget.width,
         height: widget.height,
-        cacheWidth: widget.cacheWidth,
-        cacheHeight: widget.cacheHeight,
+        cacheWidth: decode.cacheWidth,
+        cacheHeight: decode.cacheHeight,
         filterQuality: widget.filterQuality,
-        errorBuilder: (context, error, stackTrace) =>
-            _defaultErrorWidget(),
+        errorBuilder: (context, error, stackTrace) => _defaultErrorWidget(),
       );
     }
-
     if (!kIsWeb && _cachedFile != null) {
       final file = _cachedFile as dynamic;
       if (file.existsSync()) {
@@ -219,17 +239,27 @@ class _CachedNetworkImageState extends State<CachedNetworkImage> {
           fit: widget.fit,
           width: widget.width,
           height: widget.height,
-          cacheWidth: widget.cacheWidth,
-          cacheHeight: widget.cacheHeight,
+          cacheWidth: decode.cacheWidth,
+          cacheHeight: decode.cacheHeight,
           filterQuality: widget.filterQuality,
           color: null,
           colorBlendMode: null,
           errorBuilder: (context, error, stackTrace) =>
-              _buildNetworkImage(securedUrl),
+              _buildNetworkImage(securedUrl, decode),
         );
       }
     }
+    return _buildNetworkImage(securedUrl, decode);
+  }
 
-    return _buildNetworkImage(securedUrl);
+  @override
+  Widget build(BuildContext context) {
+    final securedUrl = SecureImageUrl.withSessionId(
+        SecureImageUrl.absolutize(widget.imageUrl));
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return _buildDecoded(_decodeSize(context, constraints), securedUrl);
+      },
+    );
   }
 }

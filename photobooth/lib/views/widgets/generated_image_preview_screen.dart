@@ -29,38 +29,39 @@ class GeneratedImagePreviewScreen extends StatelessWidget {
           children: [
             Positioned.fill(
               child: LayoutBuilder(
-              builder: (context, constraints) {
-                return InteractiveViewer(
-                  minScale: 0.85,
-                  maxScale: 4,
-                  child: SizedBox(
-                    width: constraints.maxWidth,
-                    height: constraints.maxHeight,
-                    child: FittedBox(
-                      fit: BoxFit.contain,
-                      child: CachedNetworkImage(
-                        imageUrl: imageUrl,
+                builder: (context, constraints) {
+                  return InteractiveViewer(
+                    minScale: 0.85,
+                    maxScale: 4,
+                    child: SizedBox(
+                      width: constraints.maxWidth,
+                      height: constraints.maxHeight,
+                      child: FittedBox(
                         fit: BoxFit.contain,
-                        filterQuality: FilterQuality.high,
-                        placeholder: const SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
+                        child: CachedNetworkImage(
+                          imageUrl: imageUrl,
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.high,
+                          downsample: false,
+                          placeholder: const SizedBox(
+                            width: 48,
+                            height: 48,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
                           ),
-                        ),
-                        errorWidget: const Icon(
-                          CupertinoIcons.exclamationmark_triangle,
-                          color: Colors.white54,
-                          size: 48,
+                          errorWidget: const Icon(
+                            CupertinoIcons.exclamationmark_triangle,
+                            color: Colors.white54,
+                            size: 48,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
             ),
             Positioned(
               top: 0,
@@ -81,7 +82,8 @@ class GeneratedImagePreviewScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     IconButton(
-                      icon: const Icon(CupertinoIcons.xmark, color: Colors.white),
+                      icon:
+                          const Icon(CupertinoIcons.xmark, color: Colors.white),
                       onPressed: () => Navigator.of(context).maybePop(),
                       tooltip: 'Close',
                     ),

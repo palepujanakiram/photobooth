@@ -83,8 +83,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   /// Print sheet 1200×1800 (4"×6" dual strip) — staff / compose reference.
   static const double defaultSheetWidth = 264;
   static const double defaultSheetHeight = 396;
-  static const double sheetAspectRatio =
-      defaultSheetWidth / defaultSheetHeight;
+  static const double sheetAspectRatio = defaultSheetWidth / defaultSheetHeight;
 
   /// Classic 1-shot landscape 6×4 (1800×1200).
   static const double single6x4AspectRatio = 1800 / 1200;
@@ -95,8 +94,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   /// One 2×6 strip (half sheet width).
   static const double defaultStripWidth = defaultSheetWidth / 2;
   static const double defaultStripHeight = defaultSheetHeight;
-  static const double stripAspectRatio =
-      defaultStripWidth / defaultStripHeight;
+  static const double stripAspectRatio = defaultStripWidth / defaultStripHeight;
 
   /// Layout uses the single-strip aspect guests edit.
   static const double aspectRatio = stripAspectRatio;
@@ -110,8 +108,9 @@ class FotoFlashbackStripPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wysiwyg = layout ?? StripWysiwygLayout.defaults;
-    final shotCount =
-        imageJpegBytes.isNotEmpty ? imageJpegBytes.length : imageDataUrls.length;
+    final shotCount = imageJpegBytes.isNotEmpty
+        ? imageJpegBytes.length
+        : imageDataUrls.length;
     final composeUrl = serverComposePreviewUrl?.trim() ?? '';
     if (composeUrl.isNotEmpty && isValidClassicComposeShotCount(shotCount)) {
       return SizedBox(
@@ -141,8 +140,7 @@ class FotoFlashbackStripPreview extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             _Single6x4Preview(
-              imageDataUrl:
-                  imageDataUrls.isNotEmpty ? imageDataUrls.first : '',
+              imageDataUrl: imageDataUrls.isNotEmpty ? imageDataUrls.first : '',
               jpegBytes:
                   imageJpegBytes.isNotEmpty ? imageJpegBytes.first : null,
               filterId: filterId,
@@ -176,9 +174,8 @@ class FotoFlashbackStripPreview extends StatelessWidget {
             FotoFlashbackSheetLayoutPreview(
               imageDataUrls: imageDataUrls,
               imageJpegBytes: imageJpegBytes,
-              colorFilter: imagesAreGraded
-                  ? null
-                  : stripPreviewColorFilter(filterId),
+              colorFilter:
+                  imagesAreGraded ? null : stripPreviewColorFilter(filterId),
               layoutId: frameId,
               layout: wysiwyg,
               width: width,
@@ -309,9 +306,8 @@ int stripPreviewShotCount({
   required List<String> imageDataUrls,
   required List<Uint8List> imageJpegBytes,
 }) {
-  final count = imageJpegBytes.isNotEmpty
-      ? imageJpegBytes.length
-      : imageDataUrls.length;
+  final count =
+      imageJpegBytes.isNotEmpty ? imageJpegBytes.length : imageDataUrls.length;
   if (kClassicStripShotCounts.contains(count)) return count;
   return kStripShotCount;
 }
@@ -453,6 +449,7 @@ class _FotoFlashbackSingleStrip extends StatelessWidget {
                 child: Image.network(
                   frameOverlayUrl!,
                   fit: BoxFit.fill,
+                  cacheWidth: cacheW,
                   errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                 ),
               ),
@@ -591,6 +588,7 @@ class _PlacementSticker extends StatelessWidget {
   final StripStickerPlacement placement;
   final double stripWidth;
   final double stripHeight;
+
   /// When set (sheet layouts), size icons from this width instead of [stripWidth].
   final double? glyphRefWidth;
   final StripWysiwygLayout? layout;
@@ -726,12 +724,12 @@ List<Widget> _stickerOverlays(String stickerId, double width, double height) {
       ];
     case 'sparkles':
       return [
-        _stickerSparkle(width * 0.08, height * 0.04, width * 0.14,
-            const Color(0xFFFFD54A)),
-        _stickerSparkle(width * 0.75, height * 0.4, width * 0.12,
-            const Color(0xFFFFC107)),
-        _stickerSparkle(width * 0.18, height * 0.85, width * 0.1,
-            const Color(0xFFFFD54A)),
+        _stickerSparkle(
+            width * 0.08, height * 0.04, width * 0.14, const Color(0xFFFFD54A)),
+        _stickerSparkle(
+            width * 0.75, height * 0.4, width * 0.12, const Color(0xFFFFC107)),
+        _stickerSparkle(
+            width * 0.18, height * 0.85, width * 0.1, const Color(0xFFFFD54A)),
       ];
     case 'stars':
       return [

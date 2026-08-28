@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 
+import '../../utils/network_image_decode.dart';
+
 /// Asset paths for slideshow images.
 /// Images 1–10 are JPG (resized to 512×512 for low GPU RAM); 11–18 are small PNGs; 19 is JPG.
 final List<String> kSlideshowAssetPaths = [
@@ -62,7 +64,8 @@ class AnimatedSlideshowBackground extends StatefulWidget {
       _AnimatedSlideshowBackgroundState();
 }
 
-class _AnimatedSlideshowBackgroundState extends State<AnimatedSlideshowBackground> {
+class _AnimatedSlideshowBackgroundState
+    extends State<AnimatedSlideshowBackground> {
   late List<String> _paths;
   bool _precached = false;
 
@@ -73,11 +76,26 @@ class _AnimatedSlideshowBackgroundState extends State<AnimatedSlideshowBackgroun
   }
 
   void _precacheSlideshowImages(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final decode = resolveAppNetworkImageDecodeSize(
+      NetworkImageDecodeInput(
+        devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+        // Cards are a fraction of the screen; 512 matches bundled slideshow assets.
+        widgetWidth: math.min(512, size.width / widget.gridColumns),
+        widgetHeight: math.min(512, size.height / widget.gridRows),
+      ),
+    );
     for (final path in _paths) {
       if (_isNetworkImagePath(path)) {
-        precacheImage(NetworkImage(path), context);
+        precacheImage(
+          resizeImageProviderIfNeeded(NetworkImage(path), decode),
+          context,
+        );
       } else {
-        precacheImage(AssetImage(path), context);
+        precacheImage(
+          resizeImageProviderIfNeeded(AssetImage(path), decode),
+          context,
+        );
       }
     }
   }
