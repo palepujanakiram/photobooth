@@ -70,7 +70,9 @@ void main() {
   test('classic shot modes normalize and map to session kinds', () {
     expect(normalizeClassicShotModes([4, 1, 9]), [1, 4]);
     expect(normalizeClassicShotModes(null), [1, 3, 4]);
+    expect(normalizeClassicShotModes([3.7, ' 1 ', 4]), [1, 4]);
     expect(classicShotModeForCount(3), ClassicShotMode.threeShot);
+    expect(classicShotModeForCount(2), isNull);
     expect(
       CaptureSessionKindX.fromClassicShotMode(ClassicShotMode.threeShot),
       CaptureSessionKind.classicThreeShot,

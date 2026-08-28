@@ -141,6 +141,15 @@ void main() {
     expect(m.classicPhotosEnabled, isTrue);
   });
 
+  test('KioskInfoModel parses classicShotModes from num and string', () {
+    final m = KioskInfoModel.fromJson({
+      'id': 'k1',
+      'code': 'ABC',
+      'classicShotModes': [1, 3.2, '4', 'nope'],
+    });
+    expect(m.classicShotModes, [1, 3, 4]);
+  });
+
   test('KioskInfoModel classicPhotosEnabled defaults and parses false', () {
     expect(
       KioskInfoModel.fromJson({'id': 'k1', 'code': 'ABC'}).classicPhotosEnabled,
@@ -281,6 +290,20 @@ void main() {
       overlayUrl: 'https://cdn.example/o.png',
     );
     expect(f.id, 'f1');
+  });
+
+  test('KioskFrameModel.toJson includes scheduled dates', () {
+    final start = DateTime.utc(2026, 8, 1);
+    final end = DateTime.utc(2026, 8, 31);
+    final f = KioskFrameModel(
+      id: 'f1',
+      name: 'Frame',
+      overlayUrl: 'https://cdn.example/o.png',
+      scheduledStartAt: start,
+      scheduledEndAt: end,
+    );
+    expect(f.toJson()['scheduledStartAt'], start.toIso8601String());
+    expect(f.toJson()['scheduledEndAt'], end.toIso8601String());
   });
 
   test('KioskShareLinkModel.fromJson', () {

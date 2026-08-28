@@ -88,4 +88,17 @@ void main() {
     expect(r.isOk, isFalse);
     expect(r.errorMessage, AppStrings.splashKioskCodeUnavailable);
   });
+
+  test('resolveSplashKioskByCode uses default disk cache', () async {
+    final previous = CatalogDiskCache.supportDirectory;
+    CatalogDiskCache.supportDirectory = () async => dir;
+    addTearDown(() => CatalogDiskCache.supportDirectory = previous);
+    const info = KioskInfoModel(id: 'k1', code: 'DEF');
+    final r = await resolveSplashKioskByCode(
+      code: 'def',
+      fetchOnline: (_) async => info,
+    );
+    expect(r.isOk, isTrue);
+    expect(r.fromCache, isFalse);
+  });
 }

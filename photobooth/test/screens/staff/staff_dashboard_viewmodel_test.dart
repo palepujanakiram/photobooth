@@ -488,5 +488,21 @@ void main() {
       expect(await OfflineOperatorPinStore.verifyPin('8888'), isTrue);
       expect(vm.error, contains('Saved on this kiosk only'));
     });
+
+    test('updateOfflineCashPin keeps local pin on unexpected errors', () async {
+      SharedPreferences.setMockInitialValues({});
+      OfflineOperatorPinStore.resetCacheForTests();
+      final gw = _FakeGateway();
+      final vm = StaffDashboardViewModel(
+        gateway: gw,
+        initialDate: '2026-07-20',
+      );
+      await vm.loadAll();
+      gw.throwUnexpected = true;
+      final ok = await vm.updateOfflineCashPin('7777');
+      expect(ok, isTrue);
+      expect(await OfflineOperatorPinStore.verifyPin('7777'), isTrue);
+      expect(vm.error, contains('Saved on this kiosk only'));
+    });
   });
 }

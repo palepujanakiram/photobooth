@@ -18,4 +18,9 @@ void main() {
       AppStrings.splashSyncPartialToast(4),
     );
   });
+
+  test('splashSyncPending singular when one item is waiting', () {
+    expect(AppStrings.splashSyncPending(1, 0), '1 item waiting to sync');
+    expect(AppStrings.splashSyncPending(2, 0), '2 items waiting to sync');
+  });
 }

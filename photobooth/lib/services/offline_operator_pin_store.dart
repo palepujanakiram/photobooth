@@ -12,6 +12,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 class OfflineOperatorPinStore {
   OfflineOperatorPinStore._();
 
+  /// Unused in production; exists so unit tests can construct the store.
+  @visibleForTesting
+  static OfflineOperatorPinStore createForTests() =>
+      OfflineOperatorPinStore._();
+
   static const prefsKeyLocal = 'kiosk_offline_operator_pin';
   static const prefsKeyServer = 'kiosk_offline_cash_pins';
 

@@ -209,6 +209,20 @@ void main() {
     expect(SessionManager().currentSession?.selectedThemeId, 'strip');
     expect(SessionManager().isOfflineSession, isTrue);
   });
+
+  test('prepareFotoFlashback treats 5xx as transport failure', () async {
+    final api = _ThemesFakeApi(themes: [strip], patchThrowsServer: true);
+    SessionManager().clearSession();
+    SessionManager().setSessionFromResponse(sessionJson('sess-500'));
+    final vm = ExperienceChoiceViewModel(
+      themeManager: ThemeManager.forTesting(api),
+      apiService: api,
+    );
+    await vm.load();
+    final theme = await vm.prepareFotoFlashback();
+    expect(theme?.id, 'strip');
+    expect(SessionManager().isOfflineSession, isTrue);
+  });
 }
 
 class _ThemesFakeApi extends FakeApiService {
@@ -220,6 +234,7 @@ class _ThemesFakeApi extends FakeApiService {
     this.loadThrowsGeneric = false,
     this.patchThrowsGeneric = false,
     this.patchThrowsNetwork = false,
+    this.patchThrowsServer = false,
   });
 
   final List<ThemeModel> themes;
@@ -227,6 +242,7 @@ class _ThemesFakeApi extends FakeApiService {
   final bool loadThrowsGeneric;
   final bool patchThrowsGeneric;
   final bool patchThrowsNetwork;
+  final bool patchThrowsServer;
   String? lastSelectedThemeId;
 
   @override
@@ -249,6 +265,9 @@ class _ThemesFakeApi extends FakeApiService {
     lastSelectedThemeId = selectedThemeId;
     if (patchThrowsNetwork) {
       throw ApiException(AppConstants.kErrorNetwork);
+    }
+    if (patchThrowsServer) {
+      throw ApiException('server down', 500);
     }
     if (patchThrows) throw ApiException('patch failed');
     if (patchThrowsGeneric) throw Exception('patch boom');

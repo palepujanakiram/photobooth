@@ -14,10 +14,18 @@ import '../utils/logger.dart';
 class ApiEnvironmentStore {
   ApiEnvironmentStore._();
 
+  /// Unused in production; exists so unit tests can construct the store.
+  @visibleForTesting
+  static ApiEnvironmentStore createForTests() => ApiEnvironmentStore._();
+
   static const String prefsKey = 'api_environment';
 
   static ApiEnvironment? _override;
   static bool _loaded = false;
+
+  /// Null in production — [load] uses [SharedPreferences.getInstance].
+  @visibleForTesting
+  static Future<SharedPreferences> Function()? debugLoadPrefs;
 
   /// True after [load] has run (prefs may still be empty).
   static bool get isLoaded => _loaded;
@@ -35,8 +43,8 @@ class ApiEnvironmentStore {
   /// Reads SharedPreferences, then asserts Live (or dart-define) for cold start.
   static Future<void> load() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final define = AppConfig.dartDefineBaseUrl.trim();
+      final prefs = await (debugLoadPrefs ?? SharedPreferences.getInstance)();
+      final define = AppConfig.effectiveDartDefineBaseUrl;
       if (define.isNotEmpty) {
         // Web / CI builds: same-origin or explicit BASE_URL wins. Drop a stale
         // Stage preference that would bypass the proxy and 404 real kiosks.
@@ -85,5 +93,6 @@ class ApiEnvironmentStore {
   static void resetForTests({ApiEnvironment? override}) {
     _override = override;
     _loaded = override != null;
+    debugLoadPrefs = null;
   }
 }

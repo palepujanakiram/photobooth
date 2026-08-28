@@ -10,6 +10,7 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     ApiEnvironmentStore.resetForTests();
+    AppConfig.dartDefineBaseUrlOverrideForTests = null;
   });
 
   group('apiEnvironmentFromStorage', () {
@@ -52,6 +53,42 @@ void main() {
       await ApiEnvironmentStore.load();
       expect(ApiEnvironmentStore.current, ApiEnvironment.live);
       expect(AppConfig.baseUrl, 'https://fotozenai.fly.dev');
+    });
+
+    test('exposes loaded flag, currentBaseUrl, and private constructor', () async {
+      expect(ApiEnvironmentStore.isLoaded, isFalse);
+      expect(ApiEnvironmentStore.createForTests(), isA<ApiEnvironmentStore>());
+      await ApiEnvironmentStore.load();
+      expect(ApiEnvironmentStore.isLoaded, isTrue);
+      expect(ApiEnvironmentStore.currentBaseUrl, 'https://fotozenai.fly.dev');
+    });
+
+    test('dart-define BASE_URL clears prefs and wins over Live', () async {
+      SharedPreferences.setMockInitialValues({
+        ApiEnvironmentStore.prefsKey: 'stage',
+      });
+      AppConfig.dartDefineBaseUrlOverrideForTests = 'https://custom.example/api/';
+      addTearDown(() => AppConfig.dartDefineBaseUrlOverrideForTests = null);
+      await ApiEnvironmentStore.load();
+      expect(ApiEnvironmentStore.override, isNull);
+      expect(ApiEnvironmentStore.isLoaded, isTrue);
+      expect(AppConfig.baseUrl, 'https://custom.example/api');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(ApiEnvironmentStore.prefsKey), isNull);
+    });
+
+    test('load falls back to Live when prefs throw', () async {
+      ApiEnvironmentStore.debugLoadPrefs = () async => throw StateError('prefs');
+      await ApiEnvironmentStore.load();
+      expect(ApiEnvironmentStore.current, ApiEnvironment.live);
+      expect(ApiEnvironmentStore.isLoaded, isTrue);
+    });
+  });
+
+  group('ApiEnvironment hostHint', () {
+    test('returns live and stage hosts', () {
+      expect(ApiEnvironment.live.hostHint, 'fotozenai.fly.dev');
+      expect(ApiEnvironment.stage.hostHint, 'zenai.fly.dev');
     });
   });
 

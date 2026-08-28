@@ -57,4 +57,13 @@ void main() {
     await cache.delete('X1');
     expect(await cache.read('X1'), isNull);
   });
+
+  test('default CatalogDiskCache constructor writes under support dir', () async {
+    final previous = CatalogDiskCache.supportDirectory;
+    CatalogDiskCache.supportDirectory = () async => dir;
+    addTearDown(() => CatalogDiskCache.supportDirectory = previous);
+    final defaulted = KioskInfoDiskCache();
+    await defaulted.save(const KioskInfoModel(id: 'k1', code: 'Z1'));
+    expect((await defaulted.read('Z1'))?.id, 'k1');
+  });
 }

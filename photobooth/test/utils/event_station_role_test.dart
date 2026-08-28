@@ -77,6 +77,10 @@ void main() {
       ),
       EventPostSplashRoute.stationPicker,
     );
+    expect(
+      eventPostSplashRouteName(EventPostSplashRoute.needsInternet),
+      AppConstants.kRouteSplash,
+    );
   });
 
   test('post-capture route stays on capture station in event mode', () {

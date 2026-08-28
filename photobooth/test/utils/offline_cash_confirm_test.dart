@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:photobooth/services/local_kiosk_store.dart';
 import 'package:photobooth/services/offline_operator_pin_store.dart';
 import 'package:photobooth/services/session_manager.dart';
+import 'package:photobooth/utils/app_strings.dart';
+import 'package:photobooth/utils/exceptions.dart';
 import 'package:photobooth/utils/offline_cash_confirm.dart';
 import 'package:photobooth/utils/payment_workflow_helpers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,6 +23,14 @@ void main() {
   test('default operator PIN verifies', () async {
     expect(await OfflineOperatorPinStore.verifyPin('2468'), isTrue);
     expect(await OfflineOperatorPinStore.verifyPin('0000'), isFalse);
+  });
+
+  test('setPin rejects invalid format and exposes private constructor', () {
+    expect(OfflineOperatorPinStore.createForTests(), isA<OfflineOperatorPinStore>());
+    expect(
+      () => OfflineOperatorPinStore.setPin('12'),
+      throwsA(isA<ArgumentError>()),
+    );
   });
 
   test('setPin adds local pin; master 2468 still works', () async {
@@ -92,5 +102,99 @@ void main() {
     expect(payments.first.payload['status'], 'APPROVED');
     final session = await store.getSession('sess-cash-1');
     expect(session?['paymentStatus'], 'APPROVED');
+  });
+
+  test('settleOfflineCashForCurrentSession rejects missing session', () async {
+    await expectLater(
+      settleOfflineCashForCurrentSession(amountRupees: 10),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.message,
+          'message',
+          AppStrings.sessionPhotoSyncNoSession,
+        ),
+      ),
+    );
+  });
+
+  test('settleOfflineCashForCurrentSession rejects missing ledger', () async {
+    SessionManager().setSessionFromResponse({
+      'id': 'sess-cash-2',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': <dynamic>[],
+      'expiresAt': DateTime.utc(2026, 12, 31).toIso8601String(),
+      'offline': true,
+    });
+    await expectLater(
+      settleOfflineCashForCurrentSession(amountRupees: 10),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.message,
+          'message',
+          AppStrings.offlineCashConfirmNoLedger,
+        ),
+      ),
+    );
+  });
+
+  test('settleOfflineCashForCurrentSession rejects blank payment id', () async {
+    final dir = await Directory.systemTemp.createTemp('fz_cash_blank_');
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    final store = await LocalKioskStore.init(
+      resolveDirectory: () async => dir,
+    );
+    SessionManager().setSessionFromResponse({
+      'id': 'sess-cash-3',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': <dynamic>[],
+      'expiresAt': DateTime.utc(2026, 12, 31).toIso8601String(),
+      'offline': true,
+    });
+    await expectLater(
+      settleOfflineCashForCurrentSession(
+        amountRupees: 10,
+        store: store,
+        newPaymentId: () => '  ',
+      ),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.message,
+          'message',
+          AppStrings.offlineCashConfirmFailed,
+        ),
+      ),
+    );
+  });
+
+  test('settleOfflineCashForCurrentSession allocates a uuid payment id',
+      () async {
+    final dir = await Directory.systemTemp.createTemp('fz_cash_uuid_');
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    final store = await LocalKioskStore.init(
+      resolveDirectory: () async => dir,
+    );
+    SessionManager().setSessionFromResponse({
+      'id': 'sess-cash-4',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': <dynamic>[],
+      'expiresAt': DateTime.utc(2026, 12, 31).toIso8601String(),
+      'offline': true,
+    });
+    final result = await settleOfflineCashForCurrentSession(
+      amountRupees: 50,
+      store: store,
+    );
+    expect(result.paymentId, isNotEmpty);
+    expect(result.sessionId, 'sess-cash-4');
   });
 }

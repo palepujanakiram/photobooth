@@ -92,6 +92,20 @@ void main() {
     expect((await store.currentSessionJson())!['kioskAuthToken'], 'tok');
   });
 
+  test('createKioskSession injects eventId when Fly omits it', () async {
+    final result = await createKioskSession(
+      newId: () => 'client-evt',
+      eventId: 'event-99',
+      acceptTerms: (_) async => {
+        'id': 'client-evt',
+        'termsAccepted': true,
+        'eventId': '  ',
+      },
+    );
+    expect(result.usedLocalFallback, isFalse);
+    expect(result.sessionJson['eventId'], 'event-99');
+  });
+
   test('createKioskSession falls back when WAN is down', () async {
     final dir = await Directory.systemTemp.createTemp('fz_offline_sess_');
     addTearDown(() async {

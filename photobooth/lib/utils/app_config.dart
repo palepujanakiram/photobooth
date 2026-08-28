@@ -16,6 +16,19 @@ class AppConfig {
   /// default [branchDefaultEnvironment]).
   static const String dartDefineBaseUrl = String.fromEnvironment('BASE_URL');
 
+  /// Test-only stand-in for [dartDefineBaseUrl] (const fromEnvironment is empty
+  /// in VM unit tests). Null in production — [effectiveDartDefineBaseUrl]
+  /// then uses dart-define.
+  @visibleForTesting
+  static String? dartDefineBaseUrlOverrideForTests;
+
+  /// Trimmed `--dart-define=BASE_URL` value used by [baseUrl] and splash load.
+  ///
+  /// Production: same as [dartDefineBaseUrl].trim(). Tests may set
+  /// [dartDefineBaseUrlOverrideForTests].
+  static String get effectiveDartDefineBaseUrl =>
+      (dartDefineBaseUrlOverrideForTests ?? dartDefineBaseUrl).trim();
+
   /// Default when prefs and dart-define are unset — production Live API.
   static const ApiEnvironment branchDefaultEnvironment = ApiEnvironment.live;
 
@@ -30,7 +43,7 @@ class AppConfig {
     if (fromPrefs != null && fromPrefs.isNotEmpty) {
       return _stripTrailingSlash(fromPrefs);
     }
-    final fromDefine = dartDefineBaseUrl.trim();
+    final fromDefine = effectiveDartDefineBaseUrl;
     if (fromDefine.isNotEmpty) {
       return _stripTrailingSlash(fromDefine);
     }

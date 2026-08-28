@@ -65,6 +65,9 @@ bool ignored(String path) {
     'photo_generate_viewmodel_helpers.dart',
     'result/result_viewmodel.dart',
     'result_viewmodel_impl.part.dart',
+    // Modal / splash widgets (no unit-testable business logic).
+    'result_offline_cash_sheet.dart',
+    'splash_api_environment_control.dart',
     '.g.dart',
     'firebase_options.dart',
     'lib/main.dart',
