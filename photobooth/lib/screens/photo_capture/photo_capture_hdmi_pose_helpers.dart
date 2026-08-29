@@ -82,6 +82,25 @@ bool shouldShowSidecarPrepHoldBanner({
   return sidecarStillPrepStarted;
 }
 
+/// Prep/mask armed — block another Take shot (Gallery / Phone QR stay as escape).
+bool captureStillPrepBlocksShutter({
+  required bool sidecarStillPrepStarted,
+  required bool hdmiStillMaskArmed,
+}) =>
+    sidecarStillPrepStarted || hdmiStillMaskArmed;
+
+/// Primary CTA shows still-in-progress copy (incl. sidecar prep with HDMI live).
+bool captureShowsStillInProgressLabel({
+  required bool isCapturing,
+  required bool captureInFlight,
+  required bool hdmiStillMaskArmed,
+  required bool sidecarStillPrepStarted,
+}) =>
+    isCapturing ||
+    captureInFlight ||
+    hdmiStillMaskArmed ||
+    sidecarStillPrepStarted;
+
 /// Whether countdown [canStart] may stay true after sidecar prepare-still.
 ///
 /// [prepareStill] intentionally drops Canon LV. Requiring [canonLvHolding]

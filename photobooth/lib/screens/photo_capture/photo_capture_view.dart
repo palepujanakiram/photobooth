@@ -262,15 +262,37 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
     _captureViewModel.forceAbortCapture();
     _captureViewModel.cancelCountdown();
     _flashbackCountdownStarting = false;
-    _clearUvcTransientCaptureUi();
+    // Must re-arm Canon LV — leaving still-arm down makes the next Take shot
+    // hang on "Hold still…" again.
+    _clearUvcTransientCaptureUi(releaseSidecarArm: true);
     if (_uvcPhase == UvcFeedPhase.capturing) {
       _uvcPhase = UvcFeedPhase.error;
     }
     setState(() {
-      _uvcError ??=
-          'Capture took too long. Tap Capture to retry or use Gallery.';
+      _uvcError ??= AppStrings.captureWatchdogAbort;
     });
     if (mounted) _maybeAdvanceFlashbackAutoChain();
+  }
+
+  /// Guest cancels a stuck sidecar prepare / Hold-still banner.
+  void _cancelStuckStillPrep() {
+    if (!mounted) return;
+    AppLogger.warning('[HDMI_POSE] Guest cancelled stuck still prep');
+    unawaited(
+      _captureViewModel.localCameraService?.postClientEvent(
+        'prep_arm_guest_cancel',
+        {'corrId': _poseCorrId},
+      ),
+    );
+    _captureViewModel.forceAbortCapture();
+    _captureViewModel.cancelCountdown();
+    _flashbackCountdownStarting = false;
+    _clearUvcTransientCaptureUi(releaseSidecarArm: true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text(AppStrings.captureMaskStallRetry)),
+    );
+    setState(() {});
   }
 
   void _armMaskStallSoftFailTimer() {
@@ -5349,19 +5371,32 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                       child: Material(
                         color: Colors.black.withValues(alpha: 0.55),
                         borderRadius: BorderRadius.circular(10),
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
                             horizontal: 14,
                             vertical: 10,
                           ),
-                          child: Text(
-                            AppStrings.captureHoldStillFocusing,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          child: Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  AppStrings.captureHoldStillFocusing,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: _cancelStuckStillPrep,
+                                child: const Text(
+                                  AppStrings.captureCancelHoldStill,
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -5852,6 +5887,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
             style: captureScreenButtonStyle(),
             onPressed: (viewModel.isCapturing ||
                     _uvcCaptureInFlight ||
+                    captureStillPrepBlocksShutter(
+                      sidecarStillPrepStarted: _sidecarStillPrepStarted,
+                      hdmiStillMaskArmed: _uvcHdmiStillMaskArmed,
+                    ) ||
                     viewModel.isSelectingFromGallery ||
                     viewModel.isCountingDown ||
                     _flashbackCountdownStarting ||
@@ -5896,9 +5935,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen>
                   },
             icon: const Icon(CupertinoIcons.camera, size: 20),
             label: Text(
-              (viewModel.isCapturing ||
-                      _uvcCaptureInFlight ||
-                      _uvcHdmiStillMaskArmed)
+              captureShowsStillInProgressLabel(
+                    isCapturing: viewModel.isCapturing,
+                    captureInFlight: _uvcCaptureInFlight,
+                    hdmiStillMaskArmed: _uvcHdmiStillMaskArmed,
+                    sidecarStillPrepStarted: _sidecarStillPrepStarted,
+                  )
                   ? _stillInProgressLabel(viewModel)
                   : (flashback
                       ? AppStrings.flashbackTakeShot
