@@ -22,6 +22,7 @@ Map<String, dynamic> appSettingsToCacheJson(AppSettingsModel s) {
       'compressionMaxDimension': s.compressionMaxDimension,
     if (s.showGenerationCommentary != null)
       'showGenerationCommentary': s.showGenerationCommentary,
+    'showApiLogs': s.showApiLogs,
     if (s.thermalSafeMode != null) 'thermalSafeMode': s.thermalSafeMode,
     if (s.defaultAiProvider != null) 'defaultAiProvider': s.defaultAiProvider,
     if (s.fallbackAiProvider != null) 'fallbackAiProvider': s.fallbackAiProvider,

@@ -9,7 +9,6 @@ import '../../utils/app_strings.dart';
 import '../../utils/secure_image_url.dart';
 import '../../utils/transformation_step_display.dart';
 import '../../views/widgets/cached_network_image.dart';
-import '../../views/widgets/leading_with_alice.dart';
 import 'transformation_details_helpers.dart';
 import 'transformation_details_viewmodel.dart';
 
@@ -90,7 +89,6 @@ class _TransformationDetailsBody extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Transformation details'),
-        actions: const [AppBarAliceAction()],
       ),
       body: _transformationDetailsBody(
         vm: vm,

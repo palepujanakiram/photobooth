@@ -16,7 +16,6 @@ import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
-import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../utils/route_args.dart';
 import '../../utils/route_visibility_mixin.dart';
@@ -304,7 +303,6 @@ class _PhotoGenerateScreenState extends State<PhotoGenerateScreen>
                     await viewModel.toggleProgressiveGenerationUi();
                   },
                 ),
-                const AppBarAliceAction(),
               ],
             ),
             body: Stack(

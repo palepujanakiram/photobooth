@@ -83,6 +83,7 @@ class AppSettingsManager extends ChangeNotifier {
         _lastFetchedAt != null) {
       // Keep [AppRuntimeConfig] in sync when callers reuse cached settings.
       AppRuntimeConfig.instance.applyFromSettings(_settings);
+      AliceInspector.syncWithRuntimeConfig();
       return;
     }
 
@@ -107,10 +108,10 @@ class AppSettingsManager extends ChangeNotifier {
         _lastFetchedAt = DateTime.now();
         _errorMessage = null;
         AppRuntimeConfig.instance.applyFromSettings(_settings);
+        AliceInspector.syncWithRuntimeConfig();
         await _persistToDisk(kioskKey);
         await _syncOfflineCashPins();
         applyFlutterImageCacheLimits();
-        AliceInspector.syncWithRuntimeConfig();
         // Fire-and-forget: stop/start EDSDK vs PTP to match ZenAI mode.
         // ignore: unawaited_futures
         syncCanonCameraStackForSettings(_settings);
@@ -153,6 +154,7 @@ class AppSettingsManager extends ChangeNotifier {
     _settings = parsed;
     _settingsKioskKey = kioskKey;
     AppRuntimeConfig.instance.applyFromSettings(_settings);
+    AliceInspector.syncWithRuntimeConfig();
     await _syncOfflineCashPins();
   }
 

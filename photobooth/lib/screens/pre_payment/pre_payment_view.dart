@@ -14,7 +14,6 @@ import '../../utils/route_args.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/centered_max_width.dart';
 import '../../views/widgets/kiosk_payment_qr_display.dart';
-import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
 import '../result/result_payment_coupon_row.dart';
 import '../theme_selection/theme_model.dart';
@@ -180,7 +179,6 @@ class _PrePaymentScreenState extends State<PrePaymentScreen> {
             icon: const Icon(Icons.arrow_back, color: Colors.white),
             onPressed: () => Navigator.of(context).maybePop(),
           ),
-          actions: const [AppBarAliceAction()],
         ),
         body: Stack(
           children: [

@@ -58,13 +58,30 @@ void main() {
 
   test('AppRuntimeConfig applyFromSettings toggles', () {
     AppRuntimeConfig.instance.applyFromSettings(
-      AppSettingsModel(showGenerationCommentary: false),
+      AppSettingsModel(showGenerationCommentary: false, showApiLogs: false),
     );
+    expect(AppRuntimeConfig.instance.showApiLogs, isFalse);
     AppRuntimeConfig.instance.applyFromSettings(
       AppSettingsModel(showGenerationCommentary: true),
     );
     expect(AppRuntimeConfig.instance.showGenerationCommentary, isTrue);
+    expect(AppRuntimeConfig.instance.showApiLogs, isTrue);
     applyFlutterImageCacheLimits();
+  });
+
+  test('AppRuntimeConfig showApiLogs defaults on and follows settings', () {
+    AppRuntimeConfig.instance.applyFromSettings(null);
+    expect(AppRuntimeConfig.instance.showApiLogs, isTrue);
+    AppRuntimeConfig.instance.applyFromSettings(
+      AppSettingsModel(showApiLogs: false),
+    );
+    expect(AppRuntimeConfig.instance.showApiLogs, isFalse);
+    AppRuntimeConfig.instance.applyFromSettings(
+      AppSettingsModel(showApiLogs: false),
+    );
+    expect(AppRuntimeConfig.instance.showApiLogs, isFalse);
+    AppRuntimeConfig.instance.applyFromSettings(AppSettingsModel.fromJson({}));
+    expect(AppRuntimeConfig.instance.showApiLogs, isTrue);
   });
 
   test('KioskManager prefs round-trip', () async {

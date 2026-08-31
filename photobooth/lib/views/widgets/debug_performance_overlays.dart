@@ -7,6 +7,7 @@ import '../../utils/debug_hud_route_policy.dart';
 import 'debug_log_overlay.dart';
 import 'debug_ram_monitor_overlay.dart';
 import 'flow_trace_overlay.dart';
+import 'leading_with_alice.dart';
 
 /// Whether the global on-screen debug HUD should be visible on [routeName].
 bool debugHudEnabledForRoute(String? routeName) {
@@ -276,14 +277,13 @@ class DebugPerformanceOverlayScope extends StatelessWidget {
     return ListenableBuilder(
       listenable: AppRuntimeConfig.instance,
       builder: (context, _) {
-        if (!debugHudEnabledForRoute(routeName)) return child;
-
         return Stack(
           fit: StackFit.expand,
           clipBehavior: Clip.none,
           children: [
             child,
-            _debugHudPanels(context),
+            if (debugHudEnabledForRoute(routeName)) _debugHudPanels(context),
+            const AliceFabOverlay(),
           ],
         );
       },

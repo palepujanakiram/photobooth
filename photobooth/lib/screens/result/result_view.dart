@@ -17,7 +17,6 @@ import '../../utils/logger.dart';
 import '../../views/widgets/app_colors.dart';
 import '../../views/widgets/app_snackbar.dart';
 import '../../views/widgets/centered_max_width.dart';
-import '../../views/widgets/leading_with_alice.dart';
 import '../../views/widgets/theme_background.dart';
 import '../../views/widgets/delete_my_photos_action.dart';
 import '../../services/payment_push_coordinator.dart';
@@ -446,7 +445,6 @@ class _ResultScreenState extends State<ResultScreen> {
           icon: const Icon(CupertinoIcons.back, color: Colors.white),
           onPressed: _confirmAndPopBack,
         ),
-        actions: const [AppBarAliceAction()],
       ),
       body: Stack(
         children: [

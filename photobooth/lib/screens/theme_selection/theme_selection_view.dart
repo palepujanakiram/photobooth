@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'theme_selection_layout.dart';
 import 'theme_selection_viewmodel.dart';
-import '../../views/widgets/leading_with_alice.dart';
 import '../photo_capture/photo_model.dart';
 import '../../utils/app_strings.dart';
 import '../../utils/constants.dart';
@@ -367,7 +366,7 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
                   }
                 },
               ),
-              // Layout + auto-scroll toggles (web + mobile); Alice on wider layouts only.
+              // Layout + auto-scroll toggles (web + mobile).
               actions: [
                 Selector<ThemeViewModel, bool>(
                   selector: (_, vm) => vm.themeCarouselAutoScroll,
@@ -427,8 +426,6 @@ class _ThemeSelectionScreenState extends State<ThemeSelectionScreen>
                     );
                   },
                 ),
-                if (MediaQuery.sizeOf(context).width >= 520)
-                  const AppBarAliceAction(),
               ],
               automaticallyImplyLeading: false,
             ),

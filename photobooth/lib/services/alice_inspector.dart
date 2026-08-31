@@ -5,7 +5,7 @@ import 'package:flutter_alice/alice.dart';
 
 import '../utils/app_runtime_config.dart';
 
-/// Forwards to Alice only when `kDebugMode` and `/api/settings` → `showGenerationCommentary`.
+/// Forwards to Alice only when [AliceInspector.isRequested] (debug native).
 /// **Web:** always a no-op — Alice relies on overlays/navigator patterns that are fragile on web.
 /// Safe to add on every Dio instance: no-ops until those conditions are true.
 class AliceDioProxyInterceptor extends Interceptor {
@@ -40,9 +40,7 @@ class AliceDioProxyInterceptor extends Interceptor {
   }
 
   Interceptor? _delegate() {
-    if (!kDebugMode) return null;
-    if (kIsWeb) return null;
-    if (!AppRuntimeConfig.instance.showGenerationCommentary) return null;
+    if (!AliceInspector.isRequested) return null;
     final alice = AliceInspector.instance;
     if (alice == null) return null;
     return alice.getDioInterceptor();
@@ -50,8 +48,8 @@ class AliceDioProxyInterceptor extends Interceptor {
 }
 
 /// Holds the Alice HTTP inspector for debugging.
-/// [instance] is non-null only in debug builds when `showGenerationCommentary` is true
-/// (after [syncWithRuntimeConfig] runs). **Always null on web.**
+/// [instance] is non-null only when [isRequested] (after [syncWithRuntimeConfig]).
+/// **Always null on web and in release/profile builds.**
 class AliceInspector {
   AliceInspector._();
 
@@ -59,6 +57,19 @@ class AliceInspector {
   static Alice? _instance;
 
   static Alice? get instance => _instance;
+
+  static GlobalKey<NavigatorState>? get navigatorKey => _navigatorKey;
+
+  /// `--dart-define=ENABLE_ALICE=true` turns Alice on without `/api/settings`.
+  static const String _enableAliceDefine = String.fromEnvironment('ENABLE_ALICE');
+
+  /// Debug native + (`showApiLogs` **or** `ENABLE_ALICE=true`).
+  /// [showApiLogs] defaults to true when `/api/settings` omits `show_api_logs`.
+  static bool get isRequested {
+    if (!kDebugMode || kIsWeb) return false;
+    if (_enableAliceDefine == 'true') return true;
+    return AppRuntimeConfig.instance.showApiLogs;
+  }
 
   /// Stores the navigator key and applies [syncWithRuntimeConfig]. Call from [main].
   static void initialize(GlobalKey<NavigatorState> navigatorKey) {
@@ -68,13 +79,11 @@ class AliceInspector {
 
   /// Recreate [instance] when `/api/settings` changes. Safe to call from build (e.g. [Consumer]).
   static void syncWithRuntimeConfig() {
-    if (!kDebugMode) {
-      _instance = null;
-      return;
-    }
-    final want = AppRuntimeConfig.instance.showGenerationCommentary;
-    if (want && _navigatorKey != null && !kIsWeb) {
-      _instance ??= Alice(navigatorKey: _navigatorKey!);
+    if (isRequested && _navigatorKey != null) {
+      _instance ??= Alice(
+        navigatorKey: _navigatorKey!,
+        showNotification: false,
+      );
     } else {
       _instance = null;
     }

@@ -21,6 +21,7 @@ void main() {
       compressionQuality: 85,
       compressionMaxDimension: 1536,
       showGenerationCommentary: false,
+      showApiLogs: false,
       thermalSafeMode: true,
       defaultAiProvider: 'gemini',
       fallbackAiProvider: 'openai',
@@ -69,6 +70,7 @@ void main() {
     expect(back.printerHost, '10.0.0.8');
     expect(back.enableOsdScrub, isTrue);
     expect(back.enableSurpriseMeAi, isTrue);
+    expect(back.showApiLogs, isFalse);
     expect(back.id, 's1');
   });
 
@@ -104,6 +106,7 @@ void main() {
   test('empty settings still serialize photoStripConfig', () {
     final json = appSettingsToCacheJson(AppSettingsModel());
     expect(json['photoStripConfig'], isA<Map<String, dynamic>>());
+    expect(json['showApiLogs'], isTrue);
     expect(appSettingsFromCacheJson(json), isNotNull);
   });
 }
