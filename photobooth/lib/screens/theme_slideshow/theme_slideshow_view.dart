@@ -1,4 +1,4 @@
-import 'dart:async' show Timer, unawaited;
+import 'dart:async' show Timer;
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -80,7 +80,9 @@ class _ThemeSlideshowScreenState extends State<ThemeSlideshowScreen> {
         _viewModel.preloadImages(currentContext);
       }
     }
-    unawaited(_viewModel.fetchThemes());
+    // Bundled slideshow assets only. GET /api/themes without a kiosk is thrown
+    // away when splash binds; Experience Choice / theme selection fetch with
+    // kiosk scope.
   }
 
   void _onViewModelChanged() {

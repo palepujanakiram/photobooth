@@ -25,6 +25,8 @@ class _SettingsApi extends FakeApiService {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     OfflineOperatorPinStore.resetCacheForTests();
@@ -140,6 +142,47 @@ void main() {
     await offline.fetchSettings();
     expect(offline.settings?.initialPrice, 175);
     expect(offline.errorMessage, isNotNull);
+  });
+
+  test('hydrateFromCache loads disk without a network call', () async {
+    final dir = await Directory.systemTemp.createTemp('settings_hydrate_');
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    final disk = CatalogDiskCache(resolveDirectory: () async => dir);
+    final api = _SettingsApi(AppSettingsModel(initialPrice: 80));
+    final first = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => 'K2',
+      diskCache: disk,
+    );
+    await first.fetchSettings();
+    expect(api.fetchCount, 1);
+
+    final cached = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => 'K2',
+      diskCache: disk,
+    );
+    await cached.hydrateFromCache();
+    expect(cached.settings?.initialPrice, 80);
+    expect(api.fetchCount, 1);
+  });
+
+  test('hydrateFromCache no-ops when disk is empty', () async {
+    final dir = await Directory.systemTemp.createTemp('settings_hydrate_empty_');
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    final api = _SettingsApi(AppSettingsModel(initialPrice: 1));
+    final mgr = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => 'K3',
+      diskCache: CatalogDiskCache(resolveDirectory: () async => dir),
+    );
+    await mgr.hydrateFromCache();
+    expect(mgr.settings, isNull);
+    expect(api.fetchCount, 0);
   });
 
   test('fetchSettings syncs offlineCashPins into pin store', () async {

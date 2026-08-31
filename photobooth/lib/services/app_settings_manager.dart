@@ -66,6 +66,22 @@ class AppSettingsManager extends ChangeNotifier {
     return code;
   }
 
+  /// Last persisted settings, no HTTP.
+  ///
+  /// Launch used to GET account-default `/api/settings` before splash bound a
+  /// kiosk; that payload was replaced by `?kiosk=` on bind. Splash still
+  /// force-refreshes with the bound code.
+  Future<void> hydrateFromCache() async {
+    final kioskKey = await _currentKioskKey();
+    await _hydrateFromDisk(kioskKey);
+    if (_settings != null) {
+      applyFlutterImageCacheLimits();
+      // ignore: unawaited_futures
+      syncCanonCameraStackForSettings(_settings);
+    }
+    notifyListeners();
+  }
+
   Future<void> fetchSettings({bool forceRefresh = false}) async {
     final kioskKey = await _currentKioskKey();
     final kioskChanged =
