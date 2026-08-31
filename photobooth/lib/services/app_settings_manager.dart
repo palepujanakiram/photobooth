@@ -88,6 +88,19 @@ class AppSettingsManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// App resume: use disk/memory only when no kiosk is bound.
+  ///
+  /// A USB/camera permission pause must not GET unscoped `/api/settings`;
+  /// splash bind still force-refreshes `?kiosk=`.
+  Future<void> refreshOnAppResume() async {
+    final kioskKey = await _currentKioskKey();
+    if (kioskKey.isEmpty) {
+      await hydrateFromCache();
+      return;
+    }
+    await fetchSettings();
+  }
+
   Future<void> fetchSettings({bool forceRefresh = false}) async {
     final kioskKey = await _currentKioskKey();
     final kioskChanged =
@@ -99,10 +112,8 @@ class AppSettingsManager extends ChangeNotifier {
 
     // Startup often loads settings before splash binds a kiosk. When the bound
     // kiosk changes, ignore the account-default cache so guest prices refresh.
-    if (!forceRefresh &&
-        !kioskChanged &&
-        _settings != null &&
-        _lastFetchedAt != null) {
+    // Disk hydrate (no [_lastFetchedAt]) is enough until splash force-refresh.
+    if (!forceRefresh && !kioskChanged && _settings != null) {
       // Keep [AppRuntimeConfig] in sync when callers reuse cached settings.
       AppRuntimeConfig.instance.applyFromSettings(_settings);
       AliceInspector.syncWithRuntimeConfig();

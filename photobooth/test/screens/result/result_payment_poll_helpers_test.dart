@@ -3,6 +3,118 @@ import 'package:photobooth/models/payment_initiate_result.dart';
 import 'package:photobooth/screens/result/result_payment_poll_helpers.dart';
 
 void main() {
+  test('shouldPollPaymentStatus is true only with a non-blank payment id', () {
+    expect(shouldPollPaymentStatus(null), isFalse);
+    expect(shouldPollPaymentStatus(''), isFalse);
+    expect(shouldPollPaymentStatus('  '), isFalse);
+    expect(shouldPollPaymentStatus('pay-1'), isTrue);
+  });
+
+  test('shouldFallbackToSessionPoll after status-pending ticks', () {
+    expect(
+      shouldFallbackToSessionPoll(kPaymentPollStatusFallbackTicks - 1),
+      isFalse,
+    );
+    expect(
+      shouldFallbackToSessionPoll(kPaymentPollStatusFallbackTicks),
+      isTrue,
+    );
+    expect(
+      sessionIdForPaymentStatusFallback(
+        paymentStatusTicks: kPaymentPollStatusFallbackTicks,
+        sessionId: ' sess-1 ',
+      ),
+      'sess-1',
+    );
+    expect(
+      sessionIdForPaymentStatusFallback(
+        paymentStatusTicks: kPaymentPollStatusFallbackTicks,
+        sessionId: '  ',
+      ),
+      isNull,
+    );
+  });
+
+  test('isPaymentStatusPollActive is false after session fallback', () {
+    expect(
+      isPaymentStatusPollActive(paymentId: 'pay-1', sessionFallback: false),
+      isTrue,
+    );
+    expect(
+      isPaymentStatusPollActive(paymentId: 'pay-1', sessionFallback: true),
+      isFalse,
+    );
+  });
+
+  test('isPaymentPollDead uses the active poller streak', () {
+    expect(
+      isPaymentPollDead(
+        outcomeHandled: true,
+        fcmPaymentPushSuccess: null,
+        paymentId: 'pay-1',
+        sessionFallback: false,
+        paymentStatusFailures: 99,
+        sessionFailures: 99,
+      ),
+      isFalse,
+    );
+    expect(
+      isPaymentPollDead(
+        outcomeHandled: false,
+        fcmPaymentPushSuccess: true,
+        paymentId: 'pay-1',
+        sessionFallback: false,
+        paymentStatusFailures: 99,
+        sessionFailures: 99,
+      ),
+      isFalse,
+    );
+    expect(
+      isPaymentPollDead(
+        outcomeHandled: false,
+        fcmPaymentPushSuccess: null,
+        paymentId: 'pay-1',
+        sessionFallback: false,
+        paymentStatusFailures: kPaymentPollDeadFailureTicks,
+        sessionFailures: 0,
+      ),
+      isTrue,
+    );
+    expect(
+      isPaymentPollDead(
+        outcomeHandled: false,
+        fcmPaymentPushSuccess: null,
+        paymentId: null,
+        sessionFallback: false,
+        paymentStatusFailures: 0,
+        sessionFailures: kPaymentPollDeadFailureTicks,
+      ),
+      isTrue,
+    );
+    expect(
+      isPaymentPollDead(
+        outcomeHandled: false,
+        fcmPaymentPushSuccess: null,
+        paymentId: 'pay-1',
+        sessionFallback: false,
+        paymentStatusFailures: kPaymentPollDeadFailureTicks - 1,
+        sessionFailures: 99,
+      ),
+      isFalse,
+    );
+    expect(
+      isPaymentPollDead(
+        outcomeHandled: false,
+        fcmPaymentPushSuccess: null,
+        paymentId: 'pay-1',
+        sessionFallback: true,
+        paymentStatusFailures: 0,
+        sessionFailures: kPaymentPollDeadFailureTicks,
+      ),
+      isTrue,
+    );
+  });
+
   test('paymentQrPayloadPresent detects any scannable field', () {
     expect(paymentQrPayloadPresent(), isFalse);
     expect(

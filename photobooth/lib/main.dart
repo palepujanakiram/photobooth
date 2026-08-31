@@ -311,10 +311,9 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Do not force-refresh: USB/camera permission dialogs pause the app and
-      // would otherwise GET /api/settings again. Splash bind and operator
-      // Refresh still call forceRefresh. Cache is used when settings exist.
-      _appSettingsManager.fetchSettings();
+      // Disk/memory only when unbound — do not GET `/api/settings` with no
+      // `?kiosk=`. Splash bind still force-refreshes kiosk-scoped settings.
+      unawaited(_appSettingsManager.refreshOnAppResume());
       if (supportsFirebaseMessaging) {
         unawaited(
           PaymentPushCoordinator.instance.flushPendingStoragePayment(),

@@ -171,6 +171,10 @@ void main() {
     );
     await offline.fetchSettings();
     expect(offline.settings?.initialPrice, 175);
+    expect(offline.errorMessage, isNull);
+
+    await offline.fetchSettings(forceRefresh: true);
+    expect(offline.settings?.initialPrice, 175);
     expect(offline.errorMessage, isNotNull);
   });
 
@@ -196,6 +200,80 @@ void main() {
     );
     await cached.hydrateFromCache();
     expect(cached.settings?.initialPrice, 80);
+    expect(api.fetchCount, 1);
+  });
+
+  test('hydrateFromCache then fetchSettings does not hit the network', () async {
+    final dir = await Directory.systemTemp.createTemp('settings_hydrate_fetch_');
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    final disk = CatalogDiskCache(resolveDirectory: () async => dir);
+    final api = _SettingsApi(AppSettingsModel(initialPrice: 90));
+    final first = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => 'K2',
+      diskCache: disk,
+    );
+    await first.fetchSettings();
+    expect(api.fetchCount, 1);
+
+    final cached = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => 'K2',
+      diskCache: disk,
+    );
+    await cached.hydrateFromCache();
+    await cached.fetchSettings();
+    expect(cached.settings?.initialPrice, 90);
+    expect(api.fetchCount, 1);
+  });
+
+  test('refreshOnAppResume skips HTTP when no kiosk is bound', () async {
+    final api = _SettingsApi(AppSettingsModel(initialPrice: 1));
+    final mgr = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => null,
+    );
+    await mgr.refreshOnAppResume();
+    expect(api.fetchCount, 0);
+    expect(mgr.settings, isNull);
+  });
+
+  test('refreshOnAppResume hydrates disk without HTTP when unbound', () async {
+    final dir = await Directory.systemTemp.createTemp('settings_resume_disk_');
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    final disk = CatalogDiskCache(resolveDirectory: () async => dir);
+    final api = _SettingsApi(AppSettingsModel(initialPrice: 120));
+    final bound = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => '',
+      diskCache: disk,
+    );
+    await bound.fetchSettings();
+    expect(api.fetchCount, 1);
+
+    final resume = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => '',
+      diskCache: disk,
+    );
+    await resume.refreshOnAppResume();
+    expect(resume.settings?.initialPrice, 120);
+    expect(api.fetchCount, 1);
+  });
+
+  test('refreshOnAppResume uses cache when a kiosk is bound', () async {
+    final api = _SettingsApi(AppSettingsModel(initialPrice: 55));
+    final mgr = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => 'GSM',
+    );
+    await mgr.fetchSettings();
+    expect(api.fetchCount, 1);
+    await mgr.refreshOnAppResume();
     expect(api.fetchCount, 1);
   });
 

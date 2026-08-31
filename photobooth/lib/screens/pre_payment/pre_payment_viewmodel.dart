@@ -48,6 +48,7 @@ class PrePaymentViewModel extends ChangeNotifier {
   int _paymentIdConsecutiveFailureTicks = 0;
   int _sessionConsecutiveFailureTicks = 0;
   bool _paymentOutcomeHandled = false;
+  bool _sessionPollFallback = false;
   String? _fcmPaymentStatusDetail;
   bool? _fcmPaymentPushSuccess;
   bool _disposed = false;
@@ -86,12 +87,14 @@ class PrePaymentViewModel extends ChangeNotifier {
     return d.chargeAmount;
   }
 
-  bool get isDeadPollingFallbackVisible {
-    if (_paymentOutcomeHandled) return false;
-    if (_fcmPaymentPushSuccess != null) return false;
-    return _paymentIdConsecutiveFailureTicks >= 10 &&
-        _sessionConsecutiveFailureTicks >= 10;
-  }
+  bool get isDeadPollingFallbackVisible => isPaymentPollDead(
+        outcomeHandled: _paymentOutcomeHandled,
+        fcmPaymentPushSuccess: _fcmPaymentPushSuccess,
+        paymentId: _activePaymentId,
+        sessionFallback: _sessionPollFallback,
+        paymentStatusFailures: _paymentIdConsecutiveFailureTicks,
+        sessionFailures: _sessionConsecutiveFailureTicks,
+      );
 
   @visibleForTesting
   void setPollingFailureStreaksForTest({
@@ -158,6 +161,7 @@ class PrePaymentViewModel extends ChangeNotifier {
     _sessionNullStreak = 0;
     _paymentIdConsecutiveFailureTicks = 0;
     _sessionConsecutiveFailureTicks = 0;
+    _sessionPollFallback = false;
     _paymentOutcomeHandled = false;
     notifyListeners();
 
@@ -209,10 +213,7 @@ class PrePaymentViewModel extends ChangeNotifier {
       } else {
         _paymentInitError = null;
       }
-      if (_activePaymentId != null) {
-        _startPaymentStatusPolling();
-      }
-      _startSessionApprovalPolling(sessionId);
+      _startPaymentApprovalPolling(sessionId);
     } on ApiException catch (e) {
       _paymentInitError = e.message;
     } catch (e, st) {
@@ -250,7 +251,15 @@ class PrePaymentViewModel extends ChangeNotifier {
     }
   }
 
-  static const _paymentPollInterval = Duration(seconds: 3);
+  void _startPaymentApprovalPolling(String sessionId) {
+    stopPaymentPolling();
+    _sessionPollFallback = false;
+    if (shouldPollPaymentStatus(_activePaymentId)) {
+      _startPaymentStatusPolling();
+      return;
+    }
+    _startSessionApprovalPolling(sessionId);
+  }
 
   void _startPaymentStatusPolling() {
     _paymentIdPollTimer?.cancel();
@@ -258,7 +267,7 @@ class PrePaymentViewModel extends ChangeNotifier {
     _paymentIdNullStreak = 0;
     _paymentIdConsecutiveFailureTicks = 0;
     _paymentIdPollTimer = Timer.periodic(
-      _paymentPollInterval,
+      kPaymentPollInterval,
       _onPaymentPollTick,
     );
   }
@@ -269,7 +278,7 @@ class PrePaymentViewModel extends ChangeNotifier {
     _sessionNullStreak = 0;
     _sessionConsecutiveFailureTicks = 0;
     _sessionPollTimer = Timer.periodic(
-      _paymentPollInterval,
+      kPaymentPollInterval,
       (t) => _onSessionPollTick(t, sessionId),
     );
   }
@@ -279,7 +288,7 @@ class PrePaymentViewModel extends ChangeNotifier {
       t.cancel();
       return;
     }
-    if (++_sessionPollTicks > 180) {
+    if (++_sessionPollTicks > kPaymentPollMaxTicks) {
       t.cancel();
       return;
     }
@@ -299,7 +308,9 @@ class PrePaymentViewModel extends ChangeNotifier {
         // Keep polling; UI may show stuck fallback.
       }
       _sessionConsecutiveFailureTicks += 1;
-      if (_sessionConsecutiveFailureTicks == 10) notifyListeners();
+      if (_sessionConsecutiveFailureTicks == kPaymentPollDeadFailureTicks) {
+        notifyListeners();
+      }
       return;
     }
     _sessionNullStreak = 0;
@@ -338,7 +349,7 @@ class PrePaymentViewModel extends ChangeNotifier {
       t.cancel();
       return;
     }
-    if (++_paymentIdPollTicks > 90) {
+    if (++_paymentIdPollTicks > kPaymentPollMaxTicks) {
       t.cancel();
       return;
     }
@@ -364,7 +375,9 @@ class PrePaymentViewModel extends ChangeNotifier {
         // Keep polling.
       }
       _paymentIdConsecutiveFailureTicks += 1;
-      if (_paymentIdConsecutiveFailureTicks == 10) notifyListeners();
+      if (_paymentIdConsecutiveFailureTicks == kPaymentPollDeadFailureTicks) {
+        notifyListeners();
+      }
       return;
     }
     _paymentIdNullStreak = 0;
@@ -394,7 +407,15 @@ class PrePaymentViewModel extends ChangeNotifier {
         );
       case PaymentPollVerdict.pending:
       case null:
-        break;
+        final fallbackSessionId = sessionIdForPaymentStatusFallback(
+          paymentStatusTicks: _paymentIdPollTicks,
+          sessionId: _sessionManager.sessionId,
+        );
+        if (fallbackSessionId != null) {
+          t.cancel();
+          _sessionPollFallback = true;
+          _startSessionApprovalPolling(fallbackSessionId);
+        }
     }
   }
 
@@ -449,10 +470,7 @@ class PrePaymentViewModel extends ChangeNotifier {
     }
     if (_disposed) return;
 
-    _startSessionApprovalPolling(sessionId);
-    if (_activePaymentId != null && _activePaymentId!.trim().isNotEmpty) {
-      _startPaymentStatusPolling();
-    }
+    _startPaymentApprovalPolling(sessionId);
   }
 
   Future<void> onFcmPaymentPush(PaymentPushPayload payload) async {
