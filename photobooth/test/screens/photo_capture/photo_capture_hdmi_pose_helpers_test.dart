@@ -231,6 +231,48 @@ void main() {
       );
     });
 
+    test('prep blocks Take shot but still-in-progress label includes prep', () {
+      expect(
+        captureStillPrepBlocksShutter(
+          sidecarStillPrepStarted: true,
+          hdmiStillMaskArmed: false,
+        ),
+        isTrue,
+      );
+      expect(
+        captureStillPrepBlocksShutter(
+          sidecarStillPrepStarted: false,
+          hdmiStillMaskArmed: true,
+        ),
+        isTrue,
+      );
+      expect(
+        captureStillPrepBlocksShutter(
+          sidecarStillPrepStarted: false,
+          hdmiStillMaskArmed: false,
+        ),
+        isFalse,
+      );
+      expect(
+        captureShowsStillInProgressLabel(
+          isCapturing: false,
+          captureInFlight: false,
+          hdmiStillMaskArmed: false,
+          sidecarStillPrepStarted: true,
+        ),
+        isTrue,
+      );
+      expect(
+        captureShowsStillInProgressLabel(
+          isCapturing: false,
+          captureInFlight: false,
+          hdmiStillMaskArmed: false,
+          sidecarStillPrepStarted: false,
+        ),
+        isFalse,
+      );
+    });
+
     test('sidecar shutter phase prompts Say cheese', () {
       expect(
         captureStillInProgressLabel(

@@ -575,6 +575,13 @@ abstract final class AppStrings {
   static const captureMaskStallRetry =
       'Camera took too long. Tap Capture to try again.';
 
+  /// POSE capture watchdog — guest can retry or use Gallery / Phone QR.
+  static const captureWatchdogAbort =
+      'Capture took too long. Tap Capture to retry, or use Gallery / Phone QR.';
+
+  /// Cancel button on the Hold-still prep banner.
+  static const captureCancelHoldStill = 'Cancel';
+
   /// Inter-shot hold on the final Classic still before looks.
   static const flashbackReviewLastShot = 'Looking good! Continuing soon…';
 
