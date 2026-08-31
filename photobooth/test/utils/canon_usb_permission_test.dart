@@ -555,6 +555,7 @@ void main() {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       addTearDown(() => debugDefaultTargetPlatformOverride = null);
       var statusCalls = 0;
+      var connectCalls = 0;
       messenger.setMockMethodCallHandler(ptpChannel, (call) async {
         switch (call.method) {
           case 'status':
@@ -568,6 +569,7 @@ void main() {
               'hasPermission': true,
             };
           case 'connect':
+            connectCalls++;
             return {'state': 'Ready', 'label': 'Ready'};
           default:
             return null;
@@ -581,6 +583,7 @@ void main() {
       );
       expect(ok, isTrue);
       expect(statusCalls, greaterThan(0));
+      expect(connectCalls, greaterThan(0));
     });
 
     test('warmDirectPtpOnTerms returns false when permission denied on connect', () async {
@@ -612,15 +615,129 @@ void main() {
       expect(ok, isFalse);
     });
 
-    test('warmDirectPtpOnTerms times out when camera never connects', () async {
+    test('warmDirectPtpOnTerms returns false immediately when no body is attached',
+        () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      var connectCalls = 0;
+      messenger.setMockMethodCallHandler(ptpChannel, (call) async {
+        switch (call.method) {
+          case 'status':
+            return {'state': 'NoDevice', 'label': 'No device'};
+          case 'probeDevice':
+            return null;
+          case 'connect':
+            connectCalls++;
+            return {'state': 'NoDevice', 'label': 'No device'};
+          default:
+            return null;
+        }
+      });
+      final ok = await warmDirectPtpOnTerms(
+        settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+        camera: DirectPtpCameraService(isAndroid: () => true),
+        timeout: const Duration(seconds: 20),
+        pollInterval: const Duration(milliseconds: 500),
+      );
+      expect(ok, isFalse);
+      expect(connectCalls, 0);
+    });
+
+    test('warmDirectPtpOnTerms skips when USB host is missing', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      var statusCalls = 0;
       messenger.setMockMethodCallHandler(ptpChannel, (call) async {
         if (call.method == 'status') {
-          return {'state': 'NoDevice', 'label': 'No device'};
+          statusCalls++;
+          return {'state': 'NoUsbHostSupport', 'label': 'No host'};
         }
         if (call.method == 'probeDevice') return null;
         return null;
+      });
+      final ok = await warmDirectPtpOnTerms(
+        settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+        camera: DirectPtpCameraService(isAndroid: () => true),
+        timeout: const Duration(seconds: 20),
+        pollInterval: const Duration(milliseconds: 500),
+      );
+      expect(ok, isFalse);
+      expect(statusCalls, 1);
+    });
+
+    test('warmDirectPtpOnTerms skips when the body has detached', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      var statusCalls = 0;
+      messenger.setMockMethodCallHandler(ptpChannel, (call) async {
+        if (call.method == 'status') {
+          statusCalls++;
+          return {'state': 'Detached', 'label': 'Detached'};
+        }
+        if (call.method == 'probeDevice') return null;
+        return null;
+      });
+      final ok = await warmDirectPtpOnTerms(
+        settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+        camera: DirectPtpCameraService(isAndroid: () => true),
+        timeout: const Duration(seconds: 20),
+        pollInterval: const Duration(milliseconds: 500),
+      );
+      expect(ok, isFalse);
+      expect(statusCalls, 1);
+    });
+
+    test('warmDirectPtpOnTerms still polls when the session already saw a body',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      var statusCalls = 0;
+      var connectCalls = 0;
+      messenger.setMockMethodCallHandler(ptpChannel, (call) async {
+        switch (call.method) {
+          case 'status':
+            statusCalls++;
+            return {'state': 'DeviceFound', 'label': 'Found'};
+          case 'probeDevice':
+            return null;
+          case 'connect':
+            connectCalls++;
+            return {'state': 'Ready', 'label': 'Ready'};
+          default:
+            return null;
+        }
+      });
+      final ok = await warmDirectPtpOnTerms(
+        settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+        camera: DirectPtpCameraService(isAndroid: () => true),
+        timeout: const Duration(milliseconds: 20),
+        pollInterval: const Duration(milliseconds: 5),
+      );
+      expect(ok, isFalse);
+      expect(statusCalls, greaterThan(1));
+      expect(connectCalls, 0);
+    });
+
+    test('warmDirectPtpOnTerms times out when attached body never connects',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      messenger.setMockMethodCallHandler(ptpChannel, (call) async {
+        switch (call.method) {
+          case 'status':
+            return {'state': 'DeviceFound', 'label': 'Found'};
+          case 'probeDevice':
+            return {
+              'deviceName': '/dev/1',
+              'vendorId': 0x04a9,
+              'productId': 1,
+              'hasPermission': true,
+            };
+          case 'connect':
+            return {'state': 'DeviceFound', 'label': 'Still opening'};
+          default:
+            return null;
+        }
       });
       final ok = await warmDirectPtpOnTerms(
         settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
@@ -637,6 +754,34 @@ void main() {
         camera: DirectPtpCameraService(isAndroid: () => false),
       );
       expect(ok, isFalse);
+    });
+
+    test('primeDirectPtpOnTermsLaunch no-ops when no Canon is attached',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      var connectCalls = 0;
+      messenger.setMockMethodCallHandler(ptpChannel, (call) async {
+        switch (call.method) {
+          case 'hasUsbHost':
+            return true;
+          case 'probeDevice':
+            return null;
+          case 'status':
+            return {'state': 'NoDevice', 'label': 'No device'};
+          case 'connect':
+            connectCalls++;
+            return {'state': 'NoDevice', 'label': 'No device'};
+          default:
+            return null;
+        }
+      });
+      final ok = await primeDirectPtpOnTermsLaunch(
+        settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+        camera: DirectPtpCameraService(isAndroid: () => true),
+      );
+      expect(ok, isTrue);
+      expect(connectCalls, 0);
     });
 
     test('primeDirectPtpOnTermsLaunch no-ops for EDSDK direct booths', () async {
@@ -660,6 +805,7 @@ void main() {
     test('primeDirectPtpOnTermsLaunch warms PTP after USB grant', () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      var connectCalls = 0;
       messenger.setMockMethodCallHandler(ptpChannel, (call) async {
         switch (call.method) {
           case 'hasUsbHost':
@@ -672,6 +818,7 @@ void main() {
               'hasPermission': false,
             };
           case 'connect':
+            connectCalls++;
             return {'state': 'Ready', 'label': 'Ready'};
           case 'status':
             return {'state': 'Ready', 'label': 'Ready'};
@@ -684,6 +831,46 @@ void main() {
         camera: DirectPtpCameraService(isAndroid: () => true),
       );
       expect(ok, isTrue);
+      expect(connectCalls, greaterThan(0));
+    });
+
+    test('primeDirectPtpOnTermsLaunch still warms when USB grant is already held',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      var connectCalls = 0;
+      var statusCalls = 0;
+      messenger.setMockMethodCallHandler(ptpChannel, (call) async {
+        switch (call.method) {
+          case 'hasUsbHost':
+            return true;
+          case 'probeDevice':
+            return {
+              'deviceName': '/dev/1',
+              'vendorId': 0x04a9,
+              'productId': 1,
+              'hasPermission': true,
+            };
+          case 'connect':
+            connectCalls++;
+            return {'state': 'Ready', 'label': 'Ready'};
+          case 'status':
+            statusCalls++;
+            if (connectCalls > 0) {
+              return {'state': 'Ready', 'label': 'Ready'};
+            }
+            return {'state': 'DeviceFound', 'label': 'Found'};
+          default:
+            return null;
+        }
+      });
+      final ok = await primeDirectPtpOnTermsLaunch(
+        settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+        camera: DirectPtpCameraService(isAndroid: () => true),
+      );
+      expect(ok, isTrue);
+      expect(connectCalls, greaterThan(0));
+      expect(statusCalls, greaterThan(0));
     });
 
     test('isDirectPtpReadyForTerms true when status is operational', () async {
@@ -1004,6 +1191,8 @@ void main() {
     }
 
     test('permission held is false off Android', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
       expect(
         await isOnDeviceCanonUsbPermissionHeld(
           settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
@@ -1029,12 +1218,45 @@ void main() {
       );
     });
 
-    test('permission held is false when PTP has no device', () async {
+    test('permission held is true when PTP has no device', () async {
       asAndroid();
       messenger.setMockMethodCallHandler(ptpChannel, (call) async {
         switch (call.method) {
+          case 'hasUsbHost':
+            return true;
           case 'status':
             return {'state': 'NoDevice', 'label': 'No device'};
+          case 'probeDevice':
+            return null;
+          default:
+            return null;
+        }
+      });
+      // No body means no allow dialog, so Terms must not name the Canon grant.
+      expect(
+        await isOnDeviceCanonUsbPermissionHeld(
+          settings: AppSettingsModel(cameraConnectionMode: 'direct_ptp'),
+          camera: DirectPtpCameraService(isAndroid: () => true),
+        ),
+        isTrue,
+      );
+    });
+
+    test('permission held is false when PTP body needs the USB grant', () async {
+      asAndroid();
+      messenger.setMockMethodCallHandler(ptpChannel, (call) async {
+        switch (call.method) {
+          case 'hasUsbHost':
+            return true;
+          case 'status':
+            return {'state': 'PermissionDenied', 'label': 'Need permission'};
+          case 'probeDevice':
+            return {
+              'deviceName': '/dev/1',
+              'vendorId': 0x04a9,
+              'productId': 1,
+              'hasPermission': false,
+            };
           default:
             return null;
         }

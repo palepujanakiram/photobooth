@@ -107,7 +107,17 @@ Future<bool> ensureDirectPtpUsbOnTerms({
   return status.state != DirectPtpState.permissionDenied;
 }
 
+/// True when native PTP has no camera on the bus (skip Terms warm-up).
+bool _directPtpStateMeansNoBody(DirectPtpState state) =>
+    state == DirectPtpState.noDevice ||
+    state == DirectPtpState.noUsbHost ||
+    state == DirectPtpState.detached;
+
 /// Poll native PTP while the guest is on Terms (after USB allow).
+///
+/// The 20 s loop is only for a body that is already on USB but still opening a
+/// session. No Canon on the bus means no session is coming — same early-out as
+/// [warmDirectSidecarAfterUsbGrant].
 Future<bool> warmDirectPtpOnTerms({
   AppSettingsModel? settings,
   Duration timeout = const Duration(seconds: 20),
@@ -118,6 +128,15 @@ Future<bool> warmDirectPtpOnTerms({
   if (!isDirectPtpBooth(settings)) return false;
 
   final service = camera ?? DirectPtpCameraService();
+  final initial = await service.status();
+  if (initial.state.isOperational) return true;
+  // Skip only when the USB list and the session both say no body. A connected
+  // Canon (including one still opening a session) always continues into the loop.
+  if (await service.probeDevice() == null &&
+      _directPtpStateMeansNoBody(initial.state)) {
+    return false;
+  }
+
   final deadline = DateTime.now().add(timeout);
   while (DateTime.now().isBefore(deadline)) {
     final status = await service.status();
@@ -163,6 +182,13 @@ Future<bool> primeDirectPtpOnTermsLaunch({
   DirectPtpCameraService? camera,
 }) async {
   if (!isDirectPtpBooth(settings)) return true;
+  // Connected Canon (open session or body on USB) still gets USB grant + warm-up.
+  // Only phones/tablets with no DSLR skip the 20 s poll.
+  final sessionReady =
+      await isDirectPtpReadyForTerms(settings: settings, camera: camera);
+  final bodyOnUsb =
+      await isDirectPtpHardwareAvailable(settings: settings, camera: camera);
+  if (!sessionReady && !bodyOnUsb) return true;
   final granted = await ensureDirectPtpUsbOnTerms(
     settings: settings,
     camera: camera,
@@ -250,17 +276,24 @@ Future<bool> canonSidecarAwaitingUsbPermission() async {
   return state == 'waiting_usb';
 }
 
-/// True when an on-device Canon booth already holds its Android USB grant.
+/// True when Terms should not name the Canon USB allow dialog.
 ///
-/// Terms uses this to decide whether the "Allow USB access…" hint is honest.
-/// A booth that was allowed on an earlier guest never sees the system dialog
-/// again, so the hint would just be noise on every re-entry.
+/// That includes a grant already held from an earlier guest, and a configured
+/// Canon booth with no body on USB — no system dialog is coming, so the
+/// generic "Getting the camera ready…" copy is the honest one.
 Future<bool> isOnDeviceCanonUsbPermissionHeld({
   AppSettingsModel? settings,
   DirectPtpCameraService? camera,
 }) async {
   if (defaultTargetPlatform != TargetPlatform.android) return false;
   if (isDirectPtpBooth(settings)) {
+    // No body on USB means no allow dialog is coming — same as EDSDK sidecar.
+    if (!await isDirectPtpHardwareAvailable(
+      settings: settings,
+      camera: camera,
+    )) {
+      return true;
+    }
     return isDirectPtpReadyForTerms(settings: settings, camera: camera);
   }
   if (!isDirectCanonSidecarBooth(settings)) return false;
