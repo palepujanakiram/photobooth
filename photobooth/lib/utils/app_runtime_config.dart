@@ -9,17 +9,25 @@ import '../models/app_settings_model.dart';
 /// - **Native:** "Low memory kiosk" optimizations ([AppConstants.kLowMemoryKioskMode])
 /// - **Web:** on-screen Logs / Perf trace / JS-heap HUD and loader debug lines.
 ///
+/// [showApiLogs] defaults to **on** even before settings load (and when the
+/// API omits the key). When false, the Alice HTTP inspector icon is hidden.
+///
 /// When `thermalSafeMode == true`: UVC idle feed sleep and lifecycle pause on capture.
 class AppRuntimeConfig extends ChangeNotifier {
   AppRuntimeConfig._();
   static final AppRuntimeConfig instance = AppRuntimeConfig._();
 
   bool _showGenerationCommentary = false;
+  bool _showApiLogs = true;
   bool _thermalSafeMode = false;
   bool _injectClassicAfMarkers = false;
 
   /// Mirrors `/api/settings` → `showGenerationCommentary`. Drives debug / kiosk-RAM behavior.
   bool get showGenerationCommentary => _showGenerationCommentary;
+
+  /// Mirrors `/api/settings` → `show_api_logs`. Drives the Alice inspector icon.
+  /// True when settings have not loaded or the key is omitted.
+  bool get showApiLogs => _showApiLogs;
 
   /// Mirrors `/api/settings` → `thermalSafeMode`. Drives UVC thermal relief on capture.
   bool get thermalSafeMode => _thermalSafeMode;
@@ -29,14 +37,17 @@ class AppRuntimeConfig extends ChangeNotifier {
 
   void applyFromSettings(AppSettingsModel? settings) {
     final nextCommentary = settings?.showGenerationCommentary == true;
+    final nextShowApiLogs = settings?.showApiLogs ?? true;
     final nextThermal = settings?.thermalSafeMode == true;
     final nextInject = settings?.injectAfMarkers == true;
     if (nextCommentary == _showGenerationCommentary &&
+        nextShowApiLogs == _showApiLogs &&
         nextThermal == _thermalSafeMode &&
         nextInject == _injectClassicAfMarkers) {
       return;
     }
     _showGenerationCommentary = nextCommentary;
+    _showApiLogs = nextShowApiLogs;
     _thermalSafeMode = nextThermal;
     _injectClassicAfMarkers = nextInject;
     notifyListeners();

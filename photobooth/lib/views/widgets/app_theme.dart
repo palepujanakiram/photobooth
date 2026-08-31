@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../utils/constants.dart';
 import 'app_colors.dart';
-import 'leading_with_alice.dart';
 
 /// Common theme configuration for the app (Material).
 class AppTheme {
@@ -75,13 +74,14 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
         style: AppTheme.titleTextStyleForContext(context),
       ) : null),
       leading: leading,
-      actions: [
-        ...?actions?.map((action) => ConstrainedBox(
+      actions: actions
+          ?.map(
+            (action) => ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 48),
               child: action,
-            )),
-        const AppBarAliceAction(),
-      ],
+            ),
+          )
+          .toList(),
       automaticallyImplyLeading: automaticallyImplyLeading,
       backgroundColor: appColors.backgroundColor,
       foregroundColor: appColors.textColor,

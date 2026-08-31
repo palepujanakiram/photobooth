@@ -19,6 +19,10 @@ class AppSettingsModel {
   /// When true (from `/api/settings`), show generation commentary; also RAM monitor on capture.
   final bool? showGenerationCommentary;
 
+  /// When true, show the Alice HTTP inspector icon. Defaults to **true** when
+  /// `/api/settings` omits `show_api_logs` / `showApiLogs`.
+  final bool showApiLogs;
+
   /// When true, enables UVC thermal relief (idle feed sleep, lifecycle pause) on capture.
   final bool? thermalSafeMode;
   final String? defaultAiProvider;
@@ -94,6 +98,7 @@ class AppSettingsModel {
     this.compressionQuality,
     this.compressionMaxDimension,
     this.showGenerationCommentary,
+    this.showApiLogs = true,
     this.thermalSafeMode,
     this.defaultAiProvider,
     this.fallbackAiProvider,
@@ -165,6 +170,7 @@ class AppSettingsModel {
           JsonParseHelpers.intOrNull(json['compressionMaxDimension']),
       showGenerationCommentary:
           JsonParseHelpers.boolOrNull(json['showGenerationCommentary']),
+      showApiLogs: _parseShowApiLogs(json),
       thermalSafeMode: JsonParseHelpers.boolOrNull(json['thermalSafeMode']),
       defaultAiProvider: JsonParseHelpers.stringOrNull(json['defaultAiProvider']),
       fallbackAiProvider:
@@ -227,6 +233,13 @@ class AppSettingsModel {
       createdAt: JsonParseHelpers.dateTimeOrNull(json['createdAt']),
       updatedAt: JsonParseHelpers.dateTimeOrNull(json['updatedAt']),
     );
+  }
+
+  /// `show_api_logs` (device setting) or camelCase; missing / non-bool → true.
+  static bool _parseShowApiLogs(Map<String, dynamic> json) {
+    return JsonParseHelpers.boolOrNull(json['show_api_logs']) ??
+        JsonParseHelpers.boolOrNull(json['showApiLogs']) ??
+        true;
   }
 
   static List<String>? _parseOfflineCashPins(Object? raw) {

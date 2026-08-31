@@ -40,6 +40,37 @@ void main() {
     expect(m.thermalSafeMode, isTrue);
   });
 
+  test('AppSettingsModel.fromJson defaults show_api_logs to true', () {
+    expect(AppSettingsModel.fromJson({}).showApiLogs, isTrue);
+    expect(AppSettingsModel().showApiLogs, isTrue);
+  });
+
+  test('AppSettingsModel.fromJson parses show_api_logs snake_case', () {
+    expect(
+      AppSettingsModel.fromJson({'show_api_logs': false}).showApiLogs,
+      isFalse,
+    );
+    expect(
+      AppSettingsModel.fromJson({'show_api_logs': true}).showApiLogs,
+      isTrue,
+    );
+  });
+
+  test('AppSettingsModel.fromJson parses showApiLogs camelCase', () {
+    expect(
+      AppSettingsModel.fromJson({'showApiLogs': false}).showApiLogs,
+      isFalse,
+    );
+  });
+
+  test('AppSettingsModel.fromJson prefers show_api_logs over camelCase', () {
+    final m = AppSettingsModel.fromJson({
+      'show_api_logs': false,
+      'showApiLogs': true,
+    });
+    expect(m.showApiLogs, isFalse);
+  });
+
   test('AppSettingsModel.fromJson parses receipt printer fields', () {
     final m = AppSettingsModel.fromJson({
       'receiptPrinterEnabled': true,

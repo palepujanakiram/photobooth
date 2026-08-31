@@ -57,6 +57,7 @@ void main() {
     await mgr.fetchSettings();
     expect(AppRuntimeConfig.instance.showGenerationCommentary, isTrue);
     expect(AppRuntimeConfig.instance.thermalSafeMode, isTrue);
+    expect(AppRuntimeConfig.instance.showApiLogs, isTrue);
 
     AppRuntimeConfig.instance.applyFromSettings(
       AppSettingsModel(showGenerationCommentary: false),
@@ -64,6 +65,19 @@ void main() {
     await mgr.fetchSettings();
     expect(AppRuntimeConfig.instance.showGenerationCommentary, isTrue);
     expect(AppRuntimeConfig.instance.thermalSafeMode, isTrue);
+  });
+
+  test('fetchSettings applies showApiLogs from API', () async {
+    AppRuntimeConfig.instance.applyFromSettings(
+      AppSettingsModel(showApiLogs: true),
+    );
+    final mgr = AppSettingsManager(
+      apiService: _SettingsApi(AppSettingsModel(showApiLogs: false)),
+      resolveKioskCode: () async => null,
+    );
+    await mgr.fetchSettings();
+    expect(AppRuntimeConfig.instance.showApiLogs, isFalse);
+    expect(mgr.settings?.showApiLogs, isFalse);
   });
 
   test('fetchSettings records error string', () async {

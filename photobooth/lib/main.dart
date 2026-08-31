@@ -345,14 +345,17 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
             return Consumer<AppSettingsManager>(
               builder: (context, _, __) {
                 AliceInspector.syncWithRuntimeConfig();
-                return ListenableBuilder(
-                  listenable: _routeTracker,
-                  builder: (context, __) {
-                    return DebugPerformanceOverlayScope(
-                      routeName: _routeTracker.currentRouteName,
-                      child: child ?? const SizedBox.shrink(),
-                    );
-                  },
+                return Provider<Alice?>.value(
+                  value: AliceInspector.instance,
+                  child: ListenableBuilder(
+                    listenable: _routeTracker,
+                    builder: (context, __) {
+                      return DebugPerformanceOverlayScope(
+                        routeName: _routeTracker.currentRouteName,
+                        child: child ?? const SizedBox.shrink(),
+                      );
+                    },
+                  ),
                 );
               },
             );
