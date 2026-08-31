@@ -61,6 +61,10 @@ class FakeApiService extends ApiService {
   int startSurpriseMeCalls = 0;
   int fetchSurpriseMeStatusCalls = 0;
   int declineSurpriseMeCalls = 0;
+  int updateSessionCalls = 0;
+  String? lastPatchedThemeId;
+  bool lastIncludeSelectedFrameId = false;
+  String? lastPatchedFrameId;
   SurpriseMeStatus? surpriseMeStatus;
   bool startSurpriseMeThrows = false;
   bool fetchSurpriseMeStatusThrows = false;
@@ -99,6 +103,10 @@ class FakeApiService extends ApiService {
     int? personCount,
     Map<String, dynamic>? framingMetadata,
   }) async {
+    updateSessionCalls++;
+    lastPatchedThemeId = selectedThemeId;
+    lastIncludeSelectedFrameId = includeSelectedFrameId;
+    lastPatchedFrameId = selectedFrameId;
     if (patchThrows) throw ApiException('patch failed');
     return sessionResponse;
   }

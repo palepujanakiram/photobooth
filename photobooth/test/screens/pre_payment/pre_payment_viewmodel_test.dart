@@ -9,6 +9,7 @@ import 'package:photobooth/models/app_settings_model.dart';
 import 'package:photobooth/models/payment_initiate_result.dart';
 import 'package:photobooth/screens/photo_capture/photo_model.dart';
 import 'package:photobooth/screens/pre_payment/pre_payment_viewmodel.dart';
+import 'package:photobooth/screens/result/result_payment_poll_helpers.dart';
 import 'package:photobooth/services/app_settings_manager.dart';
 import 'package:photobooth/services/payment_push_coordinator.dart';
 import 'package:photobooth/services/session_manager.dart';
@@ -64,7 +65,7 @@ void main() {
         expect(vm.paymentInitInProgress, isFalse);
         expect(api.initiatePaymentCalls, 1);
 
-        async.elapse(const Duration(seconds: 3));
+        async.elapse(kPaymentPollInterval);
         async.flushMicrotasks();
       });
     });
@@ -181,33 +182,93 @@ void main() {
       await _withPollingVm(
         fetchPaymentStatusResult: {'status': 'APPROVED'},
         afterLoad: (vm, async) {
-          async.elapse(const Duration(seconds: 3));
+          async.elapse(kPaymentPollInterval);
           async.flushMicrotasks();
           expect(vm.fcmPaymentPushSuccess, isTrue);
         },
       );
     });
 
-    test('session poll approves via fetchSession', () async {
+    test('session poll approves via fetchSession when there is no payment id',
+        () async {
       await _withPollingVm(
-        fetchPaymentStatusResult: const {'status': 'PENDING'},
+        initiatePaymentResult: PaymentInitiateResult(
+          id: '',
+          status: 'PENDING',
+          qrImageUrl: 'https://rzp.io/i/testqr',
+        ),
         fetchSessionResult: {'paymentStatus': 'APPROVED'},
         afterLoad: (vm, async) {
-          async.elapse(const Duration(seconds: 3));
+          async.elapse(kPaymentPollInterval);
           async.flushMicrotasks();
           expect(vm.fcmPaymentPushSuccess, isTrue);
         },
       );
     });
 
-    test('isDeadPollingFallbackVisible when both polls fail repeatedly', () {
+    test('UPI poll does not GET session while payment status is pending',
+        () async {
+      fakeAsync((async) {
+        SessionManager().setSessionFromResponse(_sessionJson('sess-upi-only'));
+        final api = FakeApiService(
+          fetchPaymentStatusResult: const {'status': 'PENDING'},
+          fetchSessionResult: const {'paymentStatus': 'APPROVED'},
+        );
+        final vm = PrePaymentViewModel(
+          appSettingsManager: _SeededAppSettingsManager(),
+          apiService: api,
+          sessionManager: SessionManager(),
+        );
+
+        vm.loadPaymentQr();
+        async.elapse(Duration.zero);
+        async.flushMicrotasks();
+        async.elapse(
+          kPaymentPollInterval * (kPaymentPollStatusFallbackTicks - 1),
+        );
+        async.flushMicrotasks();
+
+        expect(api.fetchPaymentStatusCalls, greaterThan(0));
+        expect(api.fetchSessionCalls, 0);
+        expect(vm.fcmPaymentPushSuccess, isNull);
+      });
+    });
+
+    test('UPI poll falls back to session GET after pending status ticks',
+        () async {
+      fakeAsync((async) {
+        SessionManager().setSessionFromResponse(_sessionJson('sess-fallback'));
+        final api = FakeApiService(
+          fetchPaymentStatusResult: const {'status': 'PENDING'},
+          fetchSessionResult: const {'paymentStatus': 'APPROVED'},
+        );
+        final vm = PrePaymentViewModel(
+          appSettingsManager: _SeededAppSettingsManager(),
+          apiService: api,
+          sessionManager: SessionManager(),
+        );
+
+        vm.loadPaymentQr();
+        async.elapse(Duration.zero);
+        async.flushMicrotasks();
+        async.elapse(
+          kPaymentPollInterval * (kPaymentPollStatusFallbackTicks + 1),
+        );
+        async.flushMicrotasks();
+
+        expect(api.fetchSessionCalls, greaterThan(0));
+        expect(vm.fcmPaymentPushSuccess, isTrue);
+      });
+    });
+
+    test('isDeadPollingFallbackVisible when the active poller fails', () {
       final vm = PrePaymentViewModel(
         appSettingsManager: _SeededAppSettingsManager(),
         apiService: FakeApiService(),
       );
       vm.setPollingFailureStreaksForTest(
-        paymentFailures: 10,
-        sessionFailures: 10,
+        paymentFailures: 0,
+        sessionFailures: kPaymentPollDeadFailureTicks,
       );
       expect(vm.isDeadPollingFallbackVisible, isTrue);
     });
@@ -285,7 +346,7 @@ void main() {
         fetchPaymentStatusResult: {'status': 'FAILED'},
         fetchSessionResult: {'paymentStatus': 'FAILED'},
         afterLoad: (vm, async) {
-          async.elapse(const Duration(seconds: 3));
+          async.elapse(kPaymentPollInterval);
           async.flushMicrotasks();
           expect(vm.fcmPaymentPushSuccess, isFalse);
         },
@@ -508,7 +569,7 @@ void main() {
         vm.loadPaymentQr();
         async.elapse(Duration.zero);
         async.flushMicrotasks();
-        async.elapse(const Duration(seconds: 30));
+        async.elapse(kPaymentPollInterval * (kPaymentPollDeadFailureTicks + 1));
         async.flushMicrotasks();
 
         expect(vm.isDeadPollingFallbackVisible, isTrue);
@@ -530,20 +591,24 @@ void main() {
         vm.loadPaymentQr();
         async.elapse(Duration.zero);
         async.flushMicrotasks();
-        async.elapse(const Duration(seconds: 3 * 181));
+        async.elapse(kPaymentPollInterval * (kPaymentPollMaxTicks + 1));
         async.flushMicrotasks();
 
         expect(vm.fcmPaymentPushSuccess, isNull);
       });
     });
 
-    test('session poll failed verdict when payment poll stays pending', () async {
+    test('session poll failed verdict when there is no payment id', () async {
       fakeAsync((async) {
         SessionManager().setSessionFromResponse(_sessionJson('sess-session-fail'));
         final vm = PrePaymentViewModel(
           appSettingsManager: _SeededAppSettingsManager(),
           apiService: FakeApiService(
-            fetchPaymentStatusResult: const {'status': 'PENDING'},
+            initiatePaymentResult: PaymentInitiateResult(
+              id: '',
+              status: 'PENDING',
+              qrImageUrl: 'https://rzp.io/i/testqr',
+            ),
             fetchSessionResult: const {'paymentStatus': 'FAILED'},
           ),
           sessionManager: SessionManager(),
@@ -552,7 +617,7 @@ void main() {
         vm.loadPaymentQr();
         async.elapse(Duration.zero);
         async.flushMicrotasks();
-        async.elapse(const Duration(seconds: 3));
+        async.elapse(kPaymentPollInterval);
         async.flushMicrotasks();
 
         expect(vm.fcmPaymentPushSuccess, isFalse);
@@ -577,7 +642,7 @@ void main() {
         vm.loadPaymentQr();
         async.elapse(Duration.zero);
         async.flushMicrotasks();
-        async.elapse(const Duration(seconds: 3));
+        async.elapse(kPaymentPollInterval);
         async.flushMicrotasks();
 
         expect(vm.fcmPaymentPushSuccess, isNull);
@@ -598,7 +663,7 @@ void main() {
         vm.loadPaymentQr();
         async.elapse(Duration.zero);
         async.flushMicrotasks();
-        async.elapse(const Duration(seconds: 3 * 91));
+        async.elapse(kPaymentPollInterval * (kPaymentPollMaxTicks + 1));
         async.flushMicrotasks();
 
         expect(vm.fcmPaymentPushSuccess, isNull);
@@ -617,7 +682,7 @@ void main() {
         vm.loadPaymentQr();
         async.elapse(Duration.zero);
         async.flushMicrotasks();
-        async.elapse(const Duration(seconds: 30));
+        async.elapse(kPaymentPollInterval * (kPaymentPollDeadFailureTicks + 1));
         async.flushMicrotasks();
 
         expect(vm.isDeadPollingFallbackVisible, isTrue);
@@ -640,7 +705,7 @@ void main() {
         async.elapse(Duration.zero);
         async.flushMicrotasks();
         vm.dispose();
-        async.elapse(const Duration(seconds: 6));
+        async.elapse(kPaymentPollInterval * 2);
         async.flushMicrotasks();
         expect(vm.fcmPaymentPushSuccess, isNull);
       });
@@ -734,7 +799,7 @@ void main() {
         appSettingsManager: _SeededAppSettingsManager(),
         apiService: FakeApiService(),
       );
-      vm.setSessionPollTicksForTest(180);
+      vm.setSessionPollTicksForTest(kPaymentPollMaxTicks);
       final timer = Timer(const Duration(days: 1), () {});
       addTearDown(timer.cancel);
       await vm.runSessionPollTickForTest(timer, 'sess-max-tick');
@@ -788,8 +853,9 @@ void main() {
 }
 
 Future<void> _withPollingVm({
-  required Map<String, dynamic>? fetchPaymentStatusResult,
+  Map<String, dynamic>? fetchPaymentStatusResult,
   Map<String, dynamic>? fetchSessionResult,
+  PaymentInitiateResult? initiatePaymentResult,
   required void Function(PrePaymentViewModel vm, FakeAsync async) afterLoad,
 }) async {
   fakeAsync((async) {
@@ -797,6 +863,7 @@ Future<void> _withPollingVm({
     final vm = PrePaymentViewModel(
       appSettingsManager: _SeededAppSettingsManager(),
       apiService: FakeApiService(
+        initiatePaymentResult: initiatePaymentResult,
         fetchPaymentStatusResult: fetchPaymentStatusResult,
         fetchSessionResult: fetchSessionResult,
       ),
@@ -851,6 +918,15 @@ class _ThrowingInitiateApi extends FakeApiService {
 }
 
 class _AlwaysNullSessionApi extends FakeApiService {
+  _AlwaysNullSessionApi()
+      : super(
+          initiatePaymentResult: PaymentInitiateResult(
+            id: '',
+            status: 'PENDING',
+            qrImageUrl: 'https://rzp.io/i/testqr',
+          ),
+        );
+
   @override
   Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
     fetchSessionCalls++;

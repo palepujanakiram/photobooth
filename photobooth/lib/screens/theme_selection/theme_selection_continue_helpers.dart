@@ -38,6 +38,12 @@ Future<void> themeSelectionNavigateAfterSessionUpdate({
     );
   } catch (_) {
     if (!context.mounted) return;
+    final ok = await _themeSelectionPatchTheme(
+      context: context,
+      viewModel: viewModel,
+    );
+    if (!ok) return;
+    if (!context.mounted) return;
     await _themeSelectionNavigateFrameSelectFallback(
       context: context,
       photo: photo,
@@ -71,6 +77,12 @@ Future<void> _themeSelectionNavigateAfterFramesLoaded({
   final frames = await viewModel.fetchKioskFramesList();
   if (!context.mounted) return;
   if (frames.length >= 2) {
+    final ok = await _themeSelectionPatchTheme(
+      context: context,
+      viewModel: viewModel,
+    );
+    if (!ok) return;
+    if (!context.mounted) return;
     await _themeSelectionNavigateFrameSelectFallback(
       context: context,
       photo: photo,
@@ -78,20 +90,13 @@ Future<void> _themeSelectionNavigateAfterFramesLoaded({
     );
     return;
   }
-  if (frames.length == 1) {
-    final ok = await _themeSelectionSyncSingleFrame(
-      context: context,
-      viewModel: viewModel,
-      frameId: frames.single.id,
-    );
-    if (!ok) return;
-  } else {
-    final ok = await _themeSelectionSyncAutoSkippedFrame(
-      context: context,
-      viewModel: viewModel,
-    );
-    if (!ok) return;
-  }
+  final ok = await _themeSelectionPatchTheme(
+    context: context,
+    viewModel: viewModel,
+    includeSelectedFrameId: true,
+    selectedFrameId: frames.length == 1 ? frames.single.id : null,
+  );
+  if (!ok) return;
   if (!context.mounted) return;
   await navigateToGenerationOrPrePayment(
     context: context,
@@ -106,31 +111,21 @@ Future<void> _themeSelectionNavigateAfterFramesLoaded({
   );
 }
 
-Future<bool> _themeSelectionSyncSingleFrame({
+Future<bool> _themeSelectionPatchTheme({
   required BuildContext context,
   required ThemeViewModel viewModel,
-  required String frameId,
+  bool includeSelectedFrameId = false,
+  String? selectedFrameId,
 }) async {
-  final frameOk = await viewModel.syncSingleFrameSelection(frameId);
-  if (!context.mounted) return false;
-  if (frameOk) return true;
-  AppSnackBar.showError(
-    context,
-    viewModel.errorMessage ?? 'Could not prepare generation.',
+  final ok = await viewModel.updateSessionWithTheme(
+    includeSelectedFrameId: includeSelectedFrameId,
+    selectedFrameId: selectedFrameId,
   );
-  return false;
-}
-
-Future<bool> _themeSelectionSyncAutoSkippedFrame({
-  required BuildContext context,
-  required ThemeViewModel viewModel,
-}) async {
-  final frameOk = await viewModel.syncAutoSkippedFrameSelection();
   if (!context.mounted) return false;
-  if (frameOk) return true;
+  if (ok) return true;
   AppSnackBar.showError(
     context,
-    viewModel.errorMessage ?? 'Could not prepare generation.',
+    viewModel.errorMessage ?? 'Failed to update session with theme',
   );
   return false;
 }

@@ -759,21 +759,27 @@ class PhotoGenerateViewModel extends ChangeNotifier {
   }
 
   /// Refreshes [attemptsUsed] from the server and recomputes [_triesRemaining].
-  Future<void> syncAttemptsBudgetFromServer() async {
+  ///
+  /// Skips GET `/api/sessions/:id` when [forceRefresh] is false and memory
+  /// already has this session (theme continue / generate start). Always GET
+  /// after a generation so server attemptsUsed wins.
+  Future<void> syncAttemptsBudgetFromServer({bool forceRefresh = false}) async {
     final sid = _sessionManager.sessionId;
     if (sid == null) return;
-    try {
-      final raw = await _apiService.fetchSession(sid);
-      if (raw != null) {
-        _sessionManager.setSessionFromResponse(raw);
-        final direct = raw['stripCompositeUrl']?.toString().trim() ??
-            raw['strip_composite_url']?.toString().trim();
-        if (direct != null && direct.isNotEmpty) {
-          _stripCompositeUrlHint = direct;
+    if (forceRefresh) {
+      try {
+        final raw = await _apiService.fetchSession(sid);
+        if (raw != null) {
+          _sessionManager.setSessionFromResponse(raw);
+          final direct = raw['stripCompositeUrl']?.toString().trim() ??
+              raw['strip_composite_url']?.toString().trim();
+          if (direct != null && direct.isNotEmpty) {
+            _stripCompositeUrlHint = direct;
+          }
         }
+      } catch (e) {
+        AppLogger.debug('Could not refresh session attempts: $e');
       }
-    } catch (e) {
-      AppLogger.debug('Could not refresh session attempts: $e');
     }
     try {
       await _appSettingsManager?.fetchSettings();
@@ -1223,7 +1229,7 @@ class PhotoGenerateViewModel extends ChangeNotifier {
       imageUrls: newImages.map((g) => g.imageUrl),
     );
     final usedBefore = _sessionManager.currentSession?.attemptsUsed ?? 0;
-    await syncAttemptsBudgetFromServer();
+    await syncAttemptsBudgetFromServer(forceRefresh: true);
     final usedAfter =
         _sessionManager.currentSession?.attemptsUsed ?? usedBefore;
     if (usedAfter <= usedBefore) {
@@ -1491,8 +1497,6 @@ class PhotoGenerateViewModel extends ChangeNotifier {
         );
         return false;
       }
-
-      await syncAttemptsBudgetFromServer();
 
       if (_triesRemaining <= 0) {
         _errorMessage = AppStrings.generationNoAttemptsRemaining;

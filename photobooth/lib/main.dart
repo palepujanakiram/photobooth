@@ -169,7 +169,9 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     PaymentPushCoordinator.instance.attachNavigator(widget.navigatorKey);
-    _appSettingsManager.fetchSettings(forceRefresh: true);
+    // Disk only — a network GET /api/settings without ?kiosk= is discarded after
+    // splash binds. Splash still force-refreshes kiosk-scoped settings.
+    unawaited(_appSettingsManager.hydrateFromCache());
     unawaited(_staffThemeController.load());
     if (supportsFirebaseMessaging) {
       unawaited(_setupPaymentFcmListeners());
@@ -309,7 +311,9 @@ class _PhotoBoothAppState extends State<PhotoBoothApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _appSettingsManager.fetchSettings(forceRefresh: true);
+      // Disk/memory only when unbound — do not GET `/api/settings` with no
+      // `?kiosk=`. Splash bind still force-refreshes kiosk-scoped settings.
+      unawaited(_appSettingsManager.refreshOnAppResume());
       if (supportsFirebaseMessaging) {
         unawaited(
           PaymentPushCoordinator.instance.flushPendingStoragePayment(),

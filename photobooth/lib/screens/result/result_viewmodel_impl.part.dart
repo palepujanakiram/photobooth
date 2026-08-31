@@ -43,6 +43,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     _r._sessionNullStreak = 0;
     _r._paymentIdConsecutiveFailureTicks = 0;
     _r._sessionConsecutiveFailureTicks = 0;
+    _r._sessionPollFallback = false;
     _r._paymentOutcomeHandled = false;
     notifyListeners();
 
@@ -91,10 +92,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       } else {
         _r._paymentInitError = null;
       }
-      if (_r._activePaymentId != null) {
-        _startPaymentStatusPolling();
-      }
-      _startSessionApprovalPolling(sessionId);
+      _startPaymentApprovalPolling(sessionId);
     } on ApiException catch (e) {
       if (KioskOfflineUx.shouldUseCashOnlyPayments(
         sessionOffline: false,
@@ -241,8 +239,15 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     }
   }
 
-  /// Kiosk polling backup cadence: every 3 seconds.
-  static const _paymentPollInterval = Duration(seconds: 3);
+  void _startPaymentApprovalPolling(String sessionId) {
+    _r.stopPaymentPolling();
+    _r._sessionPollFallback = false;
+    if (shouldPollPaymentStatus(_r._activePaymentId)) {
+      _startPaymentStatusPolling();
+      return;
+    }
+    _startSessionApprovalPolling(sessionId);
+  }
 
   void _startPaymentStatusPolling() {
     _r._paymentIdPollTimer?.cancel();
@@ -250,7 +255,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     _r._paymentIdNullStreak = 0;
     _r._paymentIdConsecutiveFailureTicks = 0;
     _r._paymentIdPollTimer = Timer.periodic(
-      _paymentPollInterval,
+      kPaymentPollInterval,
       _onPaymentPollTick,
     );
   }
@@ -261,7 +266,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     _r._sessionNullStreak = 0;
     _r._sessionConsecutiveFailureTicks = 0;
     _r._sessionPollTimer = Timer.periodic(
-      _paymentPollInterval,
+      kPaymentPollInterval,
       (t) => _onSessionPollTick(t, sessionId),
     );
   }
@@ -271,8 +276,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       t.cancel();
       return;
     }
-    if (++_r._sessionPollTicks > 180) {
-      // 12 minutes max.
+    if (++_r._sessionPollTicks > kPaymentPollMaxTicks) {
       t.cancel();
       return;
     }
@@ -297,7 +301,10 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         // Keep polling, but allow UI to surface a "stuck" fallback.
       }
       _r._sessionConsecutiveFailureTicks += 1;
-      if (_r._sessionConsecutiveFailureTicks == 10) notifyListeners();
+      if (_r._sessionConsecutiveFailureTicks ==
+          kPaymentPollDeadFailureTicks) {
+        notifyListeners();
+      }
       return;
     }
     _r._sessionNullStreak = 0;
@@ -338,7 +345,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
       t.cancel();
       return;
     }
-    if (++_r._paymentIdPollTicks > 90) {
+    if (++_r._paymentIdPollTicks > kPaymentPollMaxTicks) {
       t.cancel();
       return;
     }
@@ -371,7 +378,10 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         // Keep polling, but allow UI to surface a "stuck" fallback.
       }
       _r._paymentIdConsecutiveFailureTicks += 1;
-      if (_r._paymentIdConsecutiveFailureTicks == 10) notifyListeners();
+      if (_r._paymentIdConsecutiveFailureTicks ==
+          kPaymentPollDeadFailureTicks) {
+        notifyListeners();
+      }
       return;
     }
     _r._paymentIdNullStreak = 0;
@@ -403,7 +413,15 @@ mixin _ResultViewModelImpl on ChangeNotifier {
         );
       case PaymentPollVerdict.pending:
       case null:
-        break;
+        final fallbackSessionId = sessionIdForPaymentStatusFallback(
+          paymentStatusTicks: _r._paymentIdPollTicks,
+          sessionId: _r._sessionManager.sessionId,
+        );
+        if (fallbackSessionId != null) {
+          t.cancel();
+          _r._sessionPollFallback = true;
+          _startSessionApprovalPolling(fallbackSessionId);
+        }
     }
   }
 
@@ -468,10 +486,7 @@ mixin _ResultViewModelImpl on ChangeNotifier {
     }
     if (_r._disposed) return;
 
-    _startSessionApprovalPolling(sessionId);
-    if (_r._activePaymentId != null && _r._activePaymentId!.trim().isNotEmpty) {
-      _startPaymentStatusPolling();
-    }
+    _startPaymentApprovalPolling(sessionId);
   }
 
   /// Free checkout (payments disabled on kiosk): print immediately after BEHOLD.

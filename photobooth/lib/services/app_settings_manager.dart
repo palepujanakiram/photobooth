@@ -42,6 +42,12 @@ class AppSettingsManager extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   DateTime? get lastFetchedAt => _lastFetchedAt;
 
+  /// Uppercased kiosk code of the last successful network settings fetch.
+  String? get settingsKioskKey => _settingsKioskKey;
+
+  /// Currently bound kiosk code (uppercased), or empty if none.
+  Future<String> resolveBoundKioskKey() => _currentKioskKey();
+
   /// Recreate the HTTP client after splash Stage/Live host change.
   void rebindApiService({ApiService? apiService}) {
     _apiService = apiService ?? ApiService();
@@ -66,6 +72,35 @@ class AppSettingsManager extends ChangeNotifier {
     return code;
   }
 
+  /// Last persisted settings, no HTTP.
+  ///
+  /// Launch used to GET account-default `/api/settings` before splash bound a
+  /// kiosk; that payload was replaced by `?kiosk=` on bind. Splash still
+  /// force-refreshes with the bound code.
+  Future<void> hydrateFromCache() async {
+    final kioskKey = await _currentKioskKey();
+    await _hydrateFromDisk(kioskKey);
+    if (_settings != null) {
+      applyFlutterImageCacheLimits();
+      // ignore: unawaited_futures
+      syncCanonCameraStackForSettings(_settings);
+    }
+    notifyListeners();
+  }
+
+  /// App resume: use disk/memory only when no kiosk is bound.
+  ///
+  /// A USB/camera permission pause must not GET unscoped `/api/settings`;
+  /// splash bind still force-refreshes `?kiosk=`.
+  Future<void> refreshOnAppResume() async {
+    final kioskKey = await _currentKioskKey();
+    if (kioskKey.isEmpty) {
+      await hydrateFromCache();
+      return;
+    }
+    await fetchSettings();
+  }
+
   Future<void> fetchSettings({bool forceRefresh = false}) async {
     final kioskKey = await _currentKioskKey();
     final kioskChanged =
@@ -77,22 +112,18 @@ class AppSettingsManager extends ChangeNotifier {
 
     // Startup often loads settings before splash binds a kiosk. When the bound
     // kiosk changes, ignore the account-default cache so guest prices refresh.
-    if (!forceRefresh &&
-        !kioskChanged &&
-        _settings != null &&
-        _lastFetchedAt != null) {
+    // Disk hydrate (no [_lastFetchedAt]) is enough until splash force-refresh.
+    if (!forceRefresh && !kioskChanged && _settings != null) {
       // Keep [AppRuntimeConfig] in sync when callers reuse cached settings.
       AppRuntimeConfig.instance.applyFromSettings(_settings);
       AliceInspector.syncWithRuntimeConfig();
       return;
     }
 
-    // If a request is already in-flight, reuse it to avoid stacking calls on
-    // flaky networks / rapid lifecycle changes.
-    //
-    // If caller explicitly forces refresh (or kiosk changed), allow starting a
-    // new request even if a non-forced fetch is in flight.
-    if (!forceRefresh && !kioskChanged && _inflightFetch != null) {
+    // Reuse an in-flight GET even for forceRefresh so splash bind, app resume
+    // (USB/camera permission dialogs), and Terms Start do not stack.
+    // A kiosk change still starts a new request for the bound code.
+    if (!kioskChanged && _inflightFetch != null) {
       return _inflightFetch!;
     }
 

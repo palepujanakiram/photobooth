@@ -1,6 +1,70 @@
 /// Payment polling helpers for the Pay screen (session + payment status).
 enum PaymentPollVerdict { approved, failed, pending }
 
+/// FCM is the primary Pay signal. This is the HTTP backup cadence.
+const Duration kPaymentPollInterval = Duration(seconds: 8);
+
+/// Wall-clock cap at [kPaymentPollInterval] (~12 minutes).
+const int kPaymentPollMaxTicks = 90;
+
+/// Consecutive failed GETs before the Pay screen shows a stuck fallback (~32s).
+const int kPaymentPollDeadFailureTicks = 4;
+
+/// PENDING `/payments/status` ticks before switching to the session GET (~64s).
+///
+/// Razorpay can mark the session paid while the payment-status row stays PENDING.
+const int kPaymentPollStatusFallbackTicks = 8;
+
+/// UPI: poll `GET /api/payments/status`. Cash / missing id: poll the session.
+bool shouldPollPaymentStatus(String? paymentId) {
+  final id = paymentId?.trim();
+  return id != null && id.isNotEmpty;
+}
+
+/// True after enough PENDING payment-status ticks to try the session instead.
+bool shouldFallbackToSessionPoll(int paymentStatusTicks) {
+  return paymentStatusTicks >= kPaymentPollStatusFallbackTicks;
+}
+
+/// Session id to switch to after pending `/payments/status`, or null to keep it.
+String? sessionIdForPaymentStatusFallback({
+  required int paymentStatusTicks,
+  required String? sessionId,
+}) {
+  if (!shouldFallbackToSessionPoll(paymentStatusTicks)) return null;
+  final id = sessionId?.trim();
+  if (id == null || id.isEmpty) return null;
+  return id;
+}
+
+/// UPI status poller is running (not cash and not post-fallback session).
+bool isPaymentStatusPollActive({
+  required String? paymentId,
+  required bool sessionFallback,
+}) {
+  return shouldPollPaymentStatus(paymentId) && !sessionFallback;
+}
+
+/// Stuck-fallback visibility for whichever backup poller is active.
+bool isPaymentPollDead({
+  required bool outcomeHandled,
+  required bool? fcmPaymentPushSuccess,
+  required String? paymentId,
+  required bool sessionFallback,
+  required int paymentStatusFailures,
+  required int sessionFailures,
+}) {
+  if (outcomeHandled) return false;
+  if (fcmPaymentPushSuccess != null) return false;
+  if (isPaymentStatusPollActive(
+    paymentId: paymentId,
+    sessionFallback: sessionFallback,
+  )) {
+    return paymentStatusFailures >= kPaymentPollDeadFailureTicks;
+  }
+  return sessionFailures >= kPaymentPollDeadFailureTicks;
+}
+
 /// True when any field can render a scannable UPI QR on the Pay screen.
 bool paymentQrPayloadPresent({
   String? qrImageUrl,

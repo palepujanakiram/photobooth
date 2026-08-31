@@ -306,4 +306,59 @@ void main() {
       expect(sm.currentSession?.attemptsUsed, 1);
     });
   });
+
+  test('user image sync flag follows PATCH mark, GET flags, and session change',
+      () {
+    final sm = SessionManager();
+    sm.setSessionFromResponse({
+      'id': 'sess-img',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': <dynamic>[],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+    });
+    expect(sm.isUserImageSyncedOnServer, isFalse);
+    sm.markUserImageSynced();
+    expect(sm.isUserImageSyncedOnServer, isTrue);
+    sm.clearUserImageSynced();
+    expect(sm.isUserImageSyncedOnServer, isFalse);
+
+    sm.setSessionFromResponse({
+      'id': 'sess-img',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': <dynamic>[],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+      'hasUserImage': true,
+    });
+    expect(sm.isUserImageSyncedOnServer, isTrue);
+
+    sm.setSessionFromResponse({
+      'id': 'sess-img',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': <dynamic>[],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+      'hasCompressedImage': true,
+    });
+    expect(sm.isUserImageSyncedOnServer, isTrue);
+
+    sm.setSessionFromResponse({
+      'id': 'sess-next',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': <dynamic>[],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+    });
+    expect(sm.isUserImageSyncedOnServer, isFalse);
+    sm.markUserImageSynced();
+    sm.clearSession();
+    expect(sm.isUserImageSyncedOnServer, isFalse);
+    sm.markUserImageSynced();
+    expect(sm.isUserImageSyncedOnServer, isFalse);
+  });
 }

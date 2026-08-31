@@ -152,6 +152,7 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   int _paymentIdConsecutiveFailureTicks = 0;
   int _sessionConsecutiveFailureTicks = 0;
   bool _paymentOutcomeHandled = false;
+  bool _sessionPollFallback = false;
 
   /// Set when an FCM payment push is handled on the Pay & Collect screen (inline UI, no dialog).
   String? _fcmPaymentStatusDetail;
@@ -237,15 +238,15 @@ class ResultViewModel extends ChangeNotifier with _ResultViewModelImpl {
   String? get fcmPaymentStatusDetail => _fcmPaymentStatusDetail;
   bool? get fcmPaymentPushSuccess => _fcmPaymentPushSuccess;
 
-  /// Client-only UX fallback: polling appears "stuck" (consecutive failures)
-  /// for roughly 30 seconds on both payment status and session polling.
-  bool get isDeadPollingFallbackVisible {
-    if (_paymentOutcomeHandled) return false;
-    if (_fcmPaymentPushSuccess != null) return false;
-    // Poll interval is 3s; 10 consecutive failures ≈ 30s.
-    return _paymentIdConsecutiveFailureTicks >= 10 &&
-        _sessionConsecutiveFailureTicks >= 10;
-  }
+  /// Client-only UX fallback when the active backup poller keeps failing.
+  bool get isDeadPollingFallbackVisible => isPaymentPollDead(
+        outcomeHandled: _paymentOutcomeHandled,
+        fcmPaymentPushSuccess: _fcmPaymentPushSuccess,
+        paymentId: _activePaymentId,
+        sessionFallback: _sessionPollFallback,
+        paymentStatusFailures: _paymentIdConsecutiveFailureTicks,
+        sessionFailures: _sessionConsecutiveFailureTicks,
+      );
 
   bool get hasFcmPaymentStatus =>
       _fcmPaymentStatusDetail != null && _fcmPaymentStatusDetail!.isNotEmpty;
