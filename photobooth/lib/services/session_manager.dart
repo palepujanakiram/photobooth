@@ -233,6 +233,30 @@ class SessionManager extends ChangeNotifier {
 
   SessionData? _currentSession;
   bool _expiryClearScheduled = false;
+  bool _userImageSynced = false;
+  String? _userImageSyncedForId;
+
+  /// True when this session's guest photo was PATCHed (or GET confirmed).
+  ///
+  /// Used to skip redundant GET `/api/sessions/:id` before generate/payment.
+  bool get isUserImageSyncedOnServer {
+    final id = _currentSession?.id;
+    return id != null && _userImageSynced && _userImageSyncedForId == id;
+  }
+
+  /// Capture PATCH succeeded (or GET reported hasUserImage).
+  void markUserImageSynced() {
+    final id = _currentSession?.id;
+    if (id == null) return;
+    _userImageSynced = true;
+    _userImageSyncedForId = id;
+  }
+
+  /// Retake / new upload: do not skip GET+PATCH until the new photo lands.
+  void clearUserImageSynced() {
+    _userImageSynced = false;
+    _userImageSyncedForId = null;
+  }
 
   /// Get current session data
   SessionData? get currentSession {
@@ -372,6 +396,7 @@ class SessionManager extends ChangeNotifier {
   void _clearSessionInternal({required String reason}) {
     if (_currentSession == null) return;
     _currentSession = null;
+    clearUserImageSynced();
     AppLogger.debug('Session cleared ($reason)');
     unawaited(_persistCurrentSession());
     notifyListeners();
@@ -393,8 +418,18 @@ class SessionManager extends ChangeNotifier {
     // and can surface as an uncaught async error right after photo upload.
     // The app already carries pixels in [PhotoModel]; server retains the image.
     final slim = Map<String, dynamic>.from(response)..remove('userImageUrl');
+    final incomingId = slim['id']?.toString().trim() ?? '';
+    final previousId = _currentSession?.id.trim() ?? '';
+    if (incomingId.isNotEmpty &&
+        previousId.isNotEmpty &&
+        incomingId != previousId) {
+      clearUserImageSynced();
+    }
     _carryForwardWithinSession(slim);
     _currentSession = SessionData.fromJson(slim);
+    if (slim['hasUserImage'] == true || slim['hasCompressedImage'] == true) {
+      markUserImageSynced();
+    }
     AppLogger.debug('Session stored from API: ${_currentSession!.id}');
     unawaited(_persistCurrentSession());
     notifyListeners();

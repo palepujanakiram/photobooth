@@ -42,6 +42,12 @@ class AppSettingsManager extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   DateTime? get lastFetchedAt => _lastFetchedAt;
 
+  /// Uppercased kiosk code of the last successful network settings fetch.
+  String? get settingsKioskKey => _settingsKioskKey;
+
+  /// Currently bound kiosk code (uppercased), or empty if none.
+  Future<String> resolveBoundKioskKey() => _currentKioskKey();
+
   /// Recreate the HTTP client after splash Stage/Live host change.
   void rebindApiService({ApiService? apiService}) {
     _apiService = apiService ?? ApiService();
@@ -103,12 +109,10 @@ class AppSettingsManager extends ChangeNotifier {
       return;
     }
 
-    // If a request is already in-flight, reuse it to avoid stacking calls on
-    // flaky networks / rapid lifecycle changes.
-    //
-    // If caller explicitly forces refresh (or kiosk changed), allow starting a
-    // new request even if a non-forced fetch is in flight.
-    if (!forceRefresh && !kioskChanged && _inflightFetch != null) {
+    // Reuse an in-flight GET even for forceRefresh so splash bind, app resume
+    // (USB/camera permission dialogs), and Terms Start do not stack.
+    // A kiosk change still starts a new request for the bound code.
+    if (!kioskChanged && _inflightFetch != null) {
       return _inflightFetch!;
     }
 

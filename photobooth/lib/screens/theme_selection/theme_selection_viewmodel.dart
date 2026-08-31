@@ -409,9 +409,14 @@ class ThemeViewModel extends ChangeNotifier {
   }
 
   /// Updates session with selected theme (Step 4)
-  /// Called when user taps "Continue" button after selecting a theme
-  /// Makes PATCH /api/sessions/{sessionId} with only selectedThemeId
-  Future<bool> updateSessionWithTheme() async {
+  /// Called when user taps "Continue" after selecting a theme.
+  ///
+  /// When the kiosk has 0 or 1 frame, [includeSelectedFrameId] folds that
+  /// choice into this PATCH so we do not send a second session update.
+  Future<bool> updateSessionWithTheme({
+    bool includeSelectedFrameId = false,
+    String? selectedFrameId,
+  }) async {
     final theme = _armedTheme ?? _selectedTheme;
     if (theme == null) {
       _errorMessage = 'No theme selected. Please select a theme first.';
@@ -438,7 +443,8 @@ class ThemeViewModel extends ChangeNotifier {
       final response = await _apiService.updateSession(
         sessionId: sessionId,
         selectedThemeId: theme.id,
-        // userImageUrl is not provided - photo already uploaded in Step 3
+        includeSelectedFrameId: includeSelectedFrameId,
+        selectedFrameId: selectedFrameId,
       ).timeout(
         updateTimeout,
         onTimeout: () => throw TimeoutException(

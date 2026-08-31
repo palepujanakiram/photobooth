@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -119,6 +120,35 @@ void main() {
     expect(api.fetchCount, 2);
   });
 
+  test('forceRefresh joins an in-flight settings GET', () async {
+    final gate = Completer<void>();
+    final api = _GatedSettingsApi(AppSettingsModel(initialPrice: 40), gate);
+    final mgr = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => 'JOIN',
+    );
+    final first = mgr.fetchSettings(forceRefresh: true);
+    final second = mgr.fetchSettings(forceRefresh: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(api.fetchCount, 1);
+    gate.complete();
+    await Future.wait([first, second]);
+    expect(api.fetchCount, 1);
+    expect(mgr.settings?.initialPrice, 40);
+  });
+
+  test('forceRefresh after a completed fetch hits the network', () async {
+    final api = _SettingsApi(AppSettingsModel(initialPrice: 10));
+    final mgr = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => null,
+    );
+    await mgr.fetchSettings();
+    expect(api.fetchCount, 1);
+    await mgr.fetchSettings(forceRefresh: true);
+    expect(api.fetchCount, 2);
+  });
+
   test('fetchSettings hydrates disk when API fails', () async {
     final dir = await Directory.systemTemp.createTemp('settings_disk_');
     addTearDown(() async {
@@ -203,5 +233,20 @@ class _ThrowingSettingsApi extends FakeApiService {
   @override
   Future<AppSettingsModel> getAppSettings() async {
     throw ApiException('settings failed');
+  }
+}
+
+class _GatedSettingsApi extends FakeApiService {
+  _GatedSettingsApi(this.model, this.gate);
+
+  final AppSettingsModel model;
+  final Completer<void> gate;
+  int fetchCount = 0;
+
+  @override
+  Future<AppSettingsModel> getAppSettings() async {
+    fetchCount++;
+    await gate.future;
+    return model;
   }
 }

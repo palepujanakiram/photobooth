@@ -75,6 +75,44 @@ void main() {
     vm2.dispose();
   });
 
+  test('updateSessionWithTheme can include the only kiosk frame', () async {
+    final api = FakeApiService(
+      sessionResponse: {
+        'id': 'sess-frame',
+        'termsAccepted': true,
+        'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+        'attemptsUsed': 0,
+        'generatedImages': <dynamic>[],
+        'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+        'selectedThemeId': 't1',
+        'selectedFrameId': 'frame-1',
+      },
+    );
+    final tm = ThemeManager.forTesting(ThemesFakeApi([sampleTheme('t1')]));
+    await tm.fetchThemes();
+    SessionManager().setSessionFromResponse({
+      'id': 'sess-frame',
+      'termsAccepted': true,
+      'termsAcceptedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+      'attemptsUsed': 0,
+      'generatedImages': <dynamic>[],
+      'expiresAt': DateTime.utc(2026, 12, 1).toIso8601String(),
+    });
+    final vm = ThemeViewModel(themeManager: tm, apiService: api);
+    await vm.loadThemes();
+    vm.selectTheme(vm.themes.first);
+    final ok = await vm.updateSessionWithTheme(
+      includeSelectedFrameId: true,
+      selectedFrameId: 'frame-1',
+    );
+    expect(ok, isTrue);
+    expect(api.updateSessionCalls, 1);
+    expect(api.lastPatchedThemeId, 't1');
+    expect(api.lastIncludeSelectedFrameId, isTrue);
+    expect(api.lastPatchedFrameId, 'frame-1');
+    vm.dispose();
+  });
+
   test('updateSessionWithTheme requires session', () async {
     final tm = ThemeManager.forTesting(ThemesFakeApi([sampleTheme('t1')]));
     await tm.fetchThemes();

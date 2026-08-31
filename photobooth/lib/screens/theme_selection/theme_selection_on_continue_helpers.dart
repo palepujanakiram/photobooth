@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../services/api_service.dart';
 import '../../services/app_settings_manager.dart';
 import '../../services/session_manager.dart';
 import '../../utils/ai_attempts_budget.dart';
@@ -20,19 +19,9 @@ Future<int> refreshThemeSelectionTriesRemaining(
   AppSettingsManager appSettings,
 ) async {
   final sm = SessionManager();
-  final api = ApiService();
-  final sid = sm.sessionId;
-  String? stripFromSession;
-  if (sid != null) {
-    try {
-      final raw = await api.fetchSession(sid);
-      if (raw != null) {
-        sm.setSessionFromResponse(raw);
-        final direct = raw['stripCompositeUrl']?.toString().trim() ??
-            raw['strip_composite_url']?.toString().trim();
-        if (direct != null && direct.isNotEmpty) stripFromSession = direct;
-      }
-    } catch (_) {}
+  String? stripFromSession = sm.currentSession?.stripCompositeUrl?.trim();
+  if (stripFromSession != null && stripFromSession.isEmpty) {
+    stripFromSession = null;
   }
   try {
     await appSettings.fetchSettings();
@@ -104,21 +93,12 @@ Future<void> themeSelectionContinueWithPhoto({
       return;
     }
 
-    final success = await viewModel.updateSessionWithTheme();
-    if (!currentContext.mounted) return;
-    if (success) {
-      await themeSelectionNavigateAfterSessionUpdate(
-        context: currentContext,
-        viewModel: viewModel,
-        photo: photo,
-        selectedTheme: selectedTheme,
-      );
-    } else {
-      AppSnackBar.showError(
-        currentContext,
-        viewModel.errorMessage ?? 'Failed to update session with theme',
-      );
-    }
+    await themeSelectionNavigateAfterSessionUpdate(
+      context: currentContext,
+      viewModel: viewModel,
+      photo: photo,
+      selectedTheme: selectedTheme,
+    );
   } catch (e) {
     if (currentContext.mounted) {
       AppSnackBar.showError(

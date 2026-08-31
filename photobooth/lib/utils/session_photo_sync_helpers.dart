@@ -84,8 +84,13 @@ Future<SessionPhotoSyncOutcome> ensureSessionPhotoOnServer({
       });
 
   try {
+    if (sm.isUserImageSyncedOnServer && sm.sessionId == sid) {
+      return const SessionPhotoSyncOutcome(alreadyPresent: true);
+    }
+
     final existing = await fetchSession(sid);
     if (sessionResponseHasUserImage(existing)) {
+      sm.markUserImageSynced();
       return const SessionPhotoSyncOutcome(alreadyPresent: true);
     }
 
@@ -110,6 +115,7 @@ Future<SessionPhotoSyncOutcome> ensureSessionPhotoOnServer({
     }
 
     WebFlowTrace.log('SESSION_PHOTO', 'sync_upload_done');
+    sm.markUserImageSynced();
     return const SessionPhotoSyncOutcome(uploaded: true);
   } on ApiException catch (e) {
     return SessionPhotoSyncOutcome(errorMessage: e.message);

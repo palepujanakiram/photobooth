@@ -3135,6 +3135,7 @@ class CaptureViewModel extends ChangeNotifier {
       final normalized =
           await ImageHelper.normalizeAndSaveCapturedPhoto(file);
       _phoneUploadSyncedToSession = true;
+      _sessionManager.markUserImageSynced();
       await _assignCapturedPhotoModel(
         normalized,
         cameraIdOverride: 'phone_qr',
@@ -3578,12 +3579,13 @@ class CaptureViewModel extends ChangeNotifier {
     required int immediateCount,
   }) async {
     try {
-      final preprocess = await _apiService
-          .preprocessImage(
-            sessionId: sessionId,
-            clientFaceCount: clientFaceCount > 0 ? clientFaceCount : null,
-          )
-          .timeout(AppConstants.kPreprocessTimeout);
+      final preprocess = await runOrJoinSessionPreprocess(
+        sessionId: sessionId,
+        preprocessFn: (id) => _apiService.preprocessImage(
+          sessionId: id,
+          clientFaceCount: clientFaceCount > 0 ? clientFaceCount : null,
+        ),
+      );
       final refined = resolvePersonCountAfterPreprocess(
         preprocess: preprocess,
         clientFaceCount: clientFaceCount,
@@ -3737,6 +3739,7 @@ class CaptureViewModel extends ChangeNotifier {
       );
 
       // PATCH photo + client person count; preprocess returns authoritative count.
+      _sessionManager.clearUserImageSynced();
       final response = await _apiService.updateSession(
         sessionId: sessionId,
         userImageUrl: base64Image,
@@ -3759,6 +3762,7 @@ class CaptureViewModel extends ChangeNotifier {
       
       // Save the response to SessionManager
       _sessionManager.setSessionFromResponse(response);
+      _sessionManager.markUserImageSynced();
       WebFlowTrace.log('UPLOAD', 'setSessionFromResponse_done');
 
       await _resolvePersonCountAfterUpload(
@@ -3863,6 +3867,7 @@ class CaptureViewModel extends ChangeNotifier {
       );
 
       _sessionManager.setSessionFromResponse(response);
+      _sessionManager.markUserImageSynced();
       return true;
     } on TimeoutException catch (e, st) {
       _errorMessage = 'Request took too long. Please check your connection and try again.';

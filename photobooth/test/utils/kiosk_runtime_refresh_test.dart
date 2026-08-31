@@ -66,7 +66,39 @@ void main() {
     expect(mgr.hasSettings, isFalse);
   });
 
-  test('refreshKioskRuntimeConfig refreshes settings and Classic flag', () async {
+  test('refreshKioskRuntimeConfig skips when splash just fetched settings',
+      () async {
+    final km = KioskManager();
+    await km.setKioskCode('FOTO');
+    await km.setClassicPhotosEnabled(false);
+
+    final api = _RuntimeApi(
+      settings: AppSettingsModel(enableOsdScrub: true),
+      kiosk: const KioskInfoModel(
+        id: 'k1',
+        code: 'FOTO',
+        classicPhotosEnabled: true,
+      ),
+    );
+    final mgr = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => 'FOTO',
+    );
+    await mgr.fetchSettings();
+    expect(api.settingsFetches, 1);
+
+    final result = await refreshKioskRuntimeConfig(
+      settings: mgr,
+      api: api,
+      kiosk: km,
+    );
+    expect(result.classicPhotosEnabled, isFalse);
+    expect(api.settingsFetches, 1);
+    expect(api.kioskFetches, 0);
+  });
+
+  test('refreshKioskRuntimeConfig refreshes when onlyIfStale is false',
+      () async {
     final km = KioskManager();
     await km.setKioskCode('FOTO');
     await km.setClassicPhotosEnabled(false);
@@ -91,6 +123,7 @@ void main() {
       settings: mgr,
       api: api,
       kiosk: km,
+      onlyIfStale: false,
     );
     expect(result.classicPhotosEnabled, isTrue);
     expect(await km.isClassicPhotosEnabled(), isTrue);
@@ -98,6 +131,130 @@ void main() {
     expect(mgr.settings?.enableOsdScrub, isFalse);
     expect(api.settingsFetches, 2);
     expect(api.kioskFetches, 1);
+  });
+
+  test('refreshKioskRuntimeConfig fetches when settings are stale', () async {
+    final km = KioskManager();
+    await km.setKioskCode('FOTO');
+    await km.setClassicPhotosEnabled(false);
+
+    final api = _RuntimeApi(
+      settings: AppSettingsModel(enableOsdScrub: true),
+      kiosk: const KioskInfoModel(
+        id: 'k1',
+        code: 'FOTO',
+        classicPhotosEnabled: true,
+      ),
+    );
+    final mgr = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => 'FOTO',
+    );
+
+    final result = await refreshKioskRuntimeConfig(
+      settings: mgr,
+      api: api,
+      kiosk: km,
+    );
+    expect(result.classicPhotosEnabled, isTrue);
+    expect(api.settingsFetches, 1);
+    expect(api.kioskFetches, 1);
+  });
+
+  test('refreshKioskRuntimeConfig refetches after kiosk code changes', () async {
+    final km = KioskManager();
+    await km.setKioskCode('OLD');
+    await km.setClassicPhotosEnabled(false);
+
+    final api = _RuntimeApi(
+      settings: AppSettingsModel(enableOsdScrub: true),
+      kiosk: const KioskInfoModel(
+        id: 'k2',
+        code: 'NEW',
+        classicPhotosEnabled: true,
+      ),
+    );
+    final mgr = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: km.getKioskCode,
+    );
+    await mgr.fetchSettings();
+    expect(api.settingsFetches, 1);
+
+    await km.setKioskCode('NEW');
+    final result = await refreshKioskRuntimeConfig(
+      settings: mgr,
+      api: api,
+      kiosk: km,
+    );
+    expect(result.classicPhotosEnabled, isTrue);
+    expect(api.settingsFetches, 2);
+    expect(api.kioskFetches, 1);
+  });
+
+  test('refreshBoundKioskAppSettings onlyIfStale skips a fresh fetch', () async {
+    final api = _CountingSettingsApi(
+      AppSettingsModel(enableOsdScrub: false, initialPrice: 100),
+    );
+    final mgr = AppSettingsManager(
+      apiService: api,
+      resolveKioskCode: () async => 'FOTO',
+    );
+    await mgr.fetchSettings();
+    expect(api.fetchCount, 1);
+
+    await refreshBoundKioskAppSettings(settings: mgr, onlyIfStale: true);
+    expect(api.fetchCount, 1);
+  });
+
+  test('isBoundKioskSettingsFresh uses ttl and missing timestamps', () {
+    expect(
+      isBoundKioskSettingsFresh(lastFetchedAt: null, hasSettings: true),
+      isFalse,
+    );
+    expect(
+      isBoundKioskSettingsFresh(
+        lastFetchedAt: DateTime(2026, 1, 1, 12),
+        hasSettings: false,
+      ),
+      isFalse,
+    );
+    expect(
+      isBoundKioskSettingsFresh(
+        lastFetchedAt: DateTime(2026, 1, 1, 12),
+        hasSettings: true,
+        now: () => DateTime(2026, 1, 1, 12, 1),
+      ),
+      isTrue,
+    );
+    expect(
+      isBoundKioskSettingsFresh(
+        lastFetchedAt: DateTime(2026, 1, 1, 12),
+        hasSettings: true,
+        now: () => DateTime(2026, 1, 1, 12, 3),
+      ),
+      isFalse,
+    );
+    expect(
+      isBoundKioskSettingsFresh(
+        lastFetchedAt: DateTime(2026, 1, 1, 12),
+        hasSettings: true,
+        fetchedKioskKey: 'GSM',
+        boundKioskKey: 'OTHER',
+        now: () => DateTime(2026, 1, 1, 12, 1),
+      ),
+      isFalse,
+    );
+    expect(
+      isBoundKioskSettingsFresh(
+        lastFetchedAt: DateTime(2026, 1, 1, 12),
+        hasSettings: true,
+        fetchedKioskKey: 'gsm',
+        boundKioskKey: 'GSM',
+        now: () => DateTime(2026, 1, 1, 12, 1),
+      ),
+      isTrue,
+    );
   });
 }
 

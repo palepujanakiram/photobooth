@@ -59,7 +59,40 @@ void main() {
       expect(outcome.errorMessage, AppStrings.sessionPhotoSyncNoSession);
     });
 
+    test('skips GET when this session already PATCHed the photo', () async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-synced'));
+      SessionManager().markUserImageSynced();
+      var fetchCount = 0;
+      final outcome = await ensureSessionPhotoOnServer(
+        sessionId: 'sess-synced',
+        photo: _testPhoto(),
+        fetchSessionFn: (_) async {
+          fetchCount += 1;
+          return {};
+        },
+      );
+      expect(outcome.alreadyPresent, isTrue);
+      expect(fetchCount, 0);
+    });
+
+    test('still GETs when synced flag is for a different session', () async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-other'));
+      SessionManager().markUserImageSynced();
+      var fetchCount = 0;
+      final outcome = await ensureSessionPhotoOnServer(
+        sessionId: 'sess-1',
+        photo: _testPhoto(),
+        fetchSessionFn: (_) async {
+          fetchCount += 1;
+          return {'hasUserImage': true};
+        },
+      );
+      expect(outcome.alreadyPresent, isTrue);
+      expect(fetchCount, 1);
+    });
+
     test('skips upload when server already has image', () async {
+      SessionManager().setSessionFromResponse(_sessionJson('sess-1'));
       var patchCalls = 0;
       final outcome = await ensureSessionPhotoOnServer(
         sessionId: 'sess-1',
@@ -73,6 +106,7 @@ void main() {
       expect(outcome.isReady, isTrue);
       expect(outcome.alreadyPresent, isTrue);
       expect(patchCalls, 0);
+      expect(SessionManager().isUserImageSyncedOnServer, isTrue);
     });
 
     test('uploads when image missing and verifies', () async {
@@ -97,6 +131,7 @@ void main() {
       expect(outcome.uploaded, isTrue);
       expect(patchCalls, 1);
       expect(fetchCount, 2);
+      expect(SessionManager().isUserImageSyncedOnServer, isTrue);
     });
 
     test('fails when verify still missing image', () async {
