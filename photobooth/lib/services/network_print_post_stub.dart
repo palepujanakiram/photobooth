@@ -1,11 +1,9 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
 
 import '../utils/constants.dart';
 import '../utils/logger.dart';
 import '../utils/printer_endpoint.dart';
 import 'alice_inspector.dart';
-import 'api_logging_interceptor.dart';
 import 'dio_web_config_stub.dart'
     if (dart.library.html) 'dio_web_config.dart';
 
@@ -31,10 +29,7 @@ Dio createPrinterApiDio(String baseUrl) {
     ),
   );
   configureDioForWeb(dio);
-  if (kDebugMode) {
-    dio.interceptors.add(ApiLoggingInterceptor());
-    dio.interceptors.add(AliceDioProxyInterceptor());
-  }
+  addHttpInspectorInterceptors(dio);
   return dio;
 }
 

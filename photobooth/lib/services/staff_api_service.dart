@@ -11,7 +11,6 @@ import '../utils/app_strings.dart';
 import '../utils/constants.dart';
 import '../utils/exceptions.dart';
 import '../utils/logger.dart';
-import 'api_logging_interceptor.dart';
 import 'alice_inspector.dart';
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
 import 'api_service_legacy_media.dart';
@@ -37,10 +36,7 @@ class StaffApiService {
 
     configureDioForWeb(_dio);
 
-    if (kDebugMode == true) {
-      _dio.interceptors.add(ApiLoggingInterceptor());
-      _dio.interceptors.add(AliceDioProxyInterceptor());
-    }
+    addHttpInspectorInterceptors(_dio);
 
     // Mirror the web-friendly error normalization in ApiService.
     _dio.interceptors.add(

@@ -10,7 +10,8 @@ import '../models/app_settings_model.dart';
 /// - **Web:** on-screen Logs / Perf trace / JS-heap HUD and loader debug lines.
 ///
 /// [showApiLogs] defaults to **on** even before settings load (and when the
-/// API omits the key). When false, the Alice HTTP inspector icon is hidden.
+/// API omits the key). When false, the Alice HTTP inspector icon is hidden
+/// (debug and release native; always hidden on web).
 ///
 /// When `thermalSafeMode == true`: UVC idle feed sleep and lifecycle pause on capture.
 class AppRuntimeConfig extends ChangeNotifier {

@@ -1,11 +1,10 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../utils/app_config.dart';
 import '../utils/app_strings.dart';
 import '../utils/constants.dart';
 import 'alice_inspector.dart';
-import 'api_logging_interceptor.dart';
 import 'client_identification.dart';
 import 'dio_web_config_stub.dart' if (dart.library.html) 'dio_web_config.dart';
 import 'kiosk_session_auth.dart';
@@ -27,10 +26,7 @@ Dio createProductionApiDio() {
 
   configureDioForWeb(dio);
 
-  if (kDebugMode == true) {
-    dio.interceptors.add(ApiLoggingInterceptor());
-    dio.interceptors.add(AliceDioProxyInterceptor());
-  }
+  addHttpInspectorInterceptors(dio);
 
   addKioskSessionTokenInterceptor(dio);
 
@@ -86,10 +82,7 @@ Dio createAiGenerationDio({bool sseAccept = false}) {
     ),
   );
   configureDioForWeb(dio);
-  if (kDebugMode == true) {
-    dio.interceptors.add(ApiLoggingInterceptor());
-    dio.interceptors.add(AliceDioProxyInterceptor());
-  }
+  addHttpInspectorInterceptors(dio);
   addKioskSessionTokenInterceptor(dio);
   return dio;
 }
