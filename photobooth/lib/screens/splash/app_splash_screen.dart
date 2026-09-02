@@ -568,120 +568,131 @@ class _AppSplashScreenState extends State<AppSplashScreen>
       },
     );
 
-    final scanDisabled = _busy || kIsWeb;
-    final scanTap = Semantics(
-      button: true,
-      label: kIsWeb
-          ? 'QR scanning is not available on web'
-          : 'Aim booth camera at QR on operator phone to link',
-      child: CupertinoButton(
-        padding: EdgeInsets.zero,
-        color: Colors.transparent,
-        pressedOpacity: scanDisabled ? 1.0 : 0.85,
-        onPressed: scanDisabled ? null : _openQrScanner,
-        child: Container(
-          width: double.infinity,
-          height: inputHeight,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color:
-                  scanDisabled ? CupertinoColors.systemGrey3 : Colors.black12,
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                CupertinoIcons.qrcode_viewfinder,
-                size: 24,
-                color: scanDisabled ? CupertinoColors.systemGrey : Colors.black,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Scan phone QR',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color:
-                      scanDisabled ? CupertinoColors.systemGrey : Colors.black,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
     const enterSubtitle = 'Type or paste the kiosk ID';
     const scanSubtitle = kIsWeb
         ? 'Use booth Android/iOS app to scan the operator’s QR'
         : 'Point booth camera at the QR on the operator’s phone';
 
     final sideBySide = formMaxWidth >= 360;
-    final kioskRow = sideBySide
-        ? _kioskOptionPairSideBySide(
-            appColors: appColors,
-            leftTitle: 'Enter code',
-            rightTitle: 'Scan QR',
-            leftSubtitle: enterSubtitle,
-            rightSubtitle: scanSubtitle,
-            leftChild: textField,
-            rightChild: scanTap,
-          )
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _kioskOptionCard(
-                appColors: appColors,
-                title: 'Enter code',
-                subtitle: enterSubtitle,
-                child: textField,
+    Widget kioskRow = _kioskOptionCard(
+      appColors: appColors,
+      title: 'Enter code',
+      subtitle: enterSubtitle,
+      child: textField,
+    );
+    if (false) {
+      final scanDisabled = _busy || kIsWeb;
+      final scanTap = Semantics(
+        button: true,
+        label: kIsWeb
+            ? 'QR scanning is not available on web'
+            : 'Aim booth camera at QR on operator phone to link',
+        child: CupertinoButton(
+          padding: EdgeInsets.zero,
+          color: Colors.transparent,
+          pressedOpacity: scanDisabled ? 1.0 : 0.85,
+          onPressed: scanDisabled ? null : _openQrScanner,
+          child: Container(
+            width: double.infinity,
+            height: inputHeight,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color:
+                    scanDisabled ? CupertinoColors.systemGrey3 : Colors.black12,
               ),
-              const SizedBox(height: 12),
-              _kioskOptionCard(
-                appColors: appColors,
-                title: 'Scan QR',
-                subtitle: scanSubtitle,
-                child: scanTap,
-              ),
-            ],
-          );
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  CupertinoIcons.qrcode_viewfinder,
+                  size: 24,
+                  color:
+                      scanDisabled ? CupertinoColors.systemGrey : Colors.black,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Scan phone QR',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: scanDisabled
+                        ? CupertinoColors.systemGrey
+                        : Colors.black,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      kioskRow = sideBySide
+          ? _kioskOptionPairSideBySide(
+              appColors: appColors,
+              leftTitle: 'Enter code',
+              rightTitle: 'Scan QR',
+              leftSubtitle: enterSubtitle,
+              rightSubtitle: scanSubtitle,
+              leftChild: textField,
+              rightChild: scanTap,
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _kioskOptionCard(
+                  appColors: appColors,
+                  title: 'Enter code',
+                  subtitle: enterSubtitle,
+                  child: textField,
+                ),
+                const SizedBox(height: 12),
+                _kioskOptionCard(
+                  appColors: appColors,
+                  title: 'Scan QR',
+                  subtitle: scanSubtitle,
+                  child: scanTap,
+                ),
+              ],
+            );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         kioskRow,
-        const SizedBox(height: 12),
-        Text(
-          'Have an event code?',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: appColors.secondaryTextColor,
+        if (false) ...[
+          const SizedBox(height: 12),
+          Text(
+            'Have an event code?',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: appColors.secondaryTextColor,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        CupertinoTextField(
-          controller: _eventController,
-          placeholder: 'Event code (optional)',
-          enabled: splashCodeFieldEnabled(busy: _busy, showForm: true),
-          textAlign: TextAlign.start,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          autocorrect: false,
-          enableSuggestions: false,
-          textCapitalization: TextCapitalization.characters,
-          keyboardType: TextInputType.visiblePassword,
-          textInputAction: TextInputAction.done,
-          style: TextStyle(fontSize: 17, color: appColors.textColor),
-          onSubmitted: (_) {
-            if (!_busy) unawaited(_submitCode());
-          },
-        ),
+          const SizedBox(height: 8),
+          CupertinoTextField(
+            controller: _eventController,
+            placeholder: 'Event code (optional)',
+            enabled: splashCodeFieldEnabled(busy: _busy, showForm: true),
+            textAlign: TextAlign.start,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            autocorrect: false,
+            enableSuggestions: false,
+            textCapitalization: TextCapitalization.characters,
+            keyboardType: TextInputType.visiblePassword,
+            textInputAction: TextInputAction.done,
+            style: TextStyle(fontSize: 17, color: appColors.textColor),
+            onSubmitted: (_) {
+              if (!_busy) unawaited(_submitCode());
+            },
+          ),
+        ],
       ],
     );
   }
