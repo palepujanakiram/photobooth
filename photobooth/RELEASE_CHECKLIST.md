@@ -149,7 +149,7 @@ flutter build ipa --release
 
 ```bash
 cd photobooth
-bundle exec fastlane android generatebuild   # AAB → Google Play + Firebase App Distribution
+bundle exec fastlane android generatebuild   # AAB + APK; AAB → Play Console; logs both paths
 bundle exec fastlane ios generatebuild       # IPA → App Store Connect (TestFlight)
 ```
 

@@ -1,12 +1,14 @@
 # frozen_string_literal: true
 
 # Fastlane for Android + iOS. Run from photobooth/:
-#   bundle exec fastlane android generatebuild   # → Google Play Console (+ Firebase App Distribution)
+#   bundle exec fastlane android generatebuild   # AAB + APK; AAB → Play Console internal; log both paths
+#   bundle exec fastlane android firebase        # existing APK → Firebase App Tester (no version bump)
 #   bundle exec fastlane ios generatebuild       # → App Store Connect (TestFlight)
 #   bundle exec fastlane android build     # build AAB only
 #   bundle exec fastlane ios build         # build IPA only
 
 require_relative 'fastfile_helpers'
+PhotoboothFastfile.load_photobooth_dotenv!
 
 # Ensure UTF-8 locale for Ruby string handling and all subprocesses (flutter, pod).
 ENV['LANG'] ||= 'en_US.UTF-8'
@@ -19,9 +21,12 @@ def in_photobooth_root(&block)
 end
 
 # --- Android distribution config (edit these values) ---
-FIREBASE_TOKEN = ENV.fetch('FIREBASE_TOKEN', nil) # export from `firebase login:ci`
-FIREBASE_ANDROID_APP_ID = '1:76160113818:android:196bb713e591f09c0bd323'
+# Auth: photobooth/.env FIREBASE_TOKEN (`firebase login:ci`) or credentials/firebase-service-account.json.
+# The Google principal must be App Distribution Admin on Firebase project fotozenai-e615b.
+# Must match android/app/google-services.json (fotozenai-e615b). App Tester uses this app.
+FIREBASE_ANDROID_APP_ID = '1:957532952151:android:f8a8844f87ba55fd563512'
 FIREBASE_ANDROID_GROUPS = 'testers'
+FIREBASE_SERVICE_ACCOUNT_PATH = File.expand_path('credentials/firebase-service-account.json', __dir__)
 PLAY_STORE_JSON_KEY_PATH = File.expand_path('credentials/play-store-service-account.json', __dir__)
 PLAY_STORE_TRACK = 'internal'
 ANDROID_PACKAGE_NAME = 'com.srisarani.fotozenai'
@@ -49,6 +54,32 @@ def sync_build_version!(build_number: nil)
   in_photobooth_root { sh(cmd) }
 end
 
+# Store latest + 1 (never lower than local pubspec), then write that exact string to pubspec.yaml
+# so the AAB/APK/IPA and pubspec stay in lockstep.
+def sync_pubspec_from_store!(store_label, latest_store)
+  local_build = PhotoboothFastfile.app_version[:version_code].to_i
+  next_build = PhotoboothFastfile.next_store_build_number(
+    latest_store: latest_store,
+    local_build: local_build
+  )
+  version_name = PhotoboothFastfile.release_version_name
+  UI.message("#{store_label} latest build: #{latest_store}")
+  UI.message("Local pubspec build: #{local_build}")
+  UI.message("Next #{store_label} version: #{version_name}+#{next_build}")
+  if latest_store.to_i.zero?
+    UI.important(
+      "#{store_label} returned 0. Confirm #{version_name}+#{next_build} is higher " \
+      'than the last uploaded store build.'
+    )
+  end
+  sync_build_version!(build_number: next_build)
+  info = PhotoboothFastfile.app_version
+  UI.success(
+    "Updated pubspec.yaml to #{info[:version_name]}+#{info[:version_code]} " \
+    "(same version as this #{store_label} upload)"
+  )
+end
+
 def play_store_version_codes_for_track(track)
   google_play_track_version_codes(
     package_name: ANDROID_PACKAGE_NAME,
@@ -56,6 +87,7 @@ def play_store_version_codes_for_track(track)
     json_key: PLAY_STORE_JSON_KEY_PATH
   )
 rescue StandardError => e
+  abort_on_play_store_auth_error!(e)
   UI.important("Could not read version codes for Play track '#{track}': #{e.message}")
   []
 end
@@ -65,42 +97,25 @@ def latest_play_store_version_code
 end
 
 def sync_android_build_version!
-  version_name = PhotoboothFastfile.release_version_name
-  latest = latest_play_store_version_code
-  next_build = latest + 1
-  UI.message("Play Store latest version code (all tracks): #{latest}")
-  UI.message("Release version name: #{version_name}")
-  UI.message("Next Android version code: #{next_build}")
-  sync_build_version!(build_number: next_build)
+  sync_pubspec_from_store!('Play Store', latest_play_store_version_code)
 end
 
 def sync_ios_build_version!
-  local_build = PhotoboothFastfile.app_version[:version_code].to_i
   latest = latest_testflight_build_number(
     api_key: load_app_store_connect_api_key,
     app_identifier: IOS_BUNDLE_IDENTIFIER,
     initial_build_number: 0
   ).to_i
-  next_build = PhotoboothFastfile.next_store_build_number(
-    latest_store: latest,
-    local_build: local_build
-  )
-  UI.message("App Store latest TestFlight build (all versions): #{latest}")
-  UI.message("Local pubspec build: #{local_build}")
-  UI.message("Next iOS build number: #{next_build}")
-  if latest.zero?
-    UI.important(
-      'TestFlight returned 0. Confirm the next CFBundleVersion is higher than ' \
-      'the last uploaded build before submitting.'
-    )
-  end
-  sync_build_version!(build_number: next_build)
+  sync_pubspec_from_store!('TestFlight', latest)
 end
 
-def validate_android_distribution_config!
-  assert_firebase_token!
-  assert_firebase_android_app_id!
+def validate_android_play_store_config!
   assert_play_store_key!
+end
+
+def validate_android_firebase_config!
+  assert_firebase_auth!
+  assert_firebase_android_app_id!
 end
 
 def validate_ios_distribution_config!
@@ -110,10 +125,28 @@ def validate_ios_distribution_config!
   assert_ios_export_options!
 end
 
-def assert_firebase_token!
-  return unless PhotoboothFastfile.firebase_token_missing?(FIREBASE_TOKEN)
+def firebase_cli_token_value
+  token = ENV['FIREBASE_TOKEN']
+  return nil if PhotoboothFastfile.firebase_token_missing?(token)
 
-  UI.user_error!('Set FIREBASE_TOKEN env var (from `firebase login:ci`) before running Firebase distribution.')
+  token
+end
+
+def firebase_service_credentials_path
+  return FIREBASE_SERVICE_ACCOUNT_PATH if File.exist?(FIREBASE_SERVICE_ACCOUNT_PATH)
+
+  nil
+end
+
+def assert_firebase_auth!
+  return if firebase_service_credentials_path
+  return unless PhotoboothFastfile.firebase_token_missing?(firebase_cli_token_value)
+
+  UI.user_error!(
+    'Firebase App Tester auth is missing. Put FIREBASE_TOKEN in photobooth/.env ' \
+    '(from `firebase login:ci` on a Google account with App Distribution access ' \
+    "to fotozenai-e615b) or save #{FIREBASE_SERVICE_ACCOUNT_PATH}."
+  )
 end
 
 def assert_firebase_android_app_id!
@@ -122,13 +155,66 @@ def assert_firebase_android_app_id!
   UI.user_error!('Set FIREBASE_ANDROID_APP_ID in fastlane/Fastfile.')
 end
 
-def assert_play_store_key!
-  return if File.exist?(PLAY_STORE_JSON_KEY_PATH)
+def play_store_auth_error?(message)
+  msg = message.to_s.downcase
+  msg.include?('invalid_grant') ||
+    msg.include?('invalid jwt') ||
+    msg.include?('authorization failed') ||
+    msg.include?('unauthorized')
+end
+
+def abort_on_play_store_auth_error!(error)
+  return unless play_store_auth_error?(error.message)
 
   UI.user_error!(
-    "Play Store key not found at #{PLAY_STORE_JSON_KEY_PATH}. " \
-    'Place the service account JSON there or update PLAY_STORE_JSON_KEY_PATH in Fastfile.'
+    "Play Store authentication failed: #{error.message.split("\n").first}. " \
+    'Create a new JSON key for the service account in Google Cloud, replace ' \
+    "#{PLAY_STORE_JSON_KEY_PATH}, and invite that client_email in Play Console " \
+    '→ Users and permissions. Do not upload until Play auth works — otherwise ' \
+    'the version code will not match the store.'
   )
+end
+
+def firebase_permission_error?(message)
+  msg = message.to_s.downcase
+  msg.include?('required permissions on the firebase project') ||
+    msg.include?('app distribution not onboarded') ||
+    msg.include?('could not find your app') ||
+    msg.include?('could not find your firebase project')
+end
+
+def firebase_tester_group_missing?(message)
+  msg = message.to_s.downcase
+  msg.include?('could not find your tester group') ||
+    (msg.include?('groups exist') && msg.include?('group alias'))
+end
+
+def abort_on_firebase_permission_error!(error)
+  return unless firebase_permission_error?(error.message)
+
+  UI.user_error!(
+    "Firebase App Tester upload failed: #{error.message.split("\n").first}. " \
+    'Add the FIREBASE_TOKEN Google account (or firebase-service-account.json ' \
+    'client_email) as Owner, Editor, or Firebase App Distribution Admin on ' \
+    'https://console.firebase.google.com/project/fotozenai-e615b/settings/iam ' \
+    'then App Distribution → Get started, and create group alias testers. ' \
+    'Do not re-run android generatebuild (Play already has this version). ' \
+    'From photobooth/: bundle exec fastlane android firebase'
+  )
+end
+
+def assert_play_store_key!
+  unless File.exist?(PLAY_STORE_JSON_KEY_PATH)
+    UI.user_error!(
+      "Play Store key not found at #{PLAY_STORE_JSON_KEY_PATH}. " \
+      'Place the service account JSON there or update PLAY_STORE_JSON_KEY_PATH in Fastfile.'
+    )
+  end
+
+  validate_play_store_json_key(json_key: PLAY_STORE_JSON_KEY_PATH)
+rescue StandardError => e
+  abort_on_play_store_auth_error!(e)
+  raise
 end
 
 def assert_app_store_connect_key_id!
@@ -178,6 +264,12 @@ def android_release_build_command
   )
 end
 
+def android_release_apk_command
+  PhotoboothFastfile.unbundled_flutter_command(
+    './scripts/flutter_with_version.sh build apk --release'
+  )
+end
+
 def ios_release_build_command
   PhotoboothFastfile.unbundled_flutter_command(
     './scripts/flutter_with_version.sh build ipa --release ' \
@@ -185,14 +277,32 @@ def ios_release_build_command
   )
 end
 
+def verify_android_artifact!(path, label)
+  UI.user_error!("#{label} not found at #{path}") unless File.exist?(path)
+  # Google Play / Android 15+ require 16 KB ELF alignment on 64-bit native libs.
+  in_photobooth_root { sh("./scripts/verify_16kb_alignment.sh #{path}") }
+end
+
 def build_android_aab
   log_build_version('Android App Bundle (AAB)')
   assert_bugsnag_api_key!
   in_photobooth_root { sh(android_release_build_command) }
-  path = PhotoboothFastfile.android_aab_path
-  UI.user_error!("AAB not found at #{path}") unless File.exist?(path)
-  # Google Play requires 16 KB ELF alignment on 64-bit native libs (Android 15+).
-  in_photobooth_root { sh("./scripts/verify_16kb_alignment.sh #{path}") }
+  verify_android_artifact!(PhotoboothFastfile.android_aab_path, 'AAB')
+end
+
+def build_android_apk
+  log_build_version('Android APK')
+  assert_bugsnag_api_key!
+  in_photobooth_root { sh(android_release_apk_command) }
+  apk = PhotoboothFastfile.android_apk_path
+  UI.user_error!("APK not found at #{apk}") unless File.exist?(apk)
+end
+
+def log_android_artifact_paths
+  aab = PhotoboothFastfile.android_aab_path
+  apk = PhotoboothFastfile.android_apk_path
+  UI.success("AAB: #{aab}")
+  UI.success("APK: #{apk}")
 end
 
 def build_ios_ipa
@@ -204,14 +314,43 @@ def build_ios_ipa
   ipa
 end
 
-def distribute_android_aab_to_firebase
-  firebase_app_distribution(
+def firebase_distribution_params(groups:)
+  params = {
     app: FIREBASE_ANDROID_APP_ID,
-    aab_path: PhotoboothFastfile.android_aab_path,
-    firebase_cli_token: FIREBASE_TOKEN,
-    groups: FIREBASE_ANDROID_GROUPS,
+    android_artifact_type: 'APK',
+    android_artifact_path: PhotoboothFastfile.android_apk_path,
     release_notes: PhotoboothFastfile.default_release_notes
-  )
+  }
+  creds = firebase_service_credentials_path
+  if creds
+    params[:service_credentials_file] = creds
+  else
+    params[:firebase_cli_token] = firebase_cli_token_value
+  end
+  params[:groups] = groups unless groups.to_s.empty?
+  params
+end
+
+def distribute_android_apk_to_firebase
+  apk = PhotoboothFastfile.android_apk_path
+  UI.user_error!("APK not found at #{apk}. Build the release APK first.") unless File.exist?(apk)
+
+  groups = FIREBASE_ANDROID_GROUPS
+  begin
+    firebase_app_distribution(firebase_distribution_params(groups: groups))
+  rescue StandardError => e
+    retry_firebase_without_group_or_reraise(e, groups)
+  end
+end
+
+def retry_firebase_without_group_or_reraise(error, groups)
+  if firebase_tester_group_missing?(error.message) && !groups.to_s.empty?
+    UI.important("Tester group '#{groups}' was not found. Uploading without a group.")
+    firebase_app_distribution(firebase_distribution_params(groups: nil))
+    return
+  end
+  abort_on_firebase_permission_error!(error)
+  raise error
 end
 
 def upload_android_aab_to_play_store
@@ -251,18 +390,25 @@ end
 default_platform(:android)
 
 platform :android do
-  desc 'Sync version, build release AAB, upload to Google Play Console, and distribute via Firebase App Distribution'
+  desc 'Sync version, build AAB and APK, upload AAB to Play Console internal, and log both paths'
   lane :generatebuild do
-    validate_android_distribution_config!
+    validate_android_play_store_config!
     sync_android_build_version!
     build_android_aab
+    build_android_apk
     upload_android_aab_to_play_store
-    distribute_android_aab_to_firebase
+    log_android_artifact_paths
+  end
+
+  desc 'Upload the existing release APK to Firebase App Tester (no Play upload, no version bump)'
+  lane :firebase do
+    validate_android_firebase_config!
+    distribute_android_apk_to_firebase
   end
 
   desc 'Sync version and build release AAB only (no upload)'
   lane :build do
-    validate_android_distribution_config!
+    validate_android_play_store_config!
     sync_android_build_version!
     build_android_aab
   end

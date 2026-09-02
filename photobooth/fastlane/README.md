@@ -21,7 +21,15 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 [bundle exec] fastlane android generatebuild
 ```
 
-Sync version, build release AAB, upload to Google Play Console, and distribute via Firebase App Distribution
+Sync version, build AAB and APK, upload AAB to Play Console internal, and log both paths
+
+### android firebase
+
+```sh
+[bundle exec] fastlane android firebase
+```
+
+Upload the existing release APK to Firebase App Tester (no Play upload, no version bump)
 
 ### android build
 

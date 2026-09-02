@@ -2,13 +2,13 @@ name: photobooth
 description: A Flutter photo booth application with AI transformations
 publish_to: 'none'
 # Release version: YEAR.MONTH.DAY+buildNumber (see tool/sync_build_version.dart).
-# iOS Fastlane queries App Store Connect for the latest build on that version, then +1.
-# Android Fastlane queries Google Play for the highest version code (all tracks), then +1.
-# Local `dart run tool/sync_build_version.dart` increments the +suffix in pubspec.
+# Android Fastlane: highest Google Play version code (all tracks) + 1, then writes pubspec.yaml.
+# iOS Fastlane: latest TestFlight build + 1, then writes pubspec.yaml.
+# The AAB/APK/IPA always match the version Fastlane just wrote to pubspec.yaml.
 # Cursor/VS Code: Run Task → "flutter build apk (release)" (runs prebuild: sync version first).
 # CLI: ./scripts/flutter_with_version.sh build web   (plain `flutter build web` does not sync)
 #      dart run tool/sync_build_version.dart
-version: 2026.8.21+56
+version: 2026.9.2+58
 environment:
   sdk: '>=3.0.0 <4.0.0'
 
