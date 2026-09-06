@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:photobooth/models/event_info_model.dart';
+import 'package:photobooth/services/catalog_disk_cache.dart';
 import 'package:photobooth/services/event_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,12 +26,13 @@ void main() {
   test('cacheVerifyResult persists photoMode and counts', () async {
     final em = EventManager();
     await em.cacheVerifyResult(
-      id: 'e1',
-      code: 'PARTY',
-      photoMode: 'FRAME_ONLY',
-      name: 'Gala',
-      themeCount: 2,
-      frameCount: 3,
+      const EventInfoModel(
+        id: 'e1',
+        code: 'PARTY',
+        photoMode: 'FRAME_ONLY',
+        name: 'Gala',
+        catalog: EventInfoCatalog(themeCount: 2, frameCount: 3),
+      ),
     );
     EventManager.resetCacheForTests();
     expect(await em.getEventCode(), 'PARTY');
@@ -56,9 +61,11 @@ void main() {
   test('clearEvent wipes prefs', () async {
     final em = EventManager();
     await em.cacheVerifyResult(
-      id: 'e1',
-      code: 'PARTY',
-      photoMode: 'BOTH',
+      const EventInfoModel(
+        id: 'e1',
+        code: 'PARTY',
+        photoMode: 'BOTH',
+      ),
     );
     await em.setStationRole('print');
     await em.clearEvent();
@@ -95,16 +102,51 @@ void main() {
   test('cacheVerifyResult without name removes stored name', () async {
     final em = EventManager();
     await em.cacheVerifyResult(
-      id: 'e1',
-      code: 'PARTY',
-      photoMode: 'BOTH',
-      name: 'Named',
+      const EventInfoModel(
+        id: 'e1',
+        code: 'PARTY',
+        photoMode: 'BOTH',
+        name: 'Named',
+      ),
     );
     await em.cacheVerifyResult(
-      id: 'e1',
-      code: 'PARTY',
-      photoMode: 'BOTH',
+      const EventInfoModel(
+        id: 'e1',
+        code: 'PARTY',
+        photoMode: 'BOTH',
+      ),
     );
     expect(await em.getEventName(), isNull);
+  });
+
+  test('cacheVerifyResult persists chrome and readBoundEvent', () async {
+    final dir = await Directory.systemTemp.createTemp();
+    final em = EventManager(
+      diskCache: CatalogDiskCache(resolveDirectory: () async => dir),
+    );
+    await em.cacheVerifyResult(
+      const EventInfoModel(
+        id: 'e1',
+        code: 'PARTY',
+        photoMode: 'BOTH',
+        chrome: EventChrome(
+          outputMode: 'DIGITAL_ONLY',
+          skin: EventSkinChrome(
+            id: 'corporate-navy',
+            name: 'Corporate navy',
+            bannerFrom: '#1B3A5F',
+            bannerTo: '#0E7490',
+            ink: '#FFFFFF',
+          ),
+        ),
+      ),
+    );
+    final bound = await em.readBoundEvent();
+    expect(bound?.outputMode, 'DIGITAL_ONLY');
+    expect(bound?.chrome.skin.id, 'corporate-navy');
+    expect(await em.isEventBound(), isTrue);
+    await em.clearEvent();
+    EventManager.resetCacheForTests();
+    expect(await em.readBoundEvent(), isNull);
   });
 }

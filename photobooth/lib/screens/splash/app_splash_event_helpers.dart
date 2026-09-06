@@ -13,31 +13,13 @@ Future<String?> bindSplashEventCode({
   if (code.isEmpty) return null;
   final event = await fetchEvent(code, kioskCode);
   if (event != null && event.isValid && event.currentlyActive) {
-    await eventManager.cacheVerifyResult(
-      id: event.id,
-      code: event.code,
-      photoMode: event.photoMode,
-      name: event.name,
-      themeCount: event.themeCount,
-      frameCount: event.frameCount,
-      themeIds: event.themeIds,
-      frameIds: event.frameIds,
-    );
+    await eventManager.cacheVerifyResult(event);
     return null;
   }
   // Offline / verify failed: restore the durable row for this exact event.
   final diskEvent = await eventManager.readCachedEvent(code);
   if (diskEvent != null && diskEvent.currentlyActive) {
-    await eventManager.cacheVerifyResult(
-      id: diskEvent.id,
-      code: diskEvent.code,
-      photoMode: diskEvent.photoMode,
-      name: diskEvent.name,
-      themeCount: diskEvent.themeCount,
-      frameCount: diskEvent.frameCount,
-      themeIds: diskEvent.themeIds,
-      frameIds: diskEvent.frameIds,
-    );
+    await eventManager.cacheVerifyResult(diskEvent);
     return null;
   }
   // Backward compatibility for devices that only have the pre-v2 prefs.

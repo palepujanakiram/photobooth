@@ -858,4 +858,7 @@ abstract final class AppStrings {
   static const eventStationStatsTheme = 'Theme';
   static const eventStationStatsPrint = 'Print';
   static const eventStationStatsLegend = 'PENDING / CLAIMED / DONE';
+  static const eventStationStatsGuests = 'Guests';
+  static const eventStationStatsProcessed = 'Processed';
+  static const eventStationStatsDigital = 'WhatsApped';
 }

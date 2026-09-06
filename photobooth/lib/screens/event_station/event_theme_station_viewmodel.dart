@@ -36,6 +36,7 @@ class EventThemeStationViewModel extends ChangeNotifier {
   bool get isBusy => _busy;
   String? get errorMessage => _error;
   EventStationStats get stats => _board.stats;
+  EventDeliveryStats get delivery => _board.delivery;
   List<EventThemeStationJob> get allJobs => _board.themeJobs;
   List<EventThemeStationJob> get queue => itemsForStationStatus(
         allJobs,

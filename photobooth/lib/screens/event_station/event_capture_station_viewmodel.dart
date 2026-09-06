@@ -40,6 +40,7 @@ class EventCaptureStationViewModel extends ChangeNotifier {
   String? get errorMessage => _error;
   bool get hasError => _error != null;
   EventStationStats get stats => _board.stats;
+  EventDeliveryStats get delivery => _board.delivery;
   List<EventCaptureStationItem> get captures => _board.captures;
   String get statusFilter => _statusFilter;
   List<EventCaptureStationItem> get filteredCaptures => itemsForStationStatus(

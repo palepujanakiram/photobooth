@@ -42,7 +42,7 @@ class EventCaptureStationScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  EventStationStatsBar(stats: vm.stats),
+                  EventStationStatsBar(stats: vm.stats, delivery: vm.delivery),
                   const SizedBox(height: 12),
                   EventStationImageCarousel(urls: vm.carouselUrls),
                   const SizedBox(height: 12),

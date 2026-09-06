@@ -5,9 +5,14 @@ import '../../utils/app_strings.dart';
 import '../../views/widgets/cached_network_image.dart';
 
 class EventStationStatsBar extends StatelessWidget {
-  const EventStationStatsBar({super.key, required this.stats});
+  const EventStationStatsBar({
+    super.key,
+    required this.stats,
+    this.delivery = const EventDeliveryStats(),
+  });
 
   final EventStationStats stats;
+  final EventDeliveryStats delivery;
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +36,23 @@ class EventStationStatsBar extends StatelessWidget {
                   label: AppStrings.eventStationStatsPrint,
                   value:
                       '${stats.printPending} / ${stats.printClaimed} / ${stats.printDone}',
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _StatCell(
+                  label: AppStrings.eventStationStatsGuests,
+                  value: '${delivery.guestsRegistered}',
+                ),
+                _StatCell(
+                  label: AppStrings.eventStationStatsProcessed,
+                  value: '${delivery.processed}',
+                ),
+                _StatCell(
+                  label: AppStrings.eventStationStatsDigital,
+                  value: '${delivery.digitalSent}',
                 ),
               ],
             ),

@@ -1,5 +1,25 @@
 import '../utils/secure_image_url.dart';
 
+class EventDeliveryStats {
+  final int guestsRegistered;
+  final int processed;
+  final int digitalSent;
+
+  const EventDeliveryStats({
+    this.guestsRegistered = 0,
+    this.processed = 0,
+    this.digitalSent = 0,
+  });
+
+  factory EventDeliveryStats.fromJson(Map<String, dynamic> json) {
+    return EventDeliveryStats(
+      guestsRegistered: _asInt(json['guestsRegistered']),
+      processed: _asInt(json['processed']),
+      digitalSent: _asInt(json['digitalSent']),
+    );
+  }
+}
+
 class EventStationStats {
   final int captures;
   final int themePending;
@@ -189,12 +209,14 @@ class EventPrintStationJob {
 
 class EventStationBoard {
   final EventStationStats stats;
+  final EventDeliveryStats delivery;
   final List<EventCaptureStationItem> captures;
   final List<EventThemeStationJob> themeJobs;
   final List<EventPrintStationJob> printJobs;
 
   const EventStationBoard({
     this.stats = const EventStationStats(),
+    this.delivery = const EventDeliveryStats(),
     this.captures = const [],
     this.themeJobs = const [],
     this.printJobs = const [],
@@ -204,10 +226,12 @@ class EventStationBoard {
     if (data is! Map) return const EventStationBoard();
     final map = Map<String, dynamic>.from(data);
     final statsRaw = map['stats'];
+    final statsMap = statsRaw is Map
+        ? Map<String, dynamic>.from(statsRaw)
+        : <String, dynamic>{};
     return EventStationBoard(
-      stats: statsRaw is Map
-          ? EventStationStats.fromJson(Map<String, dynamic>.from(statsRaw))
-          : const EventStationStats(),
+      stats: EventStationStats.fromJson(statsMap),
+      delivery: EventDeliveryStats.fromJson(statsMap),
       captures: _mapList(map['captures'], EventCaptureStationItem.fromJson)
           .where((e) => e.isValid)
           .toList(),
@@ -222,6 +246,7 @@ class EventStationBoard {
   }) {
     return EventStationBoard(
       stats: stats,
+      delivery: delivery,
       captures: [
         for (final item in captures)
           item.withStationImageAuth(kioskCode: kioskCode, eventCode: eventCode),

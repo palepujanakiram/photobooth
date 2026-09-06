@@ -40,7 +40,7 @@ void main() {
       id: 'e1',
       code: 'WED',
       photoMode: 'BOTH',
-      themeCount: 3,
+      catalog: EventInfoCatalog(themeCount: 3),
     );
     final err = await bindSplashEventCode(
       eventManager: EventManager(),
@@ -88,10 +88,12 @@ void main() {
   test('offline resume when same event already cached locally', () async {
     final mgr = EventManager();
     await mgr.cacheVerifyResult(
-      id: 'e1',
-      code: 'WED',
-      photoMode: 'BOTH',
-      themeCount: 2,
+      const EventInfoModel(
+        id: 'e1',
+        code: 'WED',
+        photoMode: 'BOTH',
+        catalog: EventInfoCatalog(themeCount: 2),
+      ),
     );
     final err = await bindSplashEventCode(
       eventManager: mgr,

@@ -20,6 +20,7 @@ class _FakeStationApi extends EventStationApi {
   List<EventThemeStationJob> themeJobs = const [];
   List<EventPrintStationJob> printJobs = const [];
   EventStationStats stats = const EventStationStats();
+  EventDeliveryStats delivery = const EventDeliveryStats();
   Object? themeClaimError;
   Object? themeCompleteError;
   Object? printClaimError;
@@ -37,6 +38,7 @@ class _FakeStationApi extends EventStationApi {
     if (listError != null) throw listError!;
     return EventStationBoard(
       stats: stats,
+      delivery: delivery,
       captures: captures,
       themeJobs: themeJobs,
       printJobs: printJobs,
@@ -129,7 +131,12 @@ void main() {
           previewUrls: ['https://cdn/a.jpg', 'https://cdn/b.jpg'],
         ),
       ]
-      ..stats = const EventStationStats(captures: 1, themePending: 1);
+      ..stats = const EventStationStats(captures: 1, themePending: 1)
+      ..delivery = const EventDeliveryStats(
+        guestsRegistered: 4,
+        processed: 2,
+        digitalSent: 1,
+      );
     final vm = EventCaptureStationViewModel(
       stationApi: api,
       pollInterval: const Duration(hours: 1),
@@ -138,6 +145,9 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(vm.carouselUrls, ['https://cdn/a.jpg', 'https://cdn/b.jpg']);
     expect(vm.stats.captures, 1);
+    expect(vm.delivery.guestsRegistered, 4);
+    expect(vm.delivery.processed, 2);
+    expect(vm.delivery.digitalSent, 1);
     expect(vm.captures, hasLength(1));
     expect(vm.statusFilter, 'PENDING');
     vm.setStatusFilter('DONE');
@@ -395,6 +405,7 @@ void main() {
     expect(printVm.filteredJobs, isEmpty);
     printVm.setStatusFilter('PENDING');
     expect(printVm.stats.printPending, 1);
+    expect(printVm.delivery.digitalSent, 0);
     expect(printVm.statusFilter, 'PENDING');
     expect(printVm.filteredJobs, hasLength(1));
     expect(printVm.active, isNull);
@@ -435,6 +446,7 @@ void main() {
     await themeVm.refreshQueue();
     await themeVm.claimNext();
     expect(themeVm.stats.captures, 0);
+    expect(themeVm.delivery.guestsRegistered, 0);
     expect(themeVm.statusFilter, 'PENDING');
     expect(themeVm.looks, isNotEmpty);
     themeVm.startPolling();

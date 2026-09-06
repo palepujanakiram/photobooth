@@ -95,8 +95,7 @@ void main() {
       fetchEvent: (_, __) async => const EventInfoModel(
         id: 'event-1',
         code: 'GALA',
-        themeCount: 1,
-        themeIds: ['t1'],
+        catalog: EventInfoCatalog(themeCount: 1, themeIds: ['t1']),
       ),
       eventCode: 'GALA',
       kioskCode: 'K1',

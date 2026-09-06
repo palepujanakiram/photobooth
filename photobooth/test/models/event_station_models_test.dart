@@ -65,6 +65,9 @@ void main() {
         'printPending': 1,
         'printClaimed': 1,
         'printDone': 4,
+        'guestsRegistered': 9,
+        'processed': 7,
+        'digitalSent': 4,
       },
       'captures': [
         {
@@ -93,6 +96,9 @@ void main() {
       ],
     });
     expect(board.stats.captures, 3);
+    expect(board.delivery.guestsRegistered, 9);
+    expect(board.delivery.processed, 7);
+    expect(board.delivery.digitalSent, 4);
     expect(board.captures.single.sessionId, 's1');
     expect(board.themeJobs.single.status, 'DONE');
     expect(board.printJobs.first.status, 'CLAIMED');
@@ -122,6 +128,17 @@ void main() {
     expect(stats.captures, 1);
     expect(stats.themeTotal, 6);
     expect(stats.printTotal, 9);
+  });
+
+  test('parses delivery stats from mixed types', () {
+    final delivery = EventDeliveryStats.fromJson({
+      'guestsRegistered': '3',
+      'processed': 1.0,
+      'digitalSent': true,
+    });
+    expect(delivery.guestsRegistered, 3);
+    expect(delivery.processed, 1);
+    expect(delivery.digitalSent, 0);
   });
 
   test('buckets unknown and failed print statuses', () {
@@ -178,6 +195,7 @@ void main() {
       ],
     }).withStationImageAuth(kioskCode: 'K1', eventCode: 'GALA');
     expect(board.captures.single.previewUrls.single, contains('sessionId=s1'));
+    expect(board.delivery.guestsRegistered, 0);
     expect(board.captures.single.previewUrls.single, contains('kioskCode=K1'));
     expect(board.themeJobs.single.previewUrls.single, contains('eventCode=GALA'));
     expect(board.printJobs.single.imageUrl, contains('sessionId=s1'));

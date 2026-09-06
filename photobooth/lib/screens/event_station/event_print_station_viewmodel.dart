@@ -44,6 +44,7 @@ class EventPrintStationViewModel extends ChangeNotifier {
   bool get isBusy => _busy;
   String? get errorMessage => _error;
   EventStationStats get stats => _board.stats;
+  EventDeliveryStats get delivery => _board.delivery;
   List<EventPrintStationJob> get allJobs => _board.printJobs;
   List<EventPrintStationJob> get queue => itemsForStationStatus(
         allJobs,

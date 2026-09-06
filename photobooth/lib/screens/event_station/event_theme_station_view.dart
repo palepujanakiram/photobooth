@@ -44,7 +44,7 @@ class EventThemeStationScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  EventStationStatsBar(stats: vm.stats),
+                  EventStationStatsBar(stats: vm.stats, delivery: vm.delivery),
                   const SizedBox(height: 12),
                   EventStationStatusTabs(
                     selected: vm.statusFilter,
@@ -134,7 +134,10 @@ class _ClaimedThemeBody extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: EventStationStatsBar(stats: viewModel.stats),
+          child: EventStationStatsBar(
+            stats: viewModel.stats,
+            delivery: viewModel.delivery,
+          ),
         ),
         EventStationImageCarousel(urls: preview),
         if (viewModel.looks.isEmpty)

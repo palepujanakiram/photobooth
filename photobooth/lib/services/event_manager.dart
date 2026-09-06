@@ -135,40 +135,20 @@ class EventManager {
     await prefs.setString(_kPrefsEventPhotoMode, trimmed);
   }
 
-  Future<void> cacheVerifyResult({
-    required String id,
-    required String code,
-    required String photoMode,
-    String? name,
-    int themeCount = 0,
-    int frameCount = 0,
-    List<String> themeIds = const [],
-    List<String> frameIds = const [],
-  }) async {
-    await setEventCode(code);
-    await setPhotoModeOverride(photoMode);
+  Future<void> cacheVerifyResult(EventInfoModel event) async {
+    await setEventCode(event.code);
+    await setPhotoModeOverride(event.photoMode);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kPrefsEventId, id);
-    if (name != null && name.trim().isNotEmpty) {
-      await prefs.setString(_kPrefsEventName, name.trim());
+    await prefs.setString(_kPrefsEventId, event.id);
+    final name = event.name?.trim() ?? '';
+    if (name.isNotEmpty) {
+      await prefs.setString(_kPrefsEventName, name);
     } else {
       await prefs.remove(_kPrefsEventName);
     }
-    await prefs.setInt(_kPrefsEventThemeCount, themeCount);
-    await prefs.setInt(_kPrefsEventFrameCount, frameCount);
-    await _diskCache.writeJson(
-      _diskKey(code),
-      EventInfoModel(
-        id: id,
-        code: code,
-        name: name,
-        photoMode: photoMode,
-        themeCount: themeCount,
-        frameCount: frameCount,
-        themeIds: themeIds,
-        frameIds: frameIds,
-      ).toJson(),
-    );
+    await prefs.setInt(_kPrefsEventThemeCount, event.themeCount);
+    await prefs.setInt(_kPrefsEventFrameCount, event.frameCount);
+    await _diskCache.writeJson(_diskKey(event.code), event.toJson());
   }
 
   /// Returns the last verified row for this exact event code.
@@ -177,6 +157,12 @@ class EventManager {
     if (raw is! Map) return null;
     final event = EventInfoModel.fromJson(Map<String, dynamic>.from(raw));
     return event.isValid ? event : null;
+  }
+
+  Future<EventInfoModel?> readBoundEvent() async {
+    final code = await getEventCode();
+    if (code == null) return null;
+    return readCachedEvent(code);
   }
 
   Future<void> clearEvent() async {
